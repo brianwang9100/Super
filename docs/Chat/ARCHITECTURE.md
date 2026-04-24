@@ -813,7 +813,7 @@ All conversations, messages, and tool call records live in `chat.sqlite`. Each r
 
 ### GRDBQuery for Reactive UI
 
-The message list in `ChatView` uses `@Query` from GRDBQuery. The view subscribes to a `ValueObservation` on the `message` table filtered by `conversationId`, ordered by `createdAt`. When `ChatOrchestrator` saves a new message to GRDB, the view automatically re-renders -- no manual notification or observation plumbing needed.
+The message list in `ChatView` uses `@Query` from [GRDBQuery](https://github.com/groue/GRDBQuery) — the project-wide bridge between GRDB and SwiftUI (see [MOBILE_ARCHITECTURE.md §8.2](../MOBILE_ARCHITECTURE.md#82-grdb-companion-packages)). The view subscribes to a `ValueObservation` on the `message` table filtered by `conversationId`, ordered by `createdAt`. When `ChatOrchestrator` saves a new message to GRDB, the view automatically re-renders -- no manual notification or observation plumbing needed.
 
 ```swift
 struct ChatMessagesRequest: ValueObservationQueryable {

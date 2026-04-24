@@ -114,12 +114,12 @@ Follow the convention of the platform you're on.
 
 ## Persistence
 
-- **GRDB** (not SwiftData/Core Data) for all persistence
+- **[GRDB](https://github.com/groue/GRDB.swift)** (not SwiftData/Core Data) for all persistence
 - All data models are `struct` conforming to `Codable, FetchableRecord, PersistableRecord, Sendable`
 - Each applet gets its own `.sqlite` file via `DatabaseQueue`
 - Use `DatabaseMigrator` with explicit SQL for schema migrations
-- Use **GRDBQuery** for reactive SwiftUI data binding (`ValueObservation`)
-- Use **GRDBSnapshotTesting** for snapshot testing of database state
+- Use **[GRDBQuery](https://github.com/groue/GRDBQuery)** for reactive SwiftUI data binding — views subscribe via `@Query` to a `ValueObservation`-backed request and re-render automatically when the database changes. This is the only sanctioned bridge between GRDB and SwiftUI; do not hand-roll observation in view models.
+- Use **[GRDBSnapshotTesting](https://github.com/groue/GRDBSnapshotTesting)** for snapshot testing of database state
 
 ### GRDB Naming Conventions
 

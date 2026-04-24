@@ -687,9 +687,9 @@ enum DatabaseContainer {
 
 ### 8.2 GRDB Companion Packages
 
-#### GRDBQuery (Reactive SwiftUI)
+#### [GRDBQuery](https://github.com/groue/GRDBQuery) (Reactive SwiftUI)
 
-`GRDBQuery` bridges GRDB observation directly into SwiftUI. Views subscribe to database queries and re-render automatically when underlying data changes.
+`GRDBQuery` (`https://github.com/groue/GRDBQuery`) is the canonical bridge between GRDB and SwiftUI for Super. Views subscribe to database queries via the `@Query` property wrapper and re-render automatically when the underlying data changes. This is the only sanctioned reactive-binding mechanism for GRDB → SwiftUI in this project — do not hand-roll `ValueObservation` plumbing in view models when a `@Query` will do.
 
 ```swift
 struct TaskListView: View {
