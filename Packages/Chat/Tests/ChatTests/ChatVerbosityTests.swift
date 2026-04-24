@@ -1,5 +1,5 @@
 import Testing
-@testable import Core
+@testable import Chat
 
 /// Tests for `ChatVerbosity` ranking and display semantics.
 @Suite("ChatVerbosity")

@@ -4,23 +4,23 @@ import Foundation
 ///
 /// Metadata only — it tells the model what tools exist, what parameters they
 /// take, and what category they fall in. Execution lives in a separate
-/// `ToolExecutor` referenced by `ToolDefinition`. Splitting the two lets the
+/// `ToolExecutor` referenced by `ToolRegistration`. Splitting the two lets the
 /// same tool target a local executor or a remote endpoint depending on
 /// deployment.
-public struct AITool: Sendable, Equatable, Identifiable {
+public struct LLMTool: Sendable, Equatable, Identifiable {
     public let id: String
     public let name: String
     public let description: String
-    public let category: AIToolCategory
-    public let parameters: [AIToolParameter]
+    public let category: LLMToolCategory
+    public let parameters: [LLMToolParameter]
     public let appletId: String
 
     public init(
         id: String,
         name: String,
         description: String,
-        category: AIToolCategory,
-        parameters: [AIToolParameter],
+        category: LLMToolCategory,
+        parameters: [LLMToolParameter],
         appletId: String
     ) {
         self.id = id
@@ -34,16 +34,16 @@ public struct AITool: Sendable, Equatable, Identifiable {
 
 /// Coarse hint for the orchestrator about a tool's side-effects. Used to
 /// drive auto-execute vs. confirmation policies in later milestones.
-public enum AIToolCategory: String, Sendable, Equatable, Codable, CaseIterable {
+public enum LLMToolCategory: String, Sendable, Equatable, Codable, CaseIterable {
     case query
     case mutation
     case navigation
     case system
 }
 
-/// One named parameter on an `AITool`, with type, description, requirement,
+/// One named parameter on an `LLMTool`, with type, description, requirement,
 /// and optional enum-value constraint. Mirrors a JSON Schema property.
-public struct AIToolParameter: Sendable, Equatable {
+public struct LLMToolParameter: Sendable, Equatable {
     public let name: String
     public let type: ParameterType
     public let description: String

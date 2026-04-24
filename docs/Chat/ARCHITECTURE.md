@@ -542,10 +542,10 @@ The orchestration loop continues until the LLM returns `endTurn` (a response wit
 actor ToolRouter {
     private var executors: [String: any ToolExecutor] = [:]  // appletId -> executor
     private var toolIndex: [String: String] = [:]            // toolName -> appletId
-    private var tools: [String: AITool] = [:]                // toolId -> AITool definition
+    private var tools: [String: LLMTool] = [:]                // toolId -> LLMTool definition
 
     /// Register all tools and executor for an applet.
-    func register(appletId: String, tools: [AITool], executor: any ToolExecutor) {
+    func register(appletId: String, tools: [LLMTool], executor: any ToolExecutor) {
         executors[appletId] = executor
         for tool in tools {
             toolIndex[tool.id] = appletId
@@ -586,7 +586,7 @@ actor ToolRouter {
         return tool.category == .mutation || tool.category == .system
     }
 
-    func allTools() -> [AITool] {
+    func allTools() -> [LLMTool] {
         Array(tools.values)
     }
 
@@ -596,7 +596,7 @@ actor ToolRouter {
 
     private func validateParameters(
         _ params: [String: any Sendable],
-        against tool: AITool
+        against tool: LLMTool
     ) throws {
         for param in tool.parameters where param.isRequired {
             guard params[param.name] != nil else {
@@ -622,7 +622,7 @@ When the applet registry changes (an applet is installed or removed), `AppletCha
 struct SystemPromptBuilder: Sendable {
     func build(
         activeApplets: [String],
-        tools: [AITool],
+        tools: [LLMTool],
         timezone: TimeZone,
         recentActivitySummary: String?
     ) -> String {
@@ -1115,12 +1115,12 @@ final class ToolRouterTests: XCTestCase {
 
         await router.register(
             appletId: "todo",
-            tools: [AITool(id: "todo.create", name: "create", description: "Create task", category: .mutation, parameters: [], applet: .todo)],
+            tools: [LLMTool(id: "todo.create", name: "create", description: "Create task", category: .mutation, parameters: [], applet: .todo)],
             executor: todoExecutor
         )
         await router.register(
             appletId: "calendar",
-            tools: [AITool(id: "calendar.create", name: "create", description: "Create event", category: .mutation, parameters: [], applet: .calendar)],
+            tools: [LLMTool(id: "calendar.create", name: "create", description: "Create event", category: .mutation, parameters: [], applet: .calendar)],
             executor: calendarExecutor
         )
 
@@ -1145,12 +1145,12 @@ final class ToolRouterTests: XCTestCase {
     func testMissingRequiredParameterThrows() async throws {
         let router = ToolRouter()
         let executor = MockToolExecutor(toolID: "todo.create")
-        let tool = AITool(
+        let tool = LLMTool(
             id: "todo.create",
             name: "create",
             description: "Create task",
             category: .mutation,
-            parameters: [AIToolParameter(name: "title", type: .string, description: "Task title", isRequired: true, enumValues: nil)],
+            parameters: [LLMToolParameter(name: "title", type: .string, description: "Task title", isRequired: true, enumValues: nil)],
             applet: .todo
         )
         await router.register(appletId: "todo", tools: [tool], executor: executor)
@@ -1190,7 +1190,7 @@ final class SystemPromptBuilderTests: XCTestCase {
     func testIncludesToolDescriptions() {
         let builder = SystemPromptBuilder()
         let tools = [
-            AITool(id: "todo.create", name: "create", description: "Create a new task", category: .mutation, parameters: [], applet: .todo)
+            LLMTool(id: "todo.create", name: "create", description: "Create a new task", category: .mutation, parameters: [], applet: .todo)
         ]
         let prompt = builder.build(
             activeApplets: ["todo"],
@@ -1244,7 +1244,7 @@ struct ChatApplet: SuperApplet, Sendable {
     var accentColor: Color { .purple }
 
     // Chat registers no tools. It is the router, not a tool provider.
-    var registeredTools: [AITool] { [] }
+    var registeredTools: [LLMTool] { [] }
     var toolExecutor: (any ToolExecutor)? { nil }
 
     var publishedEvents: [String] { ["aiStreamStarted", "aiToolCallRequested", "aiToolCallCompleted", "aiStreamCompleted"] }

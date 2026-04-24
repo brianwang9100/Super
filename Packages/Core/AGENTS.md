@@ -6,9 +6,8 @@ Shared primitives consumed by every applet. No applet may import another applet 
 
 - LLM layer: `LLMProvider` protocol, `LLMMessage`, `LLMStreamEvent`, `LLMProviderRegistry`.
 - HTTP + SSE: `HTTPClient`, `URLSessionHTTPClient`, `SSEParser`.
-- Tool system: `AITool`, `ToolDefinition`, `ToolExecution`, `ToolExecutor`, `ToolRegistry`, `RemoteHTTPToolExecutor`.
+- Tool system: `LLMTool`, `ToolRegistration`, `ToolExecution`, `ToolExecutor`, `ToolRegistry`, `RemoteHTTPToolExecutor`.
 - Ambient utilities: `Clock`, `IDGenerator`, `KeychainClient`, `SuperAppInfo`.
-- Cross-applet shared types: `ChatVerbosity`.
 
 ## Rules
 

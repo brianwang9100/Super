@@ -24,7 +24,7 @@ struct MockLLMProvider: LLMProvider {
     func stream(
         messages: [LLMMessage],
         model: LLMModel,
-        tools: [AITool],
+        tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         let events = self.events

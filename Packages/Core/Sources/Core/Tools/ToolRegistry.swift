@@ -3,7 +3,7 @@ import Foundation
 /// Persistence boundary for per-tool enablement. Chat ships a GRDB-backed
 /// conformer; tests use an in-memory one. Returning nil from
 /// `isEnabled(toolID:)` means "no record yet" — the registry then keeps the
-/// definition's default.
+/// registration's default.
 public protocol ToolEnablementStore: Sendable {
     func isEnabled(toolID: String) async throws -> Bool?
     func setEnabled(toolID: String, enabled: Bool) async throws
@@ -17,17 +17,17 @@ public enum ToolRegistryError: Error, Sendable, Equatable {
     case remoteExecutionNotConfigured(toolID: String, endpoint: String)
 }
 
-/// Actor-isolated registry of `ToolDefinition`s and the dispatcher that runs
+/// Actor-isolated registry of `ToolRegistration`s and the dispatcher that runs
 /// them.
 ///
-/// On `register(_:)` the registry hydrates each definition's `isEnabled`
+/// On `register(_:)` the registry hydrates each registration's `isEnabled`
 /// from the optional `ToolEnablementStore` so user toggles survive an app
 /// restart. `.remote` execution is metadata-only in M1: the registry throws
 /// `remoteExecutionNotConfigured` when asked to dispatch one. Real remote
 /// execution lands when a future milestone wires `RemoteHTTPToolExecutor`
 /// into a `.local(...)` execution.
 public actor ToolRegistry {
-    private var definitions: [String: ToolDefinition] = [:]
+    private var registrations: [String: ToolRegistration] = [:]
     private let enablementStore: (any ToolEnablementStore)?
 
     public init(enablementStore: (any ToolEnablementStore)? = nil) {
@@ -36,40 +36,40 @@ public actor ToolRegistry {
 
     /// Register a tool.
     ///
-    /// - Parameter definition: The tool, its executor, and its default
+    /// - Parameter registration: The tool, its executor, and its default
     ///   enablement. If an enablement store is wired and already has a value
-    ///   for this tool, the persisted state wins over `definition.isEnabled`.
-    public func register(_ definition: ToolDefinition) async {
-        var resolved = definition
+    ///   for this tool, the persisted state wins over `registration.isEnabled`.
+    public func register(_ registration: ToolRegistration) async {
+        var resolved = registration
         if let store = enablementStore {
-            if let stored = try? await store.isEnabled(toolID: definition.tool.id) {
-                resolved = definition.enabled(stored)
+            if let stored = try? await store.isEnabled(toolID: registration.tool.id) {
+                resolved = registration.enabled(stored)
             }
         }
-        definitions[definition.tool.id] = resolved
+        registrations[registration.tool.id] = resolved
     }
 
     /// Toggle a tool's enablement and persist the change to the store.
     public func setEnabled(toolID: String, enabled: Bool) async throws {
-        guard let definition = definitions[toolID] else {
+        guard let registration = registrations[toolID] else {
             throw ToolRegistryError.unknownTool(toolID)
         }
-        definitions[toolID] = definition.enabled(enabled)
+        registrations[toolID] = registration.enabled(enabled)
         try await enablementStore?.setEnabled(toolID: toolID, enabled: enabled)
     }
 
-    public func definition(toolID: String) -> ToolDefinition? {
-        definitions[toolID]
+    public func registration(toolID: String) -> ToolRegistration? {
+        registrations[toolID]
     }
 
-    public func allDefinitions() -> [ToolDefinition] {
-        Array(definitions.values).sorted(by: { $0.tool.id < $1.tool.id })
+    public func allRegistrations() -> [ToolRegistration] {
+        Array(registrations.values).sorted(by: { $0.tool.id < $1.tool.id })
     }
 
     /// All enabled tools, sorted by id for stable LLM (Large Language Model)
     /// prompt assembly.
-    public func enabledTools() -> [AITool] {
-        definitions.values
+    public func enabledTools() -> [LLMTool] {
+        registrations.values
             .filter(\.isEnabled)
             .map(\.tool)
             .sorted(by: { $0.id < $1.id })
@@ -78,7 +78,7 @@ public actor ToolRegistry {
     /// Same as `enabledTools()` but takes the active provider so future
     /// milestones can filter by per-provider tool support without changing
     /// call sites. M1 returns all enabled tools regardless of provider.
-    public func enabledTools(for provider: any LLMProvider) -> [AITool] {
+    public func enabledTools(for provider: any LLMProvider) -> [LLMTool] {
         _ = provider
         return enabledTools()
     }
@@ -93,16 +93,16 @@ public actor ToolRegistry {
     /// - Returns: The executor's `ToolResult`.
     /// - Throws: `unknownTool(_:)` if `toolID` was never registered,
     ///   `toolDisabled(_:)` if the user has it turned off, or
-    ///   `remoteExecutionNotConfigured(_:_:)` for `.remote` definitions
+    ///   `remoteExecutionNotConfigured(_:_:)` for `.remote` registrations
     ///   (see the type-level doc for M1 limitations).
     public func execute(toolID: String, input: [String: JSONValue]) async throws -> ToolResult {
-        guard let definition = definitions[toolID] else {
+        guard let registration = registrations[toolID] else {
             throw ToolRegistryError.unknownTool(toolID)
         }
-        guard definition.isEnabled else {
+        guard registration.isEnabled else {
             throw ToolRegistryError.toolDisabled(toolID)
         }
-        switch definition.execution {
+        switch registration.execution {
         case .local(let executor):
             return try await executor.execute(input: input)
         case .remote(let endpoint):

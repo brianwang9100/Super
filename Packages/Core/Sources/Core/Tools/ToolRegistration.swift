@@ -1,17 +1,17 @@
 import Foundation
 
-/// Single record stored in `ToolRegistry`: an `AITool` plus how it executes
+/// Single record stored in `ToolRegistry`: an `LLMTool` plus how it executes
 /// plus whether the user has it enabled.
 ///
 /// Splitting `tool` from `execution` lets us swap in a
-/// `RemoteHTTPToolExecutor` later without touching the `AITool` schema the
+/// `RemoteHTTPToolExecutor` later without touching the `LLMTool` schema the
 /// LLM (Large Language Model) receives.
-public struct ToolDefinition: Sendable {
-    public let tool: AITool
+public struct ToolRegistration: Sendable {
+    public let tool: LLMTool
     public let execution: ToolExecution
     public let isEnabled: Bool
 
-    public init(tool: AITool, execution: ToolExecution, isEnabled: Bool = true) {
+    public init(tool: LLMTool, execution: ToolExecution, isEnabled: Bool = true) {
         self.tool = tool
         self.execution = execution
         self.isEnabled = isEnabled
@@ -19,8 +19,8 @@ public struct ToolDefinition: Sendable {
 
     /// Returns a copy with a new enablement state. Used by the registry when
     /// hydrating from a `ToolEnablementStore` and on user toggles.
-    public func enabled(_ value: Bool) -> ToolDefinition {
-        ToolDefinition(tool: tool, execution: execution, isEnabled: value)
+    public func enabled(_ value: Bool) -> ToolRegistration {
+        ToolRegistration(tool: tool, execution: execution, isEnabled: value)
     }
 }
 

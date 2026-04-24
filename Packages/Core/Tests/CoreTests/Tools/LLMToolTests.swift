@@ -1,19 +1,19 @@
 import Testing
 @testable import Core
 
-/// Tests for `AITool`, `AIToolParameter`, and the `AIToolCategory` /
+/// Tests for `LLMTool`, `LLMToolParameter`, and the `LLMToolCategory` /
 /// `ParameterType` enums.
-@Suite("AITool")
-struct AIToolTests {
+@Suite("LLMTool")
+struct LLMToolTests {
     @Test func initStoresAllFields() {
-        let tool = AITool(
+        let tool = LLMTool(
             id: "todo.create",
             name: "create",
             description: "Create a task",
             category: .mutation,
             parameters: [
-                AIToolParameter(name: "title", type: .string, description: "Title", isRequired: true),
-                AIToolParameter(name: "priority", type: .string, description: "Priority", enumValues: ["low", "high"]),
+                LLMToolParameter(name: "title", type: .string, description: "Title", isRequired: true),
+                LLMToolParameter(name: "priority", type: .string, description: "Priority", enumValues: ["low", "high"]),
             ],
             appletId: "todo"
         )
@@ -26,13 +26,13 @@ struct AIToolTests {
     }
 
     @Test func parameterDefaults() {
-        let parameter = AIToolParameter(name: "x", type: .integer, description: "")
+        let parameter = LLMToolParameter(name: "x", type: .integer, description: "")
         #expect(parameter.isRequired == false)
         #expect(parameter.enumValues == nil)
     }
 
     @Test func categoriesAreExhaustive() {
-        #expect(AIToolCategory.allCases.count == 4)
+        #expect(LLMToolCategory.allCases.count == 4)
     }
 
     @Test func parameterTypesAreExhaustive() {

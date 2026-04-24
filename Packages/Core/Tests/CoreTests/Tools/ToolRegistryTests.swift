@@ -6,8 +6,8 @@ import Foundation
 /// dispatch, and `ToolEnablementStore` integration.
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
-    private func makeTool(id: String = "x.test", appletId: String = "x") -> AITool {
-        AITool(
+    private func makeTool(id: String = "x.test", appletId: String = "x") -> LLMTool {
+        LLMTool(
             id: id,
             name: id,
             description: "",
@@ -17,21 +17,21 @@ struct ToolRegistryTests {
         )
     }
 
-    @Test func registerStoresDefinition() async {
+    @Test func registerStoresRegistration() async {
         let registry = ToolRegistry()
         let tool = makeTool()
         let executor = MockToolExecutor(toolID: tool.id, result: .init(toolID: tool.id, content: "ok"))
-        await registry.register(ToolDefinition(tool: tool, execution: .local(executor)))
-        let definition = await registry.definition(toolID: tool.id)
-        #expect(definition?.tool.id == tool.id)
-        #expect(definition?.isEnabled == true)
+        await registry.register(ToolRegistration(tool: tool, execution: .local(executor)))
+        let registration = await registry.registration(toolID: tool.id)
+        #expect(registration?.tool.id == tool.id)
+        #expect(registration?.isEnabled == true)
     }
 
     @Test func enabledToolsReturnsOnlyEnabled() async throws {
         let registry = ToolRegistry()
         let executor = MockToolExecutor(toolID: "a", result: .init(toolID: "a", content: ""))
-        await registry.register(ToolDefinition(tool: makeTool(id: "a"), execution: .local(executor)))
-        await registry.register(ToolDefinition(tool: makeTool(id: "b"), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(id: "a"), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(id: "b"), execution: .local(executor)))
         try await registry.setEnabled(toolID: "b", enabled: false)
         let enabled = await registry.enabledTools().map(\.id)
         #expect(enabled == ["a"])
@@ -48,7 +48,7 @@ struct ToolRegistryTests {
         let registry = ToolRegistry()
         let expected = ToolResult(toolID: "x.test", content: "result", artifacts: [.init(type: "x", id: "1")])
         let executor = MockToolExecutor(toolID: "x.test", result: expected)
-        await registry.register(ToolDefinition(tool: makeTool(), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
         let result = try await registry.execute(toolID: "x.test", input: ["k": .string("v")])
         #expect(result == expected)
         #expect(executor.invocationCount == 1)
@@ -58,7 +58,7 @@ struct ToolRegistryTests {
     @Test func executeThrowsForDisabledTool() async throws {
         let registry = ToolRegistry()
         let executor = MockToolExecutor(toolID: "x.test", result: .init(toolID: "x.test", content: ""))
-        await registry.register(ToolDefinition(tool: makeTool(), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
         try await registry.setEnabled(toolID: "x.test", enabled: false)
         await #expect(throws: ToolRegistryError.toolDisabled("x.test")) {
             _ = try await registry.execute(toolID: "x.test", input: [:])
@@ -75,7 +75,7 @@ struct ToolRegistryTests {
     @Test func executeThrowsForRemoteExecutionInRegistry() async {
         let registry = ToolRegistry()
         let endpoint = RemoteToolEndpoint(url: URL(string: "https://example.test/tool")!)
-        await registry.register(ToolDefinition(tool: makeTool(), execution: .remote(endpoint)))
+        await registry.register(ToolRegistration(tool: makeTool(), execution: .remote(endpoint)))
         var caught: Error?
         do {
             _ = try await registry.execute(toolID: "x.test", input: [:])
@@ -93,16 +93,16 @@ struct ToolRegistryTests {
         let store = InMemoryToolEnablementStore(initial: ["x.test": false])
         let registry = ToolRegistry(enablementStore: store)
         let executor = MockToolExecutor(toolID: "x.test", result: .init(toolID: "x.test", content: ""))
-        await registry.register(ToolDefinition(tool: makeTool(), execution: .local(executor)))
-        let definition = await registry.definition(toolID: "x.test")
-        #expect(definition?.isEnabled == false)
+        await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
+        let registration = await registry.registration(toolID: "x.test")
+        #expect(registration?.isEnabled == false)
     }
 
     @Test func setEnabledPersistsToStore() async throws {
         let store = InMemoryToolEnablementStore()
         let registry = ToolRegistry(enablementStore: store)
         let executor = MockToolExecutor(toolID: "x.test", result: .init(toolID: "x.test", content: ""))
-        await registry.register(ToolDefinition(tool: makeTool(), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
         try await registry.setEnabled(toolID: "x.test", enabled: false)
         #expect(store.snapshot["x.test"] == false)
     }
@@ -110,7 +110,7 @@ struct ToolRegistryTests {
     @Test func enabledToolsForProviderReturnsAllEnabled() async {
         let registry = ToolRegistry()
         let executor = MockToolExecutor(toolID: "a", result: .init(toolID: "a", content: ""))
-        await registry.register(ToolDefinition(tool: makeTool(id: "a"), execution: .local(executor)))
+        await registry.register(ToolRegistration(tool: makeTool(id: "a"), execution: .local(executor)))
         let provider = MockLLMProvider(id: "openai")
         let tools = await registry.enabledTools(for: provider)
         #expect(tools.map(\.id) == ["a"])

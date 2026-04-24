@@ -53,7 +53,7 @@ protocol SuperApplet {
     @ViewBuilder var rootView: some View { get }
 
     /// Tools this applet exposes to Chat (AI chatbot)
-    var registeredTools: [AITool] { get }
+    var registeredTools: [LLMTool] { get }
 
     /// Event types this applet publishes and subscribes to
     var publishedEvents: [SuperEvent.Type] { get }
@@ -240,7 +240,7 @@ A new applet only needs to:
 
 1. **Conform to `SuperApplet` protocol** — provides all metadata and lifecycle hooks
 2. **Define its SwiftData schema** — in its own `ModelContainer`, isolated from other applets
-3. **Define its AI tools** (optional) — array of `AITool` objects that Chat auto-discovers
+3. **Define its AI tools** (optional) — array of `LLMTool` objects that Chat auto-discovers
 4. **Define its events** (optional) — event types it publishes/subscribes to on the event bus
 5. **Provide its root SwiftUI view** — the shell embeds this in the navigation
 

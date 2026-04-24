@@ -403,16 +403,16 @@ final class ToDoViewModel {
 ### 6.1 Tool Definition
 
 ```swift
-struct AITool: Sendable, Identifiable {
+struct LLMTool: Sendable, Identifiable {
     let id: String                          // e.g. "todo.create_task"
     let name: String                        // e.g. "create_task"
     let description: String                 // Shown to the LLM
-    let category: AIToolCategory
-    let parameters: [AIToolParameter]
+    let category: LLMToolCategory
+    let parameters: [LLMToolParameter]
     let applet: AppletID
 }
 
-struct AIToolParameter: Sendable {
+struct LLMToolParameter: Sendable {
     let name: String
     let type: ParameterType                 // .string, .int, .bool, .array, .object
     let description: String
@@ -420,7 +420,7 @@ struct AIToolParameter: Sendable {
     let enumValues: [String]?               // For constrained choices
 }
 
-enum AIToolCategory: String, Sendable {
+enum LLMToolCategory: String, Sendable {
     case query                              // Read-only, safe to auto-execute
     case mutation                           // Creates/modifies data
     case navigation                         // Changes visible UI
@@ -432,19 +432,19 @@ enum AIToolCategory: String, Sendable {
 
 ```swift
 actor ToolRegistry {
-    private var tools: [String: AITool] = [:]
+    private var tools: [String: LLMTool] = [:]
     private var executors: [String: any ToolExecutor] = [:]
 
-    func register(tool: AITool, executor: any ToolExecutor) {
+    func register(tool: LLMTool, executor: any ToolExecutor) {
         tools[tool.id] = tool
         executors[tool.id] = executor
     }
 
-    func tools(for applet: AppletID) -> [AITool] {
+    func tools(for applet: AppletID) -> [LLMTool] {
         tools.values.filter { $0.applet == applet }
     }
 
-    func allTools() -> [AITool] {
+    func allTools() -> [LLMTool] {
         Array(tools.values)
     }
 
@@ -557,7 +557,7 @@ protocol LLMProvider: Sendable {
     func stream(
         messages: [LLMMessage],
         model: LLMModel,
-        tools: [AITool],
+        tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error>
 }

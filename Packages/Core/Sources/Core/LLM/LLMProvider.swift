@@ -33,7 +33,7 @@ public protocol LLMProvider: Sendable {
     func stream(
         messages: [LLMMessage],
         model: LLMModel,
-        tools: [AITool],
+        tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error>
 }
