@@ -94,6 +94,33 @@ struct URLSessionHTTPClientTests {
         #expect(nsError?.code == 42)
     }
 
+    @Test func consumerBreakingEarlyTerminatesStreamWithoutHanging() async throws {
+        let stubID = URLProtocolStub.newStubID()
+        URLProtocolStub.register(stubID: stubID) { _ in
+            URLProtocolStub.Response(statusCode: 200, chunks: [
+                Data("first".utf8),
+                Data("second".utf8),
+                Data("third".utf8),
+            ])
+        }
+        defer { URLProtocolStub.unregister(stubID: stubID) }
+
+        let client = makeClient(stubID: stubID)
+        let request = URLRequest(url: URL(string: "https://example.test/early-break")!)
+
+        var received: [Data] = []
+        for try await chunk in client.stream(request) {
+            received.append(chunk)
+            break
+        }
+
+        // Breaking out of `for try await` orphans the stream's continuation,
+        // which fires `onTermination` → `task.cancel()` + `session.finishTasksAndInvalidate()`.
+        // The test reaching this assertion (rather than hanging) confirms that
+        // path doesn't deadlock on session finalization.
+        #expect(received.count == 1)
+    }
+
     @Test func observesIssuedRequest() async throws {
         let stubID = URLProtocolStub.newStubID()
         URLProtocolStub.register(stubID: stubID) { _ in

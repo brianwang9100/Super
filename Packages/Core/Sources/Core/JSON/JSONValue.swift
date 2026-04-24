@@ -5,7 +5,10 @@ import Foundation
 /// Tool inputs and outputs cross actor boundaries, so Foundation's
 /// `[String: Any]` (which isn't `Sendable`) won't compile under Swift 6
 /// strict concurrency. `JSONValue` is the typed, Sendable replacement we use
-/// for every tool I/O payload and for `LLMStreamEvent.toolUse` arguments.
+/// for every tool I/O payload, for `LLMStreamEvent.toolUse` arguments, and
+/// for `LLMContent.toolUse` arguments. Those tool-input sites carry a
+/// single `JSONValue` (conventionally `.object`) rather than a raw
+/// dictionary so the payload Codable-encodes in one hop.
 ///
 /// `int` and `double` are kept as separate cases so we can encode whole-
 /// number values without forcing a `.0` suffix on the wire.

@@ -13,7 +13,11 @@ public enum LLMRole: String, Sendable, Equatable, Codable, CaseIterable {
 /// blocks — e.g. an assistant response with both text and a tool-use call.
 public enum LLMContent: Sendable, Equatable {
     case text(String)
-    case toolUse(id: String, name: String, input: [String: JSONValue])
+    /// Tool invocation requested by the model. `input` is conventionally a
+    /// `JSONValue.object` matching the tool's parameter schema; the type is
+    /// a single `JSONValue` (rather than `[String: JSONValue]`) so the
+    /// payload encodes/decodes through `Codable` in one hop.
+    case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseID: String, content: String, isError: Bool)
 }
 
