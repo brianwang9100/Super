@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# Design reference (extracted prototype, not deliverable)
+.design-tmp/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+DerivedData/
+build/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Generated project (xcodegen output is committed; user-state inside it is not)
+# Keep project.pbxproj in git, but exclude per-user state above.
+
+# CocoaPods (not used, but defensive)
+Pods/
+
+# Carthage (not used, but defensive)
+Carthage/Build/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Coverage
+*.profraw
+*.profdata
+coverage/

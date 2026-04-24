@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__xcodebuild",
+      "mcp__ios-simulator",
+      "Bash(swift test:*)",
+      "Bash(swift build:*)",
+      "Bash(swift package:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun simctl:*)",
+      "Bash(xcodegen:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
