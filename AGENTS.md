@@ -25,6 +25,59 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 - **Module** = a Swift Package Manager code module (not the same as an applet)
 - **Shell** = the Super app container that hosts applets
 
+## Swift function declarations
+
+Follow the official guidance in [The Swift Programming Language — Functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/). The rules below are the ones we hold the line on; the linked chapter is the source of truth for anything not stated here.
+
+### Argument labels
+
+- Use argument labels so call sites read like sentences. `func advance(by seconds: TimeInterval)` reads `clock.advance(by: 60)`; `func enabledTools(for provider: any LLMProvider)` reads `registry.enabledTools(for: provider)`.
+- Prefer prepositions (`by`, `for`, `from`, `in`, `with`) as labels when they make the call site clearer.
+- Use `_` to omit a label when the parameter name would be redundant with the function name and the type — e.g. `func register(_ provider: any LLMProvider)` reads `registry.register(provider)`.
+- All parameters must have unique parameter names; argument labels can repeat, but unique labels read better.
+
+### Default parameter values
+
+- Place parameters without defaults first, before parameters with defaults. The Swift book justifies this directly: parameters without defaults are usually more important to the function's meaning, so writing them first makes it easier to recognize the same function across call sites with different optional arguments.
+- Use defaults to collapse small overload families into a single function rather than declaring multiple overloads.
+
+### Variadic parameters
+
+- Reach for `T...` when zero-or-more values is the natural shape (e.g. `print(_ items: Any...)`).
+- A function may declare multiple variadic parameters, but the parameter immediately after a variadic parameter must have an argument label so the compiler can disambiguate the call.
+
+### In-out parameters
+
+- Reserve `inout` for the rare case where you genuinely need to mutate a caller-owned variable (the swap pattern). Returning a new value is almost always cleaner.
+- `inout` parameters can't have default values and can't be variadic. Pass them with `&` at the call site.
+
+### Return values
+
+- Single-expression function bodies should rely on implicit return — drop the `return` keyword. Example: `func nextID() -> String { UUID().uuidString }`.
+- Use tuple return types (with named members) when a function naturally returns two or three closely-related values; reach for a struct beyond that.
+- Don't add `-> Void` — leave it implicit. Functions without a `->` clause already return `Void` (the empty tuple `()`).
+- Use optional tuples (`(min: Int, max: Int)?`) when the *whole tuple* may legitimately be absent.
+- A function declared with a return type *must* return on every path — the compiler enforces this, and so should code review.
+
+### Throwing functions
+
+- Mark functions that may throw with `throws`; mark async-throwing functions with `async throws` (in that order).
+- Throw a typed error (a `Sendable` enum) defined alongside the throwing API rather than `NSError` or string literals. See `LLMProviderRegistryError` and `ToolRegistryError` for the in-tree pattern.
+
+## Source-file documentation
+
+Every public protocol, type, enum, struct, class, and free function ships with a short `///` doc comment **placed directly above the declaration** (so Xcode's Quick Help and Swift documentation tools pick it up). Keep it tight — the goal is orientation, not explanation of obvious code.
+
+- **Where the docs go**: `///` immediately above the declaration. Do **not** write a multi-paragraph file-header banner — if a file's primary purpose isn't obvious from its single primary type's doc, split it or rename it.
+- **Length**: 1–3 sentences per declaration. Skip docs on trivial `init`s and property accessors when meaning is obvious from the signature.
+- **Functions**: document parameters, return value, and usage **only when not obvious** from the signature. Use Swift's `/// - Parameters:` / `/// - Parameter name:` / `/// - Returns:` markup so Xcode Quick Help renders them. A `func setEnabled(toolID: String, enabled: Bool)` doesn't need parameter docs; a `func stream(messages:model:tools:temperature:)` with non-obvious semantics for `temperature` does. Single-param functions whose param is described by the type usually don't need parameter docs at all.
+- **Test files**: `///` on the test suite struct naming what surface is under test (e.g., "Tests for `SSEParser`'s framing across chunk boundaries."). Individual `@Test` cases don't need docs unless the case name leaves intent unclear.
+- **Expand domain acronyms on first use within each file** so a cold reader doesn't have to grep. Examples: SSE = Server-Sent Events, LLM = Large Language Model, MCP = Model Context Protocol, JWT = JSON Web Token, GRDB = Swift SQLite library, BYOK = Bring Your Own Key, JSON, HTTP, URL, UUID. After the first expansion the acronym alone is fine.
+- **Don't restate what the code says.** Prefer "Buffers partial chunks until a frame boundary appears." over "Appends data to the buffer and parses events."
+- **Why over what.** When behavior is non-obvious (a workaround, a perf trick, a deliberate divergence from a doc), say *why*.
+
+This rule complements the root system prompt's general guidance — it does not override the rule against overly chatty inline comments inside function bodies. Keep `//` inline comments rare; reserve prose for the `///` doc comments above declarations where a reader actually looks for orientation.
+
 ## File & Folder Naming
 
 Follow the convention of the platform you're on.

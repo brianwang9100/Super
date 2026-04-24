@@ -19,10 +19,10 @@
 
 ## Current state
 
-- **Active milestone**: M1 — Core primitives (next up)
-- **Last action**: M0 done — repo at `/Users/bwang/Development/Super/` initialized, both SPM packages (Core, Chat) scaffolded with all M1+M2 deps wired (GRDB 7.10, GRDBQuery 0.11, swift-markdown-ui 2.4.1, Splash 0.16, swift-snapshot-testing 1.19.2, GRDBSnapshotTesting 0.4.2), `Super.xcodeproj` generated via `xcodegen` (linked against both local packages), `.mcp.json` + `.claude/settings.local.json` written for `xcodebuildmcp` + `ios-simulator-mcp`, `docs/DEVELOPMENT_SETUP.md` §8.5 documents MCP tooling. `swift test` green in both packages; `xcodebuild -scheme Super build` for iPhone 17 sim succeeded; app installed and launched in the simulator showing the placeholder wordmark + version line. The plan's SuperBig→Super rename was **skipped per user direction**.
+- **Active milestone**: M2 — Chat persistence (next up)
+- **Last action**: M1 done — full Core surface landed in `Packages/Core/Sources/Core/` (LLM types + `LLMStreamEvent` with `.thinkingDelta` + `LLMProvider` + `LLMProviderRegistry`; HTTP layer with `URLSessionHTTPClient` and partial-chunk-tolerant `SSEParser`; tool system with `AITool`/`ToolDefinition`/`ToolRegistry`/`RemoteHTTPToolExecutor`/`ToolEnablementStore`; ambient `Clock`/`IDGenerator`/`KeychainClient` with Apple + in-memory conformers; `ChatVerbosity` and `SuperAppInfo`; sendable `JSONValue` for tool I/O). 73 tests across 13 suites pass. `xcodebuild -scheme Super build` for iPhone 17 sim still succeeds. Per-test isolation for `URLProtocolStub` via per-stub UUID + `X-Stub-ID` header so concurrent suites don't trample each other. Documentation: `///` doc comments on every public declaration, parameter/return docs on non-obvious functions; new "Source-file documentation" + "Swift function declarations" sections in root AGENTS.md codifying the rules.
 - **Repo root**: `/Users/bwang/Development/Super/`
-- **Next concrete sub-step (M1)**: scaffold `Packages/Core/Sources/Core/LLM/` with `LLMProvider`, `LLMMessage`, `LLMRole`, `LLMContent`, `LLMModel`, `ModelConfiguration`, `LLMStreamEvent` (include `.thinkingDelta`), `LLMProviderRegistry` (actor). Write the corresponding tests under `Tests/CoreTests/LLM/`.
+- **Next concrete sub-step (M2)**: write the GRDB records (`ConversationRecord`, `MessageRecord`, `ToolCallRecord`, `ModelConfigurationRecord`, `ToolEnablementRecord`, `SettingRecord`, `CompactionCheckpointRecord`) under `Packages/Chat/Sources/Chat/Models/`, the `ChatDatabase` wrapper + v1 migrator, and the matching repositories. Tests run against an in-memory `DatabaseQueue`.
 
 ## Session-resume procedure
 
@@ -39,7 +39,7 @@ Do not re-litigate scope. The plan is approved. If something in the plan looks w
 | # | Title | Status | Updated |
 | --- | --- | --- | --- |
 | M0 | Project scaffolding | `[x] done` | 2026-04-24 |
-| M1 | Core primitives | `[ ] not_started` | — |
+| M1 | Core primitives | `[x] done` | 2026-04-24 |
 | M2 | Chat persistence | `[ ] not_started` | — |
 | M3 | OpenAI-compatible streaming | `[ ] not_started` | — |
 | M4 | Session orchestration | `[ ] not_started` | — |
@@ -82,10 +82,20 @@ Legend: `[ ]` not started · `[~]` in progress · `[!]` blocked · `[x]` done.
 
 ## M1 — Core primitives
 
-- **Checkbox**: `[ ]` not_started
-- **Status**: `not_started`
-- **Last updated**: —
-- **Notes**: awaiting M0. First sub-step on resume: scaffold `Packages/Core/Sources/Core/LLM/` with `LLMProvider`, `LLMMessage`, `LLMStreamEvent` (include `.thinkingDelta`), `LLMModel`.
+- **Checkbox**: `[x]` done
+- **Status**: `done`
+- **Last updated**: 2026-04-24
+- **Notes**:
+  - Full Core surface landed under `Packages/Core/Sources/Core/`:
+    - `LLM/`: `LLMTypes.swift` (`LLMRole`, `LLMContent`, `LLMMessage`, `LLMModel`, `ModelConfiguration`, `TokenUsage`, `LLMError`), `LLMStreamEvent.swift` (with `.thinkingDelta` — divergence from `MOBILE_ARCHITECTURE.md` §7 to be reconciled in M12), `LLMProvider.swift`, `LLMProviderRegistry.swift` (actor; first-registered-becomes-active).
+    - `HTTP/`: `HTTPClient.swift` (protocol + `URLSessionHTTPClient` using `URLSessionDataDelegate` + `HTTPError`), `SSEParser.swift` (buffered, partial-chunk-tolerant; supports both LF and CRLF separators; recognizes `[DONE]`).
+    - `Tools/`: `AITool.swift` (+ `AIToolCategory`, `AIToolParameter`, `ParameterType`), `ToolExecutor.swift` (+ `ToolResult` + `Artifact`), `ToolDefinition.swift` (+ `ToolExecution` enum), `RemoteHTTPToolExecutor.swift` (+ `RemoteToolEndpoint`; scaffolded — registry throws `remoteExecutionNotConfigured` for `.remote` per the plan), `ToolRegistry.swift` (actor; persists via `ToolEnablementStore`).
+    - `Ambient/`: `Clock.swift` (`SystemClock` + `FixedClock` using `OSAllocatedUnfairLock`), `IDGenerator.swift` (`UUIDGenerator` + `DeterministicIDGenerator`), `KeychainClient.swift` (`AppleKeychainClient` via Security framework + `InMemoryKeychainClient` shipped in Core for previews/tests), `SuperAppInfo.swift`.
+    - `JSON/JSONValue.swift`: Sendable JSON value tree replacing Foundation's non-Sendable `[String: Any]` for tool I/O.
+    - `ChatVerbosity.swift`: cross-applet `simple`/`thinking`/`verbose` enum with `atLeast(_:)` ordering.
+  - Tests landed under `Packages/Core/Tests/CoreTests/` mirroring the source layout: `SSEParserTests` (13 cases — chunk boundaries, CRLF, `[DONE]`, comments, multi-data lines, finish-flush), `URLSessionHTTPClientTests` (5 cases via per-stub-id `URLProtocolStub` so concurrent suites don't trample each other), `LLMProviderRegistryTests` (10 cases — register/unregister/setActive/swap), `ToolRegistryTests` (10 cases — register/enable/disable/lookup/execute, plus enablement-store hydration + persistence), `RemoteHTTPToolExecutorTests` (4), `JSONValueTests` (4), `ClockTests` (4), `IDGeneratorTests` (3), `KeychainClientTests` (5), `SuperAppInfoTests` (2), `AIToolTests` (4), `ToolDefinitionTests` (3), `ChatVerbosityTests` (4). Total: **73 tests across 13 suites, all green**.
+  - `xcodebuild -scheme Super -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' build` succeeds — the M0 app target still builds against the expanded Core.
+  - Documentation: every public declaration in Core has a `///` doc comment placed directly above it. Multi-parameter or non-obvious functions (`HTTPClient.stream`, `LLMProvider.stream`, `SSEParser.append`/`finish`, `ToolRegistry.execute`/`register`, `RemoteHTTPToolExecutor.execute`) carry `- Parameters:` / `- Returns:` / `- Throws:` markup. Test suites and helpers are documented at the type level. Root `AGENTS.md` gained two new sections: **Source-file documentation** (`///` next to declarations, expand acronyms on first use) and **Swift function declarations** (argument labels, defaults at end, implicit returns, `inout` rules, throws conventions — sourced from `https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/`).
 
 ## M2 — Chat persistence
 
