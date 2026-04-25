@@ -17,7 +17,7 @@ struct ChatSessionTests {
         let conversationRepo: GRDBConversationRepository
         let llmRegistry: LLMProviderRegistry
         let toolRegistry: ToolRegistry
-        let clock: MonotonicClock
+        let clock: FixedClock
         let idGen: DeterministicIDGenerator
         let provider: FakeLLMProvider
         let conversation: ConversationRecord
@@ -33,7 +33,7 @@ struct ChatSessionTests {
         let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
-        let clock = MonotonicClock()
+        let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
 
         let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
@@ -300,5 +300,111 @@ struct ChatSessionTests {
         #expect(stored?.role == record.role)
         #expect(stored?.content == record.content)
         #expect(stored?.tokenCount == 4)
+    }
+
+    @Test func isStreamingFlipsBackToFalseAfterTurnCompletes() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+        let active = await setup.session.isStreaming
+        #expect(active == false)
+    }
+
+    @Test func emptyTurnDoesNotPersistAssistantRow() async throws {
+        // Provider terminates the turn without text or tool calls.
+        // Per ADR-BB-003 and the empty-turn rule, no assistant row is
+        // written and `assembleHistory` stays consistent with the DB.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        // Only the user row is persisted.
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        #expect(stored.map(\.role) == [.user])
+
+        // No `.assistantMessageSaved` event surfaces.
+        let assistantSaved = events.contains {
+            if case .assistantMessageSaved = $0 { return true }
+            return false
+        }
+        #expect(assistantSaved == false)
+    }
+
+    @Test func sequentialSendsPersistAllRowsInOrder() async throws {
+        // The natural sequential flow: caller awaits the first stream's
+        // events fully, then sends again. Both turns should land in the
+        // database in strict order with the rowid tiebreaker resolving
+        // any timestamp ties.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "first reply"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "second reply"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream1 = await setup.session.send(text: "first", model: setup.model)
+        _ = await collect(stream1)
+        let stream2 = await setup.session.send(text: "second", model: setup.model)
+        _ = await collect(stream2)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        #expect(stored.map(\.role) == [.user, .assistant, .user, .assistant])
+        #expect(stored.map(\.content) == ["first", "first reply", "second", "second reply"])
+    }
+
+    @Test func backToBackSendsSerializeViaPriorTaskFence() async throws {
+        // The fix for the send-race makes `send(...)` cancel the prior
+        // task and then await its wind-down before the new turn starts.
+        // Even when a caller fires two sends without consuming the first
+        // stream, the second stream completes cleanly with its own script
+        // and the session ends in a quiescent state — no zombie task,
+        // no hang.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "first reply"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "second reply"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        _ = await setup.session.send(text: "first", model: setup.model)
+        let stream2 = await setup.session.send(text: "second", model: setup.model)
+        let events2 = await collect(stream2)
+        await setup.session.waitUntilFinished()
+
+        let active = await setup.session.isStreaming
+        #expect(active == false)
+
+        guard case .assistantMessageSaved(let saved) = events2.last else {
+            Issue.record("expected stream2 to end with .assistantMessageSaved, got \(String(describing: events2.last))")
+            return
+        }
+        // The second send's user row is unambiguously persisted.
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        #expect(stored.contains { $0.role == .user && $0.content == "second" })
+        #expect(stored.contains { $0.id == saved.id })
     }
 }

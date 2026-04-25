@@ -1,36 +1,16 @@
 import Core
 import Foundation
-import os
 
 @testable import Chat
 
-/// A `Clock` that advances by a fixed step on every `now()` call so back-
-/// to-back writes inside one turn get strictly-increasing `createdAt`
-/// timestamps. The `MessageRepository.fetchAll` query orders by `createdAt`
-/// ascending; with a true `FixedClock` the ordering of tied rows is
-/// undefined and history assembly can shuffle.
-final class MonotonicClock: Clock {
-    private let state: OSAllocatedUnfairLock<Date>
-    private let step: TimeInterval
-
-    init(start: Date = Date(timeIntervalSince1970: 1_700_000_000), step: TimeInterval = 0.001) {
-        self.state = OSAllocatedUnfairLock(initialState: start)
-        self.step = step
-    }
-
-    func now() -> Date {
-        state.withLock { current in
-            let result = current
-            current = current.addingTimeInterval(step)
-            return result
-        }
-    }
-
-    func snapshot() -> Date { state.withLock { $0 } }
-}
-
 /// Factories shared by the orchestration test suites: an in-memory GRDB
 /// stack, a freshly-seeded conversation, and a default `LLMModel`.
+///
+/// Tests use `FixedClock` (from Core's `Ambient/`) — every `now()` call
+/// returns the same instant. This is intentional: the repositories order
+/// rows by `(createdAt, rowid)` so insertion order resolves ties, which
+/// means tests don't need a special monotonic clock and any production
+/// time-tie regression would surface immediately here too.
 enum OrchestrationFixtures {
     static func makeDatabase() throws -> ChatDatabase {
         try ChatDatabase.makeInMemory()
@@ -44,6 +24,10 @@ enum OrchestrationFixtures {
             supportsTools: supportsTools,
             maxContextTokens: 8_192
         )
+    }
+
+    static func defaultClock() -> FixedClock {
+        FixedClock(Date(timeIntervalSince1970: 1_700_000_000))
     }
 
     static func makeConversation(

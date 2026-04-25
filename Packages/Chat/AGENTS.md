@@ -19,7 +19,7 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **Do not import other applets.** Cross-applet communication runs through Core (event bus when it lands; absent in MVP).
 - **Persistence is GRDB only.** No SwiftData / Core Data.
 - **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See root AGENTS.md §Persistence for the full convention.
-- **Streaming-text persistence**: write the final `MessageRecord` only on `.messageCompleted` (per ADR-BB-003 in `docs/Chat/ARCHITECTURE.md`). Do not persist intermediate buffer state.
+- **Streaming-text persistence**: write the final `MessageRecord` only on `.messageComplete` (per ADR-BB-003 in `docs/Chat/ARCHITECTURE.md`). Do not persist intermediate buffer state.
 - **LLM tests must mock `LLMProvider`.** Never hit a real LLM endpoint (OpenAI, local MLX, Ollama, anything).
 - **Snapshot tests** land in the same PR as the view they cover. See root AGENTS.md §Testing.2 for the per-state matrix (light/dark/sepia × default/Dynamic Type XXL).
 - **Coverage target ≥70%** per root AGENTS.md.

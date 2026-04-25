@@ -18,7 +18,7 @@ struct ChatSessionToolLoopTests {
         let conversationRepo: GRDBConversationRepository
         let llmRegistry: LLMProviderRegistry
         let toolRegistry: ToolRegistry
-        let clock: MonotonicClock
+        let clock: FixedClock
         let provider: FakeLLMProvider
         let conversation: ConversationRecord
         let model: LLMModel
@@ -30,7 +30,7 @@ struct ChatSessionToolLoopTests {
         let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
-        let clock = MonotonicClock()
+        let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
 
         let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
@@ -257,5 +257,118 @@ struct ChatSessionToolLoopTests {
         let captured = await setup.provider.capturedRequests()
         let toolIDs = captured.first?.tools.map(\.id).sorted() ?? []
         #expect(toolIDs == ["test.on"])
+    }
+
+    @Test func failedToolCallResultColumnDecodesAsToolResult() async throws {
+        // The result column should always hold a JSON-encoded `ToolResult`
+        // — both on success and failure — so admin tools and analytics
+        // can `decodedResult()` without distinguishing the two paths.
+        let toolID = "test.broken.parse"
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tc-parse", name: toolID, input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setError(.scripted("kaboom"))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        let stream = await setup.session.send(text: "do it", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let storedCall = try await setup.toolCallRepo.fetch(id: "tc-parse")
+        guard let resultJSON = storedCall?.result else {
+            Issue.record("expected stored result")
+            return
+        }
+        let data = Data(resultJSON.utf8)
+        let decoded = try JSONDecoder().decode(ToolResult.self, from: data)
+        #expect(decoded.isError == true)
+        #expect(decoded.content.contains("kaboom"))
+    }
+
+    @Test func toolFailurePersistsTheToolResultMessageRow() async throws {
+        // Regression test for the prior `try?`-swallowed DB writes in the
+        // failure branch. The error-content `MessageRecord` (role .tool)
+        // must actually land so the next turn's history carries it.
+        let toolID = "test.broken.row"
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tc-row", name: toolID, input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setError(.scripted("nope"))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        let stream = await setup.session.send(text: "do it", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let toolRow = stored.first(where: { $0.role == .tool })
+        #expect(toolRow != nil)
+        #expect(toolRow?.toolCallId == "tc-row")
+        #expect(toolRow?.content.contains("nope") == true)
+    }
+
+    @Test func multipleToolCallsInOneTurnAreAllExecutedSequentially() async throws {
+        // The provider can emit several `.toolUse` events in one turn
+        // (parallel function calling). The orchestrator runs them one at
+        // a time in emission order; each should be persisted, executed,
+        // and yield its own ChatEvent triplet.
+        let toolA = "test.a"
+        let toolB = "test.b"
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tc-a", name: toolA, input: .object([:])),
+                .toolUse(index: 1, id: "tc-b", name: toolB, input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "all done"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let executorA = FakeToolExecutor(toolID: toolA)
+        let executorB = FakeToolExecutor(toolID: toolB)
+        await executorA.setResult(ToolResult(toolID: toolA, content: "A"))
+        await executorB.setResult(ToolResult(toolID: toolB, content: "B"))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolA), execution: .local(executorA)))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolB), execution: .local(executorB)))
+
+        let stream = await setup.session.send(text: "go", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let countA = await executorA.executionCount()
+        let countB = await executorB.executionCount()
+        #expect(countA == 1)
+        #expect(countB == 1)
+
+        let storedCalls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
+        #expect(storedCalls.map(\.id) == ["tc-a", "tc-b"])
+        #expect(storedCalls.allSatisfy { $0.status == .success })
+
+        // Second turn's history carries both tool results, in order.
+        let captured = await setup.provider.capturedRequests()
+        #expect(captured.count == 2)
+        let toolRows = captured[1].messages.filter { $0.role == .tool }
+        #expect(toolRows.count == 2)
     }
 }

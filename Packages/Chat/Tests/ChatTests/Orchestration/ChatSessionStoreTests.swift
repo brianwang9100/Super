@@ -16,7 +16,7 @@ struct ChatSessionStoreTests {
         let provider: FakeLLMProvider
         let model: LLMModel
         let toolRegistry: ToolRegistry
-        let clock: MonotonicClock
+        let clock: FixedClock
     }
 
     private func makeStore(scripts: [[LLMStreamEvent]] = []) async throws -> StoreSetup {
@@ -24,7 +24,7 @@ struct ChatSessionStoreTests {
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
         let conversationRepo = GRDBConversationRepository(database: database)
-        let clock = MonotonicClock()
+        let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
         let model = OrchestrationFixtures.defaultModel()
         let provider = FakeLLMProvider(model: model)
@@ -199,6 +199,7 @@ struct ChatSessionStoreTests {
         let sessionAReborn = await setup.store.session(for: "conv-A")
         #expect(sessionA !== sessionAReborn)
     }
+
 }
 
 /// A `ToolExecutor` that sleeps until either a long timeout elapses or the

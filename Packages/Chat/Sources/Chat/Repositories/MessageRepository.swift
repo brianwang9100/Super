@@ -13,8 +13,11 @@ import GRDB
 /// whole conversation's history, or rely on the `ConversationRecord`
 /// cascade to wipe everything for a deleted conversation.
 public protocol MessageRepository: Sendable {
-    /// All messages in `conversationId`, ordered by `createdAt` ascending —
-    /// the order an LLM (Large Language Model) provider expects.
+    /// All messages in `conversationId`, ordered by `createdAt` ascending
+    /// with `rowid` as tiebreaker — the order an LLM (Large Language Model)
+    /// provider expects. The `rowid` tiebreaker matters because the
+    /// orchestrator can write several rows inside a single turn and a wall
+    /// clock can return ties; rowid resolves to insertion order.
     func fetchAll(conversationId: String) async throws -> [MessageRecord]
     /// One message by id.
     func fetch(id: String) async throws -> MessageRecord?
@@ -37,7 +40,7 @@ public struct GRDBMessageRepository: MessageRepository {
         try await queue.read { db in
             try MessageRecord
                 .filter(Column("conversationId") == conversationId)
-                .order(Column("createdAt").asc)
+                .order(Column("createdAt").asc, Column.rowID.asc)
                 .fetchAll(db)
         }
     }

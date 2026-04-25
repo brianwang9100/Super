@@ -6,10 +6,12 @@ public protocol ToolCallRepository: Sendable {
     /// One tool call by id.
     func fetch(id: String) async throws -> ToolCallRecord?
     /// Every tool call attached to `conversationId`, ordered by
-    /// `createdAt` ascending.
+    /// `createdAt` ascending with `rowid` as tiebreaker (so multiple calls
+    /// written in one turn surface in their issue order even when the
+    /// clock ties them).
     func fetchByConversation(_ conversationId: String) async throws -> [ToolCallRecord]
     /// Every tool call triggered by a single assistant message, in the
-    /// order they were issued.
+    /// order they were issued (`createdAt` ascending, `rowid` tiebreaker).
     func fetchByMessage(_ messageId: String) async throws -> [ToolCallRecord]
     /// Every tool call in a given lifecycle state across all conversations
     /// (used by the recovery sweep on app launch and by the "stuck calls"
@@ -46,7 +48,7 @@ public struct GRDBToolCallRepository: ToolCallRepository {
         try await queue.read { db in
             try ToolCallRecord
                 .filter(Column("conversationId") == conversationId)
-                .order(Column("createdAt").asc)
+                .order(Column("createdAt").asc, Column.rowID.asc)
                 .fetchAll(db)
         }
     }
@@ -55,7 +57,7 @@ public struct GRDBToolCallRepository: ToolCallRepository {
         try await queue.read { db in
             try ToolCallRecord
                 .filter(Column("messageId") == messageId)
-                .order(Column("createdAt").asc)
+                .order(Column("createdAt").asc, Column.rowID.asc)
                 .fetchAll(db)
         }
     }
@@ -64,7 +66,7 @@ public struct GRDBToolCallRepository: ToolCallRepository {
         try await queue.read { db in
             try ToolCallRecord
                 .filter(Column("status") == status.rawValue)
-                .order(Column("createdAt").asc)
+                .order(Column("createdAt").asc, Column.rowID.asc)
                 .fetchAll(db)
         }
     }

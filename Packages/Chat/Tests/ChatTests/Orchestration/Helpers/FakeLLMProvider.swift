@@ -5,7 +5,12 @@ import Foundation
 /// next enqueued event sequence and replays it as the AsyncThrowingStream.
 /// The provider records every request so tests can assert message
 /// assembly, tool list filtering, and temperature plumbing.
-final class FakeLLMProvider: LLMProvider {
+///
+/// Strict by design: a `stream(...)` call with no enqueued script crashes
+/// via `fatalError` rather than handing back a benign empty response. A
+/// silent fallback would let "session loops one extra turn" or "test
+/// forgot to script the second turn" bugs hide in green test runs.
+final class FakeLLMProvider: LLMProvider, Sendable {
     let id: String
     let displayName: String
     let supportedModels: [LLMModel]
@@ -75,12 +80,7 @@ private actor FakeLLMProviderState {
     func consume(_ request: CapturedLLMRequest) -> [LLMStreamEvent] {
         capturedRequests.append(request)
         guard !pending.isEmpty else {
-            // Hand the session a benign terminator so tests that forget
-            // to enqueue still get a clean stream rather than hanging.
-            return [
-                .messageStart(id: "fake-empty", model: request.modelID),
-                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
-            ]
+            fatalError("FakeLLMProvider received a stream(...) call with no enqueued script — test misconfigured")
         }
         return pending.removeFirst()
     }

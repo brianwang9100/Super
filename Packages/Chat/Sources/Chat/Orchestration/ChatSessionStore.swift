@@ -54,27 +54,49 @@ public actor ChatSessionStore {
 
     /// Cancel the session's current turn, if any. The session itself stays
     /// in the store so a subsequent `session(for:)` returns the same
-    /// instance.
-    public func cancel(for conversationId: String) async {
-        await sessions[conversationId]?.cancel()
+    /// instance. Returns immediately; pass `wait: true` to await the
+    /// session's wind-down (mirrors `ChatSession.cancel()` +
+    /// `waitUntilFinished()`).
+    public func cancel(for conversationId: String, wait: Bool = false) async {
+        guard let session = sessions[conversationId] else { return }
+        await session.cancel()
+        if wait {
+            await session.waitUntilFinished()
+        }
     }
 
-    /// Cancel every session and drop them. Call on app shutdown.
+    /// Cancel every session, await each one's wind-down, and drop them.
+    /// Call on app shutdown so in-flight GRDB writes settle before the
+    /// process exits (otherwise SQLite has to recover on next launch).
     public func shutdown() async {
-        for (_, session) in sessions {
+        let snapshot = sessions
+        for (_, session) in snapshot {
             await session.cancel()
+        }
+        for (_, session) in snapshot {
+            await session.waitUntilFinished()
         }
         sessions.removeAll()
     }
 
-    /// IDs (Identifiers) of conversations whose session currently has an
-    /// in-flight turn. The sidebar uses this to render the per-row running
-    /// spinner.
+    /// Identifiers of conversations whose session currently has an in-flight turn.
+    /// The sidebar reads this for the per-row running spinner. Polls each
+    /// session in parallel via `withTaskGroup` so a 50-conversation store
+    /// doesn't pay 50 serial actor hops per refresh.
     public func runningConversations() async -> [String] {
-        var running: [String] = []
-        for (id, session) in sessions where await session.isStreaming {
-            running.append(id)
+        let snapshot = sessions
+        return await withTaskGroup(of: (String, Bool).self) { group in
+            for (id, session) in snapshot {
+                group.addTask {
+                    let active = await session.isStreaming
+                    return (id, active)
+                }
+            }
+            var running: [String] = []
+            for await (id, active) in group where active {
+                running.append(id)
+            }
+            return running.sorted()
         }
-        return running.sorted()
     }
 }

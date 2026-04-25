@@ -49,8 +49,9 @@ public enum ChatEvent: Sendable, Equatable {
     /// this point since the canonical row is now in GRDB.
     case assistantMessageSaved(MessageRecord)
 
-    /// Terminal error for the turn. Followed immediately by stream
-    /// finalization. Persisted partial state (already-saved messages and
-    /// tool calls) is kept; nothing is rolled back.
+    /// Terminal error for the turn. The next thing the consumer's
+    /// `for await` loop sees is the stream closing — no further events
+    /// will be yielded. Persisted partial state (already-saved messages
+    /// and tool calls) is kept; nothing is rolled back.
     case error(LLMError)
 }
