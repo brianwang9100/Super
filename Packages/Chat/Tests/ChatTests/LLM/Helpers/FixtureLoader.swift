@@ -13,6 +13,10 @@ enum FixtureLoader {
         ) else {
             fatalError("Fixture not found: Fixtures/\(name).txt — check Resources in Package.swift")
         }
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        do {
+            return try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            fatalError("Fixture exists but is unreadable: Fixtures/\(name).txt — \(error)")
+        }
     }
 }

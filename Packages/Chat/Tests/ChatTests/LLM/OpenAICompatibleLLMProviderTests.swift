@@ -7,6 +7,11 @@ import Testing
 /// request shape (URL, headers, body) and the full streaming pipeline by
 /// replaying recorded SSE (Server-Sent Events) fixtures through a fake
 /// HTTP (HyperText Transfer Protocol) client. No real network — ever.
+///
+/// **Stream contract**: every test asserts the stream finishes cleanly and
+/// terminates with `.messageComplete`. Failures are surfaced as `.error`
+/// events immediately before the terminal `.messageComplete`, never as
+/// thrown errors.
 @Suite("OpenAICompatibleLLMProvider")
 struct OpenAICompatibleLLMProviderTests {
     private let baseURL = URL(string: "https://api.example.test/v1")!
@@ -18,12 +23,16 @@ struct OpenAICompatibleLLMProviderTests {
         maxContextTokens: 16_000
     )
 
-    private func makeProvider(http: HTTPClient, apiKey: String? = "sk-test") -> OpenAICompatibleLLMProvider {
+    private func makeProvider(
+        http: HTTPClient,
+        baseURL: URL? = nil,
+        apiKey: String? = "sk-test"
+    ) -> OpenAICompatibleLLMProvider {
         OpenAICompatibleLLMProvider(
             id: "cfg-1",
             displayName: "Test",
             model: model,
-            baseURL: baseURL,
+            baseURL: baseURL ?? self.baseURL,
             apiKey: apiKey,
             http: http
         )
@@ -33,6 +42,13 @@ struct OpenAICompatibleLLMProviderTests {
         var events: [LLMStreamEvent] = []
         for try await event in stream { events.append(event) }
         return events
+    }
+
+    private func errorEvents(_ events: [LLMStreamEvent]) -> [LLMError] {
+        events.compactMap { event in
+            if case .error(let error) = event { return error }
+            return nil
+        }
     }
 
     @Test func plainTextFixtureProducesOrderedTextEventsAndUsage() async throws {
@@ -134,13 +150,25 @@ struct OpenAICompatibleLLMProviderTests {
             "contentBlockStop(1)",
             "messageComplete",
         ])
+    }
 
-        let toolUse = events.compactMap { event -> (String, String)? in
-            if case .toolUse(_, let id, let name, _) = event { return (id, name) }
+    @Test func toolCallFragmentAndFinishReasonInSameChunkFlushes() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-toolcall-finish-same-chunk"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "what time is it?")],
+            model: model,
+            tools: [],
+            temperature: 0.0
+        ))
+
+        let toolUses = events.compactMap { event -> (String, JSONValue)? in
+            if case .toolUse(_, let id, _, let input) = event { return (id, input) }
             return nil
-        }.first
-        #expect(toolUse?.0 == "call_xyz")
-        #expect(toolUse?.1 == "get_time")
+        }
+        #expect(toolUses.count == 1)
+        #expect(toolUses.first?.0 == "call_same")
+        #expect(toolUses.first?.1 == .object(["timezone": .string("UTC")]))
     }
 
     @Test func partialChunkBoundariesStillProduceCompleteEvents() async throws {
@@ -163,88 +191,72 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(textDeltas.joined() == "Hello there!")
     }
 
-    @Test func unsupportedModelThrowsBeforeAnyHTTPRequest() async throws {
+    @Test func unsupportedModelEmitsErrorEventAndDoesNotIssueHTTPRequest() async throws {
         let http = FakeHTTPClient(chunks: [])
         let provider = makeProvider(http: http)
         let other = LLMModel(id: "not-a-real-model", displayName: "Other")
-        do {
-            _ = try await collect(provider.stream(
-                messages: [LLMMessage(role: .user, text: "hi")],
-                model: other,
-                tools: [],
-                temperature: 0.5
-            ))
-            Issue.record("expected unsupportedModel throw")
-        } catch let error as LLMError {
-            #expect(error == .unsupportedModel("not-a-real-model"))
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: other,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        #expect(errorEvents(events) == [.unsupportedModel("not-a-real-model")])
+        if case .messageComplete = events.last { } else {
+            Issue.record("expected trailing messageComplete")
         }
         #expect(http.observed.all.isEmpty)
     }
 
-    @Test func httpStatus401MapsToUnauthorized() async throws {
-        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401))
-        let provider = makeProvider(http: http)
-        do {
-            _ = try await collect(provider.stream(
-                messages: [LLMMessage(role: .user, text: "hi")],
-                model: model,
-                tools: [],
-                temperature: 0.5
-            ))
-            Issue.record("expected unauthorized throw")
-        } catch let error as LLMError {
-            #expect(error == .unauthorized)
-        }
+    @Test func httpStatus401EmitsUnauthorizedErrorThenMessageComplete() async throws {
+        let events = try await collectErrorRun(error: HTTPError.badStatus(401))
+        #expect(errorEvents(events) == [.unauthorized])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
-    @Test func httpStatus429MapsToRateLimited() async throws {
-        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(429))
-        let provider = makeProvider(http: http)
-        do {
-            _ = try await collect(provider.stream(
-                messages: [LLMMessage(role: .user, text: "hi")],
-                model: model,
-                tools: [],
-                temperature: 0.5
-            ))
-            Issue.record("expected rateLimited throw")
-        } catch let error as LLMError {
-            #expect(error == .rateLimited)
-        }
+    @Test func httpStatus429EmitsRateLimitedErrorThenMessageComplete() async throws {
+        let events = try await collectErrorRun(error: HTTPError.badStatus(429))
+        #expect(errorEvents(events) == [.rateLimited])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
-    @Test func httpStatus5xxMapsToProviderError() async throws {
-        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(503))
-        let provider = makeProvider(http: http)
-        do {
-            _ = try await collect(provider.stream(
-                messages: [LLMMessage(role: .user, text: "hi")],
-                model: model,
-                tools: [],
-                temperature: 0.5
-            ))
-            Issue.record("expected providerError throw")
-        } catch let error as LLMError {
-            #expect(error == .providerError(code: "503", message: "HTTP 503"))
-        }
+    @Test func httpStatus5xxEmitsProviderErrorThenMessageComplete() async throws {
+        let events = try await collectErrorRun(error: HTTPError.badStatus(503))
+        #expect(errorEvents(events) == [.providerError(code: "503", message: "HTTP 503")])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
-    @Test func malformedSSEDataLineThrowsDecodingFailed() async throws {
+    @Test func malformedSSEDataLineEmitsDecodingFailedErrorThenMessageComplete() async throws {
         let bytes = Data("data: not-json\n\n".utf8)
         let http = FakeHTTPClient(chunks: [bytes])
         let provider = makeProvider(http: http)
-        do {
-            _ = try await collect(provider.stream(
-                messages: [LLMMessage(role: .user, text: "hi")],
-                model: model,
-                tools: [],
-                temperature: 0.5
-            ))
-            Issue.record("expected decodingFailed throw")
-        } catch let error as LLMError {
-            if case .decodingFailed = error { return }
-            Issue.record("expected .decodingFailed, got \(error)")
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let errors = errorEvents(events)
+        #expect(errors.count == 1)
+        if case .decodingFailed = errors.first { } else {
+            Issue.record("expected .decodingFailed, got \(String(describing: errors.first))")
         }
+        if case .messageComplete = events.last { } else {
+            Issue.record("expected trailing messageComplete")
+        }
+    }
+
+    @Test func cancellationErrorFromTransportMapsToCancelled() async throws {
+        let events = try await collectErrorRun(error: CancellationError())
+        #expect(errorEvents(events) == [.cancelled])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+    }
+
+    @Test func urlErrorCancelledFromTransportMapsToCancelled() async throws {
+        let events = try await collectErrorRun(error: URLError(.cancelled))
+        #expect(errorEvents(events) == [.cancelled])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
     @Test func requestTargetsChatCompletionsPath() async throws {
@@ -265,6 +277,38 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
     }
 
+    @Test func baseURLWithTrailingSlashStillProducesCanonicalURL() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(
+            http: http,
+            baseURL: URL(string: "https://api.example.test/v1/")!
+        )
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "https://api.example.test/v1/chat/completions")
+    }
+
+    @Test func baseURLAlreadyEndingInChatCompletionsIsNotDoublePathed() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(
+            http: http,
+            baseURL: URL(string: "https://api.example.test/v1/chat/completions")!
+        )
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "https://api.example.test/v1/chat/completions")
+    }
+
     @Test func nilApiKeyOmitsAuthorizationHeader() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         let provider = makeProvider(http: http, apiKey: nil)
@@ -276,6 +320,21 @@ struct OpenAICompatibleLLMProviderTests {
         ))
         let request = try #require(http.observed.all.first)
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func temperatureClampedToProviderRange() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 9.9   // Out of OpenAI's [0.0, 2.0] range.
+        ))
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(decoded["temperature"] as? Double == 2.0)
     }
 
     @Test func requestBodyEncodesMessagesToolsAndStreamFlag() async throws {
@@ -332,6 +391,40 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(required == ["timezone"])
     }
 
+    @Test func toolWithNoRequiredParametersOmitsRequiredKey() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        let tool = LLMTool(
+            id: "time-now",
+            name: "get_time",
+            description: "Returns the current time.",
+            category: .query,
+            parameters: [
+                LLMToolParameter(
+                    name: "timezone",
+                    type: .string,
+                    description: "IANA tz id",
+                    isRequired: false   // none required
+                )
+            ],
+            appletId: "chat"
+        )
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [tool],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let tools = try #require(decoded["tools"] as? [[String: Any]])
+        let parameters = try #require((tools[0]["function"] as? [String: Any])?["parameters"] as? [String: Any])
+        // `required` must be absent (not `[]`) — some local OpenAI shims
+        // reject empty arrays.
+        #expect(parameters["required"] == nil)
+    }
+
     @Test func toolResultMessagesEncodeAsToolRoleWithToolCallId() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         let provider = makeProvider(http: http)
@@ -376,6 +469,17 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(toolResult["role"] as? String == "tool")
         #expect(toolResult["tool_call_id"] as? String == "call_abc")
         #expect(toolResult["content"] as? String == "12:00 UTC")
+    }
+
+    private func collectErrorRun(error: Error) async throws -> [LLMStreamEvent] {
+        let http = FakeHTTPClient(chunks: [], error: error)
+        let provider = makeProvider(http: http)
+        return try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
     }
 
     /// Compact one-token-per-event label so an expected-vs-actual mismatch

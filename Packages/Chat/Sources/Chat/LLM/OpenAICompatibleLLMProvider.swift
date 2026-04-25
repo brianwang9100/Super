@@ -11,6 +11,12 @@ import Foundation
 /// One provider instance corresponds to one configured model. The shape
 /// matches Chat's `ModelConfigurationRecord`: each saved configuration
 /// instantiates one provider, and the registry holds them all.
+///
+/// **Stream contract**: every stream terminates with `.messageComplete`
+/// and never throws. Failures (transport, decoding, cancellation, etc.)
+/// arrive as `.error(...)` events immediately before the terminal
+/// `.messageComplete`, so consumers always get a clean signal that the
+/// stream is done and can persist whatever did make it through.
 public struct OpenAICompatibleLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
@@ -20,6 +26,11 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     private let apiKey: String?
     private let http: HTTPClient
 
+    /// OpenAI accepts temperatures in `[0.0, 2.0]`. Per the `LLMProvider`
+    /// protocol contract, conformers are expected to clamp rather than
+    /// reject out-of-range values.
+    private static let temperatureRange: ClosedRange<Double> = 0.0...2.0
+
     /// Designated initializer.
     ///
     /// - Parameters:
@@ -28,7 +39,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     ///   - model: The single `LLMModel` this provider routes requests to.
     ///   - baseURL: Endpoint base, e.g. `https://api.openai.com/v1` or
     ///     `http://127.0.0.1:1111/v1` for a local MLX server. The
-    ///     `/chat/completions` path is appended internally.
+    ///     `/chat/completions` path is appended internally; trailing
+    ///     slashes and already-pathed URLs are normalized.
     ///   - apiKey: BYOK (Bring Your Own Key) credential. `nil` skips the
     ///     `Authorization` header — required for most local servers, which
     ///     otherwise reject unrecognized auth.
@@ -80,6 +92,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var reducer = OpenAIStreamReducer()
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -91,40 +104,34 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                         temperature: temperature
                     )
                     var parser = SSEParser()
-                    var reducer = OpenAIStreamReducer()
                     let decoder = JSONDecoder()
                     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-                    do {
-                        for try await chunk in http.stream(request) {
-                            for event in parser.append(chunk) {
-                                if event.isDone { continue }
-                                let parsed = try decode(event.data, with: decoder)
-                                for normalized in try reducer.consume(parsed) {
-                                    continuation.yield(normalized)
-                                }
-                            }
-                        }
-                        for event in parser.finish() {
+                    for try await chunk in http.stream(request) {
+                        for event in parser.append(chunk) {
                             if event.isDone { continue }
                             let parsed = try decode(event.data, with: decoder)
-                            for normalized in try reducer.consume(parsed) {
+                            for normalized in reducer.consume(parsed) {
                                 continuation.yield(normalized)
                             }
                         }
-                    } catch let httpError as HTTPError {
-                        throw map(httpError)
                     }
-
-                    for event in try reducer.finish() {
-                        continuation.yield(event)
+                    for event in parser.finish() {
+                        if event.isDone { continue }
+                        let parsed = try decode(event.data, with: decoder)
+                        for normalized in reducer.consume(parsed) {
+                            continuation.yield(normalized)
+                        }
                     }
-                    continuation.finish()
-                } catch is CancellationError {
-                    continuation.finish(throwing: LLMError.cancelled)
                 } catch {
-                    continuation.finish(throwing: error)
+                    let llmError = mapToLLMError(error)
+                    continuation.yield(.error(llmError))
                 }
+
+                for event in reducer.finish() {
+                    continuation.yield(event)
+                }
+                continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
         }
@@ -144,8 +151,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) throws -> URLRequest {
-        let url = baseURL.appending(path: "chat/completions")
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: chatCompletionsURL())
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -153,11 +159,12 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
+        let clampedTemperature = min(max(temperature, Self.temperatureRange.lowerBound), Self.temperatureRange.upperBound)
         let body = OpenAIChatRequest(
             model: model.id,
             messages: try translate(messages),
             stream: true,
-            temperature: temperature,
+            temperature: clampedTemperature,
             tools: tools.isEmpty ? nil : tools.map(translate),
             streamOptions: .init(includeUsage: true)
         )
@@ -172,12 +179,38 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         return request
     }
 
+    /// Resolve the request URL (Uniform Resource Locator). Uses
+    /// `URLComponents` rather than string concatenation so trailing
+    /// slashes and already-pathed inputs both produce the same canonical
+    /// `/.../chat/completions` URL.
+    private func chatCompletionsURL() -> URL {
+        let suffix = "/chat/completions"
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            assertionFailure("baseURL is not URL-component-decomposable: \(baseURL)")
+            return baseURL.appending(path: "chat/completions")
+        }
+        var path = components.path
+        while path.hasSuffix("/") { path.removeLast() }
+        if !path.hasSuffix(suffix) {
+            path += suffix
+        }
+        components.path = path
+        guard let url = components.url else {
+            assertionFailure("failed to recompose URL from \(components)")
+            return baseURL.appending(path: "chat/completions")
+        }
+        return url
+    }
+
     /// Translate Chat / Core's `LLMMessage` shape to the OpenAI request
     /// shape. Tool-result content blocks become their own outgoing
     /// messages because OpenAI requires one `role: "tool"` row per result;
     /// other content blocks are flattened into the message's `content`
-    /// or `tool_calls` field.
+    /// or `tool_calls` field. Messages with no usable content are dropped
+    /// (with a debug-only assertion) since OpenAI rejects assistant rows
+    /// that carry neither `content` nor `tool_calls`.
     private func translate(_ messages: [LLMMessage]) throws -> [OpenAIRequestMessage] {
+        let toolCallEncoder = JSONEncoder()
         var out: [OpenAIRequestMessage] = []
         for message in messages {
             switch message.role {
@@ -198,11 +231,15 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                 }
                 let toolUses = try message.content.compactMap { block -> OutgoingToolCall? in
                     guard case .toolUse(let id, let name, let input) = block else { return nil }
-                    let argsData = try JSONEncoder().encode(input)
+                    let argsData = try toolCallEncoder.encode(input)
                     let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
                     return OutgoingToolCall(id: id, name: name, argumentsJSON: argsJSON)
                 }
                 let joined = texts.joined()
+                if joined.isEmpty && toolUses.isEmpty {
+                    assertionFailure("LLMMessage with role \(message.role) has no text or tool-use content; OpenAI would reject it")
+                    continue
+                }
                 out.append(OpenAIRequestMessage(
                     role: roleString(for: message.role),
                     content: joined.isEmpty ? nil : joined,
@@ -229,15 +266,20 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                 required.append(parameter.name)
             }
         }
-        let parameters: JSONValue = .object([
+        var parametersObject: [String: JSONValue] = [
             "type": .string("object"),
             "properties": .object(properties),
-            "required": .array(required.map { .string($0) }),
-        ])
+        ]
+        // Some local OpenAI shims (older LM Studio, llama.cpp's server)
+        // reject `required: []`. Drop the key when there are no required
+        // parameters; the spec treats absent and empty as equivalent.
+        if !required.isEmpty {
+            parametersObject["required"] = .array(required.map { .string($0) })
+        }
         return OpenAITool(function: OpenAIFunctionDefinition(
             name: tool.name,
             description: tool.description,
-            parameters: parameters
+            parameters: .object(parametersObject)
         ))
     }
 
@@ -260,7 +302,22 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         }
     }
 
-    private func map(_ httpError: HTTPError) -> LLMError {
+    /// Coerce any thrown error into an `LLMError`. Cancellation gets
+    /// special handling: `Task.isCancelled` overrides whatever the
+    /// throwing site reported, because URLSession surfaces task
+    /// cancellation as `URLError.cancelled` (mapped through `HTTPError`)
+    /// rather than `CancellationError`, and we want a single canonical
+    /// `.cancelled` regardless of source.
+    private func mapToLLMError(_ error: Error) -> LLMError {
+        if Task.isCancelled { return .cancelled }
+        if error is CancellationError { return .cancelled }
+        if let llmError = error as? LLMError { return llmError }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return .cancelled }
+        if let httpError = error as? HTTPError { return mapHTTPError(httpError) }
+        return .requestFailed(error.localizedDescription)
+    }
+
+    private func mapHTTPError(_ httpError: HTTPError) -> LLMError {
         switch httpError {
         case .badStatus(401), .badStatus(403):
             return .unauthorized

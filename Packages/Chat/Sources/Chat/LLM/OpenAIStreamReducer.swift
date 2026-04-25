@@ -12,14 +12,19 @@ import Foundation
 ///
 /// The reducer is intentionally pure: callers feed parsed chunks in via
 /// `consume(_:)` and a final `finish()`, and receive flat `LLMStreamEvent`
-/// arrays back. No I/O (Input/Output), no concurrency, easy to fixture-test.
+/// arrays back. Neither method throws — internal failures (a malformed
+/// tool-call argument string, etc.) are surfaced as `.error(...)` events
+/// inside the returned array so the caller can persist whatever did make
+/// it through. No I/O (Input/Output), no concurrency, easy to fixture-test.
 struct OpenAIStreamReducer {
     /// True after we have emitted `.messageStart`. Prevents duplicate
     /// emission across chunks (OpenAI repeats `id` and `model` on every
     /// chunk; we emit on first-seen).
     private var emittedMessageStart = false
-    /// Captured from the first chunk; used to defer `.messageStart` if
-    /// the first chunk is incomplete (e.g. proxies that strip headers).
+    /// Captured from the first chunk that reports them; used to defer
+    /// `.messageStart` until any content event would be emitted, and to
+    /// fall back to empty strings when the upstream proxy strips the
+    /// identifying fields.
     private var capturedID: String?
     private var capturedModel: String?
 
@@ -34,7 +39,7 @@ struct OpenAIStreamReducer {
 
     /// Partial tool-call accumulators keyed by OpenAI's per-choice tool
     /// index. Arguments arrive as a fragmented JSON string and are joined
-    /// here until the call is flushed at `finishReason`.
+    /// here until the call is flushed at `finishReason` or `finish()`.
     private var toolCallBuilders: [Int: ToolCallBuilder] = [:]
 
     /// Latest `usage` block we have seen. OpenAI emits this on the final
@@ -46,20 +51,17 @@ struct OpenAIStreamReducer {
     /// double-emission if `finish()` is called more than once.
     private var emittedComplete = false
 
-    /// Process one decoded SSE chunk and return the normalized events it
-    /// produced. Order within the returned array reflects the order
-    /// downstream consumers should observe them in.
-    mutating func consume(_ chunk: OpenAIStreamChunk) throws -> [LLMStreamEvent] {
+    /// Process one decoded SSE (Server-Sent Events) chunk and return the
+    /// normalized events it produced. Order within the returned array
+    /// reflects the order downstream consumers should observe them in.
+    /// `messageStart` is always emitted before any content event from the
+    /// same call, even when the upstream chunk lacks `id`/`model`
+    /// (placeholders are substituted so the contract holds).
+    mutating func consume(_ chunk: OpenAIStreamChunk) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
-        if !emittedMessageStart {
-            if let id = chunk.id { capturedID = id }
-            if let model = chunk.model { capturedModel = model }
-            if let id = capturedID, let model = capturedModel {
-                events.append(.messageStart(id: id, model: model))
-                emittedMessageStart = true
-            }
-        }
+        if let id = chunk.id { capturedID = id }
+        if let model = chunk.model { capturedModel = model }
 
         if let usage = chunk.usage,
            let input = usage.promptTokens,
@@ -74,17 +76,19 @@ struct OpenAIStreamReducer {
         if let delta = choice.delta {
             if let thinkingText = delta.reasoningContent ?? delta.reasoning,
                !thinkingText.isEmpty {
-                events.append(contentsOf: openThinkingIfNeeded())
-                events.append(.thinkingDelta(index: openThinkingBlock!, text: thinkingText))
+                ensureMessageStart(into: &events)
+                let index = openThinkingBlock(into: &events)
+                events.append(.thinkingDelta(index: index, text: thinkingText))
             }
 
             if let textDelta = delta.content, !textDelta.isEmpty {
+                ensureMessageStart(into: &events)
                 if let thinking = openThinkingBlock {
                     events.append(.contentBlockStop(index: thinking))
                     openThinkingBlock = nil
                 }
-                events.append(contentsOf: openTextIfNeeded())
-                events.append(.textDelta(index: openTextBlock!, text: textDelta))
+                let index = openTextBlock(into: &events)
+                events.append(.textDelta(index: index, text: textDelta))
             }
 
             if let toolCalls = delta.toolCalls {
@@ -98,44 +102,73 @@ struct OpenAIStreamReducer {
         }
 
         if choice.finishReason != nil {
+            // The accumulated tool-call builders may have been populated by
+            // the same chunk's `delta.tool_calls`; we always merge first,
+            // then close on `finishReason`.
+            ensureMessageStart(into: &events)
             events.append(contentsOf: closeOpenContentBlocks())
-            events.append(contentsOf: try flushToolCalls())
+            events.append(contentsOf: flushToolCalls())
         }
 
         return events
     }
 
     /// Final-flush hook. Closes any blocks that were still open (e.g. when
-    /// the upstream stream ended without a `finish_reason`) and emits the
-    /// terminal `.messageComplete(usage:)`. Idempotent: returns an empty
-    /// array on subsequent calls.
-    mutating func finish() throws -> [LLMStreamEvent] {
+    /// the upstream stream ended without a `finish_reason`), flushes any
+    /// pending tool-call builders, and emits the terminal
+    /// `.messageComplete(usage:)`. Idempotent: returns an empty array on
+    /// subsequent calls.
+    mutating func finish() -> [LLMStreamEvent] {
         if emittedComplete { return [] }
         var events: [LLMStreamEvent] = []
+        ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenContentBlocks())
-        events.append(contentsOf: try flushToolCalls())
+        events.append(contentsOf: flushToolCalls())
         let usage = capturedUsage ?? TokenUsage(inputTokens: 0, outputTokens: 0)
         events.append(.messageComplete(usage: usage))
         emittedComplete = true
         return events
     }
 
-    private mutating func openTextIfNeeded() -> [LLMStreamEvent] {
-        if openTextBlock != nil { return [] }
+    /// Emits `.messageStart` once, before any content or terminal event,
+    /// substituting empty strings when the upstream chunk did not carry
+    /// `id`/`model`. The contract that consumers see `.messageStart` first
+    /// is enforced here so callers don't have to.
+    private mutating func ensureMessageStart(into events: inout [LLMStreamEvent]) {
+        guard !emittedMessageStart else { return }
+        events.append(.messageStart(id: capturedID ?? "", model: capturedModel ?? ""))
+        emittedMessageStart = true
+    }
+
+    /// Opens a text block if none is open and returns its index. Returns
+    /// the existing block's index when one is already open. The caller
+    /// uses the returned index directly so we never need a force-unwrap on
+    /// `openTextBlock`.
+    private mutating func openTextBlock(into events: inout [LLMStreamEvent]) -> Int {
+        if let existing = openTextBlock { return existing }
         let index = nextBlockIndex
         nextBlockIndex += 1
         openTextBlock = index
-        return [.contentBlockStart(index: index, type: .text)]
+        events.append(.contentBlockStart(index: index, type: .text))
+        return index
     }
 
-    private mutating func openThinkingIfNeeded() -> [LLMStreamEvent] {
-        if openThinkingBlock != nil { return [] }
+    /// Opens a thinking block if none is open and returns its index.
+    /// Returns the existing block's index when one is already open.
+    private mutating func openThinkingBlock(into events: inout [LLMStreamEvent]) -> Int {
+        if let existing = openThinkingBlock { return existing }
         let index = nextBlockIndex
         nextBlockIndex += 1
         openThinkingBlock = index
-        return [.contentBlockStart(index: index, type: .thinking)]
+        events.append(.contentBlockStart(index: index, type: .thinking))
+        return index
     }
 
+    /// Closes whichever content block (text or thinking) is currently
+    /// open. `openTextBlock` and `openThinkingBlock` are mutually
+    /// exclusive by construction — `consume(_:)` closes thinking before
+    /// opening text, and never opens thinking after text in the same
+    /// stream — so the close order here is informational, not load-bearing.
     private mutating func closeOpenContentBlocks() -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
         if let thinking = openThinkingBlock {
@@ -151,22 +184,29 @@ struct OpenAIStreamReducer {
 
     /// Flushes accumulated tool-call builders in OpenAI-index order so the
     /// emitted `.toolUse` events match the model's intent. Each tool call
-    /// gets its own block (start → toolUse → stop). Throws
-    /// `LLMError.decodingFailed` if the accumulated argument string isn't
-    /// valid JSON — a malformed tool call breaks the turn semantically, so
-    /// we don't paper over it.
-    private mutating func flushToolCalls() throws -> [LLMStreamEvent] {
+    /// gets its own block (start → toolUse → stop). A malformed argument
+    /// string surfaces as an `.error(.decodingFailed(...))` event in
+    /// place of the tool-use triplet — flushing continues for any
+    /// remaining well-formed calls so the consumer sees as much of the
+    /// turn as actually arrived.
+    private mutating func flushToolCalls() -> [LLMStreamEvent] {
         guard !toolCallBuilders.isEmpty else { return [] }
         var events: [LLMStreamEvent] = []
         let ordered = toolCallBuilders.sorted { $0.key < $1.key }
         for (_, builder) in ordered {
             guard let id = builder.id, let name = builder.name else { continue }
-            let blockIndex = nextBlockIndex
-            nextBlockIndex += 1
-            events.append(.contentBlockStart(index: blockIndex, type: .toolUse))
-            let input = try builder.parsedArguments()
-            events.append(.toolUse(index: blockIndex, id: id, name: name, input: input))
-            events.append(.contentBlockStop(index: blockIndex))
+            do {
+                let input = try builder.parsedArguments()
+                let blockIndex = nextBlockIndex
+                nextBlockIndex += 1
+                events.append(.contentBlockStart(index: blockIndex, type: .toolUse))
+                events.append(.toolUse(index: blockIndex, id: id, name: name, input: input))
+                events.append(.contentBlockStop(index: blockIndex))
+            } catch let error as LLMError {
+                events.append(.error(error))
+            } catch {
+                events.append(.error(.decodingFailed(error.localizedDescription)))
+            }
         }
         toolCallBuilders.removeAll()
         return events
