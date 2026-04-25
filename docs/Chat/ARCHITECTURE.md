@@ -141,20 +141,50 @@ struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendable {
 
     var id: String              // UUID string
     var conversationId: String  // FK -> conversation.id
-    var role: MessageRole       // user | assistant | system | toolResult
+    var role: MessageRole       // user | assistant | system | tool
     var content: String         // Text content; JSON-encoded for tool results
-    var toolCallId: String?     // Non-nil when role == .toolResult; links to toolCall.id
+    var toolCallId: String?     // Non-nil when role == .tool; links to toolCall.id
     var createdAt: Date
     var tokenCount: Int?        // Input or output tokens consumed by this message
 }
 
-enum MessageRole: String, Codable, Sendable {
+enum MessageRole: String, Codable, Sendable, CaseIterable {
     case user
     case assistant
     case system
-    case toolResult = "tool_result"
+    case tool
 }
 ```
+
+`MessageRole` is owned by Chat — not a re-export of Core's `LLMRole` — so the on-disk schema is decoupled from `LLMRole`'s evolution. The case set is identical to `LLMRole`'s today, but the separate type is a deliberate boundary: a future provider case in `LLMRole`, or a future Chat-only row kind (e.g. a compaction summary), becomes an explicit decision in the translation extension below rather than silent drift in the schema.
+
+A small extension translates between the two enums when the record crosses the LLM boundary:
+
+```swift
+extension MessageRole {
+    func asLLMRole() -> LLMRole {
+        switch self {
+        case .user: return .user
+        case .assistant: return .assistant
+        case .system: return .system
+        case .tool: return .tool
+        }
+    }
+
+    init(_ llmRole: LLMRole) {
+        switch llmRole {
+        case .user: self = .user
+        case .assistant: self = .assistant
+        case .system: self = .system
+        case .tool: self = .tool
+        }
+    }
+}
+```
+
+The translation is identity today; if the two enums ever diverge in case set, the compiler forces an explicit decision at the translation site.
+
+The toolUseID/isError shape that distinguishes a tool-result *block* (vs. the row's *role*) lives on Core's `LLMContent.toolResult`. `MessageRecord.toolCallId` carries the row-level linkage to `ToolCallRecord`.
 
 ### ToolCallRecord
 
@@ -463,7 +493,7 @@ actor ChatOrchestrator {
                     let toolResultMessage = MessageRecord(
                         id: UUID().uuidString,
                         conversationId: conversation.id,
-                        role: .toolResult,
+                        role: .tool,
                         content: result.content,
                         toolCallId: toolCall.id,
                         createdAt: Date.now,
@@ -481,7 +511,7 @@ actor ChatOrchestrator {
                     let errorMessage = MessageRecord(
                         id: UUID().uuidString,
                         conversationId: conversation.id,
-                        role: .toolResult,
+                        role: .tool,
                         content: "Error: \(error.localizedDescription)",
                         toolCallId: toolCall.id,
                         createdAt: Date.now,
@@ -1063,7 +1093,7 @@ final class ChatOrchestratorTests: XCTestCase {
         // Verify messages were saved (user + assistant + tool_result + assistant)
         XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .user }.count, 1)
         XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .assistant }.count, 2)
-        XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .toolResult }.count, 1)
+        XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .tool }.count, 1)
     }
 
     func testToolFailureIsFedBackToLLM() async throws {
@@ -1329,4 +1359,4 @@ struct ChatApplet: SuperApplet, Sendable {
 
 ---
 
-*Last updated: 2026-03-17*
+*Last updated: 2026-04-24*

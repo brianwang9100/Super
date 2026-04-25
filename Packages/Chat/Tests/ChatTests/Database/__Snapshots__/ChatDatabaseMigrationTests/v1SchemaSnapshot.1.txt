@@ -1,0 +1,30 @@
+sqlite_master
+CREATE TABLE "compactionCheckpoint" ("id" TEXT PRIMARY KEY NOT NULL, "conversationId" TEXT NOT NULL REFERENCES "conversation"("id") ON DELETE CASCADE, "uptoMessageId" TEXT NOT NULL, "summary" TEXT NOT NULL, "tokensBefore" INTEGER NOT NULL, "tokensAfter" INTEGER NOT NULL, "createdAt" DATETIME NOT NULL, "isLive" BOOLEAN NOT NULL);
+CREATE INDEX "compactionCheckpoint_on_conversationId_isLive" ON "compactionCheckpoint"("conversationId", "isLive");
+CREATE TABLE "conversation" ("id" TEXT PRIMARY KEY NOT NULL, "title" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
+CREATE INDEX "conversation_on_updatedAt" ON "conversation"("updatedAt");
+CREATE TABLE "message" ("id" TEXT PRIMARY KEY NOT NULL, "conversationId" TEXT NOT NULL REFERENCES "conversation"("id") ON DELETE CASCADE, "role" TEXT NOT NULL, "content" TEXT NOT NULL, "toolCallId" TEXT, "createdAt" DATETIME NOT NULL, "tokenCount" INTEGER);
+CREATE INDEX "message_on_conversationId_createdAt" ON "message"("conversationId", "createdAt");
+CREATE TABLE "modelConfiguration" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, "baseURL" TEXT NOT NULL, "apiKeyRef" TEXT NOT NULL, "modelId" TEXT NOT NULL, "supportsThinking" BOOLEAN NOT NULL DEFAULT 0, "maxContextTokens" INTEGER NOT NULL, "isSelected" BOOLEAN NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL);
+CREATE UNIQUE INDEX modelConfiguration_unique_selected
+    ON modelConfiguration(isSelected) WHERE isSelected = 1;
+CREATE TABLE "setting" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL);
+CREATE TABLE "toolCall" ("id" TEXT PRIMARY KEY NOT NULL, "messageId" TEXT NOT NULL REFERENCES "message"("id") ON DELETE CASCADE, "conversationId" TEXT NOT NULL, "toolName" TEXT NOT NULL, "parameters" TEXT NOT NULL, "result" TEXT, "status" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "completedAt" DATETIME);
+CREATE INDEX "toolCall_on_conversationId" ON "toolCall"("conversationId");
+CREATE INDEX "toolCall_on_messageId" ON "toolCall"("messageId");
+CREATE INDEX "toolCall_on_status" ON "toolCall"("status");
+CREATE TABLE "toolEnablement" ("toolId" TEXT PRIMARY KEY NOT NULL, "isEnabled" BOOLEAN NOT NULL);
+
+compactionCheckpoint
+
+conversation
+
+message
+
+modelConfiguration
+
+setting
+
+toolCall
+
+toolEnablement

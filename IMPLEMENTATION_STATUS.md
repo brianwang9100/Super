@@ -19,10 +19,10 @@
 
 ## Current state
 
-- **Active milestone**: M2 — Chat persistence (next up)
-- **Last action**: M1 done — full Core surface landed in `Packages/Core/Sources/Core/` (LLM types + `LLMStreamEvent` with `.thinkingDelta` + `LLMProvider` + `LLMProviderRegistry`; HTTP layer with `URLSessionHTTPClient` and partial-chunk-tolerant `SSEParser`; tool system with `LLMTool`/`ToolRegistration`/`ToolRegistry`/`RemoteHTTPToolExecutor`/`ToolEnablementStore`; ambient `Clock`/`IDGenerator`/`KeychainClient` with Apple + in-memory conformers; `SuperAppInfo`; sendable `JSONValue` for tool I/O). `ChatVerbosity` now lives in `Packages/Chat/` alongside its only consumers. 73 tests across 13 suites pass. `xcodebuild -scheme Super build` for iPhone 17 sim still succeeds. Per-test isolation for `URLProtocolStub` via per-stub UUID + `X-Stub-ID` header so concurrent suites don't trample each other. Documentation: `///` doc comments on every public declaration, parameter/return docs on non-obvious functions; new "Source-file documentation" + "Swift function declarations" sections in root AGENTS.md codifying the rules.
+- **Active milestone**: M3 — OpenAI-compatible streaming (next up)
+- **Last action**: M2 done — full Chat persistence layer landed under `Packages/Chat/Sources/Chat/`. `Models/`: 7 GRDB record structs (`ConversationRecord`, `MessageRecord` with Chat-owned `MessageRole` enum + `asLLMRole()`/`init(_ llmRole:)` translation extension, `ToolCallRecord` + `ToolCallStatus` enum + `JSONValue` codec helpers, `ModelConfigurationRecord` with `.configuration` projection to Core's `ModelConfiguration`, `ToolEnablementRecord`, `SettingRecord`, `CompactionCheckpointRecord`) — all `Codable, FetchableRecord, PersistableRecord, Sendable`. `Database/ChatDatabase.swift`: `DatabaseQueue` wrapper with `.open(in:)` for on-disk and `.makeInMemory()` for tests, plus `registerChatMigrations(_:)` shipping the `v1_createTables` migration (every table + 7 indexes per `docs/Chat/ARCHITECTURE.md` §4, including a partial unique index `modelConfiguration_unique_selected ... WHERE isSelected = 1` that makes the selected-exclusive invariant a schema-level law). `Repositories/`: protocol-typed `ConversationRepository`, `MessageRepository`, `ToolCallRepository`, `ModelConfigurationRepository`, `SettingRepository`, `CompactionCheckpointRepository`, plus `GRDBToolEnablementStore` conforming to Core's `ToolEnablementStore`. `MessageRole` is Chat-owned so the schema isn't bound to Core's `LLMRole` evolution; the `asLLMRole()` extension collapses `.toolResult` → `LLMRole.tool` at the provider boundary (architecture doc §3 reflects this). `ModelConfigurationRepository.delete(id:)` removes the Keychain entry **before** the DB row so a Keychain failure leaves a recoverable visible state instead of an orphaned secret. Live-exclusive invariant on `compactionCheckpoint` enforced inside its write transaction. Column casing unified on `Id` (lowercase d): `modelId`, `toolId` joining the existing `messageId`/`conversationId`/`toolCallId`. **60 Chat tests across 11 suites pass** (8 repository/migration suites + JSON codec suite + MessageRole suite + ChatVerbosity), including a `GRDBSnapshotTesting` `dumpContent` snapshot of the full v1 schema. Core stays green (70 tests). `xcodebuild -scheme Super build` for iPhone 17 sim still succeeds.
 - **Repo root**: `/Users/bwang/Development/Super/`
-- **Next concrete sub-step (M2)**: write the GRDB records (`ConversationRecord`, `MessageRecord`, `ToolCallRecord`, `ModelConfigurationRecord`, `ToolEnablementRecord`, `SettingRecord`, `CompactionCheckpointRecord`) under `Packages/Chat/Sources/Chat/Models/`, the `ChatDatabase` wrapper + v1 migrator, and the matching repositories. Tests run against an in-memory `DatabaseQueue`.
+- **Next concrete sub-step (M3)**: implement `OpenAICompatibleLLMProvider` in `Packages/Chat/Sources/Chat/LLM/` against Core's `LLMProvider` protocol. Handle three SSE shapes (plain OpenAI, reasoning-capable, tool-call deltas). Replay-against-fixtures tests under `Packages/Chat/Tests/ChatTests/Fixtures/`. No real network in tests — ever.
 
 ## Session-resume procedure
 
@@ -40,7 +40,7 @@ Do not re-litigate scope. The plan is approved. If something in the plan looks w
 | --- | --- | --- | --- |
 | M0 | Project scaffolding | `[x] done` | 2026-04-24 |
 | M1 | Core primitives | `[x] done` | 2026-04-24 |
-| M2 | Chat persistence | `[ ] not_started` | — |
+| M2 | Chat persistence | `[x] done` | 2026-04-24 |
 | M3 | OpenAI-compatible streaming | `[ ] not_started` | — |
 | M4 | Session orchestration | `[ ] not_started` | — |
 | M5 | Compaction | `[ ] not_started` | — |
@@ -99,10 +99,24 @@ Legend: `[ ]` not started · `[~]` in progress · `[!]` blocked · `[x]` done.
 
 ## M2 — Chat persistence
 
-- **Checkbox**: `[ ]` not_started
-- **Status**: `not_started`
-- **Last updated**: —
-- **Notes**: all GRDB records (`ConversationRecord`, `MessageRecord`, `ToolCallRecord`, `ModelConfigurationRecord`, `ToolEnablementRecord`, `CompactionCheckpointRecord`, `SettingRecord`) + migrations + repositories. In-memory `DatabaseQueue` + `GRDBSnapshotTesting` for integration tests.
+- **Checkbox**: `[x]` done
+- **Status**: `done`
+- **Last updated**: 2026-04-24
+- **Notes**:
+  - Source under `Packages/Chat/Sources/Chat/`:
+    - `Models/`: `ConversationRecord`, `MessageRecord` (with Chat-owned `MessageRole` enum: `user`/`assistant`/`system`/`tool`, identical case set to Core's `LLMRole` today but a deliberate type boundary so a future provider case or Chat-only row kind becomes an explicit decision in the translation extension rather than silent schema drift), `MessageRole` + `asLLMRole()` / `init(_ llmRole:)` (separate file), `ToolCallRecord` + `ToolCallStatus` enum (`pending`/`executing`/`success`/`failed`/`cancelled`/`awaitingConfirmation`) + `JSONValue` codec helpers (`decodedParameters()`, `decodedResult()`, `static encode(_:)`), `ModelConfigurationRecord` (with `.configuration` projection to Core's `ModelConfiguration`), `ToolEnablementRecord`, `SettingRecord`, `CompactionCheckpointRecord`. All `Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable`.
+    - `Database/ChatDatabase.swift`: `DatabaseQueue` wrapper with `.open(in:)` (on-disk under `chat.sqlite`) and `.makeInMemory()` (tests). Public `registerChatMigrations(_:)` ships `v1_createTables` covering all 7 tables + indexes (`conversation_on_updatedAt`, `message_on_conversationId_createdAt`, `toolCall_on_{conversationId, messageId, status}`, `compactionCheckpoint_on_conversationId_isLive`, plus the partial unique `modelConfiguration_unique_selected` index that makes the "at most one selected row" invariant a schema law). Cascades: deleting a `conversation` cascades to `message` and `compactionCheckpoint`; deleting a `message` cascades to `toolCall`.
+    - `Repositories/`: protocol-typed surface (`ConversationRepository`, `MessageRepository`, `ToolCallRepository`, `ModelConfigurationRepository`, `SettingRepository`, `CompactionCheckpointRepository`) with GRDB conformers, plus `GRDBToolEnablementStore` conforming to Core's `ToolEnablementStore` (so Chat owns persistence while Core stays GRDB-free). `ModelConfigurationRepository` owns the Keychain pairing for API keys via injected `KeychainClient`; `delete(id:)` removes the Keychain entry **first** so a Keychain failure leaves the row in place to retry instead of orphaning a secret no UI handle can reach. `MessageRepository` has no per-message delete by design (documented on the protocol). Live-exclusive invariant on `compactionCheckpoint` enforced inside its write transaction; selected-exclusive invariant on `modelConfiguration` is enforced by the schema-level partial unique index.
+    - Column casing unified on `Id` (lowercase d): `modelId` and `toolId` joined the existing `messageId`/`conversationId`/`toolCallId` for in-package consistency.
+  - Tests under `Packages/Chat/Tests/ChatTests/`:
+    - `Database/ChatDatabaseMigrationTests` (7 cases — table set, index inventory, `message` column shape, FK cascade, idempotency, partial unique index, plus a `GRDBSnapshotTesting` `dumpContent` snapshot of the full v1 schema).
+    - `Models/ToolCallRecordTests` (4 — encode/decode round-trip, nil-result for pending row, invalid-JSON throw).
+    - `Models/MessageRoleTests` (5 — raw values, `asLLMRole()`, `init(_ llmRole:)`, round-trip totality, allCases exhaustive).
+    - `Repositories/ConversationRepositoryTests` (5), `MessageRepositoryTests` (5), `ToolCallRepositoryTests` (6 — incl. cascade-from-message), `ModelConfigurationRepositoryTests` (9 — selected-exclusive via partial unique index, Keychain pairing, URL round-trip, projection), `GRDBToolEnablementStoreTests` (3), `SettingRepositoryTests` (5), `CompactionCheckpointRepositoryTests` (5 — single-live invariant, conversation scoping).
+    - **Total: 60 Chat tests across 11 suites, all green.** Core stays green (70 tests).
+  - `xcodebuild -scheme Super -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' build` succeeds.
+  - Documentation: `///` doc comments on every public declaration; non-obvious functions carry parameter docs; record-level docs explain `apiKeyRef` is a Keychain ref (never the key itself), `parameters`/`result` on `ToolCallRecord` are JSON strings (caller serializes via `ToolCallRecord.encode(_:)`), the live-checkpoint semantics on `CompactionCheckpointRecord`, and that `MessageRole` is Chat-owned with an `asLLMRole()` translation. `docs/Chat/ARCHITECTURE.md` §3 documents the `MessageRole` enum + translation extension and explains the schema-independence rationale; §5 orchestrator samples use `.toolResult` to match.
+  - Acronyms expanded on first use per project doc rules: SSE (Server-Sent Events), LLM (Large Language Model), JSON (JavaScript Object Notation), UI (User Interface), API (Application Programming Interface), FK (foreign key), SQL (Structured Query Language).
 
 ## M3 — OpenAI-compatible streaming
 
