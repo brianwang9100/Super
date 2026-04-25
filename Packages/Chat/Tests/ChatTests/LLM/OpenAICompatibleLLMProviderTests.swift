@@ -1,0 +1,397 @@
+import Core
+import Foundation
+import Testing
+@testable import Chat
+
+/// End-to-end tests for `OpenAICompatibleLLMProvider`. Exercises the
+/// request shape (URL, headers, body) and the full streaming pipeline by
+/// replaying recorded SSE (Server-Sent Events) fixtures through a fake
+/// HTTP (HyperText Transfer Protocol) client. No real network — ever.
+@Suite("OpenAICompatibleLLMProvider")
+struct OpenAICompatibleLLMProviderTests {
+    private let baseURL = URL(string: "https://api.example.test/v1")!
+    private let model = LLMModel(
+        id: "gpt-4o-mini",
+        displayName: "GPT-4o mini",
+        supportsThinking: false,
+        supportsTools: true,
+        maxContextTokens: 16_000
+    )
+
+    private func makeProvider(http: HTTPClient, apiKey: String? = "sk-test") -> OpenAICompatibleLLMProvider {
+        OpenAICompatibleLLMProvider(
+            id: "cfg-1",
+            displayName: "Test",
+            model: model,
+            baseURL: baseURL,
+            apiKey: apiKey,
+            http: http
+        )
+    }
+
+    private func collect(_ stream: AsyncThrowingStream<LLMStreamEvent, Error>) async throws -> [LLMStreamEvent] {
+        var events: [LLMStreamEvent] = []
+        for try await event in stream { events.append(event) }
+        return events
+    }
+
+    @Test func plainTextFixtureProducesOrderedTextEventsAndUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        var iterator = events.makeIterator()
+        #expect(iterator.next() == .messageStart(id: "chatcmpl-plain", model: "gpt-4o-mini"))
+        #expect(iterator.next() == .contentBlockStart(index: 0, type: .text))
+        #expect(iterator.next() == .textDelta(index: 0, text: "Hello"))
+        #expect(iterator.next() == .textDelta(index: 0, text: " there"))
+        #expect(iterator.next() == .textDelta(index: 0, text: "!"))
+        #expect(iterator.next() == .contentBlockStop(index: 0))
+        #expect(iterator.next() == .messageComplete(usage: TokenUsage(inputTokens: 11, outputTokens: 3)))
+        #expect(iterator.next() == nil)
+    }
+
+    @Test func reasoningFixtureProducesThinkingThenTextThenUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-reasoning"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "what is 6*7?")],
+            model: model,
+            tools: [],
+            temperature: 0.0
+        ))
+
+        let kinds = events.map(eventKind(_:))
+        #expect(kinds == [
+            "messageStart",
+            "contentBlockStart(thinking)",
+            "thinkingDelta",
+            "thinkingDelta",
+            "contentBlockStop(0)",
+            "contentBlockStart(text)",
+            "textDelta",
+            "contentBlockStop(1)",
+            "messageComplete",
+        ])
+
+        let thinking = events.compactMap { event -> String? in
+            if case .thinkingDelta(_, let text) = event { return text }
+            return nil
+        }
+        #expect(thinking == ["Let me think", " carefully."])
+    }
+
+    @Test func toolCallFixtureProducesAccumulatedToolUseAndUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-toolcall"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "what time is it?")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        let toolUses = events.compactMap { event -> (String, String, JSONValue)? in
+            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            return nil
+        }
+        #expect(toolUses.count == 1)
+        #expect(toolUses.first?.0 == "call_abc")
+        #expect(toolUses.first?.1 == "get_time")
+        #expect(toolUses.first?.2 == .object(["timezone": .string("UTC")]))
+
+        if case .messageComplete(let usage) = events.last {
+            #expect(usage == TokenUsage(inputTokens: 15, outputTokens: 8))
+        } else {
+            Issue.record("expected trailing messageComplete")
+        }
+    }
+
+    @Test func interleavedReasoningAndToolFixtureEmitsBothInOrder() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-reasoning-and-tools"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "what time is it?")],
+            model: model,
+            tools: [],
+            temperature: 0.0
+        ))
+
+        let kinds = events.map(eventKind(_:))
+        #expect(kinds == [
+            "messageStart",
+            "contentBlockStart(thinking)",
+            "thinkingDelta",
+            "thinkingDelta",
+            "contentBlockStop(0)",
+            "contentBlockStart(toolUse)",
+            "toolUse",
+            "contentBlockStop(1)",
+            "messageComplete",
+        ])
+
+        let toolUse = events.compactMap { event -> (String, String)? in
+            if case .toolUse(_, let id, let name, _) = event { return (id, name) }
+            return nil
+        }.first
+        #expect(toolUse?.0 == "call_xyz")
+        #expect(toolUse?.1 == "get_time")
+    }
+
+    @Test func partialChunkBoundariesStillProduceCompleteEvents() async throws {
+        let http = FakeHTTPClient.fromFixture(
+            FixtureLoader.load("openai-plain"),
+            chunkCount: 17
+        )
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        let textDeltas = events.compactMap { event -> String? in
+            if case .textDelta(_, let text) = event { return text }
+            return nil
+        }
+        #expect(textDeltas.joined() == "Hello there!")
+    }
+
+    @Test func unsupportedModelThrowsBeforeAnyHTTPRequest() async throws {
+        let http = FakeHTTPClient(chunks: [])
+        let provider = makeProvider(http: http)
+        let other = LLMModel(id: "not-a-real-model", displayName: "Other")
+        do {
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: other,
+                tools: [],
+                temperature: 0.5
+            ))
+            Issue.record("expected unsupportedModel throw")
+        } catch let error as LLMError {
+            #expect(error == .unsupportedModel("not-a-real-model"))
+        }
+        #expect(http.observed.all.isEmpty)
+    }
+
+    @Test func httpStatus401MapsToUnauthorized() async throws {
+        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401))
+        let provider = makeProvider(http: http)
+        do {
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model,
+                tools: [],
+                temperature: 0.5
+            ))
+            Issue.record("expected unauthorized throw")
+        } catch let error as LLMError {
+            #expect(error == .unauthorized)
+        }
+    }
+
+    @Test func httpStatus429MapsToRateLimited() async throws {
+        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(429))
+        let provider = makeProvider(http: http)
+        do {
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model,
+                tools: [],
+                temperature: 0.5
+            ))
+            Issue.record("expected rateLimited throw")
+        } catch let error as LLMError {
+            #expect(error == .rateLimited)
+        }
+    }
+
+    @Test func httpStatus5xxMapsToProviderError() async throws {
+        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(503))
+        let provider = makeProvider(http: http)
+        do {
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model,
+                tools: [],
+                temperature: 0.5
+            ))
+            Issue.record("expected providerError throw")
+        } catch let error as LLMError {
+            #expect(error == .providerError(code: "503", message: "HTTP 503"))
+        }
+    }
+
+    @Test func malformedSSEDataLineThrowsDecodingFailed() async throws {
+        let bytes = Data("data: not-json\n\n".utf8)
+        let http = FakeHTTPClient(chunks: [bytes])
+        let provider = makeProvider(http: http)
+        do {
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model,
+                tools: [],
+                temperature: 0.5
+            ))
+            Issue.record("expected decodingFailed throw")
+        } catch let error as LLMError {
+            if case .decodingFailed = error { return }
+            Issue.record("expected .decodingFailed, got \(error)")
+        }
+    }
+
+    @Test func requestTargetsChatCompletionsPath() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        let request = try #require(http.observed.all.first)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.example.test/v1/chat/completions")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-test")
+        #expect(request.value(forHTTPHeaderField: "Accept") == "text/event-stream")
+    }
+
+    @Test func nilApiKeyOmitsAuthorizationHeader() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http, apiKey: nil)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func requestBodyEncodesMessagesToolsAndStreamFlag() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        let tool = LLMTool(
+            id: "time-now",
+            name: "get_time",
+            description: "Returns the current time.",
+            category: .query,
+            parameters: [
+                LLMToolParameter(
+                    name: "timezone",
+                    type: .string,
+                    description: "IANA tz id",
+                    isRequired: true
+                )
+            ],
+            appletId: "chat"
+        )
+        _ = try await collect(provider.stream(
+            messages: [
+                LLMMessage(role: .system, text: "You are helpful."),
+                LLMMessage(role: .user, text: "what time is it?"),
+            ],
+            model: model,
+            tools: [tool],
+            temperature: 0.7
+        ))
+
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        let unwrapped = try #require(decoded)
+        #expect(unwrapped["model"] as? String == "gpt-4o-mini")
+        #expect(unwrapped["stream"] as? Bool == true)
+        #expect(unwrapped["temperature"] as? Double == 0.7)
+        #expect((unwrapped["stream_options"] as? [String: Any])?["include_usage"] as? Bool == true)
+
+        let messages = try #require(unwrapped["messages"] as? [[String: Any]])
+        #expect(messages.count == 2)
+        #expect(messages[0]["role"] as? String == "system")
+        #expect(messages[0]["content"] as? String == "You are helpful.")
+        #expect(messages[1]["role"] as? String == "user")
+        #expect(messages[1]["content"] as? String == "what time is it?")
+
+        let tools = try #require(unwrapped["tools"] as? [[String: Any]])
+        #expect(tools.count == 1)
+        let function = try #require(tools[0]["function"] as? [String: Any])
+        #expect(function["name"] as? String == "get_time")
+        let parameters = try #require(function["parameters"] as? [String: Any])
+        #expect(parameters["type"] as? String == "object")
+        let required = try #require(parameters["required"] as? [String])
+        #expect(required == ["timezone"])
+    }
+
+    @Test func toolResultMessagesEncodeAsToolRoleWithToolCallId() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        let messages: [LLMMessage] = [
+            LLMMessage(role: .user, text: "what time is it?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(
+                    id: "call_abc",
+                    name: "get_time",
+                    input: .object(["timezone": .string("UTC")])
+                )
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "call_abc", content: "12:00 UTC", isError: false)
+            ]),
+        ]
+        _ = try await collect(provider.stream(
+            messages: messages,
+            model: model,
+            tools: [],
+            temperature: 0.0
+        ))
+
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let outgoing = try #require(decoded["messages"] as? [[String: Any]])
+        #expect(outgoing.count == 3)
+
+        let assistant = outgoing[1]
+        #expect(assistant["role"] as? String == "assistant")
+        let toolCalls = try #require(assistant["tool_calls"] as? [[String: Any]])
+        #expect(toolCalls.count == 1)
+        #expect(toolCalls[0]["id"] as? String == "call_abc")
+        let function = try #require(toolCalls[0]["function"] as? [String: Any])
+        #expect(function["name"] as? String == "get_time")
+        let argsString = try #require(function["arguments"] as? String)
+        let parsedArgs = try JSONSerialization.jsonObject(with: Data(argsString.utf8)) as? [String: Any]
+        #expect(parsedArgs?["timezone"] as? String == "UTC")
+
+        let toolResult = outgoing[2]
+        #expect(toolResult["role"] as? String == "tool")
+        #expect(toolResult["tool_call_id"] as? String == "call_abc")
+        #expect(toolResult["content"] as? String == "12:00 UTC")
+    }
+
+    /// Compact one-token-per-event label so an expected-vs-actual mismatch
+    /// is human-readable.
+    private func eventKind(_ event: LLMStreamEvent) -> String {
+        switch event {
+        case .messageStart: return "messageStart"
+        case .contentBlockStart(_, .text): return "contentBlockStart(text)"
+        case .contentBlockStart(_, .thinking): return "contentBlockStart(thinking)"
+        case .contentBlockStart(_, .toolUse): return "contentBlockStart(toolUse)"
+        case .textDelta: return "textDelta"
+        case .thinkingDelta: return "thinkingDelta"
+        case .toolUse: return "toolUse"
+        case .contentBlockStop(let index): return "contentBlockStop(\(index))"
+        case .messageComplete: return "messageComplete"
+        case .error: return "error"
+        }
+    }
+}

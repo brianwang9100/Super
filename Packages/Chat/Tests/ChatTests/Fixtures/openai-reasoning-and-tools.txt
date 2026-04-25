@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-mix","object":"chat.completion.chunk","created":1730000003,"model":"deepseek-r1","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"User wants the time."}}]}
+
+data: {"id":"chatcmpl-mix","object":"chat.completion.chunk","created":1730000003,"model":"deepseek-r1","choices":[{"index":0,"delta":{"reasoning_content":" I'll call get_time."}}]}
+
+data: {"id":"chatcmpl-mix","object":"chat.completion.chunk","created":1730000003,"model":"deepseek-r1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_xyz","type":"function","function":{"name":"get_time","arguments":"{}"}}]}}]}
+
+data: {"id":"chatcmpl-mix","object":"chat.completion.chunk","created":1730000003,"model":"deepseek-r1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"id":"chatcmpl-mix","object":"chat.completion.chunk","created":1730000003,"model":"deepseek-r1","choices":[],"usage":{"prompt_tokens":20,"completion_tokens":15}}
+
+data: [DONE]
+
