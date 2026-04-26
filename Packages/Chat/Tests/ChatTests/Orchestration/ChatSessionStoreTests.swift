@@ -23,6 +23,7 @@ struct ChatSessionStoreTests {
         let database = try ChatDatabase.makeInMemory()
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let conversationRepo = GRDBConversationRepository(database: database)
         let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
@@ -32,13 +33,22 @@ struct ChatSessionStoreTests {
         let llmRegistry = LLMProviderRegistry()
         await llmRegistry.register(provider)
         let toolRegistry = ToolRegistry()
+        let compactor = OrchestrationFixtures.makeCompactor(
+            database: database,
+            llmRegistry: llmRegistry,
+            clock: clock,
+            idGenerator: idGen
+        )
         let store = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
             llmProviderRegistry: llmRegistry,
             toolRegistry: toolRegistry,
+            compactor: compactor,
             clock: clock,
-            idGenerator: idGen
+            idGenerator: idGen,
+            autoCompactEnabled: false
         )
 
         // Two conversations live in the DB so the FK references resolve.

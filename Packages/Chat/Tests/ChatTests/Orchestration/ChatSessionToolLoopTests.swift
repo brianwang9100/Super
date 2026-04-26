@@ -30,6 +30,7 @@ struct ChatSessionToolLoopTests {
         let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
 
@@ -41,15 +42,24 @@ struct ChatSessionToolLoopTests {
         let llmRegistry = LLMProviderRegistry()
         await llmRegistry.register(provider)
         let toolRegistry = ToolRegistry()
+        let compactor = OrchestrationFixtures.makeCompactor(
+            database: database,
+            llmRegistry: llmRegistry,
+            clock: clock,
+            idGenerator: idGen
+        )
 
         let session = ChatSession(
             conversationId: conversation.id,
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
             llmProviderRegistry: llmRegistry,
             toolRegistry: toolRegistry,
+            compactor: compactor,
             clock: clock,
-            idGenerator: idGen
+            idGenerator: idGen,
+            autoCompactEnabled: false
         )
         return Setup(
             database: database, messageRepo: messageRepo, toolCallRepo: toolCallRepo,
@@ -131,6 +141,8 @@ struct ChatSessionToolLoopTests {
             case .toolCallCompleted: return "toolCompleted"
             case .toolCallFailed: return "toolFailed"
             case .assistantMessageSaved: return "assistantSaved"
+            case .compactionStarted: return "compactionStarted"
+            case .compactionCompleted: return "compactionCompleted"
             case .error: return "error"
             }
         }

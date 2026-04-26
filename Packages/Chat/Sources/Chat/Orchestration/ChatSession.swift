@@ -41,10 +41,24 @@ public actor ChatSession {
 
     private let messageRepository: any MessageRepository
     private let toolCallRepository: any ToolCallRepository
+    private let checkpointRepository: any CompactionCheckpointRepository
     private let llmProviderRegistry: LLMProviderRegistry
     private let toolRegistry: ToolRegistry
+    private let contextAssembler: ContextAssembler
+    private let compactor: Compactor
     private let clock: any Clock
     private let idGenerator: any IDGenerator
+
+    /// Auto-compaction toggle. M9 wires this to `SettingRecord(key:
+    /// "autoCompactEnabled")`. When false the session never invokes
+    /// `Compactor` automatically, even above the threshold; `/compact`
+    /// (manual) still works.
+    private var autoCompactEnabled: Bool
+
+    /// Threshold (`tokens / model.maxContextTokens`) at which an
+    /// automatic compaction fires. M9 wires this to
+    /// `SettingRecord(key: "autoCompactThreshold")`; default 0.75.
+    private var autoCompactThreshold: Double
 
     /// The in-flight turn's task, or `nil` between turns. Cleared from
     /// inside `run`'s `defer` so `isStreaming` flips back to `false` as
@@ -61,22 +75,45 @@ public actor ChatSession {
     ///     fixed clock still yields deterministic history order.
     ///   - idGenerator: Injected so tests can substitute a
     ///     `DeterministicIDGenerator` and assert exact `MessageRecord` ids.
+    ///   - autoCompactEnabled: Whether the session automatically compacts
+    ///     before turns when over `autoCompactThreshold`. Default `true`.
+    ///   - autoCompactThreshold: Fraction of `model.maxContextTokens` at
+    ///     which auto-compaction kicks in. Default `0.75`.
     public init(
         conversationId: String,
         messageRepository: any MessageRepository,
         toolCallRepository: any ToolCallRepository,
+        checkpointRepository: any CompactionCheckpointRepository,
         llmProviderRegistry: LLMProviderRegistry,
         toolRegistry: ToolRegistry,
+        contextAssembler: ContextAssembler = ContextAssembler(),
+        compactor: Compactor,
         clock: any Clock = SystemClock(),
-        idGenerator: any IDGenerator = UUIDGenerator()
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        autoCompactEnabled: Bool = true,
+        autoCompactThreshold: Double = 0.75
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
+        self.checkpointRepository = checkpointRepository
         self.llmProviderRegistry = llmProviderRegistry
         self.toolRegistry = toolRegistry
+        self.contextAssembler = contextAssembler
+        self.compactor = compactor
         self.clock = clock
         self.idGenerator = idGenerator
+        self.autoCompactEnabled = autoCompactEnabled
+        self.autoCompactThreshold = autoCompactThreshold
+    }
+
+    /// Update the auto-compaction policy at runtime. M9's settings pane
+    /// calls this when the user flips the toggle or moves the threshold
+    /// slider so a long-running session picks up the new policy on its
+    /// next turn.
+    public func setAutoCompactPolicy(enabled: Bool, threshold: Double) {
+        self.autoCompactEnabled = enabled
+        self.autoCompactThreshold = threshold
     }
 
     /// `true` while a turn is mid-flight. Sidebar drives the per-row
@@ -93,11 +130,19 @@ public actor ChatSession {
     /// interleave their database writes. The UI typically blocks the
     /// composer during streaming, so the prior-turn fence is a defensive
     /// guard rather than the common path.
+    ///
+    /// Slash commands (e.g. `/compact`) are recognized at submission and
+    /// dispatched in place of a user turn — no `MessageRecord` is written
+    /// for the slash command itself.
     public func send(
         text: String,
         model: LLMModel,
         temperature: Double = 1.0
     ) async -> AsyncStream<ChatEvent> {
+        if let command = SlashCommand(rawText: text) {
+            return await dispatch(command: command, model: model)
+        }
+
         if let prior = currentTask {
             prior.cancel()
             await prior.value
@@ -116,6 +161,36 @@ public actor ChatSession {
         currentTask = task
         continuation.onTermination = { _ in task.cancel() }
         return stream
+    }
+
+    /// Manually invoke a compaction pass. Returns an `AsyncStream` so the
+    /// composer can render the same `.compactionStarted` /
+    /// `.compactionCompleted` UI it shows for auto-compaction. If a turn
+    /// is in flight, this fences on it before starting (same lock-step
+    /// guarantee as `send(...)`). When there's nothing to summarize the
+    /// stream just closes — no `.compactionStarted` event fires, so the
+    /// UI doesn't flash a banner that has nothing behind it.
+    public func compact(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        if let prior = currentTask {
+            prior.cancel()
+            await prior.value
+        }
+
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        let task = Task {
+            await self.runCompaction(model: model, continuation: continuation)
+            continuation.finish()
+        }
+        currentTask = task
+        continuation.onTermination = { _ in task.cancel() }
+        return stream
+    }
+
+    private func dispatch(command: SlashCommand, model: LLMModel) async -> AsyncStream<ChatEvent> {
+        switch command {
+        case .compact:
+            return await compact(model: model)
+        }
     }
 
     /// Cancel the in-flight turn, if any. Already-persisted rows stay;
@@ -157,7 +232,8 @@ public actor ChatSession {
 
             while true {
                 try Task.checkCancellation()
-                let history = try await assembleHistory()
+                try await maybeAutoCompact(model: model, continuation: continuation)
+                let history = try await assembleHistory(model: model)
                 let enabledTools = await toolRegistry.enabledTools(for: provider)
                 let toolCalls = try await streamOneTurn(
                     provider: provider,
@@ -186,51 +262,110 @@ public actor ChatSession {
         }
     }
 
-    /// Project the on-disk records back into the LLM-facing message shape.
-    /// Assistant rows fold their tool-call rows in as `.toolUse` blocks;
-    /// tool result rows look up their originating call to learn whether
-    /// they should carry `isError: true`. Tool calls are read in
-    /// `(createdAt, rowid)` order from the repository, so the per-message
-    /// grouping preserves issue order without needing a re-sort here.
-    private func assembleHistory() async throws -> [LLMMessage] {
-        let priorMessages = try await messageRepository.fetchAll(conversationId: conversationId)
-        let priorToolCalls = try await toolCallRepository.fetchByConversation(conversationId)
+    /// Project the on-disk records back into the LLM-facing message shape
+    /// via `ContextAssembler`. The live `CompactionCheckpointRecord`
+    /// (when present) is folded in as a leading system message; messages
+    /// covered by the checkpoint are dropped from the prompt.
+    private func assembleHistory(model: LLMModel) async throws -> [LLMMessage] {
+        try await assemble(model: model).messages
+    }
 
-        var toolCallsByMessageID: [String: [ToolCallRecord]] = [:]
-        var toolCallsByID: [String: ToolCallRecord] = [:]
-        for record in priorToolCalls {
-            toolCallsByMessageID[record.messageId, default: []].append(record)
-            toolCallsByID[record.id] = record
-        }
+    private func assemble(model: LLMModel) async throws -> ContextAssembly {
+        async let messages = messageRepository.fetchAll(conversationId: conversationId)
+        async let toolCalls = toolCallRepository.fetchByConversation(conversationId)
+        async let checkpoint = checkpointRepository.liveCheckpoint(for: conversationId)
+        return try await contextAssembler.assemble(
+            messages: messages,
+            toolCalls: toolCalls,
+            checkpoint: checkpoint,
+            model: model
+        )
+    }
 
-        var llmMessages: [LLMMessage] = []
-        for record in priorMessages {
-            switch record.role {
-            case .system:
-                llmMessages.append(LLMMessage(role: .system, text: record.content))
-            case .user:
-                llmMessages.append(LLMMessage(role: .user, text: record.content))
-            case .assistant:
-                var blocks: [LLMContent] = []
-                if !record.content.isEmpty {
-                    blocks.append(.text(record.content))
-                }
-                for call in toolCallsByMessageID[record.id] ?? [] {
-                    let input = try call.decodedParameters()
-                    blocks.append(.toolUse(id: call.id, name: call.toolName, input: input))
-                }
-                if !blocks.isEmpty {
-                    llmMessages.append(LLMMessage(role: .assistant, content: blocks))
-                }
-            case .tool:
-                guard let toolCallID = record.toolCallId else { continue }
-                let isError = toolCallsByID[toolCallID]?.status == .failed
-                llmMessages.append(LLMMessage(role: .tool, content: [
-                    .toolResult(toolUseID: toolCallID, content: record.content, isError: isError),
-                ]))
+    /// Auto-compaction gate. Called before every turn within the run loop.
+    /// Skips silently when disabled, when not over threshold, or when the
+    /// compactor returns nil (nothing worth summarizing yet). On success
+    /// emits `.compactionStarted` then `.compactionCompleted` so the UI
+    /// can render the same banner it shows for `/compact`.
+    private func maybeAutoCompact(
+        model: LLMModel,
+        continuation: AsyncStream<ChatEvent>.Continuation
+    ) async throws {
+        guard autoCompactEnabled else { return }
+        let assembly = try await assemble(model: model)
+        guard assembly.isOverThreshold(autoCompactThreshold) else { return }
+        try await runCompactionPass(model: model, continuation: continuation)
+    }
+
+    /// Body of `compact(model:)` — owns the cancellation/error mapping so
+    /// the public entry point can stay focused on stream wiring.
+    private func runCompaction(
+        model: LLMModel,
+        continuation: AsyncStream<ChatEvent>.Continuation
+    ) async {
+        defer { currentTask = nil }
+        do {
+            try await runCompactionPass(model: model, continuation: continuation)
+        } catch is CancellationError {
+            continuation.yield(.error(.cancelled))
+        } catch let err as LLMError {
+            continuation.yield(.error(err))
+        } catch let err as CompactorError {
+            switch err {
+            case .emptySummary:
+                continuation.yield(.error(.requestFailed("compaction returned empty summary")))
+            case .llmError(let underlying):
+                continuation.yield(.error(underlying))
             }
+        } catch let err as LLMProviderRegistryError {
+            switch err {
+            case .noActiveProvider:
+                continuation.yield(.error(.requestFailed("no active LLM provider configured")))
+            case .unknownProvider(let id):
+                continuation.yield(.error(.requestFailed("unknown LLM provider: \(id)")))
+            }
+        } catch {
+            continuation.yield(.error(.requestFailed(error.localizedDescription)))
         }
-        return llmMessages
+    }
+
+    /// Shared compaction worker. Used by both auto-compaction (inside the
+    /// turn loop) and manual `/compact`. Emits `.compactionStarted`
+    /// **only** after the compactor commits to running — when there's
+    /// nothing to summarize we return without firing any events so the
+    /// UI doesn't flash a banner that immediately disappears.
+    private func runCompactionPass(
+        model: LLMModel,
+        continuation: AsyncStream<ChatEvent>.Continuation
+    ) async throws {
+        let messages = try await messageRepository.fetchAll(conversationId: conversationId)
+        let toolCalls = try await toolCallRepository.fetchByConversation(conversationId)
+        let prior = try await checkpointRepository.liveCheckpoint(for: conversationId)
+
+        // Skip silently when there's nothing to summarize. Pure predicate
+        // (no LLM call) sharing slicing rules with `Compactor.compact` so
+        // the two paths cannot disagree.
+        guard compactor.wouldCompact(messages: messages, priorCheckpoint: prior) else {
+            return
+        }
+
+        continuation.yield(.compactionStarted)
+        let checkpoint = try await compactor.compact(
+            conversationId: conversationId,
+            messages: messages,
+            toolCalls: toolCalls,
+            priorCheckpoint: prior,
+            model: model
+        )
+        // Pre-flight committed `wouldCompact` to true; an actual nil here
+        // means the two slicing rules drifted — programmer error, not a
+        // user-facing condition. `assertionFailure` rather than `.error`
+        // surfaces it loudly in tests/debug without crashing release.
+        guard let checkpoint else {
+            assertionFailure("Compactor.wouldCompact disagreed with Compactor.compact — slicing logic drifted")
+            return
+        }
+        continuation.yield(.compactionCompleted(checkpoint))
     }
 
     /// Drive one round trip through the provider. Returns the tool calls

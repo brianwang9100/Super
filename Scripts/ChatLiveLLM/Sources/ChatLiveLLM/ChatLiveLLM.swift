@@ -7,10 +7,11 @@ import Foundation
 /// against a live local LLM (Large Language Model) server.
 ///
 /// Defaults target a local OpenAI-compatible MLX server. Override per env:
-/// - `OMLX_BASE_URL`  — base URL ending in `/v1` (default `http://127.0.0.1:1111/v1`)
-/// - `OMLX_API_KEY`   — bearer token (default `omlx-local-dev`)
-/// - `OMLX_MODEL`     — model id (default `Qwen3.6-35B-A3B-bf16`)
-/// - `OMLX_SKIP_TOOL` — set to `1` to skip the tool-use turn
+/// - `OMLX_BASE_URL`     — base URL ending in `/v1` (default `http://127.0.0.1:1111/v1`)
+/// - `OMLX_API_KEY`      — bearer token (default `omlx-local-dev`)
+/// - `OMLX_MODEL`        — model id (default `Qwen3.6-35B-A3B-bf16`)
+/// - `OMLX_SKIP_TOOL`    — set to `1` to skip the tool-use turn
+/// - `OMLX_SKIP_COMPACT` — set to `1` to skip the `/compact` + post-compaction turns
 @main
 struct ChatLiveLLMScript {
     static func main() async {
@@ -31,16 +32,19 @@ struct ChatLiveLLMScript {
         let apiKey = env["OMLX_API_KEY"] ?? "omlx-local-dev"
         let modelID = env["OMLX_MODEL"] ?? "Qwen3.6-35B-A3B-bf16"
         let skipTool = (env["OMLX_SKIP_TOOL"] ?? "0") == "1"
+        let skipCompact = (env["OMLX_SKIP_COMPACT"] ?? "0") == "1"
 
         print("==> Configuration")
         print("    base URL: \(baseURL.absoluteString)")
         print("    model:    \(modelID)")
         print("    api key:  \(redact(apiKey))")
-        print("    skip tool turn: \(skipTool)")
+        print("    skip tool turn:    \(skipTool)")
+        print("    skip compact turn: \(skipCompact)")
 
         let database = try ChatDatabase.makeInMemory()
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let conversationRepo = GRDBConversationRepository(database: database)
 
         let conversationId = "live-test-conv"
@@ -92,11 +96,17 @@ struct ChatLiveLLMScript {
             ToolRegistration(tool: echoTool, execution: .local(EchoExecutor()))
         )
 
+        let compactor = Compactor(
+            llmProviderRegistry: llmRegistry,
+            checkpointRepository: checkpointRepo
+        )
         let store = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
             llmProviderRegistry: llmRegistry,
-            toolRegistry: toolRegistry
+            toolRegistry: toolRegistry,
+            compactor: compactor
         )
         let session = await store.session(for: conversationId)
 
@@ -116,14 +126,63 @@ struct ChatLiveLLMScript {
             )
         }
 
+        if !skipCompact {
+            // Send `/compact` through the same `send(text:model:)` entry
+            // point the composer will use. With the default
+            // `keepMostRecent = 4`, this no-ops on a 1-turn run and does
+            // real work on a 2-turn run. The script tags the no-op case
+            // explicitly so an observer doesn't mistake it for failure.
+            try await runTurn(
+                label: "TURN 3 — /compact",
+                session: session,
+                model: model,
+                prompt: "/compact",
+                noOpHint: "no-op: not enough history beyond keepMostRecent=4 to summarize. Run with both turns (don't set OMLX_SKIP_TOOL) to see compaction fire."
+            )
+
+            // Verify the post-compaction prompt assembly works against
+            // the live LLM: the next turn's history should be
+            // {synthetic system summary} + post-checkpoint messages
+            // + new user question. If the assembler or checkpoint
+            // wiring is broken, this turn errors or produces nonsense.
+            try await runTurn(
+                label: "TURN 4 — post-compaction follow-up",
+                session: session,
+                model: model,
+                prompt: "Based on what we discussed earlier, in one short sentence: which European capital did I ask about first?"
+            )
+        }
+
+        if let live = try await checkpointRepo.liveCheckpoint(for: conversationId) {
+            print("\n==> Live compaction checkpoint")
+            print("    id:               \(live.id)")
+            print("    uptoMessageId:    \(live.uptoMessageId)")
+            print("    tokensBefore:     \(live.tokensBefore)")
+            print("    tokensAfter:      \(live.tokensAfter)")
+            let summaryPreview = live.summary
+                .replacingOccurrences(of: "\n", with: " ")
+                .prefix(240)
+            print("    summary[0..<240]: \(summaryPreview)")
+        } else {
+            print("\n==> No live compaction checkpoint persisted")
+        }
+
         print("\n==> Final persisted transcript")
         let allMessages = try await messageRepo.fetchAll(conversationId: conversationId)
+        let liveCheckpoint = try await checkpointRepo.liveCheckpoint(for: conversationId)
+        var pastCheckpoint = liveCheckpoint == nil
         for message in allMessages {
             let preview = message.content
                 .replacingOccurrences(of: "\n", with: " ")
                 .prefix(160)
             let toolID = message.toolCallId.map { " (toolCallId=\($0))" } ?? ""
-            print("    [\(message.role.rawValue)\(toolID)] \(preview)")
+            // `(covered)` = represented by the live summary, omitted from
+            // the next prompt assembly. `(kept)` = passed through verbatim.
+            let coverageTag = pastCheckpoint ? "kept" : "covered"
+            print("    [\(message.role.rawValue) \(coverageTag)\(toolID)] \(preview)")
+            if let checkpoint = liveCheckpoint, message.id == checkpoint.uptoMessageId {
+                pastCheckpoint = true
+            }
         }
         let allToolCalls = try await toolCallRepo.fetchByConversation(conversationId)
         if !allToolCalls.isEmpty {
@@ -141,7 +200,8 @@ struct ChatLiveLLMScript {
         label: String,
         session: ChatSession,
         model: LLMModel,
-        prompt: String
+        prompt: String,
+        noOpHint: String? = nil
     ) async throws {
         print("\n==> \(label)")
         print("    prompt: \(prompt)")
@@ -149,8 +209,10 @@ struct ChatLiveLLMScript {
 
         let stream = await session.send(text: prompt, model: model)
         var encounteredError: LLMError?
+        var sawAnyEvent = false
 
         for await event in stream {
+            sawAnyEvent = true
             switch event {
             case .userMessageSaved(let m):
                 write("[user saved] id=\(m.id)\n")
@@ -167,12 +229,20 @@ struct ChatLiveLLMScript {
                 write("[tool FAILED] \(record.toolName) err=\(message)\n")
             case .assistantMessageSaved(let m):
                 write("\n[assistant saved] id=\(m.id) tokens=\(m.tokenCount.map(String.init) ?? "nil")\n")
+            case .compactionStarted:
+                write("\n[compaction started]\n")
+            case .compactionCompleted(let checkpoint):
+                write("\n[compaction done] uptoMessageId=\(checkpoint.uptoMessageId) tokens=\(checkpoint.tokensBefore)→\(checkpoint.tokensAfter)\n")
             case .error(let err):
                 encounteredError = err
                 write("\n[error] \(err)\n")
             }
         }
         await session.waitUntilFinished()
+
+        if !sawAnyEvent, let hint = noOpHint {
+            write("[\(hint)]\n")
+        }
 
         if let err = encounteredError {
             throw ScriptError.streamError(err)

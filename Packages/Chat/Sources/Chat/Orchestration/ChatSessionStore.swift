@@ -11,27 +11,42 @@ import Foundation
 public actor ChatSessionStore {
     private let messageRepository: any MessageRepository
     private let toolCallRepository: any ToolCallRepository
+    private let checkpointRepository: any CompactionCheckpointRepository
     private let llmProviderRegistry: LLMProviderRegistry
     private let toolRegistry: ToolRegistry
+    private let contextAssembler: ContextAssembler
+    private let compactor: Compactor
     private let clock: any Clock
     private let idGenerator: any IDGenerator
+    private let autoCompactEnabled: Bool
+    private let autoCompactThreshold: Double
 
     private var sessions: [String: ChatSession] = [:]
 
     public init(
         messageRepository: any MessageRepository,
         toolCallRepository: any ToolCallRepository,
+        checkpointRepository: any CompactionCheckpointRepository,
         llmProviderRegistry: LLMProviderRegistry,
         toolRegistry: ToolRegistry,
+        contextAssembler: ContextAssembler = ContextAssembler(),
+        compactor: Compactor,
         clock: any Clock = SystemClock(),
-        idGenerator: any IDGenerator = UUIDGenerator()
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        autoCompactEnabled: Bool = true,
+        autoCompactThreshold: Double = 0.75
     ) {
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
+        self.checkpointRepository = checkpointRepository
         self.llmProviderRegistry = llmProviderRegistry
         self.toolRegistry = toolRegistry
+        self.contextAssembler = contextAssembler
+        self.compactor = compactor
         self.clock = clock
         self.idGenerator = idGenerator
+        self.autoCompactEnabled = autoCompactEnabled
+        self.autoCompactThreshold = autoCompactThreshold
     }
 
     /// Get-or-create the session for a conversation. Subsequent calls with
@@ -43,10 +58,15 @@ public actor ChatSessionStore {
             conversationId: conversationId,
             messageRepository: messageRepository,
             toolCallRepository: toolCallRepository,
+            checkpointRepository: checkpointRepository,
             llmProviderRegistry: llmProviderRegistry,
             toolRegistry: toolRegistry,
+            contextAssembler: contextAssembler,
+            compactor: compactor,
             clock: clock,
-            idGenerator: idGenerator
+            idGenerator: idGenerator,
+            autoCompactEnabled: autoCompactEnabled,
+            autoCompactThreshold: autoCompactThreshold
         )
         sessions[conversationId] = session
         return session

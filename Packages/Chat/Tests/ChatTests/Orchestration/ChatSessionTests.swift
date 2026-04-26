@@ -33,6 +33,7 @@ struct ChatSessionTests {
         let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let clock = OrchestrationFixtures.defaultClock()
         let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
 
@@ -46,15 +47,24 @@ struct ChatSessionTests {
         if registerProvider { await llmRegistry.register(provider) }
 
         let toolRegistry = ToolRegistry()
+        let compactor = OrchestrationFixtures.makeCompactor(
+            database: database,
+            llmRegistry: llmRegistry,
+            clock: clock,
+            idGenerator: idGen
+        )
 
         let session = ChatSession(
             conversationId: conversation.id,
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
             llmProviderRegistry: llmRegistry,
             toolRegistry: toolRegistry,
+            compactor: compactor,
             clock: clock,
-            idGenerator: idGen
+            idGenerator: idGen,
+            autoCompactEnabled: false
         )
 
         return Setup(

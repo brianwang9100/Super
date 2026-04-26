@@ -56,4 +56,21 @@ enum OrchestrationFixtures {
         }
         return conversation
     }
+
+    /// Build a `Compactor` wired to the supplied database/registry. The
+    /// estimator is the production default (`HeuristicTokenEstimator`).
+    static func makeCompactor(
+        database: ChatDatabase,
+        llmRegistry: LLMProviderRegistry,
+        clock: any Clock,
+        idGenerator: any IDGenerator
+    ) -> Compactor {
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
+        return Compactor(
+            llmProviderRegistry: llmRegistry,
+            checkpointRepository: checkpointRepo,
+            clock: clock,
+            idGenerator: idGenerator
+        )
+    }
 }

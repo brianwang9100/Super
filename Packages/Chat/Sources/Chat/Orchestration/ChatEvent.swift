@@ -49,6 +49,24 @@ public enum ChatEvent: Sendable, Equatable {
     /// this point since the canonical row is now in GRDB.
     case assistantMessageSaved(MessageRecord)
 
+    /// Compaction is starting for this conversation. The UI typically
+    /// shows a transient "Compacting…" row above the composer until the
+    /// matching `.compactionCompleted` arrives. May fire automatically
+    /// before a turn (when the prompt budget exceeds the configured
+    /// auto-compact threshold) or explicitly via `ChatSession.compact()`.
+    ///
+    /// **Termination**: a `.compactionStarted` is always followed by
+    /// either a `.compactionCompleted(...)` (success) or a terminal
+    /// `.error(...)` (failure). UI affordances should clear on **either**
+    /// — not only on `.compactionCompleted`.
+    case compactionStarted
+
+    /// Compaction finished. Carries the persisted checkpoint so the UI
+    /// can render the post-compaction banner with the new summary
+    /// inline. The next turn's prompt assembly will see this checkpoint
+    /// as the live one.
+    case compactionCompleted(CompactionCheckpointRecord)
+
     /// Terminal error for the turn. The next thing the consumer's
     /// `for await` loop sees is the stream closing — no further events
     /// will be yielded. Persisted partial state (already-saved messages
