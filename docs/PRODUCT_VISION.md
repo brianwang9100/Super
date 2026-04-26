@@ -1,43 +1,65 @@
 # Super: Product Vision & Architecture
 
-> A modular, AI-first personal productivity platform where independent applications communicate seamlessly through an intelligent orchestration layer.
+> A chat-centric, AI-first productivity app with pluggable mini-apps. Chat is the primary surface; mini-apps live inside it and talk to it both ways.
 
 ---
 
 ## 1. Executive Summary
 
-Super is a native Apple platform application (iOS + macOS) that unifies personal productivity tools — AI Chatbot, Calendar, Todo List, and Home Assistant — into a cohesive experience. Each applet operates independently but, when connected, communicates through an event-driven architecture orchestrated by the AI chatbot. The defining experience is **natural language as the universal remote**: a user speaks or types a command, and the system responds with coordinated actions and animations across applets.
+Super is a native Apple platform application (iOS + macOS) that consolidates a handful of everyday personal tools — todos, recipes, bible reading, finance, and more — into a single **chat-first** shell. The center of the app is always the conversation. Mini-apps (ToDo, Recipes, Bible, Finance, …) plug into that conversation: the AI can drive them via tool calls, and they can pipe their own records back into the conversation on demand.
+
+The defining experience is **bi-directional AI**:
+
+- **Chat → mini-app.** The user asks the AI to do something ("add four tasks to my home-reno list"), and the result renders as a rich embedded card inside the chat while the corresponding records materialize in the mini-app behind it.
+- **Mini-app → chat.** Any record the user sees in any mini-app — a task, a recipe, a bible verse, a transaction — can be long-pressed and piped into the current chat, or used to seed a brand-new one.
+
+Chat is not a tab; it is the host. Mini-apps render **behind** the chat in three coordinated overlay states — expanded (full chat), semi-expanded (floating chat panel + composer over a visible mini-app), and minimized (a floating chat bubble). See [`DESIGN.md`](./DESIGN.md) §4 for the full state model.
 
 ---
 
 ## 2. Core Principles
 
-### 2.1 Modularity First
-Each application (Chatbot, Calendar, Todos, Home) is a fully independent applet with its own data layer, business logic, and UI. Applets communicate exclusively through a well-defined event bus and shared protocol layer. This enables:
-- Independent development and testing of each applet
-- One AI agent per applet during the build phase
-- Future extensibility (add new applets without touching existing ones)
-- Each applet can ship as a standalone app if desired
+### 2.1 Chat Is the Host
+Chat is always present. Mini-apps are opened *into* Chat, not alongside it — they render behind a floating chat panel or a minimized bubble, so the conversation and the mini-app are never separated. This is not a traditional tab-bar app; it's a chat with mini-apps plugged into it.
 
-### 2.2 AI as Orchestrator, Not Gatekeeper
-The AI chatbot is the orchestration layer but never the *only* way to interact. Every action the AI can perform is also available through direct UI interaction. The AI adds convenience and cross-applet coordination — it does not gatekeep functionality.
+### 2.2 Modularity First
+Each mini-app (ToDo, Recipes, Bible, Finance, …) is a fully independent module with its own data layer, business logic, and UI. Mini-apps communicate exclusively through a well-defined event bus and the shared tool/chat-card registry. This enables:
+- Independent development and testing of each mini-app
+- One AI agent per mini-app during the build phase
+- Future extensibility (add new mini-apps without touching existing ones)
+- Each mini-app can ship as a standalone app if desired
 
-### 2.3 Animation as Feedback Language
-Cross-applet actions are made tangible through purposeful animations. When the AI adds a todo item, the user *sees* it materialize in the todo list. When the temperature changes, the Home Assistant applet visually reflects it. These animations are not decorative — they are the system's way of confirming "I understood you, and here's what I did."
+### 2.3 Bi-Directional AI (The Signature Interaction)
+The conversation and the mini-apps know about each other in both directions.
 
-### 2.4 Offline-First
+- **Chat → mini-app:** the AI calls a mini-app's tool; a rich chat card (rendered by the mini-app itself) appears inline, and the corresponding record materializes in the mini-app's view behind the chat. Chat messages can reference specific records ("…Revelation 3:20 says…"); tapping the reference deep-links straight into that record in the mini-app.
+- **Mini-app → chat:** long-press any record in any mini-app to open a focused action sheet that always includes **Add to current chat** and **Start new chat with this**. A verse, a task, a recipe, a transaction — all of them can be piped into the conversation as structured references (never copy-pasted text), so the AI can act on the real record.
+
+Bi-directional AI is the primary product differentiator. Every mini-app MUST implement both directions; a mini-app that only surfaces data isn't done.
+
+### 2.4 AI as Orchestrator, Not Gatekeeper
+The AI is the orchestration layer but never the *only* way to interact. Every action the AI can perform is also available through direct UI inside the mini-app. The AI adds convenience and cross-mini-app coordination — it does not gatekeep functionality.
+
+### 2.5 Design-First: Clean, Animated, Responsive
+Super is unapologetically design-oriented. Three rules, enforced everywhere:
+
+- **Hide until expanded.** Assistant thinking, tool calls, record details, focused-view actions — all collapsed by default, one tap to reveal. No cluttered dashboards.
+- **Animate the causality.** Every AI action is accompanied by a materialize/transfer/pulse animation that ties the chat card to the record in the mini-app, so the user *sees* cause and effect.
+- **Responsive over dense.** Wide whitespace, generous touch targets, pastel-green palette, Instrument Serif display + Geist body. Information appears when asked for; the UI is quiet otherwise.
+
+### 2.6 Offline-First
 
 The app must work without a network — on a plane, in a subway, anywhere. This is a non-negotiable constraint, not a nice-to-have.
 
 - **Data is on-device first.** GRDB/SQLite is the local source of truth. Cloud sync is additive — replication and backup, never a runtime dependency.
-- **LLMs run locally when possible.** On-device models (MLX, Apple Foundation Models) are the preferred configuration. Cloud LLM providers (Claude, OpenAI-compatible) are supported but optional. Chat must function with a local model alone.
-- **Tools default to local execution.** Each AI tool runs on-device unless it genuinely requires network — for example, a self-hosted smart home server that exposes its own API. Local vs. remote is a per-tool decision, not a per-applet one; a single applet may mix both (e.g. local cache read + remote refresh).
+- **LLMs run locally when possible.** On-device models (MLX, Apple Foundation Models) are the preferred configuration. Cloud LLM providers (OpenAI-compatible endpoints including Claude) are supported but optional. Chat must function with a local model alone.
+- **Tools default to local execution.** Each AI tool runs on-device unless it genuinely requires network (e.g., a Finance Plaid refresh, a remote MCP server). Local vs. remote is a per-tool decision, not a per-mini-app one; a single mini-app may mix both.
 - **Graceful degradation, not failure.** When a feature genuinely needs network and network is unavailable, the UI says so. Nothing else breaks.
 
-The only features that inherently require connectivity are: remote tool calls (by definition), multi-device sync, and cloud LLM providers when selected as the active model. Everything else — including AI chat with a local model — works offline.
+The only features that inherently require connectivity are: remote tool calls (by definition), multi-device sync, and cloud LLM providers when selected. Everything else — including AI chat with a local model — works offline.
 
-### 2.5 Privacy by Default
-Personal productivity data is sensitive. All data at rest is encrypted. Home automation credentials never leave the device. LLM interactions are stateless on the server side — no conversation history is stored remotely unless the user opts in.
+### 2.7 Privacy by Default
+Personal productivity data is sensitive. All data at rest is encrypted. Third-party mini-app credentials (Plaid, etc.) never leave the device. LLM interactions are stateless on the server side — no conversation history is stored remotely unless the user opts in.
 
 ---
 
@@ -57,109 +79,153 @@ Personal productivity data is sensitive. All data at rest is encrypted. Home aut
 
 ## 4. Applet Breakdown
 
-### 4.1 AI Chatbot ("Chat")
+Chat is the host (§4.1). The launch mini-app set is ToDo, Recipes, Bible, and Finance (§4.2–§4.5). Calendar, Home, and others are in [§11 Planned Future Applets](#11-open-questions--future-considerations).
 
-**Purpose:** Natural language interface and cross-applet orchestrator.
+Every mini-app MUST implement the bi-directional contract:
+
+1. **Tool calls** — expose CRUD and query operations to Chat via `ToolRegistration`.
+2. **Chat card renderers** — render rich inline cards for tool results (single-record, batch, confirmation) using the mini-app's own SwiftUI.
+3. **Record actions** — on long-press, expose its domain actions plus the shell-provided **Add to current chat** and **Start new chat with this**.
+4. **Deep-link targets** — accept `super://<appletId>/<recordId>` routing so chat references become tappable.
+
+### 4.1 Chat — The Host Surface
+
+**Purpose:** Natural language interface, orchestrator, and the host surface for every other mini-app.
 
 **Core Capabilities:**
-- Conversational AI powered by Claude API (tool use / function calling)
+- Conversational AI via any OpenAI-compatible endpoint (BYOK)
 - Streaming responses with real-time token rendering
-- Context-aware: understands which applets are active and their current state
-- Multi-turn conversations with local history
-- Voice input (Speech-to-text) and voice output (Text-to-speech)
+- Thinking / tool-call / code blocks, all collapsible by verbosity
+- Multiple concurrent chats; per-chat model selection
+- Context-aware: the AI sees which mini-apps are installed and what tools they expose
+- Voice input (Speech-to-text) — ships as a visual affordance in MVP
+- Three overlay states: expanded / floating-over-mini-app / minimized bubble (see [`DESIGN.md`](./DESIGN.md) §4)
+
+**Key UX Details:**
+- Assistant messages are bubble-less (bare text); user messages are pastel-green bubbles
+- Rich embedded cards rendered by mini-apps when their tools are invoked
+- Verbosity pill: Simple (blocks collapsed) / Thinking (thinking expanded) / Verbose (everything expanded)
+- Full Chat UI spec in [`Chat/DESIGN.md`](./Chat/DESIGN.md)
 
 **Tool/Function Calling Architecture:**
-Each applet registers "tools" with the chatbot. When the user makes a request, the AI determines which tools to call. Example tools:
+Every installed mini-app auto-registers its tools with Chat at startup. Example tools across the launch set:
+
 ```
-todo.create(title, description?, priority?, due_date?)
-todo.update(id, fields...)
+todo.create(title, description?, priority?, dueDate?, listId?)
+todo.createMany([{title, priority, …}])
+todo.update(id, fields…)
 todo.list(filter?)
-calendar.create_event(title, start, end, location?)
-calendar.list_events(date_range)
-home.set_temperature(zone, temperature)
-home.toggle_device(device_id, state)
-home.get_status(device_id?)
+
+recipe.save(title, ingredients, steps, source?)
+recipe.search(query)
+recipe.scale(id, factor)
+
+bible.lookup(reference)           // e.g. "Rev 3:20" → passage
+bible.search(query, translation?)
+bible.highlight(reference, color)
+
+finance.listTransactions(range, filter?)
+finance.tagTransactions([ids], tag)
+finance.spendByCategory(range)
 ```
 
-**AI Model Choice:** Claude (via Anthropic API) — selected for strong tool use capabilities, long context window, and reliable instruction following. The architecture should be model-agnostic through an adapter layer, allowing future swaps.
-
-**Key UX Details:**
-- Chat interface with rich message bubbles (text, cards, action confirmations)
-- "Action cards" appear inline when the AI performs a cross-applet action
-- Typing indicator, streaming text, and tool-call progress animations
-- Conversation history stored locally (GRDB), optionally synced
+**AI Model Choice:** OpenAI-compatible endpoints (Opus 4.7, GPT 5.5, Qwen3.6, Gemma 4 in MVP; users add more). The architecture is provider-agnostic through an adapter layer so local and remote models are interchangeable per chat.
 
 ---
 
-### 4.2 Calendar ("Calendar")
+### 4.2 ToDo
 
-**Purpose:** Personal calendar with smart scheduling and AI integration.
-
-**Core Capabilities:**
-- Day / Week / Month views with smooth animated transitions
-- Event CRUD with recurrence, reminders, and location support
-- Integration with Apple Calendar (EventKit) for system calendar sync
-- AI-powered features: natural language event creation, schedule analysis, conflict detection
-- Time blocking and focus mode integration
-
-**Key UX Details:**
-- When AI creates an event, it animates into the calendar view (the event "drops in" to its time slot)
-- Drag-and-drop rescheduling with haptic feedback
-- Color-coded categories synced with todo priorities
-
-**Data Model:**
-- Local: GRDB structs (Event, Recurrence, Reminder)
-- Sync: EventKit bridge for Apple Calendar interop + optional custom backend sync for Super-specific metadata
-
----
-
-### 4.3 Todo List ("ToDo")
-
-**Purpose:** Linear/Jira-like task management for personal use.
+**Purpose:** Linear/Jira-style task management for personal use, with AI-driven creation and triage.
 
 **Core Capabilities:**
-- Projects, tasks, and subtasks with hierarchy
+- Projects (lists), tasks, and subtasks with hierarchy
 - Status workflow: Backlog → Todo → In Progress → Done → Archived
 - Priority levels (Urgent, High, Medium, Low) with visual indicators
-- Labels / tags for categorization
-- Kanban board view and list view
-- Due dates with calendar integration (shows in Calendar)
-- AI-powered: natural language task creation, priority suggestion, task breakdown
+- Labels / tags, due dates, sort and filter
+- List view and Kanban board view
+- AI-powered: natural-language creation, batch creation, breakdown, priority suggestion
+
+**Chat Cards:** single-task, batch (N-task mini-list), reschedule confirmation, completion summary.
+
+**Long-press Actions:** Edit, Change priority, Reschedule, Delete, **Add to current chat**, **Start new chat with this**.
 
 **Key UX Details:**
-- When AI creates a task, it animates into the appropriate column/list with a "materialization" effect
-- Drag-and-drop between status columns (Kanban) with spring animations
-- Swipe actions for quick status changes
-- Badge count on the applet tab for overdue/urgent items
+- AI-created tasks materialize into the list with a spring when ToDo is visible behind the chat
+- Swipe to complete; drag between Kanban columns
+- Badge count on the sidebar row for overdue/urgent tasks
 
-**Data Model:**
-- Local: GRDB structs (Project, Task, Subtask, Label)
-- Sync: Custom backend sync
+**Data Model:** GRDB structs — `Project`, `Task`, `Subtask`, `Label`. Custom backend sync.
 
 ---
 
-### 4.4 Home Assistant ("Home")
+### 4.3 Recipes
 
-**Purpose:** Smart home control and monitoring with AI integration.
+**Purpose:** Personal recipe collection with AI-assisted capture, substitution, scaling, and cooking.
 
 **Core Capabilities:**
-- HomeKit integration (primary) for Apple ecosystem devices
-- Matter protocol support for broader device compatibility
-- Device control: lights, thermostats, locks, cameras, sensors
-- Scene management (e.g., "Movie Night", "Good Morning")
-- Automation rules with scheduling
-- AI-powered: natural language device control, scene creation, automation suggestions
+- Save recipes from plain text, URL, or dictation
+- Ingredient list with unit parsing; step-by-step instructions
+- Scaling (1× → 2×, adjusts ingredients + cookware recommendations via AI)
+- Timers launched inline (each timer is a record; triggers a system notification when done)
+- Collections / tags (Weeknight, Holiday, Vegetarian, …)
+- AI-powered: substitutions ("I'm out of crushed tomatoes"), ingredient-based search ("what can I make with snow pea leaves?"), scaling, cook-along narration
+
+**Chat Cards:** recipe summary (title + hero image + quick-read ingredient list), timer card, substitution suggestion.
+
+**Long-press Actions:** Edit, Scale, Start timer, Export, Delete, **Add to current chat**, **Start new chat with this**.
 
 **Key UX Details:**
-- Room-based layout with device tiles
-- When AI changes a device state, the tile animates (thermostat dial rotates, light icon dims/brightens, etc.)
-- Real-time status updates via HomeKit delegate callbacks
-- Energy usage dashboard (if supported by devices)
+- Cook mode: step-by-step with large text and voice advance; the chat bubble stays available for hands-free Q&A
+- AI-saved recipes animate into the collection grid
 
-**Integration Layer:**
-- HomeKit (HMHomeManager) as the primary integration
-- Future: Home Assistant (open source) REST API integration for non-HomeKit devices
-- Future: MQTT bridge for custom IoT devices
+**Data Model:** GRDB structs — `Recipe`, `Ingredient`, `Step`, `Timer`, `Collection`.
+
+---
+
+### 4.4 Bible
+
+**Purpose:** Reading, searching, highlighting, and conversing with scripture.
+
+**Core Capabilities:**
+- Multiple translations (user-selectable, BYO if not bundled)
+- Reading view with chapter navigation, daily reading plans
+- Highlights + notes per verse range, synced locally
+- Search across translations
+- Deep-linkable references (e.g., `super://bible/rev.3.20`)
+- AI-powered: explain a passage, cross-references, summarize a chapter, "where does it say X?"
+
+**Chat Cards:** passage preview (reference + inline verses), cross-reference list, highlight confirmation.
+
+**Long-press Actions (on a verse or selection):** Highlight (color picker), Add note, Copy, Share, **Add to current chat**, **Start new chat with this**.
+
+**Key UX Details:**
+- Chat messages that contain a canonical reference ("Revelation 3:20") render the reference as a tappable inline token; tapping deep-links into the Bible mini-app (state A → B) and scrolls to the verse
+- Highlighting in the Bible view fires an event so Chat can reference "the verse you highlighted earlier"
+
+**Data Model:** GRDB structs — `Translation`, `Book`, `Chapter`, `Verse`, `Highlight`, `Note`, `ReadingPlan`.
+
+---
+
+### 4.5 Finance
+
+**Purpose:** Personal finance aggregator — bank, card, and investment accounts in one view, AI-queryable.
+
+**Core Capabilities:**
+- Plaid integration for real-time balances and transactions (BYOK — user's Plaid key)
+- Transaction list with search, sort, filter, custom tags
+- Spending breakdowns by category / merchant / time period
+- Income tracking, investment performance charts
+- AI-powered: "how much did I spend on groceries this month?", "tag all Uber transactions as commute," "find unusual charges this week"
+
+**Chat Cards:** transaction summary, spending-by-category chart, tag-confirmation card, account balance card.
+
+**Long-press Actions (on a transaction):** Retag, Split, Hide, Mark as reviewed, **Add to current chat**, **Start new chat with this**.
+
+**Key UX Details:**
+- Tables with live sort, persisted filters, sparkline totals
+- Sensitive figures respect a "private mode" toggle (numbers blurred until tapped)
+
+**Data Model:** GRDB structs — `Account`, `Transaction`, `Category`, `Tag`, `Rule`. Server-side Plaid webhook handler for real-time updates. See `SECURITY.md` §6.5 for key handling.
 
 ---
 
@@ -257,45 +323,57 @@ The event bus is the nervous system of Super. It enables applets to communicate 
 ```swift
 // Core event types
 enum SuperEvent {
-    // Todo events
-    case todoCreated(Todo)
-    case todoUpdated(Todo, changes: [String: Any])
-    case todoDeleted(id: UUID)
+    // Per-applet record lifecycle (generic payload — shell doesn't know domain types)
+    case recordCreated(appletId: String, recordId: String, kind: String, summary: String)
+    case recordUpdated(appletId: String, recordId: String, kind: String, changes: [String: Any])
+    case recordDeleted(appletId: String, recordId: String, kind: String)
 
-    // Calendar events
-    case calendarEventCreated(CalendarEvent)
-    case calendarEventUpdated(CalendarEvent)
+    // Mini-app → Chat (user piping a record into a chat)
+    case recordAddedToChat(ref: RecordRef, chatId: String)
+    case recordSeededNewChat(ref: RecordRef, newChatId: String)
 
-    // Home events
-    case deviceStateChanged(deviceId: String, state: DeviceState)
-    case sceneActivated(sceneId: String)
+    // Chat → Mini-app (deep link from a chat card or inline reference)
+    case deepLinkRequested(ref: RecordRef, source: DeepLinkSource)
 
-    // AI events
-    case aiActionStarted(action: AIAction)
-    case aiActionCompleted(action: AIAction, result: ActionResult)
+    // AI lifecycle
+    case aiActionStarted(AIAction)
+    case aiActionCompleted(AIAction, result: ActionResult)
 
     // Animation directives
     case animationRequested(AnimationDirective)
 }
 
-// Bus protocol — each applet subscribes to events it cares about
+// A record is always referred to by this lightweight tuple on the bus,
+// never by its full domain type — keeps the bus decoupled from mini-apps.
+struct RecordRef: Codable, Sendable {
+    let appletId: String          // "todo", "bible", "recipe", "finance"
+    let kind: String              // "task", "verse", "recipe", "transaction"
+    let id: String                // mini-app-local record id
+    let displayTitle: String
+    let previewText: String?
+}
+
+// Bus protocol — each mini-app subscribes to events it cares about
 protocol SuperEventBus {
     func publish(_ event: SuperEvent)
     func subscribe(to filter: EventFilter) -> AsyncStream<SuperEvent>
 }
 ```
 
-**Flow Example — "Add a todo via AI":**
-1. User types: "Add a task to buy groceries, high priority, due tomorrow"
-2. Chat sends message to Claude API with todo tools available
-3. Claude responds with `tool_use: todo.create(title: "Buy groceries", priority: .high, due: "2026-03-14")`
-4. Chat executes the tool call → creates the Todo via ToDo's service layer
-5. ToDo's service publishes `SuperEvent.todoCreated(todo)`
-6. Chat publishes `SuperEvent.animationRequested(.todoMaterialize(todo, from: .chatBubble))`
-7. The animation engine picks up the directive and orchestrates:
-   - In the chat: an "action card" appears confirming the creation
-   - If the todo list is visible (split view on iPad/Mac): the new item animates in with a highlight effect
-   - The todo tab badge increments with a bounce animation
+**Flow Example A — Chat creates a batch of tasks (Chat → mini-app):**
+1. User (in State A — expanded chat): "Add four tasks for my home reno: paint bedroom, fix kitchen faucet, replace bathroom mirror, install new light fixtures."
+2. Chat streams the response; the AI emits `todo.createMany([…])` as a tool call.
+3. Chat invokes ToDo's tool handler → ToDo inserts four rows, publishes four `recordCreated` events.
+4. ToDo's registered chat-card renderer for `batch-summary` returns a SwiftUI card containing a mini-list of the four tasks; Chat inlines the card in the assistant message.
+5. If ToDo is visible behind the chat (State B), the four rows materialize into the list with a stagger.
+6. Tapping "View in ToDo" on the card fires `deepLinkRequested(ref: …, source: .chatCard)`; the shell transitions A → B, pushes ToDo behind the chat, scrolls/selects the first task.
+
+**Flow Example B — User pipes a Bible verse into chat (mini-app → Chat):**
+1. User (in State B — Bible visible, floating chat) long-presses Revelation 3:20.
+2. Focused view shows Bible-specific actions plus **Add to current chat** / **Start new chat with this**.
+3. User taps Add to current chat → Bible publishes `recordAddedToChat(ref: {appletId:"bible", kind:"verse", id:"rev.3.20", …})`.
+4. Chat inserts a user message whose payload is the ref (not the verse text); the UI renders it as a compact verse chip.
+5. The AI receives the ref on the next turn and can resolve the full passage through `bible.lookup("rev.3.20")` when needed — no copy-paste of text into the context window.
 
 ---
 
@@ -324,29 +402,37 @@ enum AnimationType {
 }
 ```
 
-### 6.2 Cross-Applet Animation Strategy
+### 6.2 Animation Strategy Across Chat Overlay States
 
-**Same-screen animations (split view / iPad / Mac):**
-- Use SwiftUI `matchedGeometryEffect` with a shared namespace across applet views
-- Items can visually "fly" from one applet's view to another
-- Requires a shared `@Namespace` at the Super container level
+Animations work differently depending on which chat overlay state is active (A/B/C — see [`DESIGN.md`](./DESIGN.md) §4).
 
-**Tab-based animations (iPhone):**
-- Since applets are on different tabs, cross-applet animations use:
-  - An overlay layer at the app container level for "flying" items
-  - Tab bar badge animations (bounce, glow) to indicate changes in other applets
-  - When switching to the target tab, the new item highlights briefly
+**State B — mini-app visible behind floating chat (the signature case):**
+- Use SwiftUI `matchedGeometryEffect` in a namespace shared by the chat-card layer and the mini-app view
+- The chat card for a newly-created record can visually "emit" the record into the mini-app's list with a stagger
+- The mini-app's own row-insert animation takes over once the record arrives
+
+**State A — expanded chat (no mini-app visible):**
+- No cross-view animation is possible; the chat card simply fades in
+- If the user then deep-links into the mini-app, the shell plays a deferred "highlight-on-arrival" on the referenced record
+
+**State C — chat minimized to bubble:**
+- Chat-card events can't animate (the card is off-screen); the bubble pulses accent once to signal a new message
+- The mini-app's own record-insert animation still runs as normal
 
 ### 6.3 Key Animation Moments
 
 | Trigger | Animation | Notes |
 |---------|-----------|-------|
-| AI creates todo | Card materializes in chat → flies to todo list (if visible) or tab badge bounces | Signature interaction |
-| AI creates calendar event | Event card in chat → drops into calendar time slot | Must handle off-screen time slots gracefully |
-| AI changes home device | Device tile pulses / transforms (dial rotates, light changes color) | Real-time feel |
-| Todo status change | Card slides between Kanban columns with spring physics | Direct manipulation feel |
-| Todo completed | Satisfying checkmark animation + card shrinks away | Reward moment |
-| Scene activated | Room tiles ripple-update as devices change state | Cascade effect |
+| AI creates a todo / batch of todos | Card materializes in chat → (State B) records stagger into the list with matched geometry; (State A) card fades in, highlight-on-arrival when deep-linked | Signature interaction |
+| AI saves a recipe | Recipe card fades into chat → collection grid tile pulses in | State B: visible; State C: bubble pulse only |
+| AI looks up a Bible verse | Passage card in chat → tappable reference token; tapping transitions A/C → B and scrolls to the verse with a highlight | Deep-link choreography |
+| AI tags finance transactions | Tag card in chat with affected count → in State B, matching rows flash their new tag | Batch confirmation |
+| User long-presses a record | Focused action sheet scales in with blurred backdrop | Shared across all mini-apps |
+| User adds record to chat | Record chip slides up from the focused sheet into the chat's message list | Mini-app → Chat direction |
+| State A ↔ B transition | Mini-app crossfades; chat panel springs between full-screen and floating panel | Respect Reduce Motion |
+| State B ↔ C transition | Panel + composer slide down; bubble scales up from bottom-right corner | 300ms spring |
+| Todo completed | Checkmark spring + row shrinks away | Reward moment |
+| Mini-app install | Sidebar row spring-scales up from 0 | System default spring |
 
 ---
 
@@ -356,13 +442,14 @@ enum AnimationType {
 
 **GRDB** (SQLite-based, struct-based persistence) is the primary local store.
 
-Each applet owns its own GRDB `DatabaseQueue` with its own `.sqlite` database file:
-- **Chat:** `Conversation`, `Message`, `ToolCall`
-- **Calendar:** `CalendarEvent`, `Recurrence`, `Reminder` (+ EventKit bridge)
+Each mini-app owns its own GRDB `DatabaseQueue` with its own `.sqlite` database file:
+- **Chat:** `Conversation`, `Message`, `MessagePart`, `ToolCall`, `RecordRef`
 - **ToDo:** `Project`, `Task`, `Subtask`, `Label`
-- **Home:** `Room`, `Device`, `Scene`, `Automation` (+ HomeKit bridge)
+- **Recipes:** `Recipe`, `Ingredient`, `Step`, `Timer`, `Collection`
+- **Bible:** `Translation`, `Book`, `Chapter`, `Verse`, `Highlight`, `Note`, `ReadingPlan`
+- **Finance:** `Account`, `Transaction`, `Category`, `Tag`, `Rule`
 
-Separate database files ensure applet independence and prevent schema conflicts.
+Separate database files ensure mini-app independence and prevent schema conflicts.
 
 ### 7.2 Sync Strategy
 
@@ -410,10 +497,12 @@ Separate database files ensure applet independence and prevent schema conflicts.
 Super/
 ├── docs/                           # Product & architecture docs
 │   ├── PRODUCT_VISION.md          # This document
-│   ├── CHAT_SPEC.md           # AI Chatbot detailed spec
-│   ├── CALENDAR_SPEC.md             # Calendar detailed spec
-│   ├── TODO_SPEC.md              # Todo list detailed spec
-│   ├── HOME_SPEC.md            # Home assistant detailed spec
+│   ├── DESIGN.md                  # Shell — chat overlay states, mini-app plug-in
+│   ├── Chat/                      # Chat host: DESIGN.md + ARCHITECTURE.md
+│   ├── Todo/                      # (planned) Todo mini-app docs
+│   ├── Recipes/                   # (planned) Recipes mini-app docs
+│   ├── Bible/                     # (planned) Bible mini-app docs
+│   ├── Finance/                   # (planned) Finance mini-app docs
 │   ├── MOBILE_ARCHITECTURE.md     # Mobile/client-side architecture
 │   ├── SERVER_ARCHITECTURE.md     # Server/backend architecture
 │   ├── CLIENT_SERVER.md           # Client-server communication
@@ -427,16 +516,17 @@ Super/
 │   │   └── AnimationEngine/        # Cross-applet animation system
 │   │
 │   ├── Modules/                    # Feature modules (Swift Packages)
-│   │   ├── Chat/               # AI Chatbot module
+│   │   ├── Chat/                   # Chat — the host surface
 │   │   │   ├── Sources/
-│   │   │   │   ├── UI/             # SwiftUI views
+│   │   │   │   ├── UI/             # SwiftUI views (3 overlay states, composer, sidebar)
 │   │   │   │   ├── Domain/         # Business logic, use cases
 │   │   │   │   ├── Data/           # GRDB models, repositories
-│   │   │   │   └── Service/        # Claude API client, tool registry
+│   │   │   │   └── Service/        # LLM client, tool registry, chat-card registry
 │   │   │   └── Tests/
-│   │   ├── Calendar/                 # Calendar module
-│   │   ├── ToDo/                  # Todo module
-│   │   └── Home/                # Home Assistant module
+│   │   ├── ToDo/                   # Todo mini-app
+│   │   ├── Recipes/                # Recipes mini-app
+│   │   ├── Bible/                  # Bible mini-app
+│   │   └── Finance/                # Finance mini-app
 │   │
 │   ├── Core/                       # Shared Swift Package
 │   │   ├── EventBus/               # SuperEvent bus
@@ -451,9 +541,10 @@ Super/
 │   │   ├── gateway/
 │   │   ├── modules/
 │   │   │   ├── ai/
-│   │   │   ├── calendar/
 │   │   │   ├── todos/
-│   │   │   └── home/
+│   │   │   ├── recipes/
+│   │   │   ├── bible/
+│   │   │   └── finance/
 │   │   └── shared/
 │   ├── package.json
 │   └── tsconfig.json
@@ -467,50 +558,66 @@ Super/
 
 ## 10. Development Phases
 
-### Phase 1: Foundation (Weeks 1-3)
-- [ ] Set up monorepo with Xcode project and Swift Package structure
-- [ ] Implement Core package: EventBus, Networking, Storage, DesignSystem
-- [ ] Build app shell with tab navigation (iOS) and sidebar navigation (macOS)
-- [ ] Set up backend project with auth and API gateway
-- [ ] Implement username/password authentication flow (see [AUTH.md](./AUTH.md))
+### Phase 1: Foundation
+- [ ] Monorepo + Xcode project + Swift Package structure
+- [ ] Core package: EventBus, Networking, Storage, DesignSystem (pastel-green theme tokens, Instrument Serif / Geist / JetBrains Mono)
+- [ ] App shell with the sidebar and the three chat overlay states (placeholder mini-app behind the chat)
+- [ ] Backend project with auth and API gateway
+- [ ] Username/password authentication (see [AUTH.md](./AUTH.md))
 
-### Phase 2: Chat — AI Chatbot (Weeks 3-5)
-- [ ] Chat UI with message bubbles, streaming text rendering
-- [ ] Claude API integration via backend proxy
-- [ ] Tool/function calling framework (tool registry, execution, response rendering)
-- [ ] Conversation persistence (GRDB)
-- [ ] Action card UI components for tool results
-- [ ] Voice input/output
+### Phase 2: Chat — Expanded State (the MVP surface)
+- [ ] Expanded chat UI matching [`Chat/DESIGN.md`](./Chat/DESIGN.md): composer pill, model + verbosity pills, context meter, send/mic
+- [ ] OpenAI-compatible streaming client (BYOK, per-chat model selection)
+- [ ] Tool-call framework: `ToolRegistration`, registry, execution, streaming tool_call delta accumulation
+- [ ] Chat-card registry: mini-apps register renderers by `{appletId, cardKind}`
+- [ ] Conversation + message-parts persistence (GRDB), concurrent chats
+- [ ] Sidebar: wordmark, applets list, CHATS with running spinners, profile + settings gear
+- [ ] Settings: Models, Theme, System Prompt, Default Verbosity, Appearance, Data, About
+- [ ] Deep-link router: `super://<applet>/<recordId>`
 
-### Phase 3: ToDo — Todo List (Weeks 5-7)
+### Phase 3: Chat — Overlay States B & C
+- [ ] Floating chat panel + floating composer over a mini-app (State B)
+- [ ] Minimized bubble (State C) with drag-to-reposition, unread pulse, typing-fade
+- [ ] A↔B↔C spring transitions with matched geometry; Reduce Motion fallback
+- [ ] iPad and macOS adaptations (persistent sidebar, right-side panel, window-bound bubble)
+
+### Phase 4: ToDo (First Mini-App — exercises the full bi-directional contract)
 - [ ] Data model: Projects, Tasks, Subtasks, Labels
-- [ ] List view and Kanban board view
-- [ ] Task CRUD with animations
-- [ ] Register todo tools with Chat
-- [ ] Cross-applet animation: AI creates todo → visual feedback
+- [ ] List + Kanban views
+- [ ] Register todo tools with Chat (create/createMany/update/list/complete)
+- [ ] Chat-card renderers: single-task, batch summary, completion summary
+- [ ] Long-press focused view with **Add to current chat** / **Start new chat with this**
+- [ ] Chat-card → materialize animation when ToDo is visible behind the chat (State B)
 - [ ] Custom sync infrastructure
 
-### Phase 4: Calendar — Calendar (Weeks 7-9)
-- [ ] Day / Week / Month views with animated transitions
-- [ ] Event CRUD
-- [ ] EventKit integration (system calendar sync)
-- [ ] Register calendar tools with Chat
-- [ ] Cross-applet: todo due dates appear on calendar
-- [ ] Cross-applet animation: AI creates event → visual feedback
+### Phase 5: Recipes
+- [ ] Data model: Recipe, Ingredient, Step, Timer, Collection
+- [ ] Capture from text/URL/dictation, scaling, timers
+- [ ] Tools: save, search, scale, startTimer, substitute
+- [ ] Chat cards: recipe summary, timer, substitution suggestion
+- [ ] Long-press focused view with shell-provided chat actions
+- [ ] Cook mode (hands-free, chat bubble stays available)
 
-### Phase 5: Home — Home Assistant (Weeks 9-11)
-- [ ] HomeKit integration (HMHomeManager)
-- [ ] Room-based device grid UI
-- [ ] Device control (lights, thermostat, locks)
-- [ ] Scene management
-- [ ] Register home tools with Chat
-- [ ] Cross-applet animation: AI controls device → visual feedback
+### Phase 6: Bible
+- [ ] Data model: Translation, Book, Chapter, Verse, Highlight, Note, ReadingPlan
+- [ ] Reading view, search, highlights, notes, reading plans
+- [ ] Tools: lookup, search, highlight, crossReferences
+- [ ] Chat cards: passage preview, cross-reference list
+- [ ] Inline canonical-reference tokens in chat messages (tappable → deep link)
+- [ ] Long-press verse selection → shell chat actions
 
-### Phase 6: Polish & Integration (Weeks 11-13)
-- [ ] Cross-applet animation refinement
-- [ ] iPad and macOS layout optimization (split views, sidebars)
-- [ ] Performance profiling and optimization
-- [ ] Accessibility audit (VoiceOver, Dynamic Type)
+### Phase 7: Finance
+- [ ] Data model: Account, Transaction, Category, Tag, Rule
+- [ ] Plaid integration (BYOK), webhook-driven updates via server
+- [ ] Transaction list with filters, tags, breakdowns
+- [ ] Tools: listTransactions, tag, spendByCategory, accountBalance
+- [ ] Chat cards: transaction summary, spending chart, tag-confirmation
+- [ ] Private mode (blurred numbers)
+
+### Phase 8: Polish & Integration
+- [ ] Cross-mini-app animation refinement (matched geometry across chat cards ↔ mini-apps)
+- [ ] Performance profiling; 60fps on all three overlay states
+- [ ] Accessibility audit (VoiceOver, Dynamic Type, Reduce Motion across states)
 - [ ] Error handling and edge cases
 - [ ] Beta testing
 
@@ -520,28 +627,27 @@ Super/
 
 ### Open Questions
 1. **Monetization model?** Free with limits? Subscription for AI usage? One-time purchase?
-2. **Collaboration features?** Shared todo lists, shared calendars — adds significant complexity (real-time sync, conflict resolution, permissions)
-3. **Widget support?** iOS widgets for quick glance at todos, upcoming events, home status
+2. **Collaboration features?** Shared todo lists, shared bible study notes — adds significant complexity (real-time sync, conflict resolution, permissions)
+3. **Widget support?** iOS widgets for quick glance at todos and finance summaries
 4. **Siri integration?** Register Siri Shortcuts / App Intents for system-level voice control
 5. **Apple Intelligence integration?** Leverage on-device Apple Intelligence features as they mature
 
-### Planned Future Applets (Influence Architecture Now)
+### Planned Future Mini-Apps (Influence Architecture Now)
 
-These applets are not in scope for v1 but are *expected* additions. The architecture must accommodate them without rearchitecting. They should be considered when designing the applet protocol, event bus, and navigation shell.
+These mini-apps are not in scope for v1 but are *expected* additions. The architecture must accommodate them — same bi-directional contract, same plug-in protocol — without rearchitecting.
 
-- **Notifications (Notifications Hub):** A centralized notification inbox that aggregates actionable notifications from all applets. Each applet pushes notifications to Notifications via the event bus. Notifications categorizes, prioritizes, and surfaces items that need user attention. This applet influences how the shell routes notifications (system push vs. in-app) and how applets declare notification types.
-- **Open Claw Integration in Chat:** The AI chatbot should support connecting to Open Claw as an LLM provider (alongside Claude). This means Chat's LLM adapter layer must be provider-agnostic from day one — swappable model backends with a unified tool-calling interface. Open Claw may have different tool-calling conventions that the adapter needs to normalize.
-- **Money (Personal Finance):** An all-in-one finance applet powered by Plaid integrations. Aggregates bank accounts, credit cards, and investment accounts into a unified view. Core capabilities: real-time balances, transaction history with search/sort/filter, custom transaction tagging and categorization, income tracking, investment performance charting, spending breakdowns by category/merchant/time period. Integrates with Chat so users can ask "how much did I spend on groceries this month?" or "tag all Uber transactions as commute." Super is intended to be open source — developers bring their own Plaid API key (BYOK model). This applet influences architecture in several ways: (1) the backend needs a Plaid integration module with webhook support for real-time transaction updates, (2) the sync mechanism needs to handle high-volume transaction data efficiently, (3) Money data could feed into Calendar (bill due dates) and ToDo (financial to-dos like "pay rent"). Security details deferred until implementation — see SECURITY.md Section 6.5.
-
-### Additional Future Applet Ideas
-- **Fitness:** Health & fitness tracking (HealthKit integration)
-- **Notes:** Note-taking with AI summarization
-- **Habit:** Habit tracker with streaks and analytics
+- **Notifications Hub:** A centralized notification inbox aggregating actionable notifications from every mini-app. Receives `recordCreated` / `recordUpdated` events via the bus, categorizes them, and surfaces items needing attention. Shapes how the shell routes system push vs. in-app notifications.
+- **Calendar:** Day/Week/Month views, EventKit bridge, natural-language event creation, conflict detection. Feeds due dates from ToDo and bill dates from Finance into a unified timeline.
+- **Home:** HomeKit / Matter device control and scenes. Destructive actions (unlock doors, disable security) require biometric confirmation even when initiated by AI. Needs an audit log.
+- **Fitness:** HealthKit-backed tracking with AI summarization.
+- **Notes:** Note-taking with AI summarization and long-press-to-chat.
+- **Habit:** Habit tracker with streaks and analytics.
 
 ### Technical Debt to Watch
-- Animation complexity budget: don't let cross-applet animations become so complex they cause frame drops
-- GRDB migration management: maintain disciplined schema versioning as applet models evolve
-- Claude API costs: implement smart context management to minimize token usage
+- Animation complexity across the three chat overlay states — don't let matched-geometry choreography drop frames
+- GRDB migration management as each mini-app's schema evolves independently
+- LLM token costs — keep system prompt + tool schemas compact, trim conversation history aggressively
+- Chat-card registry blow-up — if every mini-app ships 10 card kinds, the registry and renderer resolution need to stay O(1)
 
 ---
 
@@ -564,11 +670,13 @@ This product vision will be decomposed into the following detailed specification
 | Document | Scope | Status |
 |----------|-------|--------|
 | `PRODUCT_VISION.md` | Overall vision, architecture, decisions (this doc) | Draft |
-| `DESIGN.md` | App shell, applet system, navigation, adding/removing applets | Draft |
-| `CHAT_SPEC.md` | AI Chatbot detailed spec | Planned |
-| `CALENDAR_SPEC.md` | Calendar detailed spec | Planned |
-| `TODO_SPEC.md` | Todo list detailed spec | Planned |
-| `HOME_SPEC.md` | Home assistant detailed spec | Planned |
+| `DESIGN.md` | Shell — chat overlay states, mini-app plug-in, bi-directional AI | Draft |
+| `Chat/DESIGN.md` | Chat UI spec — expanded state (composer, messages, sidebar, settings) | Draft |
+| `Chat/ARCHITECTURE.md` | Chat architecture — LLM client, tool registry, chat-card registry, persistence | Draft |
+| `Todo/DESIGN.md` | Todo mini-app detailed spec | Planned |
+| `Recipes/DESIGN.md` | Recipes mini-app detailed spec | Planned |
+| `Bible/DESIGN.md` | Bible mini-app detailed spec | Planned |
+| `Finance/DESIGN.md` | Finance mini-app detailed spec | Planned |
 | `AUTH.md` | Authentication — username/password, JWT tokens, admin account setup | Draft |
 | `MOBILE_ARCHITECTURE.md` | Mobile architecture — shell, applets, event bus, tool system, data layer | Draft |
 | `SERVER_ARCHITECTURE.md` | Server architecture — gateway, per-applet services, admin dashboard | Draft |
@@ -577,8 +685,8 @@ This product vision will be decomposed into the following detailed specification
 | `SYNC.md` | Platform-agnostic sync engine design (GRDB ↔ Postgres) | Draft |
 | `CI_PIPELINE.md` | CI/CD pipeline, AI agent workflow, automated testing & review | Draft |
 | `OBSERVABILITY.md` | Metrics, crash reporting, analytics, logging (client + server) | Draft |
-| `ANIMATION_SYSTEM.md` | Animation engine design & cross-applet choreography | Planned |
-| `CHAT_INTERACTIONS.md` | Cross-applet interaction catalog — 66 user stories, deep linking, response types | Draft |
+| `ANIMATION_SYSTEM.md` | Animation engine design & cross-mini-app choreography across chat overlay states | Planned |
+| `CHAT_INTERACTIONS.md` | Cross-mini-app interaction catalog — user stories, deep linking, response types | Draft |
 | `AI_TOOLS.md` | AI development tools evaluation (Axiom, GSD, Context7) with security | Draft |
 | `DEVELOPMENT_SETUP.md` | Clone, build, deploy, server first-run wizard, iOS setup, troubleshooting | Draft |
 | `API_DESIGN.md` | Backend API contracts & AI tool definitions | Planned |

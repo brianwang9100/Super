@@ -1,385 +1,444 @@
 # Super: Top-Level Design
 
-> How the Super shell manages, displays, and orchestrates its applet-based applications.
+> How the Super shell hosts Chat and its mini-apps, and how the three chat overlay states (expanded / floating / bubble) coordinate with the mini-app underneath.
 
 ---
 
 ## 1. Purpose of This Document
 
-This document covers the **app shell** — the container that hosts all Super applets. Individual applets (Chat, ToDo, etc.) will each have their own `design.md` covering applet-specific UI/UX. This document focuses on:
+Super is a chat-centric productivity app: **Chat is the primary surface**, and a set of **mini-apps** (Todo, Recipes, Bible, Finance, …) plug into it. Users can interact with their data either by chatting with the AI or by going directly into a mini-app. This document covers the **shell** — the container that hosts the chat surface and the mini-apps — and focuses on:
 
-- How applets are displayed and navigated
-- How applets are added, removed, and reordered
+- How Chat hosts mini-apps and how mini-apps are navigated to
+- The three chat overlay states and the transitions between them
+- How the AI performs bi-directional interactions with mini-apps (chat → mini-app, mini-app → chat)
+- How mini-apps are added, removed, and reordered
 - How the shell adapts across iPhone, iPad, and macOS
-- How future applets plug into the system without architectural changes
+- How future mini-apps plug into the system without architectural changes
+
+Mini-app-specific UI is out of scope here; each mini-app has its own design doc (e.g., [`Chat/DESIGN.md`](./Chat/DESIGN.md)).
 
 ---
 
 ## 2. The Shell Concept
 
-Super is not a single app — it's a **shell** that hosts a dynamic set of applets. Think of it like a personal operating system: the shell provides navigation, identity, shared services, and a communication layer. Applets plug into the shell and gain access to all of that for free.
+Super is not a traditional tab-bar app. It's a **chat-first shell** where Chat is always present — either filling the screen, floating in a panel over a mini-app, or collapsed into a bubble — and mini-apps slide in **behind** the chat surface when selected.
 
 The shell owns:
-- **Navigation chrome** (tab bar, sidebar, toolbar)
-- **Applet Registry** (which applets are installed and active)
-- **Event bus** (cross-applet communication)
-- **Animation engine** (cross-applet visual coordination)
-- **Notification routing** (directing notifications to the right applet or to Notifications)
-- **Shared design system** (typography, colors, spacing, common components)
 
-The shell does NOT own:
-- Any applet's internal UI, data, or business logic
-- Applet-specific settings (each applet manages its own)
+- **The chat surface** itself and its three overlay states (see §4)
+- **Mini-app registry** (which mini-apps are installed and in what order)
+- **Navigation** between mini-apps (via the sidebar) and between the chat states
+- **Event bus** (bi-directional communication between Chat and mini-apps)
+- **Tool registry** (Chat auto-discovers tools exposed by each installed mini-app)
+- **Deep-link router** (chat messages can link into a specific mini-app record; long-press actions in mini-apps can link back into chat)
+- **Animation coordinator** (the materialize / transfer / pulse choreography across chat and mini-apps)
+- **Notification routing** (system push vs. in-app Notifications inbox)
+- **Shared design system** (typography, pastel-green palette, common components)
+
+The shell does NOT own any mini-app's internal UI, data model, or business logic, and never owns mini-app settings.
 
 ---
 
-## 3. Applet Registry & Lifecycle
+## 3. Mini-App Registry & Lifecycle
 
-### 3.1 Applet Manifest
+### 3.1 Mini-App Manifest
 
-Every applet declares itself through a standard protocol:
+Every mini-app declares itself through a standard protocol:
 
 ```swift
 protocol SuperApplet {
-    /// Unique identifier for this applet
+    /// Unique identifier for this mini-app
     static var appletId: String { get }
 
     /// Display metadata
     var displayName: String { get }
     var icon: Image { get }
-    var accentColor: Color { get }
+    var accentColor: Color { get }    // used for iconography and inline cards
 
-    /// The root view for this applet
+    /// The root view for this mini-app (renders behind chat)
     @ViewBuilder var rootView: some View { get }
 
-    /// Tools this applet exposes to Chat (AI chatbot)
-    var registeredTools: [LLMTool] { get }
+    /// Tools this mini-app exposes to Chat (auto-registered on install)
+    var registeredTools: [ToolRegistration] { get }
 
-    /// Event types this applet publishes and subscribes to
+    /// In-chat preview/action cards this mini-app knows how to render
+    /// (e.g., ToDo renders a "4 tasks created" card with a mini-list)
+    var chatCardRenderers: [ChatCardRenderer] { get }
+
+    /// Long-press / focused-view actions exposed on this mini-app's records
+    /// (these are the "add to chat" / "start new chat with this" actions)
+    var recordActions: [RecordActionHandler] { get }
+
+    /// Events this mini-app publishes and subscribes to
     var publishedEvents: [SuperEvent.Type] { get }
     var subscribedEvents: [SuperEvent.Type] { get }
 
-    /// Applet lifecycle
-    func onActivate()    // called when applet becomes visible
-    func onDeactivate()  // called when applet goes to background
-    func onInstall()     // called when first added to shell
+    /// Lifecycle
+    func onActivate()    // called when mini-app becomes visible behind chat
+    func onDeactivate()  // called when user returns to full-screen chat
+    func onInstall()     // called when first added
     func onUninstall()   // called when removed — must clean up data
 }
 ```
 
-### 3.2 Adding an Applet
+### 3.2 Adding a Mini-App
 
-**User flow:**
-1. User opens the **Applet Manager** (accessible from shell settings or a "+" button in the navigation)
-2. Applet Manager shows available applets in two sections:
-   - **Installed** — currently active applets with toggle switches and reorder handles
-   - **Available** — applets that can be added (shipped with the app but not yet activated)
-3. User taps "Add" on an applet
-4. **Installation animation:** the applet icon drops into the navigation bar/sidebar with a spring animation. On iPhone, the tab bar reorganizes with the new tab sliding in. On Mac/iPad sidebar, the new item fades in and the list reflows.
-5. The applet's `onInstall()` is called — it sets up its SwiftData container, registers tools with Chat, and subscribes to relevant events
-6. The applet is immediately navigable
+1. User opens **Settings → Mini-Apps** or taps the "+" row in the sidebar.
+2. The Mini-App Manager shows **Installed** (with toggles + drag handles) and **Available** sections.
+3. User taps "Add" on an available mini-app.
+4. **Install animation:** the new entry drops into the sidebar list with a spring; Chat acknowledges inline ("Added Recipes — you can now ask me about recipes.").
+5. `onInstall()` runs: creates the mini-app's SQLite file (GRDB), registers its tools with Chat, subscribes to the event bus, and registers its chat-card renderers and record-action handlers.
+6. The mini-app is immediately selectable from the sidebar, and Chat immediately has access to its tools.
 
-**Architectural requirement:** Adding an applet must NOT require an app restart. The shell's navigation is driven by the Applet Registry, which is an `@Observable` object. When the registry changes, SwiftUI automatically re-renders navigation.
+**No app restart.** The registry is `@Observable`; SwiftUI re-renders the sidebar when it changes.
 
-### 3.3 Removing an Applet
+### 3.3 Removing a Mini-App
 
-**User flow:**
-1. User opens Applet Manager
-2. User swipes to remove or taps "Remove" on an installed applet
-3. **Confirmation dialog** warns that applet data will be deleted (with option to export first, if applicable)
-4. **Removal animation:** the applet's tab/sidebar item shrinks and fades out; remaining items reflow smoothly
-5. The applet's `onUninstall()` is called — it:
-   - Deregisters its tools from Chat
-   - Unsubscribes from all events
-   - Deletes its SwiftData container (or archives it, based on user choice)
-   - Clears any cached data
-6. The navigation updates immediately
+1. User swipes or taps "Remove" on an installed mini-app.
+2. Confirmation: "Remove Recipes? This will delete all recipe data. [Export first] [Cancel] [Remove]".
+3. **Remove animation:** the entry shrinks and fades; neighbors reflow.
+4. `onUninstall()` runs: deregisters tools, unsubscribes from events, deletes the SQLite file (or archives it), clears cached chat cards.
 
-**Protected applets:** Chat (the AI chatbot) cannot be removed — it's the orchestration hub. All other applets are optional.
+**Chat cannot be removed.** It is the shell itself.
 
-### 3.4 Reordering Applets
+### 3.4 Reordering
 
-Users can drag-and-drop to reorder applets in the Applet Manager. This changes the tab order (iPhone) or sidebar order (iPad/Mac). The reorder persists via UserDefaults.
-
-On iPhone, if more than 5 applets are active, the standard iOS "More" tab pattern applies, or we implement a scrollable tab bar.
+Drag-and-drop in the Mini-App Manager and sidebar. Order persists in UserDefaults. The sidebar is scrollable, so there is no hard cap on mini-app count.
 
 ---
 
-## 4. Navigation & Layout
+## 4. Chat Overlay States
 
-### 4.1 iPhone Layout
+Chat is always present. What changes is how much screen it takes and whether a mini-app is visible behind it. There are three states; every mini-app interaction happens through one of them.
 
-```
-┌─────────────────────────┐
-│       [Applet View]     │
-│                         │
-│                         │
-│                         │
-│                         │
-│                         │
-│                         │
-├─────────────────────────┤
-│ 🧠  📋  📅  🏠  ⚡     │
-│ Chat Todo Cal Home More │
-└─────────────────────────┘
-```
+### 4.1 State A — Expanded Chat (default)
 
-- **Tab bar** at the bottom with applet icons
-- Each tab hosts one applet's root view
-- Active tab indicated with filled icon + accent color
-- Tab bar supports badge counts (e.g., unread notifications, overdue todos)
-- If >5 applets installed, overflow goes to a "More" tab or the tab bar becomes horizontally scrollable
-
-**Notification overlay:** When a cross-applet action occurs (e.g., AI creates a todo while user is in the chat), a floating toast/banner appears at the top showing what happened, with a tap target to navigate to the affected applet.
-
-### 4.2 iPad Layout
+The full-screen chat described in [`Chat/DESIGN.md`](./Chat/DESIGN.md). Nothing behind it; the sidebar is available via the hamburger button.
 
 ```
-┌────────┬────────────────────────────────────┐
-│ 🧠 Chat│                                    │
-│ 📋 Todo│         [Primary Applet View]      │
-│ 📅 Cal │                                    │
-│ 🏠 Home│                                    │
-│        │                                    │
-│        ├────────────────────────────────────│
-│        │     [Secondary Applet View]        │
-│ ──── ──│     (optional split, resizable)    │
-│ ⚙ Set  │                                    │
-└────────┴────────────────────────────────────┘
+┌────────────────────────────────┐
+│  ≡    Chat title     (center)  │
+├────────────────────────────────┤
+│                                │
+│  [assistant message]           │
+│              [user bubble]     │
+│  [thinking / tool / code]      │
+│                                │
+│  ...                           │
+├────────────────────────────────┤
+│  [composer pill]               │
+└────────────────────────────────┘
 ```
 
-- **Sidebar** on the left with applet icons + labels
-- **Primary content area** shows the selected applet
-- **Optional split view:** user can pin a second applet (typically Chat) alongside the primary applet. This enables the signature interaction: chat on one side, see the todo list update in real-time on the other.
-- Sidebar collapses to icons-only in compact width
+- Entered on app launch (if the last-open surface was Chat) or by tapping **New Chat** or any existing chat in the sidebar.
+- Exited by selecting a mini-app from the sidebar (→ State B) or by pulling the chat down into a bubble (→ State C).
 
-### 4.3 macOS Layout
+### 4.2 State B — Mini-App with Floating Chat
+
+The selected mini-app fills the screen. A **floating composer** sits pinned to the bottom; above it, a **floating chat panel** shows the last ~N messages of the active chat. The mini-app scrolls freely underneath. This is the "do work alongside the AI" mode.
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ ◀ ▶   Super                          🔔  ⚙  👤  │
-├────────┬─────────────────────┬───────────────────────┤
-│        │                     │                       │
-│ 🧠 Chat│                     │                       │
-│ 📋 Todo│   [Primary Applet]  │  [Secondary Applet]   │
-│ 📅 Cal │                     │   (optional panel)    │
-│ 🏠 Home│                     │                       │
-│        │                     │                       │
-│        │                     │                       │
-│ ────── │                     │                       │
-│ ⚙ Set  │                     │                       │
-└────────┴─────────────────────┴───────────────────────┘
+┌────────────────────────────────┐
+│  ← Todo                    ⋮  │ ← mini-app nav chrome
+├────────────────────────────────┤
+│  ▢ Buy groceries               │
+│  ▢ Pick up laundry             │
+│  ☑ Book dentist                │
+│  ▢ Pay rent           ← long-press opens focused view
+│  ...                           │
+│                                │
+│  ╭────────────────────────────╮│
+│  │ ← I've added those tasks  ││ ← floating chat panel
+│  │   to your list.            ││   (latest N messages, semi-translucent)
+│  │                            ││
+│  │ [todo-chat-card: 4 tasks] ││ ← rich embedded card
+│  ╰────────────────────────────╯│
+│  ╭────────────────────────────╮│
+│  │ Chat with Super      ▾ 🎤 ││ ← floating composer (same pill)
+│  ╰────────────────────────────╯│
+└────────────────────────────────┘
 ```
 
-- **Persistent sidebar** with applet list (collapsible)
-- **Primary + secondary panel** layout (like Mail.app or Xcode)
-- Secondary panel is optional — user drags an applet into it or the system opens it automatically during cross-applet actions
-- Window supports multiple instances (multiple windows, each with different applet combinations)
-- Menu bar integration for quick actions
+- **Floating chat panel:** a rounded, elevated card with a translucent blurred backdrop. Height is clamped — by default shows the last ~3 messages; user can drag its top edge to grow it up to 75% of the screen, or flick it all the way up to re-enter State A (Expanded).
+- **Floating composer:** the same composer from State A, pinned to the bottom as a pill. Its width matches the floating chat panel.
+- **Mini-app content:** fills the screen behind the chat; scrollable independently. The bottom inset of the mini-app view is sized so content isn't permanently obscured by the composer — a small `safe-area-bottom` reserve matches the composer's height.
+- Entered by selecting a mini-app from the sidebar, or by deep-linking from a chat message into a specific mini-app record.
+- Exited to State A by flicking the chat panel up; exited to State C by flicking the chat panel and composer down together.
 
-### 4.4 Cross-Applet Split View Behavior
+### 4.3 State C — Minimized Chat Bubble
 
-The split view is critical for the "AI controls everything" experience. Key behaviors:
+The chat collapses to a **44pt circular bubble** in the bottom-right (iPhone) or lower-right corner (iPad/Mac), floating over the mini-app. The mini-app now owns the full screen.
 
-- **Auto-open:** When Chat performs an action on another applet (creates a todo, adds a calendar event), the shell can auto-open that applet in the secondary panel so the user sees the animation in real time. This is opt-in via a "Show actions live" setting.
-- **Manual pin:** User can manually drag an applet to the secondary panel from the sidebar
-- **Resize:** The divider between panels is draggable
-- **Close:** Secondary panel can be dismissed, returning to single-applet view
-- **Memory:** The shell remembers the user's preferred split layout per applet combination
+```
+┌────────────────────────────────┐
+│  ← Todo                    ⋮  │
+├────────────────────────────────┤
+│                                │
+│  ▢ Buy groceries               │
+│  ▢ Pick up laundry             │
+│  ☑ Book dentist                │
+│  ▢ Pay rent                    │
+│  ▢ Call mom                    │
+│  ▢ Schedule oil change         │
+│  ...                           │
+│                                │
+│                                │
+│                          ╭──╮  │
+│                          │✦│  │ ← chat bubble (accent fill, 44pt)
+│                          ╰──╯  │
+└────────────────────────────────┘
+```
+
+- **Tap** the bubble → expands back into State B (floating chat + composer).
+- **Long-press / drag** the bubble → can be moved to any corner; position sticks across sessions.
+- **Unread / streaming indicator:** a subtle pulsing ring around the bubble if the AI is mid-response or a new message arrived while minimized.
+- **Silenced while typing:** if the user is typing in a mini-app text field (e.g., editing a todo title), the bubble fades to 40% opacity until the field is dismissed.
+- Entered by dismissing the floating chat (flicking down) in State B.
+- Exited by tapping the bubble (→ State B) or dismissing via a mini-app's back button back to an empty canvas (→ the bubble persists but may auto-hide if no mini-app is active).
+
+### 4.4 State Transitions
+
+```
+   ┌──────────────────┐   select mini-app   ┌──────────────────────┐
+   │  A — Expanded     │────────────────────▶│  B — Mini-App +      │
+   │  Chat             │◀────────────────────│     Floating Chat    │
+   └──────────────────┘   flick panel up     └──────────────────────┘
+             ▲                                            ▲   │
+             │                                            │   │ flick panel down
+             │                                            │   ▼
+             │                          tap bubble ┌──────────────────┐
+             │                                    │                   │
+             │ (from mini-app back) ◀─────────────▶│  C — Bubble +    │
+             │                                    │     Mini-App      │
+             │                                    └──────────────────┘
+```
+
+Transitions are spring animations (damping 0.75, response 0.35); the chat panel's height interpolates with the composer staying visually anchored at the bottom (matched geometry).
+
+### 4.5 Platform Adaptations
+
+- **iPhone:** as described above. Sidebar slides over the chat.
+- **iPad:** in landscape the sidebar can be pinned as a persistent left rail (configurable); State B renders the floating chat + composer as a panel on the right half of the screen while the mini-app fills the left half. State C places the bubble in the bottom-right of the active region.
+- **macOS:** the sidebar is a persistent left pane. State B renders the chat as a **right-side floating panel** (draggable, resizable). State C places the bubble in the window corner; it persists across window resizes but is bound to the window, not the screen.
+- **Reduce Motion** replaces all state-transition springs with crossfades at 200ms.
 
 ---
 
-## 5. Applet Manager UI
+## 5. Bi-Directional AI Interactions
 
-### 5.1 Applet Manager Screen
+The signature of Super is that **the conversation and the mini-apps know about each other in both directions**. Any action the AI can take, the user can also take by hand — and vice versa, any item the user is looking at can be piped into the chat.
 
-The Applet Manager is the control center for customizing the Super experience.
+### 5.1 Chat → Mini-App
+
+When the AI calls a tool registered by a mini-app, two things happen:
+
+1. A **rich chat card** renders inline in the chat (rendered by the mini-app's own `ChatCardRenderer`, not by Chat). Example: after `todo.createMany([…])`, ToDo provides a card with a mini-list of the 4 new tasks, each tappable.
+2. An `SuperEvent` fires on the bus (`todoCreated`, `recipeSaved`, …). If the mini-app is visible behind the chat (State B), it animates the new record into view in real time.
+
+**Deep-linking from a chat card.** Every chat card includes a primary action that routes into the mini-app at the referenced record. Tapping "View in ToDo" on the todo-batch card transitions A→B (or C→B if minimized), loads the ToDo mini-app behind the chat, and scrolls/selects the referenced task. The router uses `super://<applet>/<recordId>` URIs internally, but users never see them.
+
+**Deep-linking from message text.** When an assistant message references a specific record by name (e.g., "…Revelation 3:20 says…"), Chat can render that reference as a tappable inline token. Tapping it invokes the same deep-link flow. Mini-apps register URL templates for their record types so Chat knows when a reference should become tappable.
+
+### 5.2 Mini-App → Chat
+
+Long-pressing any record inside a mini-app opens a **focused action sheet**. Alongside the mini-app's own actions (edit, delete, set priority, …), the sheet always exposes two shell-provided actions:
+
+- **Add to current chat** — inserts the record as a user message in the active chat. Card-shaped, carries a reference to the record (not a copy of its text). The AI can read it and act on it.
+- **Start new chat with this** — opens a fresh chat seeded with the record as the first user message (or system-attached context, depending on the record type). Transitions to State A.
 
 ```
-┌─────────────────────────────────┐
-│  Applet Manager                 │
-│                                 │
-│  INSTALLED                      │
-│  ┌─────────────────────────┐    │
-│  │ ≡ 🧠 Chat (Chat)   🔒│   │  ← locked, cannot remove
-│  │ ≡ 📋 ToDo (Todos)      ⊝│   │  ← drag handle + remove
-│  │ ≡ 📅 Calendar (Calendar)  ⊝│   │
-│  │ ≡ 🏠 Home (Home)     ⊝│   │
-│  └─────────────────────────┘    │
-│                                 │
-│  AVAILABLE                      │
-│  ┌─────────────────────────┐    │
-│  │ 🔔 Notifications (Notifs)   ⊕│    │
-│  │ 💪 Fitness (Fitness)    ⊕│    │
-│  │ 📝 Notes (Notes)     ⊕│    │
-│  └─────────────────────────┘    │
-│                                 │
-│  Drag to reorder installed      │
-│  applets.                       │
-└─────────────────────────────────┘
+┌──────────────────────────────────┐
+│  Pay rent                        │
+│  due Apr 1 · high priority       │
+├──────────────────────────────────┤
+│  ✎   Edit                        │
+│  ⚑   Change priority             │
+│  🗓   Reschedule                 │
+├──────────────────────────────────┤
+│  ✦   Add to current chat        │ ← shell-provided
+│  ✦   Start new chat with this   │ ← shell-provided
+├──────────────────────────────────┤
+│  🗑   Delete                    │
+└──────────────────────────────────┘
 ```
 
-### 5.2 Applet Card (Detail View)
+Examples from the initial mini-app set:
 
-Tapping an applet (installed or available) shows a detail card:
-- Applet name, icon, description
-- Screenshot / preview of the applet's UI
-- Storage usage (for installed applets)
-- "Tools" section listing what AI capabilities this applet provides
-- Install / Uninstall button
+- **Bible:** highlight a range of verses, long-press → "Add to chat" sends the passage (with reference) as an attachment. "Start new chat" opens a fresh thread seeded with it.
+- **ToDo:** long-press any task → "Add to chat" references the task; the AI can then ask clarifying questions or propose updates.
+- **Recipes:** long-press a recipe → "Add to chat" lets the user ask for substitutions or scaling.
+- **Finance:** long-press a transaction → "Add to chat" lets the user ask "tag all like this as commute."
+
+The record-reference payload is small and structured — `{appletId, recordType, recordId, displayTitle, previewText}` — never the full record body. The AI resolves the full body through the mini-app's tool interface when needed.
+
+### 5.3 In-Chat Card Rendering
+
+Each mini-app ships one or more `ChatCardRenderer`s. The shell looks up the right renderer by `{appletId, cardKind}` at display time. Renderers receive a typed payload from the tool call and return SwiftUI — there is no server-driven UI. Common card kinds:
+
+- **Single-record summary** — one task, one recipe, one verse.
+- **Batch summary** — N records with a small preview list (the "4 tasks created" case).
+- **Preview / confirmation** — shown before a destructive or ambiguous action; user approves/rejects inline.
+
+Cards render at roughly the width of an assistant message in expanded chat, and at the floating chat panel's width in State B. They use the mini-app's **accent color** for their iconography and accent strip, on top of the shell's pastel-green background — so a Bible card reads differently from a Todo card at a glance without shouting.
 
 ---
 
-## 6. How New Applets Plug In
+## 6. How New Mini-Apps Plug In
 
-This is the most architecturally important section. The system must support adding new applets with **zero changes to existing applets or the shell's core code**.
+The system must support adding new mini-apps with **zero changes to existing mini-apps or the shell's core code**.
 
 ### 6.1 Plugin Contract
 
-A new applet only needs to:
+A new mini-app only needs to:
 
-1. **Conform to `SuperApplet` protocol** — provides all metadata and lifecycle hooks
-2. **Define its SwiftData schema** — in its own `ModelContainer`, isolated from other applets
-3. **Define its AI tools** (optional) — array of `LLMTool` objects that Chat auto-discovers
-4. **Define its events** (optional) — event types it publishes/subscribes to on the event bus
-5. **Provide its root SwiftUI view** — the shell embeds this in the navigation
+1. **Conform to `SuperApplet`** — metadata, lifecycle, event subscriptions.
+2. **Define its GRDB schema** — in its own SQLite file, isolated from other mini-apps.
+3. **Register its tools** (array of `ToolRegistration`) — Chat auto-discovers them.
+4. **Register chat-card renderers** — one per card kind the mini-app wants to render in chat.
+5. **Register record-action handlers** — for long-press focused views on its records.
+6. **Provide its root SwiftUI view** — the shell embeds this behind the chat overlay.
 
-That's it. No changes to the shell, no changes to other applets.
+That's it. No changes to the shell, no changes to other mini-apps.
 
 ### 6.2 Auto-Discovery at Build Time
 
-Since all applets are Swift Packages in the monorepo, applet registration happens at compile time:
+Mini-apps are Swift Packages in the monorepo, registered once at the composition root:
 
 ```swift
-// In the Shell's app setup
 @main
 struct SuperApp: App {
-    let appletRegistry = AppletRegistry(applets: [
-        ChatApplet(),    // Always present
+    let registry = AppletRegistry(applets: [
         ToDoApplet(),
-        CalendarApplet(),
-        HomeApplet(),
-        NotificationsApplet(),    // Add new applets here
+        RecipesApplet(),
+        BibleApplet(),
+        FinanceApplet(),
+        // Add new mini-apps here
     ])
     // ...
 }
 ```
 
-The user's preferences (which applets are active, their order) are stored in UserDefaults. The registry filters the full applet list by user preferences to determine what's shown.
+User preferences (which mini-apps are active, their order) are stored in UserDefaults; the registry filters the full list by those preferences.
 
-### 6.3 Future: Dynamic Applet Loading
+### 6.3 Future: Dynamic Loading
 
-For v2+, consider dynamic applet loading via Swift Package plugins or frameworks loaded at runtime. This would enable:
-- Third-party applets
-- Applet updates independent of app updates
-- A/B testing new applets with subsets of users
-
-This is a significant architectural investment and not needed for v1.
+Deferred for v2+. Would enable third-party mini-apps and independent updates. Not needed for v1.
 
 ---
 
 ## 7. Notification Routing
 
-### 7.1 How Notifications Flow
-
-Each applet can generate notifications. The shell's notification router determines where they go:
+Each mini-app can emit notifications. The shell's notification router decides where they go.
 
 ```
-Applet generates notification
-        │
-        ▼
-┌─────────────────────┐
-│  Notification Router │
-│  (Shell service)     │
-└────────┬────────────┘
+Mini-app emits notification
          │
-    ┌────┴────┐
-    ▼         ▼
- System    Notifications
-  Push     (in-app)
+         ▼
+┌──────────────────────┐
+│ Notification Router  │
+└────────┬─────────────┘
+         │
+   ┌─────┴──────┐
+   ▼            ▼
+ System       Notifications
+  Push        (in-app inbox — a future mini-app)
 ```
 
-- **System notifications:** Standard iOS/macOS push notifications for time-sensitive items (calendar reminders, urgent todos, security alerts from home devices). Handled via UNUserNotificationCenter.
-- **In-app notifications (Notifications):** Non-urgent items that accumulate in the notification applet. Notifications acts as an inbox of things that need attention across all applets.
-
-### 7.2 Notification Priority Matrix
+- **System push** — time-sensitive (a recipe timer, a high-priority todo overdue, a Finance fraud alert).
+- **In-app inbox** — accumulates in a future Notifications mini-app. Tapping an entry deep-links into the relevant mini-app record (same router as chat deep-links).
 
 | Source | Urgency | Destination |
 |--------|---------|-------------|
-| Calendar: event starting in 15min | High | System push + Notifications |
-| ToDo: task overdue | Medium | Notifications (badge on tab) |
-| Home: security alert (door unlocked) | Critical | System push + Notifications + force-open Home |
-| Home: temperature reached target | Low | Notifications only |
+| Recipes: timer done | High | System push |
+| ToDo: task overdue | Medium | In-app + tab badge |
+| Finance: unusual transaction | Critical | System push + in-app + force-open Finance |
+| Bible: daily reading reminder | Low | In-app only |
 
 ---
 
-## 8. Visual Design Principles
+## 8. Visual Design
 
-### 8.1 Applet Identity
+### 8.1 Brand & Palette
 
-Each applet has a distinct accent color and icon, but all share the same design system:
-- **Typography:** SF Pro (system font) with consistent type scale
-- **Spacing:** 4pt grid system
-- **Colors:** Each applet gets one accent color; all other chrome is neutral (system background, labels, separators)
-- **Icons:** SF Symbols for consistency with the Apple ecosystem
-- **Dark mode:** Full dark mode support; applets inherit the shell's appearance setting
+Super's identity is a **pastel green system**, applied globally to the chat surface and inherited by mini-apps. The accent color and background tokens are the same across all mini-apps so the whole app reads as one surface, not five (see `Chat/DESIGN.md` §10 for the token list).
 
-### 8.2 Applet Color Palette
+| Theme | Background | Accent |
+|-------|-----------|--------|
+| Light (default) | Soft pastel green | Deeper pastel green |
+| Dark | Deep green | Muted mint |
+| Sepia | Warm cream | Terracotta |
 
-| Applet | Accent Color | Icon |
-|--------|-------------|------|
-| Chat | Purple | brain |
-| ToDo | Blue | checklist |
-| Calendar | Orange | calendar |
-| Home | Green | house.fill |
-| Notifications | Red | bell.fill |
-| Money | Gold | dollarsign.circle.fill |
+### 8.2 Mini-App Accents
 
-### 8.3 Transitions Between Applets
+Each mini-app has a **secondary accent** used only for its own iconography and chat card accent strips — not for global chrome. This keeps cards distinguishable at a glance without fragmenting the overall palette.
 
-- **Tab switch (iPhone):** Standard iOS tab transition (instant swap, no animation between content)
-- **Sidebar selection (iPad/Mac):** Content area crossfades to new applet (150ms, ease-in-out)
-- **Split view open/close:** Secondary panel slides in from the right with spring animation
-- **Applet install:** New tab/sidebar item scales up from 0 with overshoot spring
-- **Applet uninstall:** Tab/sidebar item shrinks to 0 and fades out; siblings reflow
+| Mini-App | Icon | Secondary Accent |
+|----------|------|------------------|
+| Chat | ✦ spark (Instrument Serif) | Pastel green (primary) |
+| ToDo | ☑ checklist | Cobalt |
+| Recipes | 🍳 pan | Warm ochre |
+| Bible | ✝ cross | Plum |
+| Finance | ▵ triangle | Deep teal |
 
-### 8.4 Empty States & Onboarding
+Secondary accents are muted derivatives (OKLCH-shifted) of the primary palette — not raw bright colors — so they coexist with the pastel green base.
 
-When an applet is first installed, it shows a welcoming empty state:
-- Applet icon (large, muted)
-- Brief description of what the applet does
-- Primary CTA to get started (e.g., "Create your first task", "Connect your home")
-- Secondary CTA: "Or ask Chat to set it up for you" — encourages the AI-first workflow
+### 8.3 Typography
 
-**API key onboarding:** If an applet requires a third-party API key (e.g., Chat needs a Claude key, Money needs a Plaid key), the first-run experience is a setup screen that prompts for the key before the applet becomes functional. The setup screen should:
-- Explain what the key is for and link to where to get one
-- Provide a secure text field for entry (Keychain-backed)
-- Validate the key (test API call) before proceeding
-- Allow re-entry later via applet settings
+Inherits directly from Chat (see [`Chat/DESIGN.md`](./Chat/DESIGN.md) §2.2). Mini-apps use the same stack: Instrument Serif (display), Geist (body), JetBrains Mono (code/numbers). Mini-apps MUST NOT introduce additional typefaces.
+
+### 8.4 Density & Information Hiding
+
+"Hide until expanded" is the core rule. Examples:
+
+- Assistant thinking and tool calls render as collapsible blocks, not open panels.
+- Long-press focused views are modal — they replace a visible chrome strip, not add to it.
+- Mini-apps default to list views with one record per row; detail views are pushed, not always-open.
+- The chat's composer footer pills (model / verbosity) open upward only on tap.
+
+Anything that could be a detail view should start as one line until tapped.
+
+### 8.5 Transitions
+
+| Event | Animation | Duration |
+|-------|-----------|----------|
+| Open mini-app from sidebar (A → B) | Mini-app crossfades in, chat panel springs from bottom | 350ms |
+| Minimize chat (B → C) | Panel + composer slide down, bubble scales up from bottom-right | 300ms |
+| Tap bubble (C → B) | Bubble scales down, panel + composer spring up | 300ms |
+| Expand to full chat (B → A) | Panel expands, composer stays anchored, mini-app crossfades out | 400ms |
+| Chat card appears in chat | Fades in with 4pt upward translate | 200ms |
+| Chat creates record (card ↔ mini-app visible) | Card highlights, record materializes in the mini-app | 400ms staggered |
+| Record long-press → focused view | Scale spring + blur backdrop | 250ms |
+| Install mini-app | Sidebar row spring-scales up from 0 | System default spring |
+
+All animations respect Reduce Motion (see §10).
 
 ---
 
-## 9. Settings Architecture
+## 9. Settings
 
 ### 9.1 Shell Settings
-- Account management (username/password, see [AUTH.md](./AUTH.md))
-- Applet Manager (add, remove, reorder)
-- Appearance (light/dark/auto, accent color override)
-- Notification preferences (global toggles)
-- Privacy & security (biometric lock, data export)
 
-### 9.2 Applet Settings
-Each applet manages its own settings screen, accessed via:
-- A gear icon within the applet's view, or
-- An "Applet Settings" section within Shell Settings that lists per-applet settings
+Opened from the sidebar's floating gear button (see `Chat/DESIGN.md` §6.4). Panes:
 
-This keeps the shell settings focused and lets applets evolve their settings independently.
+- **Account** (username/password, see `AUTH.md`)
+- **Mini-Apps** (install / uninstall / reorder — the Mini-App Manager)
+- **Appearance** (theme, font size, density — shared across all mini-apps)
+- **Models** (LLM endpoints + keys)
+- **System Prompt** / **Default Verbosity** (chat defaults)
+- **Notifications** (per-mini-app toggles + global push permission)
+- **Privacy & Security** (biometric lock, data export)
+- **About** / **Data** (export / clear)
+
+### 9.2 Mini-App Settings
+
+Each mini-app manages its own settings screen. Reached either from a gear inside the mini-app, or from a "Mini-App Settings" section in shell Settings that lists each installed mini-app and pushes into its own pane.
 
 ---
 
 ## 10. Accessibility
 
-- **VoiceOver:** All navigation elements (tabs, sidebar items, Applet Manager) are fully labeled. Applet transitions announce the new applet name.
-- **Dynamic Type:** The shell respects system text size. Applet icons in sidebar/tabs scale appropriately.
-- **Reduce Motion:** When enabled, cross-applet animations are replaced with simple fades. Applet install/uninstall animations are instant.
-- **Switch Control / Voice Control:** All interactive elements have accessibility identifiers for switch and voice control targeting.
+- **VoiceOver:** all navigation affordances (hamburger, sidebar rows, chat bubble, long-press actions) are labeled. State transitions announce the new context ("Now in Todo, chat minimized.").
+- **Dynamic Type:** typography scales across all three chat states and all mini-apps. Floating chat panel height adjusts to fit larger text.
+- **Reduce Motion:** spring state transitions become instant crossfades. The bubble's unread pulse becomes a static dot. Chat-card materialize animations become simple fade-ins.
+- **Switch Control / Voice Control:** every interactive element has accessibility identifiers, including the chat bubble and the long-press record actions.
+- **Contrast:** at least AA for all ink-on-bg pairs across the three themes; focused-view sheets darken the backdrop behind them for clear separation without relying on blur alone.
