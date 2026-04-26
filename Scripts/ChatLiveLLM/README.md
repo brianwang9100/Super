@@ -40,11 +40,12 @@ OMLX_SKIP_TOOL=1 swift run ChatLiveLLM
 1. Spins up an in-memory `ChatDatabase` and the GRDB repositories.
 2. Seeds one conversation row.
 3. Registers `OpenAICompatibleLLMProvider` against the configured endpoint.
-4. Registers a trivial in-process `echo` tool so the full
-   tool-call → tool-result → follow-up-turn loop runs.
+4. Registers the production-grade `time.now` tool from M6 so the full
+   tool-call → tool-result → follow-up-turn loop runs end-to-end against
+   real shipping code, not a fixture.
 5. Sends up to four turns through `ChatSession.send(...)`:
    - **Turn 1**: plain text ("what is the capital of France?")
-   - **Turn 2** (skippable via `OMLX_SKIP_TOOL=1`): tool use ("call `echo` with 'pong from echo' and summarize")
+   - **Turn 2** (skippable via `OMLX_SKIP_TOOL=1`): tool use ("what is the current date and time? use `time.now`")
    - **Turn 3** (skippable via `OMLX_SKIP_COMPACT=1`): `/compact` — exercises the slash-command parser, the live `Compactor` against the real LLM, and persistence of a `CompactionCheckpointRecord`. With the default `keepMostRecent = 4`, this no-ops on a 1-turn run; the script tags that case so it isn't mistaken for a failure.
    - **Turn 4** (skippable via `OMLX_SKIP_COMPACT=1`): a follow-up question that exercises the post-compaction prompt assembly — the next prompt should carry the synthetic summary as a leading system message.
 6. Streams `ChatEvent`s to stdout as they arrive (including `compactionStarted` / `compactionCompleted`).

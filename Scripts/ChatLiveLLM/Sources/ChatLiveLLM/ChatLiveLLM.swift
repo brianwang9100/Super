@@ -77,24 +77,10 @@ struct ChatLiveLLMScript {
         await llmRegistry.register(provider)
 
         let toolRegistry = ToolRegistry()
-        let echoTool = LLMTool(
-            id: "echo",
-            name: "echo",
-            description: "Echoes back the supplied text. Use this tool when explicitly asked to echo something.",
-            category: .query,
-            parameters: [
-                LLMToolParameter(
-                    name: "text",
-                    type: .string,
-                    description: "The text to echo back verbatim.",
-                    isRequired: true
-                ),
-            ],
-            appletId: "live-test"
-        )
-        await toolRegistry.register(
-            ToolRegistration(tool: echoTool, execution: .local(EchoExecutor()))
-        )
+        // Real built-in tool from M6 — exercises the production tool path
+        // end-to-end (descriptor → LLM advertisement → tool-call dispatch
+        // → tool-result write-back).
+        await toolRegistry.register(TimeNowTool.registration())
 
         let compactor = Compactor(
             llmProviderRegistry: llmRegistry,
@@ -119,10 +105,10 @@ struct ChatLiveLLMScript {
 
         if !skipTool {
             try await runTurn(
-                label: "TURN 2 — tool use",
+                label: "TURN 2 — tool use (time.now)",
                 session: session,
                 model: model,
-                prompt: "Call the `echo` tool with the text 'pong from echo', then in one sentence summarize what the tool returned."
+                prompt: "What is the current date and time? Use the `time.now` tool, then in one short sentence tell me what it returned."
             )
         }
 
@@ -256,23 +242,6 @@ struct ChatLiveLLMScript {
     private static func redact(_ key: String) -> String {
         guard key.count > 6 else { return "***" }
         return "\(key.prefix(4))…\(key.suffix(2))"
-    }
-}
-
-/// Minimal in-process tool used so the script exercises the full
-/// orchestration loop (LLM requests tool → registry dispatches →
-/// `.tool` row written → next provider turn observes the result).
-private struct EchoExecutor: ToolExecutor {
-    let toolID = "echo"
-
-    func execute(input: [String: JSONValue]) async throws -> ToolResult {
-        let text: String
-        if case .string(let value) = input["text"] {
-            text = value
-        } else {
-            text = ""
-        }
-        return ToolResult(toolID: toolID, content: "ECHO: \(text)", isError: false)
     }
 }
 

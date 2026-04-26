@@ -1,0 +1,539 @@
+import Foundation
+import SwiftUI
+
+/// Scrollable transcript: persisted `MessageRecord`s laid out as user
+/// bubbles + assistant text/tool blocks, with an optional live streaming
+/// overlay tail showing the in-flight assistant text/thinking, and an
+/// optional error banner above the composer.
+///
+/// M7 renders assistant text as plain `Text` and tool/thinking blocks as
+/// minimal placeholder cards — M10 swaps in MarkdownUI + Splash for
+/// markdown/code/thinking polish without changing this view's contract.
+public struct MessageListView: View {
+    /// One projected row to display. `MessageRecord`s are projected into
+    /// this shape upstream so the view stays free of Core/Chat imports
+    /// inside its body. Tool calls render alongside their parent assistant
+    /// row as a single sequence of blocks.
+    public enum Item: Identifiable, Sendable, Equatable {
+        case userBubble(id: String, text: String)
+        case assistantText(id: String, text: String, toolCalls: [ToolCallView])
+        case compactionBanner(id: String, summary: String)
+
+        public var id: String {
+            switch self {
+            case .userBubble(let id, _),
+                 .assistantText(let id, _, _),
+                 .compactionBanner(let id, _):
+                return id
+            }
+        }
+    }
+
+    /// Inline tool-call presentation rendered under an assistant message.
+    /// `status` mirrors `ToolCallStatus` minus the values the UI does not
+    /// surface explicitly today (`pending` and `executing` collapse to
+    /// `running`; `awaitingConfirmation` is treated as running for now).
+    public struct ToolCallView: Identifiable, Sendable, Equatable {
+        public enum Status: Sendable, Equatable {
+            case running
+            case success
+            case failed
+        }
+        public let id: String
+        public let toolName: String
+        public let parametersJSON: String
+        public let resultText: String?
+        public let status: Status
+
+        public init(
+            id: String,
+            toolName: String,
+            parametersJSON: String,
+            resultText: String?,
+            status: Status
+        ) {
+            self.id = id
+            self.toolName = toolName
+            self.parametersJSON = parametersJSON
+            self.resultText = resultText
+            self.status = status
+        }
+    }
+
+    public let items: [Item]
+    /// Live streaming tail. Rendered as an additional assistant row below
+    /// the persisted ones. `nil` when no turn is in flight.
+    public let streamingTail: StreamingTail?
+    /// Error banner shown above the composer; nil hides the banner.
+    public let error: ErrorBanner?
+    public let verbosity: ChatVerbosity
+    public let onRetry: () -> Void
+
+    public struct StreamingTail: Sendable, Equatable {
+        public let thinking: String
+        public let text: String
+        public let isCompacting: Bool
+
+        public init(thinking: String, text: String, isCompacting: Bool) {
+            self.thinking = thinking
+            self.text = text
+            self.isCompacting = isCompacting
+        }
+    }
+
+    public struct ErrorBanner: Sendable, Equatable {
+        public let message: String
+        public init(message: String) { self.message = message }
+    }
+
+    public init(
+        items: [Item],
+        streamingTail: StreamingTail? = nil,
+        error: ErrorBanner? = nil,
+        verbosity: ChatVerbosity = .verbose,
+        onRetry: @escaping () -> Void = {}
+    ) {
+        self.items = items
+        self.streamingTail = streamingTail
+        self.error = error
+        self.verbosity = verbosity
+        self.onRetry = onRetry
+    }
+
+    @Environment(\.superTheme) private var theme
+
+    public var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(items) { item in
+                        row(for: item).id(item.id)
+                    }
+                    if let tail = streamingTail {
+                        StreamingTailView(tail: tail, verbosity: verbosity).id("__streaming_tail")
+                    }
+                    if let banner = error {
+                        ErrorBannerView(message: banner.message, onRetry: onRetry)
+                            .padding(.vertical, 8)
+                    }
+                    Color.clear.frame(height: 4).id("__bottom")
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            }
+            .background(theme.background)
+            .onChange(of: items.count) { _, _ in
+                proxy.scrollTo("__bottom", anchor: .bottom)
+            }
+            .onChange(of: streamingTail) { _, _ in
+                proxy.scrollTo("__bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(for item: Item) -> some View {
+        switch item {
+        case .userBubble(_, let text):
+            UserBubbleView(text: text)
+        case .assistantText(_, let text, let toolCalls):
+            AssistantMessageView(text: text, toolCalls: toolCalls, verbosity: verbosity)
+        case .compactionBanner(_, let summary):
+            CompactionBannerView(summary: summary)
+        }
+    }
+}
+
+// MARK: - User bubble
+
+struct UserBubbleView: View {
+    let text: String
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 40)
+            Text(text)
+                .font(.system(.subheadline))
+                .lineSpacing(2)
+                .foregroundStyle(theme.bubbleInk)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    UnevenRoundedRectangle(
+                        cornerRadii: .init(
+                            topLeading: 18,
+                            bottomLeading: 18,
+                            bottomTrailing: 6,
+                            topTrailing: 18
+                        ),
+                        style: .continuous
+                    ).fill(theme.bubbleUser)
+                )
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Assistant message
+
+struct AssistantMessageView: View {
+    let text: String
+    let toolCalls: [MessageListView.ToolCallView]
+    let verbosity: ChatVerbosity
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(toolCalls) { call in
+                ToolCallBlockView(call: call, verbosity: verbosity)
+            }
+            if !text.isEmpty {
+                Text(text)
+                    .font(.system(.subheadline))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 4) {
+                MessageActionButton(systemName: "doc.on.doc", label: "Copy") {
+                    UIPasteboardClient.copy(text)
+                }
+                MessageActionButton(systemName: "arrow.clockwise", label: "Regenerate") {
+                    // M12 wires this; the button is visible per the design
+                    // but not yet functional in the MVP.
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct MessageActionButton: View {
+    let systemName: String
+    let label: String
+    let action: () -> Void
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(.caption))
+                .foregroundStyle(theme.inkFaint)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Tool call (M7 placeholder; M10 polishes)
+
+struct ToolCallBlockView: View {
+    let call: MessageListView.ToolCallView
+    let verbosity: ChatVerbosity
+    @Environment(\.superTheme) private var theme
+    @State private var isExpanded: Bool
+
+    init(call: MessageListView.ToolCallView, verbosity: ChatVerbosity) {
+        self.call = call
+        self.verbosity = verbosity
+        self._isExpanded = State(initialValue: verbosity == .verbose)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.system(.caption))
+                        .foregroundStyle(theme.inkSoft)
+                    Text(call.toolName)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(theme.ink)
+                    statusBadge
+                    Spacer(minLength: 0)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(.caption2).weight(.semibold))
+                        .foregroundStyle(theme.inkFaint)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionLabel("INPUT")
+                    monospaceBlock(call.parametersJSON)
+                    if let result = call.resultText {
+                        sectionLabel("RESULT")
+                        monospaceBlock(result)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(theme.backgroundSunken)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(theme.borderFaint, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch call.status {
+        case .running:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini)
+                Text("running")
+                    .font(.system(.caption))
+                    .foregroundStyle(theme.inkFaint)
+            }
+        case .success:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark")
+                    .font(.system(.caption2).weight(.bold))
+                    .foregroundStyle(theme.accent)
+                Text("done")
+                    .font(.system(.caption2))
+                    .foregroundStyle(theme.accent)
+            }
+        case .failed:
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(.caption2))
+                    .foregroundStyle(theme.errorAccent)
+                Text("failed")
+                    .font(.system(.caption2))
+                    .foregroundStyle(theme.errorAccent)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption2).weight(.medium))
+            .tracking(0.5)
+            .foregroundStyle(theme.inkFaint)
+    }
+
+    @ViewBuilder
+    private func monospaceBlock(_ text: String) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(text)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(theme.inkSoft)
+                .padding(10)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(theme.background)
+        )
+    }
+}
+
+// MARK: - Compaction banner (M7 minimal; M10 expands)
+
+struct CompactionBannerView: View {
+    let summary: String
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                line
+                Text("COMPACTED")
+                    .font(.system(.caption2).weight(.medium))
+                    .tracking(0.6)
+                    .foregroundStyle(theme.inkFaint)
+                line
+            }
+            Text(summary)
+                .font(.system(.caption))
+                .foregroundStyle(theme.inkSoft)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(theme.backgroundSunken)
+                )
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var line: some View {
+        Rectangle()
+            .fill(theme.borderFaint)
+            .frame(height: 1)
+    }
+}
+
+// MARK: - Streaming tail
+
+struct StreamingTailView: View {
+    let tail: MessageListView.StreamingTail
+    let verbosity: ChatVerbosity
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if tail.isCompacting {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.mini)
+                    Text("Compacting…")
+                        .font(.system(.caption))
+                        .foregroundStyle(theme.inkFaint)
+                }
+                .padding(.vertical, 6)
+            }
+            if !tail.thinking.isEmpty && verbosity.atLeast(.thinking) {
+                ThinkingBlockView(text: tail.thinking, isStreaming: true)
+            }
+            if !tail.text.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(tail.text)
+                        .font(.system(.subheadline))
+                        .lineSpacing(2)
+                        .foregroundStyle(theme.ink)
+                    TypingCaret()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct ThinkingBlockView: View {
+    let text: String
+    let isStreaming: Bool
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(.caption))
+                    .foregroundStyle(theme.inkSoft)
+                Text("Thinking")
+                    .font(.system(.footnote).weight(.medium))
+                    .foregroundStyle(theme.inkSoft)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            if !text.isEmpty {
+                Text(text)
+                    .font(.system(.footnote).italic())
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.inkSoft)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(theme.backgroundSunken)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(theme.borderFaint, lineWidth: 1)
+        )
+    }
+}
+
+/// 7×14pt accent caret. Animated blink suspended when Reduce Motion is on
+/// (per AGENTS.md §Testing "Reduce Motion on/off"); the caret stays solid
+/// in that case so the streaming surface still indicates activity.
+struct TypingCaret: View {
+    @Environment(\.superTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible: Bool = true
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(theme.accent)
+            .frame(width: 7, height: 14)
+            .padding(.leading, 2)
+            .offset(y: 2)
+            .opacity(visible ? 1 : 0)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 0.5).repeatForever(autoreverses: true)) {
+                    visible = false
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Error banner
+
+struct ErrorBannerView: View {
+    let message: String
+    let onRetry: () -> Void
+    @Environment(\.superTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(message)
+                .font(.system(.footnote))
+                .foregroundStyle(theme.errorInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onRetry) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(.caption2).weight(.semibold))
+                    Text("Retry")
+                        .font(.system(.caption).weight(.medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(theme.errorAccent))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(theme.errorBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(theme.errorBorder, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Pasteboard
+
+/// Tiny indirection so non-iOS test bodies don't drag in `UIKit`. Inside
+/// the Chat package we know we're on iOS 18+; this just keeps the test
+/// target free of UIKit-specific code paths if a future host expands.
+enum UIPasteboardClient {
+    static func copy(_ text: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        #endif
+    }
+}
