@@ -117,34 +117,106 @@ public struct MessageListView: View {
     }
 
     @Environment(\.superTheme) private var theme
+    @State private var scrollPosition = ScrollPosition()
+    @State private var contentGeometry = ContentGeometry()
+    /// Captured in `.onChange(of: verbosity)` and consumed on the next
+    /// geometry tick — i.e. once the blocks have finished expanding or
+    /// collapsing and the new content height is in. Splitting capture and
+    /// apply across two ticks lets us scroll against the post-relayout
+    /// geometry instead of the stale pre-change one.
+    @State private var pendingVerbosityScrollIntent: VerbosityScrollIntent?
+
+    /// What to do with the scroll position immediately after a verbosity
+    /// change settles. Expansion keeps the user anchored to the same chat
+    /// region; collapse jumps to the latest message because the
+    /// pre-collapse viewport bottom usually sat inside a now-collapsed
+    /// block, making any preserved distance visually arbitrary.
+    private enum VerbosityScrollIntent: Equatable {
+        case preserveDistance(CGFloat)
+        case scrollToBottom
+    }
+
+    /// Snapshot of the scroll viewport + content sizes captured every time
+    /// `onScrollGeometryChange` fires. We need all three values to compute
+    /// `distanceFromBottom` and to restore a target offset after a layout
+    /// shift triggered by a verbosity change.
+    private struct ContentGeometry: Equatable {
+        var contentHeight: CGFloat = 0
+        var viewportHeight: CGFloat = 0
+        var offsetY: CGFloat = 0
+
+        /// Points between the bottom of the visible viewport and the bottom
+        /// edge of the chat content. Zero means the user is pinned to the
+        /// latest message.
+        var distanceFromBottom: CGFloat {
+            max(0, contentHeight - offsetY - viewportHeight)
+        }
+    }
 
     public var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(items) { item in
-                        row(for: item).id(item.id)
-                    }
-                    if let tail = streamingTail {
-                        StreamingTailView(tail: tail, verbosity: verbosity).id("__streaming_tail")
-                    }
-                    if let banner = error {
-                        ErrorBannerView(message: banner.message, onRetry: onRetry)
-                            .padding(.vertical, 8)
-                    }
-                    Color.clear.frame(height: 4).id("__bottom")
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(items) { item in
+                    row(for: item).id(item.id)
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
+                if let tail = streamingTail {
+                    StreamingTailView(tail: tail, verbosity: verbosity).id("__streaming_tail")
+                }
+                if let banner = error {
+                    ErrorBannerView(message: banner.message, onRetry: onRetry)
+                        .padding(.vertical, 8)
+                }
+                Color.clear.frame(height: 4).id("__bottom")
             }
-            .background(theme.background)
-            .onChange(of: items.count) { _, _ in
-                proxy.scrollTo("__bottom", anchor: .bottom)
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+        }
+        .background(theme.background)
+        .scrollPosition($scrollPosition)
+        .onScrollGeometryChange(for: ContentGeometry.self) { geo in
+            ContentGeometry(
+                contentHeight: geo.contentSize.height,
+                viewportHeight: geo.containerSize.height,
+                offsetY: geo.contentOffset.y
+            )
+        } action: { _, newGeo in
+            contentGeometry = newGeo
+            // First geometry tick after a verbosity flip: layout has now
+            // settled at the new content height, so apply whichever scroll
+            // intent the verbosity change recorded. Either anchors the
+            // viewport so the user doesn't get dropped into the middle of
+            // a re-laid-out block.
+            if let intent = pendingVerbosityScrollIntent {
+                pendingVerbosityScrollIntent = nil
+                switch intent {
+                case .preserveDistance(let saved):
+                    let targetY = max(0, newGeo.contentHeight - newGeo.viewportHeight - saved)
+                    scrollPosition.scrollTo(y: targetY)
+                case .scrollToBottom:
+                    scrollPosition.scrollTo(edge: .bottom)
+                }
             }
-            .onChange(of: streamingTail) { _, _ in
-                proxy.scrollTo("__bottom", anchor: .bottom)
+        }
+        .onChange(of: verbosity) { oldValue, newValue in
+            // Expansion: keep the user anchored to the same chat region so
+            // they don't get dropped into the middle of a newly expanded
+            // block. Collapse: snap to the latest message — the pre-collapse
+            // bottom of the viewport was usually inside an expanded block,
+            // so any preserved distance maps to a visually arbitrary spot
+            // in the now-shorter chat (and can clamp to the top entirely
+            // when the saved distance exceeds the new content height).
+            if newValue.rank > oldValue.rank {
+                pendingVerbosityScrollIntent = .preserveDistance(contentGeometry.distanceFromBottom)
+            } else {
+                pendingVerbosityScrollIntent = .scrollToBottom
             }
+        }
+        .onChange(of: items.count) { _, _ in
+            scrollPosition.scrollTo(edge: .bottom)
+        }
+        .onChange(of: streamingTail) { _, _ in
+            scrollPosition.scrollTo(edge: .bottom)
         }
     }
 
@@ -282,7 +354,14 @@ struct ToolCallBlockView: View {
     init(call: MessageListView.ToolCallView, verbosity: ChatVerbosity) {
         self.call = call
         self.verbosity = verbosity
-        self._isExpanded = State(initialValue: verbosity == .verbose)
+        self._isExpanded = State(initialValue: Self.shouldExpand(for: verbosity))
+    }
+
+    /// Tool blocks are heavyweight (parameters + result), so only the
+    /// `.verbose` setting opens them by default. `.simple` and `.thinking`
+    /// keep them collapsed behind the header pill.
+    static func shouldExpand(for verbosity: ChatVerbosity) -> Bool {
+        verbosity == .verbose
     }
 
     var body: some View {
@@ -331,6 +410,11 @@ struct ToolCallBlockView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(theme.borderFaint, lineWidth: 1)
         )
+        // Verbosity changes broadcast a new default expansion state to every
+        // block. Individual taps after that still win until the next switch.
+        .onChange(of: verbosity) { _, newValue in
+            isExpanded = Self.shouldExpand(for: newValue)
+        }
     }
 
     @ViewBuilder
@@ -526,7 +610,13 @@ struct ThinkingBlockView: View {
         self.text = text
         self.durationSource = durationSource
         self.verbosity = verbosity
-        self._isExpanded = State(initialValue: verbosity.atLeast(.thinking))
+        self._isExpanded = State(initialValue: Self.shouldExpand(for: verbosity))
+    }
+
+    /// `.simple` keeps the body collapsed; `.thinking` and `.verbose` open
+    /// it. Centralized so init and the verbosity-change observer agree.
+    static func shouldExpand(for verbosity: ChatVerbosity) -> Bool {
+        verbosity.atLeast(.thinking)
     }
 
     var body: some View {
@@ -550,6 +640,11 @@ struct ThinkingBlockView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(theme.borderFaint, lineWidth: 1)
         )
+        // Verbosity changes broadcast a new default expansion state to every
+        // block. Individual taps after that still win until the next switch.
+        .onChange(of: verbosity) { _, newValue in
+            isExpanded = Self.shouldExpand(for: newValue)
+        }
     }
 
     @ViewBuilder

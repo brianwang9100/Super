@@ -9,13 +9,19 @@ import SwiftUI
 public struct ChatScreen: View {
     @Bindable public var viewModel: ChatScreenViewModel
     public let onMenuTap: () -> Void
+    /// Tapped when the user picks "Manage models…" from the composer's
+    /// model dropdown. The host typically opens the Settings sheet
+    /// pre-routed to the Models pane.
+    public let onManageModels: () -> Void
 
     public init(
         viewModel: ChatScreenViewModel,
-        onMenuTap: @escaping () -> Void = {}
+        onMenuTap: @escaping () -> Void = {},
+        onManageModels: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.onMenuTap = onMenuTap
+        self.onManageModels = onManageModels
     }
 
     @Environment(\.superTheme) private var theme
@@ -31,6 +37,7 @@ public struct ChatScreen: View {
                 modelOptions: viewModel.modelOptions,
                 selectedModelId: viewModel.selectedModelId,
                 onSelectModel: { viewModel.selectedModelId = $0 },
+                onManageModels: onManageModels,
                 verbosity: viewModel.verbosity,
                 onSelectVerbosity: { viewModel.verbosity = $0 },
                 usedTokens: viewModel.usedTokens,
