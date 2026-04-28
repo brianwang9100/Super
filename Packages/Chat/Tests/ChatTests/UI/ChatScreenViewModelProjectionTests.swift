@@ -28,13 +28,42 @@ struct ChatScreenViewModelProjectionTests {
         } else {
             Issue.record("expected user bubble")
         }
-        if case .assistantText(let id, let text, let calls) = items[1] {
+        if case .assistantText(let id, let thinking, let durationMs, let text, let calls) = items[1] {
             #expect(id == "a1")
+            #expect(thinking == nil)
+            #expect(durationMs == nil)
             #expect(text == "hi there")
             #expect(calls.isEmpty)
         } else {
             Issue.record("expected assistant text")
         }
+    }
+
+    @Test("assistant thinking content + duration project onto the row")
+    func thinkingContentProjects() {
+        let items = ChatScreenViewModel.project(
+            messages: [
+                MessageRecord(
+                    id: "a1",
+                    conversationId: "c",
+                    role: .assistant,
+                    content: "the answer is 42",
+                    thinkingContent: "let me think... it must be 42",
+                    thinkingDurationMs: 4_200,
+                    createdAt: now
+                ),
+            ],
+            toolCalls: [],
+            checkpoint: nil
+        )
+        #expect(items.count == 1)
+        guard case .assistantText(_, let thinking, let durationMs, let text, _) = items[0] else {
+            Issue.record("expected assistant row")
+            return
+        }
+        #expect(thinking == "let me think... it must be 42")
+        #expect(durationMs == 4_200)
+        #expect(text == "the answer is 42")
     }
 
     @Test("assistant tool calls fold their result into the call view")
@@ -63,7 +92,7 @@ struct ChatScreenViewModelProjectionTests {
         // the tool call. The tool result MessageRecord is folded in, not
         // rendered as a separate row.
         #expect(items.count == 2)
-        guard case .assistantText(_, _, let calls) = items[1] else {
+        guard case .assistantText(_, _, _, _, let calls) = items[1] else {
             Issue.record("expected assistant row at index 1")
             return
         }
@@ -193,7 +222,7 @@ struct ChatScreenViewModelProjectionTests {
             ToolCallRecord(id: "t2", messageId: "a1", conversationId: "c", toolName: "x.boom", parameters: "{}", status: .failed, createdAt: now),
         ]
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: toolCalls, checkpoint: nil)
-        guard case .assistantText(_, _, let calls) = items[0] else {
+        guard case .assistantText(_, _, _, _, let calls) = items[0] else {
             Issue.record("expected assistant row")
             return
         }

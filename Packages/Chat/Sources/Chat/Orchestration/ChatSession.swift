@@ -390,6 +390,9 @@ public actor ChatSession {
         )
 
         var accumulatedText = ""
+        var accumulatedThinking = ""
+        var thinkingStartedAt: Date?
+        var thinkingEndedAt: Date?
         var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
         var capturedUsage: TokenUsage?
         var streamError: LLMError?
@@ -403,6 +406,10 @@ public actor ChatSession {
                 accumulatedText += text
                 continuation.yield(.textDelta(text))
             case .thinkingDelta(_, let text):
+                accumulatedThinking += text
+                let now = clock.now()
+                if thinkingStartedAt == nil { thinkingStartedAt = now }
+                thinkingEndedAt = now
                 continuation.yield(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
                 pendingCalls.append((id, name, input))
@@ -423,11 +430,17 @@ public actor ChatSession {
             return []
         }
 
+        let thinkingDurationMs: Int? = {
+            guard let start = thinkingStartedAt, let end = thinkingEndedAt else { return nil }
+            return max(0, Int(end.timeIntervalSince(start) * 1000))
+        }()
         let assistantMessage = MessageRecord(
             id: idGenerator.nextID(),
             conversationId: conversationId,
             role: .assistant,
             content: accumulatedText,
+            thinkingContent: accumulatedThinking.isEmpty ? nil : accumulatedThinking,
+            thinkingDurationMs: thinkingDurationMs,
             toolCallId: nil,
             createdAt: clock.now(),
             tokenCount: capturedUsage?.outputTokens

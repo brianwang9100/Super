@@ -34,8 +34,17 @@ public struct ChatDatabase: Sendable {
     /// The migrator used by both the on-disk and in-memory factories.
     /// Exposed so callers that own their own `DatabaseQueue` (e.g. a
     /// future shared-DB scenario) can apply Chat's schema themselves.
+    ///
+    /// In DEBUG builds we set `eraseDatabaseOnSchemaChange = true` so
+    /// in-development column additions land without a separate migration:
+    /// the next launch wipes `chat.sqlite` and reapplies the (modified)
+    /// initial migration. Release builds never do this — once a schema
+    /// ships to a real device, every change must be a new migration.
     public static func migrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
+        #if DEBUG
+        migrator.eraseDatabaseOnSchemaChange = true
+        #endif
         registerChatMigrations(&migrator)
         return migrator
     }
@@ -67,6 +76,8 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
                 .references("conversation", onDelete: .cascade)
             t.column("role", .text).notNull()
             t.column("content", .text).notNull()
+            t.column("thinkingContent", .text)
+            t.column("thinkingDurationMs", .integer)
             t.column("toolCallId", .text)
             t.column("createdAt", .datetime).notNull()
             t.column("tokenCount", .integer)

@@ -34,11 +34,26 @@ public final class ChatScreenViewModel {
     public var composerText: String = ""
 
     /// Active model id selected in the model pill. Falls back to the
-    /// first available model if nil.
-    public var selectedModelId: String?
+    /// first available model if nil. The didSet hook fires
+    /// `onModelSelected` so the host can promote the matching provider
+    /// to "active" in `LLMProviderRegistry` — without that wiring, the
+    /// picker would be decorative (chat would always route to whatever
+    /// provider was registered first).
+    public var selectedModelId: String? {
+        didSet {
+            guard oldValue != selectedModelId, let id = selectedModelId else { return }
+            onModelSelected?(id)
+        }
+    }
+
+    /// Optional callback the host installs to promote a provider to
+    /// active when the user picks a different model in the composer.
+    /// Receives the picked `LLMModel.id` (the upstream "model identifier"
+    /// like `claude-opus-4-7`, not the record UUID).
+    public var onModelSelected: (@MainActor (String) -> Void)?
 
     /// Active verbosity selected in the verbosity pill.
-    public var verbosity: ChatVerbosity = .verbose
+    public var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
     public private(set) var availableModels: [LLMModel]
@@ -69,7 +84,7 @@ public final class ChatScreenViewModel {
         checkpointRepository: any CompactionCheckpointRepository,
         availableModels: [LLMModel],
         selectedModelId: String? = nil,
-        verbosity: ChatVerbosity = .verbose
+        verbosity: ChatVerbosity = .simple
     ) {
         self.conversationId = conversationId
         self.conversationTitle = conversationTitle
@@ -142,6 +157,28 @@ public final class ChatScreenViewModel {
         streamTask?.cancel()
     }
 
+    /// Replace the picker's model list. Called by the host when
+    /// `SettingsViewModel.onModelsChanged` fires so newly added or
+    /// renamed models appear in the composer without an app restart. If
+    /// the previously selected id disappears, falls back to the first
+    /// available model.
+    public func setAvailableModels(_ models: [LLMModel]) {
+        availableModels = models
+        modelOptions = models.map {
+            ModelPill.Option(
+                id: $0.id,
+                displayName: $0.displayName,
+                maxContextTokens: $0.maxContextTokens
+            )
+        }
+        if let current = selectedModelId,
+           !models.contains(where: { $0.id == current }) {
+            selectedModelId = models.first?.id
+        } else if selectedModelId == nil {
+            selectedModelId = models.first?.id
+        }
+    }
+
     /// Retry after an error: re-send the most recent user message. If we
     /// can't find one, just clear the error.
     public func retry() {
@@ -158,7 +195,12 @@ public final class ChatScreenViewModel {
 
     private func startStreaming(text: String, model: LLMModel) {
         isStreaming = true
-        streamingTail = MessageListView.StreamingTail(thinking: "", text: "", isCompacting: false)
+        streamingTail = MessageListView.StreamingTail(
+            thinking: "",
+            thinkingStartedAt: nil,
+            text: "",
+            isCompacting: false
+        )
         streamTask = Task { [weak self] in
             guard let self else { return }
             await self.run(text: text, model: model)
@@ -190,6 +232,7 @@ public final class ChatScreenViewModel {
             // Clear the streaming text now that the canonical row exists.
             streamingTail = MessageListView.StreamingTail(
                 thinking: "",
+                thinkingStartedAt: nil,
                 text: "",
                 isCompacting: streamingTail?.isCompacting ?? false
             )
@@ -197,12 +240,14 @@ public final class ChatScreenViewModel {
         case .compactionStarted:
             streamingTail = MessageListView.StreamingTail(
                 thinking: streamingTail?.thinking ?? "",
+                thinkingStartedAt: streamingTail?.thinkingStartedAt,
                 text: streamingTail?.text ?? "",
                 isCompacting: true
             )
         case .compactionCompleted:
             streamingTail = MessageListView.StreamingTail(
                 thinking: streamingTail?.thinking ?? "",
+                thinkingStartedAt: streamingTail?.thinkingStartedAt,
                 text: streamingTail?.text ?? "",
                 isCompacting: false
             )
@@ -224,6 +269,7 @@ public final class ChatScreenViewModel {
         let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
         streamingTail = MessageListView.StreamingTail(
             thinking: current.thinking,
+            thinkingStartedAt: current.thinkingStartedAt,
             text: current.text + chunk,
             isCompacting: current.isCompacting
         )
@@ -233,6 +279,7 @@ public final class ChatScreenViewModel {
         let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
         streamingTail = MessageListView.StreamingTail(
             thinking: current.thinking + chunk,
+            thinkingStartedAt: current.thinkingStartedAt ?? Date(),
             text: current.text,
             isCompacting: current.isCompacting
         )
@@ -308,6 +355,8 @@ public final class ChatScreenViewModel {
                 }
                 items.append(.assistantText(
                     id: message.id,
+                    thinking: message.thinkingContent,
+                    thinkingDurationMs: message.thinkingDurationMs,
                     text: message.content,
                     toolCalls: calls
                 ))

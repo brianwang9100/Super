@@ -15,6 +15,8 @@ struct MessageListViewSnapshotTests {
         .userBubble(id: "u1", text: "What's the time in Tokyo?"),
         .assistantText(
             id: "a1",
+            thinking: nil,
+            thinkingDurationMs: nil,
             text: "Right now in Tokyo it's 9:47 AM JST.",
             toolCalls: [
                 .init(
@@ -79,7 +81,7 @@ struct MessageListViewSnapshotTests {
         let function = #function
         let withBanner: [MessageListView.Item] = [
             .userBubble(id: "u1", text: "older"),
-            .assistantText(id: "a1", text: "earlier reply", toolCalls: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
             .compactionBanner(id: "b1", summary: "User said hello, assistant replied with the time."),
             .userBubble(id: "u2", text: "follow-up"),
         ]

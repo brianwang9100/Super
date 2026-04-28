@@ -289,6 +289,59 @@ struct ChatSessionTests {
         #expect(thinking == ["reasoning..."])
     }
 
+    @Test func thinkingContentPersistsToAssistantRow() async throws {
+        // Two thinking deltas + a text delta should be stitched into a
+        // single `thinkingContent` value on the saved row so the UI can
+        // re-render the trace after the streaming tail clears. Without
+        // this we'd lose the trace the moment `.assistantMessageSaved`
+        // fires — see the bug discussion in `MessageListView.swift`.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .thinkingDelta(index: 0, text: "step one. "),
+                .thinkingDelta(index: 0, text: "step two."),
+                .textDelta(index: 1, text: "the answer"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        guard case .assistantMessageSaved(let record) = events.last else {
+            Issue.record("expected trailing .assistantMessageSaved, got \(String(describing: events.last))")
+            return
+        }
+        let stored = try await setup.messageRepo.fetch(id: record.id)
+        #expect(stored?.thinkingContent == "step one. step two.")
+        #expect(stored?.content == "the answer")
+        // Duration is non-nil whenever thinking happened. The fixed-clock
+        // FakeLLMProvider yields every event at the same instant so the
+        // measured value is 0 ms, which is the correct lower bound.
+        #expect(stored?.thinkingDurationMs == 0)
+    }
+
+    @Test func nonThinkingTurnLeavesThinkingContentNil() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "plain reply"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        guard case .assistantMessageSaved(let record) = events.last else {
+            Issue.record("expected trailing .assistantMessageSaved")
+            return
+        }
+        let stored = try await setup.messageRepo.fetch(id: record.id)
+        #expect(stored?.thinkingContent == nil)
+        #expect(stored?.thinkingDurationMs == nil)
+    }
+
     @Test func assistantMessageSavedEventCarriesPersistedRow() async throws {
         let setup = try await makeSetup(scripts: [
             [
