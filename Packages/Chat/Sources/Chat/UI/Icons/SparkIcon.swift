@@ -4,12 +4,15 @@ import SwiftUI
 ///
 /// Mirrors `IconSpark` from `.design-tmp/chat/project/src/icons.jsx`: 12
 /// spokes around the center, alternating short/long, drawn at a fixed
-/// size with `var(--accent)` stroke.
+/// size. The default stroke is `.primary` so the icon adopts the current
+/// foreground; the streaming-tail spinner overrides with `theme.accent`.
 public struct SparkIcon: View {
     public let size: CGFloat
+    public let color: Color
 
-    public init(size: CGFloat = 36) {
+    public init(size: CGFloat = 36, color: Color = .primary) {
         self.size = size
+        self.color = color
     }
 
     public var body: some View {
@@ -32,7 +35,7 @@ public struct SparkIcon: View {
                 ))
                 ctx.stroke(
                     path,
-                    with: .color(.primary),
+                    with: .color(color),
                     style: StrokeStyle(lineWidth: 1.3 * unit, lineCap: .round)
                 )
             }

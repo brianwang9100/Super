@@ -43,7 +43,13 @@ public struct ChatScreen: View {
             )
         }
         .background(theme.background.ignoresSafeArea())
-        .task { await viewModel.load() }
+        // Bind the load to the conversation id so swapping the view
+        // model when the user picks a different chat from the sidebar
+        // re-fires `load()` against the new transcript. A bare `.task`
+        // (no id) only fires on first appear — switching chats would
+        // otherwise leave the new view model unloaded and the surface
+        // stuck on the empty state.
+        .task(id: viewModel.conversationId) { await viewModel.load() }
     }
 
     @ViewBuilder
