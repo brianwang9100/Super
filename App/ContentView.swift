@@ -92,7 +92,8 @@ struct ChatHostView: View {
             if let viewModel {
                 ChatScreen(
                     viewModel: viewModel,
-                    onMenuTap: openSidebar
+                    onMenuTap: openSidebar,
+                    onManageModels: { openSettings(initialPane: .models) }
                 )
                 .superTheme(theme)
             } else if let bootstrapError {
@@ -157,8 +158,14 @@ struct ChatHostView: View {
         Task { await sidebarViewModel.refresh() }
     }
 
-    private func openSettings() {
-        guard settingsViewModel != nil else { return }
+    private func openSettings(initialPane: SettingsSheet.Pane = .root) {
+        guard let settingsViewModel else { return }
+        // Seed the nav stack before flipping the visibility binding so the
+        // sheet animates in already on the requested pane (e.g. the
+        // composer's "Manage models…" jumping straight to Models).
+        if initialPane != .root {
+            settingsViewModel.openPane(initialPane)
+        }
         settingsOpen = true
     }
 

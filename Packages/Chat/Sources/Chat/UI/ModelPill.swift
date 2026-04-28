@@ -24,11 +24,21 @@ public struct ModelPill: View {
     public let options: [Option]
     public let selectedId: String?
     public let onSelect: (String) -> Void
+    /// Tapped when the user picks the trailing "Manage models…" entry.
+    /// The host opens the Settings sheet routed to the Models pane so
+    /// the user can add a new endpoint without leaving the composer.
+    public let onManageModels: () -> Void
 
-    public init(options: [Option], selectedId: String?, onSelect: @escaping (String) -> Void) {
+    public init(
+        options: [Option],
+        selectedId: String?,
+        onSelect: @escaping (String) -> Void,
+        onManageModels: @escaping () -> Void = {}
+    ) {
         self.options = options
         self.selectedId = selectedId
         self.onSelect = onSelect
+        self.onManageModels = onManageModels
     }
 
     @Environment(\.superTheme) private var theme
@@ -53,6 +63,14 @@ public struct ModelPill: View {
                             .font(.system(.caption2, design: .monospaced))
                     }
                 }
+            }
+            // Sectioned divider keeps the management entry visually separate
+            // from the model picks, so a careless tap doesn't switch models.
+            Divider()
+            Button {
+                onManageModels()
+            } label: {
+                Label("Manage models…", systemImage: "slider.horizontal.3")
             }
         } label: {
             FooterPillLabel(

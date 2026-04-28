@@ -12,6 +12,7 @@ public struct ChatComposerFooter: View {
     public let modelOptions: [ModelPill.Option]
     public let selectedModelId: String?
     public let onSelectModel: (String) -> Void
+    public let onManageModels: () -> Void
     public let verbosity: ChatVerbosity
     public let onSelectVerbosity: (ChatVerbosity) -> Void
     public let usedTokens: Int
@@ -21,6 +22,7 @@ public struct ChatComposerFooter: View {
         modelOptions: [ModelPill.Option],
         selectedModelId: String?,
         onSelectModel: @escaping (String) -> Void,
+        onManageModels: @escaping () -> Void = {},
         verbosity: ChatVerbosity,
         onSelectVerbosity: @escaping (ChatVerbosity) -> Void,
         usedTokens: Int,
@@ -29,6 +31,7 @@ public struct ChatComposerFooter: View {
         self.modelOptions = modelOptions
         self.selectedModelId = selectedModelId
         self.onSelectModel = onSelectModel
+        self.onManageModels = onManageModels
         self.verbosity = verbosity
         self.onSelectVerbosity = onSelectVerbosity
         self.usedTokens = usedTokens
@@ -40,7 +43,8 @@ public struct ChatComposerFooter: View {
             ModelPill(
                 options: modelOptions,
                 selectedId: selectedModelId,
-                onSelect: onSelectModel
+                onSelect: onSelectModel,
+                onManageModels: onManageModels
             )
             VerbosityPill(verbosity: verbosity, onSelect: onSelectVerbosity)
             Spacer(minLength: 0)
