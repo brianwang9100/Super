@@ -157,6 +157,434 @@ struct ChatScreenViewModelTests {
             await Task.yield()
         }
     }
+
+    // MARK: - Auto-title generation
+
+    @Test("First assistant message triggers title generation, persists row, fires hook")
+    func autoTitleFiresOnFirstAssistantMessage() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Plan a Lisbon trip", createdAt: Date())
+        let savedAssistant = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Sure — here is a starter itinerary.", createdAt: Date().addingTimeInterval(1))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistant),
+        ])
+        let messages = StubMessageRepository(initial: [])
+        await messages.set([savedUser, savedAssistant])
+
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        await titleProvider.enqueue([
+            .messageStart(id: "t1", model: model.id),
+            .textDelta(index: 0, text: "Lisbon trip plan"),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4))
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+        let titleGen = TitleGenerator(llmProviderRegistry: registry)
+
+        let firedTitles = TitleSpy()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: titleGen
+        )
+        viewModel.onTitleGenerated = { title in
+            Task { await firedTitles.append(title) }
+        }
+
+        viewModel.send("Plan a Lisbon trip")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
+
+        #expect(viewModel.headerTitle == "Lisbon trip plan")
+        let stored = try await conversations.fetch(id: conversationId)
+        #expect(stored?.title == "Lisbon trip plan")
+
+        // Two callbacks fire on a fresh chat: the truncation fallback on
+        // user-send, then the LLM-generated title on assistant-saved.
+        await yieldUntilFiredCount(firedTitles, atLeast: 2)
+        let firedSnapshot = await firedTitles.values
+        // First user message is 18 chars — under the 20-char threshold —
+        // so the fallback fires *without* an ellipsis.
+        #expect(firedSnapshot == ["Plan a Lisbon trip", "Lisbon trip plan"])
+    }
+
+    @Test("Auto-title does not fire on subsequent assistant messages")
+    func autoTitleSkipsSecondAssistantMessage() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Hi", createdAt: Date())
+        let savedAssistantA = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello", createdAt: Date().addingTimeInterval(1))
+        let savedAssistantB = MessageRecord(id: "a2", conversationId: conversationId, role: .assistant, content: "Anything else?", createdAt: Date().addingTimeInterval(2))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistantA),
+            .assistantMessageSaved(savedAssistantB),
+        ])
+        let messages = StubMessageRepository(initial: [])
+        await messages.set([savedUser, savedAssistantA, savedAssistantB])
+
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        await titleProvider.enqueue([
+            .messageStart(id: "t1", model: model.id),
+            .textDelta(index: 0, text: "Greeting chat"),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 2))
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+        )
+
+        viewModel.send("Hi")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        await yieldUntilHeaderUpdates(viewModel, expected: "Greeting chat")
+
+        // Exactly one provider call: the second assistant message must not
+        // trigger a re-generation.
+        let captured = await titleProvider.capturedRequests()
+        #expect(captured.count == 1)
+        #expect(viewModel.headerTitle == "Greeting chat")
+    }
+
+    @Test("Auto-title is skipped when the conversation already has a real title")
+    func autoTitleSkippedWhenTitleAlreadySet() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Continue", createdAt: Date())
+        let savedAssistant = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Continuing.", createdAt: Date().addingTimeInterval(1))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistant),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser, savedAssistant])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "Trip plan", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        // Intentionally enqueue nothing — a generation attempt would
+        // fatalError in FakeLLMProvider, which fails the test loudly.
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Trip plan",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+        )
+
+        viewModel.send("Continue")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+
+        let captured = await titleProvider.capturedRequests()
+        #expect(captured.isEmpty)
+        #expect(viewModel.headerTitle == "Trip plan")
+    }
+
+    @Test("Auto-title is skipped when the assistant message has no text yet")
+    func autoTitleSkippedForEmptyAssistantMessage() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Hi", createdAt: Date())
+        let savedAssistantToolOnly = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "", createdAt: Date().addingTimeInterval(1))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistantToolOnly),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser, savedAssistantToolOnly])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+        )
+
+        viewModel.send("Hi")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+
+        // Empty assistant content must not touch the provider.
+        let captured = await titleProvider.capturedRequests()
+        #expect(captured.isEmpty)
+        // The truncation fallback still ran on user-send.
+        #expect(viewModel.headerTitle == "Hi")
+    }
+
+    @Test("Auto-title generator returning nil leaves the header alone and clears the once-flag")
+    func autoTitleGeneratorNilLeavesPlaceholderAndAllowsRetry() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Hi", createdAt: Date())
+        let savedAssistant = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello", createdAt: Date().addingTimeInterval(1))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistant),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser, savedAssistant])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        // Empty-text-then-complete → TitleGenerator returns nil.
+        await titleProvider.enqueue([
+            .messageStart(id: "t1", model: model.id),
+            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0))
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+        )
+
+        viewModel.send("Hi")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        // Wait for the title task to drain so the once-flag clears.
+        for _ in 0..<400 {
+            let captured = await titleProvider.capturedRequests()
+            if captured.count == 1 { break }
+            await Task.yield()
+        }
+
+        let stored = try await conversations.fetch(id: conversationId)
+        // The truncation fallback wrote "Hi" on user-send. The
+        // generator returning nil means we leave the fallback in place
+        // rather than reverting to "New chat".
+        #expect(stored?.title == "Hi")
+        #expect(viewModel.headerTitle == "Hi")
+    }
+
+    @Test("First user message stamps a truncated fallback title before the LLM responds")
+    func userSendStampsTruncatedFallbackTitle() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "How do I reset my password on Linux?", createdAt: Date())
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations
+        )
+
+        viewModel.send("How do I reset my password on Linux?")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        await yieldUntilHeaderUpdates(viewModel, expected: "How do I reset my pa…")
+
+        #expect(viewModel.headerTitle == "How do I reset my pa…")
+        let stored = try await conversations.fetch(id: conversationId)
+        #expect(stored?.title == "How do I reset my pa…")
+    }
+
+    @Test("LLM-generated title overwrites the truncated fallback")
+    func llmTitleOverwritesTruncatedFallback() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Plan a Lisbon trip with kids", createdAt: Date())
+        let savedAssistant = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Sure — here is a starter itinerary.", createdAt: Date().addingTimeInterval(1))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+            .assistantMessageSaved(savedAssistant),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser, savedAssistant])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let titleProvider = FakeLLMProvider(model: model)
+        await titleProvider.enqueue([
+            .messageStart(id: "t1", model: model.id),
+            .textDelta(index: 0, text: "Lisbon trip plan"),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4))
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(titleProvider)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations,
+            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+        )
+
+        viewModel.send("Plan a Lisbon trip with kids")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
+
+        let stored = try await conversations.fetch(id: conversationId)
+        #expect(stored?.title == "Lisbon trip plan")
+    }
+
+    @Test("Second user-send does not replace an existing fallback or LLM title")
+    func secondUserSendDoesNotOverwriteTitle() async throws {
+        let firstUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Plan a Lisbon trip with kids", createdAt: Date())
+        let secondUser = MessageRecord(id: "u2", conversationId: conversationId, role: .user, content: "What about Madrid instead?", createdAt: Date().addingTimeInterval(2))
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(firstUser),
+            .userMessageSaved(secondUser),
+        ])
+        let messages = StubMessageRepository(initial: [firstUser, secondUser])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "New chat", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "New chat",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations
+        )
+
+        viewModel.send("Plan a Lisbon trip with kids")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        await yieldUntilHeaderUpdates(viewModel, expected: "Plan a Lisbon trip w…")
+
+        let stored = try await conversations.fetch(id: conversationId)
+        // Title locked to the *first* user message's truncation despite
+        // a second user-send going through.
+        #expect(stored?.title == "Plan a Lisbon trip w…")
+        #expect(viewModel.headerTitle == "Plan a Lisbon trip w…")
+    }
+
+    @Test("Truncation fallback is skipped when the conversation already has a real title")
+    func fallbackSkippedWhenTitleAlreadySet() async throws {
+        let savedUser = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Continue", createdAt: Date())
+
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(savedUser),
+        ])
+        let messages = StubMessageRepository(initial: [savedUser])
+        let conversations = StubConversationRepository(initial: [
+            ConversationRecord(id: conversationId, title: "Trip plan", createdAt: Date(), updatedAt: Date())
+        ])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Trip plan",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            conversationRepository: conversations
+        )
+
+        viewModel.send("Continue")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+
+        let stored = try await conversations.fetch(id: conversationId)
+        #expect(stored?.title == "Trip plan")
+        #expect(viewModel.headerTitle == "Trip plan")
+    }
+
+    @Test("truncatedFallback returns nil for empty input and ellipsizes only when shortened")
+    func truncatedFallbackEdgeCases() {
+        #expect(ChatScreenViewModel.truncatedFallback(for: "") == nil)
+        #expect(ChatScreenViewModel.truncatedFallback(for: "    ") == nil)
+        #expect(ChatScreenViewModel.truncatedFallback(for: "Short") == "Short")
+        #expect(ChatScreenViewModel.truncatedFallback(for: "Exactly twenty chars!") == "Exactly twenty chars…")
+        let long = ChatScreenViewModel.truncatedFallback(for: "How do I reset my password on Linux?")
+        #expect(long == "How do I reset my pa…")
+    }
+
+    @Test("titleNeedsGeneration treats nil, empty, and 'New chat' as placeholders")
+    func titleNeedsGenerationPlaceholderRules() {
+        #expect(ChatScreenViewModel.titleNeedsGeneration(nil) == true)
+        #expect(ChatScreenViewModel.titleNeedsGeneration("") == true)
+        #expect(ChatScreenViewModel.titleNeedsGeneration("   ") == true)
+        #expect(ChatScreenViewModel.titleNeedsGeneration("New chat") == true)
+        #expect(ChatScreenViewModel.titleNeedsGeneration("new chat") == true)
+        #expect(ChatScreenViewModel.titleNeedsGeneration("Lisbon trip plan") == false)
+    }
+
+    private func yieldUntilHeaderUpdates(_ viewModel: ChatScreenViewModel, expected: String) async {
+        for _ in 0..<400 {
+            if viewModel.headerTitle == expected { return }
+            await Task.yield()
+        }
+    }
+
+    private func yieldUntilFiredCount(_ spy: TitleSpy, atLeast count: Int) async {
+        for _ in 0..<400 {
+            if await spy.values.count >= count { return }
+            await Task.yield()
+        }
+    }
 }
 
 // MARK: - Test doubles
@@ -270,6 +698,52 @@ private actor StubToolCallRepository: ToolCallRepository {
         row.result = result
         row.completedAt = completedAt
         rows[i] = row
+    }
+}
+
+private actor StubConversationRepository: ConversationRepository {
+    private var rows: [ConversationRecord]
+
+    init(initial: [ConversationRecord] = []) {
+        self.rows = initial
+    }
+
+    func listActive() async throws -> [ConversationRecord] {
+        rows.filter { $0.deletedAt == nil }
+    }
+
+    func fetch(id: String) async throws -> ConversationRecord? {
+        rows.first(where: { $0.id == id })
+    }
+
+    func save(_ record: ConversationRecord) async throws {
+        rows.removeAll { $0.id == record.id }
+        rows.append(record)
+    }
+
+    func softDelete(id: String, at deletedAt: Date) async throws {
+        guard let i = rows.firstIndex(where: { $0.id == id }) else { return }
+        var row = rows[i]
+        guard row.deletedAt == nil else { return }
+        row.deletedAt = deletedAt
+        row.updatedAt = deletedAt
+        rows[i] = row
+    }
+
+    func hardDelete(id: String) async throws {
+        rows.removeAll { $0.id == id }
+    }
+}
+
+/// Records titles fired through `onTitleGenerated`. The hook itself runs
+/// on `@MainActor`, but we want to inspect the appended values from the
+/// test body without forcing every assertion onto the main actor — so the
+/// spy is an actor and the hook posts via `Task { await spy.append(...) }`.
+private actor TitleSpy {
+    var values: [String] = []
+
+    func append(_ value: String) {
+        values.append(value)
     }
 }
 
