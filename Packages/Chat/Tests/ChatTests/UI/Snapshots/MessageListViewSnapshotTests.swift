@@ -76,6 +76,26 @@ struct MessageListViewSnapshotTests {
         recordOrCompare(view: view, name: "list_error_light", function: function)
     }
 
+    /// Banner with the optional action button — exercises the M11
+    /// "Settings" deep-link variant that voice-input permission denial
+    /// surfaces. Verifies the action label replaces the default Retry
+    /// pill.
+    @Test("error banner with action button (Settings variant)")
+    func errorBannerWithAction() {
+        let function = #function
+        let view = MessageListView(
+            items: [.userBubble(id: "u1", text: "Try voice")],
+            error: .init(
+                message: "Voice input needs Speech Recognition and Microphone permissions. Open Settings to enable them.",
+                actionLabel: "Settings",
+                action: {}
+            )
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 400)
+        recordOrCompare(view: view, name: "list_error_banner_with_action_light", function: function)
+    }
+
     @Test("compaction banner placement")
     func compactionBanner() {
         let function = #function

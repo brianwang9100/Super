@@ -585,6 +585,105 @@ struct ChatScreenViewModelTests {
             await Task.yield()
         }
     }
+
+    // MARK: - Voice input wiring (M11)
+
+    @Test("micTap freezes prefix into committedComposerText and forwards to the controller")
+    func micTapFreezesPrefixAndForwardsToggle() async {
+        let voiceService = FakeVoiceInputService()
+        let voice = VoiceInputController(service: voiceService)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        viewModel.composerText = "draft prefix"
+
+        await viewModel.handleMicTap()
+
+        #expect(viewModel.committedComposerText == "draft prefix")
+        #expect(voice.state == .listening)
+        #expect(voiceService.startCallCount == 1)
+    }
+
+    @Test("final transcript appends to the committed composer prefix")
+    func finalTranscriptAppendsToComposerText() async {
+        let voiceService = FakeVoiceInputService()
+        let voice = VoiceInputController(service: voiceService)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        viewModel.composerText = "draft"
+
+        await viewModel.handleMicTap()
+        voiceService.emit(.final("hello"))
+        await yieldUntilVoiceState(voice, .idle)
+
+        #expect(viewModel.composerText == "draft hello")
+        #expect(viewModel.committedComposerText == "")
+    }
+
+    @Test("voice .denied state surfaces a banner with the Settings action")
+    func voiceStateDeniedSetsErrorBanner() {
+        let voice = VoiceInputController(service: FakeVoiceInputService())
+        let viewModel = makeVoiceViewModel(voice: voice)
+
+        viewModel.handleVoiceStateChange(.denied)
+
+        #expect(viewModel.error?.actionLabel == "Settings")
+        #expect(viewModel.error?.action != nil)
+    }
+
+    @Test("voice .failed state surfaces a banner without action or retry buttons")
+    func voiceStateFailedSetsErrorBanner() {
+        let voice = VoiceInputController(service: FakeVoiceInputService())
+        let viewModel = makeVoiceViewModel(voice: voice)
+
+        viewModel.handleVoiceStateChange(.failed("boom"))
+
+        #expect(viewModel.error?.message.contains("boom") == true)
+        #expect(viewModel.error?.actionLabel == nil)
+        // Voice failures must suppress the Retry pill so tapping it
+        // doesn't re-send the last LLM message — the retry would have
+        // nothing to do with the voice attempt that just failed.
+        #expect(viewModel.error?.showsRetry == false)
+    }
+
+    @Test("voice .failed with kLSRErrorDomain message uses the dictation-pack hint")
+    func voiceStateFailedWithMissingDictationPackUsesHint() {
+        let voice = VoiceInputController(service: FakeVoiceInputService())
+        let viewModel = makeVoiceViewModel(voice: voice)
+
+        viewModel.handleVoiceStateChange(.failed("kLSRErrorDomain #300: …"))
+
+        #expect(viewModel.error?.message.contains("real device") == true)
+        #expect(viewModel.error?.message.contains("Dictation") == true)
+        #expect(viewModel.error?.showsRetry == false)
+    }
+
+    @Test("voice .unavailable state leaves the existing error banner alone")
+    func voiceStateUnavailableLeavesErrorAlone() {
+        let voice = VoiceInputController(service: FakeVoiceInputService())
+        let viewModel = makeVoiceViewModel(voice: voice)
+
+        viewModel.handleVoiceStateChange(.unavailable)
+
+        #expect(viewModel.error == nil)
+    }
+
+    private func makeVoiceViewModel(voice: VoiceInputController) -> ChatScreenViewModel {
+        ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            voice: voice
+        )
+    }
+
+    private func yieldUntilVoiceState(_ voice: VoiceInputController, _ expected: VoiceInputController.State) async {
+        for _ in 0..<400 {
+            if voice.state == expected { return }
+            await Task.yield()
+        }
+    }
 }
 
 // MARK: - Test doubles

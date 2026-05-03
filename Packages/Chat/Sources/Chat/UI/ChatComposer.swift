@@ -1,21 +1,42 @@
 import SwiftUI
 
+/// Internal override for the recording-pulse animation. Defaults to
+/// `nil` so the composer uses the system `\.accessibilityReduceMotion`
+/// value at render time. Snapshot tests inject a non-nil value because
+/// SwiftUI's accessibility env values aren't writable from a test
+/// wrapper, so we can't otherwise pin the reduce-motion baseline.
+private struct ChatComposerReduceMotionOverrideKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    var chatComposerReduceMotionOverride: Bool? {
+        get { self[ChatComposerReduceMotionOverrideKey.self] }
+        set { self[ChatComposerReduceMotionOverrideKey.self] = newValue }
+    }
+}
+
 /// Rounded composer capsule with a multi-line text editor, the
 /// `ChatComposerFooter` row, and a single trailing 34pt circle button that
-/// flips between mic (empty composer) and send (non-empty).
+/// flips between mic (empty composer), send (non-empty), recording-stop
+/// (mid-dictation), or cancel (mid-LLM-stream).
 ///
 /// Behavior:
 /// - Enter submits; Shift-Enter inserts a newline.
 /// - Submitting a slash command (`/compact`, `/...`) is the parent's
 ///   responsibility; this view just hands the trimmed text up via
 ///   `onSubmit(_:)`.
-/// - The mic button is wired through `onMicTap` for M11; for M7 the parent
-///   passes a no-op closure.
+/// - Mic taps fire `onMicTap`; while recording the trailing button
+///   becomes a stop affordance wired to `onStopRecording`.
+/// - When `isMicAvailable == false` the mic renders dimmed + disabled;
+///   used for the on-device-recognizer-not-installed case from M11.
 ///
 /// Mirrors `Composer` in `.design-tmp/chat/project/src/chat-view.jsx`.
 public struct ChatComposer: View {
     @Binding public var text: String
     public let isStreaming: Bool
+    public let isRecording: Bool
+    public let isMicAvailable: Bool
     public let modelOptions: [ModelPill.Option]
     public let selectedModelId: String?
     public let onSelectModel: (String) -> Void
@@ -26,6 +47,7 @@ public struct ChatComposer: View {
     public let maxTokens: Int
     public let onSubmit: (String) -> Void
     public let onMicTap: () -> Void
+    public let onStopRecording: () -> Void
     public let onCancelStreaming: () -> Void
 
     public init(
@@ -41,10 +63,15 @@ public struct ChatComposer: View {
         maxTokens: Int,
         onSubmit: @escaping (String) -> Void,
         onMicTap: @escaping () -> Void = {},
-        onCancelStreaming: @escaping () -> Void = {}
+        onCancelStreaming: @escaping () -> Void = {},
+        isRecording: Bool = false,
+        isMicAvailable: Bool = true,
+        onStopRecording: @escaping () -> Void = {}
     ) {
         self._text = text
         self.isStreaming = isStreaming
+        self.isRecording = isRecording
+        self.isMicAvailable = isMicAvailable
         self.modelOptions = modelOptions
         self.selectedModelId = selectedModelId
         self.onSelectModel = onSelectModel
@@ -55,11 +82,22 @@ public struct ChatComposer: View {
         self.maxTokens = maxTokens
         self.onSubmit = onSubmit
         self.onMicTap = onMicTap
+        self.onStopRecording = onStopRecording
         self.onCancelStreaming = onCancelStreaming
     }
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
     @FocusState private var isFocused: Bool
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var pulseOpacity: CGFloat = 0.6
+
+    /// Effective reduce-motion flag — test override wins when set, the
+    /// system env value is the default. Lets snapshot tests pin the
+    /// no-pulse rendering even though `\.accessibilityReduceMotion`
+    /// isn't writable.
+    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var hasContent: Bool { !trimmed.isEmpty }
@@ -122,14 +160,20 @@ public struct ChatComposer: View {
         .submitLabel(.send)
         .onSubmit(submit)
         .padding(.vertical, 4)
+        .disabled(isRecording)
+        .accessibilityHint(isRecording ? "Recording. Double-tap stop to commit." : "")
     }
 
     @ViewBuilder
     private var trailingButton: some View {
         if isStreaming {
             cancelButton
+        } else if isRecording {
+            recordingButton
         } else if hasContent {
             sendButton
+        } else if !isMicAvailable {
+            micButtonDimmed
         } else {
             micButton
         }
@@ -157,6 +201,55 @@ public struct ChatComposer: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Voice input")
+    }
+
+    /// Dimmed mic for the on-device-recognizer-unavailable case. Same
+    /// shape as `micButton` but disabled and painted in faded ink so the
+    /// button still anchors the trailing slot without inviting taps.
+    private var micButtonDimmed: some View {
+        Button(action: {}) {
+            Image(systemName: "mic.slash")
+                .font(.system(.callout))
+                .foregroundStyle(theme.inkSoft.opacity(0.4))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(theme.backgroundSunken))
+        }
+        .buttonStyle(.plain)
+        .disabled(true)
+        .accessibilityLabel("Voice input unavailable")
+        .accessibilityHint("On-device speech recognition isn't available for your language.")
+    }
+
+    /// Mid-dictation stop affordance: accent-filled circle with a stop
+    /// glyph and an animated outer ring that pulses outward to signal
+    /// "still recording." The pulse overlay is suppressed when Reduce
+    /// Motion is on; the static button still flips so the user gets the
+    /// affordance change either way.
+    private var recordingButton: some View {
+        Button(action: onStopRecording) {
+            Image(systemName: "stop.fill")
+                .font(.system(.callout).weight(.bold))
+                .foregroundStyle(theme.accentInk)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(theme.accent))
+                .overlay {
+                    if !reduceMotion {
+                        Circle()
+                            .stroke(theme.accent.opacity(pulseOpacity), lineWidth: 2)
+                            .scaleEffect(pulseScale)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Stop recording")
+        .accessibilityHint("Double-tap to stop voice input and insert the transcript.")
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                pulseScale = 1.5
+                pulseOpacity = 0
+            }
+        }
     }
 
     private var cancelButton: some View {
