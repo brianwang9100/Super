@@ -283,6 +283,7 @@ struct AssistantMessageView: View {
     let toolCalls: [MessageListView.ToolCallView]
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.pasteboardClient) private var pasteboard
 
     var body: some View {
         // Some providers emit a stray newline or single space alongside a
@@ -311,7 +312,7 @@ struct AssistantMessageView: View {
                 // so the action row would just be visual noise.
                 HStack(spacing: 4) {
                     MessageActionButton(systemName: "doc.on.doc", label: "Copy") {
-                        UIPasteboardClient.copy(text)
+                        pasteboard.copy(text)
                     }
                     MessageActionButton(systemName: "arrow.clockwise", label: "Regenerate") {
                         // M12 wires this; the button is visible per the design
@@ -764,15 +765,3 @@ struct ErrorBannerView: View {
     }
 }
 
-// MARK: - Pasteboard
-
-/// Tiny indirection so non-iOS test bodies don't drag in `UIKit`. Inside
-/// the Chat package we know we're on iOS 18+; this just keeps the test
-/// target free of UIKit-specific code paths if a future host expands.
-enum UIPasteboardClient {
-    static func copy(_ text: String) {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = text
-        #endif
-    }
-}
