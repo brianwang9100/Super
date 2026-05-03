@@ -6,29 +6,36 @@ import SwiftUI
 /// by ``SplashHighlighter``.
 ///
 /// Wired via `Theme.codeBlock` in `markdownTheme()` so every fenced block
-/// inside a ``MarkdownText`` picks up the chrome automatically.
+/// inside a ``MarkdownText`` picks up the chrome automatically. The copy
+/// state machine lives in ``CodeBlockCopyController`` so its timing and
+/// cancellation behavior can be tested without rendering this view.
 struct CodeBlockView: View {
     let language: String?
     let code: String
     let superTheme: SuperTheme
 
-    @State private var copyState: CopyState = .idle
-
-    private enum CopyState: Equatable {
-        case idle
-        case copied
-    }
+    @Environment(\.pasteboardClient) private var pasteboard
+    @State private var copyController = CodeBlockCopyController(pasteboard: SystemPasteboardClient())
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            body_
+            highlightedBody
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(superTheme.codeBackground)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onAppear {
+            // Swap the controller's pasteboard to the env-injected one
+            // now that the environment is readable. Tests inject a
+            // recording double via `.environment(\.pasteboardClient, ...)`
+            // and rely on this swap to redirect copy() to it.
+            copyController.pasteboard = pasteboard
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("\(language?.lowercased() ?? "Plain") code block"))
     }
 
     // MARK: - Header (lang + copy)
@@ -55,37 +62,34 @@ struct CodeBlockView: View {
     }
 
     private var copyButton: some View {
-        Button {
-            UIPasteboardClient.copy(code)
-            copyState = .copied
-            // Revert the label after a short window so a glance back at
-            // the block still says "copy"; the design uses the same
-            // 1.2s window.
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                copyState = .idle
-            }
+        let copied = copyController.state == .copied
+        return Button {
+            copyController.copy(code)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: copyState == .copied ? "checkmark" : "doc.on.doc")
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .font(.system(.caption2).weight(.semibold))
-                Text(copyState == .copied ? "copied" : "copy")
+                Text(copied ? "copied" : "copy")
                     .font(.system(.caption2))
             }
             .foregroundStyle(superTheme.codeForeground.opacity(0.7))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(copyState == .copied ? "Copied" : "Copy code")
+        .accessibilityLabel(copied ? "Copied" : "Copy code")
+        // VoiceOver announces the value change when state flips so the
+        // user gets the same feedback the visible icon swap provides.
+        .accessibilityValue(copied ? "Copied to clipboard" : "")
     }
 
     // MARK: - Body (highlighted code)
 
-    private var body_: some View {
+    private var highlightedBody: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             SplashHighlighter
                 .highlight(code, language: language, palette: .from(superTheme))
                 .font(.system(.caption, design: .monospaced))
                 .lineSpacing(2)
+                .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)

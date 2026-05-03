@@ -14,14 +14,46 @@ extension SuperTheme {
     /// `@MainActor` because every block/text closure ends up applying
     /// SwiftUI view modifiers (`markdownMargin`, `markdownTextStyle`,
     /// `relativeLineSpacing`) that are themselves MainActor-isolated.
+    ///
+    /// `bodyStyle` controls the `.text` slot — `.thinking` paints in
+    /// `inkSoft` at 13pt and italic, `.banner` paints `inkSoft` at 13pt,
+    /// nil paints the default `ink` at 15pt. Baking the style into the
+    /// theme (rather than layering it via `markdownTextStyle(\.text)`)
+    /// is the only path that reliably propagates `FontStyle(.italic)`
+    /// through MarkdownUI's text composition.
+    ///
+    /// Font sizes (15pt body, 1.6/1.35/1.15 em headings) and margins are
+    /// hard-coded to match the design tokens. M12 will multiply these
+    /// by the persisted `SettingRecord.fontScale` and `density` knobs;
+    /// today the settings are saved but not yet read by this builder.
     @MainActor
-    func markdownTheme() -> MarkdownUI.Theme {
+    func markdownTheme(bodyStyle: MarkdownText.BodyStyle? = nil) -> MarkdownUI.Theme {
         let theme = self
-        return MarkdownUI.Theme()
-            .text {
-                ForegroundColor(theme.ink)
-                FontSize(15)
+        // Result-builder branching inside `.text { ... }` doesn't
+        // propagate `FontStyle(.italic)` reliably, so the .text slot is
+        // built up-front per body style, then chained into the rest of
+        // the theme.
+        let textStyledTheme: MarkdownUI.Theme = {
+            switch bodyStyle {
+            case .thinking:
+                return MarkdownUI.Theme().text {
+                    ForegroundColor(theme.inkSoft)
+                    FontSize(13)
+                    FontStyle(.italic)
+                }
+            case .banner:
+                return MarkdownUI.Theme().text {
+                    ForegroundColor(theme.inkSoft)
+                    FontSize(13)
+                }
+            case .none:
+                return MarkdownUI.Theme().text {
+                    ForegroundColor(theme.ink)
+                    FontSize(15)
+                }
             }
+        }()
+        return textStyledTheme
             .code {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(0.88))

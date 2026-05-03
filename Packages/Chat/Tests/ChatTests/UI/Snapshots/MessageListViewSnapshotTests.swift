@@ -179,6 +179,54 @@ struct MessageListViewSnapshotTests {
         recordOrCompare(view: view, name: "list_table_light", function: function)
     }
 
+    /// Compaction banner whose summary contains markdown (`**bold**` and
+    /// inline `code`). Exercises `MarkdownText.BodyStyle.banner` so a
+    /// future tweak to the banner's foreground/font/italic story is
+    /// caught visually rather than only by the unit-level pin.
+    @Test("compaction banner renders markdown in summary text")
+    func compactionBannerWithMarkdown() {
+        let function = #function
+        let summary = "User asked about **Lisbon** itinerary; assistant replied with `tram 28` and pastry-shop tips."
+        let view = MessageListView(items: [
+            .userBubble(id: "u1", text: "older"),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
+            .compactionBanner(id: "b1", summary: summary),
+            .userBubble(id: "u2", text: "follow-up"),
+        ], verbosity: .verbose)
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 600)
+        recordOrCompare(view: view, name: "list_compaction_markdown_light", function: function)
+    }
+
+    /// Thinking trace expanded under verbose verbosity, containing
+    /// markdown (a bulleted list + **bold**). Exercises
+    /// `MarkdownText.BodyStyle.thinking` so the italic + softer-ink
+    /// styling stays coherent with markdown structure inside the trace.
+    @Test("thinking trace renders markdown when expanded")
+    func thinkingBlockWithMarkdown() {
+        let function = #function
+        let thinking = """
+        Thinking through the trip:
+
+        - **Three days** is enough to see the historic center
+        - Belém needs its own half-day
+        - Save Sintra for a day trip
+        """
+        let view = MessageListView(items: [
+            .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+            .assistantText(
+                id: "a1",
+                thinking: thinking,
+                thinkingDurationMs: 4200,
+                text: "Here's a starter itinerary.",
+                toolCalls: []
+            ),
+        ], verbosity: .verbose)
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 600)
+        recordOrCompare(view: view, name: "list_thinking_markdown_light", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -187,6 +235,41 @@ struct MessageListViewSnapshotTests {
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: "list_populated_light_xxl", function: function)
+    }
+
+    /// Dynamic Type XXL coverage for the M10 markdown surfaces — body
+    /// prose, fenced code, and a table all under accessibility-large
+    /// type. Per AGENTS.md §Testing.2 every view needs a larger Dynamic
+    /// Type snapshot; the base `dynamicTypeXXL` fixture has no markdown
+    /// content so it doesn't exercise these paths.
+    @Test("dynamic type XXL markdown + code block + table")
+    func dynamicTypeXXLMarkdown() {
+        let function = #function
+        let markdown = """
+        ### Lisbon trip checklist
+
+        Three days in Lisbon mixes **steep hills** with `tram 28` rides.
+
+        ```swift
+        func plan(days: Int) -> String { "\\(days)d" }
+        ```
+
+        | Day | Focus |
+        | --- | --- |
+        | 1 | Alfama |
+        | 2 | Belém |
+        """
+        let view = MessageListView(
+            items: [
+                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
+            ],
+            verbosity: .verbose
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: 402, height: 900)
+        recordOrCompare(view: view, name: "list_markdown_light_xxl", function: function)
     }
 
     // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view

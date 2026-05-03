@@ -3,10 +3,10 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Tests for ``SplashHighlighter``'s palette wiring and grammar gating.
-/// We assert against the `CodePalette` values directly because Splash's
-/// per-token output is opaque (`Text` from a `+`-chained run); the
-/// palette is the layer where Super-specific decisions live.
+/// Tests for ``SplashHighlighter``'s palette wiring, grammar gating, and
+/// the tokenize → render split. The tokenization step returns a value-
+/// typed `[Token]` so we can assert on the actual stream rather than on
+/// the opaque `Text` the renderer produces.
 @Suite("SplashHighlighter")
 struct SplashHighlighterTests {
     @Test("palette derives from the active SuperTheme")
@@ -20,47 +20,59 @@ struct SplashHighlighterTests {
         #expect(palette.property == theme.codeForeground)
     }
 
-    @Test("token type → palette color covers every case")
+    @Test("token type → palette color: every case maps to its dedicated slot")
     func paletteCoversEveryTokenType() {
         let palette = CodePalette.from(.make(.dark))
-        // `.custom` falls through to plain — exercise it here so the
-        // switch keeps an explicit branch and never drops to a stray
-        // `default`.
-        let cases: [TokenType] = [
-            .keyword, .string, .type, .call, .number, .comment,
-            .property, .dotAccess, .preprocessing, .custom("foo"),
-        ]
-        // No assertion beyond "doesn't crash" — the contract is that
-        // every existing case is mapped (compiler enforces exhaustiveness
-        // inside `color(for:)`).
-        for t in cases {
-            _ = palette.color(for: t)
-        }
+        #expect(palette.color(for: .keyword)       == palette.keyword)
+        #expect(palette.color(for: .string)        == palette.string)
+        #expect(palette.color(for: .type)          == palette.type)
+        #expect(palette.color(for: .call)          == palette.call)
+        #expect(palette.color(for: .number)        == palette.number)
+        #expect(palette.color(for: .comment)       == palette.comment)
+        #expect(palette.color(for: .property)      == palette.property)
+        #expect(palette.color(for: .dotAccess)     == palette.dotAccess)
+        #expect(palette.color(for: .preprocessing) == palette.preprocessing)
+        // `.custom` falls through to plain — exercised explicitly so the
+        // switch never quietly drops to a stray `default`.
+        #expect(palette.color(for: .custom("foo")) == palette.plain)
     }
 
-    @Test("non-Swift fence falls through to plain text without throwing")
-    func nonSwiftFenceFallsBackToPlain() {
-        // Triple-tick fence with `python` — Splash only ships with Swift
-        // grammar, so we route through `addPlainText` and still produce
-        // a Text. The test just confirms the path is exercised end-to-end.
-        let text = SplashHighlighter.highlight(
-            "def hello():\n    print(\"hi\")\n",
-            language: "python",
-            palette: .from(.make(.light))
-        )
-        // The returned value is a SwiftUI `Text`; we can't read its
-        // characters, but this confirms the function returns without
-        // tripping a precondition.
-        _ = text
+    @Test("non-Swift fence emits a single .plain token covering the whole body")
+    func nonSwiftFenceProducesPlain() {
+        let code = "def hello():\n    print(\"hi\")\n"
+        let tokens = SplashHighlighter.tokenize(code, language: "python")
+        #expect(tokens == [.plain(code)])
     }
 
-    @Test("Swift fence with nil language defaults to Swift grammar")
+    @Test("nil language defaults to Swift grammar — keywords + numbers classified")
     func nilLanguageDefaultsToSwift() {
-        let text = SplashHighlighter.highlight(
-            "let x = 1\n",
-            language: nil,
-            palette: .from(.make(.light))
-        )
-        _ = text
+        let tokens = SplashHighlighter.tokenize("let x = 1\n", language: nil)
+        // Pull out the typed-classified tokens; Swift's grammar must
+        // recognize `let` as a keyword and `1` as a number.
+        let typed: [(String, TokenType)] = tokens.compactMap { token in
+            if case .typed(let text, let type) = token { return (text, type) }
+            return nil
+        }
+        #expect(typed.contains { $0.0 == "let" && $0.1 == .keyword })
+        #expect(typed.contains { $0.0 == "1" && $0.1 == .number })
+    }
+
+    @Test("explicit swift language tag also routes through Swift grammar")
+    func swiftLanguageTagRoutesToSwiftGrammar() {
+        let tokens = SplashHighlighter.tokenize("func f() {}\n", language: "swift")
+        let hasFuncKeyword = tokens.contains { token in
+            if case .typed(let text, let type) = token { return text == "func" && type == .keyword }
+            return false
+        }
+        #expect(hasFuncKeyword)
+    }
+
+    @Test("useSwiftGrammar gating: nil + swift true; everything else false")
+    func useSwiftGrammarGating() {
+        #expect(SplashHighlighter.useSwiftGrammar(nil))
+        #expect(SplashHighlighter.useSwiftGrammar("swift"))
+        #expect(SplashHighlighter.useSwiftGrammar("Swift"))
+        #expect(!SplashHighlighter.useSwiftGrammar("python"))
+        #expect(!SplashHighlighter.useSwiftGrammar(""))
     }
 }

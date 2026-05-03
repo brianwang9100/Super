@@ -8,6 +8,11 @@ import SwiftUI
 /// Used by ``AssistantMessageView``, ``ThinkingBlockView``, and
 /// ``CompactionBannerView`` so all assistant prose is rendered against
 /// the same palette and block chrome.
+///
+/// The MarkdownUI `Theme` is built once per `(SuperTheme, BodyStyle)`
+/// and cached in `@State` so re-renders (e.g. after a transcript
+/// refresh) don't pay the rebuild cost on every body invocation.
+/// Re-keyed via `.task(id:)` whenever theme or body style changes.
 struct MarkdownText: View {
     let text: String
     /// Optional override for the default text style — `ThinkingBlockView`
@@ -16,6 +21,7 @@ struct MarkdownText: View {
     let bodyStyleOverride: BodyStyle?
 
     @Environment(\.superTheme) private var theme
+    @State private var cachedTheme: MarkdownUI.Theme?
 
     init(_ text: String, bodyStyleOverride: BodyStyle? = nil) {
         self.text = text
@@ -34,33 +40,23 @@ struct MarkdownText: View {
     }
 
     var body: some View {
+        // First render before `.task` fires uses an inline build; the
+        // task primes the cache so subsequent renders skip the rebuild.
         Markdown(text)
-            .markdownTheme(theme.markdownTheme())
-            .markdownTextStyle(\.text) {
-                ForegroundColor(foregroundColor)
-                FontSize(fontSize)
-                if italic {
-                    FontStyle(.italic)
-                }
+            .markdownTheme(cachedTheme ?? theme.markdownTheme(bodyStyle: bodyStyleOverride))
+            // Selection lets the user copy a partial run from a code
+            // block or a sentence from prose without invoking the
+            // full-message Copy button.
+            .textSelection(.enabled)
+            .task(id: themeKey) {
+                cachedTheme = theme.markdownTheme(bodyStyle: bodyStyleOverride)
             }
     }
 
-    private var foregroundColor: Color {
-        switch bodyStyleOverride {
-        case .thinking, .banner: return theme.inkSoft
-        case .none:              return theme.ink
-        }
-    }
-
-    private var fontSize: CGFloat {
-        switch bodyStyleOverride {
-        case .banner:   return 13
-        case .thinking: return 13
-        case .none:     return 15
-        }
-    }
-
-    private var italic: Bool {
-        bodyStyleOverride == .thinking
+    /// Cache key combines the SuperTheme value with the body-style
+    /// override so a thinking trace doesn't reuse a cached banner theme
+    /// (and vice versa) when both render in the same view tree.
+    private var themeKey: String {
+        "\(theme.id.rawValue):\(bodyStyleOverride.map(String.init(describing:)) ?? "default")"
     }
 }
