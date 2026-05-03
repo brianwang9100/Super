@@ -6,6 +6,8 @@
 
 **Related documents:** [CLIENT_SERVER.md](./CLIENT_SERVER.md) for communication patterns between client and server, [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the client-side architecture.
 
+> **Status (2026-05-03):** Not built yet. The MVP runs fully on-device — Chat talks directly to the user's BYOK LLM endpoint and persists locally via GRDB. This document describes the target server architecture; nothing under `super-server/` exists in the repo. Tracked in [`TODO.md`](../TODO.md) § Server.
+
 ---
 
 ## 1. Overview & Guiding Constraints

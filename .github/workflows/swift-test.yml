@@ -1,0 +1,58 @@
+name: Swift Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'Packages/**'
+      - '.github/workflows/swift-test.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [Core, Chat]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: Packages/${{ matrix.package }}/.build
+          key: spm-${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('Packages/{0}/Package.resolved', matrix.package)) }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ matrix.package }}-
+
+      - name: Run tests
+        working-directory: Packages/${{ matrix.package }}
+        run: swift test --parallel --enable-code-coverage
+
+      - name: Coverage summary
+        if: always()
+        working-directory: Packages/${{ matrix.package }}
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          PROFDATA=$(find .build -name 'default.profdata' | head -1)
+          BINARY_DIR=$(find .build -name "${PACKAGE}PackageTests.xctest" -type d | head -1)
+          if [ -z "$PROFDATA" ] || [ -z "$BINARY_DIR" ]; then
+            echo "No coverage artifacts found — skipping summary."
+            exit 0
+          fi
+          BINARY="$BINARY_DIR/Contents/MacOS/${PACKAGE}PackageTests"
+          xcrun llvm-cov report "$BINARY" \
+            -instr-profile="$PROFDATA" \
+            -ignore-filename-regex='\.build/|/Tests/' \
+            | tail -40

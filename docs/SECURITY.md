@@ -4,6 +4,8 @@
 
 **Prerequisite reading:** [PRODUCT_VISION.md](./PRODUCT_VISION.md) for goals and applet descriptions, [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for client-side data flow, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for backend topology, [CLIENT_SERVER.md](./CLIENT_SERVER.md) for networking and auth interceptor.
 
+> **Status (2026-05-03):** Partially in effect. What's live: BYOK LLM API keys stored in the iOS Keychain (never on device disk in plaintext, never on a server because there is no server). What's not yet built: server-side auth + JWT, encryption-at-rest for synced data, AuthInterceptor token-rotation flow, HomeKit safety guardrails, and the deployment-pipeline hardening. The on-device threat model and BYOK rules below apply today; everything that involves the server applies once it ships.
+
 ---
 
 ## 1. Threat Model

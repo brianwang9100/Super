@@ -4,6 +4,8 @@
 >
 > **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](../MOBILE_ARCHITECTURE.md) for the tool system, event bus, and data architecture protocols. [CLIENT_SERVER.md](../CLIENT_SERVER.md) for server communication and SSE streaming. [CHAT_INTERACTIONS.md](../CHAT_INTERACTIONS.md) for the full interaction catalog (66 user stories, 6 response types).
 
+> **Status (2026-05-03):** Most of what's described here is built — `Packages/Chat/` ships persistence (`ConversationRepository` / `MessageRepository` / `ToolCallRepository` / `CompactionCheckpointRepository` / `ModelConfigurationRepository` / `SettingRepository`), streaming (`OpenAICompatibleLLMProvider`, `SSEParser`), orchestration (`ChatSession` actor, `ChatSessionStore`, `ContextAssembler`, `Compactor`, `TitleGenerator`), one built-in tool (`TimeNowTool`), and the full SwiftUI surface (`ChatScreen`, `ChatComposer`, `MessageListView`, `SidebarDrawer`, `SettingsSheet`, MarkdownUI + Splash rendering, on-device voice input via `SFSpeechRecognizer`). What is **not yet built**: cross-applet event-bus subscriptions (no other applets exist), shared chat-card renderer registry, server-mediated LLM proxy (the client today talks directly to the user's BYOK endpoint), and any sync-engine integration. See [`IMPLEMENTATION_STATUS.md`](../../IMPLEMENTATION_STATUS.md) for the milestone-by-milestone build log.
+
 ---
 
 ## Table of Contents

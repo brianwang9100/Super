@@ -4,6 +4,12 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the monorepo structure and Swift Package layout, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server stack.
 
+> **What's wired today (2026-05-03):**
+> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-15` runner, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
+> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-15` runner, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`.
+>
+> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, deploy pipelines, signing — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD for the open items.
+
 ---
 
 ## 1. Goals & Philosophy

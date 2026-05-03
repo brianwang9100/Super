@@ -4,6 +4,8 @@
 
 **Prerequisite reading:** [CLIENT_SERVER.md](./CLIENT_SERVER.md) for the AuthInterceptor and token management, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server auth service. [SECURITY.md](./SECURITY.md) Section 3 for token design, biometric unlock, and backend authorization patterns.
 
+> **Status (2026-05-03):** Not built yet. The MVP has no login — the app drops directly into Chat on launch and persists locally. The only secret today is the user's BYOK LLM API key, which lives in the iOS Keychain and never leaves the device. Tracked in [`TODO.md`](../TODO.md) § Server.
+
 ---
 
 ## 1. Overview

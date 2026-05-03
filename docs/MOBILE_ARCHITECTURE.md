@@ -4,6 +4,8 @@
 >
 > This document covers the native iOS/macOS client architecture. For backend concerns see `SERVER_ARCHITECTURE.md`. For the contract between client and server see `CLIENT_SERVER.md`. For offline-first sync design see `SYNC.md`.
 
+> **Status (2026-05-03):** The Chat applet (`Packages/Chat/`) and the shared `Core` package are built and wired through the composition root in `App/`. Cross-applet plumbing (`SuperEventBus`, `AppletManager`, shared chat-card renderer registry) and other applets remain on the roadmap. Several types referenced in this doc as planned now ship — `ToolRegistration`, `ChatSessionStore`, `ContextAssembler`, `Compactor`, `CompactionCheckpointRecord`, plus the `.thinkingDelta` / `.compactionStarted` / `.compactionCompleted` event variants. Updating this doc to describe them in detail is open work in [`TODO.md`](../TODO.md) § Chat MVP / M12.
+
 ---
 
 ## Table of Contents

@@ -2,6 +2,8 @@
 
 > UI/UX design for the Chat applet — the conversational interface that is Super's primary surface today and the eventual orchestration hub for the rest of the shell.
 
+> **Status (2026-05-03):** The MVP described in §1 is built and running on iOS. M0–M10 are complete; M11 (voice input) is implementation-complete and parked pending a physical-device verification walkthrough; M12 (polish + coverage) is in flight. See [`IMPLEMENTATION_STATUS.md`](../../IMPLEMENTATION_STATUS.md).
+
 ---
 
 ## 1. Overview & Scope
