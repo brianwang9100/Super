@@ -6,9 +6,11 @@ import SwiftUI
 /// overlay tail showing the in-flight assistant text/thinking, and an
 /// optional error banner above the composer.
 ///
-/// M7 renders assistant text as plain `Text` and tool/thinking blocks as
-/// minimal placeholder cards — M10 swaps in MarkdownUI + Splash for
-/// markdown/code/thinking polish without changing this view's contract.
+/// Persisted assistant text, thinking traces, and the compaction-banner
+/// summary all run through ``MarkdownText`` (MarkdownUI + Splash). The
+/// streaming tail intentionally stays plain `Text` so we don't re-parse
+/// partial markdown on every delta — the cutover happens in
+/// `ChatScreenViewModel.handle(.assistantMessageSaved)`.
 public struct MessageListView: View {
     /// One projected row to display. `MessageRecord`s are projected into
     /// this shape upstream so the view stays free of Core/Chat imports
@@ -300,10 +302,7 @@ struct AssistantMessageView: View {
                 ToolCallBlockView(call: call, verbosity: verbosity)
             }
             if hasText {
-                Text(text)
-                    .font(.system(.subheadline))
-                    .lineSpacing(2)
-                    .foregroundStyle(theme.ink)
+                MarkdownText(text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 // Copy + Regenerate only attach to a row that actually has
@@ -343,7 +342,7 @@ struct MessageActionButton: View {
     }
 }
 
-// MARK: - Tool call (M7 placeholder; M10 polishes)
+// MARK: - Tool call
 
 struct ToolCallBlockView: View {
     let call: MessageListView.ToolCallView
@@ -471,7 +470,7 @@ struct ToolCallBlockView: View {
     }
 }
 
-// MARK: - Compaction banner (M7 minimal; M10 expands)
+// MARK: - Compaction banner
 
 struct CompactionBannerView: View {
     let summary: String
@@ -487,9 +486,7 @@ struct CompactionBannerView: View {
                     .foregroundStyle(theme.inkFaint)
                 line
             }
-            Text(summary)
-                .font(.system(.caption))
-                .foregroundStyle(theme.inkSoft)
+            MarkdownText(summary, bodyStyleOverride: .banner)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
@@ -623,10 +620,7 @@ struct ThinkingBlockView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if isExpanded, !text.isEmpty {
-                Text(text)
-                    .font(.system(.footnote).italic())
-                    .lineSpacing(2)
-                    .foregroundStyle(theme.inkSoft)
+                MarkdownText(text, bodyStyleOverride: .thinking)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 12)

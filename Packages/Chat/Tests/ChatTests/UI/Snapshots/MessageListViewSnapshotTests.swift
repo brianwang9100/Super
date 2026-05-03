@@ -91,6 +91,94 @@ struct MessageListViewSnapshotTests {
         recordOrCompare(view: view, name: "list_compaction_light", function: function)
     }
 
+    /// Markdown coverage: paragraphs, **bold**, `inline code`, a bulleted
+    /// list, and an h3 heading. Stresses the M10 `markdownTheme()` text
+    /// styles + paragraph spacing.
+    @Test("markdown content (paragraphs, lists, headings, inline code)")
+    func markdownContent() {
+        let function = #function
+        let markdown = """
+        ### Lisbon trip checklist
+
+        Lisbon mixes **steep hills** with `tram 28` rides and pastel-de-nata stops. A few essentials:
+
+        - Book the Belém pastry shop slot in advance
+        - Carry a transit card for the trams
+        - Pack layers — mornings are cool
+
+        Wrap up with a sunset at *Miradouro da Senhora do Monte*.
+        """
+        let view = MessageListView(
+            items: [
+                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
+            ],
+            verbosity: .verbose
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: "list_markdown_light", function: function)
+    }
+
+    /// Fenced ```swift code block rendered through ``CodeBlockView`` —
+    /// covers the dark surface, lang label, copy pill, and Splash-driven
+    /// keyword/string/comment coloring.
+    @Test("fenced code block with Splash highlighting")
+    func codeBlock() {
+        let function = #function
+        let markdown = """
+        Here's a tiny Swift snippet that loads a row by id:
+
+        ```swift
+        // Fetch a single conversation by id.
+        func conversation(id: String) async throws -> ConversationRecord? {
+            try await db.read { db in
+                try ConversationRecord
+                    .filter(Column("id") == id)
+                    .fetchOne(db)
+            }
+        }
+        ```
+
+        Call it from the view model on a `.task` modifier.
+        """
+        let view = MessageListView(
+            items: [
+                .userBubble(id: "u1", text: "Show me a fetch helper"),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
+            ],
+            verbosity: .verbose
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: "list_codeblock_light", function: function)
+    }
+
+    /// GFM table coverage. Tests the `Theme.table` chrome (rounded border,
+    /// horizontal scroll wrapper) and the cell styling.
+    @Test("GFM table renders with chrome")
+    func table() {
+        let function = #function
+        let markdown = """
+        Here are the runtime knobs:
+
+        | Setting | Default | Notes |
+        | --- | --- | --- |
+        | `temperature` | 0.7 | Per-call override |
+        | `top_p` | 1.0 | Nucleus sampling |
+        | `max_tokens` | 2048 | Hard cap |
+        """
+        let view = MessageListView(
+            items: [
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
+            ],
+            verbosity: .verbose
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402, height: 500)
+        recordOrCompare(view: view, name: "list_table_light", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
