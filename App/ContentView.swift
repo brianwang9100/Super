@@ -179,7 +179,10 @@ struct ChatHostView: View {
             // `rebuildChatViewModel` runs (which checks the DB itself
             // to decide whether to wrap the driver lazily).
             let isDraft = ((try? await dependencies.conversationRepository.fetch(id: conversation.id)) == nil)
-            await rebuildChatViewModel(for: conversation)
+            // Build the sidebar view model **before** the chat view
+            // model so the chat's lazy-persist callback and the
+            // auto-titler's `onTitleGenerated` hook can capture a
+            // non-nil sidebar reference.
             let sidebar = SidebarViewModel(
                 conversationRepository: dependencies.conversationRepository,
                 sessionStore: dependencies.chatSessionStore,
@@ -189,6 +192,7 @@ struct ChatHostView: View {
             if isDraft {
                 sidebar.draftConversation = conversation
             }
+            await rebuildChatViewModel(for: conversation)
             await sidebar.refresh()
 
             let settings = SettingsViewModel(
@@ -248,6 +252,7 @@ struct ChatHostView: View {
         let providers = await dependencies.llmProviderRegistry.allProviders()
         let providerModels = providers.flatMap(\.supportedModels)
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
+        let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -257,11 +262,19 @@ struct ChatHostView: View {
             checkpointRepository: dependencies.checkpointRepository,
             availableModels: providerModels,
             selectedModelId: providerModels.first?.id,
-            verbosity: verbosity
+            verbosity: verbosity,
+            conversationRepository: dependencies.conversationRepository,
+            titleGenerator: titleGenerator
         )
         let registry = dependencies.llmProviderRegistry
         newModel.onModelSelected = { modelId in
             Task { await activateProvider(matching: modelId, in: registry) }
+        }
+        // When the auto-titler lands, repaint the sidebar so the row's
+        // "New chat" placeholder flips to the real title without waiting
+        // for the next drawer open.
+        newModel.onTitleGenerated = { [weak sidebar = sidebarViewModel] _ in
+            Task { await sidebar?.refresh() }
         }
         // Mirror the picker's initial pick so the registry's "active"
         // matches what the user sees in the composer pill — without this
