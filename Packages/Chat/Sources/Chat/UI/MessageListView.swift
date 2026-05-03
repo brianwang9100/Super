@@ -99,9 +99,41 @@ public struct MessageListView: View {
         }
     }
 
+    /// Compact error pill rendered above the composer. Optionally
+    /// carries a single trailing action button (label + closure) — used
+    /// by the M11 voice-input "Settings" deep-link banner. When both
+    /// `actionLabel` and `action` are set the button replaces the
+    /// default Retry pill; tapping fires the closure. Set
+    /// `showsRetry: false` to suppress the Retry pill entirely (used
+    /// for voice-input failures where the parent's `onRetry` would
+    /// re-send the last LLM message instead of retrying voice).
+    ///
+    /// `Equatable` ignores `action` (closure identity isn't meaningful);
+    /// SwiftUI re-renders the banner whenever `message`, `actionLabel`,
+    /// or `showsRetry` change.
     public struct ErrorBanner: Sendable, Equatable {
         public let message: String
-        public init(message: String) { self.message = message }
+        public let actionLabel: String?
+        public let action: (@MainActor @Sendable () -> Void)?
+        public let showsRetry: Bool
+
+        public init(
+            message: String,
+            actionLabel: String? = nil,
+            action: (@MainActor @Sendable () -> Void)? = nil,
+            showsRetry: Bool = true
+        ) {
+            self.message = message
+            self.actionLabel = actionLabel
+            self.action = action
+            self.showsRetry = showsRetry
+        }
+
+        public static func == (lhs: ErrorBanner, rhs: ErrorBanner) -> Bool {
+            lhs.message == rhs.message
+                && lhs.actionLabel == rhs.actionLabel
+                && lhs.showsRetry == rhs.showsRetry
+        }
     }
 
     public init(
@@ -165,7 +197,7 @@ public struct MessageListView: View {
                     StreamingTailView(tail: tail, verbosity: verbosity).id("__streaming_tail")
                 }
                 if let banner = error {
-                    ErrorBannerView(message: banner.message, onRetry: onRetry)
+                    ErrorBannerView(banner: banner, onRetry: onRetry)
                         .padding(.vertical, 8)
                 }
                 Color.clear.frame(height: 4).id("__bottom")
@@ -728,29 +760,42 @@ struct TypingCaret: View {
 // MARK: - Error banner
 
 struct ErrorBannerView: View {
-    let message: String
+    let banner: MessageListView.ErrorBanner
     let onRetry: () -> Void
     @Environment(\.superTheme) private var theme
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(message)
+            Text(banner.message)
                 .font(.system(.footnote))
                 .foregroundStyle(theme.errorInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onRetry) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(.caption2).weight(.semibold))
-                    Text("Retry")
+            if let label = banner.actionLabel, let action = banner.action {
+                Button(action: action) {
+                    Text(label)
                         .font(.system(.caption).weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(theme.errorAccent))
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(theme.errorAccent))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(label)")
+            } else if banner.showsRetry {
+                Button(action: onRetry) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(.caption2).weight(.semibold))
+                        Text("Retry")
+                            .font(.system(.caption).weight(.medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(theme.errorAccent))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

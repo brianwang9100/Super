@@ -20,6 +20,10 @@
 	<string>1</string>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Super uses speech recognition to dictate your chat messages on-device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Super needs microphone access to capture your voice for dictation.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

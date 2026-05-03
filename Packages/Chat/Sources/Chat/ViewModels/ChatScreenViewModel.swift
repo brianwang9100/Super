@@ -1,6 +1,9 @@
 import Core
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// View model backing `ChatScreen`. Owns the composer's text buffer, the
 /// resolved transcript items, the in-flight streaming buffers, and the
@@ -73,6 +76,19 @@ public final class ChatScreenViewModel {
     /// repaints the header through `@Observable` when the title lands.
     public private(set) var headerTitle: String
 
+    /// Voice-input collaborator. Owns the active dictation session and
+    /// publishes the partial transcript that the composer renders while
+    /// recording. Wired in `init` so `onFinalTranscript` can splice
+    /// committed text into `composerText` at session end.
+    public let voice: VoiceInputController
+
+    /// Snapshot of the user-typed composer prefix at the moment a
+    /// recording session starts. Used by the view's composer binding to
+    /// keep the typed prefix visible while the partial transcript
+    /// streams in, and consumed by `onFinalTranscript` so the committed
+    /// text appends to the prefix instead of replacing it.
+    public private(set) var committedComposerText: String = ""
+
     /// Optional callback the host installs to react to a freshly
     /// generated title — typically `await sidebarViewModel.refresh()` so
     /// the sidebar's "New chat" placeholder flips to the real title.
@@ -108,7 +124,8 @@ public final class ChatScreenViewModel {
         selectedModelId: String? = nil,
         verbosity: ChatVerbosity = .simple,
         conversationRepository: (any ConversationRepository)? = nil,
-        titleGenerator: TitleGenerator? = nil
+        titleGenerator: TitleGenerator? = nil,
+        voice: VoiceInputController? = nil
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -136,6 +153,26 @@ public final class ChatScreenViewModel {
         let alreadyTitled = !Self.titleNeedsGeneration(conversationTitle)
         self.hasGeneratedTitle = alreadyTitled
         self.hasFallbackTitle = alreadyTitled
+        // Default to a controller backed by `PlaceholderVoiceInputService`
+        // so callers that don't care about voice (snapshot tests,
+        // previews, view-model unit tests) keep working without wiring a
+        // fake. Production wires `SpeechRecognizerVoiceInputService` from
+        // the composition root in `App/ContentView.swift`.
+        self.voice = voice ?? VoiceInputController(service: PlaceholderVoiceInputService())
+        // Capture the controller binding so the closure body can reach
+        // committed text without a `self` strong-ref cycle.
+        self.voice.onFinalTranscript = { [weak self] text in
+            guard let self else { return }
+            let prefix = self.committedComposerText
+            if prefix.isEmpty {
+                self.composerText = text
+            } else if text.isEmpty {
+                self.composerText = prefix
+            } else {
+                self.composerText = "\(prefix) \(text)"
+            }
+            self.committedComposerText = ""
+        }
     }
 
     public var activeModel: LLMModel? {
@@ -187,6 +224,76 @@ public final class ChatScreenViewModel {
     /// Cancel the in-flight turn, if any.
     public func cancelStreaming() {
         streamTask?.cancel()
+    }
+
+    /// User tapped the composer mic. Freezes whatever they had already
+    /// typed into `committedComposerText` so the partial transcript can
+    /// stream in alongside the prefix without clobbering it, then asks
+    /// the controller to start (or stop) the recognition session.
+    public func handleMicTap() async {
+        committedComposerText = composerText
+        await voice.toggle()
+    }
+
+    /// User tapped the recording-stop affordance. Forwards to the
+    /// controller, which commits the most recent partial transcript via
+    /// the `onFinalTranscript` callback installed in `init`.
+    public func handleStopRecording() {
+        voice.stop()
+    }
+
+    /// Translate terminal voice-controller states into the existing
+    /// error-banner surface. Wired from the screen via
+    /// `.onChange(of: voice.state)`. `.unavailable` is reflected
+    /// through the dimmed mic, not a banner; `.idle` and `.listening`
+    /// don't touch the banner so an unrelated upstream error stays
+    /// visible across a quick mic toggle.
+    public func handleVoiceStateChange(_ state: VoiceInputController.State) {
+        switch state {
+        case .denied:
+            error = MessageListView.ErrorBanner(
+                message: "Voice input needs Speech Recognition and Microphone permissions. Open Settings to enable them.",
+                actionLabel: "Settings",
+                action: { Self.openSystemSettings() }
+            )
+        case .failed(let reason):
+            // Voice failures aren't retryable through the parent's
+            // `onRetry` (that re-sends the last LLM message, not the
+            // voice attempt). Suppress the Retry pill so the banner
+            // can't trigger an unrelated resend; the user dismisses by
+            // sending a message or tapping the mic again.
+            error = MessageListView.ErrorBanner(
+                message: Self.voiceFailureMessage(for: reason),
+                showsRetry: false
+            )
+        case .unavailable, .idle, .listening:
+            break
+        }
+    }
+
+    /// Translate the raw voice-controller failure reason into a banner
+    /// message the user can act on. The recognizer surfaces
+    /// `kLSRErrorDomain` (Local Speech Recognition) errors when the
+    /// on-device dictation model isn't available — e.g. on the iOS
+    /// simulator (officially unsupported on iOS 17+) or when the user
+    /// has dictation switched off. Surface a hint that names both root
+    /// causes rather than echoing the raw domain code.
+    private static func voiceFailureMessage(for reason: String) -> String {
+        if reason.contains("kLSRErrorDomain") {
+            return "Voice input doesn't work on the iOS Simulator — test on a real device, and ensure Dictation is enabled under Settings → General → Keyboard."
+        }
+        return "Voice input failed: \(reason)"
+    }
+
+    /// Open the iOS Settings app at the Super entry. Routed through a
+    /// nonisolated `@MainActor`-safe helper so the banner closure can
+    /// stay `Sendable`.
+    @MainActor
+    private static func openSystemSettings() {
+        #if canImport(UIKit) && os(iOS)
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+        #endif
     }
 
     /// Replace the picker's model list. Called by the host when
@@ -580,4 +687,23 @@ public final class ChatScreenViewModel {
 /// `ChatSession+Driver.swift`.
 public protocol ChatSessionDriver: Sendable {
     func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent>
+}
+
+/// Default ``VoiceInputService`` used when no controller is injected
+/// into ``ChatScreenViewModel``. Deliberately *lies* about availability
+/// (returns `true`) so snapshot tests + previews render the live mic icon
+/// at idle without breaking the pre-M11 baseline, then deflects a real
+/// tap by returning `.denied` from `requestPermissions()` so the user
+/// sees the permission banner instead of a silent no-op. Production hosts
+/// must replace this with `SpeechRecognizerVoiceInputService` —
+/// "Placeholder" (not "Noop") in the name to keep that lie visible at
+/// every reference site.
+private struct PlaceholderVoiceInputService: VoiceInputService {
+    func isAvailable(locale: Locale) -> Bool { true }
+    func requestPermissions() async -> VoiceInputPermissionStatus { .denied }
+    func startRecognition(locale: Locale) -> AsyncThrowingStream<VoiceInputEvent, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.finish(throwing: VoiceInputError.unavailable)
+        }
+    }
 }

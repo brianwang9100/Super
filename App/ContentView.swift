@@ -62,8 +62,11 @@ private struct FailurePane: View {
 
 /// Hosts the live `ChatScreen` once the bootstrap is ready. Builds the
 /// view model from the dependency graph, applies the default theme, and
-/// seeds a starter conversation row on first launch so the user lands on
-/// a valid chat instead of an empty store.
+/// drops the user into a fresh draft chat on every launch — previously
+/// persisted conversations stay in the sidebar drawer for one-tap recall.
+/// The draft only hits disk if the user actually sends a message (lazy
+/// persist), so launching and quitting doesn't litter the store with
+/// empty rows.
 ///
 /// In M8 this also owns the sidebar drawer state. The drawer overlays the
 /// chat in a `ZStack`; selecting a different conversation rebuilds the
@@ -173,7 +176,7 @@ struct ChatHostView: View {
         guard !bootstrapStarted else { return }
         bootstrapStarted = true
         do {
-            let conversation = try await ensureConversation()
+            let conversation = ensureConversation()
             // Whether this conversation came from disk or is a fresh
             // launch-into-empty-DB draft. Captured before
             // `rebuildChatViewModel` runs (which checks the DB itself
@@ -253,6 +256,7 @@ struct ChatHostView: View {
         let providerModels = providers.flatMap(\.supportedModels)
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
+        let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -264,7 +268,8 @@ struct ChatHostView: View {
             selectedModelId: providerModels.first?.id,
             verbosity: verbosity,
             conversationRepository: dependencies.conversationRepository,
-            titleGenerator: titleGenerator
+            titleGenerator: titleGenerator,
+            voice: voice
         )
         let registry = dependencies.llmProviderRegistry
         newModel.onModelSelected = { modelId in
@@ -355,15 +360,12 @@ struct ChatHostView: View {
         await rebuildChatViewModel(for: row)
     }
 
-    /// Returns the conversation to load on launch — the most-recently-
-    /// updated persisted row, or a fresh in-memory draft when the
-    /// database is empty. The draft only hits disk if the user actually
-    /// sends a message (same lazy-persist path as `startNewChat`).
-    private func ensureConversation() async throws -> ConversationRecord {
-        let existing = try await dependencies.conversationRepository.listActive()
-        if let row = existing.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
-            return row
-        }
+    /// Returns the conversation to load on launch — always a fresh
+    /// in-memory draft so the user starts every session on a clean
+    /// "New chat" surface. Existing persisted rows remain accessible
+    /// from the sidebar drawer. The draft only hits disk if the user
+    /// actually sends a message (same lazy-persist path as `startNewChat`).
+    private func ensureConversation() -> ConversationRecord {
         let now = Date()
         return ConversationRecord(
             id: UUID().uuidString,
