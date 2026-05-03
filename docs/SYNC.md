@@ -4,6 +4,8 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for data architecture and the custom sync decision (ADR-010), [CLIENT_SERVER.md](./CLIENT_SERVER.md) for the sync transport protocol. [PRODUCT_VISION.md](./PRODUCT_VISION.md) Section 2.4 (Local-First, Cloud-Enhanced) for the guiding philosophy.
 
+> **Status (2026-05-03):** Not built yet. The MVP is single-device — each install holds its own GRDB store with no replication. This document describes the target sync engine; no `SyncEngine` type exists in the codebase. Tracked in [`TODO.md`](../TODO.md) § Sync engine.
+
 ---
 
 ## 1. Goals & Constraints

@@ -4,6 +4,8 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for client-side architecture, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for backend internals, [AUTH.md](./AUTH.md) for authentication flow.
 
+> **Status (2026-05-03) — MVP runs in no-server mode.** The TypeScript/Hono backend described below has not been built yet. The Chat applet currently talks directly to the user's chosen LLM endpoint (BYOK — Ollama, vLLM, LM Studio, OpenAI, Anthropic-compatible, etc.) over HTTPS + SSE; API keys live in the iOS Keychain on-device and never leave it. There is no sync, no `/api/config`, no auth flow. Multi-device sync, server-held LLM keys, and the Plaid/Home server integrations land when the server work in [`SERVER_ARCHITECTURE.md`](SERVER_ARCHITECTURE.md) does. See [`TODO.md`](../TODO.md) § Server.
+
 ---
 
 ## 1. Overview

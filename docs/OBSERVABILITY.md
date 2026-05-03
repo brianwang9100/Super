@@ -4,6 +4,8 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for client-side architecture, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for backend topology, [PRODUCT_VISION.md](./PRODUCT_VISION.md) for applet descriptions.
 
+> **Status (2026-05-03):** Not wired yet. No analytics SDK, no crash reporter, no metrics pipeline in the binary. Tracked in [`TODO.md`](../TODO.md) § Observability.
+
 ---
 
 ## 1. Goals

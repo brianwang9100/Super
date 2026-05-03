@@ -2,6 +2,8 @@
 
 > User stories for how Chat orchestrates actions across applets — the "universal remote" for your life.
 
+> **Status (2026-05-03):** Aspirational — only the Chat applet exists today, plus one built-in tool (`time.now`). Cross-applet interactions described below land as their target applets do. Tracked in [`TODO.md`](../TODO.md) § Other applets and § Cross-applet plumbing.
+
 ---
 
 ## 1. Purpose
