@@ -16,10 +16,28 @@ public struct ChatDatabase: Sendable {
 
     /// Open the on-disk database at `chat.sqlite` under `directory`,
     /// applying all pending migrations before returning.
-    public static func open(in directory: URL) throws -> ChatDatabase {
+    ///
+    /// After the queue is constructed we apply `fileProtection` to the
+    /// SQLite file. The default is `.complete` per `docs/SECURITY.md`:
+    /// conversation history is High-sensitivity, the app has no
+    /// background workloads that need DB access while the device is
+    /// locked, so the strictest class is free. Tests open in a temp
+    /// directory and inherit the same default.
+    ///
+    /// On macOS (where `swift test` runs) the protection key has no
+    /// runtime effect — the call is best-effort and silently no-ops if
+    /// the platform doesn't enforce data protection.
+    public static func open(
+        in directory: URL,
+        fileProtection: FileProtectionType = .complete
+    ) throws -> ChatDatabase {
         let url = directory.appending(path: "chat.sqlite")
         let queue = try DatabaseQueue(path: url.path)
         try migrator().migrate(queue)
+        try? FileManager.default.setAttributes(
+            [.protectionKey: fileProtection],
+            ofItemAtPath: url.path
+        )
         return ChatDatabase(queue: queue)
     }
 

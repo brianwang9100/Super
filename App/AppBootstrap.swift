@@ -143,10 +143,20 @@ enum AppBootstrap {
         return base.appending(path: "Super", directoryHint: .isDirectory)
     }
 
+    /// Create `url` (and any missing parents) and pin its file-protection
+    /// class to `.complete`. Files created inside inherit the directory's
+    /// class by default, so this also covers the SQLite sidecar files
+    /// (`-wal`, `-shm`, `-journal`) that GRDB may produce mid-transaction.
+    /// Best-effort: the protection attribute is iOS-enforced; macOS test
+    /// runs silently no-op.
     private static func ensureDirectoryExists(_ url: URL) throws {
         try FileManager.default.createDirectory(
             at: url,
             withIntermediateDirectories: true
+        )
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.complete],
+            ofItemAtPath: url.path
         )
     }
 }

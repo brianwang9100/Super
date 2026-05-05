@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -55,12 +56,15 @@ struct SettingsModelDetailPane: View {
         _maxContextText = State(initialValue: row.map { String($0.maxContextTokens) } ?? "200000")
     }
 
-    /// All four required fields legal. URL must parse; max-context must
-    /// be a positive integer; key required only in create mode.
+    /// All four required fields legal. URL must parse and pass
+    /// `isCleartextSafeForCredentials` (HTTPS, or HTTP against
+    /// localhost / 127.0.0.1 / ::1 / *.local — i.e. local-LLM
+    /// configurations). Max-context must be a positive integer; key
+    /// required only in create mode.
     private var isValid: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)),
-              url.scheme != nil else { return false }
+              isCleartextSafeForCredentials(url) else { return false }
         guard !modelId.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         guard let maxCtx = Int(maxContextText), maxCtx > 0 else { return false }
         if !isEditing, apiKey.isEmpty { return false }

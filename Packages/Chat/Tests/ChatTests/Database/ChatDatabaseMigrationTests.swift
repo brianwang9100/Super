@@ -10,6 +10,26 @@ import Testing
 @Suite("ChatDatabase migrations")
 struct ChatDatabaseMigrationTests {
 
+    @Test func openAppliesFileProtectionToOnDiskDatabase() throws {
+        // The protection attribute is iOS-enforced; macOS `swift test`
+        // accepts the set but doesn't surface the value back. Skip the
+        // assertion when the readback is nil (macOS) — on iOS hardware
+        // this is what keeps chat.sqlite unreadable while the device is
+        // locked.
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appending(component: UUID().uuidString)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        _ = try ChatDatabase.open(in: tmpDir)
+
+        let dbURL = tmpDir.appending(path: "chat.sqlite")
+        let attrs = try FileManager.default.attributesOfItem(atPath: dbURL.path)
+        if let protection = attrs[.protectionKey] as? FileProtectionType {
+            #expect(protection == .complete)
+        }
+    }
+
     @Test func v1CreatesEverySchemaTable() async throws {
         let db = try ChatDatabase.makeInMemory()
         let names = try await db.queue.read { db in
