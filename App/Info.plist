@@ -18,18 +18,17 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Super uses speech recognition to dictate your chat messages on-device.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Super needs microphone access to capture your voice for dictation.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 			<key>localhost</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
@@ -37,12 +36,13 @@
 				<key>NSIncludesSubdomains</key>
 				<true/>
 			</dict>
-			<key>127.0.0.1</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
 		</dict>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Super needs microphone access to capture your voice for dictation.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Super uses speech recognition to dictate your chat messages on-device.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
 </dict>
 </plist>

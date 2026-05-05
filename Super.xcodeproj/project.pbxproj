@@ -12,8 +12,8 @@
 		12A8BC5F16AB43BB8BBC0576 /* AppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A5AA1BC1015FDF25A767B4 /* AppBootstrap.swift */; };
 		589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC96AB2000823B1110167BEB /* Assets.xcassets */; };
 		697D095559B2C6E8A8698AE0 /* SuperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD771A1B250F9D28FF92CBCC /* SuperApp.swift */; };
+		B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37040D8281510F5E0053417 /* LazyConversationDriver.swift */; };
 		D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E14DF6F5FC6EE821355D769 /* ContentView.swift */; };
-		D5E6F70819203A4B5C6D7E8F /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LazyConversationDriver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,10 +22,10 @@
 		61F39965616CCD1C3A93C1E5 /* Chat */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chat; path = Packages/Chat; sourceTree = SOURCE_ROOT; };
 		A8BA1600038FF259AD5B228E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
+		D37040D8281510F5E0053417 /* LazyConversationDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyConversationDriver.swift; sourceTree = "<group>"; };
 		DC96AB2000823B1110167BEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DD771A1B250F9D28FF92CBCC /* SuperApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperApp.swift; sourceTree = "<group>"; };
 		E6A5AA1BC1015FDF25A767B4 /* AppBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBootstrap.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4B5C /* LazyConversationDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyConversationDriver.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,7 +56,7 @@
 				DC96AB2000823B1110167BEB /* Assets.xcassets */,
 				5E14DF6F5FC6EE821355D769 /* ContentView.swift */,
 				A8BA1600038FF259AD5B228E /* Info.plist */,
-				A1B2C3D4E5F60718293A4B5C /* LazyConversationDriver.swift */,
+				D37040D8281510F5E0053417 /* LazyConversationDriver.swift */,
 				DD771A1B250F9D28FF92CBCC /* SuperApp.swift */,
 			);
 			path = App;
@@ -160,7 +160,7 @@
 			files = (
 				12A8BC5F16AB43BB8BBC0576 /* AppBootstrap.swift in Sources */,
 				D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */,
-				D5E6F70819203A4B5C6D7E8F /* LazyConversationDriver.swift in Sources */,
+				B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */,
 				697D095559B2C6E8A8698AE0 /* SuperApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

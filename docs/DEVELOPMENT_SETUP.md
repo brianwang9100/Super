@@ -150,7 +150,7 @@ cd Packages/Core && swift test --parallel
 cd Packages/Chat && swift test --parallel
 ```
 
-**iOS-runtime snapshot tests** (Chat SwiftUI views) — run on the simulator. The auto-created `Chat` test scheme exists in your local Xcode project after first open but is not emitted by `xcodegen`; for CI you would need to add an explicit scheme to `project.yml` (see [`TODO.md`](../TODO.md) § CI gaps):
+**iOS-runtime snapshot tests** (Chat SwiftUI views) — run on the simulator via the shared `Chat` scheme. The scheme XML is hand-maintained at `Scripts/xcodegen-extras/Chat.xcscheme` (xcodegen 2.45.4 can't model SPM-package test schemes via `project.yml`); `options.postGenCommand` in `project.yml` copies it into `Super.xcodeproj/xcshareddata/xcschemes/` after every regeneration.
 
 ```bash
 xcodebuild test -scheme Chat \
