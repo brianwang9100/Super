@@ -322,6 +322,40 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
+    @Test func bearerSuppressedForCleartextNonLoopbackHost() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(
+            http: http,
+            baseURL: URL(string: "http://example.com/v1")!,
+            apiKey: "sk-leak-canary"
+        )
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func bearerAllowedForHttpLoopback() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(
+            http: http,
+            baseURL: URL(string: "http://localhost:11434/v1")!,
+            apiKey: "local-key"
+        )
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer local-key")
+    }
+
     @Test func temperatureClampedToProviderRange() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
         let provider = makeProvider(http: http)

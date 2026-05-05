@@ -151,11 +151,16 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) throws -> URLRequest {
-        var request = URLRequest(url: chatCompletionsURL())
+        let url = chatCompletionsURL()
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        if let apiKey, !apiKey.isEmpty {
+        // Only attach the bearer token when the destination is HTTPS or a
+        // loopback / `*.local` host. Belt-and-suspenders on top of ATS: a
+        // misconfigured `http://` endpoint must not even be able to leak
+        // the key in an in-flight URLRequest. See `URLSecurity.swift`.
+        if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 

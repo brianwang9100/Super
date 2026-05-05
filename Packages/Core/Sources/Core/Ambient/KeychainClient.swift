@@ -63,6 +63,14 @@ public struct AppleKeychainClient: KeychainClient {
         }
     }
 
+    /// Insert or update the secret stored at `ref`.
+    ///
+    /// New items are written with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`,
+    /// which (a) requires the device to be unlocked at access time, and (b)
+    /// pins the entry to *this* device — it does not migrate via iCloud
+    /// Keychain and does not survive an encrypted backup restored to a
+    /// different device. This is the project-wide stance from
+    /// `docs/SECURITY.md` §2.1.4: BYOK keys never leave the user's hardware.
     public func setString(_ value: String, ref: String) async throws {
         let data = Data(value.utf8)
         let query: [String: Any] = [
@@ -70,14 +78,21 @@ public struct AppleKeychainClient: KeychainClient {
             kSecAttrService as String: service,
             kSecAttrAccount as String: ref,
         ]
-        let attrs: [String: Any] = [kSecValueData as String: data]
-        let updateStatus = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        let updateAttrs: [String: Any] = [
+            kSecValueData as String: data,
+            // Fix-up for items written by older Super builds that didn't
+            // pin the accessibility class — the next set rotates them onto
+            // the strict policy.
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
         switch updateStatus {
         case errSecSuccess:
             return
         case errSecItemNotFound:
             var addQuery = query
             addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw KeychainError.unhandledStatus(addStatus) }
         default:

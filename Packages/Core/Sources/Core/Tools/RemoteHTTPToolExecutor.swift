@@ -54,7 +54,12 @@ public struct RemoteHTTPToolExecutor: ToolExecutor {
         request.timeoutInterval = endpoint.timeout
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        if let ref = endpoint.apiKeyRef, let key = try await keychain.getString(ref: ref) {
+        // Only attach the bearer when the endpoint is HTTPS or a
+        // loopback / `*.local` host. See `URLSecurity.swift` for the
+        // policy rationale.
+        if let ref = endpoint.apiKeyRef,
+           isCleartextSafeForCredentials(endpoint.url),
+           let key = try await keychain.getString(ref: ref) {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
 

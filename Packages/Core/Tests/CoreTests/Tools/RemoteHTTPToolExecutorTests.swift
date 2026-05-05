@@ -9,13 +9,13 @@ struct RemoteHTTPToolExecutorTests {
     private func makeExecutor(
         stubID: String,
         toolID: String = "x.remote",
-        endpointPath: String = "/tool",
+        endpointURL: URL = URL(string: "https://example.test/tool")!,
         apiKeyRef: String? = nil,
         keychain: any KeychainClient = InMemoryKeychainClient()
     ) -> RemoteHTTPToolExecutor {
         let httpClient = URLSessionHTTPClient(configuration: URLProtocolStub.ephemeralConfiguration(stubID: stubID))
         let endpoint = RemoteToolEndpoint(
-            url: URL(string: "https://example.test\(endpointPath)")!,
+            url: endpointURL,
             apiKeyRef: apiKeyRef
         )
         return RemoteHTTPToolExecutor(
@@ -91,6 +91,28 @@ struct RemoteHTTPToolExecutorTests {
         defer { URLProtocolStub.unregister(stubID: stubID) }
 
         let executor = makeExecutor(stubID: stubID, apiKeyRef: "missing")
+        _ = try await executor.execute(input: [:])
+
+        let observed = URLProtocolStub.observedRequests(stubID: stubID)
+        #expect(observed.first?.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func omitsAuthorizationForCleartextNonLoopbackEndpoint() async throws {
+        let stubID = URLProtocolStub.newStubID()
+        URLProtocolStub.register(stubID: stubID) { _ in
+            URLProtocolStub.Response(chunks: [Data(#"{"content": "ok"}"#.utf8)])
+        }
+        defer { URLProtocolStub.unregister(stubID: stubID) }
+
+        let keychain = InMemoryKeychainClient()
+        try await keychain.setString("sk-leak-canary", ref: "remote")
+
+        let executor = makeExecutor(
+            stubID: stubID,
+            endpointURL: URL(string: "http://example.com/tool")!,
+            apiKeyRef: "remote",
+            keychain: keychain
+        )
         _ = try await executor.execute(input: [:])
 
         let observed = URLProtocolStub.observedRequests(stubID: stubID)
