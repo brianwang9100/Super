@@ -8,6 +8,7 @@ on:
       - 'App/**'
       - 'Packages/**'
       - 'project.yml'
+      - 'Scripts/xcodegen-extras/**'
       - '.github/workflows/ios-build.yml'
 
 concurrency:
@@ -49,3 +50,76 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
+
+  ios-test:
+    runs-on: macos-15
+    # Snapshot baselines are pinned to the iPhone 17 / iOS 26.3 sim used in
+    # local development. macos-15 runners may carry different sim runtimes;
+    # let this job report drift without gating the pipeline until the sim
+    # is pinned for CI.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache SwiftPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
+            ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ios-spm-${{ runner.os }}-
+
+      - name: Pick iOS simulator
+        id: sim
+        run: |
+          DEVICE=$(xcrun simctl list devices available --json \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); \
+                runtimes=[k for k in data["devices"] if "iOS" in k]; \
+                runtimes.sort(reverse=True); \
+                target=next((d for r in runtimes for d in data["devices"][r] if "iPhone" in d.get("name","")), None); \
+                print(target["udid"] if target else "")')
+          if [ -z "$DEVICE" ]; then
+            echo "::error::No iPhone simulator available on this runner."
+            exit 1
+          fi
+          echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $DEVICE"
+
+      - name: Run Chat snapshot + unit tests on iOS Simulator
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Super.xcodeproj \
+            -scheme Chat \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -enableCodeCoverage YES \
+            -skipPackagePluginValidation \
+            -derivedDataPath build/derived \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          PROFDATA=$(find build/derived -name 'Coverage.profdata' -type f | head -1)
+          BINARY=$(find build/derived -name 'ChatTests' -type f -path '*ChatTests.xctest*' | head -1)
+          if [ -z "$PROFDATA" ] || [ -z "$BINARY" ]; then
+            echo "Coverage artifacts not found — skipping summary."
+            exit 0
+          fi
+          xcrun llvm-cov report "$BINARY" \
+            -instr-profile="$PROFDATA" \
+            -ignore-filename-regex='\.build/|/Tests/|/SourcePackages/' \
+            | tail -50

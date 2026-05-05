@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Top-level chat surface: header on top, transcript or empty state in the
@@ -13,15 +14,22 @@ public struct ChatScreen: View {
     /// model dropdown. The host typically opens the Settings sheet
     /// pre-routed to the Models pane.
     public let onManageModels: () -> Void
+    /// Clock used by the empty-state greeting. Production wires
+    /// `SystemClock()`; snapshot tests pass a `FixedClock` so the
+    /// baselines don't drift across the morning/afternoon/evening
+    /// hour buckets at recording time.
+    private let clock: any Clock
 
     public init(
         viewModel: ChatScreenViewModel,
         onMenuTap: @escaping () -> Void = {},
-        onManageModels: @escaping () -> Void = {}
+        onManageModels: @escaping () -> Void = {},
+        clock: any Clock = SystemClock()
     ) {
         self.viewModel = viewModel
         self.onMenuTap = onMenuTap
         self.onManageModels = onManageModels
+        self.clock = clock
     }
 
     @Environment(\.superTheme) private var theme
@@ -101,7 +109,7 @@ public struct ChatScreen: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.items.isEmpty && viewModel.streamingTail == nil {
-            ChatEmptyStateView()
+            ChatEmptyStateView(clock: clock)
         } else {
             MessageListView(
                 items: viewModel.items,

@@ -8,8 +8,9 @@ import Testing
 
 /// Top-level screen snapshots. Each scenario constructs the view model
 /// with a no-op driver and stub repositories so the view renders entirely
-/// from in-memory state — no GRDB, no network, no clocks beyond the ones
-/// the empty-state view already injects.
+/// from in-memory state — no GRDB, no network. The empty-state greeting
+/// is pinned to a fixed afternoon timestamp so baselines don't drift
+/// across the morning/afternoon/evening hour buckets at record time.
 @Suite("ChatScreen snapshots", .serialized)
 @MainActor
 struct ChatScreenSnapshotTests {
@@ -20,6 +21,12 @@ struct ChatScreenSnapshotTests {
         supportsTools: true,
         maxContextTokens: 128_000
     )
+
+    /// Wed 2026-01-14 14:00:00 UTC — sits squarely in the "afternoon"
+    /// hour bucket regardless of the system calendar in use. Pinning the
+    /// clock removes the wall-clock drift that previously forced baseline
+    /// re-records every time the suite ran in a different hour bucket.
+    private let snapshotClock = FixedClock(Date(timeIntervalSince1970: 1_768_485_600))
 
     @Test("empty state in light theme")
     func emptyLight() {
@@ -60,7 +67,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -73,7 +80,7 @@ struct ChatScreenSnapshotTests {
         function: String = #function
     ) {
         let viewModel = makeViewModel(initialMessages: [])
-        let view = ChatScreen(viewModel: viewModel)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
@@ -96,7 +103,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
         recordOrCompare(view: view, name: name, function: function)

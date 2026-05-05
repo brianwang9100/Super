@@ -8,6 +8,13 @@ options:
   generateEmptyDirectories: true
   groupSortPosition: top
   xcodeVersion: "26.4"
+  # xcodegen 2.45.4 cannot model SPM-package test schemes via project.yml
+  # (no `package/test-target` reference syntax). Chat.xcscheme is hand-
+  # maintained in Scripts/xcodegen-extras/ and copied into place after
+  # generation so `xcodebuild test -scheme Chat` runs the iOS-runtime
+  # snapshot tests in CI. Re-run via Scripts/generate-project.sh
+  # (or in CI: `xcodegen generate && cp ...`).
+  postGenCommand: cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme
 
 settings:
   base:
@@ -36,6 +43,22 @@ targets:
       path: App/Info.plist
       properties:
         UILaunchScreen: {}
+        NSSpeechRecognitionUsageDescription: "Super uses speech recognition to dictate your chat messages on-device."
+        NSMicrophoneUsageDescription: "Super needs microphone access to capture your voice for dictation."
+        # ATS exemptions: scoped to loopback only so local-LLM stacks
+        # (Ollama, MLX, LM Studio, llama.cpp) can be reached over plain
+        # HTTP. All other endpoints still go through ATS. The
+        # `URLSecurity.isCleartextSafeForCredentials` helper is the
+        # belt-and-suspenders gate so a misconfigured public-host model
+        # entry can't leak its bearer token over cleartext.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: true
+            "127.0.0.1":
+              NSExceptionAllowsInsecureHTTPLoads: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.brianwang.Super
