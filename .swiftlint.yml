@@ -1,0 +1,74 @@
+included:
+  - App
+  - Packages/Core/Sources
+  - Packages/Core/Tests
+  - Packages/Chat/Sources
+  - Packages/Chat/Tests
+
+excluded:
+  - "**/.build"
+  - "**/.swiftpm"
+  - "**/DerivedData"
+  - Super.xcodeproj
+  - Scripts/ChatLiveLLM/.build
+  - "**/__Snapshots__"
+  - "**/Snapshots"
+
+disabled_rules:
+  - todo
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - nesting
+  - identifier_name
+  - type_name
+  - large_tuple
+  - multiple_closures_with_trailing_closure
+  - opening_brace
+  # Formatting rules disabled because the codebase deliberately
+  # column-aligns dictionary literals, theme tables, and math
+  # expressions for readability. Re-enable per-file with
+  # // swiftlint:disable: blocks if you want them on by default.
+  - colon
+  - comma
+  - operator_usage_whitespace
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - contains_over_first_not_nil
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_range_nil_comparison
+  - flatmap_over_map_reduce
+  - reduce_into
+  - sorted_first_last
+  - prefer_zero_over_explicit_init
+  - redundant_nil_coalescing
+  - unneeded_parentheses_in_closure_argument
+  - closure_end_indentation
+  - closure_spacing
+  - vertical_whitespace_closing_braces
+  - yoda_condition
+  - toggle_bool
+  - prefer_self_type_over_type_of_self
+
+analyzer_rules:
+  - unused_import
+
+force_cast: warning
+force_try: warning
+
+trailing_comma:
+  mandatory_comma: true
+
+trailing_whitespace:
+  ignores_empty_lines: true
+  ignores_comments: true
+
+reporter: "github-actions-logging"

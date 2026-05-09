@@ -1,0 +1,29 @@
+name: SwiftLint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'App/**/*.swift'
+      - 'Packages/**/*.swift'
+      - '.swiftlint.yml'
+      - '.github/workflows/swiftlint.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/realm/swiftlint:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show SwiftLint version
+        run: swiftlint version
+
+      - name: Lint
+        run: swiftlint lint --quiet --reporter github-actions-logging

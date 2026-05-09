@@ -28,7 +28,7 @@ struct OpenAIStreamReducerTests {
                         toolCalls: nil
                     ),
                     finishReason: nil
-                )
+                ),
             ],
             usage: nil
         )
@@ -61,7 +61,7 @@ struct OpenAIStreamReducerTests {
                     reasoningContent: nil, reasoning: nil, toolCalls: nil
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         ))
         // Contract: messageStart precedes any content event, even when
@@ -90,7 +90,7 @@ struct OpenAIStreamReducerTests {
                     toolCalls: nil
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         ))
         #expect(first == [
@@ -111,7 +111,7 @@ struct OpenAIStreamReducerTests {
                     reasoningContent: "ponder", reasoning: nil, toolCalls: nil
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         ))
         let events = reducer.consume(makeTextChunk(id: "x", model: "m", text: "answer"))
@@ -135,7 +135,7 @@ struct OpenAIStreamReducerTests {
                     toolCalls: nil
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         ))
         #expect(events.contains(.thinkingDelta(index: 0, text: "o-series field name")))
@@ -173,10 +173,10 @@ struct OpenAIStreamReducerTests {
                     toolCalls: [OpenAIToolCallDelta(
                         index: 0, id: nil, type: nil,
                         function: OpenAIFunctionDelta(name: nil, arguments: "\"swift\"}")
-                    )]
+                    ),]
                 ),
                 finishReason: "tool_calls"
-            )],
+            ),],
             usage: nil
         ))
         let toolUse = events.compactMap { event -> JSONValue? in
@@ -245,7 +245,7 @@ struct OpenAIStreamReducerTests {
                     ]
                 ),
                 finishReason: "tool_calls"
-            )],
+            ),],
             usage: nil
         ))
         let toolUseNames = events.compactMap { event -> String? in
@@ -312,7 +312,7 @@ struct OpenAIStreamReducerTests {
                     reasoningContent: nil, reasoning: nil, toolCalls: nil
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         )
     }
@@ -328,10 +328,10 @@ struct OpenAIStreamReducerTests {
                     toolCalls: [OpenAIToolCallDelta(
                         index: 0, id: id, type: "function",
                         function: OpenAIFunctionDelta(name: name, arguments: argsFragment)
-                    )]
+                    ),]
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         )
     }
@@ -347,10 +347,10 @@ struct OpenAIStreamReducerTests {
                     toolCalls: [OpenAIToolCallDelta(
                         index: 0, id: nil, type: nil,
                         function: OpenAIFunctionDelta(name: nil, arguments: argsFragment)
-                    )]
+                    ),]
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         )
     }
@@ -375,7 +375,7 @@ struct OpenAIStreamReducerTests {
                     ]
                 ),
                 finishReason: nil
-            )],
+            ),],
             usage: nil
         )
     }

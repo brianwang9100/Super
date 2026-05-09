@@ -38,7 +38,7 @@ public struct TitleGenerator: Sendable {
 
         let messages: [LLMMessage] = [
             LLMMessage(role: .system, text: Self.systemPrompt),
-            LLMMessage(role: .user, text: Self.formatExchange(user: userText, assistant: assistantText))
+            LLMMessage(role: .user, text: Self.formatExchange(user: userText, assistant: assistantText)),
         ]
 
         var accumulated = ""

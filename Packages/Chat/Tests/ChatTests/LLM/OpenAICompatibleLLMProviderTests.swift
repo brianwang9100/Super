@@ -385,7 +385,7 @@ struct OpenAICompatibleLLMProviderTests {
                     type: .string,
                     description: "IANA tz id",
                     isRequired: true
-                )
+                ),
             ],
             appletId: "chat"
         )
@@ -439,7 +439,7 @@ struct OpenAICompatibleLLMProviderTests {
                     type: .string,
                     description: "IANA tz id",
                     isRequired: false   // none required
-                )
+                ),
             ],
             appletId: "chat"
         )
@@ -469,7 +469,7 @@ struct OpenAICompatibleLLMProviderTests {
                     id: "call_abc",
                     name: "get_time",
                     input: .object(["timezone": .string("UTC")])
-                )
+                ),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "call_abc", content: "12:00 UTC", isError: false)

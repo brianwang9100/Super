@@ -19,7 +19,7 @@ struct TitleGeneratorTests {
             .textDelta(index: 0, text: "Onboard"),
             .textDelta(index: 0, text: "ing "),
             .textDelta(index: 0, text: "checklist"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 3))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 3)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(provider)
@@ -40,7 +40,7 @@ struct TitleGeneratorTests {
         await provider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .textDelta(index: 0, text: "  \"Trip plan to Lisbon!\"\n"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(provider)
@@ -60,7 +60,7 @@ struct TitleGeneratorTests {
         let provider = FakeLLMProvider(model: model)
         await provider.enqueue([
             .messageStart(id: "t1", model: model.id),
-            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0))
+            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(provider)
@@ -81,7 +81,7 @@ struct TitleGeneratorTests {
         await provider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .error(.unauthorized),
-            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0))
+            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(provider)
@@ -114,7 +114,7 @@ struct TitleGeneratorTests {
         await provider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .textDelta(index: 0, text: "Title"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 1))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 1)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(provider)
