@@ -209,7 +209,6 @@ struct ChatSessionStoreTests {
         let sessionAReborn = await setup.store.session(for: "conv-A")
         #expect(sessionA !== sessionAReborn)
     }
-
 }
 
 /// A `ToolExecutor` that sleeps until either a long timeout elapses or the

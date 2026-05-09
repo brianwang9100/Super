@@ -34,18 +34,20 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 ## CI / CD (P0 for autonomous agent work)
 
 ### GitHub Actions — what's wired now
-- ✅ `client-swift-test.yml` — runs `swift test` on Core + Chat on every PR.
-- ✅ `client-ios-build.yml` — `xcodebuild build` for iOS sim on every PR.
+- ✅ `swift-test.yml` — runs `swift test` on Core + Chat on every PR.
+- ✅ `ios-build.yml` — `xcodebuild build` + Chat snapshot/unit tests for iOS sim on every PR.
+- ✅ `swiftlint.yml` — Docker-image SwiftLint runs on every PR touching Swift / config; `.swiftlint.yml` baseline allows ~15 known warnings, errors gate the merge.
+- ✅ `claude-pr-review.yml` — `anthropics/claude-code-action@v1` posts an AI review on PR open/sync. Skips quietly if `CLAUDE_CODE_OAUTH_TOKEN` secret is unset.
+- ✅ `.github/CODEOWNERS` — routes review request to repo owner so branch-protection "code owner review" gates work.
 
 ### CI gaps (still TODO)
 - [ ] **Pin the iOS-test job's simulator runtime.** The `ios-test` job in `ios-build.yml` is `continue-on-error: true` because snapshot baselines are recorded against iPhone 17 + iOS 26.3 locally and macos-15 runners may carry a different default. Discover what sims the runner has, pick a stable one, pin it via `-destination`, then drop `continue-on-error`.
 - [ ] **Codecov integration** — wire `codecov-action@v4` into the swift-test + ios-build workflows. Configure thresholds (Core ≥ 80%, Chat ≥ 70%) per `AGENTS.md`. The Chat test scheme now runs in CI; coverage data is available.
-- [ ] **SwiftLint job** — add `.swiftlint.yml` then a workflow step. CI_PIPELINE.md §4.1 references `swiftlint --strict` but no config exists yet.
-- [ ] **Branch protection rules** on `main` per `docs/CI_PIPELINE.md` §7.2: require PR + 1 approval, require status checks, require linear history, no direct pushes.
-- [ ] **AI reviewer workflow** (`.github/workflows/ai-review.yml`) per `docs/CI_PIPELINE.md` §6.3 — an Anthropic-API-driven reviewer that posts inline PR comments. Requires `ANTHROPIC_API_KEY` secret.
+- [ ] **Branch protection rules** on `main` per `docs/CI_PIPELINE.md` §7.2: require PR + 1 approval (CODEOWNERS), require status checks (`swift-test (Core)`, `swift-test (Chat)`, `build`, `ios-test`, `lint`, `review`), require linear history, no direct pushes, no force-push. Apply via `gh api` after the new checks have completed at least once on a PR so the names are registered.
 - [ ] **Notify-ready workflow** per `docs/CI_PIPELINE.md` §11.2 — pings a webhook when all checks pass on a PR.
 - [ ] **Server CI** — deferred until the server actually exists.
-- [ ] **TestFlight deploy workflow** per `docs/CI_PIPELINE.md` §9.2 — needs Apple Developer account, signing certs, and provisioning profiles in GH Secrets.
+- [ ] **TestFlight deploy workflow** per `docs/CI_PIPELINE.md` §9.2 — needs Apple Developer account, signing certs, and provisioning profiles in GH Secrets. See `docs/CI_PIPELINE.md` §9.2 prereq list.
+- [ ] **Tighten SwiftLint baseline** — fix or suppress the ~15 known warnings (mostly `empty_string`, `optional_data_string_conversion`, `function_parameter_count`), then flip the `swiftlint` job to `--strict` so warnings also gate.
 
 ---
 

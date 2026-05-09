@@ -1,0 +1,72 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check OAuth token presence
+        id: token
+        env:
+          TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CLAUDE_CODE_OAUTH_TOKEN secret is not set; skipping AI review. Run \`claude setup-token\` locally and add the token as a repo secret to enable."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - if: steps.token.outputs.present == 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are reviewing a pull request for the Super iOS app
+            (Swift 6, SwiftUI, GRDB, strict concurrency). The repository
+            root has AGENTS.md / CLAUDE.md with the canonical rules. Read
+            them and any module-level AGENTS.md before forming opinions.
+
+            Focus on:
+            - Correctness, especially around async/await, Sendable, and
+              actor reentrancy.
+            - Strict-concurrency compliance (no Combine for data flow,
+              no DispatchQueue/NSLock for synchronization).
+            - GRDB usage: naming conventions, migrations, in-memory
+              testability.
+            - SwiftUI view models: @Observable @MainActor final class,
+              protocol-typed dependencies, no static singletons.
+            - Test coverage per AGENTS.md §Testing — every new code path
+              ships with a test, every new SwiftUI view ships with a
+              snapshot test.
+            - Security: keychain accessibility, file protection, ATS
+              cleartext suppression of bearer tokens.
+            - Architecture: no cross-applet imports, event-bus for
+              cross-applet communication.
+
+            Post inline review comments only on lines you have a concrete
+            concern about. End with a short summary recommendation:
+            APPROVE, COMMENT, or REQUEST_CHANGES. Be terse — link to the
+            specific rule in AGENTS.md when citing one.
+          claude_args: |
+            --max-turns 8
+            --model claude-sonnet-4-6

@@ -107,7 +107,7 @@ struct SettingsViewModelTests {
                 maxContextTokens: 8000,
                 isSelected: true,
                 createdAt: Date()
-            )
+            ),
         ])
         let vm = makeViewModel(
             settingRepository: settingRepo,
@@ -225,7 +225,7 @@ struct SettingsViewModelTests {
                 maxContextTokens: 64_000,
                 isSelected: true,
                 createdAt: Date()
-            )
+            ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
@@ -261,7 +261,7 @@ struct SettingsViewModelTests {
                 maxContextTokens: 8_000,
                 isSelected: false,
                 createdAt: Date()
-            )
+            ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
@@ -291,7 +291,7 @@ struct SettingsViewModelTests {
                 maxContextTokens: 8_000,
                 isSelected: false,
                 createdAt: Date()
-            )
+            ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()

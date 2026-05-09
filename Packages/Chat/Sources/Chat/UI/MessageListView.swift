@@ -809,4 +809,3 @@ struct ErrorBannerView: View {
         )
     }
 }
-

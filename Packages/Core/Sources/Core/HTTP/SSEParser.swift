@@ -82,7 +82,7 @@ public struct SSEParser: Sendable {
         guard let raw = String(data: frame, encoding: .utf8) else { return nil }
         let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
         var dataLines: [String] = []
-        var eventName: String? = nil
+        var eventName: String?
         for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
             if line.isEmpty { continue }
             if line.hasPrefix(":") { continue }

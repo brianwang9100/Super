@@ -180,7 +180,7 @@ struct ChatScreenViewModelTests {
         await titleProvider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .textDelta(index: 0, text: "Lisbon trip plan"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)
@@ -242,7 +242,7 @@ struct ChatScreenViewModelTests {
         await titleProvider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .textDelta(index: 0, text: "Greeting chat"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 2))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 2)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)
@@ -371,7 +371,7 @@ struct ChatScreenViewModelTests {
         // Empty-text-then-complete → TitleGenerator returns nil.
         await titleProvider.enqueue([
             .messageStart(id: "t1", model: model.id),
-            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0))
+            .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)
@@ -457,7 +457,7 @@ struct ChatScreenViewModelTests {
         await titleProvider.enqueue([
             .messageStart(id: "t1", model: model.id),
             .textDelta(index: 0, text: "Lisbon trip plan"),
-            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4))
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 4)),
         ])
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)

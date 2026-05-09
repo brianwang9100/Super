@@ -390,7 +390,7 @@ public final class SettingsViewModel {
             ? (try? await modelRepository.loadAPIKey(ref: existing.apiKeyRef))
             : apiKey
         await llmProviderRegistry?.unregister(id: id)
-        await registerProvider(for: updated, apiKey: resolvedKey ?? nil)
+        await registerProvider(for: updated, apiKey: resolvedKey)
         await loadModels()
         onModelsChanged?()
     }
@@ -458,8 +458,7 @@ public final class SettingsViewModel {
     /// metadata line under the model name.
     static func shortEndpoint(_ url: URL) -> String {
         var raw = url.absoluteString
-        if raw.hasPrefix("https://") { raw.removeFirst("https://".count) }
-        else if raw.hasPrefix("http://") { raw.removeFirst("http://".count) }
+        if raw.hasPrefix("https://") { raw.removeFirst("https://".count) } else if raw.hasPrefix("http://") { raw.removeFirst("http://".count) }
         if raw.hasSuffix("/") { raw.removeLast() }
         return raw
     }
