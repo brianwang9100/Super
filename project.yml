@@ -43,8 +43,13 @@ targets:
       path: App/Info.plist
       properties:
         UILaunchScreen: {}
-        NSSpeechRecognitionUsageDescription: "Super uses speech recognition to dictate your chat messages on-device."
-        NSMicrophoneUsageDescription: "Super needs microphone access to capture your voice for dictation."
+        # CFBundleDisplayName is the user-facing name on the home screen
+        # and in iOS Settings. It diverges from the codebase identifier
+        # (PRODUCT_NAME = "Super") because the App Store name "Super" is
+        # already taken; the public brand is "SuperOS".
+        CFBundleDisplayName: SuperOS
+        NSSpeechRecognitionUsageDescription: "SuperOS uses speech recognition to dictate your chat messages on-device."
+        NSMicrophoneUsageDescription: "SuperOS needs microphone access to capture your voice for dictation."
         # ATS exemptions: scoped to loopback only so local-LLM stacks
         # (Ollama, MLX, LM Studio, llama.cpp) can be reached over plain
         # HTTP. All other endpoints still go through ATS. The
