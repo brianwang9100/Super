@@ -46,7 +46,7 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - [ ] **Branch protection rules** on `main` per `docs/CI_PIPELINE.md` §7.2: require PR + 1 approval (CODEOWNERS), require status checks (`swift-test (Core)`, `swift-test (Chat)`, `build`, `ios-test`, `lint`, `review`), require linear history, no direct pushes, no force-push. Apply via `gh api` after the new checks have completed at least once on a PR so the names are registered.
 - [ ] **Notify-ready workflow** per `docs/CI_PIPELINE.md` §11.2 — pings a webhook when all checks pass on a PR.
 - [ ] **Server CI** — deferred until the server actually exists.
-- [ ] **TestFlight deploy workflow** per `docs/CI_PIPELINE.md` §9.2 — needs Apple Developer account, signing certs, and provisioning profiles in GH Secrets. See `docs/CI_PIPELINE.md` §9.2 prereq list.
+- ✅ `testflight.yml` — `workflow_dispatch` + `release/v*` tag triggers; uses App Store Connect API key (`-allowProvisioningUpdates`) for cloud-managed signing. Build numbers come from `github.run_number`. Required secrets: `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY`, `APPLE_TEAM_ID`. First successful run will register `bundle ID + cert + profile` on Apple's side.
 - [ ] **Tighten SwiftLint baseline** — fix or suppress the ~15 known warnings (mostly `empty_string`, `optional_data_string_conversion`, `function_parameter_count`), then flip the `swiftlint` job to `--strict` so warnings also gate.
 
 ---

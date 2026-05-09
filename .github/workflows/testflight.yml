@@ -1,0 +1,147 @@
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "Marketing version (CFBundleShortVersionString). Leave blank to use whatever is in Info.plist."
+        required: false
+        default: ""
+  push:
+    tags:
+      - 'release/v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      MARKETING_VERSION: ${{ github.event.inputs.marketing_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify required secrets
+        run: |
+          missing=()
+          [ -z "$APP_STORE_CONNECT_KEY_ID" ] && missing+=(APP_STORE_CONNECT_KEY_ID)
+          [ -z "$APP_STORE_CONNECT_ISSUER_ID" ] && missing+=(APP_STORE_CONNECT_ISSUER_ID)
+          [ -z "$APP_STORE_CONNECT_API_KEY" ] && missing+=(APP_STORE_CONNECT_API_KEY)
+          [ -z "$APPLE_TEAM_ID" ] && missing+=(APPLE_TEAM_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "All required secrets present."
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Cache SwiftPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
+            ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ios-spm-${{ runner.os }}-
+
+      - name: Stage App Store Connect API key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "Staged at $KEY_PATH"
+
+      - name: Compute build number
+        id: build_number
+        run: |
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          echo "value=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Using build number: $BUILD_NUMBER"
+
+      - name: Write export options
+        run: |
+          cat > /tmp/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>teamID</key>
+              <string>${APPLE_TEAM_ID}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>signingStyle</key>
+              <string>automatic</string>
+              <key>destination</key>
+              <string>upload</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive
+        env:
+          BUILD_NUMBER: ${{ steps.build_number.outputs.value }}
+        run: |
+          set -o pipefail
+          ARGS=(
+            -project Super.xcodeproj
+            -scheme Super
+            -configuration Release
+            -destination "generic/platform=iOS"
+            -archivePath build/Super.xcarchive
+            -allowProvisioningUpdates
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID"
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+            -skipPackagePluginValidation
+            CODE_SIGN_STYLE=Automatic
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+          )
+          if [ -n "$MARKETING_VERSION" ]; then
+            ARGS+=(MARKETING_VERSION="$MARKETING_VERSION")
+          fi
+          xcodebuild archive "${ARGS[@]}"
+
+      - name: Export and upload to TestFlight
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/Super.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist /tmp/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+          echo "Upload submitted to TestFlight; processing in App Store Connect typically completes in 5-30 minutes."
+
+      - name: Cleanup API key
+        if: always()
+        run: |
+          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" || true
