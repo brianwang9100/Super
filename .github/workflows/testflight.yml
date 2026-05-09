@@ -120,6 +120,7 @@ jobs:
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
             -skipPackagePluginValidation
             CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_IDENTITY="Apple Distribution"
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
           )
