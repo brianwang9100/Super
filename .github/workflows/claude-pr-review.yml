@@ -72,6 +72,16 @@ jobs:
             concern about. End with a short summary recommendation:
             APPROVE, COMMENT, or REQUEST_CHANGES. Be terse — link to the
             specific rule in AGENTS.md when citing one.
+          # Explicitly allowlist the GitHub MCP tools the reviewer needs to
+          # post inline comments and a summary review. Without these the
+          # action auto-detects "agent" mode (since the trigger is a generic
+          # pull_request event) and Claude's tool calls to post comments are
+          # denied — visible in the run log as "permission_denials_count".
           claude_args: |
             --max-turns 8
             --model claude-sonnet-4-6
+            --allowedTools mcp__github_inline_comment__create_inline_comment,mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__add_issue_comment
+          # Surface Claude's actual messages in the workflow log so we can
+          # tell whether a missing review is "Claude found nothing to flag"
+          # vs "Claude tried but a tool was denied or rate-limited."
+          show_full_output: true
