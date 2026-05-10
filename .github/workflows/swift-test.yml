@@ -22,6 +22,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode 26+
+        # macos-15 image's default Xcode is 16.4 — the bundled Swift
+        # toolchain accepts patterns that Swift 6 strict concurrency on
+        # Xcode 26 rejects (e.g., calling @MainActor static methods from
+        # nonisolated test contexts). Pin to latest-stable so the runner
+        # matches local dev.
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Show toolchain
         run: |
           xcodebuild -version
