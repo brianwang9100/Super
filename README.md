@@ -1,5 +1,9 @@
 # Super
 
+[![Swift Tests](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml)
+[![iOS Build](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml)
+[![SwiftLint](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml)
+
 A chat-first, AI-native productivity app for iOS and macOS. Chat is the host surface; mini-apps (ToDo, Recipes, Bible, Finance, …) plug into the conversation in both directions — the AI can drive them via tool calls, and any record can be piped back into chat.
 
 > **Status:** early development. Chat applet only; mini-apps are designed but not yet built.
