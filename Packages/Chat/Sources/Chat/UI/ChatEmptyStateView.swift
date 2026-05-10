@@ -45,8 +45,11 @@ public struct ChatEmptyStateView: View {
     }
 
     /// Map an hour-of-day to one of the four greeting strings. Pure so
-    /// snapshot tests can drive every branch with a `FixedClock`.
-    public static func greeting(for date: Date, calendar: Calendar = .current) -> String {
+    /// snapshot tests can drive every branch with a `FixedClock`. Marked
+    /// `nonisolated` because the SwiftUI `View` conformance otherwise
+    /// inherits `@MainActor`, which forced every test caller into an
+    /// actor-isolated context (Swift 6 stricter toolchains rejected this).
+    nonisolated public static func greeting(for date: Date, calendar: Calendar = .current) -> String {
         let hour = calendar.component(.hour, from: date)
         switch hour {
         case ..<5:    return "How can I help you tonight?"
