@@ -46,10 +46,15 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            You are reviewing a pull request for the Super iOS app
-            (Swift 6, SwiftUI, GRDB, strict concurrency). The repository
-            root has AGENTS.md / CLAUDE.md with the canonical rules. Read
-            them and any module-level AGENTS.md before forming opinions.
+            Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            Steps:
+            1. Run `gh pr view ${{ github.event.pull_request.number }}` to read the title, description, and metadata.
+            2. Run `gh pr diff ${{ github.event.pull_request.number }}` to see the full diff.
+            3. Use Read on AGENTS.md (and any module-level AGENTS.md the diff touches) for project-specific rules.
+
+            This is the Super iOS app: Swift 6 strict concurrency, SwiftUI,
+            GRDB persistence, applet-based architecture.
 
             Focus on:
             - Correctness, especially around async/await, Sendable, and
@@ -68,19 +73,25 @@ jobs:
             - Architecture: no cross-applet imports, event-bus for
               cross-applet communication.
 
-            Post inline review comments only on lines you have a concrete
-            concern about. End with a short summary recommendation:
-            APPROVE, COMMENT, or REQUEST_CHANGES. Be terse — link to the
-            specific rule in AGENTS.md when citing one.
-          # Explicitly allowlist the GitHub MCP tools the reviewer needs to
-          # post inline comments and a summary review. Without these the
-          # action auto-detects "agent" mode (since the trigger is a generic
-          # pull_request event) and Claude's tool calls to post comments are
-          # denied — visible in the run log as "permission_denials_count".
+            Posting the review:
+            - For specific concerns on specific lines: use the
+              mcp__github_inline_comment__create_inline_comment tool.
+            - End with a single summary comment via
+              mcp__github__add_issue_comment containing one of:
+              APPROVE / COMMENT / REQUEST_CHANGES, plus a 2-3 sentence
+              rationale. Link to the specific AGENTS.md rule when
+              citing one. Be terse.
+          # The action auto-detects "agent" mode for generic pull_request
+          # events, which doesn't pre-allowlist any tools. We have to spell
+          # out everything Claude needs:
+          #   - Read: read AGENTS.md and source files
+          #   - Bash(gh ...): read PR metadata + diff
+          #   - mcp__github_inline_comment__*: post inline comments
+          #   - mcp__github__add_issue_comment: post the summary verdict
           claude_args: |
-            --max-turns 8
+            --max-turns 12
             --model claude-sonnet-4-6
-            --allowedTools mcp__github_inline_comment__create_inline_comment,mcp__github__create_pending_pull_request_review,mcp__github__add_pull_request_review_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__add_issue_comment
+            --allowedTools "Read,Bash(gh pr view:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment,mcp__github__add_issue_comment"
           # Surface Claude's actual messages in the workflow log so we can
           # tell whether a missing review is "Claude found nothing to flag"
           # vs "Claude tried but a tool was denied or rate-limited."
