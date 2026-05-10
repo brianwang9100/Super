@@ -27,12 +27,21 @@ jobs:
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_DIST_CERT_P12_BASE64: ${{ secrets.APPLE_DIST_CERT_P12_BASE64 }}
+      APPLE_DIST_CERT_P12_PASSWORD: ${{ secrets.APPLE_DIST_CERT_P12_PASSWORD }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       MARKETING_VERSION: ${{ github.event.inputs.marketing_version }}
       # Resolved by the "Set AUTH_KEY_PATH" step below using runtime $HOME
       # so the workflow doesn't break if the runner image ever changes its
       # home directory layout. Apple's xcrun altool/xcodebuild auto-discover
       # keys in this canonical ~/.appstoreconnect/private_keys/ path.
       AUTH_KEY_PATH: ""
+      # Temporary keychain that holds the imported Apple Distribution cert.
+      # Created in the "Import Apple Distribution certificate" step and
+      # deleted by the cleanup step at job end so no signing material leaks
+      # between runs on a self-hosted runner.
+      KEYCHAIN_PATH: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +57,10 @@ jobs:
           [ -z "$APP_STORE_CONNECT_ISSUER_ID" ] && missing+=(APP_STORE_CONNECT_ISSUER_ID)
           [ -z "$APP_STORE_CONNECT_API_KEY" ] && missing+=(APP_STORE_CONNECT_API_KEY)
           [ -z "$APPLE_TEAM_ID" ] && missing+=(APPLE_TEAM_ID)
+          [ -z "$APPLE_DIST_CERT_P12_BASE64" ] && missing+=(APPLE_DIST_CERT_P12_BASE64)
+          [ -z "$APPLE_DIST_CERT_P12_PASSWORD" ] && missing+=(APPLE_DIST_CERT_P12_PASSWORD)
+          [ -z "$APPLE_PROVISIONING_PROFILE_BASE64" ] && missing+=(APPLE_PROVISIONING_PROFILE_BASE64)
+          [ -z "$KEYCHAIN_PASSWORD" ] && missing+=(KEYCHAIN_PASSWORD)
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required secrets: ${missing[*]}"
             exit 1
@@ -80,6 +93,66 @@ jobs:
           chmod 600 "$AUTH_KEY_PATH"
           echo "Staged at $AUTH_KEY_PATH"
 
+      - name: Import Apple Distribution certificate
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/AppleDist.p12"
+
+          echo "$APPLE_DIST_CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          # Create a fresh, ephemeral keychain just for this job. Using a
+          # dedicated keychain (rather than login.keychain) keeps the cert
+          # out of any persistent runner state and lets us delete it cleanly.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # 2h timeout matches the job timeout; auto-locks if we crash.
+          security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -P "$APPLE_DIST_CERT_P12_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access the imported key without an interactive
+          # prompt. Without this, codesign hangs on a UI prompt in CI.
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Prepend the build keychain to the search list so codesign finds
+          # the identity without losing access to the system keychain.
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
+
+          rm -f "$CERT_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          echo "Identities available for codesigning:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Install provisioning profile
+        id: profile
+        run: |
+          set -euo pipefail
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          PROFILE_TMP="$RUNNER_TEMP/profile.mobileprovision"
+          echo "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_TMP"
+
+          # Extract UUID + Name from the signed profile so we can install it
+          # at the canonical path Xcode looks for ($UUID.mobileprovision) and
+          # reference it by Name in the export options plist.
+          PROFILE_PLIST=$(security cms -D -i "$PROFILE_TMP")
+          PROFILE_UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID raw -)
+          PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name raw -)
+
+          cp "$PROFILE_TMP" "$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
+          rm -f "$PROFILE_TMP"
+
+          echo "uuid=$PROFILE_UUID" >> "$GITHUB_OUTPUT"
+          echo "name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
+          echo "Installed profile: $PROFILE_NAME ($PROFILE_UUID)"
+
       - name: Compute build number
         id: build_number
         run: |
@@ -88,6 +161,8 @@ jobs:
           echo "Using build number: $BUILD_NUMBER"
 
       - name: Write export options
+        env:
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
           cat > /tmp/ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -103,9 +178,14 @@ jobs:
               <key>uploadSymbols</key>
               <true/>
               <key>signingStyle</key>
-              <string>automatic</string>
+              <string>manual</string>
               <key>signingCertificate</key>
               <string>Apple Distribution</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>com.brianwang.Super</key>
+                  <string>${PROFILE_NAME}</string>
+              </dict>
               <key>destination</key>
               <string>upload</string>
           </dict>
@@ -115,6 +195,7 @@ jobs:
       - name: Archive
         env:
           BUILD_NUMBER: ${{ steps.build_number.outputs.value }}
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
           set -o pipefail
           ARGS=(
@@ -123,13 +204,11 @@ jobs:
             -configuration Release
             -destination "generic/platform=iOS"
             -archivePath build/Super.xcarchive
-            -allowProvisioningUpdates
-            -authenticationKeyPath "$AUTH_KEY_PATH"
-            -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID"
-            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
             -skipPackagePluginValidation
-            CODE_SIGN_STYLE=Automatic
+            CODE_SIGN_STYLE=Manual
+            CODE_SIGN_IDENTITY="Apple Distribution"
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
           )
           if [ -n "$MARKETING_VERSION" ]; then
@@ -140,6 +219,9 @@ jobs:
       - name: Export and upload to TestFlight
         run: |
           set -o pipefail
+          # -allowProvisioningUpdates is kept so xcodebuild can talk to App
+          # Store Connect for the upload itself; with signingStyle=manual in
+          # the plist it will NOT try to create or update certs/profiles.
           xcodebuild -exportArchive \
             -archivePath build/Super.xcarchive \
             -exportPath build/export \
@@ -150,7 +232,10 @@ jobs:
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
           echo "Upload submitted to TestFlight; processing in App Store Connect typically completes in 5-30 minutes."
 
-      - name: Cleanup API key
+      - name: Cleanup signing material
         if: always()
         run: |
           rm -f "$AUTH_KEY_PATH" || true
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
