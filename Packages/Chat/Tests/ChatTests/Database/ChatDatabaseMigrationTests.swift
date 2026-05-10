@@ -11,12 +11,17 @@ import Testing
 struct ChatDatabaseMigrationTests {
 
     @Test func openAppliesFileProtectionToOnDiskDatabase() throws {
-        // .complete file-protection is meaningful only on iOS — that's
-        // what keeps chat.sqlite unreadable while the device is locked.
-        // On macOS the FileManager readback varies by host: nil on local
-        // dev machines, .completeUntilFirstUserAuthentication on the
-        // GitHub macos-15 runner. Gate the assertion on iOS so neither
-        // case triggers a false positive in `swift test`.
+        // .complete file-protection is enforced only on iOS hardware.
+        // The FileManager readback is unreliable elsewhere:
+        //   - macOS local: nil
+        //   - macOS runner (GitHub): .completeUntilFirstUserAuthentication
+        //     (APFS default substituted when .complete isn't supported)
+        //   - iOS simulator: nil (sim doesn't honor data protection)
+        //   - iOS hardware: .complete
+        // So: gate the assertion on iOS to skip macOS, then guard on
+        // non-nil readback to skip the simulator. The assertion fires
+        // only on real device — in CI this is a smoke test that the
+        // open path produces a file.
         let tmpDir = FileManager.default.temporaryDirectory
             .appending(component: UUID().uuidString)
         try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
@@ -29,7 +34,9 @@ struct ChatDatabaseMigrationTests {
 
         #if os(iOS)
         let attrs = try FileManager.default.attributesOfItem(atPath: dbURL.path)
-        #expect(attrs[.protectionKey] as? FileProtectionType == .complete)
+        if let protection = attrs[.protectionKey] as? FileProtectionType {
+            #expect(protection == .complete)
+        }
         #endif
     }
 
