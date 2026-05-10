@@ -195,9 +195,12 @@ jobs:
       - name: Archive
         env:
           BUILD_NUMBER: ${{ steps.build_number.outputs.value }}
-          PROFILE_NAME: ${{ steps.profile.outputs.name }}
         run: |
           set -o pipefail
+          # Signing settings (CODE_SIGN_STYLE, CODE_SIGN_IDENTITY,
+          # DEVELOPMENT_TEAM, PROVISIONING_PROFILE_SPECIFIER) are defined on
+          # the Super target's Release config in project.yml so they don't
+          # leak to SwiftPM dependency targets.
           ARGS=(
             -project Super.xcodeproj
             -scheme Super
@@ -205,10 +208,6 @@ jobs:
             -destination "generic/platform=iOS"
             -archivePath build/Super.xcarchive
             -skipPackagePluginValidation
-            CODE_SIGN_STYLE=Manual
-            CODE_SIGN_IDENTITY="Apple Distribution"
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
           )
           if [ -n "$MARKETING_VERSION" ]; then
