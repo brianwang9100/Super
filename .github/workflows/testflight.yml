@@ -28,6 +28,9 @@ jobs:
       APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       MARKETING_VERSION: ${{ github.event.inputs.marketing_version }}
+      # Resolved at runtime once $APP_STORE_CONNECT_KEY_ID is in scope.
+      # Apple's xcrun altool/xcodebuild auto-discover keys in this exact path.
+      AUTH_KEY_PATH: ${{ format('/Users/runner/.appstoreconnect/private_keys/AuthKey_{0}.p8', secrets.APP_STORE_CONNECT_KEY_ID) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,10 +71,9 @@ jobs:
       - name: Stage App Store Connect API key
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
-          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
-          printf '%s' "$APP_STORE_CONNECT_API_KEY" > "$KEY_PATH"
-          chmod 600 "$KEY_PATH"
-          echo "Staged at $KEY_PATH"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY" > "$AUTH_KEY_PATH"
+          chmod 600 "$AUTH_KEY_PATH"
+          echo "Staged at $AUTH_KEY_PATH"
 
       - name: Compute build number
         id: build_number
@@ -117,7 +119,7 @@ jobs:
             -destination "generic/platform=iOS"
             -archivePath build/Super.xcarchive
             -allowProvisioningUpdates
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+            -authenticationKeyPath "$AUTH_KEY_PATH"
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID"
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
             -skipPackagePluginValidation
@@ -138,7 +140,7 @@ jobs:
             -exportPath build/export \
             -exportOptionsPlist /tmp/ExportOptions.plist \
             -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" \
+            -authenticationKeyPath "$AUTH_KEY_PATH" \
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
           echo "Upload submitted to TestFlight; processing in App Store Connect typically completes in 5-30 minutes."
@@ -146,4 +148,4 @@ jobs:
       - name: Cleanup API key
         if: always()
         run: |
-          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" || true
+          rm -f "$AUTH_KEY_PATH" || true
