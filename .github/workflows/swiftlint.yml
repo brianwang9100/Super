@@ -3,12 +3,11 @@ name: SwiftLint
 on:
   push:
     branches: [main]
+  # No path filter on purpose: SwiftLint is a required status check,
+  # and a path-filtered required check that doesn't fire on a PR shows
+  # as "expected but not reported" and blocks merge forever. SwiftLint
+  # in a Docker container runs in ~30s, so always-on is cheap.
   pull_request:
-    paths:
-      - 'App/**/*.swift'
-      - 'Packages/**/*.swift'
-      - '.swiftlint.yml'
-      - '.github/workflows/swiftlint.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

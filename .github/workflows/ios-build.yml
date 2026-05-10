@@ -3,13 +3,11 @@ name: iOS Build
 on:
   push:
     branches: [main]
+  # No path filter on purpose: this workflow's `build` and `ios-test`
+  # jobs are required status checks. A path-filtered required check
+  # that doesn't fire on a PR shows as "expected but not reported"
+  # and blocks merge forever.
   pull_request:
-    paths:
-      - 'App/**'
-      - 'Packages/**'
-      - 'project.yml'
-      - 'Scripts/xcodegen-extras/**'
-      - '.github/workflows/ios-build.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
