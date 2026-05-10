@@ -21,7 +21,7 @@ jobs:
       matrix:
         package: [Core, Chat]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Select Xcode 26+
         # macos-15 image's default Xcode is 16.4 — the bundled Swift
