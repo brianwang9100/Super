@@ -48,6 +48,18 @@ targets:
         # (PRODUCT_NAME = "Super") because the App Store name "Super" is
         # already taken; the public brand is "SuperOS".
         CFBundleDisplayName: SuperOS
+        # iPhone: portrait + both landscapes; skip upside-down per Apple convention.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # iPad: all four orientations are required for multitasking;
+        # App Store upload validation rejects builds that omit any.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperOS uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperOS needs microphone access to capture your voice for dictation."
         # ATS exemptions: scoped to loopback only so local-LLM stacks
