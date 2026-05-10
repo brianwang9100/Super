@@ -122,4 +122,3 @@ Per [`docs/AI_TOOLS.md`](docs/AI_TOOLS.md).
 
 - `docs/CI_PIPELINE.md` §13 lists 8 open questions: AI reviewer model choice, blocking vs. non-blocking review, self-hosted vs. hosted runners, Fastlane vs. raw `xcodebuild`, migration strategy, agent self-merge, cross-applet integration test strategy, Xcode version pinning. Pick answers before scaling agent activity.
 - `docs/PRODUCT_VISION.md` §11 has open product questions on web/Android/Kotlin Multiplatform.
-- License (this README + the repo currently say TBD).

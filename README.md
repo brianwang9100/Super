@@ -96,4 +96,4 @@ This is an experimental project; the codebase moves quickly. If you want to dig 
 
 ## License
 
-TBD.
+[MIT](LICENSE) © 2026 Brian Wang.
