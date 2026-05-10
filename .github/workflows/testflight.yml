@@ -47,6 +47,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Select Xcode 26+
+        # Apple rejects App Store uploads built with anything older than the
+        # iOS 26 SDK (Xcode 26+). The macos-15 runner image's default Xcode
+        # is 16.4, so we pin to the newest stable installation on the image.
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Set AUTH_KEY_PATH
         run: echo "AUTH_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "$GITHUB_ENV"
 
