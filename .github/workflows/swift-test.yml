@@ -3,10 +3,11 @@ name: Swift Tests
 on:
   push:
     branches: [main]
+  # No path filter on purpose: this workflow is a required status check,
+  # and a path-filtered required check that doesn't fire on a PR shows
+  # as "expected but not reported" and blocks merge forever. Cheap to
+  # always run — `swift test` skips quickly when SwiftPM cache is warm.
   pull_request:
-    paths:
-      - 'Packages/**'
-      - '.github/workflows/swift-test.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

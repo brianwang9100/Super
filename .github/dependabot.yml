@@ -1,0 +1,49 @@
+# Dependabot keeps GitHub Actions versions and SwiftPM dependencies
+# fresh by opening PRs when upgrades are available. Each ecosystem is
+# scoped to its own directory so updates don't cross-contaminate.
+version: 2
+updates:
+  # GitHub Actions used in workflows under .github/workflows/
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(actions)"
+    labels:
+      - dependencies
+      - github-actions
+
+  # Swift Package Manager — Core package
+  - package-ecosystem: swift
+    directory: /Packages/Core
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(core)"
+    labels:
+      - dependencies
+      - swift
+
+  # Swift Package Manager — Chat applet
+  - package-ecosystem: swift
+    directory: /Packages/Chat
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(chat)"
+    labels:
+      - dependencies
+      - swift
