@@ -4,11 +4,12 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the monorepo structure and Swift Package layout, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server stack.
 
-> **What's wired today (2026-05-03):**
+> **What's wired today (2026-05-10):**
 > - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-15` runner, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
 > - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-15` runner, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`.
+> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-15` runner with Xcode 26+, archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
 >
-> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, deploy pipelines, signing — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD for the open items.
+> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD for the open items.
 
 ---
 
@@ -652,68 +653,36 @@ jobs:
 
 ### 9.2 Client Deployment (TestFlight)
 
-```yaml
-# .github/workflows/deploy-client.yml
-name: Deploy to TestFlight
+The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-15`, selects Xcode 26+ via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'Packages/**'
-      - 'Super/**'
-      - 'Super.xcodeproj/**'
+**Why this way (the four non-obvious choices):**
 
-jobs:
-  archive-and-upload:
-    runs-on: macos-15
-    env:
-      XCODE_VERSION: '16.2'
-      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install certificates and provisioning profiles
-        env:
-          P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
-        run: |
-          # Decode and install signing certificate
-          echo "$P12_BASE64" | base64 --decode > cert.p12
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          # Decode and install provisioning profile
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
-      - name: Increment build number
-        run: |
-          BUILD_NUMBER=${{ github.run_number }}
-          agvtool new-version -all $BUILD_NUMBER
-      - name: Archive
-        run: |
-          xcodebuild archive \
-            -project Super.xcodeproj \
-            -scheme Super \
-            -destination 'generic/platform=iOS' \
-            -archivePath build/Super.xcarchive \
-            -allowProvisioningUpdates
-      - name: Export IPA
-        run: |
-          xcodebuild -exportArchive \
-            -archivePath build/Super.xcarchive \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath build/
-      - name: Upload to TestFlight
-        run: |
-          xcrun altool --upload-app \
-            --type ios \
-            --file build/Super.ipa \
-            --apiKey ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }} \
-            --apiIssuer ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-```
+1. **Manual `.p12` + profile import instead of cloud-managed signing.** Xcode's cloud-managed Distribution signing requires an App Store Connect API key with the **Admin** role. Our CI key is **App Manager**, which can do TestFlight uploads but cannot create or manage Apple Distribution certificates via cloud signing — `xcodebuild -exportArchive` returns `Cloud signing permission error / No profiles for 'com.brianwang.Super' were found`. Manually importing the cert and profile bypasses cloud signing entirely. ([Apple Developer Forums — known limitation since 2022](https://developer.apple.com/forums/thread/698117).)
+
+2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
+
+3. **Xcode 26+ must be explicitly selected on the runner.** The `macos-15` runner image defaults to Xcode 16.4 (iOS 18.5 SDK). App Store Connect rejects uploads built with anything older than the iOS 26 SDK with `SDK version issue. This app was built with the iOS 18.5 SDK...`. The `setup-xcode` step pins `latest-stable`, which resolves to the newest Xcode installed on the image.
+
+4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
+
+**Auth split.** Two distinct credentials are at play:
+- **Apple Distribution cert + App Store profile** — proves *who* can sign Super for App Store distribution. Imported into the runner's ephemeral keychain at build time.
+- **App Store Connect API key (`.p8`)** — proves *who* can upload on behalf of the team. Passed via `-authenticationKeyPath` to `xcodebuild -exportArchive` for the upload itself. App Manager role is sufficient for upload (only Distribution cert management requires Admin).
+
+**Build numbering.** `CURRENT_PROJECT_VERSION` is set to `GITHUB_RUN_NUMBER` so every run yields a unique, monotonically increasing build number. Marketing version (`CFBundleShortVersionString`) is whatever's in `App/Info.plist` unless overridden via the `marketing_version` workflow input.
+
+**Cert rotation runbook (annual).** Apple Distribution certs expire ~1 year after issue. When that happens:
+
+1. In Keychain Access on a Mac that has the existing cert, generate a new Apple Distribution certificate (or revoke the expired one in [developer.apple.com → Certificates](https://developer.apple.com/account/resources/certificates) and create a new one).
+2. Export the new cert + private key as a `.p12` (select **both** the cert and the key under it before exporting).
+3. Re-issue the App Store provisioning profile in [Profiles](https://developer.apple.com/account/resources/profiles) so it points at the new cert. Download the new `.mobileprovision`. Keep the profile name `Super App Store Distribution` — `project.yml` references it by name in `PROVISIONING_PROFILE_SPECIFIER`.
+4. Update three GitHub secrets (see §10.1):
+   ```sh
+   base64 -i AppleDist.p12 | gh secret set APPLE_DIST_CERT_P12_BASE64 --repo brianwang9100/Super
+   gh secret set APPLE_DIST_CERT_P12_PASSWORD --repo brianwang9100/Super
+   base64 -i Super_App_Store_Distribution.mobileprovision | gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo brianwang9100/Super
+   ```
+5. Trigger the workflow to confirm. Delete the loose `.p12` / `.mobileprovision` files once verified.
 
 ### 9.3 Versioning Strategy
 
@@ -733,35 +702,40 @@ jobs:
 
 ### 10.1 GitHub Actions Secrets
 
+Wired today for the TestFlight workflow:
+
+| Secret | Purpose |
+|--------|---------|
+| `APPLE_DIST_CERT_P12_BASE64` | Apple Distribution certificate + private key, exported from Keychain as `.p12`, base64-encoded. Imported into an ephemeral keychain on the runner. |
+| `APPLE_DIST_CERT_P12_PASSWORD` | Password set when exporting the `.p12`. |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store provisioning profile (`Super App Store Distribution`), base64-encoded. Installed at `~/Library/MobileDevice/Provisioning Profiles/<UUID>.mobileprovision` on the runner. |
+| `APPLE_TEAM_ID` | Apple Developer team ID. Injected into `ExportOptions.plist`. |
+| `APP_STORE_CONNECT_API_KEY` | Contents of the `.p8` App Store Connect API key. Staged at `~/.appstoreconnect/private_keys/AuthKey_<KeyID>.p8` for `xcodebuild` to discover. App Manager role is sufficient. |
+| `APP_STORE_CONNECT_KEY_ID` | The 10-char key ID Apple assigns. |
+| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect organization issuer UUID. |
+| `KEYCHAIN_PASSWORD` | Password used to lock the ephemeral build keychain. Any random string; rotateable independently of Apple state. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Used by the Claude PR-review workflow (unrelated to TestFlight). |
+
+Future / planned:
+
 | Secret | Purpose |
 |--------|---------|
 | `ANTHROPIC_API_KEY` | AI reviewer agent API access |
-| `APPLE_CERTIFICATE_P12_BASE64` | Code signing certificate (base64-encoded .p12) |
-| `APPLE_CERTIFICATE_PASSWORD` | Password for the .p12 certificate |
-| `PROVISIONING_PROFILE_BASE64` | iOS provisioning profile (base64-encoded) |
-| `APP_STORE_CONNECT_API_KEY_ID` | App Store Connect API key for TestFlight upload |
-| `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect issuer ID |
 | `FLY_API_TOKEN` | Server deployment (or equivalent for chosen host) |
 | `REGISTRY_URL` | Docker registry URL |
 | `CODECOV_TOKEN` | Coverage reporting |
 
 ### 10.2 Apple Code Signing in CI
 
-Two approaches, in order of recommendation:
+Manual `.p12` + provisioning profile import (chosen approach — see §9.2 "Why this way" for the full reasoning).
 
-**Option A: Manual certificate management (simpler for solo dev)**
-- Export the distribution certificate as a .p12, base64-encode it, store in GitHub Secrets.
-- Export the provisioning profile, base64-encode it, store in GitHub Secrets.
-- Install both in the CI job (as shown in section 9.2).
-- Downside: must manually rotate when certificates expire (annually).
+**Why not cloud-managed signing.** Xcode's cloud-managed Distribution signing needs an App Store Connect API key with the **Admin** role. Our CI key is **App Manager** — it can upload to TestFlight but cannot create/manage Distribution certs. Manual import sidesteps the role requirement entirely.
 
-**Option B: Fastlane Match (better for teams)**
-- Store certificates and profiles in a private Git repo or Google Cloud Storage.
-- `fastlane match` fetches and installs them automatically.
-- Better for multiple developers/agents, handles renewal more gracefully.
-- Downside: adds Fastlane as a dependency, Ruby runtime required on CI.
+**Why not fastlane match.** Match wraps the same manual-import pattern with a private-git-repo cert store. For a solo-dev project with one app, the extra dependency (Ruby + Fastlane on CI, plus a private repo to maintain) outweighs the renewal-automation benefit. Revisit if Super grows to multiple apps or developers.
 
-**Recommendation:** Start with Option A. Move to Match if certificate management becomes a pain point.
+**Annual rotation.** See §9.2's "Cert rotation runbook".
+
+**Industry context.** Manual `.p12` import is the dominant pattern across GitHub Actions iOS pipelines (`apple-actions/import-codesign-certs`, GitHub's own docs, Bitrise, Codemagic). Cloud signing is most common inside Xcode Cloud, where the API key role limitation doesn't apply.
 
 ---
 
