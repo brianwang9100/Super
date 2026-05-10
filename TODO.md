@@ -42,7 +42,7 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - ✅ `.github/CODEOWNERS` — routes review request to repo owner so branch-protection "code owner review" gates work.
 
 ### CI gaps (still TODO)
-- [ ] **Pin the iOS-test job's simulator runtime.** The `ios-test` job in `ios-build.yml` is `continue-on-error: true` because snapshot baselines are recorded against iPhone 17 + iOS 26.3 locally and macos-15 runners may carry a different default. Discover what sims the runner has, pick a stable one, pin it via `-destination`, then drop `continue-on-error`.
+- ✅ Pin the iOS-test job's simulator runtime — fixed by switching `ios-build.yml` and `swift-test.yml` to `maxim-lobanov/setup-xcode@v1 latest-stable` (gives Xcode 26.x + iOS 26.x sim) and dropping `continue-on-error: true` from `ios-test`.
 - [ ] **Codecov integration** — wire `codecov-action@v4` into the swift-test + ios-build workflows. Configure thresholds (Core ≥ 80%, Chat ≥ 70%) per `AGENTS.md`. The Chat test scheme now runs in CI; coverage data is available.
 - [ ] **Branch protection rules** on `main` per `docs/CI_PIPELINE.md` §7.2: require PR + 1 approval (CODEOWNERS), require status checks (`swift-test (Core)`, `swift-test (Chat)`, `build`, `ios-test`, `lint`, `review`), require linear history, no direct pushes, no force-push. Apply via `gh api` after the new checks have completed at least once on a PR so the names are registered.
 - [ ] **Notify-ready workflow** per `docs/CI_PIPELINE.md` §11.2 — pings a webhook when all checks pass on a PR.
