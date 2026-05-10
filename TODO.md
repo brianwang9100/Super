@@ -38,6 +38,7 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - ✅ `ios-build.yml` — `xcodebuild build` + Chat snapshot/unit tests for iOS sim on every PR.
 - ✅ `swiftlint.yml` — Docker-image SwiftLint runs on every PR touching Swift / config; `.swiftlint.yml` baseline allows ~15 known warnings, errors gate the merge.
 - ✅ `claude-pr-review.yml` — `anthropics/claude-code-action@v1` posts an AI review on PR open/sync. Skips quietly if `CLAUDE_CODE_OAUTH_TOKEN` secret is unset.
+- ✅ `secrets-scan.yml` — `gitleaks` scan on every PR + push to main + weekly cron. Pinned to gitleaks v8.30.1, fails the check on any finding.
 - ✅ `.github/CODEOWNERS` — routes review request to repo owner so branch-protection "code owner review" gates work.
 
 ### CI gaps (still TODO)
