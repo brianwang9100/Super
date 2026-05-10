@@ -42,3 +42,16 @@ Carthage/Build/
 *.profraw
 *.profdata
 coverage/
+
+# Secrets / credentials — defense-in-depth, none of these are tracked today
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.mobileprovision
+*.provisionprofile
