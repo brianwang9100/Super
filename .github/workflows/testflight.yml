@@ -28,13 +28,18 @@ jobs:
       APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       MARKETING_VERSION: ${{ github.event.inputs.marketing_version }}
-      # Resolved at runtime once $APP_STORE_CONNECT_KEY_ID is in scope.
-      # Apple's xcrun altool/xcodebuild auto-discover keys in this exact path.
-      AUTH_KEY_PATH: ${{ format('/Users/runner/.appstoreconnect/private_keys/AuthKey_{0}.p8', secrets.APP_STORE_CONNECT_KEY_ID) }}
+      # Resolved by the "Set AUTH_KEY_PATH" step below using runtime $HOME
+      # so the workflow doesn't break if the runner image ever changes its
+      # home directory layout. Apple's xcrun altool/xcodebuild auto-discover
+      # keys in this canonical ~/.appstoreconnect/private_keys/ path.
+      AUTH_KEY_PATH: ""
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set AUTH_KEY_PATH
+        run: echo "AUTH_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "$GITHUB_ENV"
 
       - name: Verify required secrets
         run: |
