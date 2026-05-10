@@ -8,6 +8,11 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  # Required by anthropics/claude-code-action@v1 to fetch an OIDC token,
+  # which it exchanges for the per-run GitHub credentials it uses to post
+  # review comments. Without it the action retries 3x then fails with
+  # "Could not fetch an OIDC token."
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
