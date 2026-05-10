@@ -87,6 +87,19 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App/Info.plist
         SUPPORTS_MACCATALYST: NO
+      configs:
+        # Release signing lives here (target-scoped) rather than on the
+        # xcodebuild command line. Command-line build settings propagate
+        # to every target in the build, including SwiftPM resource
+        # bundles like GRDB_GRDB, which then error out because they
+        # don't support provisioning profiles. Setting them on the
+        # target means SwiftPM deps inherit only their own (empty)
+        # signing config and build cleanly.
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          DEVELOPMENT_TEAM: SUMH54A6Q9
+          PROVISIONING_PROFILE_SPECIFIER: "Super App Store Distribution"
     dependencies:
       - package: Core
       - package: Chat
