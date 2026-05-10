@@ -97,6 +97,8 @@ jobs:
               <true/>
               <key>signingStyle</key>
               <string>automatic</string>
+              <key>signingCertificate</key>
+              <string>Apple Distribution</string>
               <key>destination</key>
               <string>upload</string>
           </dict>
