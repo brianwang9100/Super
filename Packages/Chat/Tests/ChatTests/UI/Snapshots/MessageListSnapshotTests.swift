@@ -4,14 +4,14 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Coverage on `MessageListView`: a representative populated transcript
+/// Coverage on `MessageList`: a representative populated transcript
 /// (user bubble, assistant text, tool call, banner) per theme. The view
 /// is fed pre-baked items so the test stays free of GRDB and doesn't
 /// depend on a reactive query.
-@Suite("MessageListView snapshots", .serialized)
+@Suite("MessageList snapshots", .serialized)
 @MainActor
-struct MessageListViewSnapshotTests {
-    private let items: [MessageListView.Item] = [
+struct MessageListSnapshotTests {
+    private let items: [MessageList.Item] = [
         .userBubble(id: "u1", text: "What's the time in Tokyo?"),
         .assistantText(
             id: "a1",
@@ -49,12 +49,12 @@ struct MessageListViewSnapshotTests {
     @Test("streaming tail with typing caret")
     func streamingTail() {
         let function = #function
-        let tail = MessageListView.StreamingTail(
+        let tail = MessageList.StreamingState(
             thinking: "",
             text: "Working on it",
             isCompacting: false
         )
-        let view = MessageListView(
+        let view = MessageList(
             items: [.userBubble(id: "u1", text: "Hi there")],
             streamingTail: tail,
             verbosity: .verbose
@@ -67,7 +67,7 @@ struct MessageListViewSnapshotTests {
     @Test("error banner above composer")
     func errorBanner() {
         let function = #function
-        let view = MessageListView(
+        let view = MessageList(
             items: [.userBubble(id: "u1", text: "What now?")],
             error: .init(message: "Authentication failed. Check the API key in Settings.")
         )
@@ -83,7 +83,7 @@ struct MessageListViewSnapshotTests {
     @Test("error banner with action button (Settings variant)")
     func errorBannerWithAction() {
         let function = #function
-        let view = MessageListView(
+        let view = MessageList(
             items: [.userBubble(id: "u1", text: "Try voice")],
             error: .init(
                 message: "Voice input needs Speech Recognition and Microphone permissions. Open Settings to enable them.",
@@ -99,13 +99,13 @@ struct MessageListViewSnapshotTests {
     @Test("compaction banner placement")
     func compactionBanner() {
         let function = #function
-        let withBanner: [MessageListView.Item] = [
+        let withBanner: [MessageList.Item] = [
             .userBubble(id: "u1", text: "older"),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
             .compactionBanner(id: "b1", summary: "User said hello, assistant replied with the time."),
             .userBubble(id: "u2", text: "follow-up"),
         ]
-        let view = MessageListView(items: withBanner, verbosity: .verbose)
+        let view = MessageList(items: withBanner, verbosity: .verbose)
             .superTheme(.make(.light))
             .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_compaction_light", function: function)
@@ -128,7 +128,7 @@ struct MessageListViewSnapshotTests {
 
         Wrap up with a sunset at *Miradouro da Senhora do Monte*.
         """
-        let view = MessageListView(
+        let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
@@ -140,7 +140,7 @@ struct MessageListViewSnapshotTests {
         recordOrCompare(view: view, name: "list_markdown_light", function: function)
     }
 
-    /// Fenced ```swift code block rendered through ``CodeBlockView`` —
+    /// Fenced ```swift code block rendered through ``CodeBlock`` —
     /// covers the dark surface, lang label, copy pill, and Splash-driven
     /// keyword/string/comment coloring.
     @Test("fenced code block with Splash highlighting")
@@ -162,7 +162,7 @@ struct MessageListViewSnapshotTests {
 
         Call it from the view model on a `.task` modifier.
         """
-        let view = MessageListView(
+        let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Show me a fetch helper"),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
@@ -188,7 +188,7 @@ struct MessageListViewSnapshotTests {
         | `top_p` | 1.0 | Nucleus sampling |
         | `max_tokens` | 2048 | Hard cap |
         """
-        let view = MessageListView(
+        let view = MessageList(
             items: [
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
             ],
@@ -207,7 +207,7 @@ struct MessageListViewSnapshotTests {
     func compactionBannerWithMarkdown() {
         let function = #function
         let summary = "User asked about **Lisbon** itinerary; assistant replied with `tram 28` and pastry-shop tips."
-        let view = MessageListView(items: [
+        let view = MessageList(items: [
             .userBubble(id: "u1", text: "older"),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
             .compactionBanner(id: "b1", summary: summary),
@@ -232,7 +232,7 @@ struct MessageListViewSnapshotTests {
         - Belém needs its own half-day
         - Save Sintra for a day trip
         """
-        let view = MessageListView(items: [
+        let view = MessageList(items: [
             .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
             .assistantText(
                 id: "a1",
@@ -250,7 +250,7 @@ struct MessageListViewSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
-        let view = MessageListView(items: items, verbosity: .verbose)
+        let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 700)
@@ -279,7 +279,7 @@ struct MessageListViewSnapshotTests {
         | 1 | Alfama |
         | 2 | Belém |
         """
-        let view = MessageListView(
+        let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
@@ -308,7 +308,7 @@ struct MessageListViewSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = MessageListView(items: items, verbosity: .verbose)
+        let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)

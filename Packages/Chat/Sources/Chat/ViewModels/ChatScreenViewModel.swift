@@ -23,15 +23,15 @@ public final class ChatScreenViewModel {
     /// Transcript items projected from persisted records. Re-resolved on
     /// every `userMessageSaved` / `assistantMessageSaved` /
     /// `compactionCompleted` event so the view sees post-write state.
-    public private(set) var items: [MessageListView.Item] = []
+    public private(set) var items: [MessageList.Item] = []
 
     /// Live streaming overlay (in-flight assistant text/thinking). nil
     /// when no turn is mid-flight.
-    public private(set) var streamingTail: MessageListView.StreamingTail?
+    public private(set) var streamingTail: MessageList.StreamingState?
 
     /// Last terminal error from a turn. Cleared when the user retries or
     /// sends a new message.
-    public private(set) var error: MessageListView.ErrorBanner?
+    public private(set) var error: MessageList.ErrorState?
 
     /// Composer text. Two-way bound from the view.
     public var composerText: String = ""
@@ -198,10 +198,10 @@ public final class ChatScreenViewModel {
     /// (`@testable import Chat`) can prime the view model without
     /// widening the SDK contract.
     func _setSnapshotState(
-        items: [MessageListView.Item],
+        items: [MessageList.Item],
         usedTokens: Int = 0,
-        streamingTail: MessageListView.StreamingTail? = nil,
-        error: MessageListView.ErrorBanner? = nil,
+        streamingTail: MessageList.StreamingState? = nil,
+        error: MessageList.ErrorState? = nil,
         isStreaming: Bool = false
     ) {
         self.items = items
@@ -261,7 +261,7 @@ public final class ChatScreenViewModel {
     public func handleVoiceStateChange(_ state: VoiceInputController.State) {
         switch state {
         case .denied:
-            error = MessageListView.ErrorBanner(
+            error = MessageList.ErrorState(
                 message: "Voice input needs Speech Recognition and Microphone permissions. Open Settings to enable them.",
                 actionLabel: "Settings",
                 action: { Self.openSystemSettings() }
@@ -272,7 +272,7 @@ public final class ChatScreenViewModel {
             // voice attempt). Suppress the Retry pill so the banner
             // can't trigger an unrelated resend; the user dismisses by
             // sending a message or tapping the mic again.
-            error = MessageListView.ErrorBanner(
+            error = MessageList.ErrorState(
                 message: Self.voiceFailureMessage(for: reason),
                 showsRetry: false
             )
@@ -344,7 +344,7 @@ public final class ChatScreenViewModel {
 
     private func startStreaming(text: String, model: LLMModel) {
         isStreaming = true
-        streamingTail = MessageListView.StreamingTail(
+        streamingTail = MessageList.StreamingState(
             thinking: "",
             thinkingStartedAt: nil,
             text: "",
@@ -380,7 +380,7 @@ public final class ChatScreenViewModel {
             await refreshTranscript()
         case .assistantMessageSaved(let assistantMessage):
             // Clear the streaming text now that the canonical row exists.
-            streamingTail = MessageListView.StreamingTail(
+            streamingTail = MessageList.StreamingState(
                 thinking: "",
                 thinkingStartedAt: nil,
                 text: "",
@@ -389,14 +389,14 @@ public final class ChatScreenViewModel {
             await refreshTranscript()
             maybeGenerateTitle(from: assistantMessage)
         case .compactionStarted:
-            streamingTail = MessageListView.StreamingTail(
+            streamingTail = MessageList.StreamingState(
                 thinking: streamingTail?.thinking ?? "",
                 thinkingStartedAt: streamingTail?.thinkingStartedAt,
                 text: streamingTail?.text ?? "",
                 isCompacting: true
             )
         case .compactionCompleted:
-            streamingTail = MessageListView.StreamingTail(
+            streamingTail = MessageList.StreamingState(
                 thinking: streamingTail?.thinking ?? "",
                 thinkingStartedAt: streamingTail?.thinkingStartedAt,
                 text: streamingTail?.text ?? "",
@@ -411,14 +411,14 @@ public final class ChatScreenViewModel {
             if case .cancelled = llmError {
                 error = nil
             } else {
-                error = MessageListView.ErrorBanner(message: Self.describe(llmError))
+                error = MessageList.ErrorState(message: Self.describe(llmError))
             }
         }
     }
 
     private func appendStreamingText(_ chunk: String) {
         let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
-        streamingTail = MessageListView.StreamingTail(
+        streamingTail = MessageList.StreamingState(
             thinking: current.thinking,
             thinkingStartedAt: current.thinkingStartedAt,
             text: current.text + chunk,
@@ -428,7 +428,7 @@ public final class ChatScreenViewModel {
 
     private func appendStreamingThinking(_ chunk: String) {
         let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
-        streamingTail = MessageListView.StreamingTail(
+        streamingTail = MessageList.StreamingState(
             thinking: current.thinking + chunk,
             thinkingStartedAt: current.thinkingStartedAt ?? Date(),
             text: current.text,
@@ -579,13 +579,13 @@ public final class ChatScreenViewModel {
             )
             self.usedTokens = messages.reduce(0) { $0 + ($1.tokenCount ?? 0) }
         } catch {
-            self.error = MessageListView.ErrorBanner(
+            self.error = MessageList.ErrorState(
                 message: "Could not load messages: \(error.localizedDescription)"
             )
         }
     }
 
-    /// Project on-disk records into `MessageListView.Item`s. Pure
+    /// Project on-disk records into `MessageList.Item`s. Pure
     /// (`nonisolated`) so callers in any context — snapshot tests,
     /// previews, future async pipelines — can run it directly without an
     /// actor hop.
@@ -602,8 +602,8 @@ public final class ChatScreenViewModel {
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
         checkpoint: CompactionCheckpointRecord?
-    ) -> [MessageListView.Item] {
-        var items: [MessageListView.Item] = []
+    ) -> [MessageList.Item] {
+        var items: [MessageList.Item] = []
         let toolCallsByMessage = Dictionary(grouping: toolCalls, by: \.messageId)
         let toolResults: [String: String] = Dictionary(uniqueKeysWithValues: messages.compactMap {
             guard let id = $0.toolCallId else { return nil }
@@ -627,7 +627,7 @@ public final class ChatScreenViewModel {
                 items.append(.userBubble(id: message.id, text: message.content))
             case .assistant:
                 let calls = (toolCallsByMessage[message.id] ?? []).map { call in
-                    MessageListView.ToolCallView(
+                    MessageList.ToolCallItem(
                         id: call.id,
                         toolName: call.toolName,
                         parametersJSON: call.parameters,
@@ -663,7 +663,7 @@ public final class ChatScreenViewModel {
         return items
     }
 
-    private nonisolated static func mapStatus(_ status: ToolCallStatus) -> MessageListView.ToolCallView.Status {
+    private nonisolated static func mapStatus(_ status: ToolCallStatus) -> MessageList.ToolCallItem.Status {
         switch status {
         case .pending, .executing, .awaitingConfirmation:
             return .running

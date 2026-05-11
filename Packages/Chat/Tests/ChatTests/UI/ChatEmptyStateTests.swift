@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Greeting derivation for `ChatEmptyStateView`. Pure function on the
+/// Greeting derivation for `ChatEmptyState`. Pure function on the
 /// current `Date`; tests cover all four time-of-day branches.
-@Suite("ChatEmptyStateView greeting")
-struct ChatEmptyStateViewGreetingTests {
+@Suite("ChatEmptyState greeting")
+struct ChatEmptyStateGreetingTests {
     private func date(hour: Int) -> Date {
         var components = DateComponents()
         components.year = 2026
@@ -23,7 +23,7 @@ struct ChatEmptyStateViewGreetingTests {
         let calendar = Calendar(identifier: .gregorian)
         var c = calendar
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 2), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 2), calendar: c)
         #expect(greeting == "How can I help you tonight?")
     }
 
@@ -31,7 +31,7 @@ struct ChatEmptyStateViewGreetingTests {
     func morning() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 9), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 9), calendar: c)
         #expect(greeting == "How can I help you this morning?")
     }
 
@@ -39,7 +39,7 @@ struct ChatEmptyStateViewGreetingTests {
     func afternoon() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 14), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 14), calendar: c)
         #expect(greeting == "How can I help you this afternoon?")
     }
 
@@ -47,7 +47,7 @@ struct ChatEmptyStateViewGreetingTests {
     func evening() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 19), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 19), calendar: c)
         #expect(greeting == "How can I help you this evening?")
     }
 
@@ -55,7 +55,7 @@ struct ChatEmptyStateViewGreetingTests {
     func lateEvening() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 22), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 22), calendar: c)
         #expect(greeting == "How can I help you tonight?")
     }
 
@@ -63,7 +63,7 @@ struct ChatEmptyStateViewGreetingTests {
     func boundaryFiveAM() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 5), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 5), calendar: c)
         #expect(greeting == "How can I help you this morning?")
     }
 
@@ -71,7 +71,7 @@ struct ChatEmptyStateViewGreetingTests {
     func boundaryFivePM() {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
-        let greeting = ChatEmptyStateView.greeting(for: date(hour: 17), calendar: c)
+        let greeting = ChatEmptyState.greeting(for: date(hour: 17), calendar: c)
         #expect(greeting == "How can I help you this evening?")
     }
 }

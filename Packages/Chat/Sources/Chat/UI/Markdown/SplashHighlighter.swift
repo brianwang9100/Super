@@ -7,7 +7,7 @@ import SwiftUI
 /// single `Text` painted with the active theme's code colors.
 ///
 /// Lives outside MarkdownUI's `CodeSyntaxHighlighter` protocol because
-/// our ``CodeBlockView`` overrides the entire code-block slot — the
+/// our ``CodeBlock`` overrides the entire code-block slot — the
 /// chrome (lang label, copy pill, dark surface) needs more than a `Text`,
 /// so the highlighter is invoked directly from there.
 ///

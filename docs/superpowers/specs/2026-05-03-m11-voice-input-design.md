@@ -42,7 +42,7 @@ Packages/Chat/Sources/Chat/
     VoiceInputController.swift                # NEW — @Observable @MainActor view-model class
   UI/
     ChatComposer.swift                        # MODIFY — add isRecording branch + pulse + onStopRecording
-    MessageListView.swift                     # MODIFY — extend ErrorBanner with optional action
+    MessageList.swift                         # MODIFY — extend ErrorState with optional action
   ViewModels/
     ChatScreenViewModel.swift                 # MODIFY — own controller, thread partial into composer
 App/Info.plist                                # MODIFY — add two usage descriptions
@@ -171,18 +171,21 @@ State transitions:
 - `recordingButton`: 34pt circle, `.fill(theme.accent)`, `Image(systemName: "stop.fill")` foreground `theme.accentInk`. An `.overlay { Circle().stroke(theme.accent.opacity(0.6), lineWidth: 2) }` scales 1.0 → 1.5 and fades 0.6 → 0 on a 1.2s `.easeOut` repeat-forever animation. Pulse overlay guarded by `@Environment(\.accessibilityReduceMotion)` — skipped when true. `accessibilityLabel("Stop recording")`, `accessibilityHint("Double-tap to stop voice input and insert the transcript.")`.
 - `micButtonDimmed`: same shape as `micButton` but foreground `theme.inkSoft.opacity(0.4)`, `.disabled(true)`. `accessibilityHint("On-device speech recognition isn't available for your language.")`.
 
-### 5.5 `MessageListView.ErrorBanner` extension
+### 5.5 `MessageList.ErrorState` extension
 
 ```swift
-public struct ErrorBanner: Equatable {
-    public var message: String
-    public var actionLabel: String?     // NEW (optional)
+public struct ErrorState: Sendable, Equatable {
+    public let message: String
+    public let actionLabel: String?     // NEW (optional)
     // Action closure stored alongside but ignored by Equatable (reference identity isn't meaningful).
     // MainActor because the banner row that renders it is itself MainActor-bound (SwiftUI).
-    public var action: (@MainActor () -> Void)?  // NEW (optional)
+    public let action: (@MainActor @Sendable () -> Void)?  // NEW (optional)
+    public let showsRetry: Bool
 
-    public static func == (lhs: ErrorBanner, rhs: ErrorBanner) -> Bool {
-        lhs.message == rhs.message && lhs.actionLabel == rhs.actionLabel
+    public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
+        lhs.message == rhs.message
+            && lhs.actionLabel == rhs.actionLabel
+            && lhs.showsRetry == rhs.showsRetry
     }
 }
 ```
@@ -360,7 +363,7 @@ Mirrors `CodeBlockCopyControllerTests` style: injected `FakeVoiceInputService` w
 - `composer_mic_unavailable_light` — dimmed mic + disabled
 - `composer_recording_xxl` — recording state at Dynamic Type XXL
 
-### 9.4 Snapshot — `MessageListViewSnapshotTests.swift` (extend)
+### 9.4 Snapshot — `MessageListSnapshotTests.swift` (extend)
 
 - `list_error_banner_with_action_light` — banner with the new "Settings" action button
 

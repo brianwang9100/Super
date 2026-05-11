@@ -53,7 +53,7 @@ struct SidebarViewModelTests {
         #expect(vm.chats.count == 1) // unchanged
     }
 
-    @Test("running ids surface as ChatRow.running flag")
+    @Test("running ids surface as ChatItem.running flag")
     func runningFlagProjection() async {
         let repo = StubConversationRepository(rows: [
             .init(id: "a", title: "A", createdAt: Self.now, updatedAt: Self.now),

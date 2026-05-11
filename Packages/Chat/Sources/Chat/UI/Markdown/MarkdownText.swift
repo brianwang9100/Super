@@ -5,8 +5,8 @@ import SwiftUI
 /// `SuperTheme` from `@Environment` and applies the matching
 /// MarkdownUI theme + Splash-driven code blocks.
 ///
-/// Used by ``AssistantMessageView``, ``ThinkingBlockView``, and
-/// ``CompactionBannerView`` so all assistant prose is rendered against
+/// Used by ``AssistantMessage``, ``ThinkingBlock``, and
+/// ``CompactionBanner`` so all assistant prose is rendered against
 /// the same palette and block chrome.
 ///
 /// The MarkdownUI `Theme` is built once per `(SuperTheme, BodyStyle)`
@@ -15,7 +15,7 @@ import SwiftUI
 /// Re-keyed via `.task(id:)` whenever theme or body style changes.
 struct MarkdownText: View {
     let text: String
-    /// Optional override for the default text style — `ThinkingBlockView`
+    /// Optional override for the default text style — `ThinkingBlock`
     /// uses this to italicize and re-color the body without forking the
     /// whole theme builder.
     let bodyStyleOverride: BodyStyle?

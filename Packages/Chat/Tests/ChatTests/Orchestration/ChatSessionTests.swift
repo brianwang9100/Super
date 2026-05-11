@@ -294,7 +294,7 @@ struct ChatSessionTests {
         // single `thinkingContent` value on the saved row so the UI can
         // re-render the trace after the streaming tail clears. Without
         // this we'd lose the trace the moment `.assistantMessageSaved`
-        // fires — see the bug discussion in `MessageListView.swift`.
+        // fires — see the bug discussion in `MessageList.swift`.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),

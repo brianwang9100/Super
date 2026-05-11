@@ -16,7 +16,7 @@ import SwiftUI
 @Observable
 public final class SidebarViewModel {
     /// One row in the CHATS list. Mirrors the React `ChatRow` payload.
-    public struct ChatRow: Sendable, Equatable, Identifiable {
+    public struct ChatItem: Sendable, Equatable, Identifiable {
         public let id: String
         public let title: String
         public let updatedAt: Date
@@ -33,7 +33,7 @@ public final class SidebarViewModel {
     /// Conversations sorted newest-first. Re-projected on each
     /// `refresh()` (and whenever `draftConversation` changes); stale
     /// otherwise.
-    public private(set) var chats: [ChatRow] = []
+    public private(set) var chats: [ChatItem] = []
 
     /// The conversation currently shown in the chat surface. Setting this
     /// repaints the matching row in `accentSoft + accent ink` — it does
@@ -56,7 +56,7 @@ public final class SidebarViewModel {
     /// DB-backed projection from the most recent `refresh()`. Kept
     /// separate so `rebuildChats()` can prepend the draft row without
     /// re-querying.
-    private var dbChats: [ChatRow] = []
+    private var dbChats: [ChatItem] = []
 
     /// Production initializer — bridges to the live `ChatSessionStore`'s
     /// `runningConversations()` actor method.
@@ -103,7 +103,7 @@ public final class SidebarViewModel {
                 } else {
                     title = "New chat"
                 }
-                return ChatRow(
+                return ChatItem(
                     id: record.id,
                     title: title,
                     updatedAt: record.updatedAt,
@@ -136,7 +136,7 @@ public final class SidebarViewModel {
                 title = "New chat"
             }
             rows.insert(
-                ChatRow(
+                ChatItem(
                     id: draft.id,
                     title: title,
                     updatedAt: draft.updatedAt,
@@ -152,7 +152,7 @@ public final class SidebarViewModel {
     /// the view renders without a repository round-trip. Production
     /// callers should never invoke this — `refresh()` is the canonical
     /// entry point.
-    func _setSnapshotState(chats: [ChatRow], activeId: String? = nil) {
+    func _setSnapshotState(chats: [ChatItem], activeId: String? = nil) {
         self.chats = chats
         self.dbChats = chats
         self.activeConversationId = activeId

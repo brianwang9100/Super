@@ -16,10 +16,10 @@ struct SettingsHeader: View {
         HStack(spacing: 0) {
             iconButton(action: isRoot ? onClose : onBack) {
                 if isRoot {
-                    CloseGlyph(size: 16)
+                    CloseIcon(size: 16)
                         .foregroundStyle(theme.ink)
                 } else {
-                    BackChevron(size: 18)
+                    BackChevronIcon(size: 18)
                         .foregroundStyle(theme.ink)
                 }
             }
@@ -35,7 +35,7 @@ struct SettingsHeader: View {
             // Hidden spacer mirrors the React `visibility: hidden` button on
             // the trailing edge so the title stays centered to the chrome.
             iconButton(action: {}) {
-                CloseGlyph(size: 16)
+                CloseIcon(size: 16)
             }
             .hidden()
         }

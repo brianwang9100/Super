@@ -9,7 +9,7 @@ import SwiftUI
 /// inside a ``MarkdownText`` picks up the chrome automatically. The copy
 /// state machine lives in ``CodeBlockCopyController`` so its timing and
 /// cancellation behavior can be tested without rendering this view.
-struct CodeBlockView: View {
+struct CodeBlock: View {
     let language: String?
     let code: String
     let superTheme: SuperTheme

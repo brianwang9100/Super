@@ -9,7 +9,7 @@ import SwiftUI
 /// injected so snapshot tests are deterministic.
 ///
 /// Mirrors `EmptyState` in `.design-tmp/chat/project/src/chat-view.jsx`.
-public struct ChatEmptyStateView: View {
+public struct ChatEmptyState: View {
     public let greeting: String
 
     public init(greeting: String) {

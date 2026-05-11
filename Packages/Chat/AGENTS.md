@@ -11,7 +11,7 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **Orchestration** (`Orchestration/`): `ChatSession` actor (one per conversation), `ChatSessionStore` actor (holds concurrent sessions), `ContextAssembler`, `Compactor`, `TokenEstimator`, `SystemPromptBuilder`, `SlashCommand`, `ChatEvent`.
 - **Tools** (`Tools/`): `TimeNowTool` (built-in local).
 - **Voice** (`Voice/`): `VoiceInputService` protocol + `SpeechRecognizerVoiceInputService` (on-device `SFSpeechRecognizer`).
-- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageListView`, `SidebarDrawer`, `Settings*Pane`, message-part renderers, theme types.
+- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/Chat/NAMING_CONVENTIONS.md`](../../docs/Chat/NAMING_CONVENTIONS.md).**
 - **View models** (`ViewModels/`): `@Observable @MainActor final class` view models for every screen.
 
 ## Rules

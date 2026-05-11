@@ -21,13 +21,13 @@ struct SettingsRootPane: View {
 
             SettingsGroup {
                 SettingsRow(
-                    icon: AnyView(ModelsGlyph()),
+                    icon: AnyView(ModelsIcon()),
                     label: "Models",
                     value: "\(viewModel.models.count) configured",
                     action: { viewModel.openPane(.models) }
                 )
                 SettingsRow(
-                    icon: AnyView(ThemeGlyph()),
+                    icon: AnyView(ThemeIcon()),
                     label: "Theme",
                     value: themeName,
                     borderBottom: false,
@@ -37,29 +37,29 @@ struct SettingsRootPane: View {
 
             SettingsGroup {
                 SettingsRow(
-                    icon: AnyView(PromptGlyph()),
+                    icon: AnyView(PromptIcon()),
                     label: "System Prompt",
                     action: { viewModel.openPane(.prompt) }
                 )
                 SettingsRow(
-                    icon: AnyView(VerbosityGlyph()),
+                    icon: AnyView(VerbosityIcon()),
                     label: "Default Verbosity",
                     value: viewModel.settings.defaultVerbosity.displayName,
                     action: { viewModel.openPane(.verbosity) }
                 )
                 SettingsRow(
-                    icon: AnyView(AppearanceGlyph()),
+                    icon: AnyView(AppearanceIcon()),
                     label: "Appearance",
                     action: { viewModel.openPane(.appearance) }
                 )
                 SettingsRow(
-                    icon: AnyView(ToolsGlyph()),
+                    icon: AnyView(ToolsIcon()),
                     label: "Tools",
                     value: "\(viewModel.tools.filter(\.isEnabled).count) enabled",
                     action: { viewModel.openPane(.tools) }
                 )
                 SettingsRow(
-                    icon: AnyView(CompactionGlyph()),
+                    icon: AnyView(CompactionIcon()),
                     label: "Compaction",
                     value: viewModel.settings.autoCompactEnabled ? "Auto" : "Manual",
                     borderBottom: false,
@@ -69,13 +69,13 @@ struct SettingsRootPane: View {
 
             SettingsGroup {
                 SettingsRow(
-                    icon: AnyView(DataGlyph()),
+                    icon: AnyView(DataIcon()),
                     label: "Data",
                     value: "\(viewModel.chatCount) chats",
                     action: { viewModel.openPane(.data) }
                 )
                 SettingsRow(
-                    icon: AnyView(AboutGlyph()),
+                    icon: AnyView(AboutIcon()),
                     label: "About",
                     value: aboutVersion,
                     borderBottom: false,
