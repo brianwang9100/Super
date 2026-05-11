@@ -184,7 +184,7 @@ SettingsRootPane                        (.../Panes/SettingsRootPane.swift)
 
 **View model:** `SettingsViewModel` (`Chat/ViewModels/SettingsViewModel.swift`).
 
-Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, account chrome (email + app version), and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementStore`) on the same call, so the sheet is always in sync with what's on disk.
+Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, account chrome (email + app version), and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`) on the same call, so the sheet is always in sync with what's on disk.
 
 ---
 
@@ -194,7 +194,7 @@ Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelR
 |---------|-----------|------------|-----------|
 | `ChatScreen` | `ChatScreenViewModel` | `ChatSession` events (via `ChatSessionDriver`), `MessageRepository`, `ToolCallRepository`, `CompactionCheckpointRepository` | composer text · projected items · streaming tail (in-memory only — see ADR-BB-003 in ARCHITECTURE.md) |
 | `SidebarDrawer` | `SidebarViewModel` | `ConversationRepository`, `ChatSessionStore.runningConversations()` | (none — navigation only) |
-| `SettingsSheet` | `SettingsViewModel` | `SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementStore`, `ToolRegistry`, `LLMProviderRegistry`, `ConversationRepository` (for chat count) | the same repositories on every edit |
+| `SettingsSheet` | `SettingsViewModel` | `SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`, `ToolRegistry`, `LLMProviderRegistry`, `ConversationRepository` (for chat count) | the same repositories on every edit |
 
 All three view models are `@Observable @MainActor final class`, mutate only on the main actor, and are constructed by `ChatHostView` from the bootstrap `AppDependencies`.
 
