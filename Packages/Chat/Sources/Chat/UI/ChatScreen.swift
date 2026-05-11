@@ -109,9 +109,9 @@ public struct ChatScreen: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.items.isEmpty && viewModel.streamingTail == nil {
-            ChatEmptyStateView(clock: clock)
+            ChatEmptyState(clock: clock)
         } else {
-            MessageListView(
+            MessageList(
                 items: viewModel.items,
                 streamingTail: viewModel.streamingTail,
                 error: viewModel.error,

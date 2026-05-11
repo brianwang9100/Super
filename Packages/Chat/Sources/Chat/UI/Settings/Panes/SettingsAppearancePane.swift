@@ -101,7 +101,7 @@ struct SettingsAppearancePane: View {
                     .foregroundStyle(theme.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if isSelected {
-                    CheckGlyph(size: 16)
+                    CheckIcon(size: 16)
                         .foregroundStyle(theme.accent)
                 }
             }

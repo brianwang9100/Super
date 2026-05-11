@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Stroked Scalable Vector Graphics (SVG)-style glyphs used by the Settings
+/// Stroked Scalable Vector Graphics (SVG)-style icons used by the Settings
 /// sheet — chrome icons (close, back, chevron, plus, check) and the eight
 /// row-leading icons inside the root pane.
 ///
 /// Each `Shape` mirrors the path data from `settings.jsx`'s `iconFor` block
-/// (or `icons.jsx` for the chrome glyphs), expressed in a 24-unit viewBox
+/// (or `icons.jsx` for the chrome icons), expressed in a 24-unit viewBox
 /// scaled into the requested point size at draw time. Stroke width tracks
 /// the source SVG's `strokeWidth`. The `StrokedGlyph` wrapper from
 /// `SidebarIcons.swift` is reused so the visual treatment stays consistent.
@@ -23,10 +23,10 @@ private func sline(_ p: inout Path, _ pt: CGPoint, in rect: CGRect) {
     p.addLine(to: sscale(pt, in: rect))
 }
 
-// MARK: - Chrome glyphs (close, back, chevron, plus, check)
+// MARK: - Chrome icon shapes (close, back, chevron, plus, check)
 
 /// `IconClose` — diagonal X used by the sheet's root-pane close button.
-struct CloseGlyphShape: Shape {
+struct CloseIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 6, y: 6), in: rect)
@@ -38,7 +38,7 @@ struct CloseGlyphShape: Shape {
 }
 
 /// Back chevron used by the sheet header when a sub-pane is open.
-struct BackChevronShape: Shape {
+struct BackChevronIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 15, y: 6), in: rect)
@@ -49,7 +49,7 @@ struct BackChevronShape: Shape {
 }
 
 /// Forward chevron used as the trailing affordance on settings rows.
-struct ForwardChevronShape: Shape {
+struct ForwardChevronIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 9, y: 6), in: rect)
@@ -59,8 +59,8 @@ struct ForwardChevronShape: Shape {
     }
 }
 
-/// Plus glyph used by the "Add model endpoint" dashed-border CTA.
-struct PlusGlyphShape: Shape {
+/// Plus icon used by the "Add model endpoint" dashed-border CTA.
+struct PlusIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 12, y: 5), in: rect)
@@ -71,8 +71,8 @@ struct PlusGlyphShape: Shape {
     }
 }
 
-/// Check glyph used to indicate selection in radio-style rows.
-struct CheckGlyphShape: Shape {
+/// Check icon used to indicate selection in radio-style rows.
+struct CheckIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 5, y: 13), in: rect)
@@ -82,11 +82,11 @@ struct CheckGlyphShape: Shape {
     }
 }
 
-// MARK: - Row-leading glyphs (mirrors `iconFor` in settings.jsx)
+// MARK: - Row-leading icon shapes (mirrors `iconFor` in settings.jsx)
 
-/// Profile glyph (head + shoulders) — used by the account chip when shown
+/// Profile icon (head + shoulders) — used by the account chip when shown
 /// as an avatar (the actual chip in MVP renders as a plain text card).
-struct ProfileGlyphShape: Shape {
+struct ProfileIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let r = 4.0 / 24 * rect.width
@@ -104,7 +104,7 @@ struct ProfileGlyphShape: Shape {
 }
 
 /// Diamond/cube — Models pane.
-struct ModelsGlyphShape: Shape {
+struct ModelsIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 12, y: 3), in: rect)
@@ -120,7 +120,7 @@ struct ModelsGlyphShape: Shape {
 }
 
 /// Crescent moon — Theme pane.
-struct ThemeGlyphShape: Shape {
+struct ThemeIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         // Approximation of the SVG's `M21 12.8 A9 9 0 1 1 11.2 3 a7 7 0 0 0
@@ -150,7 +150,7 @@ struct ThemeGlyphShape: Shape {
 }
 
 /// Three horizontal lines — System Prompt pane.
-struct PromptGlyphShape: Shape {
+struct PromptIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         smove(&p, CGPoint(x: 4, y: 6), in: rect)
@@ -164,7 +164,7 @@ struct PromptGlyphShape: Shape {
 }
 
 /// Two linked circles — Default Verbosity pane.
-struct VerbosityGlyphShape: Shape {
+struct VerbosityIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let r = 3.0 / 24 * rect.width
@@ -183,7 +183,7 @@ struct VerbosityGlyphShape: Shape {
 }
 
 /// Window-pane grid — Appearance pane.
-struct AppearanceGlyphShape: Shape {
+struct AppearanceIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let frame = CGRect(
@@ -201,12 +201,12 @@ struct AppearanceGlyphShape: Shape {
     }
 }
 
-/// Wrench glyph — Tools pane.
+/// Wrench icon — Tools pane.
 ///
 /// Bespoke: not in `settings.jsx`'s `iconFor` block. The Settings sheet
 /// gained the Tools pane in M9 to surface tool enablement, and the icon
-/// is hand-tuned to match the visual weight of the other 22pt row glyphs.
-struct ToolsGlyphShape: Shape {
+/// is hand-tuned to match the visual weight of the other 22pt row icons.
+struct ToolsIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         // Stylized wrench: slanted handle + open-jaw head.
@@ -231,10 +231,10 @@ struct ToolsGlyphShape: Shape {
     }
 }
 
-/// Compaction glyph — two arrows pointing inward (mirrors a "compress"
+/// Compaction icon — two arrows pointing inward (mirrors a "compress"
 /// affordance from the design palette). 24-unit canvas mirrored for both
 /// halves so the icon stays symmetrical.
-struct CompactionGlyphShape: Shape {
+struct CompactionIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         // Outer brackets — top + bottom
@@ -258,7 +258,7 @@ struct CompactionGlyphShape: Shape {
 }
 
 /// Cylinder/database — Data pane.
-struct DataGlyphShape: Shape {
+struct DataIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         // Top ellipse
@@ -286,7 +286,7 @@ struct DataGlyphShape: Shape {
 }
 
 /// Info circle — About pane.
-struct AboutGlyphShape: Shape {
+struct AboutIconShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let center = sscale(CGPoint(x: 12, y: 12), in: rect)
@@ -306,114 +306,114 @@ struct AboutGlyphShape: Shape {
 
 // MARK: - Public icon views
 
-struct CloseGlyph: View {
+struct CloseIcon: View {
     let size: CGFloat
     init(size: CGFloat = 16) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: CloseGlyphShape(), size: size, lineWidth: 1.6)
+        StrokedGlyph(shape: CloseIconShape(), size: size, lineWidth: 1.6)
     }
 }
 
-struct BackChevron: View {
+struct BackChevronIcon: View {
     let size: CGFloat
     init(size: CGFloat = 18) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: BackChevronShape(), size: size, lineWidth: 1.7)
+        StrokedGlyph(shape: BackChevronIconShape(), size: size, lineWidth: 1.7)
     }
 }
 
-struct ForwardChevron: View {
+struct ForwardChevronIcon: View {
     let size: CGFloat
     init(size: CGFloat = 14) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: ForwardChevronShape(), size: size, lineWidth: 1.8)
+        StrokedGlyph(shape: ForwardChevronIconShape(), size: size, lineWidth: 1.8)
     }
 }
 
-struct PlusGlyph: View {
+struct PlusIcon: View {
     let size: CGFloat
     init(size: CGFloat = 14) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: PlusGlyphShape(), size: size, lineWidth: 1.7)
+        StrokedGlyph(shape: PlusIconShape(), size: size, lineWidth: 1.7)
     }
 }
 
-struct CheckGlyph: View {
+struct CheckIcon: View {
     let size: CGFloat
     init(size: CGFloat = 16) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: CheckGlyphShape(), size: size, lineWidth: 2.0)
+        StrokedGlyph(shape: CheckIconShape(), size: size, lineWidth: 2.0)
     }
 }
 
-struct ModelsGlyph: View {
+struct ModelsIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: ModelsGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: ModelsIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct ThemeGlyph: View {
+struct ThemeIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: ThemeGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: ThemeIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct PromptGlyph: View {
+struct PromptIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: PromptGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: PromptIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct VerbosityGlyph: View {
+struct VerbosityIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: VerbosityGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: VerbosityIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct AppearanceGlyph: View {
+struct AppearanceIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: AppearanceGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: AppearanceIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct ToolsGlyph: View {
+struct ToolsIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: ToolsGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: ToolsIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct CompactionGlyph: View {
+struct CompactionIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: CompactionGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: CompactionIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct DataGlyph: View {
+struct DataIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: DataGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: DataIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-struct AboutGlyph: View {
+struct AboutIcon: View {
     let size: CGFloat
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
-        StrokedGlyph(shape: AboutGlyphShape(), size: size, lineWidth: 1.5)
+        StrokedGlyph(shape: AboutIconShape(), size: size, lineWidth: 1.5)
     }
 }

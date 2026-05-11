@@ -70,7 +70,7 @@ struct SidebarDrawerSnapshotTests {
     // motion-reduced (drawer fully in; spinner at rotation 0), so a
     // captured snapshot wouldn't detect a regression in the reduced-motion
     // branch even if we recorded one. Same gap is documented in
-    // `MessageListViewSnapshotTests`. Tracked to revisit when a reliable
+    // `MessageListSnapshotTests`. Tracked to revisit when a reliable
     // env-injection seam appears in a future SDK.
 
     @Test("dynamic type XXL light")

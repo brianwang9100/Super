@@ -19,7 +19,7 @@ The single backlog of *what is open*. The MVP build log (M0–M12, complete 2026
 - [ ] Lift Chat coverage to ≥ 70% threshold from current ~36% via `swift test` (or measure properly via xcodebuild + an iOS test scheme — see CI section).
 - [ ] Cover the heavy 0%-coverage Settings panes (`SettingsAboutPane`, `SettingsAppearancePane`, `SettingsCompactionPane`, `SettingsDataPane`, `SettingsModelDetailPane`, `SettingsModelsPane`, `SettingsPromptPane`, `SettingsRootPane`, `SettingsThemePane`, `SettingsToolsPane`, `SettingsVerbosityPane`) — at minimum snapshot tests in light/dark/sepia.
 - [ ] Cover `SidebarDrawer.swift` (currently 0%) with snapshots for closed / open-empty / open-populated / active-row / running-spinner per spec.
-- [ ] Cover `MessageListView` block renderers (currently 1.89%) — extract/snapshot the per-block subviews.
+- [ ] Cover `MessageList` block renderers (currently 1.89%) — extract/snapshot the per-block subviews.
 - [ ] Cover `KeychainClient` paths (currently 26%) — wrap a fake at the boundary so the credential-roundtrip flow can be unit-tested.
 - [ ] Address M10 SHOULD findings tagged `TODO(M12)` in code (S-6 hard-coded font sizes, S-9 hard-coded margins).
 - [ ] Fix wall-clock greeting drift in `ChatScreenViewModelProjectionTests` (afternoon→evening) — inject a fixed clock for all snapshot tests so we don't re-record on a time-of-day flip.

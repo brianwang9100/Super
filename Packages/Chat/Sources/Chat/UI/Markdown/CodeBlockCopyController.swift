@@ -1,6 +1,6 @@
 import Foundation
 
-/// Drives the copy-pill state machine for a single ``CodeBlockView`` —
+/// Drives the copy-pill state machine for a single ``CodeBlock`` —
 /// writes to the injected pasteboard, flips state to `.copied`, and
 /// reverts to `.idle` after a brief window.
 ///

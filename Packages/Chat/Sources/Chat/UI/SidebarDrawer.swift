@@ -154,7 +154,7 @@ public struct SidebarDrawer: View {
                     sectionLabel("Chats")
 
                     ForEach(viewModel.chats) { chat in
-                        ChatRowView(
+                        ChatRow(
                             chat: chat,
                             isActive: chat.id == viewModel.activeConversationId,
                             onSelect: { onSelectConversation(chat.id) }
@@ -312,7 +312,7 @@ public struct SidebarDrawer: View {
 
 /// One row in the CHATS list. Active row uses `accent` ink + `accentSoft`
 /// background; running row gets a leading rotating spinner.
-private struct ChatRowView: View {
+private struct ChatRow: View {
     let chat: SidebarViewModel.ChatRow
     let isActive: Bool
     let onSelect: () -> Void

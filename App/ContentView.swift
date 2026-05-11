@@ -16,9 +16,9 @@ struct ContentView: View {
         Group {
             switch state {
             case .loading:
-                LoadingPane()
+                LoadingScreen()
             case .failed(let message):
-                FailurePane(message: message)
+                FailureScreen(message: message)
             case .ready(let dependencies):
                 ChatHostView(dependencies: dependencies)
             }
@@ -28,7 +28,7 @@ struct ContentView: View {
 
 // MARK: - Loading / failure
 
-private struct LoadingPane: View {
+private struct LoadingScreen: View {
     var body: some View {
         VStack(spacing: 12) {
             Text("Super")
@@ -41,7 +41,7 @@ private struct LoadingPane: View {
     }
 }
 
-private struct FailurePane: View {
+private struct FailureScreen: View {
     let message: String
 
     var body: some View {
@@ -100,9 +100,9 @@ struct ChatHostView: View {
                 )
                 .superTheme(theme)
             } else if let bootstrapError {
-                FailurePane(message: bootstrapError)
+                FailureScreen(message: bootstrapError)
             } else {
-                LoadingPane()
+                LoadingScreen()
             }
 
             if let sidebarViewModel {
