@@ -6,7 +6,14 @@ import Testing
 /// End-to-end coverage on the view-model state machine. Drives a fake
 /// `ChatSessionDriver` whose stream yields a scripted sequence of
 /// `ChatEvent`s, and asserts the observable state the view reads.
-@Suite("ChatScreenViewModel")
+///
+/// Suite is `.serialized` as a safety net: each test's auto-title path
+/// spawns a fire-and-forget `Task` against a per-test `FakeLLMProvider`
+/// whose strict empty-queue `fatalError` makes parallel-test races
+/// fatal. The per-test `_waitForPendingTitleTask()` calls drain the
+/// task at exit; serializing the suite stops a *new* test from racing
+/// while the prior task is still tearing down its provider stream.
+@Suite("ChatScreenViewModel", .serialized)
 @MainActor
 struct ChatScreenViewModelTests {
     private let conversationId = "conv-1"
@@ -218,6 +225,7 @@ struct ChatScreenViewModelTests {
         // First user message is 18 chars — under the 20-char threshold —
         // so the fallback fires *without* an ellipsis.
         #expect(firedSnapshot == ["Plan a Lisbon trip", "Lisbon trip plan"])
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title does not fire on subsequent assistant messages")
@@ -269,6 +277,7 @@ struct ChatScreenViewModelTests {
         let captured = await titleProvider.capturedRequests()
         #expect(captured.count == 1)
         #expect(viewModel.headerTitle == "Greeting chat")
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title is skipped when the conversation already has a real title")
@@ -310,6 +319,7 @@ struct ChatScreenViewModelTests {
         let captured = await titleProvider.capturedRequests()
         #expect(captured.isEmpty)
         #expect(viewModel.headerTitle == "Trip plan")
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title is skipped when the assistant message has no text yet")
@@ -351,6 +361,7 @@ struct ChatScreenViewModelTests {
         #expect(captured.isEmpty)
         // The truncation fallback still ran on user-send.
         #expect(viewModel.headerTitle == "Hi")
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title generator returning nil leaves the header alone and clears the once-flag")
@@ -404,6 +415,7 @@ struct ChatScreenViewModelTests {
         // rather than reverting to "New chat".
         #expect(stored?.title == "Hi")
         #expect(viewModel.headerTitle == "Hi")
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("First user message stamps a truncated fallback title before the LLM responds")
@@ -481,6 +493,7 @@ struct ChatScreenViewModelTests {
 
         let stored = try await conversations.fetch(id: conversationId)
         #expect(stored?.title == "Lisbon trip plan")
+        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Second user-send does not replace an existing fallback or LLM title")
