@@ -1,35 +1,38 @@
-# Swift Type-Naming Conventions
+# Swift Naming Conventions
 
-Conventions for naming the Swift types that live in `Packages/Core/` and the
-orchestration/persistence layers of each applet (currently
-`Packages/Chat/Sources/Chat/{Orchestration, Repositories, LLM, Database,
-Models, Tools, Settings}/`).
+The single rulebook for naming Swift types in this repo. Two scopes:
 
-> **UI types are deferred.** `*ViewModel` and the SwiftUI `*Controller`
-> pattern (`VoiceInputController`, `CodeBlockCopyController`) plus their
-> companion `*Service` protocols (`VoiceInputService`) are covered by a
-> separate UI naming pass. Until that lands, this doc deliberately does not
-> say what `*Controller` means in the UI layer — there is a real distinction
-> between "@MainActor @Observable state machine that drives a UI session"
-> and other uses of the word, and it deserves its own writeup.
+1. **Architectural layer** — orchestration, Core, persistence. Suffixes
+   that govern what a type *is* (an actor that owns state, a protocol
+   that crosses a persistence boundary, a struct that projects data).
+2. **SwiftUI view layer** — currently scoped to the Chat applet, since
+   it's the only applet shipped. Names that govern what a *view* is
+   (a Screen, a Drawer, a Pill, a Banner).
+
+`*ViewModel` sits at the seam between the two — listed in the SwiftUI
+section because that's where view models are constructed and consumed.
 
 ## Why this matters
 
-A consistent suffix tells the reader at a glance: "this is the persistence
-boundary," "this owns runtime state," "this is a pure projection." When
+A consistent suffix tells the reader at a glance what shape they're
+dealing with: "this is the persistence boundary," "this owns runtime
+state," "this is a pure projection," "this is a screen-level view." When
 the same suffix means different things in different folders, every reader
-has to open the file before they know what shape they're dealing with — and
-AI agents end up reverse-engineering conventions from existing types every
+has to open the file before they know what they're looking at — and AI
+agents end up reverse-engineering conventions from existing types every
 time. Pinning the meanings here keeps both costs low.
 
-The cross-cutting policy lives in [`AGENTS.md` §Swift Concurrency & Type
+The cross-cutting policy this doc builds on lives in
+[`AGENTS.md` §Swift Concurrency & Type
 Policy](../AGENTS.md#swift-concurrency--type-policy): structs for data,
 actors for shared mutable state, `@Observable @MainActor final class` for
 view models, `final class` + `os_unfair_lock` for synchronous atomic
-access. The suffixes below are how we name the things that follow that
+access. The suffixes below are how we *name* the things that follow that
 policy.
 
 ## Table of contents
+
+**Part 1 — Architectural layer**
 
 1. [`*Session`](#session) — long-lived per-unit orchestrator
 2. [`*Store`](#store) — in-memory keyed pool of live runtime instances
@@ -46,11 +49,26 @@ policy.
 13. [`*Command`](#command) — parsed user intent
 14. [`*Error`](#error) — typed subsystem error
 15. [Verb-noun (no suffix)](#verb-noun-no-suffix) — single-purpose worker
-16. [`Live*` / `Fake*` / `InMemory*` prefixes](#prefixes)
+16. [`Live*` / `Fake*` / `InMemory*` / `Mock*` / `Noop*` / `Placeholder*` prefixes](#prefixes)
 17. [Anti-patterns](#anti-patterns)
 18. [Decision tree](#decision-tree)
 
+**Part 2 — SwiftUI view layer (Chat applet)**
+
+19. [Rule 0 — drop the `View` suffix](#ui-rule-0)
+20. [Rule 1 — pick a bucket, use its suffix](#ui-rule-1)
+21. [Rule 2 — one struct per file](#ui-rule-2)
+22. [Rule 3 — data passed to a view ≠ the view](#ui-rule-3)
+23. [Rule 4 — view models](#ui-rule-4)
+24. [Invariants (grep checks)](#ui-invariants)
+
+Companion to Part 2: [`docs/Chat/UI_STRUCTURE.md`](./Chat/UI_STRUCTURE.md)
+— what view owns what, organized by surface. That's the org chart; this
+doc is the rulebook.
+
 ---
+
+# Part 1 — Architectural layer
 
 <a id="session"></a>
 
@@ -429,7 +447,7 @@ have a fit.
 
 <a id="prefixes"></a>
 
-## `Live*` / `Fake*` / `InMemory*` prefixes
+## `Live*` / `Fake*` / `InMemory*` / `Mock*` / `Noop*` / `Placeholder*` prefixes
 
 When a protocol has multiple impls, prefix the impl name with its
 intent so call sites read clearly.
@@ -441,7 +459,7 @@ intent so call sites read clearly.
   a database/network. Common for test doubles, but **not test-only** —
   ship in `Packages/Core/Tests/...Helpers/` or alongside production
   protocols. Example: `InMemoryToolEnablementRepository`.
-- **`Fake*`** — strict test double that `fatalError`s on misuse. Mark
+- **`Fake*`** — strict test double that `fatalError`s on misuse. Marks
   test misconfiguration loudly. Example: `FakeLLMProvider` in
   `Packages/Chat/Tests/ChatTests/Orchestration/Helpers/FakeLLMProvider.swift`.
 - **`Mock*`** — invocation-recording test double (records calls, returns
@@ -464,10 +482,15 @@ intent so call sites read clearly.
 
 - **`*Manager` or `*Coordinator` or `*Helper` or `*Utility`** — too vague.
   Pick the suffix above that names what the type actually does.
-- **`*Service`** — reserved for the UI-round taxonomy (the
-  `*Controller` + `*Service` pair for SwiftUI state machines like
-  `VoiceInputController` + `VoiceInputService`). Do not introduce new
-  `*Service` types in orchestration or Core until that pass lands.
+- **`*Service`** — currently load-bearing only at the UI seam
+  (`VoiceInputService` paired with `VoiceInputController`); there is no
+  general-purpose `*Service` pattern in the architectural layer. Do not
+  introduce new `*Service` types in orchestration or Core; reach for
+  [`*Provider`](#provider) (external-resource boundary),
+  [`*Driver`](#driver) (layer-seam adapter), or
+  [`*Repository`](#repository) (persistence) instead. The
+  `*Controller`/`*Service` UI pair is documented in
+  [Part 2 Rule 4](#ui-rule-4) and the broader writeup is forthcoming.
 - **Mismatched protocol/impl pairs** — if the protocol is
   `XRepository`, the GRDB impl is `GRDBXRepository`, not
   `XStore` / `XAdapter` / `XService`. The pair must read as one thing.
@@ -482,14 +505,13 @@ intent so call sites read clearly.
 
 ## Decision tree
 
-Working through the right suffix for a new type:
+Working through the right suffix for a new architectural type:
 
 1. **Does it own state that mutates across calls?**
    - If yes and it's one logical unit → [`*Session`](#session).
    - If yes and it holds many of them by key → [`*Store`](#store) (live
      instances) or [`*Registry`](#registry) (registered components).
-   - If yes and it's UI state → see the deferred UI taxonomy (`*ViewModel`
-     today).
+   - If yes and it's UI state → [`*ViewModel`](#ui-rule-4) (Part 2).
 2. **Is it a boundary to a backing store or external service?**
    - Database → [`*Repository`](#repository).
    - API / model backend → [`*Provider`](#provider).
@@ -506,6 +528,91 @@ Working through the right suffix for a new type:
    [`*Driver`](#driver).
 7. **Single-purpose worker that doesn't match above?** → verb-noun
    (`Compactor`, `Reducer`).
+8. **A SwiftUI view, view-shape data, or view model?** → see
+   [Part 2](#part-2--swiftui-view-layer-chat-applet).
 
 If none of those fit, that's a signal — bring the case to a PR review
 before coining a new suffix family, and update this doc at the same time.
+
+---
+
+<a id="part-2--swiftui-view-layer-chat-applet"></a>
+
+# Part 2 — SwiftUI view layer (Chat applet)
+
+The taxonomy an agent or developer applies when naming a new SwiftUI view
+in the Chat applet. Pick the bucket; the suffix follows. If nothing fits,
+treat that as a smell and stop to add a new bucket here before coining a
+one-off name.
+
+The org chart — *what view owns what, surface by surface* — lives in
+[`docs/Chat/UI_STRUCTURE.md`](./Chat/UI_STRUCTURE.md). This part is the
+rulebook.
+
+<a id="ui-rule-0"></a>
+
+## Rule 0 — drop the `View` suffix
+
+Apple's standard-library views (`Text`, `Button`, `VStack`) are bare nouns; ours should be too. Apply `View` only when the bare name collides with a model/protocol — and if you hit that, rename the model instead. A view's `View`-ness is already declared by `: View` on the struct.
+
+<a id="ui-rule-1"></a>
+
+## Rule 1 — pick a bucket, use its suffix
+
+Every new SwiftUI view fits into one of these buckets. The bucket determines the suffix.
+
+| Bucket | Suffix | What it is | Existing examples |
+|---|---|---|---|
+| **Screen** | `*Screen` | Full-viewport top-level surface owned by the host. Has a `*ScreenViewModel` — except for trivial bootstrap chrome (e.g. `LoadingScreen`, `FailureScreen`) where the state machine lives in the host. | `ChatScreen`, `LoadingScreen`, `FailureScreen` |
+| **Drawer** | `*Drawer` | Edge-anchored overlay that slides in from a side. Paints its own scrim. | `SidebarDrawer` |
+| **Sheet** | `*Sheet` | Bottom-anchored modal overlay with rounded top corners. | `SettingsSheet` |
+| **Pane** | `*Pane` | Sub-screen content navigated *within* a Sheet/Screen via `NavigationStack`. | `SettingsRootPane`, `SettingsModelsPane`, … |
+| **Region** | bare | Composed strip inside a Screen/Pane. Name *is* the role. Regions can nest (a region inside another region or inside a non-Screen view). | `ChatHeader`, `ChatComposer`, `ChatComposerFooter`, `StreamingTail` |
+| **Pill** | `*Pill` | Small inline rounded control, often a dropdown trigger. | `ModelPill`, `VerbosityPill` |
+| **Meter** | `*Meter` | Progress/measurement indicator. | `ContextMeter` |
+| **Row** | `*Row` | One item in a vertical list. | `SettingsRow`, `ChatRow` |
+| **Bubble** | `*Bubble` | Chat-bubble-shaped message container. | `UserBubble` |
+| **Block** | `*Block` | Collapsible bordered card with header + body. | `ThinkingBlock`, `ToolCallBlock`, `CodeBlock` |
+| **Banner** | `*Banner` | Full-width status strip. | `ErrorBanner`, `CompactionBanner` |
+| **Group** | `*Group` | Rounded card grouping rows. | `SettingsGroup` |
+| **Toggle** | `*Toggle` | Labeled switch. | `SettingsToggle` |
+| **Button** | `*Button` | Custom-shaped button (when system `Button` isn't enough). | `MessageActionButton` |
+| **Icon** | `*Icon` | Atomic glyph. | `TodoIcon`, `SettingsIcon`, `ModelsIcon`, `CloseIcon` |
+| **Primitive** | bare | Single-purpose visual atom that doesn't fit a shape suffix. | `TypingCaret`, `WaitingSpark`, `SpinnerRing` |
+| **Style** | `*Style` | `ButtonStyle` / `LabelStyle` / `ProgressViewStyle` conformer. | `SidebarPressableRowStyle` |
+| **Modifier** | `*Modifier` | `ViewModifier` conformer. | `HiddenNavigationBarModifier` |
+
+<a id="ui-rule-2"></a>
+
+## Rule 2 — one struct per file (with one carve-out)
+
+Each top-level view, region, component, and primitive lives in its own file named after the struct. The carve-out: a parent file may keep `private` helper structs *only* if (a) they have no callers outside the file and (b) they're <40 lines. The bucket suffix (Row, Block, Style, …) still applies to the helper; the carve-out is only about *where* it lives, not what it's named. `SidebarDrawer.swift` keeps `ChatRow` (private Row, ~34 lines, renders the per-conversation row only inside the drawer), `SpinnerRing` (Primitive), and `SidebarPressableRowStyle` (Style) under that rule.
+
+<a id="ui-rule-3"></a>
+
+## Rule 3 — data passed to a view ≠ the view
+
+When a view needs a state struct/enum as input, name the data by *role* (`*State`, `*Item`, `*Config`), never by *shape*. The view owns `Banner`; the data is `BannerState`. The in-tree examples: `MessageList.StreamingState` is the data; `StreamingTail` is the view. `MessageList.ErrorState` is the data; `ErrorBanner` is the view. `MessageList.Item` and `MessageList.ToolCallItem` carry the projected row payloads consumed by `MessageList` itself.
+
+<a id="ui-rule-4"></a>
+
+## Rule 4 — view models
+
+`@Observable @MainActor final class *ViewModel`. Backing a Screen → `*ScreenViewModel`. Backing a Drawer/Sheet/Pane → `*ViewModel` (no shape suffix on the VM; the VM doesn't know which shape will render it).
+
+> `*Controller` + `*Service` — used today only at the
+> `VoiceInputController` + `VoiceInputService` seam (and analogous
+> `CodeBlockCopyController`). The `*Controller` is a
+> `@MainActor @Observable` state machine that drives a UI subsystem's
+> lifecycle; the `*Service` is its injected protocol-boundary collaborator.
+> A dedicated writeup of when to reach for this pair (rather than folding
+> the state into a `*ViewModel`) is still pending.
+
+<a id="ui-invariants"></a>
+
+## Invariants (grep checks)
+
+After applying this part of the taxonomy, the following greps must return zero hits over `Packages/Chat/Sources/`:
+
+- `rg '\bstruct \w+View\s*:'` — no `View`-suffixed view structs
+- `rg '\bstruct \w+Glyph\s*:'` — no `Glyph`-suffixed icon views; the generic `StrokedGlyph<S: Shape>` rendering wrapper is the one intentional exception.

@@ -86,7 +86,7 @@ Follow the convention of the platform you're on.
 - **iOS / macOS (Swift)**: `PascalCase` for files and folders. Examples: `ChatSession.swift`, `ChatDatabase.swift`, `Packages/Chat/`, `Sources/Domain/`, `docs/Chat/`.
 - **Server (TypeScript / Node.js)**: `lowercase` (kebab-case for multi-word) for files and folders. Examples: `src/gateway/`, `src/services/ai/`, `src/modules/sync/`, `route-handlers.ts`. TypeScript classes/types inside files still use `PascalCase` per language convention.
 - **Doc subdirectories** follow the platform they describe: `docs/Chat/` (iOS applet), `docs/server/` would be lowercase (if ever created).
-- **Swift type-suffix taxonomy**: See [docs/NAMING_CONVENTIONS.md](./docs/NAMING_CONVENTIONS.md) for the orchestration- and Core-side conventions (`*Session`, `*Store`, `*Registry`, `*Repository`, `*Provider`, `*Driver`, `*Assembler`, `*Generator`, `*Estimator`, etc.). UI-side suffixes (`*ViewModel`, `*Controller` in the `@MainActor @Observable` sense) are tracked separately in a forthcoming UI naming pass.
+- **Swift type taxonomy**: See [docs/NAMING_CONVENTIONS.md](./docs/NAMING_CONVENTIONS.md) for the full rulebook. Part 1 covers the architectural layer (`*Session`, `*Store`, `*Registry`, `*Repository`, `*Provider`, `*Driver`, `*Assembler`, `*Generator`, `*Estimator`, etc.) with anti-patterns and a decision tree; Part 2 covers SwiftUI view naming for the Chat applet (Screen, Drawer, Sheet, Pane, Region, Pill, Banner, Bubble, Block, Row, etc.).
 
 ## Swift Concurrency & Type Policy
 
