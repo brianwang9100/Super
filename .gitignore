@@ -38,7 +38,6 @@ Carthage/Build/
 *.swp
 *~
 
-# Claude Code worktrees (local-only isolated workspaces created by the superpowers skill)
 .claude/worktrees/
 
 # Coverage
