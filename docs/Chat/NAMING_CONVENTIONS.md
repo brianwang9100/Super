@@ -16,7 +16,7 @@ Every new SwiftUI view fits into one of these buckets. The bucket determines the
 
 | Bucket | Suffix | What it is | Existing examples |
 |---|---|---|---|
-| **Screen** | `*Screen` | Full-viewport top-level surface owned by the host. Has a `*ScreenViewModel`. | `ChatScreen`, `LoadingScreen`, `FailureScreen` |
+| **Screen** | `*Screen` | Full-viewport top-level surface owned by the host. Has a `*ScreenViewModel` — except for trivial bootstrap chrome (e.g. `LoadingScreen`, `FailureScreen`) where the state machine lives in the host. | `ChatScreen`, `LoadingScreen`, `FailureScreen` |
 | **Drawer** | `*Drawer` | Edge-anchored overlay that slides in from a side. Paints its own scrim. | `SidebarDrawer` |
 | **Sheet** | `*Sheet` | Bottom-anchored modal overlay with rounded top corners. | `SettingsSheet` |
 | **Pane** | `*Pane` | Sub-screen content navigated *within* a Sheet/Screen via `NavigationStack`. | `SettingsRootPane`, `SettingsModelsPane`, … |
