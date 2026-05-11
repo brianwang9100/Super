@@ -2,8 +2,8 @@
 
 - **Date:** 2026-05-03
 - **Author:** Brian Wang (with Claude)
-- **Status:** Draft — pending implementation plan
-- **Implements:** M11 row in `IMPLEMENTATION_STATUS.md` (line 353)
+- **Status:** Implemented + shipped — physical-device verification cleared 2026-05-10
+- **Implements:** M11 row in the archived MVP build log (`docs/archived/IMPLEMENTATION_STATUS.md`)
 
 ## 1. Goal
 

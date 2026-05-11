@@ -1,23 +1,19 @@
 # Super — TODO
 
-The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *what is done now*; this file is *what is open*. Each item links back to the doc that defines it.
+The single backlog of *what is open*. The MVP build log (M0–M12, complete 2026-05-10) is archived at [`docs/archived/IMPLEMENTATION_STATUS.md`](docs/archived/IMPLEMENTATION_STATUS.md). Each item below links back to the doc that defines it.
 
 ## How to use this file
 
 - Items grouped by area, then ordered loosely by priority within each area.
-- `P0` = blocks the next milestone. `P1` = needed for v1. `P2` = nice-to-have / post-v1.
-- When a milestone is in flight, the item moves to [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) and gets crossed off here.
-- New work that comes out of a session (subagent finding, user feedback, bug report) lands here first, then gets folded into a milestone when prioritized.
+- `P0` = blocks the current focus. `P1` = needed for v1. `P2` = nice-to-have / post-v1.
+- New work that comes out of a session (subagent finding, user feedback, bug report) lands here first, then gets prioritized.
 
 ---
 
 ## Chat MVP (current focus)
 
-### M11 — Voice input — physical-device verification (P0)
-- [ ] Walk through `docs/superpowers/specs/2026-05-03-m11-voice-input-design.md` §10 steps 1–8 on a real iPhone.
-- [ ] Flip M11 to `[x] done` in `IMPLEMENTATION_STATUS.md` (table row + section).
-- [ ] Commit + push as a separate `M11: physical-device verification complete` commit.
-- **Why blocked**: `SFSpeechRecognizer` cannot run on iOS 17+ simulators (Apple's documented position; we hit `kLSRErrorDomain #300` immediately). Sim catches every other path; only the real recording → partial → final → composer-commit flow needs hardware.
+### M11 — Voice input — ✅ complete (2026-05-10)
+- [x] Physical-device walkthrough passed on a real iPhone. Minor bugs noted during the walkthrough are not blocking MVP; any polish lands under M12 follow-ups or post-v1 voice tweaks.
 
 ### M12 — End-to-end polish + coverage
 - [ ] Lift Chat coverage to ≥ 70% threshold from current ~36% via `swift test` (or measure properly via xcodebuild + an iOS test scheme — see CI section).
@@ -27,7 +23,7 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - [ ] Cover `KeychainClient` paths (currently 26%) — wrap a fake at the boundary so the credential-roundtrip flow can be unit-tested.
 - [ ] Address M10 SHOULD findings tagged `TODO(M12)` in code (S-6 hard-coded font sizes, S-9 hard-coded margins).
 - [ ] Fix wall-clock greeting drift in `ChatScreenViewModelProjectionTests` (afternoon→evening) — inject a fixed clock for all snapshot tests so we don't re-record on a time-of-day flip.
-- [ ] Doc updates per IMPLEMENTATION_STATUS.md M12 notes: add `ToolRegistration`, `ChatSessionStore`, `ContextAssembler`, `Compactor`, `CompactionCheckpointRecord`, `.thinkingDelta`, `.compactionStarted`/`.compactionCompleted` to `docs/MOBILE_ARCHITECTURE.md` and `docs/Chat/ARCHITECTURE.md`.
+- [ ] Doc updates per the archived M12 notes: add `ToolRegistration`, `ChatSessionStore`, `ContextAssembler`, `Compactor`, `CompactionCheckpointRecord`, `.thinkingDelta`, `.compactionStarted`/`.compactionCompleted` to `docs/MOBILE_ARCHITECTURE.md` and `docs/Chat/ARCHITECTURE.md`.
 
 ---
 
