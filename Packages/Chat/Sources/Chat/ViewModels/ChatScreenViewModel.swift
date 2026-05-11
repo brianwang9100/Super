@@ -211,6 +211,16 @@ public final class ChatScreenViewModel {
         self.isStreaming = isStreaming
     }
 
+    /// Test seam: await the in-flight auto-title `Task` so a test can
+    /// guarantee no background LLM call outlives the test body. Without
+    /// this, the fire-and-forget `titleTask` can race the next test's
+    /// scheduling under parallel execution and trip
+    /// `FakeLLMProvider`'s strict empty-queue `fatalError`. Returns
+    /// immediately when no title task is in flight.
+    func _waitForPendingTitleTask() async {
+        await titleTask?.value
+    }
+
     /// Submit the current composer text. No-op when empty or when a turn
     /// is already in flight.
     public func send(_ rawText: String) {
