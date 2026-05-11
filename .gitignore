@@ -38,6 +38,8 @@ Carthage/Build/
 *.swp
 *~
 
+.claude/worktrees/
+
 # Coverage
 *.profraw
 *.profdata
