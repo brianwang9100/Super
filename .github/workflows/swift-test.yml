@@ -39,7 +39,7 @@ jobs:
           swift --version
 
       - name: Cache SwiftPM build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: Packages/${{ matrix.package }}/.build
           key: spm-${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('Packages/{0}/Package.resolved', matrix.package)) }}
