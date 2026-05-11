@@ -113,7 +113,7 @@ Per [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). No metrics, crash reportin
 
 Per [`docs/AI_TOOLS.md`](docs/AI_TOOLS.md).
 
-- [ ] **P1** Wire the AI PR reviewer (see CI section above).
+- ✅ Wire the AI PR reviewer — `claude-pr-review.yml` runs on every PR open/sync, posts a `claude[bot]` review via `anthropics/claude-code-action@v1`. Verified end-to-end on PR #7 (Dependabot auto-merge fired with the workflow + official Claude GitHub App both present; the orphan `queued` Claude check-suite is non-required and ignored by auto-merge).
 - [ ] **P2** Standardize the agent-handoff protocol — branch naming, PR template, per-agent metadata in PR body — per `docs/CI_PIPELINE.md` §6.
 
 ---
