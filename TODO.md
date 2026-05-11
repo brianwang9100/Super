@@ -37,7 +37,6 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - ✅ `swift-test.yml` — runs `swift test` on Core + Chat on every PR.
 - ✅ `ios-build.yml` — `xcodebuild build` + Chat snapshot/unit tests for iOS sim on every PR.
 - ✅ `swiftlint.yml` — Docker-image SwiftLint runs on every PR touching Swift / config; `.swiftlint.yml` baseline allows ~15 known warnings, errors gate the merge.
-- ✅ `claude-pr-review.yml` — `anthropics/claude-code-action@v1` posts an AI review on PR open/sync. Skips quietly if `CLAUDE_CODE_OAUTH_TOKEN` secret is unset.
 - ✅ `secrets-scan.yml` — `gitleaks` scan on every PR + push to main + weekly cron. Pinned to gitleaks v8.30.1, fails the check on any finding.
 - ✅ `.github/CODEOWNERS` — routes review request to repo owner so branch-protection "code owner review" gates work.
 
@@ -49,6 +48,20 @@ The single backlog. [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) is *w
 - [ ] **Server CI** — deferred until the server actually exists.
 - ✅ `testflight.yml` — `workflow_dispatch` + `release/v*` tag triggers; uses App Store Connect API key (`-allowProvisioningUpdates`) for cloud-managed signing. Build numbers come from `github.run_number`. Required secrets: `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY`, `APPLE_TEAM_ID`. First successful run will register `bundle ID + cert + profile` on Apple's side.
 - [ ] **Tighten SwiftLint baseline** — fix or suppress the ~15 known warnings (mostly `empty_string`, `optional_data_string_conversion`, `function_parameter_count`), then flip the `swiftlint` job to `--strict` so warnings also gate.
+- [ ] **Add `iOS Build / ios-test` to required checks** once the FakeLLMProvider parallel-test flake is fully fixed. Today only `iOS Build / build` (compile-only) is required; `ios-test` runs but is not gating because the same `FakeLLMProvider.swift:83` fatal error still fires intermittently on the simulator path even after the `_waitForPendingTitleTask` + `.serialized` fix landed (PR #4). Likely leak source is one of the other suites that uses `FakeLLMProvider` — `ChatSession*Tests`, `CompactorTests`, etc. — not just `ChatScreenViewModelTests`.
+
+### Claude PR reviewer — disabled, needs revisit (P2)
+
+The `claude-pr-review.yml` workflow + the official Claude GitHub App ([github.com/apps/claude](https://github.com/apps/claude)) were deleted/uninstalled because the app's installation creates a `queued` check-suite on every PR head SHA that **never resolves**. That stuck suite keeps GitHub's cached `mergeable_state` at `blocked` even when every required check is green, which (a) makes the GitHub UI claim required checks are pending when they aren't and (b) prevents Dependabot auto-merge from firing — every Dependabot PR has to be admin-merged by hand. Verified the symptom on PRs #2, #3, #4, #5; admin-merge worked because the merge endpoint does a fresh evaluation, but auto-merge polls the cache.
+
+**Why this happens**: GitHub auto-pre-registers a queued check-suite for every installed app with `checks:write` permission. The Claude app has it. Resolving the suite requires the app itself to POST a check-run under it — the `anthropics/claude-code-action@v1` action does NOT do this (it posts comments via the app's installation token but never check-runs). Same pattern reproduced in [github/safe-settings#540](https://github.com/github/safe-settings/issues/540). No related issue found in the `anthropics/claude-code-action` tracker — looks like most users either pay for managed Code Review or don't run Dependabot+auto-merge.
+
+**Three known fixes** (none picked yet):
+1. **Custom GitHub App** without `checks:write` permission, used as `github_token:` for `anthropics/claude-code-action@v1`. No queued suite gets created. Comments post as your custom bot instead of `claude[bot]`. ~30 min one-time setup. TOS read: comfortably in bounds — the official action still makes the Claude API call with the OAuth token, the custom app only handles GitHub-side identity. See [Claude Code GitHub Actions docs → "Custom GitHub App"](https://code.claude.com/docs/en/github-actions).
+2. **Anthropic's managed Code Review** at [claude.ai/admin-settings/claude-code](https://claude.ai/admin-settings/claude-code). Posts a `Claude Code Review` check-run that resolves the suite cleanly. Team/Enterprise plan only, ~$15-25 per review. See [Code Review docs](https://code.claude.com/docs/en/code-review).
+3. **File a feature request with Anthropic** asking `anthropics/claude-code-action@v1` to also POST a "completed" check-run under the queued suite. Right long-term fix; slow.
+
+**Decision today**: option 0 — uninstall the Claude app, delete the workflow, accept losing AI PR review for now. Revisit when (a) Dependabot volume justifies the custom-app setup, or (b) we want AI reviews back enough to do the work. The `CLAUDE_CODE_OAUTH_TOKEN` secret can stay in repo settings — harmless without the workflow.
 
 ---
 
@@ -114,7 +127,7 @@ Per [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). No metrics, crash reportin
 
 Per [`docs/AI_TOOLS.md`](docs/AI_TOOLS.md).
 
-- [ ] **P1** Wire the AI PR reviewer (see CI section above).
+- [ ] **P2** Re-wire the AI PR reviewer once the Claude-app queued-check-suite blocker is resolved (see CI / CD § "Claude PR reviewer — disabled" above for context and the three known fixes).
 - [ ] **P2** Standardize the agent-handoff protocol — branch naming, PR template, per-agent metadata in PR body — per `docs/CI_PIPELINE.md` §6.
 
 ---
