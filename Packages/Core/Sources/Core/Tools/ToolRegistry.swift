@@ -37,19 +37,20 @@ public actor ToolRegistry {
     /// Register a tool.
     ///
     /// - Parameter registration: The tool, its executor, and its default
-    ///   enablement. If an enablement store is wired and already has a value
-    ///   for this tool, the persisted state wins over `registration.isEnabled`.
+    ///   enablement. If an enablement repository is wired and already has a
+    ///   value for this tool, the persisted state wins over
+    ///   `registration.isEnabled`.
     public func register(_ registration: ToolRegistration) async {
         var resolved = registration
-        if let store = enablementRepository {
-            if let stored = try? await store.isEnabled(toolID: registration.tool.id) {
+        if let repository = enablementRepository {
+            if let stored = try? await repository.isEnabled(toolID: registration.tool.id) {
                 resolved = registration.enabled(stored)
             }
         }
         registrations[registration.tool.id] = resolved
     }
 
-    /// Toggle a tool's enablement and persist the change to the store.
+    /// Toggle a tool's enablement and persist the change to the repository.
     public func setEnabled(toolID: String, enabled: Bool) async throws {
         guard let registration = registrations[toolID] else {
             throw ToolRegistryError.unknownTool(toolID)
