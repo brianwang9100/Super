@@ -2,14 +2,14 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `GRDBToolEnablementStore` — conformance to Core's
-/// `ToolEnablementStore` and persistence of toggles.
-@Suite("GRDBToolEnablementStore")
-struct GRDBToolEnablementStoreTests {
+/// Tests for `GRDBToolEnablementRepository` — conformance to Core's
+/// `ToolEnablementRepository` and persistence of toggles.
+@Suite("GRDBToolEnablementRepository")
+struct GRDBToolEnablementRepositoryTests {
 
-    private func makeStore() throws -> (ChatDatabase, GRDBToolEnablementStore) {
+    private func makeStore() throws -> (ChatDatabase, GRDBToolEnablementRepository) {
         let db = try ChatDatabase.makeInMemory()
-        return (db, GRDBToolEnablementStore(database: db))
+        return (db, GRDBToolEnablementRepository(database: db))
     }
 
     @Test func isEnabledReturnsNilForUnknownTool() async throws {

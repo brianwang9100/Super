@@ -14,9 +14,9 @@
 2. [Directory Structure](#2-directory-structure)
 3. [Data Models (GRDB Records)](#3-data-models-grdb-records)
 4. [Database Schema & Migrations](#4-database-schema--migrations)
-5. [ChatOrchestrator](#5-chatorchestrator)
+5. [ChatSession & ChatSessionStore](#5-chatsession--chatsessionstore)
 6. [ToolRouter](#6-toolrouter)
-7. [SystemPromptBuilder](#7-systempromptbuilder)
+7. [System Prompts](#7-system-prompts)
 8. [ChatViewModel](#8-chatviewmodel)
 9. [Conversation Persistence & Sync](#9-conversation-persistence--sync)
 10. [Event Bus Integration](#10-event-bus-integration)
@@ -62,8 +62,7 @@ Chat/
 │   │   │   ├── SendMessageUseCase.swift        # Validates + saves user message
 │   │   │   ├── StreamResponseUseCase.swift     # Manages the LLM stream lifecycle
 │   │   │   ├── ExecuteToolCallUseCase.swift    # Validates + executes a single tool call
-│   │   │   ├── ManageConversationsUseCase.swift # Create, rename, soft-delete, list
-│   │   │   └── BuildSystemPromptUseCase.swift  # Delegates to SystemPromptBuilder
+│   │   │   └── ManageConversationsUseCase.swift # Create, rename, soft-delete, list
 │   │   └── Repositories/
 │   │       ├── ConversationRepository.swift     # Protocol
 │   │       └── MessageRepository.swift          # Protocol (includes tool call queries)
@@ -82,9 +81,12 @@ Chat/
 │   │
 │   ├── Service/
 │   │   ├── Orchestration/
-│   │   │   ├── ChatOrchestrator.swift           # The core loop (actor, Section 5)
-│   │   │   ├── ToolRouter.swift                 # Routes tool calls to applet executors (actor, Section 6)
-│   │   │   └── SystemPromptBuilder.swift        # Builds system prompt (struct, Section 7)
+│   │   │   ├── ChatSession.swift                # Per-conversation turn loop (actor, Section 5)
+│   │   │   ├── ChatSessionStore.swift           # Multiplexer of live sessions (actor, Section 5)
+│   │   │   ├── ContextAssembler.swift           # Projects records → [LLMMessage] (struct, Section 5)
+│   │   │   ├── Compactor.swift                  # Summarization checkpoint writer (actor, Section 5)
+│   │   │   ├── TitleGenerator.swift             # First-turn title via LLM (struct, Section 5)
+│   │   │   └── ToolRouter.swift                 # Routes tool calls to applet executors (actor, Section 6)
 │   │   ├── LLM/
 │   │   │   ├── LLMService.swift                 # Wraps Core's LLMProvider for Chat's needs
 │   │   │   └── StreamParser.swift               # LLMStreamEvent -> ChatEvent translation
@@ -312,257 +314,98 @@ func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
 
 ---
 
-## 5. ChatOrchestrator
+## 5. ChatSession & ChatSessionStore
 
-`ChatOrchestrator` is an **actor** that owns the core conversation loop. It is the single entry point for sending a message and receiving the streamed response.
+The shipped orchestration layer splits what earlier drafts of this section called the *Chat orchestrator* into two actors:
+
+- **`ChatSession`** (`Packages/Chat/Sources/Chat/Orchestration/ChatSession.swift`) — one actor per conversation, owns the turn loop. Public entry points: `send(text:model:temperature:)`, `compact(model:)`, `cancel()`, `waitUntilFinished()`, `setAutoCompactPolicy(enabled:threshold:)`. Both `send` and `compact` return an `AsyncStream<ChatEvent>` (see [§5 ChatEvent](#chatevent)).
+- **`ChatSessionStore`** (`Packages/Chat/Sources/Chat/Orchestration/ChatSessionStore.swift`) — app-level actor holding `[conversationId: ChatSession]`. `session(for:)` is get-or-create; `shutdown()` drains in-flight work on app exit; `runningConversations()` powers the sidebar's per-row spinner.
+
+Supporting orchestration types (all in the same folder):
+
+| Type | Kind | Role |
+| --- | --- | --- |
+| `ContextAssembler` / `ContextAssembly` | `struct` | Projects persisted `MessageRecord`s + `ToolCallRecord`s + the live `CompactionCheckpointRecord` into the `[LLMMessage]` shipped to the provider. Folds the checkpoint in as a leading system message; preserves true-leading `.system` rows. |
+| `Compactor` | `actor` | Runs a summarization turn through the active provider and writes a new `CompactionCheckpointRecord` (atomic with prior demotion). Stateless beyond injected deps; shared across all sessions. |
+| `TitleGenerator` | `struct` | Single-shot LLM call generating a 3–6-word title for a new conversation from its first user/assistant exchange. Consumed by `ChatScreenViewModel`, not by `ChatSession`. |
+| `TokenEstimator` / `HeuristicTokenEstimator` | `protocol` + `struct` | chars/4 heuristic for prompt-budget accounting in MVP. |
+| `SlashCommand` | `enum` | Composer-side dispatch. Today: `.compact`. Parsed at `ChatSession.send(text:)` entry — slash commands never persist a user `MessageRecord`. |
+| `ChatSessionDriver` / `LiveChatSessionDriver` / `LazyConversationDriver` | `protocol` + adapters | Seam between the view model and the session. Multiple production conformers (one wraps a session directly, one ensures lazy save before the first turn). |
+
+### Turn loop (canonical order)
+
+1. Parse `SlashCommand`. If matched, dispatch (e.g. `/compact` → `compact(model:)`); no user `MessageRecord` is written.
+2. Cancel the prior in-flight `Task` **and await its wind-down** (cancellation fence). Guarantees two turns never interleave GRDB writes for the same conversation.
+3. Save the user `MessageRecord`; yield `.userMessageSaved(record)`.
+4. Loop:
+   1. Check cancellation.
+   2. `maybeAutoCompact(model:)` — if over `autoCompactThreshold` and the compactor reports there is work to do, fire `.compactionStarted` / `.compactionCompleted` around a compaction pass.
+   3. `assembleHistory(model:)` via `ContextAssembler`.
+   4. Fetch enabled tools from `ToolRegistry`.
+   5. Stream one turn from the active provider. Buffer text + thinking deltas in memory; yield as `.textDelta` / `.thinkingDelta`. On `.messageComplete` persist the assistant `MessageRecord` (only then, per [ADR-BB-003](#adr-bb-003-streaming-text-saved-only-on-completion)) and a `ToolCallRecord(status: .pending)` per requested tool call. **Empty turn** (no text, no tool calls) is not persisted and no `.assistantMessageSaved` fires.
+   6. If no tool calls → finish.
+   7. Otherwise execute each tool via `ToolRegistry`, write a tool-result `MessageRecord(role: .tool)`, update the `ToolCallRecord` status, and loop back.
+
+Per-event contract (final, success, error cases), plus full sequence diagrams for the simple turn, tool-loop turn, auto-compaction, manual `/compact`, and title generation, live in [`ORCHESTRATION.md`](./ORCHESTRATION.md).
 
 ```swift
-actor ChatOrchestrator {
-    private let llmService: LLMService
-    private let toolRouter: ToolRouter
-    private let messageRepository: any MessageRepository
-    private let conversationRepository: any ConversationRepository
-    private let systemPromptBuilder: SystemPromptBuilder
+public actor ChatSession {
+    public let conversationId: String
 
-    init(
-        llmService: LLMService,
-        toolRouter: ToolRouter,
+    public init(
+        conversationId: String,
         messageRepository: any MessageRepository,
-        conversationRepository: any ConversationRepository,
-        systemPromptBuilder: SystemPromptBuilder
-    ) {
-        self.llmService = llmService
-        self.toolRouter = toolRouter
-        self.messageRepository = messageRepository
-        self.conversationRepository = conversationRepository
-        self.systemPromptBuilder = systemPromptBuilder
-    }
+        toolCallRepository: any ToolCallRepository,
+        checkpointRepository: any CompactionCheckpointRepository,
+        llmProviderRegistry: LLMProviderRegistry,
+        toolRegistry: ToolRegistry,
+        contextAssembler: ContextAssembler = ContextAssembler(),
+        compactor: Compactor,
+        clock: any Clock = SystemClock(),
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        autoCompactEnabled: Bool = true,
+        autoCompactThreshold: Double = 0.75
+    )
 
-    /// Sends a user message and returns a stream of ChatEvents.
-    /// The stream stays open until the LLM signals endTurn with no pending tool calls.
-    func sendMessage(
-        _ text: String,
-        in conversation: ConversationRecord
-    ) -> AsyncThrowingStream<ChatEvent, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    // 1. Save user message
-                    let userMessage = MessageRecord(
-                        id: UUID().uuidString,
-                        conversationId: conversation.id,
-                        role: .user,
-                        content: text,
-                        toolCallId: nil,
-                        createdAt: Date.now,
-                        tokenCount: nil
-                    )
-                    try await messageRepository.save(userMessage)
+    public func send(text: String, model: LLMModel, temperature: Double = 1.0) async -> AsyncStream<ChatEvent>
+    public func compact(model: LLMModel) async -> AsyncStream<ChatEvent>
+    public func cancel()
+    public func waitUntilFinished() async
+    public func setAutoCompactPolicy(enabled: Bool, threshold: Double)
 
-                    // 2. Build message history
-                    let history = try await messageRepository.fetchAll(
-                        conversationId: conversation.id
-                    )
+    public var isStreaming: Bool { get }
+}
 
-                    // 3. Build system prompt
-                    let activeApplets = await toolRouter.registeredAppletIDs()
-                    let tools = await toolRouter.allTools()
-                    let systemPrompt = systemPromptBuilder.build(
-                        activeApplets: activeApplets,
-                        tools: tools,
-                        timezone: .current,
-                        recentActivitySummary: nil
-                    )
-
-                    // 4. Enter the orchestration loop
-                    try await orchestrationLoop(
-                        systemPrompt: systemPrompt,
-                        history: history,
-                        conversation: conversation,
-                        continuation: continuation
-                    )
-
-                    continuation.finish()
-                } catch {
-                    continuation.yield(.error(error))
-                    continuation.finish(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// The loop: send to LLM -> stream response -> handle tool calls -> repeat.
-    private func orchestrationLoop(
-        systemPrompt: String,
-        history: [MessageRecord],
-        conversation: ConversationRecord,
-        continuation: AsyncThrowingStream<ChatEvent, Error>.Continuation
-    ) async throws {
-        var currentHistory = history
-
-        while true {
-            // Send to LLM via server SSE
-            let stream = llmService.stream(
-                systemPrompt: systemPrompt,
-                messages: currentHistory
-            )
-
-            var accumulatedText = ""
-            var pendingToolCalls: [ToolCallRecord] = []
-
-            for try await event in stream {
-                switch event {
-                case .textDelta(let text):
-                    accumulatedText += text
-                    continuation.yield(.textDelta(text))
-
-                case .toolUse(let id, let name, let parameters):
-                    let toolCall = ToolCallRecord(
-                        id: id,
-                        messageId: "", // set after assistant message saved
-                        conversationId: conversation.id,
-                        toolName: name,
-                        parameters: encodeJSON(parameters),
-                        result: nil,
-                        status: .pending,
-                        createdAt: Date.now,
-                        completedAt: nil
-                    )
-                    pendingToolCalls.append(toolCall)
-                    continuation.yield(.toolCallStarted(toolCall))
-
-                case .messageComplete(let usage):
-                    // Save the assistant message with accumulated text
-                    let assistantMessage = MessageRecord(
-                        id: UUID().uuidString,
-                        conversationId: conversation.id,
-                        role: .assistant,
-                        content: accumulatedText,
-                        toolCallId: nil,
-                        createdAt: Date.now,
-                        tokenCount: usage.outputTokens
-                    )
-                    try await messageRepository.save(assistantMessage)
-                    continuation.yield(.messageCompleted(assistantMessage))
-
-                    // Link tool calls to this message and save them
-                    for var toolCall in pendingToolCalls {
-                        toolCall.messageId = assistantMessage.id
-                        try await saveToolCall(toolCall)
-                    }
-
-                case .error(let llmError):
-                    continuation.yield(.error(llmError))
-                }
-            }
-
-            // If no tool calls, the LLM is done (endTurn)
-            if pendingToolCalls.isEmpty {
-                break
-            }
-
-            // Execute each tool call
-            for var toolCall in pendingToolCalls {
-                // Check if confirmation is required
-                let requiresConfirmation = await toolRouter.requiresConfirmation(
-                    toolName: toolCall.toolName
-                )
-                if requiresConfirmation {
-                    toolCall.status = .awaitingConfirmation
-                    try await updateToolCall(toolCall)
-                    continuation.yield(.toolCallAwaitingConfirmation(toolCall))
-                    // Await user approval (handled externally via approveToolCall/rejectToolCall)
-                    // For now, the loop pauses here -- the ViewModel resumes it
-                    continue
-                }
-
-                // Execute the tool
-                toolCall.status = .executing
-                try await updateToolCall(toolCall)
-
-                do {
-                    let result = try await toolRouter.execute(
-                        toolName: toolCall.toolName,
-                        parameters: decodeJSON(toolCall.parameters)
-                    )
-                    toolCall.status = .success
-                    toolCall.result = encodeJSON(result)
-                    toolCall.completedAt = Date.now
-                    try await updateToolCall(toolCall)
-                    continuation.yield(.toolCallCompleted(toolCall, result))
-
-                    // Save tool result as a message for the LLM
-                    let toolResultMessage = MessageRecord(
-                        id: UUID().uuidString,
-                        conversationId: conversation.id,
-                        role: .tool,
-                        content: result.content,
-                        toolCallId: toolCall.id,
-                        createdAt: Date.now,
-                        tokenCount: nil
-                    )
-                    try await messageRepository.save(toolResultMessage)
-                } catch {
-                    toolCall.status = .failed
-                    toolCall.result = "{\"error\": \"\(error.localizedDescription)\"}"
-                    toolCall.completedAt = Date.now
-                    try await updateToolCall(toolCall)
-                    continuation.yield(.toolCallFailed(toolCall, error.localizedDescription))
-
-                    // Send failure as tool result so the LLM can explain it
-                    let errorMessage = MessageRecord(
-                        id: UUID().uuidString,
-                        conversationId: conversation.id,
-                        role: .tool,
-                        content: "Error: \(error.localizedDescription)",
-                        toolCallId: toolCall.id,
-                        createdAt: Date.now,
-                        tokenCount: nil
-                    )
-                    try await messageRepository.save(errorMessage)
-                }
-            }
-
-            // Refresh history and loop back to the LLM with tool results
-            currentHistory = try await messageRepository.fetchAll(
-                conversationId: conversation.id
-            )
-
-            // Reset for next iteration
-            accumulatedText = ""
-            pendingToolCalls = []
-        }
-    }
+public actor ChatSessionStore {
+    public func session(for conversationId: String) -> ChatSession
+    public func cancel(for conversationId: String, wait: Bool = false) async
+    public func shutdown() async
+    public func runningConversations() async -> [String]
 }
 ```
+
+<a id="chatevent"></a>
 
 ### ChatEvent
 
-The stream emits `ChatEvent` values consumed by `ChatViewModel` to render the conversation in real time:
-
 ```swift
-enum ChatEvent: Sendable {
+public enum ChatEvent: Sendable, Equatable {
+    case userMessageSaved(MessageRecord)
     case textDelta(String)
+    case thinkingDelta(String)
     case toolCallStarted(ToolCallRecord)
-    case toolCallAwaitingConfirmation(ToolCallRecord)
     case toolCallCompleted(ToolCallRecord, ToolResult)
     case toolCallFailed(ToolCallRecord, String)
-    case messageCompleted(MessageRecord)
-    case error(Error)
+    case assistantMessageSaved(MessageRecord)
+    case compactionStarted
+    case compactionCompleted(CompactionCheckpointRecord)
+    case error(LLMError)
 }
 ```
 
-### Loop Lifecycle
+**Stream contract.** A `send(...)` / `compact(...)` `AsyncStream<ChatEvent>` always finishes — it never throws. Failures arrive as a terminal `.error(...)` immediately before the stream closes, so consumers always get a clean signal that the turn is done and can persist whatever did make it through. UI rule: a `.compactionStarted` is always followed by **either** `.compactionCompleted` **or** a terminal `.error` — clear any "Compacting…" affordance on either.
 
-The orchestration loop continues until the LLM returns `endTurn` (a response with text but no tool calls). Each iteration:
-
-1. Stream text deltas to the UI.
-2. Collect tool calls from the response.
-3. Save the assistant message and tool call records to GRDB.
-4. Execute each tool call (or pause for confirmation).
-5. Save tool results as `toolResult` messages.
-6. Send the updated history back to the LLM.
-7. Stream the follow-up response.
+For per-turn event ordering (simple turn, tool-loop turn, auto-compaction, manual `/compact`, title generation) plus full Mermaid sequence diagrams, see [`ORCHESTRATION.md`](./ORCHESTRATION.md).
 
 ---
 
@@ -646,67 +489,16 @@ When the applet registry changes (an applet is installed or removed), `AppletCha
 
 ---
 
-## 7. SystemPromptBuilder
+## 7. System Prompts
 
-`SystemPromptBuilder` is a **struct** (pure function, no state) that assembles the system prompt sent to the LLM before each request.
+> **Not implemented in the shipped MVP.** `SystemPromptBuilder` (described in earlier versions of this section) was never built.
 
-```swift
-struct SystemPromptBuilder: Sendable {
-    func build(
-        activeApplets: [String],
-        tools: [LLMTool],
-        timezone: TimeZone,
-        recentActivitySummary: String?
-    ) -> String {
-        var sections: [String] = []
+The shipped Chat applet does not inject a per-conversation system prompt at the start of every turn. `ChatSettings.systemPrompt` is persisted (and edited from the Settings UI), but `ChatSession.run` does not read it — the only `.system` rows the LLM sees are:
 
-        // 1. Role definition
-        sections.append("""
-        You are Chat, the AI assistant for Super. You help users manage \
-        their tasks, calendar, home, finances, and more by calling tools provided \
-        by the installed applets. Be concise. Bias toward action when the user's \
-        intent is clear.
-        """)
+1. **Compaction checkpoints.** `ContextAssembler` folds the live `CompactionCheckpointRecord` (when present) in as a leading system message that summarizes earlier compacted turns.
+2. **The title generator's internal prompt.** `TitleGenerator` sends its own static system prompt for the title-summarization round trip; this never affects the user's conversation.
 
-        // 2. Available applets
-        sections.append("Active applets: \(activeApplets.joined(separator: ", "))")
-
-        // 3. Available tools (structured tool definitions are also sent via the API,
-        //    but a natural-language summary helps the LLM reason about tool selection)
-        let toolSummary = tools.map { "- \($0.id): \($0.description)" }
-            .joined(separator: "\n")
-        sections.append("Available tools:\n\(toolSummary)")
-
-        // 4. Current context
-        let formatter = DateFormatter()
-        formatter.dateStyle = .full
-        formatter.timeStyle = .short
-        formatter.timeZone = timezone
-        sections.append("Current date/time: \(formatter.string(from: Date.now))")
-        sections.append("Timezone: \(timezone.identifier)")
-
-        // 5. Optional recent activity
-        if let summary = recentActivitySummary {
-            sections.append("Recent activity:\n\(summary)")
-        }
-
-        // 6. Behavioral instructions
-        sections.append("""
-        Response guidelines:
-        - For clear, non-destructive requests: execute the tool and confirm inline.
-        - For destructive, batch, or ambiguous requests: propose the action and \
-          wait for user approval.
-        - Always include a deep link when you perform an action in another applet.
-        - If a tool call fails, explain the failure and suggest alternatives.
-        - Do not invent tools that are not in the available list.
-        """)
-
-        return sections.joined(separator: "\n\n")
-    }
-}
-```
-
-The system prompt is rebuilt on every `sendMessage` call so it always reflects the current set of installed applets and registered tools.
+Wiring `ChatSettings.systemPrompt` into the prompt assembly (probably as a leading `LLMMessage(role: .system, ...)` prepended in `ContextAssembler`) is a known follow-up. When it lands, the build site will live next to `ContextAssembler` and this section should be rewritten to document the assembly order. Cross-applet system-prompt content (active applets, tools, recent activity) was the original ambition; today the LLM gets the tool list via the provider's structured `tools` parameter instead, and there is no cross-applet context to surface in MVP.
 
 ---
 
@@ -727,7 +519,7 @@ final class ChatViewModel {
 
     // MARK: - Dependencies
 
-    private let orchestrator: ChatOrchestrator
+    private let orchestrator: ChatSession
     private let conversationRepository: any ConversationRepository
     private let eventBus: SuperEventBus
 
@@ -735,7 +527,7 @@ final class ChatViewModel {
     private var currentConversation: ConversationRecord?
 
     init(
-        orchestrator: ChatOrchestrator,
+        orchestrator: ChatSession,
         conversationRepository: any ConversationRepository,
         eventBus: SuperEventBus
     ) {
@@ -845,7 +637,7 @@ All conversations, messages, and tool call records live in `chat.sqlite`. Each r
 
 ### GRDBQuery for Reactive UI
 
-The message list in `ChatView` uses `@Query` from [GRDBQuery](https://github.com/groue/GRDBQuery) — the project-wide bridge between GRDB and SwiftUI (see [MOBILE_ARCHITECTURE.md §8.2](../MOBILE_ARCHITECTURE.md#82-grdb-companion-packages)). The view subscribes to a `ValueObservation` on the `message` table filtered by `conversationId`, ordered by `createdAt`. When `ChatOrchestrator` saves a new message to GRDB, the view automatically re-renders -- no manual notification or observation plumbing needed.
+The message list in `ChatView` uses `@Query` from [GRDBQuery](https://github.com/groue/GRDBQuery) — the project-wide bridge between GRDB and SwiftUI (see [MOBILE_ARCHITECTURE.md §8.2](../MOBILE_ARCHITECTURE.md#82-grdb-companion-packages)). The view subscribes to a `ValueObservation` on the `message` table filtered by `conversationId`, ordered by `createdAt`. When `ChatSession` saves a new message to GRDB, the view automatically re-renders -- no manual notification or observation plumbing needed.
 
 ```swift
 struct ChatMessagesRequest: ValueObservationQueryable {
@@ -870,7 +662,7 @@ Chat conforms to `SyncableApplet`, which enables conversation history to replica
 
 `MessageRecord.tokenCount` records the number of tokens consumed by each message (input tokens for user messages when available, output tokens for assistant messages). This supports:
 
-- **Token budget enforcement:** `ChatOrchestrator` can check cumulative token usage before sending a new request and warn the user when approaching limits.
+- **Token budget enforcement:** `ChatSession` can check cumulative token usage before sending a new request and warn the user when approaching limits.
 - **Usage analytics:** Aggregate token consumption per conversation, per day, or per applet (via tool calls).
 
 ---
@@ -922,7 +714,7 @@ The full request/response flow, SSE parsing details, and error codes are documen
 |----------|----------|
 | **Network error during streaming** | Yield `.error` on the ChatEvent stream. UI shows an error card with a "Retry" button. Partial streamed text is preserved. |
 | **Tool execution failure** | Save a `tool_result` message with the error content. The LLM receives the failure in its next turn and can explain it to the user or suggest alternatives. UI shows a failed action card. |
-| **Token budget exceeded** | `ChatOrchestrator` checks cumulative token count before sending. If over budget, yield an `.error` event with a message suggesting the user start a new conversation. |
+| **Token budget exceeded** | `ChatSession` checks cumulative token count before sending. If over budget, yield an `.error` event with a message suggesting the user start a new conversation. |
 | **LLM provider error** | Server returns a provider-specific error in the SSE stream. `StreamParser` maps it to a `ChatEvent.error`. UI shows the error message with a "Retry" button. |
 | **Tool not found** | `ToolRouter.execute()` throws `SuperError.toolNotFound`. Treated as a tool execution failure -- error sent back to the LLM as a `tool_result`. |
 | **Invalid tool parameters** | `ToolRouter.validateParameters()` throws `SuperError.invalidToolParameters`. Same flow as tool not found. |
@@ -1040,100 +832,14 @@ final class GRDBConversationRepositoryTests: XCTestCase {
 
 ### Service Tests
 
-`ChatOrchestrator` tested with mock `LLMService` and mock `ToolRouter` to verify the orchestration loop without network or real tool execution.
+`ChatSession` is tested with a strict-mock `LLMProvider` (`FakeLLMProvider` in `Packages/Chat/Tests/ChatTests/Orchestration/Helpers/FakeLLMProvider.swift`) plus in-memory repositories. The fake fails fast on misuse (empty script queue → `fatalError`) so a misconfigured test attributes the failure to its caller rather than tripping a later, unrelated test. See:
 
-```swift
-final class ChatOrchestratorTests: XCTestCase {
+- `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionTests.swift` — turn loop happy path, cancellation, error mapping, empty-turn skipping.
+- `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionToolLoopTests.swift` — multi-turn tool execution, success + failure feedback to the LLM.
+- `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionStoreTests.swift` — per-conversation isolation, `cancel(for:wait:)`, `runningConversations()`, `shutdown()`.
+- `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionCompactionTests.swift` — auto-compaction trigger and manual `/compact`.
 
-    func testOrchestrationLoopExecutesToolAndContinues() async throws {
-        let mockLLM = MockLLMService()
-        // First response: text + tool call
-        // Second response (after tool result): text + endTurn (no tool calls)
-        mockLLM.responses = [
-            [.textDelta("Let me check. "), .toolUse(id: "tc-1", name: "todo.list", parameters: [:]), .messageComplete(usage: .init(inputTokens: 10, outputTokens: 20))],
-            [.textDelta("You have 3 tasks."), .messageComplete(usage: .init(inputTokens: 30, outputTokens: 15))]
-        ]
-
-        let mockRouter = MockToolRouter()
-        mockRouter.results["todo.list"] = ToolResult(
-            toolID: "todo.list",
-            content: "[{\"title\": \"Buy milk\"}, {\"title\": \"Call dentist\"}, {\"title\": \"Fix bug\"}]",
-            isError: false,
-            artifacts: []
-        )
-
-        let mockMessageRepo = MockMessageRepository()
-        let mockConversationRepo = MockConversationRepository()
-
-        let orchestrator = ChatOrchestrator(
-            llmService: mockLLM,
-            toolRouter: mockRouter,
-            messageRepository: mockMessageRepo,
-            conversationRepository: mockConversationRepo,
-            systemPromptBuilder: SystemPromptBuilder()
-        )
-
-        let conversation = ConversationRecord(
-            id: "conv-1", title: "Test", createdAt: .now, updatedAt: .now, deletedAt: nil
-        )
-
-        var events: [ChatEvent] = []
-        let stream = await orchestrator.sendMessage("Show my tasks", in: conversation)
-        for try await event in stream {
-            events.append(event)
-        }
-
-        // Verify the loop: text -> tool started -> tool completed -> text -> message completed
-        XCTAssertTrue(events.contains { if case .textDelta("Let me check. ") = $0 { return true }; return false })
-        XCTAssertTrue(events.contains { if case .toolCallStarted = $0 { return true }; return false })
-        XCTAssertTrue(events.contains { if case .toolCallCompleted = $0 { return true }; return false })
-        XCTAssertTrue(events.contains { if case .textDelta("You have 3 tasks.") = $0 { return true }; return false })
-
-        // Verify tool was executed
-        XCTAssertTrue(mockRouter.executedTools.contains("todo.list"))
-
-        // Verify messages were saved (user + assistant + tool_result + assistant)
-        XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .user }.count, 1)
-        XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .assistant }.count, 2)
-        XCTAssertEqual(mockMessageRepo.savedMessages.filter { $0.role == .tool }.count, 1)
-    }
-
-    func testToolFailureIsFedBackToLLM() async throws {
-        let mockLLM = MockLLMService()
-        mockLLM.responses = [
-            [.textDelta("Creating task. "), .toolUse(id: "tc-1", name: "todo.create", parameters: ["title": "Test"]), .messageComplete(usage: .init(inputTokens: 10, outputTokens: 15))],
-            [.textDelta("Sorry, I could not create the task."), .messageComplete(usage: .init(inputTokens: 20, outputTokens: 10))]
-        ]
-
-        let mockRouter = MockToolRouter()
-        mockRouter.shouldThrow["todo.create"] = SuperError.toolExecutionFailed(
-            toolID: "todo.create", reason: "Database locked"
-        )
-
-        let orchestrator = ChatOrchestrator(
-            llmService: mockLLM,
-            toolRouter: mockRouter,
-            messageRepository: MockMessageRepository(),
-            conversationRepository: MockConversationRepository(),
-            systemPromptBuilder: SystemPromptBuilder()
-        )
-
-        var events: [ChatEvent] = []
-        let stream = await orchestrator.sendMessage(
-            "Add a task",
-            in: ConversationRecord(id: "c1", title: nil, createdAt: .now, updatedAt: .now, deletedAt: nil)
-        )
-        for try await event in stream {
-            events.append(event)
-        }
-
-        // Tool call should be marked as failed
-        XCTAssertTrue(events.contains { if case .toolCallFailed = $0 { return true }; return false })
-        // LLM should still get a second turn to explain the failure
-        XCTAssertTrue(events.contains { if case .textDelta("Sorry, I could not create the task.") = $0 { return true }; return false })
-    }
-}
-```
+Per the root `AGENTS.md` §Testing.2 rule: tests must mock `LLMProvider`; **never** hit a real LLM endpoint (OpenAI, MLX, Ollama, etc.).
 
 ### Tool Routing Tests
 
@@ -1202,6 +908,11 @@ final class ToolRouterTests: XCTestCase {
 
 ### System Prompt Tests
 
+> Deferred. See [§7](#7-system-prompts) — `SystemPromptBuilder` is not implemented in the shipped MVP, so there's nothing to test yet. The (placeholder) test class below is retained only for historical context; remove when system-prompt injection lands.
+
+<details>
+<summary>Historical placeholder (do not run)</summary>
+
 ```swift
 final class SystemPromptBuilderTests: XCTestCase {
 
@@ -1261,6 +972,8 @@ final class SystemPromptBuilderTests: XCTestCase {
 }
 ```
 
+</details>
+
 ---
 
 ## 14. ChatApplet Conformance
@@ -1316,13 +1029,13 @@ struct ChatApplet: SuperApplet, Sendable {
 
 ## 15. Decision Log
 
-### ADR-BB-001: ChatOrchestrator is an Actor
+### ADR-BB-001: ChatSession is an Actor
 
 **Status:** Accepted
 
 **Context:** The orchestrator manages the conversation loop across multiple async operations: LLM streaming, tool execution, and GRDB writes. These operations interleave and mutate shared state (message history, pending tool calls).
 
-**Decision:** `ChatOrchestrator` is an `actor`.
+**Decision:** `ChatSession` is an `actor`.
 
 **Consequences:** Compiler-enforced data-race safety without manual locking. Actor reentrancy is acceptable here because each conversation loop is self-contained -- intermediate state mutations during `await` points are intentional (e.g., saving a message before executing a tool call). No `os_unfair_lock` needed.
 
