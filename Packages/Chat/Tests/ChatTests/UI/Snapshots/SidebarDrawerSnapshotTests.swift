@@ -22,7 +22,7 @@ struct SidebarDrawerSnapshotTests {
 
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
-    private static let sampleChats: [SidebarViewModel.ChatRow] = [
+    private static let sampleChats: [SidebarViewModel.ChatItem] = [
         .init(id: "c1", title: "Italy trip planning", updatedAt: now, running: false),
         .init(id: "c2", title: "Pizza dough timing", updatedAt: now.addingTimeInterval(-300), running: false),
         .init(id: "c3", title: "Quarterly review notes", updatedAt: now.addingTimeInterval(-3_600), running: false),
@@ -70,7 +70,7 @@ struct SidebarDrawerSnapshotTests {
     // motion-reduced (drawer fully in; spinner at rotation 0), so a
     // captured snapshot wouldn't detect a regression in the reduced-motion
     // branch even if we recorded one. Same gap is documented in
-    // `MessageListViewSnapshotTests`. Tracked to revisit when a reliable
+    // `MessageListSnapshotTests`. Tracked to revisit when a reliable
     // env-injection seam appears in a future SDK.
 
     @Test("dynamic type XXL light")
@@ -100,7 +100,7 @@ struct SidebarDrawerSnapshotTests {
 
     private func verify(
         theme: SuperTheme.Identifier,
-        chats: [SidebarViewModel.ChatRow],
+        chats: [SidebarViewModel.ChatItem],
         activeId: String?,
         name: String,
         function: String = #function

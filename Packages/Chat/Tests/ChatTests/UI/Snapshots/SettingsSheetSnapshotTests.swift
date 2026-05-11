@@ -128,7 +128,7 @@ struct SettingsSheetSnapshotTests {
     // frame for both transitions is identical, so a captured snapshot
     // wouldn't detect a regression in the reduced-motion branch even if we
     // recorded one — the same gap documented in
-    // `MessageListViewSnapshotTests` and `SidebarDrawerSnapshotTests`.
+    // `MessageListSnapshotTests` and `SidebarDrawerSnapshotTests`.
 
     private func verify(
         theme: SuperTheme.Identifier,

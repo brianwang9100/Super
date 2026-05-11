@@ -7,7 +7,7 @@ import Testing
 /// Snapshots for the four time-of-day greetings rendered against each
 /// theme. The greeting is injected directly so the test stays
 /// deterministic without spinning up a `Clock`.
-@Suite("ChatEmptyStateView snapshots", .serialized)
+@Suite("ChatEmptyState snapshots", .serialized)
 @MainActor
 struct ChatEmptyStateSnapshotTests {
     @Test("morning greeting in light")
@@ -33,7 +33,7 @@ struct ChatEmptyStateSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
-        let view = ChatEmptyStateView(greeting: "How can I help you this morning?")
+        let view = ChatEmptyState(greeting: "How can I help you this morning?")
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 600)
@@ -56,7 +56,7 @@ struct ChatEmptyStateSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = ChatEmptyStateView(greeting: greeting)
+        let view = ChatEmptyState(greeting: greeting)
             .superTheme(.make(theme))
             .frame(width: 402, height: 600)
 

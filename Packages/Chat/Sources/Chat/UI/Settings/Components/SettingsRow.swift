@@ -90,7 +90,7 @@ struct SettingsRow<Trailing: View>: View {
     private var trailingView: some View {
         if Trailing.self == EmptyView.self {
             if isInteractive {
-                ForwardChevron()
+                ForwardChevronIcon()
                     .foregroundStyle(theme.inkFaint)
             }
         } else {

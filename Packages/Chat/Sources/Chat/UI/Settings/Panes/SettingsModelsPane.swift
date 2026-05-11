@@ -84,7 +84,7 @@ struct SettingsModelsPane: View {
     private var addModelButton: some View {
         Button(action: { viewModel.openPane(.modelDetail(id: nil)) }) {
             HStack(spacing: 6) {
-                PlusGlyph(size: 14)
+                PlusIcon(size: 14)
                 Text("Add model endpoint")
                     .font(.system(.subheadline))
             }

@@ -69,7 +69,7 @@ struct SettingsThemePane: View {
                         .foregroundStyle(theme.ink)
                     Spacer(minLength: 0)
                     if isSelected {
-                        CheckGlyph(size: 14)
+                        CheckIcon(size: 14)
                             .foregroundStyle(theme.accent)
                     }
                 }

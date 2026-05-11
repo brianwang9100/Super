@@ -6,7 +6,7 @@ import SwiftUI
 /// code blocks all paint against the same tokens used by the rest of the
 /// chat surface.
 ///
-/// The `codeBlock` slot is overridden entirely with ``CodeBlockView``;
+/// The `codeBlock` slot is overridden entirely with ``CodeBlock``;
 /// MarkdownUI's `codeSyntaxHighlighter` modifier therefore goes unused —
 /// our chrome controls both the surface and the token coloring.
 extension SuperTheme {
@@ -136,7 +136,7 @@ extension SuperTheme {
                     .padding(.vertical, 6)
             }
             .codeBlock { configuration in
-                CodeBlockView(
+                CodeBlock(
                     language: configuration.language,
                     code: configuration.content,
                     superTheme: theme
