@@ -89,7 +89,7 @@ struct SidebarViewModelTests {
             toolCallRepository: NoopToolCallRepository(),
             checkpointRepository: NoopCheckpointRepository(),
             llmProviderRegistry: LLMProviderRegistry(),
-            toolRegistry: ToolRegistry(enablementStore: NoopEnablementStore()),
+            toolRegistry: ToolRegistry(enablementRepository: NoopEnablementRepository()),
             compactor: Compactor(
                 llmProviderRegistry: LLMProviderRegistry(),
                 checkpointRepository: NoopCheckpointRepository()
@@ -154,7 +154,7 @@ private actor NoopCheckpointRepository: CompactionCheckpointRepository {
     func save(_ record: CompactionCheckpointRecord) async throws {}
 }
 
-private actor NoopEnablementStore: ToolEnablementStore {
+private actor NoopEnablementRepository: ToolEnablementRepository {
     func isEnabled(toolID: String) async throws -> Bool? { nil }
     func setEnabled(toolID: String, enabled: Bool) async throws {}
     func allEnabled() async throws -> [String: Bool] { [:] }

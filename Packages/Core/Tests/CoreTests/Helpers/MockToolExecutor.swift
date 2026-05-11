@@ -36,9 +36,9 @@ final class MockToolExecutor: ToolExecutor {
     }
 }
 
-/// In-memory `ToolEnablementStore` for tests. The Chat applet ships the
+/// In-memory `ToolEnablementRepository` for tests. The Chat applet ships the
 /// real GRDB-backed conformer.
-final class InMemoryToolEnablementStore: ToolEnablementStore {
+final class InMemoryToolEnablementRepository: ToolEnablementRepository {
     private let state: OSAllocatedUnfairLock<[String: Bool]>
 
     init(initial: [String: Bool] = [:]) {

@@ -3,7 +3,7 @@ import Foundation
 @testable import Core
 
 /// Tests for `ToolRegistry` registration, enable / disable, lookup, local
-/// dispatch, and `ToolEnablementStore` integration.
+/// dispatch, and `ToolEnablementRepository` integration.
 @Suite("ToolRegistry")
 struct ToolRegistryTests {
     private func makeTool(id: String = "x.test", appletId: String = "x") -> LLMTool {
@@ -89,9 +89,9 @@ struct ToolRegistryTests {
         }
     }
 
-    @Test func enablementStorePopulatesInitialState() async {
-        let store = InMemoryToolEnablementStore(initial: ["x.test": false])
-        let registry = ToolRegistry(enablementStore: store)
+    @Test func enablementRepositoryPopulatesInitialState() async {
+        let store = InMemoryToolEnablementRepository(initial: ["x.test": false])
+        let registry = ToolRegistry(enablementRepository: store)
         let executor = MockToolExecutor(toolID: "x.test", result: .init(toolID: "x.test", content: ""))
         await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
         let registration = await registry.registration(toolID: "x.test")
@@ -99,8 +99,8 @@ struct ToolRegistryTests {
     }
 
     @Test func setEnabledPersistsToStore() async throws {
-        let store = InMemoryToolEnablementStore()
-        let registry = ToolRegistry(enablementStore: store)
+        let store = InMemoryToolEnablementRepository()
+        let registry = ToolRegistry(enablementRepository: store)
         let executor = MockToolExecutor(toolID: "x.test", result: .init(toolID: "x.test", content: ""))
         await registry.register(ToolRegistration(tool: makeTool(), execution: .local(executor)))
         try await registry.setEnabled(toolID: "x.test", enabled: false)
