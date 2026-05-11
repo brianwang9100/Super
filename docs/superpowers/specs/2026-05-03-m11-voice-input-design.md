@@ -174,14 +174,14 @@ State transitions:
 ### 5.5 `MessageList.ErrorState` extension
 
 ```swift
-public struct ErrorBanner: Equatable {
+public struct ErrorState: Sendable, Equatable {
     public var message: String
     public var actionLabel: String?     // NEW (optional)
     // Action closure stored alongside but ignored by Equatable (reference identity isn't meaningful).
     // MainActor because the banner row that renders it is itself MainActor-bound (SwiftUI).
-    public var action: (@MainActor () -> Void)?  // NEW (optional)
+    public var action: (@MainActor @Sendable () -> Void)?  // NEW (optional)
 
-    public static func == (lhs: ErrorBanner, rhs: ErrorBanner) -> Bool {
+    public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
         lhs.message == rhs.message && lhs.actionLabel == rhs.actionLabel
     }
 }

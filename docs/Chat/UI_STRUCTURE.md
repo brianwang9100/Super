@@ -115,7 +115,7 @@ SidebarDrawer                                    (Chat/UI/SidebarDrawer.swift)
 
 **View model:** `SidebarViewModel` (`Chat/ViewModels/SidebarViewModel.swift`).
 
-Owns: projected `chats: [ChatRow]` (newest-first), `activeConversationId`, and an optional in-memory `draftConversation` (the "New Chat" row that hasn't been persisted yet).
+Owns: projected `chats: [ChatItem]` (newest-first), `activeConversationId`, and an optional in-memory `draftConversation` (the "New Chat" row that hasn't been persisted yet).
 
 Sources: pulls from `ConversationRepository` for the list and `ChatSessionStore.runningConversations()` for the per-row spinner. Currently refresh-on-demand (the host calls `refresh()` when the drawer opens or after the lazy-persist promotes a draft); live `ValueObservation`-backed reactivity is deferred to a future milestone.
 

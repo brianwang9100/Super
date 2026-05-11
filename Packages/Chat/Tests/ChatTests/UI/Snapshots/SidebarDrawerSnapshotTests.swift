@@ -22,7 +22,7 @@ struct SidebarDrawerSnapshotTests {
 
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
-    private static let sampleChats: [SidebarViewModel.ChatRow] = [
+    private static let sampleChats: [SidebarViewModel.ChatItem] = [
         .init(id: "c1", title: "Italy trip planning", updatedAt: now, running: false),
         .init(id: "c2", title: "Pizza dough timing", updatedAt: now.addingTimeInterval(-300), running: false),
         .init(id: "c3", title: "Quarterly review notes", updatedAt: now.addingTimeInterval(-3_600), running: false),
@@ -100,7 +100,7 @@ struct SidebarDrawerSnapshotTests {
 
     private func verify(
         theme: SuperTheme.Identifier,
-        chats: [SidebarViewModel.ChatRow],
+        chats: [SidebarViewModel.ChatItem],
         activeId: String?,
         name: String,
         function: String = #function

@@ -313,7 +313,7 @@ public struct SidebarDrawer: View {
 /// One row in the CHATS list. Active row uses `accent` ink + `accentSoft`
 /// background; running row gets a leading rotating spinner.
 private struct ChatRow: View {
-    let chat: SidebarViewModel.ChatRow
+    let chat: SidebarViewModel.ChatItem
     let isActive: Bool
     let onSelect: () -> Void
 
