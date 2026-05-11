@@ -175,14 +175,17 @@ State transitions:
 
 ```swift
 public struct ErrorState: Sendable, Equatable {
-    public var message: String
-    public var actionLabel: String?     // NEW (optional)
+    public let message: String
+    public let actionLabel: String?     // NEW (optional)
     // Action closure stored alongside but ignored by Equatable (reference identity isn't meaningful).
     // MainActor because the banner row that renders it is itself MainActor-bound (SwiftUI).
-    public var action: (@MainActor @Sendable () -> Void)?  // NEW (optional)
+    public let action: (@MainActor @Sendable () -> Void)?  // NEW (optional)
+    public let showsRetry: Bool
 
     public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
-        lhs.message == rhs.message && lhs.actionLabel == rhs.actionLabel
+        lhs.message == rhs.message
+            && lhs.actionLabel == rhs.actionLabel
+            && lhs.showsRetry == rhs.showsRetry
     }
 }
 ```
