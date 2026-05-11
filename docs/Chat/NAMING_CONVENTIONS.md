@@ -37,7 +37,7 @@ Every new SwiftUI view fits into one of these buckets. The bucket determines the
 
 ## Rule 2 — one struct per file (with one carve-out)
 
-Each top-level view, region, component, and primitive lives in its own file named after the struct. The carve-out: a parent file may keep `private` helper structs *only* if (a) they have no callers outside the file and (b) they're <40 lines. `SidebarDrawer.swift` keeps `SpinnerRing` and `SidebarPressableRowStyle` under that rule.
+Each top-level view, region, component, and primitive lives in its own file named after the struct. The carve-out: a parent file may keep `private` helper structs *only* if (a) they have no callers outside the file and (b) they're <40 lines. The bucket suffix (Row, Block, Style, …) still applies to the helper; the carve-out is only about *where* it lives, not what it's named. `SidebarDrawer.swift` keeps `ChatRow` (private Row, ~34 lines, renders the per-conversation row only inside the drawer), `SpinnerRing` (Primitive), and `SidebarPressableRowStyle` (Style) under that rule.
 
 ## Rule 3 — data passed to a view ≠ the view
 
