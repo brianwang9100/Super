@@ -182,12 +182,20 @@ hides GRDB from the rest of the world.
   (Chat) + `InMemoryToolEnablementRepository` (Core tests).
 
 **Naming details:**
-- Protocol lives wherever the record type lives (Core for cross-applet
-  records; per-applet otherwise).
-- GRDB conformer name is `GRDB<Protocol>` (drop the `Repository`-suffix
-  if it ends in `Repository`, then re-add: `GRDBMessageRepository`).
-- Test double for any `*Repository` is `InMemory<Protocol>` (no `Repository`
-  drop), per the existing pattern in `Packages/Core/Tests/CoreTests/Helpers/`.
+- Protocol lives where its primary consumer lives. For most records that's
+  the same package as the record (consumer = applet, record = applet, GRDB
+  conformer = applet). When the consumer is Core — which stays GRDB-free —
+  the protocol lives in Core while the record + GRDB conformer stay in the
+  applet that owns the database. `ToolEnablementRepository` is the
+  canonical cross-package example: protocol in Core (because `ToolRegistry`
+  consumes it), `ToolEnablementRecord` + `GRDBToolEnablementRepository` in
+  Chat (because Chat owns `chat.sqlite`).
+- GRDB conformer name is `GRDB` + the protocol name. `MessageRepository`
+  → `GRDBMessageRepository`; `ToolEnablementRepository` →
+  `GRDBToolEnablementRepository`.
+- Test double name is `InMemory` + the protocol name (e.g.
+  `InMemoryToolEnablementRepository`), per the existing pattern in
+  `Packages/Core/Tests/CoreTests/Helpers/`.
 
 **Do not use `*Repository` for:**
 - An in-memory keyed pool of live actors — that's a [`*Store`](#store).

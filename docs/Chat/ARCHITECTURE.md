@@ -519,7 +519,7 @@ final class ChatViewModel {
 
     // MARK: - Dependencies
 
-    private let orchestrator: ChatSession
+    private let orchestrator: any ChatSessionDriver
     private let conversationRepository: any ConversationRepository
     private let eventBus: SuperEventBus
 
@@ -527,7 +527,7 @@ final class ChatViewModel {
     private var currentConversation: ConversationRecord?
 
     init(
-        orchestrator: ChatSession,
+        orchestrator: any ChatSessionDriver,
         conversationRepository: any ConversationRepository,
         eventBus: SuperEventBus
     ) {
