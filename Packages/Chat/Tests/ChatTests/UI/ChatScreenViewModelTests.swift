@@ -7,13 +7,13 @@ import Testing
 /// `ChatSessionDriver` whose stream yields a scripted sequence of
 /// `ChatEvent`s, and asserts the observable state the view reads.
 ///
-/// Suite is `.serialized` as a safety net: each test's auto-title path
-/// spawns a fire-and-forget `Task` against a per-test `FakeLLMProvider`
-/// whose strict empty-queue `fatalError` makes parallel-test races
-/// fatal. The per-test `_waitForPendingTitleTask()` calls drain the
-/// task at exit; serializing the suite stops a *new* test from racing
-/// while the prior task is still tearing down its provider stream.
-@Suite("ChatScreenViewModel", .serialized)
+/// Each test that injects a `TitleGenerator` calls
+/// `viewModel._waitForPendingTitleTask()` immediately after the driver
+/// drain — *before* assertions — so the auto-title `Task` is fully
+/// done before the test reads `headerTitle` or the title-fire spy.
+/// That ordering also lets the suite run in parallel: no `.serialized`
+/// safety net needed.
+@Suite("ChatScreenViewModel")
 @MainActor
 struct ChatScreenViewModelTests {
     private let conversationId = "conv-1"
@@ -211,6 +211,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Plan a Lisbon trip")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
         await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
 
@@ -225,7 +226,6 @@ struct ChatScreenViewModelTests {
         // First user message is 18 chars — under the 20-char threshold —
         // so the fallback fires *without* an ellipsis.
         #expect(firedSnapshot == ["Plan a Lisbon trip", "Lisbon trip plan"])
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title does not fire on subsequent assistant messages")
@@ -269,6 +269,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
         await yieldUntilHeaderUpdates(viewModel, expected: "Greeting chat")
 
@@ -277,7 +278,6 @@ struct ChatScreenViewModelTests {
         let captured = await titleProvider.capturedRequests()
         #expect(captured.count == 1)
         #expect(viewModel.headerTitle == "Greeting chat")
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title is skipped when the conversation already has a real title")
@@ -314,12 +314,12 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Continue")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
 
         let captured = await titleProvider.capturedRequests()
         #expect(captured.isEmpty)
         #expect(viewModel.headerTitle == "Trip plan")
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title is skipped when the assistant message has no text yet")
@@ -354,6 +354,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
 
         // Empty assistant content must not touch the provider.
@@ -361,7 +362,6 @@ struct ChatScreenViewModelTests {
         #expect(captured.isEmpty)
         // The truncation fallback still ran on user-send.
         #expect(viewModel.headerTitle == "Hi")
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Auto-title generator returning nil leaves the header alone and clears the once-flag")
@@ -401,13 +401,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
-        // Wait for the title task to drain so the once-flag clears.
-        for _ in 0..<400 {
-            let captured = await titleProvider.capturedRequests()
-            if captured.count == 1 { break }
-            await Task.yield()
-        }
 
         let stored = try await conversations.fetch(id: conversationId)
         // The truncation fallback wrote "Hi" on user-send. The
@@ -415,7 +410,6 @@ struct ChatScreenViewModelTests {
         // rather than reverting to "New chat".
         #expect(stored?.title == "Hi")
         #expect(viewModel.headerTitle == "Hi")
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("First user message stamps a truncated fallback title before the LLM responds")
@@ -488,12 +482,12 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Plan a Lisbon trip with kids")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingTitleTask()
         await yieldUntilNotStreaming(viewModel)
         await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
 
         let stored = try await conversations.fetch(id: conversationId)
         #expect(stored?.title == "Lisbon trip plan")
-        await viewModel._waitForPendingTitleTask()
     }
 
     @Test("Second user-send does not replace an existing fallback or LLM title")
