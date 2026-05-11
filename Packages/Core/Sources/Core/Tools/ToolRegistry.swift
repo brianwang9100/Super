@@ -4,7 +4,7 @@ import Foundation
 /// conformer; tests use an in-memory one. Returning nil from
 /// `isEnabled(toolID:)` means "no record yet" — the registry then keeps the
 /// registration's default.
-public protocol ToolEnablementStore: Sendable {
+public protocol ToolEnablementRepository: Sendable {
     func isEnabled(toolID: String) async throws -> Bool?
     func setEnabled(toolID: String, enabled: Bool) async throws
     func allEnabled() async throws -> [String: Bool]
@@ -21,41 +21,42 @@ public enum ToolRegistryError: Error, Sendable, Equatable {
 /// them.
 ///
 /// On `register(_:)` the registry hydrates each registration's `isEnabled`
-/// from the optional `ToolEnablementStore` so user toggles survive an app
+/// from the optional `ToolEnablementRepository` so user toggles survive an app
 /// restart. `.remote` execution is metadata-only in M1: the registry throws
 /// `remoteExecutionNotConfigured` when asked to dispatch one. Real remote
 /// execution lands when a future milestone wires `RemoteHTTPToolExecutor`
 /// into a `.local(...)` execution.
 public actor ToolRegistry {
     private var registrations: [String: ToolRegistration] = [:]
-    private let enablementStore: (any ToolEnablementStore)?
+    private let enablementRepository: (any ToolEnablementRepository)?
 
-    public init(enablementStore: (any ToolEnablementStore)? = nil) {
-        self.enablementStore = enablementStore
+    public init(enablementRepository: (any ToolEnablementRepository)? = nil) {
+        self.enablementRepository = enablementRepository
     }
 
     /// Register a tool.
     ///
     /// - Parameter registration: The tool, its executor, and its default
-    ///   enablement. If an enablement store is wired and already has a value
-    ///   for this tool, the persisted state wins over `registration.isEnabled`.
+    ///   enablement. If an enablement repository is wired and already has a
+    ///   value for this tool, the persisted state wins over
+    ///   `registration.isEnabled`.
     public func register(_ registration: ToolRegistration) async {
         var resolved = registration
-        if let store = enablementStore {
-            if let stored = try? await store.isEnabled(toolID: registration.tool.id) {
+        if let repository = enablementRepository {
+            if let stored = try? await repository.isEnabled(toolID: registration.tool.id) {
                 resolved = registration.enabled(stored)
             }
         }
         registrations[registration.tool.id] = resolved
     }
 
-    /// Toggle a tool's enablement and persist the change to the store.
+    /// Toggle a tool's enablement and persist the change to the repository.
     public func setEnabled(toolID: String, enabled: Bool) async throws {
         guard let registration = registrations[toolID] else {
             throw ToolRegistryError.unknownTool(toolID)
         }
         registrations[toolID] = registration.enabled(enabled)
-        try await enablementStore?.setEnabled(toolID: toolID, enabled: enabled)
+        try await enablementRepository?.setEnabled(toolID: toolID, enabled: enabled)
     }
 
     public func registration(toolID: String) -> ToolRegistration? {

@@ -56,9 +56,9 @@ enum AppBootstrap {
         let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let modelConfigRepo = GRDBModelConfigurationRepository(database: database, keychain: keychain)
         let settingRepo = GRDBSettingRepository(database: database)
-        let toolEnablementStore = GRDBToolEnablementStore(database: database)
+        let toolEnablementRepository = GRDBToolEnablementRepository(database: database)
 
-        let toolRegistry = ToolRegistry(enablementStore: toolEnablementStore)
+        let toolRegistry = ToolRegistry(enablementRepository: toolEnablementRepository)
         await toolRegistry.register(TimeNowTool.registration())
 
         let llmProviderRegistry = LLMProviderRegistry()

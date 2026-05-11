@@ -18,7 +18,7 @@ public struct ToolRegistration: Sendable {
     }
 
     /// Returns a copy with a new enablement state. Used by the registry when
-    /// hydrating from a `ToolEnablementStore` and on user toggles.
+    /// hydrating from a `ToolEnablementRepository` and on user toggles.
     public func enabled(_ value: Bool) -> ToolRegistration {
         ToolRegistration(tool: tool, execution: execution, isEnabled: value)
     }

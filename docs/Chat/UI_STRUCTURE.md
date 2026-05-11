@@ -5,7 +5,7 @@
 > **Companion docs:**
 > - [`DESIGN.md`](./DESIGN.md) — visual spec (themes, typography, motion, design tokens, pixel-level layout)
 > - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — data models, persistence, orchestration loop, LLM streaming
-> - [`NAMING_CONVENTIONS.md`](./NAMING_CONVENTIONS.md) — the taxonomy for naming new SwiftUI views. **Read this before coining a new name.**
+> - [`../NAMING_CONVENTIONS.md`](../NAMING_CONVENTIONS.md) — the taxonomy for naming new SwiftUI views (Part 2). **Read this before coining a new name.**
 >
 > This doc is intentionally short. If you want pixels, read DESIGN. If you want the ChatSession/LLM loop, read ARCHITECTURE. If you want naming rules, read NAMING_CONVENTIONS. This one is the org chart.
 
@@ -184,7 +184,7 @@ SettingsRootPane                        (.../Panes/SettingsRootPane.swift)
 
 **View model:** `SettingsViewModel` (`Chat/ViewModels/SettingsViewModel.swift`).
 
-Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, account chrome (email + app version), and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementStore`) on the same call, so the sheet is always in sync with what's on disk.
+Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, account chrome (email + app version), and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`) on the same call, so the sheet is always in sync with what's on disk.
 
 ---
 
@@ -194,7 +194,7 @@ Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelR
 |---------|-----------|------------|-----------|
 | `ChatScreen` | `ChatScreenViewModel` | `ChatSession` events (via `ChatSessionDriver`), `MessageRepository`, `ToolCallRepository`, `CompactionCheckpointRepository` | composer text · projected items · streaming tail (in-memory only — see ADR-BB-003 in ARCHITECTURE.md) |
 | `SidebarDrawer` | `SidebarViewModel` | `ConversationRepository`, `ChatSessionStore.runningConversations()` | (none — navigation only) |
-| `SettingsSheet` | `SettingsViewModel` | `SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementStore`, `ToolRegistry`, `LLMProviderRegistry`, `ConversationRepository` (for chat count) | the same repositories on every edit |
+| `SettingsSheet` | `SettingsViewModel` | `SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`, `ToolRegistry`, `LLMProviderRegistry`, `ConversationRepository` (for chat count) | the same repositories on every edit |
 
 All three view models are `@Observable @MainActor final class`, mutate only on the main actor, and are constructed by `ChatHostView` from the bootstrap `AppDependencies`.
 
@@ -210,7 +210,7 @@ This means snapshot tests can render any view against any theme by wrapping it i
 
 ## 7. Naming new views
 
-See [`NAMING_CONVENTIONS.md`](./NAMING_CONVENTIONS.md) for the full taxonomy (Screen / Drawer / Sheet / Pane / Region / Pill / Meter / Row / Bubble / Block / Banner / Group / Toggle / Button / Icon / Primitive / Style / Modifier) and the four rules that govern when to add a `View` suffix, when to one-struct-per-file, and how to name state vs. view types.
+See [`../NAMING_CONVENTIONS.md` Part 2](../NAMING_CONVENTIONS.md#part-2--swiftui-view-layer-chat-applet) for the full taxonomy (Screen / Drawer / Sheet / Pane / Region / Pill / Meter / Row / Bubble / Block / Banner / Group / Toggle / Button / Icon / Primitive / Style / Modifier) and the four rules that govern when to add a `View` suffix, when to one-struct-per-file, and how to name state vs. view types.
 
 ---
 
