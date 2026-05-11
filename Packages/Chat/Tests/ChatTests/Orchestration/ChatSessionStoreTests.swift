@@ -157,19 +157,22 @@ struct ChatSessionStoreTests {
         let sessionA = await setup.store.session(for: "conv-A")
         let sessionB = await setup.store.session(for: "conv-B")
 
-        async let eventsA: [ChatEvent] = {
-            let stream = await sessionA.send(text: "kick A", model: setup.model)
-            return await self.collect(stream)
-        }()
-        async let eventsB: [ChatEvent] = {
-            let stream = await sessionB.send(text: "kick B", model: setup.model)
-            return await self.collect(stream)
-        }()
-
-        // Wait for the sleeping tool to actually start before cancelling, so
-        // the cancellation lands inside `Task.sleep` rather than racing with
-        // the user-message write.
+        // Start A first and wait for its tool to actually run before starting
+        // B. The `FakeLLMProvider` script queue is shared — both sessions race
+        // to consume it — and the two scripts have *different shapes* (A
+        // requests a tool, B replies with text). Without this sequencing, B
+        // can win the race, consume A's tool-call script, enter a tool loop,
+        // and emit an unscripted third `stream(...)` call that fires after the
+        // test ends — observed as a `STRAY-STREAM` leak in CI/local runs.
+        // `awaitFirstCall()` is reached only after A has consumed script #1
+        // and dispatched into the tool, so by then it's safe to start B.
+        let streamA = await sessionA.send(text: "kick A", model: setup.model)
+        async let eventsA: [ChatEvent] = self.collect(streamA)
         await sleepingExecutor.awaitFirstCall()
+
+        let streamB = await sessionB.send(text: "kick B", model: setup.model)
+        async let eventsB: [ChatEvent] = self.collect(streamB)
+
         await setup.store.cancel(for: "conv-A")
 
         let (a, b) = await (eventsA, eventsB)
