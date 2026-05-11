@@ -21,7 +21,7 @@ See [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) for the long version.
 | **Sync** | Not yet built. Each install is local-only. |
 | **Other applets** | Designed in [`docs/`](docs/), not implemented. |
 
-Live milestone status: [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md). Full backlog: [`TODO.md`](TODO.md).
+MVP complete (2026-05-10). Open work: [`TODO.md`](TODO.md). Archived milestone build log: [`docs/archived/IMPLEMENTATION_STATUS.md`](docs/archived/IMPLEMENTATION_STATUS.md).
 
 ## Build & run
 
@@ -77,8 +77,7 @@ Super/
 │   └── superpowers/specs/     # Per-milestone implementation specs
 ├── project.yml                # XcodeGen project definition
 ├── AGENTS.md                  # Project-wide rules (CLAUDE.md is a symlink to this)
-├── IMPLEMENTATION_STATUS.md   # What's built vs. what's not
-└── TODO.md                    # Full backlog
+└── TODO.md                    # Full backlog (the MVP milestone log lives at docs/archived/IMPLEMENTATION_STATUS.md)
 ```
 
 ## Design philosophy
@@ -97,7 +96,7 @@ This is an experimental project; the codebase moves quickly. If you want to dig 
 
 1. Read [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md), [`docs/DESIGN.md`](docs/DESIGN.md), and [`docs/MOBILE_ARCHITECTURE.md`](docs/MOBILE_ARCHITECTURE.md).
 2. Skim [`AGENTS.md`](AGENTS.md) — it codifies the conventions every PR follows (Swift 6 strict concurrency, GRDB naming, structs-vs-classes, testing rules).
-3. See [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) for what's in flight and [`TODO.md`](TODO.md) for what's open.
+3. See [`TODO.md`](TODO.md) for what's open. The MVP milestone build log is archived at [`docs/archived/IMPLEMENTATION_STATUS.md`](docs/archived/IMPLEMENTATION_STATUS.md).
 
 ## License
 

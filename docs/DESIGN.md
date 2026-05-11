@@ -2,7 +2,7 @@
 
 > How the Super shell hosts Chat and its mini-apps, and how the three chat overlay states (expanded / floating / bubble) coordinate with the mini-app underneath.
 
-> **Status (2026-05-03):** The Chat surface itself is built (M0–M11 of the MVP plan); the three-state overlay system, mini-app hosting, and `AppletManager` registry described below are not yet implemented — there's only one applet today, and the shell renders it full-screen. Tracked in [`TODO.md`](../TODO.md) § Shell.
+> **Status (2026-05-10):** The Chat surface itself is built and the MVP is shipped (M0–M12 all complete, with M11 voice input verified on hardware 2026-05-10); the three-state overlay system, mini-app hosting, and `AppletManager` registry described below are not yet implemented — there's only one applet today, and the shell renders it full-screen. Tracked in [`TODO.md`](../TODO.md) § Shell.
 
 ---
 

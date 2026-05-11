@@ -2,7 +2,7 @@
 
 > A chat-centric, AI-first productivity app with pluggable mini-apps. Chat is the primary surface; mini-apps live inside it and talk to it both ways.
 
-> **Status (2026-05-03):** Vision doc — the full target. What ships today is the Chat applet on iOS only; mini-apps, the multi-state shell overlay, the server, and sync remain on the roadmap. See [`README.md`](../README.md), [`IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md), and [`TODO.md`](../TODO.md) for the up-to-date picture.
+> **Status (2026-05-10):** Vision doc — the full target. What ships today is the Chat applet on iOS only (MVP M0–M12 complete); mini-apps, the multi-state shell overlay, the server, and sync remain on the roadmap. See [`README.md`](../README.md), [`TODO.md`](../TODO.md), and the archived MVP build log at [`archived/IMPLEMENTATION_STATUS.md`](archived/IMPLEMENTATION_STATUS.md) for the up-to-date picture.
 
 ---
 
