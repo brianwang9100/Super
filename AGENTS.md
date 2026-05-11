@@ -144,7 +144,7 @@ Match GRDB's association-inference rules so relationships are synthesized automa
 
 ## Testing & Testability (enforced on every PR)
 
-Testability is a design requirement, not an afterthought. Every change large enough to warrant a PR must satisfy all four rules below.
+Testability is a design requirement, not an afterthought. Every change large enough to warrant a PR must satisfy all five rules below.
 
 ### 1. Design for testability
 
@@ -154,7 +154,17 @@ Testability is a design requirement, not an afterthought. Every change large eno
 - Side effects (network, DB, filesystem, HomeKit, Keychain) live behind injectable interfaces so tests substitute fakes or in-memory doubles.
 - If a piece of logic cannot be tested without spinning up a real network, real device, or real clock — **redesign it** before merging.
 
-### 2. Ship tests with the change
+### 2. Make async tests deterministic
+
+Async tests establish ordering through `await`, not through hope. Most "flaky" tests aren't bugs in the code under test — they're races in the test fixture itself. The fixes are usually small once the race is named; the cost is the hours spent chasing a 1-in-N flake to find it.
+
+- **Synchronize on conditions, not time.** `Task.yield()` polling loops and `Task.sleep` waits are race amplifiers, not synchronization primitives. Await an observable signal: a continuation, an awaitable handle on the work itself, or the work's own result. If you can't express "the spawned work is done" as a single `await`, expose a test seam on the production type that returns a handle — see `ChatScreenViewModel._waitForPendingTitleTask()` for the in-tree pattern (underscore prefix marks it as test-only surface, not stable API).
+- **Drain spawned work *before* asserting, not after.** A fire-and-forget `Task { ... }` inside a method that returns synchronously is invisible to the caller — the test has to drain it explicitly via the test seam, and the drain must come *before* the assertions read observable state. Otherwise assertions snapshot a value the task may still mutate, and tests fall back to polling helpers (`yieldUntilHeaderUpdates`, `yieldUntilFiredCount`) that mask races without closing them.
+- **Sequence asymmetric parallel work explicitly.** When `async let` blocks share a fixture (a mock script queue, a counter, a registry) and the spawned work has *different shapes* (one path triggers a tool loop, the other doesn't), the order in which they consume the fixture matters. Establish the order with an `await` on an observable signal *between* the spawns — not after both have already fanned out. Use the side effect of the first work item (a tool's `awaitFirstCall()`, an actor's "I started" continuation) as the synchronization point.
+- **Prefer strict test doubles.** A mock that `fatalError`s on misuse — empty queue, unexpected method, wrong argument — attributes the bug to its caller, where the stack trace is useful. A lenient default lets test misconfigurations hide until a *different* test fails later for non-obvious reasons. The in-tree `FakeLLMProvider` is strict by design and that's load-bearing.
+- **`.serialized` is a smell, not a fix.** Reaching for `@Suite(.serialized)` (or its XCTest equivalent) means there's a race somewhere — between tests, or between a test's own spawned work and its assertions. Serialization narrows the race window without closing it, and lets the actual bug live longer. Find the race and fix the synchronization; the suite stays parallel.
+
+### 3. Ship tests with the change
 
 - **New code paths** → unit tests with mocked dependencies.
 - **New GRDB schema or query** → integration test against an in-memory `DatabaseQueue` + `GRDBSnapshotTesting` where schema shape matters.
@@ -163,14 +173,14 @@ Testability is a design requirement, not an afterthought. Every change large eno
 - **Bug fix** → a regression test that **fails before the fix** and passes after. If you can't write one, explain why in the PR description.
 - **No reducing coverage thresholds.** Core ≥80%, applets ≥70%, server ≥80%. Add tests, not exceptions.
 
-### 3. Run the module's tests locally before opening a PR
+### 4. Run the module's tests locally before opening a PR
 
 - **Swift package**: `swift test` from the package root (e.g., `Packages/Chat/`). All tests green before `gh pr create`.
 - **TypeScript server**: `pnpm test` (unit + integration) from `super-server/`. All tests green before `gh pr create`.
 - If a change crosses multiple packages, run tests in each touched package.
 - A PR that couldn't pass its own module's tests locally must not be pushed. CI will catch it, but that wastes the feedback loop.
 
-### 4. PR description must state what was tested
+### 5. PR description must state what was tested
 
 Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
 
