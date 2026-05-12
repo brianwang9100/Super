@@ -206,6 +206,7 @@ struct ChatHostView: View {
                 conversationRepository: dependencies.conversationRepository,
                 toolRegistry: dependencies.toolRegistry,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
+                chatSessionStore: dependencies.chatSessionStore,
                 httpClient: URLSessionHTTPClient()
             )
             await settings.load()

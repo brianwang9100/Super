@@ -103,6 +103,7 @@ public final class SettingsViewModel {
     private let toolRegistry: ToolRegistry
     private let llmProviderRegistry: LLMProviderRegistry?
     private let httpClient: (any HTTPClient)?
+    private let chatSessionStore: ChatSessionStore?
 
     /// Optional notification fired after the models list changes via
     /// `createModel`/`updateModel`/`deleteModel`. The host wires this so
@@ -118,6 +119,7 @@ public final class SettingsViewModel {
         conversationRepository: any ConversationRepository,
         toolRegistry: ToolRegistry,
         llmProviderRegistry: LLMProviderRegistry? = nil,
+        chatSessionStore: ChatSessionStore? = nil,
         httpClient: (any HTTPClient)? = nil
     ) {
         self.accountEmail = accountEmail
@@ -127,6 +129,7 @@ public final class SettingsViewModel {
         self.conversationRepository = conversationRepository
         self.toolRegistry = toolRegistry
         self.llmProviderRegistry = llmProviderRegistry
+        self.chatSessionStore = chatSessionStore
         self.httpClient = httpClient
     }
 
@@ -219,6 +222,11 @@ public final class SettingsViewModel {
     public func setSystemPrompt(_ value: String) async {
         settings.systemPrompt = value
         try? await store.setSystemPrompt(value)
+        // Fan out to every active `ChatSession` so long-running
+        // conversations pick up the new prompt on their next turn — the
+        // Prompt pane's "save on focus loss" hand-off would otherwise
+        // need the user to restart the app to take effect.
+        await chatSessionStore?.setSystemPrompt(value)
     }
 
     public func setDefaultVerbosity(_ value: ChatVerbosity) async {

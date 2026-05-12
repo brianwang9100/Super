@@ -20,6 +20,7 @@ public actor ChatSessionStore {
     private let idGenerator: any IDGenerator
     private let autoCompactEnabled: Bool
     private let autoCompactThreshold: Double
+    private var currentSystemPrompt: String
 
     private var sessions: [String: ChatSession] = [:]
 
@@ -34,7 +35,8 @@ public actor ChatSessionStore {
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         autoCompactEnabled: Bool = true,
-        autoCompactThreshold: Double = 0.75
+        autoCompactThreshold: Double = 0.75,
+        systemPrompt: String = ""
     ) {
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
@@ -47,6 +49,7 @@ public actor ChatSessionStore {
         self.idGenerator = idGenerator
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
+        self.currentSystemPrompt = systemPrompt
     }
 
     /// Get-or-create the session for a conversation. Subsequent calls with
@@ -66,10 +69,25 @@ public actor ChatSessionStore {
             clock: clock,
             idGenerator: idGenerator,
             autoCompactEnabled: autoCompactEnabled,
-            autoCompactThreshold: autoCompactThreshold
+            autoCompactThreshold: autoCompactThreshold,
+            systemPrompt: currentSystemPrompt
         )
         sessions[conversationId] = session
         return session
+    }
+
+    /// Push a new system prompt value to every active session and remember
+    /// it as the default for sessions created later. The Settings UI calls
+    /// this whenever the user edits the prompt so long-running sessions
+    /// pick up the new value on their next turn — including ones the user
+    /// returns to after the edit. No-ops if the value is unchanged.
+    public func setSystemPrompt(_ value: String) async {
+        guard value != currentSystemPrompt else { return }
+        currentSystemPrompt = value
+        let snapshot = sessions
+        for (_, session) in snapshot {
+            await session.setSystemPrompt(value)
+        }
     }
 
     /// Cancel the session's current turn, if any. The session itself stays

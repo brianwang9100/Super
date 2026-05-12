@@ -72,13 +72,21 @@ enum AppBootstrap {
             checkpointRepository: checkpointRepo
         )
 
+        // Pre-load Chat settings so the session store starts with the
+        // user's current system prompt — otherwise newly-created sessions
+        // would carry an empty prompt until the user re-saves it from
+        // Settings. The other settings (auto-compact threshold, etc.)
+        // remain hardcoded here pending the parallel wiring.
+        let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
+
         let chatSessionStore = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
             checkpointRepository: checkpointRepo,
             llmProviderRegistry: llmProviderRegistry,
             toolRegistry: toolRegistry,
-            compactor: compactor
+            compactor: compactor,
+            systemPrompt: initialSettings.systemPrompt
         )
 
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)

@@ -56,11 +56,20 @@ public struct ContextAssembler: Sendable {
     ///     `.toolUse` blocks back onto assistant messages and to mark
     ///     `isError: true` on tool-result rows whose call failed.
     ///   - checkpoint: Latest live compaction checkpoint, or nil.
+    ///   - systemPrompt: The user's configured system prompt from
+    ///     `ChatSettings.systemPrompt`. Trimmed; if non-empty, prepended
+    ///     as the very first `.system` LLMMessage (before any historical
+    ///     `.system` rows and before the checkpoint summary) so it always
+    ///     reflects current settings rather than a snapshot baked into
+    ///     the conversation. Defaults to empty (no injection) to keep
+    ///     callers that don't carry settings — fixtures, snapshots —
+    ///     working unchanged.
     ///   - model: Active model — its `maxContextTokens` drives the budget.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
         checkpoint: CompactionCheckpointRecord?,
+        systemPrompt: String = "",
         model: LLMModel
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
@@ -76,6 +85,10 @@ public struct ContextAssembler: Sendable {
             )
             prompt.insert(checkpointMessage(for: checkpoint), at: 0)
             prompt.insert(contentsOf: systemPrefix, at: 0)
+        }
+        let trimmedSystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSystemPrompt.isEmpty {
+            prompt.insert(LLMMessage(role: .system, text: trimmedSystemPrompt), at: 0)
         }
         let total = estimator.estimate(messages: prompt)
         return ContextAssembly(

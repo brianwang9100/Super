@@ -60,6 +60,14 @@ public actor ChatSession {
     /// `SettingRecord(key: "autoCompactThreshold")`; default 0.75.
     private var autoCompactThreshold: Double
 
+    /// User's configured system prompt, sourced from
+    /// `ChatSettings.systemPrompt`. Injected as the leading `.system`
+    /// LLMMessage on every turn by `ContextAssembler`. Mutated at runtime
+    /// via `setSystemPrompt(_:)` so a Settings UI edit takes effect on
+    /// the very next turn — including for long-running sessions the user
+    /// returns to after editing.
+    private var currentSystemPrompt: String
+
     /// The in-flight turn's task, or `nil` between turns. Cleared from
     /// inside `run`'s `defer` so `isStreaming` flips back to `false` as
     /// soon as the work finishes (and so a subsequent `send(...)` doesn't
@@ -79,6 +87,10 @@ public actor ChatSession {
     ///     before turns when over `autoCompactThreshold`. Default `true`.
     ///   - autoCompactThreshold: Fraction of `model.maxContextTokens` at
     ///     which auto-compaction kicks in. Default `0.75`.
+    ///   - systemPrompt: User's configured system prompt; injected by
+    ///     `ContextAssembler` as the leading `.system` row on every turn.
+    ///     Default `""` (no injection) so test fixtures and call sites
+    ///     that don't carry settings keep working.
     public init(
         conversationId: String,
         messageRepository: any MessageRepository,
@@ -91,7 +103,8 @@ public actor ChatSession {
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         autoCompactEnabled: Bool = true,
-        autoCompactThreshold: Double = 0.75
+        autoCompactThreshold: Double = 0.75,
+        systemPrompt: String = ""
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
@@ -105,6 +118,7 @@ public actor ChatSession {
         self.idGenerator = idGenerator
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
+        self.currentSystemPrompt = systemPrompt
     }
 
     /// Update the auto-compaction policy at runtime. M9's settings pane
@@ -114,6 +128,15 @@ public actor ChatSession {
     public func setAutoCompactPolicy(enabled: Bool, threshold: Double) {
         self.autoCompactEnabled = enabled
         self.autoCompactThreshold = threshold
+    }
+
+    /// Update the system prompt at runtime. The Settings UI calls this
+    /// (via `ChatSessionStore.setSystemPrompt`) when the user edits the
+    /// prompt so a long-running session picks up the new value on its
+    /// next turn — current setting always wins over what the session was
+    /// constructed with.
+    public func setSystemPrompt(_ value: String) {
+        self.currentSystemPrompt = value
     }
 
     /// `true` while a turn is mid-flight. Sidebar drives the per-row
@@ -278,6 +301,7 @@ public actor ChatSession {
             messages: messages,
             toolCalls: toolCalls,
             checkpoint: checkpoint,
+            systemPrompt: currentSystemPrompt,
             model: model
         )
     }
