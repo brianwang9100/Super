@@ -81,11 +81,21 @@ public actor ChatSessionStore {
     /// this whenever the user edits the prompt so long-running sessions
     /// pick up the new value on their next turn — including ones the user
     /// returns to after the edit. No-ops if the value is unchanged.
+    ///
+    /// The per-session `await` inside the fan-out loop suspends this actor,
+    /// which means a concurrent `setSystemPrompt("B")` arriving mid-loop
+    /// can interleave: it correctly updates `currentSystemPrompt` and fans
+    /// "B" out to every session, then this loop's continuation resumes and
+    /// would silently overwrite the trailing sessions with the stale
+    /// `value`. The intra-loop `guard currentSystemPrompt == value` bails
+    /// early once the value has been superseded — last write wins, all
+    /// sessions agree with `currentSystemPrompt` once both calls return.
     public func setSystemPrompt(_ value: String) async {
         guard value != currentSystemPrompt else { return }
         currentSystemPrompt = value
         let snapshot = sessions
         for (_, session) in snapshot {
+            guard currentSystemPrompt == value else { return }
             await session.setSystemPrompt(value)
         }
     }
