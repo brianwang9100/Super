@@ -77,6 +77,15 @@ enum AppBootstrap {
         // would carry an empty prompt until the user re-saves it from
         // Settings. The other settings (auto-compact threshold, etc.)
         // remain hardcoded here pending the parallel wiring.
+        //
+        // The transient `ChatSettingsStore` is safe to discard: the type
+        // is documented as a stateless wrapper over `SettingRepository`
+        // (see `ChatSettingsStore.swift:6-9`). `SettingsViewModel` builds
+        // its own instance from the same repo for live mutations, and
+        // the two cannot diverge because there is no cached state to
+        // share. If `ChatSettingsStore` ever gains caching or
+        // observation, lift this to a single shared instance passed to
+        // both `ChatSessionStore` (seed) and `SettingsViewModel` (live).
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
         let chatSessionStore = ChatSessionStore(
