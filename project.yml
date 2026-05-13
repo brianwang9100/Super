@@ -37,6 +37,15 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "18.0"
+    # configFiles wires Config/Base.xcconfig as the target's
+    # baseConfigurationReference for both build configs. Base.xcconfig
+    # does `#include? "Local.xcconfig"` so per-developer signing values
+    # (DEVELOPMENT_TEAM, PROVISIONING_PROFILE_SPECIFIER) flow in from the
+    # gitignored Local.xcconfig — never committed. CI's testflight
+    # workflow writes Local.xcconfig from secrets before archiving.
+    configFiles:
+      Debug: Config/Base.xcconfig
+      Release: Config/Base.xcconfig
     sources:
       - path: App
     info:
@@ -48,11 +57,10 @@ targets:
         # (PRODUCT_NAME = "Super") because the App Store name "Super" is
         # already taken; the public brand is "SuperOS".
         CFBundleDisplayName: SuperOS
-        # iPhone: portrait + both landscapes; skip upside-down per Apple convention.
+        # iPhone: portrait only. Chat-first UX assumes a vertical
+        # composer + bubble layout; landscape would just letterbox.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         # iPad: all four orientations are required for multitasking;
         # App Store upload validation rejects builds that omit any.
         UISupportedInterfaceOrientations~ipad:
@@ -88,18 +96,16 @@ targets:
         INFOPLIST_FILE: App/Info.plist
         SUPPORTS_MACCATALYST: NO
       configs:
-        # Release signing lives here (target-scoped) rather than on the
-        # xcodebuild command line. Command-line build settings propagate
-        # to every target in the build, including SwiftPM resource
-        # bundles like GRDB_GRDB, which then error out because they
-        # don't support provisioning profiles. Setting them on the
-        # target means SwiftPM deps inherit only their own (empty)
-        # signing config and build cleanly.
+        # Release-only signing config is target-scoped (not project- or
+        # command-line-scoped) so it doesn't leak into SwiftPM resource
+        # bundles like GRDB_GRDB, which don't support provisioning
+        # profiles. Per-developer values (DEVELOPMENT_TEAM,
+        # PROVISIONING_PROFILE_SPECIFIER) come in via the xcconfig wired
+        # by `configFiles:` above; standard Apple cert values stay inline
+        # since they're public-equivalent.
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Distribution"
-          DEVELOPMENT_TEAM: SUMH54A6Q9
-          PROVISIONING_PROFILE_SPECIFIER: "Super App Store Distribution"
     dependencies:
       - package: Core
       - package: Chat

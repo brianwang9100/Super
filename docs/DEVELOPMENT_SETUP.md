@@ -99,6 +99,20 @@ open Super.xcodeproj
 
 Swift packages (GRDB, GRDBQuery, GRDBSnapshotTesting, swift-markdown-ui, Splash, swift-snapshot-testing) resolve automatically via SPM on first open.
 
+### Signing config (device builds and Release archives)
+
+Super is open source — personal Apple Developer team IDs and signing settings live in `Config/Local.xcconfig`, which is gitignored. `project.yml` wires `Config/Base.xcconfig` (committed) as the `baseConfigurationReference` for both Debug and Release; `Base.xcconfig` does `#include? "Local.xcconfig"` (the `?` makes the include optional, so Simulator/CI builds work without it).
+
+To run on a physical device:
+
+```bash
+cp Config/Local.xcconfig.example Config/Local.xcconfig
+# Edit Config/Local.xcconfig and replace YOUR_TEAM_ID with your Apple Developer
+# team ID (developer.apple.com → Account → Membership Details → Team ID).
+```
+
+To also produce Release archives locally (App Store / TestFlight distribution — rare; usually only the maintainer), uncomment the `PROVISIONING_PROFILE_SPECIFIER` line in `Local.xcconfig` and supply the name of a profile from your team's Apple Developer portal. CI's `testflight.yml` workflow writes both values at runtime from GitHub Secrets, so you do *not* need to set `PROVISIONING_PROFILE_SPECIFIER` just to land changes.
+
 ### Build and run
 
 1. Select an iPhone simulator (iPhone 17 sim is the in-tree reference, UUID `472D292D-71F0-4D2B-ADFC-C5D5BAF14450`) and ⌘R.
