@@ -10,6 +10,7 @@ struct AssistantMessage: View {
     let toolCalls: [MessageList.ToolCallItem]
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.chatAppearance) private var appearance
     @Environment(\.pasteboardClient) private var pasteboard
 
     var body: some View {
@@ -48,6 +49,6 @@ struct AssistantMessage: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, appearance.assistantRowVerticalPadding)
     }
 }

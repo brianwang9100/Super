@@ -247,6 +247,98 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_thinking_markdown_light", function: function)
     }
 
+    /// Appearance: minimum font scale + compact density. Covers the
+    /// lower-bound corner of the `ChatAppearance` knob space — the
+    /// markdown body, user bubble text, paragraph line-spacing, and
+    /// per-row vertical padding should all read tighter than the
+    /// default `list_populated_light` baseline.
+    @Test("appearance: scale min + density compact")
+    func appearanceScaleMinCompact() {
+        verifyAppearance(
+            fontScale: 0.85,
+            density: .compact,
+            name: "list_scale_min_compact_light"
+        )
+    }
+
+    /// Appearance: maximum font scale + spacious density. Covers the
+    /// upper-bound corner. Markdown body and user bubble text scale up;
+    /// paragraph line-spacing and per-row padding widen.
+    @Test("appearance: scale max + density spacious")
+    func appearanceScaleMaxSpacious() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_light"
+        )
+    }
+
+    /// Cross variant: small text in a spacious layout — exercises the
+    /// independence of the two knobs.
+    @Test("appearance: scale min + density spacious")
+    func appearanceScaleMinSpacious() {
+        verifyAppearance(
+            fontScale: 0.85,
+            density: .spacious,
+            name: "list_scale_min_spacious_light"
+        )
+    }
+
+    /// Cross variant: large text in a compact layout — the opposite
+    /// independence check.
+    @Test("appearance: scale max + density compact")
+    func appearanceScaleMaxCompact() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .compact,
+            name: "list_scale_max_compact_light"
+        )
+    }
+
+    /// Dark-mode coverage at the upper-bound corner. Per AGENTS.md
+    /// §Testing.2 every new SwiftUI variant needs a light + dark pair.
+    /// One dark variant is enough to catch density padding regressions
+    /// against the dark palette; the light-theme matrix above already
+    /// locks the rest of the (fontScale × density) corners.
+    @Test("appearance: scale max + density spacious (dark)")
+    func appearanceScaleMaxSpaciousDark() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_dark",
+            theme: .dark
+        )
+    }
+
+    /// Sepia coverage at the upper-bound corner. The sepia palette uses a
+    /// warmer background and ink than light/dark — confirms the appearance
+    /// knobs interact correctly with that palette too (no hardcoded
+    /// `.primary` foregrounds slipping through, etc.).
+    @Test("appearance: scale max + density spacious (sepia)")
+    func appearanceScaleMaxSpaciousSepia() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_sepia",
+            theme: .sepia
+        )
+    }
+
+    /// Combined Dynamic Type XXL + maxed appearance knobs. Locks the
+    /// "everything turned up" corner so a regression that compounds
+    /// across `@ScaledMetric` + `fontScale` + spacious padding is caught
+    /// in one baseline rather than three.
+    @Test("appearance: scale max + density spacious at dynamic type XXL")
+    func appearanceScaleMaxSpaciousXXL() {
+        let function = #function
+        let view = MessageList(items: items, verbosity: .verbose)
+            .superTheme(.make(.light))
+            .chatAppearance(ChatAppearance(fontScale: 1.15, density: .spacious))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: "list_scale_max_spacious_light_xxl", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -310,6 +402,23 @@ struct MessageListSnapshotTests {
     ) {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    /// Renders the populated `items` fixture under a non-default
+    /// `ChatAppearance` and snapshots in the given theme. Used to lock
+    /// in the endpoint corners of the (fontScale × density) knob space.
+    private func verifyAppearance(
+        fontScale: Double,
+        density: ChatSettings.Density,
+        name: String,
+        theme: SuperTheme.Identifier = .light,
+        function: String = #function
+    ) {
+        let view = MessageList(items: items, verbosity: .verbose)
+            .superTheme(.make(theme))
+            .chatAppearance(ChatAppearance(fontScale: fontScale, density: density))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
     }

@@ -6,16 +6,22 @@ import SwiftUI
 struct UserBubble: View {
     let text: String
     @Environment(\.superTheme) private var theme
+    @Environment(\.chatAppearance) private var appearance
+    /// Base body size, declared via `@ScaledMetric` so the rendered
+    /// point size composes Dynamic Type with the chat font-scale knob —
+    /// at XXL the user bubble grows beyond plain markdown body, matching
+    /// the pre-`ChatAppearance` behavior.
+    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 15
 
     var body: some View {
         HStack {
             Spacer(minLength: 40)
             Text(text)
-                .font(.system(.subheadline))
+                .font(.system(size: basePoint * appearance.fontScale))
                 .lineSpacing(2)
                 .foregroundStyle(theme.bubbleInk)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.vertical, appearance.bubbleInnerVerticalPadding)
                 .background(
                     UnevenRoundedRectangle(
                         cornerRadii: .init(
@@ -30,6 +36,6 @@ struct UserBubble: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, appearance.bubbleRowVerticalPadding)
     }
 }

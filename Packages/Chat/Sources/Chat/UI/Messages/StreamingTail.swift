@@ -9,6 +9,11 @@ struct StreamingTail: View {
     let tail: MessageList.StreamingState
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.chatAppearance) private var appearance
+    /// Base body size, declared via `@ScaledMetric` so the streaming
+    /// text composes Dynamic Type with the chat font-scale knob — see
+    /// the matching declaration in ``UserBubble`` for the rationale.
+    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 15
 
     /// The spark spins for the entire duration of the turn so the user
     /// always has a "still working" cue — both before the first delta
@@ -42,7 +47,7 @@ struct StreamingTail: View {
             if !tail.text.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text(tail.text)
-                        .font(.system(.subheadline))
+                        .font(.system(size: basePoint * appearance.fontScale))
                         .lineSpacing(2)
                         .foregroundStyle(theme.ink)
                     TypingCaret()
@@ -53,6 +58,6 @@ struct StreamingTail: View {
                 WaitingSpark()
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, appearance.assistantRowVerticalPadding)
     }
 }
