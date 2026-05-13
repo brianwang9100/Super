@@ -672,19 +672,42 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
-    @Test("Verbosity init argument lands in the stored property so the first render uses the caller-provided value")
-    func verbosityInitArgumentSeedsStoredProperty() {
-        let viewModel = ChatScreenViewModel(
+    @Test("applyExternalVerbosity updates verbosity when given a non-nil value")
+    func applyExternalVerbosityUpdates() {
+        let viewModel = makeMinimalViewModel()
+        #expect(viewModel.verbosity == .simple)
+
+        viewModel.applyExternalVerbosity(.verbose)
+        #expect(viewModel.verbosity == .verbose)
+
+        viewModel.applyExternalVerbosity(.thinking)
+        #expect(viewModel.verbosity == .thinking)
+    }
+
+    @Test("applyExternalVerbosity is a no-op on nil so the host's optional .onChange binding can pass through directly")
+    func applyExternalVerbosityIgnoresNil() {
+        // The host wires `.onChange(of: settingsViewModel?.settings.defaultVerbosity)`
+        // whose value is `ChatVerbosity?`; the nil case (settingsViewModel
+        // still loading) must leave the existing verbosity intact rather
+        // than reset it.
+        let viewModel = makeMinimalViewModel()
+        viewModel.applyExternalVerbosity(.verbose)
+        #expect(viewModel.verbosity == .verbose)
+
+        viewModel.applyExternalVerbosity(nil)
+        #expect(viewModel.verbosity == .verbose)
+    }
+
+    private func makeMinimalViewModel() -> ChatScreenViewModel {
+        ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
             driver: ScriptedDriver(events: []),
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
-            verbosity: .verbose
+            availableModels: [model]
         )
-        #expect(viewModel.verbosity == .verbose)
     }
 
     private func makeVoiceViewModel(voice: VoiceInputController) -> ChatScreenViewModel {

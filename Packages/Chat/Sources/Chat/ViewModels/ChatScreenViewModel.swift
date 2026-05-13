@@ -57,9 +57,9 @@ public final class ChatScreenViewModel {
 
     /// Active verbosity used by `MessageList` to expand or collapse
     /// thinking and tool-call blocks. Host-owned: seeded via the init
-    /// argument and updated as a public `var` so settings changes can
-    /// be pushed in without a chat restart.
-    public var verbosity: ChatVerbosity = .simple
+    /// argument and updated through `applyExternalVerbosity(_:)` so
+    /// settings changes can be pushed in without a chat restart.
+    public private(set) var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
     public private(set) var availableModels: [LLMModel]
@@ -329,6 +329,16 @@ public final class ChatScreenViewModel {
         } else if selectedModelId == nil {
             selectedModelId = models.first?.id
         }
+    }
+
+    /// Apply a new verbosity coming from outside the view model — in
+    /// practice the host observing `ChatSettings.defaultVerbosity`. A
+    /// `nil` value is intentionally a no-op so the host can wire
+    /// SwiftUI's optional-binding `.onChange(of:)` pattern directly
+    /// without an extra guard.
+    public func applyExternalVerbosity(_ newValue: ChatVerbosity?) {
+        guard let newValue else { return }
+        verbosity = newValue
     }
 
     /// Retry after an error: re-send the most recent user message. If we

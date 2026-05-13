@@ -155,9 +155,7 @@ struct ChatHostView: View {
         }
         .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
             // Without this the new value only applies on the next conversation open.
-            if let newValue {
-                viewModel?.verbosity = newValue
-            }
+            viewModel?.applyExternalVerbosity(newValue)
         }
     }
 
