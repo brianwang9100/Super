@@ -84,7 +84,24 @@ struct ChatScreenSnapshotTests {
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
-        recordOrCompare(view: view, name: name, function: function)
+        // The empty state's `Instrument Serif` greeting renders with
+        // small sub-pixel differences between iOS 26.2 (CI's pre-installed
+        // simulator runtime, bundled with Xcode 26.3) and iOS 26.3 (the
+        // local recording runtime). System-font surfaces don't drift;
+        // only the custom serif body does. Allow a small fraction of
+        // pixels (the anti-aliasing fringes around glyph edges) to differ
+        // — and within those, accept a small perceptual delta. Scoped to
+        // `verifyEmpty` so the rest of the suite stays pixel-exact.
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
     }
 
     private func verifyPopulated(
