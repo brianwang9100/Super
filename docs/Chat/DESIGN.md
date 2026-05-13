@@ -37,10 +37,10 @@ The full token set is in [§10 Design Tokens](#10-design-tokens).
 | Role | Face | Notes |
 |------|------|-------|
 | Wordmark, greetings, h3 | **Instrument Serif** (italic for wordmark) | Display only — never body text |
-| UI, body, messages | **Geist** | Primary typeface, 15pt body |
+| UI, body, messages | **Geist** | Primary typeface, 17pt body |
 | Code, context meter, tool names, version strings | **JetBrains Mono** | Lowercase, subtle letter-spacing |
 
-Body text is 15pt at 1.0× font scale, line-height 1.55 for messages and markdown prose. Font scale is user-tunable in Appearance settings (0.85×–1.15×).
+Body text is 17pt at 1.0× font scale, tuned to match Claude iOS chat. Font scale is user-tunable in Appearance settings (0.80×–1.20×). Paragraph line-spacing and inter-paragraph margin are derived from the same slider via piecewise-linear interpolation between three anchors: 0.80× → 0.30 em line-spacing + 10 pt margin (compact), 1.00× → 0.39 em + 16 pt (comfortable), 1.20× → 0.54 em + 25 pt (spacious). One knob controls the whole reading feel.
 
 ### 2.3 Motion
 
@@ -136,7 +136,7 @@ Part types: `text` · `thinking` · `tool` · `code`.
 - Soft green bubble (`--bubble-user`), ink text (`--bubble-ink`).
 - 18pt corner radius, **6pt on the bottom-right** (tail corner).
 - Max width 82% of the scroll area.
-- Font 15pt, line-height 1.45, `white-space: pre-wrap` (preserves newlines).
+- Font 17pt, line-spacing 2pt, `white-space: pre-wrap` (preserves newlines).
 - No bubble shadow, no timestamp.
 
 ### 4.2 Assistant Message
@@ -418,8 +418,7 @@ Selected option shows a trailing accent check. Picking a value changes the verbo
 
 ### 7.7 Appearance Pane
 
-- **Font size** — a range slider 0.85×–1.15×, step 0.05, accent-colored track. Labels: Small / {percentage} / Large. The slider scales all body typography live.
-- **Density** — three options (Compact, Comfortable, Spacious) in a grouped card, with a trailing accent check on the selected row. Density affects message spacing, composer padding, and sidebar row height.
+- **Font size** — a three-stop slider 0.80× / 1.00× / 1.20× (step 0.20), accent-colored track. Labels: Small / {percentage} / Large. The slider snaps to one of the three anchors and scales all body typography live; spacing (line-spacing, inter-paragraph margin, bubble paddings) is derived from the same value so larger text automatically gets more breathing room. No separate density knob.
 
 ### 7.8 Data Pane
 
@@ -512,7 +511,7 @@ Common geometry:
 | Chat title max-width | 240pt |
 | User bubble radius | 18pt (6pt on bottom-right tail) |
 | User bubble max-width | 82% of message column |
-| Message body font | Geist 15pt / 1.55 |
+| Message body font | Geist 17pt, font-scale-derived line-spacing (0.30 / 0.39 / 0.54 em at 0.80× / 1.00× / 1.20×) |
 | Monospace fallback | `JetBrains Mono, ui-monospace, monospace` |
 
 ---

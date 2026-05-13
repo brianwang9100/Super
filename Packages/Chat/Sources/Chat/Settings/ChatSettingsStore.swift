@@ -27,8 +27,6 @@ public struct ChatSettingsStore: Sendable {
                 ?? ChatSettings.default.defaultVerbosity,
             fontScale: raw[Keys.fontScale].flatMap(Double.init)
                 ?? ChatSettings.default.fontScale,
-            density: raw[Keys.density].flatMap(ChatSettings.Density.init(rawValue:))
-                ?? ChatSettings.default.density,
             autoCompactEnabled: raw[Keys.autoCompactEnabled].flatMap(Self.decodeBool)
                 ?? ChatSettings.default.autoCompactEnabled,
             autoCompactThreshold: raw[Keys.autoCompactThreshold].flatMap(Double.init)
@@ -50,10 +48,6 @@ public struct ChatSettingsStore: Sendable {
 
     public func setFontScale(_ value: Double) async throws {
         try await repository.set(Keys.fontScale, value: String(ChatSettings.clampFontScale(value)))
-    }
-
-    public func setDensity(_ value: ChatSettings.Density) async throws {
-        try await repository.set(Keys.density, value: value.rawValue)
     }
 
     public func setAutoCompactEnabled(_ value: Bool) async throws {
@@ -94,10 +88,8 @@ public struct ChatSettingsStore: Sendable {
         public static let systemPrompt = "systemPrompt"
         /// `ChatVerbosity` rawValue used when creating a fresh chat.
         public static let defaultVerbosity = "defaultVerbosity"
-        /// String-encoded Double in `[0.85, 1.15]`.
+        /// String-encoded Double in `[0.80, 1.20]`.
         public static let fontScale = "appearance.fontScale"
-        /// `ChatSettings.Density` rawValue.
-        public static let density = "appearance.density"
         /// `"true"` / `"false"`. Whether auto-compaction is on.
         public static let autoCompactEnabled = "compaction.autoEnabled"
         /// String-encoded Double in `[0.5, 0.95]`. Fraction of context

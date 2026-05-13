@@ -93,6 +93,16 @@ struct SettingsModelDetailPane: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
 
+            if let errorMessage = viewModel.modelEditError {
+                Text(errorMessage)
+                    .font(.system(.footnote))
+                    .foregroundStyle(theme.errorAccent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .accessibilityIdentifier("modelDetail.errorMessage")
+            }
+
             if isEditing {
                 deleteButton
                     .padding(.horizontal, 16)
@@ -102,7 +112,12 @@ struct SettingsModelDetailPane: View {
             Spacer(minLength: 24)
         }
         .padding(.bottom, 24)
-        .onAppear { installPopScrub() }
+        .onAppear {
+            installPopScrub()
+            // Clear any stale message from a previous attempt so it
+            // doesn't flash on this open.
+            viewModel.clearModelEditError()
+        }
         .onDisappear { viewModel.beforePopCleanup = nil }
         .confirmationDialog(
             "Delete this model endpoint?",
@@ -245,7 +260,7 @@ struct SettingsModelDetailPane: View {
         Button(action: { showingDeleteConfirm = true }) {
             Text("Delete model endpoint")
                 .font(.system(.callout).weight(.medium))
-                .foregroundStyle(Color(red: 0.74, green: 0.30, blue: 0.20))
+                .foregroundStyle(theme.errorAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
@@ -310,7 +325,15 @@ struct SettingsModelDetailPane: View {
                     maxContextTokens: maxCtx
                 )
             }
-            viewModel.popPane()
+            // Only pop on success — a non-nil error keeps the pane up
+            // so the user sees the message and can retry. Re-arm the
+            // pop cleanup since we're staying so the SecureField gets
+            // scrubbed on a subsequent Back tap.
+            if viewModel.modelEditError == nil {
+                viewModel.popPane()
+            } else {
+                installPopScrub()
+            }
         }
     }
 }

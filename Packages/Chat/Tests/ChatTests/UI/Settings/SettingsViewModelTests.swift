@@ -29,7 +29,6 @@ struct SettingsViewModelTests {
         try? await settingRepo.set(ChatSettingsStore.Keys.systemPrompt, value: "Hello")
         try? await settingRepo.set(ChatSettingsStore.Keys.defaultVerbosity, value: "thinking")
         try? await settingRepo.set(ChatSettingsStore.Keys.fontScale, value: "1.1")
-        try? await settingRepo.set(ChatSettingsStore.Keys.density, value: "compact")
         try? await settingRepo.set(ChatSettingsStore.Keys.autoCompactEnabled, value: "false")
         try? await settingRepo.set(ChatSettingsStore.Keys.autoCompactThreshold, value: "0.7")
 
@@ -39,7 +38,6 @@ struct SettingsViewModelTests {
         #expect(vm.settings.systemPrompt == "Hello")
         #expect(vm.settings.defaultVerbosity == .thinking)
         #expect(vm.settings.fontScale == 1.1)
-        #expect(vm.settings.density == .compact)
         #expect(vm.settings.autoCompactEnabled == false)
         #expect(vm.settings.autoCompactThreshold == 0.7)
     }
@@ -58,9 +56,9 @@ struct SettingsViewModelTests {
     func setFontScaleClamps() async {
         let vm = makeViewModel()
         await vm.setFontScale(2.0)
-        #expect(vm.settings.fontScale == 1.15)
+        #expect(vm.settings.fontScale == 1.20)
         await vm.setFontScale(0.0)
-        #expect(vm.settings.fontScale == 0.85)
+        #expect(vm.settings.fontScale == 0.80)
     }
 
     @Test("setSystemPrompt persists immediately")
@@ -227,6 +225,72 @@ struct SettingsViewModelTests {
         #expect(modelRepo.storedKeys[saved?.apiKeyRef ?? ""] == "sk-test")
     }
 
+    @Test("createModel surfaces repository failures via modelEditError")
+    func createModelSurfacesFailures() async {
+        // Regression test for the silent-catch bug: a Keychain failure
+        // (errSecMissingEntitlement on unsigned simulator builds) used
+        // to swallow the error in `createModel`'s catch — the form
+        // dismissed and the user saw nothing. Now the error must surface
+        // through `modelEditError` so the detail pane can render it.
+        struct StubKeychainError: Error, Sendable {}
+        let modelRepo = StubModelRepository(rows: [])
+        modelRepo.storeAPIKeyError = StubKeychainError()
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+        #expect(vm.modelEditError == nil)
+
+        await vm.createModel(
+            name: "Local Llama",
+            baseURL: URL(string: "http://localhost:1234/v1")!,
+            modelId: "llama-3",
+            apiKey: "sk-test",
+            supportsThinking: false,
+            maxContextTokens: 8_000
+        )
+
+        #expect(vm.modelEditError != nil)
+        #expect(vm.modelEditError?.contains("Could not save model") == true)
+        // The row must not appear — a failed save should leave the
+        // models list empty, not show a row that's actually missing
+        // from disk.
+        #expect(vm.models.isEmpty)
+        #expect(modelRepo.rows.isEmpty)
+    }
+
+    @Test("createModel clears a stale modelEditError on a successful retry")
+    func createModelClearsErrorOnRetry() async {
+        struct StubKeychainError: Error, Sendable {}
+        let modelRepo = StubModelRepository(rows: [])
+        modelRepo.storeAPIKeyError = StubKeychainError()
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        // First attempt fails and sets the error.
+        await vm.createModel(
+            name: "Local Llama",
+            baseURL: URL(string: "http://localhost:1234/v1")!,
+            modelId: "llama-3",
+            apiKey: "sk-test",
+            supportsThinking: false,
+            maxContextTokens: 8_000
+        )
+        #expect(vm.modelEditError != nil)
+
+        // Drop the failure and retry — error must clear on the next
+        // entry into createModel, not linger across attempts.
+        modelRepo.storeAPIKeyError = nil
+        await vm.createModel(
+            name: "Local Llama",
+            baseURL: URL(string: "http://localhost:1234/v1")!,
+            modelId: "llama-3",
+            apiKey: "sk-test",
+            supportsThinking: false,
+            maxContextTokens: 8_000
+        )
+        #expect(vm.modelEditError == nil)
+        #expect(vm.models.count == 1)
+    }
+
     @Test("updateModel mutates fields without rotating the apiKeyRef when key blank")
     func updateModelKeepsRef() async {
         let modelRepo = StubModelRepository(rows: [
@@ -371,6 +435,11 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// Plaintext keys keyed by ref so the createModel/updateModel tests
     /// can assert what landed in the Keychain layer.
     var storedKeys: [String: String] = [:]
+    /// When non-nil, `storeAPIKey` throws this. Lets a test drive
+    /// `createModel`/`updateModel` through the Keychain-failure path —
+    /// the regression seam for the silent-catch bug fixed by surfacing
+    /// `SettingsViewModel.modelEditError`.
+    var storeAPIKeyError: Error?
 
     init(rows: [ModelConfigurationRecord]) {
         self.rows = rows
@@ -388,7 +457,10 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         storedKeys[id] = nil
     }
     func setSelected(id: String) async throws {}
-    func storeAPIKey(_ key: String, ref: String) async throws { storedKeys[ref] = key }
+    func storeAPIKey(_ key: String, ref: String) async throws {
+        if let error = storeAPIKeyError { throw error }
+        storedKeys[ref] = key
+    }
     func loadAPIKey(ref: String) async throws -> String? { storedKeys[ref] }
 }
 

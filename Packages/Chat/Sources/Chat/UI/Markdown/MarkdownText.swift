@@ -60,12 +60,14 @@ struct MarkdownText: View {
             }
     }
 
-    /// Cache key combines theme, body-style override, and appearance
-    /// knobs so a thinking trace doesn't reuse a cached banner theme
-    /// (and vice versa), and so a font-scale or density change
-    /// invalidates the cached MarkdownUI theme. Font scale is formatted
-    /// to a fixed precision so two arithmetically-equal but binarily-
-    /// different `Double`s map to the same key.
+    /// Cache key combines theme, body-style override, and the font
+    /// scale so a thinking trace doesn't reuse a cached banner theme
+    /// (and vice versa), and so a font-scale change invalidates the
+    /// cached MarkdownUI theme. Font scale is formatted to a fixed
+    /// precision so two arithmetically-equal but binarily-different
+    /// `Double`s map to the same key. Spacing is derived from
+    /// `fontScale` inside `ChatAppearance`, so the scale alone is a
+    /// sufficient invalidation signal.
     private var themeKey: String {
         let style: String = switch bodyStyleOverride {
         case .thinking: "thinking"
@@ -73,6 +75,6 @@ struct MarkdownText: View {
         case .none: "default"
         }
         let scale = String(format: "%.3f", appearance.fontScale)
-        return "\(theme.id.rawValue):\(style):\(scale):\(appearance.density.rawValue)"
+        return "\(theme.id.rawValue):\(style):\(scale)"
     }
 }

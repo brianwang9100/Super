@@ -18,15 +18,13 @@ public struct ChatSettings: Sendable, Equatable {
     /// Default verbosity for new chats. Existing chats keep their own.
     /// Wired live: `ChatHostView.startNewChat` reads it.
     public var defaultVerbosity: ChatVerbosity
-    /// Body-font scale multiplier. Clamped to `[0.85, 1.15]`. Applied
+    /// Body-font scale multiplier. Clamped to `[0.80, 1.20]`. Applied
     /// to message rendering via the `\.chatAppearance` environment value
-    /// injected by `ChatHostView` — see `ChatAppearance`.
+    /// injected by `ChatHostView` — see `ChatAppearance`. This is the
+    /// sole appearance knob: spacing (line-spacing, paragraph margin,
+    /// bubble paddings) is derived from `fontScale` inside
+    /// `ChatAppearance` so larger text always gets more breathing room.
     public var fontScale: Double
-    /// Vertical density preset. Drives paragraph line-spacing inside
-    /// markdown and per-row vertical padding on user/assistant message
-    /// rows via the `\.chatAppearance` environment value — see
-    /// `ChatAppearance`. Composer and sidebar chrome stay fixed-size.
-    public var density: Density
     /// Whether the compactor automatically runs when context fills up.
     /// Persistence wired in M9; the `ChatSession` toggle hookup is M10
     /// alongside the in-chat manual-compact affordance.
@@ -45,7 +43,6 @@ public struct ChatSettings: Sendable, Equatable {
         systemPrompt: bundledDefaultSystemPrompt,
         defaultVerbosity: .simple,
         fontScale: 1.0,
-        density: .comfortable,
         autoCompactEnabled: true,
         autoCompactThreshold: 0.85
     )
@@ -63,14 +60,14 @@ public struct ChatSettings: Sendable, Equatable {
     /// literal). Production reads should go through
     /// `ChatSettings.default.systemPrompt`, which caches the result.
     static func _loadBundledDefaultSystemPrompt() -> String {
-        // `subdirectory: "Resources"` is paired with `.copy("Resources")` in
-        // `Package.swift` — `.copy` preserves the directory structure in the
-        // bundle. Changing the Package.swift directive to `.process` without
-        // updating this lookup would silently return nil → fatalError.
+        // `.process("Resources")` in `Package.swift` flattens the directory
+        // into the bundle root, so the file is looked up without a
+        // `subdirectory:` argument. Changing the Package.swift directive
+        // back to `.copy` without restoring `subdirectory: "Resources"`
+        // here would silently return nil → fatalError.
         guard let url = Bundle.module.url(
             forResource: "DefaultSystemPrompt",
-            withExtension: "md",
-            subdirectory: "Resources"
+            withExtension: "md"
         ) else {
             fatalError("DefaultSystemPrompt.md missing from Chat bundle resources")
         }
@@ -87,7 +84,6 @@ public struct ChatSettings: Sendable, Equatable {
         systemPrompt: String,
         defaultVerbosity: ChatVerbosity,
         fontScale: Double,
-        density: Density,
         autoCompactEnabled: Bool,
         autoCompactThreshold: Double
     ) {
@@ -95,7 +91,6 @@ public struct ChatSettings: Sendable, Equatable {
         self.systemPrompt = systemPrompt
         self.defaultVerbosity = defaultVerbosity
         self.fontScale = ChatSettings.clampFontScale(fontScale)
-        self.density = density
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = ChatSettings.clampThreshold(autoCompactThreshold)
     }
@@ -109,26 +104,8 @@ public struct ChatSettings: Sendable, Equatable {
         case sepia
     }
 
-    /// Three discrete vertical-spacing presets consumed by the
-    /// `\.chatAppearance` environment value — see `ChatAppearance` for
-    /// the resolved per-row paddings and paragraph line-spacing values.
-    public enum Density: String, Sendable, Equatable, CaseIterable, Codable {
-        case compact
-        case comfortable
-        case spacious
-
-        /// Title-cased label for the Appearance pane row.
-        public var displayName: String {
-            switch self {
-            case .compact: return "Compact"
-            case .comfortable: return "Comfortable"
-            case .spacious: return "Spacious"
-            }
-        }
-    }
-
     static func clampFontScale(_ value: Double) -> Double {
-        min(max(value, 0.85), 1.15)
+        min(max(value, 0.80), 1.20)
     }
 
     static func clampThreshold(_ value: Double) -> Double {
