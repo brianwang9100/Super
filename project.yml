@@ -57,11 +57,10 @@ targets:
         # (PRODUCT_NAME = "Super") because the App Store name "Super" is
         # already taken; the public brand is "SuperOS".
         CFBundleDisplayName: SuperOS
-        # iPhone: portrait + both landscapes; skip upside-down per Apple convention.
+        # iPhone: portrait only. Chat-first UX assumes a vertical
+        # composer + bubble layout; landscape would just letterbox.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
         # iPad: all four orientations are required for multitasking;
         # App Store upload validation rejects builds that omit any.
         UISupportedInterfaceOrientations~ipad:
