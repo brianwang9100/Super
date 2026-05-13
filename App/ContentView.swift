@@ -240,13 +240,12 @@ struct ChatHostView: View {
     }
 
     private func rebuildChatViewModel(for conversation: ConversationRecord) async {
-        // Cancel any in-flight streaming task on the outgoing view model
-        // so the dropped reference doesn't keep firing into a no-op
-        // closure. The underlying `ChatSession` actor is also cancelled —
-        // matches the visible UI state when the user switches chats.
-        // TODO(M11): resume streaming UI when re-opening a conversation
-        // that is mid-turn instead of silently terminating it here.
-        viewModel?.cancelStreaming()
+        // Detach (don't cancel) the outgoing view model. Its iteration
+        // task stops draining events so it can deinit promptly, but the
+        // underlying `ChatSession` (owned by `ChatSessionStore`) keeps
+        // streaming the turn to completion. Switching back will create a
+        // new view model whose `load()` re-attaches via `subscribe()`.
+        viewModel?.detachFromLiveTurn()
 
         let session = await dependencies.chatSessionStore.session(for: conversation.id)
         let liveDriver = LiveChatSessionDriver(session: session)

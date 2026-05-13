@@ -74,6 +74,33 @@ public actor ChatSession {
     /// pointlessly await an already-completed task).
     private var currentTask: Task<Void, Never>?
 
+    /// Per-turn fan-out state. Non-nil while a turn is in flight: holds
+    /// the accumulators that a late-attaching subscriber reads via
+    /// `subscribe()` to hydrate, plus every active subscriber's
+    /// continuation so `broadcast(...)` can yield to all of them.
+    /// Reset to `nil` in `finishLiveTurn()` after the turn winds down.
+    private var liveTurn: LiveTurn?
+
+    private struct LiveTurn {
+        var accumulatedText: String = ""
+        var accumulatedThinking: String = ""
+        var subscribers: [UUID: AsyncStream<ChatEvent>.Continuation] = [:]
+    }
+
+    /// Snapshot of the in-flight turn's accumulated text/thinking,
+    /// returned alongside the live event stream by `subscribe()`. Lets a
+    /// late attacher hydrate its view to the current state so the user
+    /// sees the in-progress response, not a blank slate.
+    public struct LiveTurnSnapshot: Sendable {
+        public let accumulatedText: String
+        public let accumulatedThinking: String
+
+        public init(accumulatedText: String, accumulatedThinking: String) {
+            self.accumulatedText = accumulatedText
+            self.accumulatedThinking = accumulatedThinking
+        }
+    }
+
     /// Designated initializer.
     ///
     /// - Parameters:
@@ -171,19 +198,19 @@ public actor ChatSession {
             await prior.value
         }
 
-        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        liveTurn = LiveTurn()
+        let subscription = subscribe()
         let task = Task {
-            await self.run(
-                userText: text,
-                model: model,
-                temperature: temperature,
-                continuation: continuation
-            )
-            continuation.finish()
+            await self.run(userText: text, model: model, temperature: temperature)
+            await self.finishLiveTurn()
         }
         currentTask = task
-        continuation.onTermination = { _ in task.cancel() }
-        return stream
+        // Intentionally no per-iterator cancel hook. The turn's lifetime
+        // is owned by the actor (cancellable via `cancel()`), not by
+        // whoever happens to be iterating a returned stream. Multiple
+        // consumers can attach in parallel via `subscribe()` so a UI
+        // view-model swap can keep streaming the same turn.
+        return subscription.stream
     }
 
     /// Manually invoke a compaction pass. Returns an `AsyncStream` so the
@@ -199,14 +226,87 @@ public actor ChatSession {
             await prior.value
         }
 
-        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        liveTurn = LiveTurn()
+        let subscription = subscribe()
         let task = Task {
-            await self.runCompaction(model: model, continuation: continuation)
-            continuation.finish()
+            await self.runCompaction(model: model)
+            await self.finishLiveTurn()
         }
         currentTask = task
-        continuation.onTermination = { _ in task.cancel() }
-        return stream
+        return subscription.stream
+    }
+
+    /// Attach to the in-flight turn (if any). Returns a snapshot of the
+    /// current accumulated text/thinking plus a fresh `AsyncStream` that
+    /// carries every subsequent `ChatEvent` for this turn. When no turn
+    /// is in flight the snapshot is `nil` and the stream finishes
+    /// immediately — callers should fall back to the persisted transcript.
+    ///
+    /// Multiple subscribers can be active simultaneously; each receives
+    /// the same events. When a subscriber's stream goes out of scope its
+    /// continuation's `onTermination` removes it from the fan-out — the
+    /// turn itself is unaffected.
+    public func subscribe() -> (snapshot: LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        // Bind to a local copy so the snapshot reads below are safe even
+        // if a future refactor introduces a suspension point between the
+        // guard and the dictionary write. The mutation itself uses
+        // optional-chain (`liveTurn?.subscribers[id] = ...`) for the same
+        // reason — no force-unwraps to maintain.
+        guard let live = liveTurn else {
+            continuation.finish()
+            return (nil, stream)
+        }
+        let id = UUID()
+        liveTurn?.subscribers[id] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeSubscriber(id: id) }
+        }
+        let snapshot = LiveTurnSnapshot(
+            accumulatedText: live.accumulatedText,
+            accumulatedThinking: live.accumulatedThinking
+        )
+        return (snapshot, stream)
+    }
+
+    /// Yield an event to every active subscriber and update the turn's
+    /// accumulators so a fresh `subscribe()` after this point reflects the
+    /// latest visible state. Reset accumulators on `.assistantMessageSaved`
+    /// so the next round-trip in a tool-call loop starts from `""`.
+    private func broadcast(_ event: ChatEvent) {
+        switch event {
+        case .textDelta(let chunk):
+            liveTurn?.accumulatedText += chunk
+        case .thinkingDelta(let chunk):
+            liveTurn?.accumulatedThinking += chunk
+        case .assistantMessageSaved:
+            liveTurn?.accumulatedText = ""
+            liveTurn?.accumulatedThinking = ""
+        default:
+            break
+        }
+        guard let subscribers = liveTurn?.subscribers else { return }
+        for (_, continuation) in subscribers {
+            continuation.yield(event)
+        }
+    }
+
+    /// Finish every active subscriber's stream and clear the turn state.
+    /// Called from the spawned task once the run loop returns (success,
+    /// error, or cancellation).
+    private func finishLiveTurn() {
+        if let subscribers = liveTurn?.subscribers {
+            for (_, continuation) in subscribers {
+                continuation.finish()
+            }
+        }
+        liveTurn = nil
+    }
+
+    /// Drop a subscriber whose iterator has been released. Safe to call
+    /// after `finishLiveTurn()` — the `liveTurn` optional-chain no-ops.
+    private func removeSubscriber(id: UUID) {
+        liveTurn?.subscribers.removeValue(forKey: id)
     }
 
     private func dispatch(command: SlashCommand, model: LLMModel) async -> AsyncStream<ChatEvent> {
@@ -233,8 +333,7 @@ public actor ChatSession {
     private func run(
         userText: String,
         model: LLMModel,
-        temperature: Double,
-        continuation: AsyncStream<ChatEvent>.Continuation
+        temperature: Double
     ) async {
         defer { currentTask = nil }
 
@@ -249,13 +348,13 @@ public actor ChatSession {
                 tokenCount: nil
             )
             try await messageRepository.save(userMessage)
-            continuation.yield(.userMessageSaved(userMessage))
+            broadcast(.userMessageSaved(userMessage))
 
             let provider = try await llmProviderRegistry.requireActive()
 
             while true {
                 try Task.checkCancellation()
-                try await maybeAutoCompact(model: model, continuation: continuation)
+                try await maybeAutoCompact(model: model)
                 let history = try await assembleHistory(model: model)
                 let enabledTools = await toolRegistry.enabledTools(for: provider)
                 let toolCalls = try await streamOneTurn(
@@ -263,25 +362,24 @@ public actor ChatSession {
                     messages: history,
                     model: model,
                     tools: enabledTools,
-                    temperature: temperature,
-                    continuation: continuation
+                    temperature: temperature
                 )
                 if toolCalls.isEmpty { return }
-                try await executeToolCalls(toolCalls, continuation: continuation)
+                try await executeToolCalls(toolCalls)
             }
         } catch is CancellationError {
-            continuation.yield(.error(.cancelled))
+            broadcast(.error(.cancelled))
         } catch let err as LLMError {
-            continuation.yield(.error(err))
+            broadcast(.error(err))
         } catch let err as LLMProviderRegistryError {
             switch err {
             case .noActiveProvider:
-                continuation.yield(.error(.requestFailed("no active LLM provider configured")))
+                broadcast(.error(.requestFailed("no active LLM provider configured")))
             case .unknownProvider(let id):
-                continuation.yield(.error(.requestFailed("unknown LLM provider: \(id)")))
+                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
             }
         } catch {
-            continuation.yield(.error(.requestFailed(error.localizedDescription)))
+            broadcast(.error(.requestFailed(error.localizedDescription)))
         }
     }
 
@@ -311,45 +409,39 @@ public actor ChatSession {
     /// compactor returns nil (nothing worth summarizing yet). On success
     /// emits `.compactionStarted` then `.compactionCompleted` so the UI
     /// can render the same banner it shows for `/compact`.
-    private func maybeAutoCompact(
-        model: LLMModel,
-        continuation: AsyncStream<ChatEvent>.Continuation
-    ) async throws {
+    private func maybeAutoCompact(model: LLMModel) async throws {
         guard autoCompactEnabled else { return }
         let assembly = try await assemble(model: model)
         guard assembly.isOverThreshold(autoCompactThreshold) else { return }
-        try await runCompactionPass(model: model, continuation: continuation)
+        try await runCompactionPass(model: model)
     }
 
     /// Body of `compact(model:)` — owns the cancellation/error mapping so
     /// the public entry point can stay focused on stream wiring.
-    private func runCompaction(
-        model: LLMModel,
-        continuation: AsyncStream<ChatEvent>.Continuation
-    ) async {
+    private func runCompaction(model: LLMModel) async {
         defer { currentTask = nil }
         do {
-            try await runCompactionPass(model: model, continuation: continuation)
+            try await runCompactionPass(model: model)
         } catch is CancellationError {
-            continuation.yield(.error(.cancelled))
+            broadcast(.error(.cancelled))
         } catch let err as LLMError {
-            continuation.yield(.error(err))
+            broadcast(.error(err))
         } catch let err as CompactorError {
             switch err {
             case .emptySummary:
-                continuation.yield(.error(.requestFailed("compaction returned empty summary")))
+                broadcast(.error(.requestFailed("compaction returned empty summary")))
             case .llmError(let underlying):
-                continuation.yield(.error(underlying))
+                broadcast(.error(underlying))
             }
         } catch let err as LLMProviderRegistryError {
             switch err {
             case .noActiveProvider:
-                continuation.yield(.error(.requestFailed("no active LLM provider configured")))
+                broadcast(.error(.requestFailed("no active LLM provider configured")))
             case .unknownProvider(let id):
-                continuation.yield(.error(.requestFailed("unknown LLM provider: \(id)")))
+                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
             }
         } catch {
-            continuation.yield(.error(.requestFailed(error.localizedDescription)))
+            broadcast(.error(.requestFailed(error.localizedDescription)))
         }
     }
 
@@ -358,10 +450,7 @@ public actor ChatSession {
     /// **only** after the compactor commits to running — when there's
     /// nothing to summarize we return without firing any events so the
     /// UI doesn't flash a banner that immediately disappears.
-    private func runCompactionPass(
-        model: LLMModel,
-        continuation: AsyncStream<ChatEvent>.Continuation
-    ) async throws {
+    private func runCompactionPass(model: LLMModel) async throws {
         let messages = try await messageRepository.fetchAll(conversationId: conversationId)
         let toolCalls = try await toolCallRepository.fetchByConversation(conversationId)
         let prior = try await checkpointRepository.liveCheckpoint(for: conversationId)
@@ -373,7 +462,7 @@ public actor ChatSession {
             return
         }
 
-        continuation.yield(.compactionStarted)
+        broadcast(.compactionStarted)
         let checkpoint = try await compactor.compact(
             conversationId: conversationId,
             messages: messages,
@@ -389,7 +478,7 @@ public actor ChatSession {
             assertionFailure("Compactor.wouldCompact disagreed with Compactor.compact — slicing logic drifted")
             return
         }
-        continuation.yield(.compactionCompleted(checkpoint))
+        broadcast(.compactionCompleted(checkpoint))
     }
 
     /// Drive one round trip through the provider. Returns the tool calls
@@ -403,8 +492,7 @@ public actor ChatSession {
         messages: [LLMMessage],
         model: LLMModel,
         tools: [LLMTool],
-        temperature: Double,
-        continuation: AsyncStream<ChatEvent>.Continuation
+        temperature: Double
     ) async throws -> [ToolCallRecord] {
         let stream = provider.stream(
             messages: messages,
@@ -413,8 +501,12 @@ public actor ChatSession {
             temperature: temperature
         )
 
-        var accumulatedText = ""
-        var accumulatedThinking = ""
+        // Reset turn-level accumulators so a late subscriber's snapshot
+        // reflects this round-trip's progress, not a previous one's. The
+        // tool-call loop calls `streamOneTurn` again after each tool
+        // executes, and each call is its own assistant message.
+        liveTurn?.accumulatedText = ""
+        liveTurn?.accumulatedThinking = ""
         var thinkingStartedAt: Date?
         var thinkingEndedAt: Date?
         var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
@@ -427,14 +519,12 @@ public actor ChatSession {
             case .messageStart, .contentBlockStart, .contentBlockStop:
                 break
             case .textDelta(_, let text):
-                accumulatedText += text
-                continuation.yield(.textDelta(text))
+                broadcast(.textDelta(text))
             case .thinkingDelta(_, let text):
-                accumulatedThinking += text
                 let now = clock.now()
                 if thinkingStartedAt == nil { thinkingStartedAt = now }
                 thinkingEndedAt = now
-                continuation.yield(.thinkingDelta(text))
+                broadcast(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
                 pendingCalls.append((id, name, input))
             case .messageComplete(let usage):
@@ -445,6 +535,12 @@ public actor ChatSession {
         }
 
         if let err = streamError { throw err }
+
+        // Snapshot the accumulated buffers BEFORE `.assistantMessageSaved`
+        // — `broadcast` resets them on that event so the next round-trip
+        // in a tool-call loop starts clean.
+        let accumulatedText = liveTurn?.accumulatedText ?? ""
+        let accumulatedThinking = liveTurn?.accumulatedThinking ?? ""
 
         // Skip empty turns — the LLM yielded `.messageComplete` without
         // any text or tool calls. Persisting an empty assistant row would
@@ -470,7 +566,7 @@ public actor ChatSession {
             tokenCount: capturedUsage?.outputTokens
         )
         try await messageRepository.save(assistantMessage)
-        continuation.yield(.assistantMessageSaved(assistantMessage))
+        broadcast(.assistantMessageSaved(assistantMessage))
 
         var savedCalls: [ToolCallRecord] = []
         for call in pendingCalls {
@@ -487,17 +583,14 @@ public actor ChatSession {
                 completedAt: nil
             )
             try await toolCallRepository.save(record)
-            continuation.yield(.toolCallStarted(record))
+            broadcast(.toolCallStarted(record))
             savedCalls.append(record)
         }
 
         return savedCalls
     }
 
-    private func executeToolCalls(
-        _ records: [ToolCallRecord],
-        continuation: AsyncStream<ChatEvent>.Continuation
-    ) async throws {
+    private func executeToolCalls(_ records: [ToolCallRecord]) async throws {
         for record in records {
             try Task.checkCancellation()
 
@@ -547,7 +640,7 @@ public actor ChatSession {
                     tokenCount: nil
                 )
                 try await messageRepository.save(toolResultMessage)
-                continuation.yield(.toolCallCompleted(updated, result))
+                broadcast(.toolCallCompleted(updated, result))
 
             case .failure(let failureResult, let message):
                 try await toolCallRepository.updateStatus(
@@ -567,7 +660,7 @@ public actor ChatSession {
                     tokenCount: nil
                 )
                 try await messageRepository.save(errorMessageRow)
-                continuation.yield(.toolCallFailed(updated, message))
+                broadcast(.toolCallFailed(updated, message))
             }
         }
     }
