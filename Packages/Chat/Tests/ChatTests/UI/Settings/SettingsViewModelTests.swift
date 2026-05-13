@@ -72,6 +72,21 @@ struct SettingsViewModelTests {
         #expect(raw == "New prompt body.")
     }
 
+    @Test("setSystemPrompt forwards to the systemPromptReceiver")
+    func setSystemPromptForwardsToReceiver() async {
+        // The fan-out hop (`systemPromptReceiver?.setSystemPrompt(value)`)
+        // is what propagates a Settings edit to active `ChatSession`s in
+        // production. Without this assertion, a future refactor that drops
+        // the forwarding line would compile, persist correctly, and leave
+        // every running conversation stuck on the old prompt until app
+        // restart — exactly the gap this PR exists to close.
+        let receiver = FakeSystemPromptReceiver()
+        let vm = makeViewModel(systemPromptReceiver: receiver)
+        await vm.setSystemPrompt("Always reply in haiku.")
+        let received = await receiver.received()
+        #expect(received == ["Always reply in haiku."])
+    }
+
     @Test("setDefaultVerbosity round-trips through the store")
     func setDefaultVerbosityRoundTrip() async {
         let settingRepo = InMemorySettingRepository()
@@ -325,7 +340,8 @@ struct SettingsViewModelTests {
         settingRepository: any SettingRepository = InMemorySettingRepository(),
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
         conversationRepository: any ConversationRepository = StubConversationRepository(rows: []),
-        toolRegistry: ToolRegistry = ToolRegistry()
+        toolRegistry: ToolRegistry = ToolRegistry(),
+        systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver()
     ) -> SettingsViewModel {
         SettingsViewModel(
             accountEmail: "test@example.com",
@@ -333,7 +349,8 @@ struct SettingsViewModelTests {
             settingRepository: settingRepository,
             modelRepository: modelRepository,
             conversationRepository: conversationRepository,
-            toolRegistry: toolRegistry
+            toolRegistry: toolRegistry,
+            systemPromptReceiver: systemPromptReceiver
         )
     }
 }

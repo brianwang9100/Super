@@ -491,14 +491,33 @@ When the applet registry changes (an applet is installed or removed), `AppletCha
 
 ## 7. System Prompts
 
-> **Not implemented in the shipped MVP.** `SystemPromptBuilder` (described in earlier versions of this section) was never built.
+`ChatSettings.systemPrompt` (edited from Settings → Prompt) is injected as the **leading `.system` `LLMMessage`** on every turn by `ContextAssembler.assemble(...)`. The value is trimmed; whitespace-only prompts skip injection so the LLM falls back to its built-in default behavior.
 
-The shipped Chat applet does not inject a per-conversation system prompt at the start of every turn. `ChatSettings.systemPrompt` is persisted (and edited from the Settings UI), but `ChatSession.run` does not read it — the only `.system` rows the LLM sees are:
+**Wiring.** `ChatSession` holds a `currentSystemPrompt` cache mirroring the `autoCompact*` push pattern:
 
-1. **Compaction checkpoints.** `ContextAssembler` folds the live `CompactionCheckpointRecord` (when present) in as a leading system message that summarizes earlier compacted turns.
+- **At app launch**, `AppBootstrap` loads `ChatSettings` from `ChatSettingsStore` and passes `settings.systemPrompt` into `ChatSessionStore` — new sessions are constructed with it.
+- **On Settings edits**, `SettingsViewModel.setSystemPrompt(_:)` writes to `ChatSettingsStore` and fans the new value out to every active session via `ChatSessionStore.setSystemPrompt(_:)`. Long-running sessions pick up the change on their next turn — no app restart, no per-session resubscribe.
+- **Per turn**, `ChatSession.assemble(model:)` passes `currentSystemPrompt` to `ContextAssembler.assemble(...)`. The injection is a runtime decision, not a snapshot baked into the conversation, so changing the setting affects every chat immediately (matching ChatGPT custom-instruction and Claude.ai preferences semantics).
+
+**Assembly order.** With every input present, the prompt array hands `ChatSession` this shape:
+
+```
+[0]                settings systemPrompt           (this section)
+[1..k]             original .system rows from history (rare; preserved across compaction)
+[k+1]              compaction checkpoint summary    (§ Compaction)
+[k+2..]            post-checkpoint conversation
+```
+
+Most conversations don't have historical `.system` rows, so the practical order is `[settings prompt, checkpoint?, ...rest]`.
+
+**Caching.** Prefix-based LLM caches (Anthropic, OpenAI) invalidate only on the turn the prompt content actually changes. Stable system prompts across turns cache normally; settings edits are rare in practice, so the cache cost is one miss per edit. Snapshotting at conversation creation would split identical prompts across conversations into different cache keys and is intentionally not the chosen design.
+
+**Out of scope.** Cross-applet system-prompt content (active applets, recent activity) was the original ambition for `SystemPromptBuilder`. Today the LLM gets the tool list via the provider's structured `tools` parameter; richer cross-applet context will land alongside the event bus.
+
+Other `.system` rows the LLM may see, independent of `ChatSettings.systemPrompt`:
+
+1. **Compaction checkpoints.** `ContextAssembler` folds the live `CompactionCheckpointRecord` (when present) in right after the settings prompt.
 2. **The title generator's internal prompt.** `TitleGenerator` sends its own static system prompt for the title-summarization round trip; this never affects the user's conversation.
-
-Wiring `ChatSettings.systemPrompt` into the prompt assembly (probably as a leading `LLMMessage(role: .system, ...)` prepended in `ContextAssembler`) is a known follow-up. When it lands, the build site will live next to `ContextAssembler` and this section should be rewritten to document the assembly order. Cross-applet system-prompt content (active applets, tools, recent activity) was the original ambition; today the LLM gets the tool list via the provider's structured `tools` parameter instead, and there is no cross-applet context to surface in MVP.
 
 ---
 
@@ -908,71 +927,14 @@ final class ToolRouterTests: XCTestCase {
 
 ### System Prompt Tests
 
-> Deferred. See [§7](#7-system-prompts) — `SystemPromptBuilder` is not implemented in the shipped MVP, so there's nothing to test yet. The (placeholder) test class below is retained only for historical context; remove when system-prompt injection lands.
+Covered in `ContextAssemblerTests` and `ChatSessionTests`:
 
-<details>
-<summary>Historical placeholder (do not run)</summary>
-
-```swift
-final class SystemPromptBuilderTests: XCTestCase {
-
-    func testIncludesAllActiveApplets() {
-        let builder = SystemPromptBuilder()
-        let prompt = builder.build(
-            activeApplets: ["todo", "calendar", "home"],
-            tools: [],
-            timezone: TimeZone(identifier: "America/Los_Angeles")!,
-            recentActivitySummary: nil
-        )
-
-        XCTAssertTrue(prompt.contains("todo"))
-        XCTAssertTrue(prompt.contains("calendar"))
-        XCTAssertTrue(prompt.contains("home"))
-    }
-
-    func testIncludesToolDescriptions() {
-        let builder = SystemPromptBuilder()
-        let tools = [
-            LLMTool(id: "todo.create", name: "create", description: "Create a new task", category: .mutation, parameters: [], applet: .todo)
-        ]
-        let prompt = builder.build(
-            activeApplets: ["todo"],
-            tools: tools,
-            timezone: .current,
-            recentActivitySummary: nil
-        )
-
-        XCTAssertTrue(prompt.contains("todo.create"))
-        XCTAssertTrue(prompt.contains("Create a new task"))
-    }
-
-    func testIncludesRecentActivityWhenProvided() {
-        let builder = SystemPromptBuilder()
-        let prompt = builder.build(
-            activeApplets: [],
-            tools: [],
-            timezone: .current,
-            recentActivitySummary: "User completed 3 tasks today."
-        )
-
-        XCTAssertTrue(prompt.contains("User completed 3 tasks today."))
-    }
-
-    func testOmitsRecentActivityWhenNil() {
-        let builder = SystemPromptBuilder()
-        let prompt = builder.build(
-            activeApplets: [],
-            tools: [],
-            timezone: .current,
-            recentActivitySummary: nil
-        )
-
-        XCTAssertFalse(prompt.contains("Recent activity"))
-    }
-}
-```
-
-</details>
+- `ContextAssemblerTests.systemPromptInjectedAtTopWhenNonEmpty` — non-empty prompt becomes the leading `.system` row.
+- `ContextAssemblerTests.systemPromptIsTrimmedAndSkippedWhenWhitespaceOnly` — empty / whitespace prompts skip injection; interior whitespace preserved.
+- `ContextAssemblerTests.systemPromptPrecedesCheckpointSummary` — settings prompt sits before the compaction summary.
+- `ContextAssemblerTests.systemPromptPrecedesHistoricalSystemRowAndCheckpoint` — full ordering check when history also carries a leading `.system` row.
+- `ContextAssemblerTests.systemPromptTokenCountIncludedInTotal` — the injected row is counted toward the budget.
+- `ChatSessionTests.setSystemPromptPropagatesToNextProviderRequest` — runtime `setSystemPrompt(_:)` surfaces on the next provider request.
 
 ---
 

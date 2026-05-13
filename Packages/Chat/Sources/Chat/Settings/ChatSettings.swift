@@ -9,9 +9,11 @@ public struct ChatSettings: Sendable, Equatable {
     /// Visual theme. Drives `SuperTheme.make(_:)` selection.
     /// Wired live: `ChatHostView` rebuilds its theme on change.
     public var themeId: ThemeID
-    /// System prompt prepended to new conversations.
-    /// Persistence wired in M9; consumption by `SystemPromptBuilder` is
-    /// the M10 task documented in `IMPLEMENTATION_STATUS.md`.
+    /// System prompt injected as the leading `.system` LLMMessage on every
+    /// turn by `ContextAssembler`. Edits via Settings → Prompt are pushed
+    /// to active `ChatSession`s through `ChatSessionStore.setSystemPrompt`
+    /// so long-running conversations pick up the new value on the next
+    /// turn. Empty / whitespace-only values skip injection.
     public var systemPrompt: String
     /// Default verbosity for new chats. Existing chats keep their own.
     /// Wired live: `ChatHostView.startNewChat` reads it.

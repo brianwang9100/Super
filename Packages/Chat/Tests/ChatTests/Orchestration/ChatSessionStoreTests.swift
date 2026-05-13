@@ -212,6 +212,66 @@ struct ChatSessionStoreTests {
         let sessionAReborn = await setup.store.session(for: "conv-A")
         #expect(sessionA !== sessionAReborn)
     }
+
+    @Test func setSystemPromptFansOutToExistingSession() async throws {
+        // `store.setSystemPrompt(_:)` must reach already-created sessions so
+        // a long-running conversation picks up a Settings edit on its next
+        // turn — testing the actual fan-out loop rather than just the
+        // session-level setter is what protects against a future refactor
+        // that drops the loop.
+        let setup = try await makeStore(scripts: [
+            [
+                .messageStart(id: "ma", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let sessionA = await setup.store.session(for: "conv-A")
+
+        await setup.store.setSystemPrompt("Always answer in haiku.")
+
+        let stream = await sessionA.send(text: "hi", model: setup.model)
+        _ = await self.collect(stream)
+        await sessionA.waitUntilFinished()
+
+        let request = await setup.provider.capturedRequests().last
+        #expect(request?.messages.first?.role == .system)
+        if case .text(let body) = request?.messages.first?.content.first {
+            #expect(body == "Always answer in haiku.")
+        } else {
+            Issue.record("expected leading .system row with the pushed prompt, got \(String(describing: request?.messages.first?.content))")
+        }
+    }
+
+    @Test func setSystemPromptIsInheritedBySessionsCreatedAfterTheCall() async throws {
+        // Sessions created *after* a store-level setSystemPrompt must start
+        // with the new value, not the construction-time default. Otherwise
+        // the user's just-saved prompt would only affect conversations whose
+        // sessions existed at save time — every subsequent "new chat" would
+        // silently revert to the value the store was bootstrapped with.
+        let setup = try await makeStore(scripts: [
+            [
+                .messageStart(id: "ma", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+
+        await setup.store.setSystemPrompt("Respond only in caps.")
+
+        let session = await setup.store.session(for: "conv-A")
+        let stream = await session.send(text: "hello", model: setup.model)
+        _ = await self.collect(stream)
+        await session.waitUntilFinished()
+
+        let request = await setup.provider.capturedRequests().last
+        #expect(request?.messages.first?.role == .system)
+        if case .text(let body) = request?.messages.first?.content.first {
+            #expect(body == "Respond only in caps.")
+        } else {
+            Issue.record("expected leading .system row with the pushed prompt, got \(String(describing: request?.messages.first?.content))")
+        }
+    }
 }
 
 /// A `ToolExecutor` that sleeps until either a long timeout elapses or the
