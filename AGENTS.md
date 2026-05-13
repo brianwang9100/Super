@@ -179,7 +179,17 @@ Async tests establish ordering through `await`, not through hope. Most "flaky" t
 - If a change crosses multiple packages, run tests in each touched package.
 - A PR that couldn't pass its own module's tests locally must not be pushed. CI will catch it, but that wastes the feedback loop.
 
-### 5. PR description must state what was tested
+### 5. iOS testing: match CI's Xcode + simulator runtime + iPhone
+
+Snapshot baselines are pixel-exact comparisons. A baseline recorded on one Xcode + iOS simulator runtime will fail on another, even between minor versions of the same Xcode, because the system text renderer and SwiftUI layout passes change. Always test and record against the same toolchain CI uses:
+
+- **Xcode**: `latest-stable` (resolved by `maxim-lobanov/setup-xcode@v1` in `.github/workflows/ios-build.yml`). Pin to the matching version locally — `xcodebuild -version` in the worktree and on a fresh CI log must agree. Use `DEVELOPER_DIR=/Applications/Xcode-<version>.app/Contents/Developer` per-command to switch when multiple Xcodes are installed.
+- **iOS simulator runtime**: CI uses whatever runtime ships with the resolved Xcode's bundled SDK (today: iOS 26.2 SDK on Xcode 26.3 / `macos-15` runner image). Apple does not always make old runtimes downloadable, so an exact match isn't always possible locally — when it isn't, prefer the *closest* available runtime and treat any cross-runtime baseline drift as a per-test problem (see `verifyEmpty` in `ChatScreenSnapshotTests` for the `precision`/`perceptualPrecision` tolerance pattern, only used when the drift is anti-aliasing on a custom font and a real regression would still register).
+- **iPhone model**: CI's `Pick iOS simulator` step picks the first iPhone on the highest-version available iOS runtime. Match that locally so layout, screen scale, and safe-area insets line up. Verify with `xcrun simctl list devices "iOS <version>"` and choose the same iPhone the script would.
+
+Before recording new snapshot baselines, confirm the local Xcode + runtime + device match CI's resolved trio. If they can't match exactly, document the gap and the chosen mitigation (e.g., perceptual tolerance) in the PR description.
+
+### 6. PR description must state what was tested
 
 Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
 
