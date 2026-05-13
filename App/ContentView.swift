@@ -154,11 +154,7 @@ struct ChatHostView: View {
             Task { await refreshAvailableModels() }
         }
         .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
-            // Push the Settings default into the open chat so the
-            // transcript expands/collapses thinking and tool-call blocks
-            // the moment the user flips the pane. Without this, the new
-            // value would only apply on the *next* conversation open
-            // (the init-time seed at `rebuildChatViewModel`).
+            // Without this the new value only applies on the next conversation open.
             if let newValue {
                 viewModel?.verbosity = newValue
             }
