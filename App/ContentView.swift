@@ -79,6 +79,7 @@ struct ChatHostView: View {
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
     @State private var theme: SuperTheme = .make(.light)
+    @State private var appearance: ChatAppearance = .default
     @State private var sidebarOpen: Bool = false
     @State private var settingsOpen: Bool = false
     @State private var activeConversationId: String?
@@ -99,6 +100,7 @@ struct ChatHostView: View {
                     onManageModels: { openSettings(initialPane: .models) }
                 )
                 .superTheme(theme)
+                .chatAppearance(appearance)
             } else if let bootstrapError {
                 FailureScreen(message: bootstrapError)
             } else {
@@ -126,6 +128,7 @@ struct ChatHostView: View {
                     }
                 )
                 .superTheme(theme)
+                .chatAppearance(appearance)
             }
 
             if let settingsViewModel {
@@ -134,17 +137,26 @@ struct ChatHostView: View {
                     viewModel: settingsViewModel
                 )
                 .superTheme(theme)
+                .chatAppearance(appearance)
             }
         }
         .task {
             await ensureViewModel()
         }
+        // Three narrow observers instead of one broad one on `settings`
+        // so unrelated mutations (system prompt, verbosity, auto-compact
+        // threshold) don't churn the host's render state — only the
+        // three appearance-relevant fields fire a refresh.
         .onChange(of: settingsViewModel?.settings.themeId) { _, newId in
-            // Mirror persisted theme choice into the host's render theme so
-            // the chat surface, sidebar, and sheet itself all repaint.
-            if let newId {
-                theme = .make(newId)
-            }
+            if let newId { theme = .make(newId) }
+        }
+        .onChange(of: settingsViewModel?.settings.fontScale) { _, newScale in
+            guard let newScale, let density = settingsViewModel?.settings.density else { return }
+            appearance = ChatAppearance(fontScale: newScale, density: density)
+        }
+        .onChange(of: settingsViewModel?.settings.density) { _, newDensity in
+            guard let newDensity, let scale = settingsViewModel?.settings.fontScale else { return }
+            appearance = ChatAppearance(fontScale: scale, density: newDensity)
         }
         .onChange(of: settingsViewModel?.models) { _, _ in
             // Refresh the composer's model picker whenever Settings adds,
@@ -218,6 +230,10 @@ struct ChatHostView: View {
             await settings.load()
             settingsViewModel = settings
             theme = .make(settings.settings.themeId)
+            appearance = ChatAppearance(
+                fontScale: settings.settings.fontScale,
+                density: settings.settings.density
+            )
         } catch {
             bootstrapError = "Could not open chat: \(error.localizedDescription)"
         }
