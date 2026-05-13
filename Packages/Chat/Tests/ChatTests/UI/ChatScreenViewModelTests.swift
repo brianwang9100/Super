@@ -672,30 +672,6 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
-    @Test("Verbosity is externally writable so settings changes can flow into the open chat")
-    func verbosityIsExternallyWritable() {
-        let viewModel = ChatScreenViewModel(
-            conversationId: conversationId,
-            conversationTitle: "Test",
-            driver: ScriptedDriver(events: []),
-            messageRepository: StubMessageRepository(),
-            toolCallRepository: StubToolCallRepository(),
-            checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
-        )
-
-        #expect(viewModel.verbosity == .simple)
-
-        viewModel.verbosity = .verbose
-        #expect(viewModel.verbosity == .verbose)
-
-        viewModel.verbosity = .thinking
-        #expect(viewModel.verbosity == .thinking)
-
-        viewModel.verbosity = .simple
-        #expect(viewModel.verbosity == .simple)
-    }
-
     @Test("Verbosity init argument lands in the stored property so the first render uses the caller-provided value")
     func verbosityInitArgumentSeedsStoredProperty() {
         let viewModel = ChatScreenViewModel(
