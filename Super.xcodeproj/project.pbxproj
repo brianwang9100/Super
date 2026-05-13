@@ -20,6 +20,7 @@
 		5CD7248626B357C0C7BCE21F /* Super.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Super.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E14DF6F5FC6EE821355D769 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		61F39965616CCD1C3A93C1E5 /* Chat */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chat; path = Packages/Chat; sourceTree = SOURCE_ROOT; };
+		9CC7BF855207A5FF7A4A848B /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		A8BA1600038FF259AD5B228E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
 		D37040D8281510F5E0053417 /* LazyConversationDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyConversationDriver.swift; sourceTree = "<group>"; };
@@ -41,6 +42,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		15C8BE24E5105BFAB2C35DDE /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				9CC7BF855207A5FF7A4A848B /* Base.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
 		1E8169B044BFE25AEEFA415C /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -66,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				629F5A105F32CABAE061F024 /* App */,
+				15C8BE24E5105BFAB2C35DDE /* Config */,
 				D18728D82C01571E5AD1589C /* Packages */,
 				1E8169B044BFE25AEEFA415C /* Products */,
 			);
@@ -115,7 +125,6 @@
 				TargetAttributes = {
 					730FC89DA2E4DC6C0AD15760 = {
 						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -301,10 +310,12 @@
 		};
 		6316583EAE612617E9E049CD /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9CC7BF855207A5FF7A4A848B /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
@@ -323,6 +334,7 @@
 		};
 		D1F1A6705EB2EB066B5AED4C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9CC7BF855207A5FF7A4A848B /* Base.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

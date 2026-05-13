@@ -161,6 +161,28 @@ jobs:
           echo "name=$PROFILE_NAME" >> "$GITHUB_OUTPUT"
           echo "Installed profile: $PROFILE_NAME ($PROFILE_UUID)"
 
+      - name: Write Config/Local.xcconfig from secrets
+        env:
+          PROFILE_NAME: ${{ steps.profile.outputs.name }}
+        run: |
+          # APPLE_TEAM_ID is already exported on the job (line 29) from
+          # secrets.APPLE_TEAM_ID; PROFILE_NAME is bridged through this
+          # step's env: above. Both are shell variables here, never
+          # interpolated as ${{ ... }} into the run script — which is the
+          # GitHub-recommended pattern for keeping run scripts free of
+          # workflow-template expansion.
+          #
+          # Config/Base.xcconfig (committed) does `#include? "Local.xcconfig"`
+          # and is wired as the Super target's baseConfigurationReference via
+          # `configFiles:` in project.yml. The actual team ID + profile name
+          # are gitignored — we materialize Local.xcconfig here from the same
+          # secrets we already imported for cert + profile installation.
+          mkdir -p Config
+          cat > Config/Local.xcconfig <<EOF
+          DEVELOPMENT_TEAM = ${APPLE_TEAM_ID}
+          PROVISIONING_PROFILE_SPECIFIER = ${PROFILE_NAME}
+          EOF
+
       - name: Compute build number
         id: build_number
         run: |
@@ -205,10 +227,12 @@ jobs:
           BUILD_NUMBER: ${{ steps.build_number.outputs.value }}
         run: |
           set -o pipefail
-          # Signing settings (CODE_SIGN_STYLE, CODE_SIGN_IDENTITY,
-          # DEVELOPMENT_TEAM, PROVISIONING_PROFILE_SPECIFIER) are defined on
-          # the Super target's Release config in project.yml so they don't
-          # leak to SwiftPM dependency targets.
+          # Signing settings reach the Super target via two paths, both
+          # target-scoped so they don't leak to SwiftPM dependency targets:
+          #   - CODE_SIGN_STYLE + CODE_SIGN_IDENTITY: inline in project.yml's
+          #     Release block (public-equivalent values).
+          #   - DEVELOPMENT_TEAM + PROVISIONING_PROFILE_SPECIFIER: from
+          #     Config/Local.xcconfig, written above from secrets.
           ARGS=(
             -project Super.xcodeproj
             -scheme Super

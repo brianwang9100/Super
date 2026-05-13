@@ -1,0 +1,15 @@
+// Copy this file to Config/Local.xcconfig and fill in your own values.
+// Config/Local.xcconfig is gitignored — your team ID never lands in git.
+//
+// Find your Apple Developer team ID at:
+//   https://developer.apple.com/account → Membership Details → Team ID
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+
+// PROVISIONING_PROFILE_SPECIFIER is only needed if you want to produce
+// Release archives locally (App Store / TestFlight distribution). For
+// Debug device builds, Automatic signing handles provisioning. CI's
+// TestFlight workflow writes this value at runtime from a secret, so
+// you do NOT need to set it just to land changes.
+//
+// PROVISIONING_PROFILE_SPECIFIER = Your Profile Name

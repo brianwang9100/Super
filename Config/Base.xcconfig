@@ -1,0 +1,14 @@
+// Base xcconfig — wired as baseConfigurationReference for the Super
+// target's Debug and Release build configs (via `xcconfig:` keys in
+// project.yml). Settings shared across every developer's build live here.
+//
+// Per-developer overrides (DEVELOPMENT_TEAM, PROVISIONING_PROFILE_SPECIFIER,
+// and any other Apple Developer account-specific values) live in
+// Config/Local.xcconfig, which is gitignored. Copy
+// Config/Local.xcconfig.example to Config/Local.xcconfig and fill in your
+// details before building for a device or producing a Release archive.
+//
+// The `?` on the include makes Local.xcconfig optional, so the iOS Simulator
+// build path used by CI (CODE_SIGNING_ALLOWED=NO) works without it.
+
+#include? "Local.xcconfig"

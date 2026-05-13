@@ -26,6 +26,9 @@ xcuserdata/
 # Generated project (xcodegen output is committed; user-state inside it is not)
 # Keep project.pbxproj in git, but exclude per-user state above.
 
+# Per-developer Xcode signing config — see Config/Local.xcconfig.example
+Config/Local.xcconfig
+
 # CocoaPods (not used, but defensive)
 Pods/
 
