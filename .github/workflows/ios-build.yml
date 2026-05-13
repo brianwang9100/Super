@@ -19,17 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26.5
+      - name: Select Xcode 26+
         # macos-15 image's default Xcode is 16.4 (iOS 18.5 SDK). The repo
         # targets Swift 6 strict-concurrency rules that newer toolchains
         # enforce more rigorously, and snapshot baselines are recorded
-        # against the iOS 26.5 simulator runtime. Pin to a specific Xcode
-        # version (not `latest-stable`) so the renderer SDK matches local
-        # dev exactly — sub-pixel rendering differences across Xcode
-        # versions break strict-pixel snapshot comparisons.
+        # against iOS 26.x simulators. Pin to latest-stable Xcode so the
+        # runner uses the same toolchain + sim runtime as local dev.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5'
+          xcode-version: latest-stable
 
       - name: Show toolchain
         run: xcodebuild -version
@@ -66,17 +64,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26.5
+      - name: Select Xcode 26+
         # macos-15 image's default Xcode is 16.4 (iOS 18.5 SDK). The repo
         # targets Swift 6 strict-concurrency rules that newer toolchains
         # enforce more rigorously, and snapshot baselines are recorded
-        # against the iOS 26.5 simulator runtime. Pin to a specific Xcode
-        # version (not `latest-stable`) so the renderer SDK matches local
-        # dev exactly — sub-pixel rendering differences across Xcode
-        # versions break strict-pixel snapshot comparisons.
+        # against iOS 26.x simulators. Pin to latest-stable Xcode so the
+        # runner uses the same toolchain + sim runtime as local dev.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26.5'
+          xcode-version: latest-stable
 
       - name: Show toolchain
         run: xcodebuild -version
