@@ -177,6 +177,15 @@ private struct NoopDriver: ChatSessionDriver {
             continuation.finish()
         }
     }
+
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        let stream = AsyncStream<ChatEvent> { continuation in
+            continuation.finish()
+        }
+        return (nil, stream)
+    }
+
+    func cancel() async {}
 }
 
 private actor SnapshotMessageRepository: MessageRepository {

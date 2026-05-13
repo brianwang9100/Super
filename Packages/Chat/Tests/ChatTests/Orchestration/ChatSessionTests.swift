@@ -515,4 +515,133 @@ struct ChatSessionTests {
             Issue.record("expected leading .system text, got \(String(describing: secondRequest?.messages.first?.content))")
         }
     }
+
+    @Test func subscribeOnQuiescentSessionReturnsNilSnapshotAndFinishedStream() async throws {
+        // No turn in flight: `subscribe()` is the documented hook for a
+        // newly-mounted view model to ask "anything streaming for this
+        // conversation?". It must answer cleanly without spinning up any
+        // work — `snapshot == nil` and the stream finishes immediately
+        // so the caller's `for await` loop exits without hanging.
+        let setup = try await makeSetup()
+
+        let (snapshot, stream) = await setup.session.subscribe()
+        #expect(snapshot == nil)
+
+        var events: [ChatEvent] = []
+        for await event in stream { events.append(event) }
+        #expect(events.isEmpty)
+    }
+
+    @Test func subscribeDuringToolPauseDeliversRemainingEventsToLateSubscriber() async throws {
+        // The plan's central contract: a view model that mounts mid-turn
+        // can re-attach via `subscribe()` and receive every subsequent
+        // `ChatEvent` from the in-flight turn — including the terminal
+        // `.assistantMessageSaved` once the tool resumes. We pause the
+        // turn inside the tool loop (a deterministic synchronization
+        // point exposed via `awaitFirstCall()`), attach a second
+        // subscriber, then resume the tool and assert that the late
+        // subscriber's stream carries the rest of the turn through to
+        // completion.
+        let toolID = "test.resumable"
+        let toolDef = LLMTool(
+            id: toolID,
+            name: "resumable",
+            description: "Test tool that waits for an external resume signal.",
+            category: .query,
+            parameters: [],
+            appletId: "test"
+        )
+        let resumableExecutor = ResumableToolExecutor(toolID: toolID)
+
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "thinking"),
+                .toolUse(index: 1, id: "tc-1", name: toolID, input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: " done"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+        await setup.toolRegistry.register(ToolRegistration(tool: toolDef, execution: .local(resumableExecutor)))
+
+        let firstStream = await setup.session.send(text: "kick", model: setup.model)
+        async let firstEvents: [ChatEvent] = self.collect(firstStream)
+
+        // Sync on the tool actually starting — the turn is now paused
+        // mid-loop, after the first round's `.assistantMessageSaved`
+        // (which resets the accumulators on the actor) and before the
+        // second round begins. Subscribing here proves the late
+        // subscriber sees `.toolCallCompleted`, the second round's
+        // `.textDelta`, and the final `.assistantMessageSaved`.
+        await resumableExecutor.awaitFirstCall()
+
+        let (snapshot, lateStream) = await setup.session.subscribe()
+        #expect(snapshot != nil)
+        async let lateEvents: [ChatEvent] = self.collect(lateStream)
+
+        // Resume the tool: the turn finishes its second round-trip and
+        // emits `.assistantMessageSaved`. Both subscribers' streams
+        // close after `finishLiveTurn()`.
+        await resumableExecutor.resume(with: ToolResult(toolID: toolID, content: "{}", isError: false))
+
+        let (early, late) = await (firstEvents, lateEvents)
+        await setup.session.waitUntilFinished()
+
+        // The early subscriber saw the full turn including the first
+        // round's `.assistantMessageSaved`.
+        #expect(early.contains { if case .assistantMessageSaved = $0 { return true }; return false })
+
+        // The late subscriber saw `.toolCallCompleted` and the second
+        // round's `.assistantMessageSaved` — proving the fan-out kept
+        // delivering events to it through the rest of the turn.
+        let lateAssistantSaved = late.filter {
+            if case .assistantMessageSaved = $0 { return true }
+            return false
+        }
+        #expect(lateAssistantSaved.count >= 1, "late subscriber must see at least one .assistantMessageSaved")
+
+        let lateToolCompleted = late.contains {
+            if case .toolCallCompleted = $0 { return true }
+            return false
+        }
+        #expect(lateToolCompleted)
+    }
+
+    @Test func turnSurvivesWhenConsumerDropsTheStream() async throws {
+        // The architecture contract (ChatSession docstring lines 8-12, mirrored
+        // in ChatSessionStore lines 7-10) is: switching away from a streaming
+        // chat in the UI must not cancel the underlying turn. The session's
+        // task is supposed to live independent of the returned AsyncStream's
+        // iteration, so the final `MessageRecord` always lands in GRDB.
+        //
+        // This test drops the stream without ever iterating it — modeling the
+        // host `rebuildChatViewModel` swap where the old view model (and the
+        // AsyncStream it was iterating) is released mid-turn. The turn must
+        // still complete and persist the assistant row.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "complete"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+
+        // Discard the returned stream immediately. AsyncStream fires its
+        // `onTermination` handler when the stream is released without an
+        // active iterator — on `main` this cancels `currentTask` and aborts
+        // the turn before `.messageComplete` is processed.
+        _ = await setup.session.send(text: "Hello", model: setup.model)
+
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let assistant = stored.first(where: { $0.role == .assistant })
+        #expect(assistant != nil, "assistant turn must persist even when no consumer is listening")
+        #expect(assistant?.content == "complete")
+    }
 }
+

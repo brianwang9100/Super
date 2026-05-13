@@ -105,6 +105,18 @@ public final class ChatScreenViewModel {
 
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
+    /// The fire-and-forget cancel `Task` spawned by `cancelStreaming()`.
+    /// Held only so tests can deterministically await it via
+    /// `_waitForPendingCancelTask()` — production never reads it.
+    private var cancelTask: Task<Void, Never>?
+    /// Set once `detachFromLiveTurn()` has been called. Gates `handle(_:)`
+    /// and `consume`'s final-cleanup writes so events already buffered in
+    /// this view model's subscription (`AsyncStream` delivers them even
+    /// after iteration is cancelled, until the iterator observes the
+    /// cancel on its next call) cannot mutate observable state or kick
+    /// off side effects like a title-generation LLM call for a chat the
+    /// user has just navigated away from.
+    private var isDetached: Bool = false
     /// Set after the first successful title-generation attempt so a
     /// subsequent `.assistantMessageSaved` doesn't rerun the LLM call. We
     /// don't reset this — once a chat has a generated title, the user
@@ -189,9 +201,38 @@ public final class ChatScreenViewModel {
     }
 
     /// Initial load of persisted messages + checkpoint. Called from
-    /// `ChatScreen.task { await viewModel.load() }`.
+    /// `ChatScreen.task { await viewModel.load() }`. After refreshing the
+    /// on-disk transcript, attaches to any turn the underlying session
+    /// has in flight so a re-mounted screen picks up the live response
+    /// from where it currently is — see `attachToLiveTurnIfAny()`.
     public func load() async {
         await refreshTranscript()
+        await attachToLiveTurnIfAny()
+    }
+
+    /// If the underlying session is mid-turn, subscribe to its event
+    /// feed and hydrate `streamingTail` from the snapshot so the user
+    /// immediately sees the in-progress text/thinking. No-op when no turn
+    /// is in flight — the returned stream finishes immediately.
+    private func attachToLiveTurnIfAny() async {
+        let (snapshot, stream) = await driver.subscribe()
+        guard let snapshot else { return }
+        // `thinkingStartedAt` is only used to render the elapsed-time
+        // label on the thinking block; we don't know the real start
+        // time of the in-progress turn, so use "now" — the label is
+        // approximate from the user's perspective anyway.
+        streamingTail = MessageList.StreamingState(
+            thinking: snapshot.accumulatedThinking,
+            thinkingStartedAt: snapshot.accumulatedThinking.isEmpty ? nil : Date(),
+            text: snapshot.accumulatedText,
+            isCompacting: false
+        )
+        isStreaming = true
+        error = nil
+        streamTask = Task { [weak self] in
+            guard let self else { return }
+            await self.consume(stream: stream)
+        }
     }
 
     /// Inject pre-baked transcript state for snapshot tests and SwiftUI
@@ -223,6 +264,24 @@ public final class ChatScreenViewModel {
         await titleTask?.value
     }
 
+    /// Test seam: await the in-flight stream iteration `Task` so a test
+    /// can deterministically synchronize on "this view model has
+    /// finished draining its subscription" without polling
+    /// `isStreaming`. Same rationale as `_waitForPendingTitleTask()` —
+    /// see CLAUDE.md "Make async tests deterministic" for why polling
+    /// loops are race amplifiers. Returns immediately when no stream
+    /// task is in flight.
+    func _waitForPendingStreamTask() async {
+        await streamTask?.value
+    }
+
+    /// Test seam: await the fire-and-forget cancel `Task` spawned by
+    /// `cancelStreaming()` so a test can deterministically assert the
+    /// driver was actually invoked.
+    func _waitForPendingCancelTask() async {
+        await cancelTask?.value
+    }
+
     /// Submit the current composer text. No-op when empty or when a turn
     /// is already in flight.
     public func send(_ rawText: String) {
@@ -233,8 +292,30 @@ public final class ChatScreenViewModel {
         startStreaming(text: text, model: model)
     }
 
-    /// Cancel the in-flight turn, if any.
+    /// Cancel the in-flight turn (composer stop button). Routes through
+    /// the driver so the underlying session's task is cancelled — not
+    /// just this view model's iteration. Dropping the iteration alone
+    /// would leave the LLM call running in the background, charging
+    /// tokens for output the user can't see.
     public func cancelStreaming() {
+        cancelTask = Task { [driver] in
+            await driver.cancel()
+        }
+    }
+
+    /// Detach this view model from the in-flight turn without cancelling
+    /// the underlying session. Called by the host when swapping this
+    /// view model out (the user picked a different conversation). The
+    /// stream iterator drops, the actor's subscriber list shrinks by
+    /// one, and the turn keeps running for any other subscriber (or
+    /// just to persist the final `MessageRecord`).
+    ///
+    /// Sets `isDetached = true` before cancelling so any event already
+    /// buffered in this view model's subscription (delivered before the
+    /// iterator observes the cancel) is dropped by `handle(_:)` rather
+    /// than mutating observable state or firing background work.
+    public func detachFromLiveTurn() {
+        isDetached = true
         streamTask?.cancel()
     }
 
@@ -369,9 +450,21 @@ public final class ChatScreenViewModel {
 
     private func run(text: String, model: LLMModel) async {
         let stream = await driver.send(text: text, model: model)
+        await consume(stream: stream)
+    }
+
+    /// Iterate a session event stream — used by both the initial `send`
+    /// path and the re-attach path in `attachToLiveTurnIfAny`. Drains
+    /// every event through `handle(_:)`, then refreshes the transcript
+    /// one last time and clears the streaming UI. Skips the final
+    /// cleanup if `detachFromLiveTurn()` was called — at that point the
+    /// host has already replaced this view model, so its observable
+    /// state and any GRDB round-trip would be wasted.
+    private func consume(stream: AsyncStream<ChatEvent>) async {
         for await event in stream {
             await handle(event)
         }
+        if isDetached { return }
         await refreshTranscript()
         streamingTail = nil
         isStreaming = false
@@ -379,6 +472,14 @@ public final class ChatScreenViewModel {
     }
 
     private func handle(_ event: ChatEvent) async {
+        // Drop any event delivered after the host detached this view
+        // model. `AsyncStream` can return events already in its buffer
+        // even after the iteration task is cancelled, so without this
+        // gate a detached view model could still mutate observable
+        // state, refresh from GRDB, or — most expensively — fire a
+        // title-generation LLM call on the user's behalf for a chat
+        // they've already navigated away from.
+        if isDetached { return }
         switch event {
         case .userMessageSaved(let userMessage):
             await refreshTranscript()
@@ -705,9 +806,23 @@ public final class ChatScreenViewModel {
 /// Indirection between `ChatScreenViewModel` and `ChatSession` so the view
 /// model can be tested with a fake driver without spinning up GRDB or an
 /// LLM provider. The production conformer lives in
-/// `ChatSession+Driver.swift`.
+/// `ChatSessionDriver+Adapter.swift`.
 public protocol ChatSessionDriver: Sendable {
     func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent>
+
+    /// Attach to the underlying session's in-flight turn (if any). The
+    /// view model calls this on `load()` so a re-mounted screen for a
+    /// conversation whose session is mid-turn picks up where it left off
+    /// instead of waiting for `.assistantMessageSaved` to repaint from
+    /// GRDB. The snapshot is `nil` (and the stream finishes immediately)
+    /// when no turn is in flight.
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>)
+
+    /// Cancel the session's current turn. The composer's stop button
+    /// calls this — dropping the view model's iteration alone no longer
+    /// cancels the underlying work (so view-model swaps don't abort
+    /// streams), so an explicit cancel hook is needed.
+    func cancel() async
 }
 
 /// Default ``VoiceInputService`` used when no controller is injected

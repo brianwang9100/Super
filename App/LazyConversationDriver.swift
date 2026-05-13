@@ -41,4 +41,16 @@ actor LazyConversationDriver: ChatSessionDriver {
         }
         return await inner.send(text: text, model: model)
     }
+
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        // A draft conversation that hasn't been persisted has no session
+        // either, but the inner driver can answer either way: the live
+        // session returns (nil, immediately-finished) when no turn is in
+        // flight. No reason to gate this on `ensureSaved`.
+        await inner.subscribe()
+    }
+
+    func cancel() async {
+        await inner.cancel()
+    }
 }
