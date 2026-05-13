@@ -493,6 +493,8 @@ When the applet registry changes (an applet is installed or removed), `AppletCha
 
 `ChatSettings.systemPrompt` (edited from Settings → Prompt) is injected as the **leading `.system` `LLMMessage`** on every turn by `ContextAssembler.assemble(...)`. The value is trimmed; whitespace-only prompts skip injection so the LLM falls back to its built-in default behavior.
 
+**Default value.** `ChatSettings.default.systemPrompt` is loaded once at type-init from `Packages/Chat/Sources/Chat/Resources/DefaultSystemPrompt.md` (bundled via `Bundle.module`). Editing the file edits the factory default; existing users keep whatever they've saved in Settings → Prompt because `ChatSettingsStore.load()` only consults the default when no row exists for the `systemPrompt` key.
+
 **Wiring.** `ChatSession` holds a `currentSystemPrompt` cache mirroring the `autoCompact*` push pattern:
 
 - **At app launch**, `AppBootstrap` loads `ChatSettings` from `ChatSettingsStore` and passes `settings.systemPrompt` into `ChatSessionStore` — new sessions are constructed with it.

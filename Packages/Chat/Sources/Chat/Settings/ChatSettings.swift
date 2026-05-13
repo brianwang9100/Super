@@ -35,15 +35,52 @@ public struct ChatSettings: Sendable, Equatable {
     /// fires. Persisted now; consumed alongside `autoCompactEnabled` in M10.
     public var autoCompactThreshold: Double
 
+    /// Factory defaults. `systemPrompt` is loaded once from
+    /// `Resources/DefaultSystemPrompt.md` shipped in `Bundle.module`; all
+    /// other fields are inline literals. A user who has edited
+    /// Settings → Prompt keeps their value — `ChatSettingsStore.load()`
+    /// only falls back to this default when no row exists for the key.
     public static let `default` = ChatSettings(
         themeId: .light,
-        systemPrompt: "You are Super, a thoughtful personal assistant. Answer directly and well.",
+        systemPrompt: bundledDefaultSystemPrompt,
         defaultVerbosity: .simple,
         fontScale: 1.0,
         density: .comfortable,
         autoCompactEnabled: true,
         autoCompactThreshold: 0.85
     )
+
+    /// Contents of the bundled `DefaultSystemPrompt.md`, trimmed of
+    /// surrounding whitespace. Loaded once at type init; a missing
+    /// resource is a packaging bug, not a runtime condition — fail loud.
+    private static let bundledDefaultSystemPrompt: String = _loadBundledDefaultSystemPrompt()
+
+    /// Reads `Resources/DefaultSystemPrompt.md` from `Bundle.module`
+    /// fresh on every call. Underscore-prefixed because the only legitimate
+    /// caller outside the static-let cache is `ChatSettingsTests`, which
+    /// uses it to verify `default.systemPrompt` matches an independent
+    /// read of the on-disk file (catches a silent revert to a hardcoded
+    /// literal). Production reads should go through
+    /// `ChatSettings.default.systemPrompt`, which caches the result.
+    static func _loadBundledDefaultSystemPrompt() -> String {
+        // `subdirectory: "Resources"` is paired with `.copy("Resources")` in
+        // `Package.swift` — `.copy` preserves the directory structure in the
+        // bundle. Changing the Package.swift directive to `.process` without
+        // updating this lookup would silently return nil → fatalError.
+        guard let url = Bundle.module.url(
+            forResource: "DefaultSystemPrompt",
+            withExtension: "md",
+            subdirectory: "Resources"
+        ) else {
+            fatalError("DefaultSystemPrompt.md missing from Chat bundle resources")
+        }
+        do {
+            let raw = try String(contentsOf: url, encoding: .utf8)
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            fatalError("DefaultSystemPrompt.md present but unreadable as UTF-8: \(error)")
+        }
+    }
 
     public init(
         themeId: ThemeID,
