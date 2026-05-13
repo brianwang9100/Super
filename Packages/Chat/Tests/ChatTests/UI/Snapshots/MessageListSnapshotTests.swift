@@ -402,25 +402,28 @@ struct MessageListSnapshotTests {
     /// (each chat re-anchors instead of inheriting a prior offset)
     /// depends on the host applying `.id(...)` to force a fresh view
     /// identity per chat — that path is covered by manual verification.
-    @Test("freshly mounted long transcript anchors at bottom")
-    func freshlyMountedLongTranscript() {
-        let function = #function
-        let manyItems: [MessageList.Item] = (1...30).flatMap { i in
-            [
-                MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)"),
-                MessageList.Item.assistantText(
-                    id: "a\(i)",
-                    thinking: nil,
-                    thinkingDurationMs: nil,
-                    text: "Assistant reply \(i).",
-                    toolCalls: []
-                ),
-            ]
-        }
-        let view = MessageList(items: manyItems, verbosity: .verbose)
-            .superTheme(.make(.light))
-            .frame(width: 402, height: 700)
-        recordOrCompare(view: view, name: "list_long_transcript_anchored_bottom", function: function)
+    @Test("freshly mounted long transcript anchors at bottom (light)")
+    func freshlyMountedLongTranscriptLight() {
+        verifyLongTranscript(theme: .light, name: "list_long_transcript_anchored_bottom")
+    }
+
+    @Test("freshly mounted long transcript anchors at bottom (dark)")
+    func freshlyMountedLongTranscriptDark() {
+        verifyLongTranscript(theme: .dark, name: "list_long_transcript_anchored_bottom_dark")
+    }
+
+    @Test("freshly mounted long transcript anchors at bottom (sepia)")
+    func freshlyMountedLongTranscriptSepia() {
+        verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
+    }
+
+    @Test("freshly mounted long transcript anchors at bottom (dynamic type XXL)")
+    func freshlyMountedLongTranscriptXXL() {
+        verifyLongTranscript(
+            theme: .light,
+            dynamicTypeSize: .xxLarge,
+            name: "list_long_transcript_anchored_bottom_xxl"
+        )
     }
 
     private func verify(
@@ -430,6 +433,34 @@ struct MessageListSnapshotTests {
     ) {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    /// 30 user/assistant pairs — enough rows to overflow the 402×700
+    /// snapshot frame so the initial-bottom-anchor latch can be observed.
+    private static let longTranscriptItems: [MessageList.Item] = (1...30).flatMap { i in
+        [
+            MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)"),
+            MessageList.Item.assistantText(
+                id: "a\(i)",
+                thinking: nil,
+                thinkingDurationMs: nil,
+                text: "Assistant reply \(i).",
+                toolCalls: []
+            ),
+        ]
+    }
+
+    private func verifyLongTranscript(
+        theme: SuperTheme.Identifier,
+        dynamicTypeSize: DynamicTypeSize = .large,
+        name: String,
+        function: String = #function
+    ) {
+        let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
+            .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicTypeSize)
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
     }
