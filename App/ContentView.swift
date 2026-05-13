@@ -154,7 +154,9 @@ struct ChatHostView: View {
             Task { await refreshAvailableModels() }
         }
         .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
-            // Without this the new value only applies on the next conversation open.
+            // The chat view model is constructed per-conversation, so without
+            // an explicit push here a settings flip would only take effect
+            // when the user opens the next chat.
             viewModel?.applyExternalVerbosity(newValue)
         }
     }

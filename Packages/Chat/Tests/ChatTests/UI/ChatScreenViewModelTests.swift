@@ -684,12 +684,8 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.verbosity == .thinking)
     }
 
-    @Test("applyExternalVerbosity is a no-op on nil so the host's optional .onChange binding can pass through directly")
+    @Test("applyExternalVerbosity is a no-op on nil so an optional observable can pass through directly")
     func applyExternalVerbosityIgnoresNil() {
-        // The host wires `.onChange(of: settingsViewModel?.settings.defaultVerbosity)`
-        // whose value is `ChatVerbosity?`; the nil case (settingsViewModel
-        // still loading) must leave the existing verbosity intact rather
-        // than reset it.
         let viewModel = makeMinimalViewModel()
         viewModel.applyExternalVerbosity(.verbose)
         #expect(viewModel.verbosity == .verbose)
