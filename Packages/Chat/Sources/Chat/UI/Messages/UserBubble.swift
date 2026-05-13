@@ -11,7 +11,7 @@ struct UserBubble: View {
     /// point size composes Dynamic Type with the chat font-scale knob —
     /// at XXL the user bubble grows beyond plain markdown body, matching
     /// the pre-`ChatAppearance` behavior.
-    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 15
+    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     var body: some View {
         HStack {

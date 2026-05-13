@@ -143,20 +143,16 @@ struct ChatHostView: View {
         .task {
             await ensureViewModel()
         }
-        // Three narrow observers instead of one broad one on `settings`
+        // Narrow observers instead of one broad one on `settings`
         // so unrelated mutations (system prompt, verbosity, auto-compact
         // threshold) don't churn the host's render state — only the
-        // three appearance-relevant fields fire a refresh.
+        // appearance-relevant fields fire a refresh.
         .onChange(of: settingsViewModel?.settings.themeId) { _, newId in
             if let newId { theme = .make(newId) }
         }
         .onChange(of: settingsViewModel?.settings.fontScale) { _, newScale in
-            guard let newScale, let density = settingsViewModel?.settings.density else { return }
-            appearance = ChatAppearance(fontScale: newScale, density: density)
-        }
-        .onChange(of: settingsViewModel?.settings.density) { _, newDensity in
-            guard let newDensity, let scale = settingsViewModel?.settings.fontScale else { return }
-            appearance = ChatAppearance(fontScale: scale, density: newDensity)
+            guard let newScale else { return }
+            appearance = ChatAppearance(fontScale: newScale)
         }
         .onChange(of: settingsViewModel?.models) { _, _ in
             // Refresh the composer's model picker whenever Settings adds,
@@ -230,10 +226,7 @@ struct ChatHostView: View {
             await settings.load()
             settingsViewModel = settings
             theme = .make(settings.settings.themeId)
-            appearance = ChatAppearance(
-                fontScale: settings.settings.fontScale,
-                density: settings.settings.density
-            )
+            appearance = ChatAppearance(fontScale: settings.settings.fontScale)
         } catch {
             bootstrapError = "Could not open chat: \(error.localizedDescription)"
         }

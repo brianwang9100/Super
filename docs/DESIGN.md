@@ -424,7 +424,7 @@ Opened from the sidebar's floating gear button (see `Chat/DESIGN.md` §6.4). Pan
 
 - **Account** (username/password, see `AUTH.md`)
 - **Mini-Apps** (install / uninstall / reorder — the Mini-App Manager)
-- **Appearance** (theme, font size, density — shared across all mini-apps)
+- **Appearance** (theme, font size — shared across all mini-apps; spacing is derived from font size)
 - **Models** (LLM endpoints + keys)
 - **System Prompt** / **Default Verbosity** (chat defaults)
 - **Notifications** (per-mini-app toggles + global push permission)

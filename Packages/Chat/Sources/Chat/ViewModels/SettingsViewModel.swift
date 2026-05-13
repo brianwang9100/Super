@@ -1,6 +1,13 @@
 import Core
 import Foundation
+import os
 import SwiftUI
+
+/// Production diagnostics for the Settings pane's model-CRUD path. Lives
+/// at file scope (not on the view model) so static methods and tests
+/// observe the same Logger instance. Category `chat-settings` so future
+/// settings-side telemetry can join under one filter.
+private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
 /// View model backing `SettingsSheet`. Owns the resolved `ChatSettings`
 /// snapshot, the configured-models list, the registered-tools list, and the
@@ -80,6 +87,14 @@ public final class SettingsViewModel {
     /// Number of non-deleted conversations. Surfaced as the trailing value
     /// on the Data row in the root pane.
     public private(set) var chatCount: Int = 0
+
+    /// User-facing error message from the most recent `createModel` /
+    /// `updateModel` attempt, or `nil` when the last attempt succeeded or
+    /// none has been made. The model-detail pane reads this to render an
+    /// inline error under the Save button — without it, a Keychain or
+    /// repository failure produces a silent dismiss and the user is left
+    /// wondering why no row appeared.
+    public private(set) var modelEditError: String?
 
     /// Stack of pushed sub-panes. Empty means the root is showing.
     /// Bound to `SettingsSheet`'s `NavigationStack(path:)`, which is what
@@ -249,11 +264,6 @@ public final class SettingsViewModel {
         try? await store.setFontScale(clamped)
     }
 
-    public func setDensity(_ value: ChatSettings.Density) async {
-        settings.density = value
-        try? await store.setDensity(value)
-    }
-
     public func setAutoCompactEnabled(_ value: Bool) async {
         settings.autoCompactEnabled = value
         try? await store.setAutoCompactEnabled(value)
@@ -337,6 +347,13 @@ public final class SettingsViewModel {
     /// Also registers a matching `LLMProvider` with the registry (when
     /// injected) so the chat surface can use the new model immediately —
     /// without it the user would have to relaunch the app.
+    ///
+    /// On failure, sets ``modelEditError`` to a human-readable string and
+    /// logs the underlying error via the unified log. Callers
+    /// (`SettingsModelDetailPane`) read ``modelEditError`` to decide
+    /// whether to pop the pane (nil → success, pop; non-nil → keep the
+    /// pane up so the user sees the error). Re-trying clears the error
+    /// at the start of the next attempt.
     public func createModel(
         name: String,
         baseURL: URL,
@@ -347,6 +364,7 @@ public final class SettingsViewModel {
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date()
     ) async {
+        modelEditError = nil
         let ref = idGenerator()
         let recordId = idGenerator()
         do {
@@ -367,6 +385,8 @@ public final class SettingsViewModel {
             await loadModels()
             onModelsChanged?()
         } catch {
+            chatSettingsLog.error("createModel failed: \(String(describing: error), privacy: .public)")
+            modelEditError = "Could not save model: \(error.localizedDescription)"
             // Keep models list in sync with what actually persisted; a
             // failed save just means the row never appears.
             await loadModels()
@@ -378,6 +398,10 @@ public final class SettingsViewModel {
     /// change" and only writes through when the user types something.
     /// Re-registers the provider so the live chat surface picks up the
     /// new endpoint/model id without an app restart.
+    ///
+    /// Same error-surface contract as `createModel(...)`: on failure
+    /// sets ``modelEditError`` and the pane stays open so the user can
+    /// retry. On success ``modelEditError`` is nil.
     public func updateModel(
         id: String,
         name: String,
@@ -387,29 +411,46 @@ public final class SettingsViewModel {
         supportsThinking: Bool,
         maxContextTokens: Int
     ) async {
-        guard let existing = try? await modelRepository.fetch(id: id) else { return }
-        if !apiKey.isEmpty {
-            try? await modelRepository.storeAPIKey(apiKey, ref: existing.apiKeyRef)
+        modelEditError = nil
+        do {
+            guard let existing = try await modelRepository.fetch(id: id) else {
+                modelEditError = "Could not save model: row no longer exists."
+                return
+            }
+            if !apiKey.isEmpty {
+                try await modelRepository.storeAPIKey(apiKey, ref: existing.apiKeyRef)
+            }
+            let updated = ModelConfigurationRecord(
+                id: existing.id,
+                name: name,
+                baseURL: baseURL,
+                apiKeyRef: existing.apiKeyRef,
+                modelId: modelId,
+                supportsThinking: supportsThinking,
+                maxContextTokens: maxContextTokens,
+                isSelected: existing.isSelected,
+                createdAt: existing.createdAt
+            )
+            try await modelRepository.save(updated)
+            let resolvedKey = apiKey.isEmpty
+                ? (try? await modelRepository.loadAPIKey(ref: existing.apiKeyRef))
+                : apiKey
+            await llmProviderRegistry?.unregister(id: id)
+            await registerProvider(for: updated, apiKey: resolvedKey)
+            await loadModels()
+            onModelsChanged?()
+        } catch {
+            chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
+            modelEditError = "Could not save model: \(error.localizedDescription)"
+            await loadModels()
         }
-        let updated = ModelConfigurationRecord(
-            id: existing.id,
-            name: name,
-            baseURL: baseURL,
-            apiKeyRef: existing.apiKeyRef,
-            modelId: modelId,
-            supportsThinking: supportsThinking,
-            maxContextTokens: maxContextTokens,
-            isSelected: existing.isSelected,
-            createdAt: existing.createdAt
-        )
-        try? await modelRepository.save(updated)
-        let resolvedKey = apiKey.isEmpty
-            ? (try? await modelRepository.loadAPIKey(ref: existing.apiKeyRef))
-            : apiKey
-        await llmProviderRegistry?.unregister(id: id)
-        await registerProvider(for: updated, apiKey: resolvedKey)
-        await loadModels()
-        onModelsChanged?()
+    }
+
+    /// Reset the model-edit error. Called by `SettingsModelDetailPane`
+    /// on appear so a stale message from a previous attempt doesn't
+    /// flash on the next open.
+    public func clearModelEditError() {
+        modelEditError = nil
     }
 
     /// Delete a row + its Keychain entry. The repository handles the

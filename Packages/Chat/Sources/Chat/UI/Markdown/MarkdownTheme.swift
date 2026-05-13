@@ -16,17 +16,19 @@ extension SuperTheme {
     /// `relativeLineSpacing`) that are themselves MainActor-isolated.
     ///
     /// `bodyStyle` controls the `.text` slot — `.thinking` paints in
-    /// `inkSoft` at 13pt and italic, `.banner` paints `inkSoft` at 13pt,
-    /// nil paints the default `ink` at 15pt. Baking the style into the
+    /// `inkSoft` at 15pt and italic, `.banner` paints `inkSoft` at 15pt,
+    /// nil paints the default `ink` at 17pt. Baking the style into the
     /// theme (rather than layering it via `markdownTextStyle(\.text)`)
     /// is the only path that reliably propagates `FontStyle(.italic)`
     /// through MarkdownUI's text composition.
     ///
     /// Body size scales by `appearance.fontScale`; headings (`.em(...)`)
     /// auto-scale because em resolves against the body. Paragraph
-    /// line-spacing comes from `appearance.paragraphLineSpacingEm`.
-    /// Margins remain fixed — density-driven row spacing lives outside
-    /// this theme on the message views themselves.
+    /// line-spacing comes from `appearance.paragraphLineSpacingEm` and
+    /// inter-paragraph margin from `appearance.paragraphSpacing` —
+    /// both derived from `fontScale` inside `ChatAppearance`. Per-row
+    /// vertical padding lives outside this theme on the message views
+    /// themselves.
     @MainActor
     func markdownTheme(
         bodyStyle: MarkdownText.BodyStyle? = nil,
@@ -42,13 +44,13 @@ extension SuperTheme {
             case .thinking:
                 return MarkdownUI.Theme().text {
                     ForegroundColor(theme.inkSoft)
-                    FontSize(13 * appearance.fontScale)
+                    FontSize(15 * appearance.fontScale)
                     FontStyle(.italic)
                 }
             case .banner:
                 return MarkdownUI.Theme().text {
                     ForegroundColor(theme.inkSoft)
-                    FontSize(13 * appearance.fontScale)
+                    FontSize(15 * appearance.fontScale)
                 }
             case .none:
                 return MarkdownUI.Theme().text {
@@ -97,7 +99,7 @@ extension SuperTheme {
             .paragraph { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(appearance.paragraphLineSpacingEm))
-                    .markdownMargin(top: 0, bottom: 8)
+                    .markdownMargin(top: 0, bottom: appearance.paragraphSpacing)
             }
             .blockquote { configuration in
                 configuration.label
