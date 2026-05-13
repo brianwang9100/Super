@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -23,15 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26+
-        # macos-15 image's default Xcode is 16.4 — the bundled Swift
-        # toolchain accepts patterns that Swift 6 strict concurrency on
-        # Xcode 26 rejects (e.g., calling @MainActor static methods from
-        # nonisolated test contexts). Pin to latest-stable so the runner
-        # matches local dev.
+      - name: Select Xcode
+        # Repo runs Swift 6 strict concurrency; macos-26's Xcode 26.4.1
+        # toolchain enforces it. Pinned literally rather than
+        # `latest-stable` so a runner image refresh can't surprise us
+        # with a beta toolchain (Xcode 26.5 is still preview on the
+        # image as of writing).
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.4.1"
 
       - name: Show toolchain
         run: |

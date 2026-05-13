@@ -417,13 +417,39 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
-    // XXL Dynamic Type at this fixture size produces structurally
-    // different bottom-anchor pixels between iOS 26.2 (CI's bundled
-    // runtime) and iOS 26.3 (the closest runtime Apple still offers for
-    // local download) — perceptual delta ~0.5, far beyond what a
-    // tolerance can bridge without making the assertion meaningless. The
-    // XXL variant is deferred until CI is pinned to a downloadable
-    // runtime (see AGENTS.md §Testing.5).
+    /// The XXL variant tolerates a small perceptual delta because the
+    /// SF Symbol message-action icons (copy / regenerate, rendered on
+    /// every assistant row) pick up 1-2 pixel anti-aliasing differences
+    /// across machines at XXL Dynamic Type — the icons scale up so the
+    /// AA fringe widens beyond exact-pixel match. Confirmed by reading
+    /// the CI xcresult diff: bubble content, scroll position, and
+    /// layout are pixel-identical; only icon glyph edges differ. Per
+    /// AGENTS.md §Testing.5 this is the "sub-pixel drift on a custom
+    /// font/symbol" case where `perceptualPrecision` is appropriate.
+    /// The non-XXL variants stay on the default (exact-pixel) helper
+    /// because their smaller icons fall under the threshold.
+    @Test("freshly mounted long transcript anchors at bottom (XXL)")
+    func freshlyMountedLongTranscriptXXL() {
+        let function = #function
+        let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 700)
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(
+                precision: 0.99,
+                perceptualPrecision: 0.97,
+                layout: .fixed(width: 402, height: 700)
+            ),
+            named: "list_long_transcript_anchored_bottom_light_xxl",
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("list_long_transcript_anchored_bottom_light_xxl: \(failure)")
+        }
+    }
 
     private func verify(
         theme: SuperTheme.Identifier,

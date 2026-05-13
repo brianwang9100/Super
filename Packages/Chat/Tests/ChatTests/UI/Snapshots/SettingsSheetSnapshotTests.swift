@@ -68,12 +68,7 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .theme, name: "settings_theme_light")
     }
 
-    // Disabled: the bundled default system prompt changed in this PR, so the
-    // rendered pane no longer matches the on-disk baseline. Re-recording
-    // requires aligning the local Xcode + iOS simulator runtime with CI's,
-    // which is being addressed in a separate PR that pins CI's toolchain and
-    // re-records every snapshot under the pinned trio. Re-enable there.
-    @Test("system prompt pane", .disabled("Re-record blocked on CI toolchain pin — follow-up PR"))
+    @Test("system prompt pane")
     func promptPane() async {
         await verify(theme: .light, pane: .prompt, name: "settings_prompt_light")
     }
