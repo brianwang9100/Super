@@ -470,4 +470,49 @@ struct ChatSessionTests {
         #expect(stored.contains { $0.role == .user && $0.content == "second" })
         #expect(stored.contains { $0.id == saved.id })
     }
+
+    @Test func setSystemPromptPropagatesToNextProviderRequest() async throws {
+        // Two scripted turns so we can verify the prompt change is picked
+        // up *between* turns — the first turn carries the empty/default
+        // prompt, the second carries the value pushed via setSystemPrompt.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "first"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "second"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+
+        // Turn 1: no system prompt configured, no .system row in request.
+        let stream1 = await setup.session.send(text: "hi", model: setup.model)
+        _ = await collect(stream1)
+        await setup.session.waitUntilFinished()
+
+        // Assert *no* `.system` row anywhere in the first request — not just
+        // at index 0. Seeding-fixture changes that ever introduce a leading
+        // `.system` row should fail this test loudly rather than silently
+        // pass through an index-0 check.
+        let firstRequest = await setup.provider.capturedRequests().first
+        #expect(firstRequest?.messages.contains(where: { $0.role == .system }) == false)
+
+        // Turn 2: push a system prompt, send another message, observe it
+        // injected as the leading .system row.
+        await setup.session.setSystemPrompt("Always answer in haiku.")
+        let stream2 = await setup.session.send(text: "again", model: setup.model)
+        _ = await collect(stream2)
+        await setup.session.waitUntilFinished()
+
+        let secondRequest = await setup.provider.capturedRequests().last
+        #expect(secondRequest?.messages.first?.role == .system)
+        if case .text(let body) = secondRequest?.messages.first?.content.first {
+            #expect(body == "Always answer in haiku.")
+        } else {
+            Issue.record("expected leading .system text, got \(String(describing: secondRequest?.messages.first?.content))")
+        }
+    }
 }
