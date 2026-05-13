@@ -174,6 +174,12 @@ public struct MessageList: View {
     /// geometry instead of the stale pre-change one.
     @State private var pendingVerbosityScrollIntent: VerbosityScrollIntent?
 
+    /// One-shot latch for scroll-to-bottom on the first valid geometry
+    /// tick. Re-arms whenever SwiftUI rebuilds the view — `@State`
+    /// discards on view-identity changes — so every fresh mount with
+    /// overflowing content anchors at the latest message.
+    @State private var didApplyInitialBottomAnchor = false
+
     /// What to do with the scroll position immediately after a verbosity
     /// change settles. Expansion keeps the user anchored to the same chat
     /// region; collapse jumps to the latest message because the
@@ -239,6 +245,18 @@ public struct MessageList: View {
             )
         } action: { _, newGeo in
             contentGeometry = newGeo
+            // First valid tick after a fresh mount: anchor at the bottom
+            // edge when content overflows the viewport. The overflow
+            // guard preserves the top-anchored layout for chats whose
+            // content already fits.
+            if !didApplyInitialBottomAnchor
+                && newGeo.contentHeight > 0
+                && newGeo.viewportHeight > 0 {
+                didApplyInitialBottomAnchor = true
+                if newGeo.contentHeight > newGeo.viewportHeight {
+                    scrollPosition.scrollTo(edge: .bottom)
+                }
+            }
             // First geometry tick after a verbosity flip: layout has now
             // settled at the new content height, so apply whichever scroll
             // intent the verbosity change recorded. Either anchors the
