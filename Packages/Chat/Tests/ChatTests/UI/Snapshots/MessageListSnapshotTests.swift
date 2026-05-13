@@ -417,13 +417,19 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
-    // XXL Dynamic Type at this fixture size produces structurally
-    // different bottom-anchor pixels between iOS 26.2 (CI's bundled
-    // runtime) and iOS 26.3 (the closest runtime Apple still offers for
-    // local download) — perceptual delta ~0.5, far beyond what a
-    // tolerance can bridge without making the assertion meaningless. The
-    // XXL variant is deferred until CI is pinned to a downloadable
-    // runtime (see AGENTS.md §Testing.5).
+    @Test("freshly mounted long transcript anchors at bottom (XXL)")
+    func freshlyMountedLongTranscriptXXL() {
+        let function = #function
+        let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 700)
+        recordOrCompare(
+            view: view,
+            name: "list_long_transcript_anchored_bottom_light_xxl",
+            function: function
+        )
+    }
 
     private func verify(
         theme: SuperTheme.Identifier,
