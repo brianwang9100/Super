@@ -108,6 +108,95 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.composerText == "")
     }
 
+    @Test("load attaches to an in-flight turn and hydrates streamingTail from the snapshot")
+    func loadAttachesToLiveTurnAndHydratesStreamingTail() async throws {
+        // The session reports a turn in flight via `subscribe()`. The
+        // view model must hydrate `streamingTail` to the snapshot's
+        // accumulated text *before* the stream task starts processing
+        // any subsequent events — so a re-mounted screen never flashes
+        // empty before catching up. Subsequent events from the
+        // subscribed stream must continue to land normally.
+        let savedAssistant = MessageRecord(
+            id: "a1",
+            conversationId: conversationId,
+            role: .assistant,
+            content: "in progress more",
+            createdAt: Date()
+        )
+        let snapshot = ChatSession.LiveTurnSnapshot(
+            accumulatedText: "in progress",
+            accumulatedThinking: ""
+        )
+        let driver = ScriptedDriver(
+            events: [],
+            pendingSnapshot: snapshot,
+            pendingSubscribeEvents: [
+                .textDelta(" more"),
+                .assistantMessageSaved(savedAssistant),
+            ]
+        )
+        let messages = StubMessageRepository(initial: [savedAssistant])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        await viewModel.load()
+
+        // Synchronously after `load()` returns, the spawned streamTask
+        // has been scheduled but the @MainActor hasn't yielded yet to
+        // run it. `streamingTail` therefore reflects the snapshot
+        // exactly — no events have been processed.
+        #expect(viewModel.streamingTail?.text == "in progress")
+        #expect(viewModel.isStreaming == true)
+
+        // Drain the subscribed events deterministically.
+        await viewModel._waitForPendingStreamTask()
+
+        // After drain, the assistant row landed via
+        // `.assistantMessageSaved` and the final refresh; the streaming
+        // tail cleared.
+        #expect(viewModel.isStreaming == false)
+        #expect(viewModel.streamingTail == nil)
+        let hasAssistantText = viewModel.items.contains { item in
+            if case .assistantText(_, _, _, let text, _) = item {
+                return text == "in progress more"
+            }
+            return false
+        }
+        #expect(hasAssistantText, "subsequent events from the subscribed stream must drive items to the final state")
+    }
+
+    @Test("cancelStreaming routes through the driver so the underlying session is cancelled")
+    func cancelStreamingInvokesDriverCancel() async throws {
+        // The composer stop button calls `cancelStreaming()`. Now that
+        // dropping the iteration alone no longer cancels the session
+        // (Phase 1 removed `onTermination`), the view model must route
+        // the cancel through `driver.cancel()` — otherwise the LLM
+        // keeps running, charging tokens for output the user can't see.
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        viewModel.cancelStreaming()
+        await viewModel._waitForPendingCancelTask()
+
+        let count = await driver.cancelCount()
+        #expect(count == 1)
+    }
+
     @Test("send trims whitespace and ignores empty input")
     func sendTrimsWhitespace() {
         let driver = ScriptedDriver(events: [])
@@ -734,11 +823,24 @@ struct ChatScreenViewModelTests {
 /// always-finishes contract `ChatSession` provides.
 private actor ScriptedDriver: ChatSessionDriver {
     private let scripted: [ChatEvent]
+    /// Events for a fake "already in flight" turn, replayed by
+    /// `subscribe()`. Tests that exercise the re-attach path enqueue
+    /// these; the default empty list keeps `subscribe()` finishing
+    /// immediately so existing tests stay unchanged.
+    private let pendingSubscribeEvents: [ChatEvent]
+    private let pendingSnapshot: ChatSession.LiveTurnSnapshot?
     private var finished = false
     private var continuation: AsyncStream<Void>.Continuation?
+    private var cancelInvocationCount: Int = 0
 
-    init(events: [ChatEvent]) {
+    init(
+        events: [ChatEvent],
+        pendingSnapshot: ChatSession.LiveTurnSnapshot? = nil,
+        pendingSubscribeEvents: [ChatEvent] = []
+    ) {
         self.scripted = events
+        self.pendingSnapshot = pendingSnapshot
+        self.pendingSubscribeEvents = pendingSubscribeEvents
     }
 
     func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
@@ -755,6 +857,28 @@ private actor ScriptedDriver: ChatSessionDriver {
         }
         return stream
     }
+
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        let pending = self.pendingSubscribeEvents
+        let snapshot = self.pendingSnapshot
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        let actorRef = self
+        Task {
+            for event in pending {
+                continuation.yield(event)
+                await Task.yield()
+            }
+            continuation.finish()
+            await actorRef.markFinished()
+        }
+        return (snapshot, stream)
+    }
+
+    func cancel() async {
+        cancelInvocationCount += 1
+    }
+
+    func cancelCount() -> Int { cancelInvocationCount }
 
     private func markFinished() {
         finished = true
