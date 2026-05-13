@@ -56,9 +56,8 @@ public final class ChatScreenViewModel {
     public var onModelSelected: (@MainActor (String) -> Void)?
 
     /// Active verbosity used by `MessageList` to expand or collapse
-    /// thinking and tool-call blocks. Host-owned: seeded via the init
-    /// argument and updated through `applyExternalVerbosity(_:)` so
-    /// settings changes can be pushed in without a chat restart.
+    /// thinking and tool-call blocks. Mutated only through the init
+    /// argument or `applyExternalVerbosity(_:)`.
     public private(set) var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
@@ -331,11 +330,10 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Apply a new verbosity coming from outside the view model — in
-    /// practice the host observing `ChatSettings.defaultVerbosity`. A
-    /// `nil` value is intentionally a no-op so the host can wire
-    /// SwiftUI's optional-binding `.onChange(of:)` pattern directly
-    /// without an extra guard.
+    /// Apply a new verbosity from an external source. `nil` is a no-op
+    /// so an optional-binding observable (`ChatVerbosity?`) can pass
+    /// straight through during the bootstrap window without an extra
+    /// guard at the call site.
     public func applyExternalVerbosity(_ newValue: ChatVerbosity?) {
         guard let newValue else { return }
         verbosity = newValue
