@@ -1,74 +1,169 @@
-# Swift Naming Conventions
+# Naming Conventions
 
-The single rulebook for naming Swift types in this repo. Two scopes:
+The single rulebook for naming in this repo. Five scopes:
 
-1. **Architectural layer** — orchestration, Core, persistence. Suffixes
-   that govern what a type *is* (an actor that owns state, a protocol
-   that crosses a persistence boundary, a struct that projects data).
-2. **SwiftUI view layer** — currently scoped to the Chat applet, since
-   it's the only applet shipped. Names that govern what a *view* is
-   (a Screen, a Drawer, a Pill, a Banner).
+1. **Files and folders** — markdown files, Swift packages, TypeScript
+   modules. Conventions per platform.
+2. **Function parameters** — argument labels at the API surface, so call
+   sites read like sentences.
+3. **Swift types (architectural layer)** — orchestration, Core,
+   persistence. Suffixes that govern what a type *is* (an actor that
+   owns state, a protocol that crosses a persistence boundary, a struct
+   that projects data).
+4. **SwiftUI view layer** — currently scoped to the Chat applet, since
+   it's the only applet shipped. Names that govern what a *view* is (a
+   Screen, a Drawer, a Pill, a Banner).
+5. **Persistence schema** — GRDB (iOS/macOS, SQLite) table, column, and
+   index names; a short note on the server-side Postgres differences.
 
-`*ViewModel` sits at the seam between the two — listed in the SwiftUI
-section because that's where view models are constructed and consumed.
+`*ViewModel` sits at the seam between Parts 3 and 4 — listed in the
+SwiftUI section because that's where view models are constructed and
+consumed.
 
 ## Why this matters
 
-A consistent suffix tells the reader at a glance what shape they're
-dealing with: "this is the persistence boundary," "this owns runtime
-state," "this is a pure projection," "this is a screen-level view." When
-the same suffix means different things in different folders, every reader
-has to open the file before they know what they're looking at — and AI
+A consistent name tells the reader at a glance what shape they're
+dealing with: which folder a file belongs in, whether a parameter reads
+fluently at the call site, whether a type is a persistence boundary or a
+runtime pool, whether a view is a screen-level surface or a nested
+region, what kind of column this is. When the same suffix means
+different things in different folders — or when each module reinvents
+its own filename convention — every reader has to open the file before
+they know what they're looking at, and AI (Artificial Intelligence)
 agents end up reverse-engineering conventions from existing types every
 time. Pinning the meanings here keeps both costs low.
 
 The cross-cutting policy this doc builds on lives in
 [`AGENTS.md` §Swift Concurrency & Type
 Policy](../AGENTS.md#swift-concurrency--type-policy): structs for data,
-actors for shared mutable state, `@Observable @MainActor final class` for
-view models, `final class` + `os_unfair_lock` for synchronous atomic
-access. The suffixes below are how we *name* the things that follow that
-policy.
+actors for shared mutable state, `@Observable @MainActor final class`
+for view models, `final class` + `os_unfair_lock` for synchronous atomic
+access. The suffixes in Part 3 are how we *name* the things that follow
+that policy.
 
 ## Table of contents
 
-**Part 1 — Architectural layer**
+**Part 1 — Files and folders**
 
-1. [`*Session`](#session) — long-lived per-unit orchestrator
-2. [`*Store`](#store) — in-memory keyed pool of live runtime instances
-3. [`*Registry`](#registry) — container for registered, swappable components
-4. [`*Repository`](#repository) — persistence boundary for one record type
-5. [`*Provider`](#provider) — abstraction over an external resource
-6. [`*Driver`](#driver) — protocol-fitting adapter at a layer seam
-7. [`*Assembler`](#assembler) — pure projection between shapes
-8. [`*Generator`](#generator) — factory for one value
-9. [`*Estimator`](#estimator) — pure calculation function
-10. [`*Tool`](#tool) — discrete LLM-invokable capability
-11. [`*Record`](#record) — GRDB persistable row
-12. [`*Event`](#event) — Sendable stream/bus value
-13. [`*Command`](#command) — parsed user intent
-14. [`*Error`](#error) — typed subsystem error
-15. [Verb-noun (no suffix)](#verb-noun-no-suffix) — single-purpose worker
-16. [`Live*` / `Fake*` / `InMemory*` / `Mock*` / `Noop*` / `Placeholder*` prefixes](#prefixes)
-17. [Anti-patterns](#anti-patterns)
-18. [Decision tree](#decision-tree)
+- [Markdown files](#files-markdown)
+- [iOS / macOS (Swift)](#files-swift)
+- [Server (TypeScript / Node.js)](#files-ts)
+- [Doc subdirectories](#files-docs)
 
-**Part 2 — SwiftUI view layer (Chat applet)**
+**Part 2 — Function parameters**
 
-19. [Rule 0 — drop the `View` suffix](#ui-rule-0)
-20. [Rule 1 — pick a bucket, use its suffix](#ui-rule-1)
-21. [Rule 2 — one struct per file](#ui-rule-2)
-22. [Rule 3 — data passed to a view ≠ the view](#ui-rule-3)
-23. [Rule 4 — view models](#ui-rule-4)
-24. [Invariants (grep checks)](#ui-invariants)
+- [Argument labels](#params-labels)
 
-Companion to Part 2: [`docs/Chat/UI_STRUCTURE.md`](./Chat/UI_STRUCTURE.md)
+**Part 3 — Swift types (architectural layer)**
+
+- [`*Session`](#session) — long-lived per-unit orchestrator
+- [`*Store`](#store) — in-memory keyed pool of live runtime instances
+- [`*Registry`](#registry) — container for registered, swappable components
+- [`*Repository`](#repository) — persistence boundary for one record type
+- [`*Provider`](#provider) — abstraction over an external resource
+- [`*Driver`](#driver) — protocol-fitting adapter at a layer seam
+- [`*Assembler`](#assembler) — pure projection between shapes
+- [`*Generator`](#generator) — factory for one value
+- [`*Estimator`](#estimator) — pure calculation function
+- [`*Tool`](#tool) — discrete LLM-invokable capability
+- [`*Record`](#record) — GRDB persistable row
+- [`*Event`](#event) — Sendable stream/bus value
+- [`*Command`](#command) — parsed user intent
+- [`*Error`](#error) — typed subsystem error
+- [Verb-noun (no suffix)](#verb-noun-no-suffix) — single-purpose worker
+- [`Live*` / `Fake*` / `InMemory*` / `Mock*` / `Noop*` / `Placeholder*` prefixes](#prefixes)
+- [Anti-patterns](#anti-patterns)
+- [Decision tree](#decision-tree)
+
+**Part 4 — SwiftUI view layer (Chat applet)**
+
+- [Rule 0 — drop the `View` suffix](#ui-rule-0)
+- [Rule 1 — pick a bucket, use its suffix](#ui-rule-1)
+- [Rule 2 — one struct per file](#ui-rule-2)
+- [Rule 3 — data passed to a view ≠ the view](#ui-rule-3)
+- [Rule 4 — view models](#ui-rule-4)
+- [Invariants (grep checks)](#ui-invariants)
+
+**Part 5 — Persistence schema**
+
+- [GRDB (iOS/macOS, SQLite)](#schema-grdb)
+- [Server-side Postgres](#schema-postgres)
+
+Companion to Part 4: [`docs/Chat/UI_STRUCTURE.md`](./Chat/UI_STRUCTURE.md)
 — what view owns what, organized by surface. That's the org chart; this
 doc is the rulebook.
 
 ---
 
-# Part 1 — Architectural layer
+# Part 1 — Files and folders
+
+Follow the convention of the platform you're on.
+
+<a id="files-markdown"></a>
+
+## Markdown files (everywhere)
+
+`UPPER_SNAKE_CASE.md` (e.g., `PRODUCT_VISION.md`,
+`MOBILE_ARCHITECTURE.md`). Exception: `README.md` where convention
+dictates.
+
+<a id="files-swift"></a>
+
+## iOS / macOS (Swift)
+
+`PascalCase` for files and folders. Examples: `ChatSession.swift`,
+`ChatDatabase.swift`, `Packages/Chat/`, `Sources/Domain/`, `docs/Chat/`.
+
+<a id="files-ts"></a>
+
+## Server (TypeScript / Node.js)
+
+`lowercase` (kebab-case for multi-word) for files and folders. Examples:
+`src/gateway/`, `src/services/ai/`, `src/modules/sync/`,
+`route-handlers.ts`. TypeScript classes/types *inside* files still use
+`PascalCase` per language convention.
+
+<a id="files-docs"></a>
+
+## Doc subdirectories
+
+Follow the platform they describe: `docs/Chat/` (iOS applet),
+`docs/server/` would be lowercase (if ever created).
+
+---
+
+# Part 2 — Function parameters
+
+<a id="params-labels"></a>
+
+## Argument labels
+
+Follow the official guidance in [The Swift Programming Language —
+Functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/).
+The rules below are the ones we hold the line on:
+
+- Use argument labels so call sites read like sentences.
+  `func advance(by seconds: TimeInterval)` reads `clock.advance(by: 60)`;
+  `func enabledTools(for provider: any LLMProvider)` reads
+  `registry.enabledTools(for: provider)`.
+- Prefer prepositions (`by`, `for`, `from`, `in`, `with`) as labels when
+  they make the call site clearer.
+- Use `_` to omit a label when the parameter name would be redundant
+  with the function name and the type — e.g.
+  `func register(_ provider: any LLMProvider)` reads
+  `registry.register(provider)`.
+- All parameters must have unique parameter names; argument labels can
+  repeat, but unique labels read better.
+
+The rest of [`AGENTS.md` §Swift function
+declarations](../AGENTS.md#swift-function-declarations) covers function
+*shape* (default values, variadic, `inout`, return values, throwing) —
+those are API design rules rather than naming rules and live in
+AGENTS.md.
+
+---
+
+# Part 3 — Swift types (architectural layer)
 
 <a id="session"></a>
 
@@ -371,8 +466,10 @@ and exposes both metadata (for the LLM) and an executor.
 `CompactionCheckpointRecord`, `ModelConfigurationRecord`,
 `ToolEnablementRecord`, `SettingRecord`.
 
-See [`AGENTS.md` §Persistence](../AGENTS.md#persistence) and §GRDB Naming
-Conventions for full column/index naming rules.
+See [Part 5 — Persistence schema](#part-5--persistence-schema) for
+column/index naming rules, and
+[`AGENTS.md` §Persistence](../AGENTS.md#persistence) for the wider
+persistence policy.
 
 ---
 
@@ -498,7 +595,7 @@ intent so call sites read clearly.
   [`*Driver`](#driver) (layer-seam adapter), or
   [`*Repository`](#repository) (persistence) instead. The
   `*Controller`/`*Service` UI pair is documented in
-  [Part 2 Rule 4](#ui-rule-4) and the broader writeup is forthcoming.
+  [Part 4 Rule 4](#ui-rule-4) and the broader writeup is forthcoming.
 - **Mismatched protocol/impl pairs** — if the protocol is
   `XRepository`, the GRDB impl is `GRDBXRepository`, not
   `XStore` / `XAdapter` / `XService`. The pair must read as one thing.
@@ -519,7 +616,7 @@ Working through the right suffix for a new architectural type:
    - If yes and it's one logical unit → [`*Session`](#session).
    - If yes and it holds many of them by key → [`*Store`](#store) (live
      instances) or [`*Registry`](#registry) (registered components).
-   - If yes and it's UI state → [`*ViewModel`](#ui-rule-4) (Part 2).
+   - If yes and it's UI state → [`*ViewModel`](#ui-rule-4) (Part 4).
 2. **Is it a boundary to a backing store or external service?**
    - Database → [`*Repository`](#repository).
    - API / model backend → [`*Provider`](#provider).
@@ -537,16 +634,17 @@ Working through the right suffix for a new architectural type:
 7. **Single-purpose worker that doesn't match above?** → verb-noun
    (`Compactor`, `Reducer`).
 8. **A SwiftUI view, view-shape data, or view model?** → see
-   [Part 2](#part-2--swiftui-view-layer-chat-applet).
+   [Part 4](#part-4--swiftui-view-layer-chat-applet).
 
 If none of those fit, that's a signal — bring the case to a PR review
 before coining a new suffix family, and update this doc at the same time.
 
 ---
 
+<a id="part-4--swiftui-view-layer-chat-applet"></a>
 <a id="part-2--swiftui-view-layer-chat-applet"></a>
 
-# Part 2 — SwiftUI view layer (Chat applet)
+# Part 4 — SwiftUI view layer (Chat applet)
 
 The taxonomy an agent or developer applies when naming a new SwiftUI view
 in the Chat applet. Pick the bucket; the suffix follows. If nothing fits,
@@ -624,3 +722,47 @@ After applying this part of the taxonomy, the following greps must return zero h
 
 - `rg '\bstruct \w+View\s*:'` — no `View`-suffixed view structs
 - `rg '\bstruct \w+Glyph\s*:'` — no `Glyph`-suffixed icon views; the generic `StrokedGlyph<S: Shape>` rendering wrapper is the one intentional exception.
+
+---
+
+<a id="part-5--persistence-schema"></a>
+
+# Part 5 — Persistence schema
+
+<a id="schema-grdb"></a>
+
+## GRDB (iOS/macOS, SQLite)
+
+Match GRDB's association-inference rules so relationships are synthesized
+automatically:
+
+- **Table names**: `camelCase`, singular (e.g., `task`, `toolCall`,
+  `syncLog`). Set via `static let databaseTableName = "toolCall"`.
+- **Column names**: `camelCase` matching the Swift property name exactly
+  (e.g., `createdAt`, `conversationId`). No `CodingKeys` mapping
+  required.
+- **Primary key**: `id` (String UUID).
+- **Foreign keys**: `<referencedTableSingular>Id` (e.g.,
+  `conversationId` → `conversation.id`, `messageId` → `message.id`).
+  This naming lets GRDB auto-synthesize `belongsTo` / `hasMany`
+  associations without explicit keys.
+- **Timestamp columns**: `createdAt`, `updatedAt`, `deletedAt`,
+  `completedAt` — always `camelCase`, always `.datetime` (or
+  `TIMESTAMPTZ` on server).
+- **Indexes**: `<tableName>_on_<column>[_<column>]` (e.g.,
+  `message_on_conversationId_createdAt`). The underscore separators
+  are intentional — they denote the "on" pattern, not snake_case.
+
+See also: [`*Record`](#record) for how a row's Swift type is named, and
+[`AGENTS.md` §Persistence](../AGENTS.md#persistence) for the wider
+persistence policy (GRDB over SwiftData, one `.sqlite` per applet,
+GRDBQuery for SwiftUI binding, GRDBSnapshotTesting for schema tests).
+
+<a id="schema-postgres"></a>
+
+## Server-side Postgres (Drizzle)
+
+Server-side Postgres is different. Drizzle schemas use `snake_case` per
+Postgres convention (e.g., `sync_changes`, `user_id`). The sync protocol
+maps between the two at the JSON (JavaScript Object Notation) boundary.
+Do not apply GRDB naming to Postgres tables.

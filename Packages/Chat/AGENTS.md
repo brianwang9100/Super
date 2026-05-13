@@ -11,14 +11,14 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **Orchestration** (`Orchestration/`): `ChatSession` actor (one per conversation), `ChatSessionStore` actor (holds concurrent sessions), `ContextAssembler`, `Compactor`, `TokenEstimator`, `TitleGenerator`, `SlashCommand`, `ChatEvent`. `ChatSessionDriver` protocol (view-model seam) + `LiveChatSessionDriver` adapter live alongside the consuming view model.
 - **Tools** (`Tools/`): `TimeNowTool` (built-in local).
 - **Voice** (`Voice/`): `VoiceInputService` protocol + `SpeechRecognizerVoiceInputService` (on-device `SFSpeechRecognizer`).
-- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/NAMING_CONVENTIONS.md` Part 2](../../docs/NAMING_CONVENTIONS.md#part-2--swiftui-view-layer-chat-applet).**
+- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).**
 - **View models** (`ViewModels/`): `@Observable @MainActor final class` view models for every screen.
 
 ## Rules
 
 - **Do not import other applets.** Cross-applet communication runs through Core (event bus when it lands; absent in MVP).
 - **Persistence is GRDB only.** No SwiftData / Core Data.
-- **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See root AGENTS.md §Persistence for the full convention.
+- **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See [`docs/NAMING_CONVENTIONS.md` Part 5 — Persistence schema](../../docs/NAMING_CONVENTIONS.md#part-5--persistence-schema) for the full convention.
 - **Streaming-text persistence**: write the final `MessageRecord` only on `.messageComplete` (per ADR-BB-003 in `docs/Chat/ARCHITECTURE.md`). Do not persist intermediate buffer state.
 - **LLM tests must mock `LLMProvider`.** Never hit a real LLM endpoint (OpenAI, local MLX, Ollama, anything).
 - **Snapshot tests** land in the same PR as the view they cover. See root AGENTS.md §Testing.2 for the per-state matrix (light/dark/sepia × default/Dynamic Type XXL).
