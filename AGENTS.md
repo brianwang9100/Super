@@ -6,6 +6,7 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 
 - `PRODUCT_VISION.md` — overall vision, applet breakdown, principles
 - `DESIGN.md` — app shell, applet manager, navigation layouts
+- `NAMING_CONVENTIONS.md` — files & folders, function parameters, Swift type taxonomy, SwiftUI views, GRDB schema (the single rulebook for *anything name-shaped*)
 - `MOBILE_ARCHITECTURE.md` — dependency graph, event bus, data layer, tool system, LLM adapter
 - `SERVER_ARCHITECTURE.md` — gateway, per-applet services, admin dashboard
 - `CLIENT_SERVER.md` — sync vs REST, API routing, Chat orchestration
@@ -29,12 +30,7 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 
 Follow the official guidance in [The Swift Programming Language — Functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/). The rules below are the ones we hold the line on; the linked chapter is the source of truth for anything not stated here.
 
-### Argument labels
-
-- Use argument labels so call sites read like sentences. `func advance(by seconds: TimeInterval)` reads `clock.advance(by: 60)`; `func enabledTools(for provider: any LLMProvider)` reads `registry.enabledTools(for: provider)`.
-- Prefer prepositions (`by`, `for`, `from`, `in`, `with`) as labels when they make the call site clearer.
-- Use `_` to omit a label when the parameter name would be redundant with the function name and the type — e.g. `func register(_ provider: any LLMProvider)` reads `registry.register(provider)`.
-- All parameters must have unique parameter names; argument labels can repeat, but unique labels read better.
+> **Naming parameters** (argument labels, omitting labels with `_`, preferring prepositions): see [`docs/NAMING_CONVENTIONS.md` Part 2 — Function parameters](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters). The rules below cover function *shape*, not parameter naming.
 
 ### Default parameter values
 
@@ -78,15 +74,15 @@ Every public protocol, type, enum, struct, class, and free function ships with a
 
 This rule complements the root system prompt's general guidance — it does not override the rule against overly chatty inline comments inside function bodies. Keep `//` inline comments rare; reserve prose for the `///` doc comments above declarations where a reader actually looks for orientation.
 
-## File & Folder Naming
+## Naming
 
-Follow the convention of the platform you're on.
+All naming guidance — files, folders, function parameters, Swift type suffixes, SwiftUI view buckets, GRDB schema — lives in **[`docs/NAMING_CONVENTIONS.md`](./docs/NAMING_CONVENTIONS.md)**. Read it before coining a new file name, type name, or schema name. Quick map:
 
-- **Markdown files (everywhere)**: `UPPER_SNAKE_CASE.md` (e.g., `PRODUCT_VISION.md`, `MOBILE_ARCHITECTURE.md`). Exception: `README.md` where convention dictates.
-- **iOS / macOS (Swift)**: `PascalCase` for files and folders. Examples: `ChatSession.swift`, `ChatDatabase.swift`, `Packages/Chat/`, `Sources/Domain/`, `docs/Chat/`.
-- **Server (TypeScript / Node.js)**: `lowercase` (kebab-case for multi-word) for files and folders. Examples: `src/gateway/`, `src/services/ai/`, `src/modules/sync/`, `route-handlers.ts`. TypeScript classes/types inside files still use `PascalCase` per language convention.
-- **Doc subdirectories** follow the platform they describe: `docs/Chat/` (iOS applet), `docs/server/` would be lowercase (if ever created).
-- **Swift type taxonomy**: See [docs/NAMING_CONVENTIONS.md](./docs/NAMING_CONVENTIONS.md) for the full rulebook. Part 1 covers the architectural layer (`*Session`, `*Store`, `*Registry`, `*Repository`, `*Provider`, `*Driver`, `*Assembler`, `*Generator`, `*Estimator`, etc.) with anti-patterns and a decision tree; Part 2 covers SwiftUI view naming for the Chat applet (Screen, Drawer, Sheet, Pane, Region, Pill, Banner, Bubble, Block, Row, etc.).
+- **Files and folders** (markdown, Swift, TypeScript, doc subdirectories) — [Part 1](./docs/NAMING_CONVENTIONS.md#part-1--files-and-folders).
+- **Function parameters** (argument labels) — [Part 2](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters).
+- **Swift types** — architectural-layer suffixes (`*Session`, `*Store`, `*Registry`, `*Repository`, `*Provider`, `*Driver`, `*Assembler`, `*Generator`, `*Estimator`, `*Tool`, `*Record`, `*Event`, `*Command`, `*Error`), anti-patterns, decision tree — [Part 3](./docs/NAMING_CONVENTIONS.md#part-3--swift-types-architectural-layer).
+- **SwiftUI views** (Chat applet — Screen / Drawer / Sheet / Pane / Region / Pill / Banner / Bubble / Block / Row / …) — [Part 4](./docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).
+- **GRDB schema** (table, column, foreign-key, timestamp, index naming) — [Part 5](./docs/NAMING_CONVENTIONS.md#part-5--persistence-schema).
 
 ## Swift Concurrency & Type Policy
 
@@ -122,18 +118,9 @@ Follow the convention of the platform you're on.
 - Use **[GRDBQuery](https://github.com/groue/GRDBQuery)** for reactive SwiftUI data binding — views subscribe via `@Query` to a `ValueObservation`-backed request and re-render automatically when the database changes. This is the only sanctioned bridge between GRDB and SwiftUI; do not hand-roll observation in view models.
 - Use **[GRDBSnapshotTesting](https://github.com/groue/GRDBSnapshotTesting)** for snapshot testing of database state
 
-### GRDB Naming Conventions
+### GRDB schema naming
 
-Match GRDB's association-inference rules so relationships are synthesized automatically:
-
-- **Table names**: `camelCase`, singular (e.g., `task`, `toolCall`, `syncLog`). Set via `static let databaseTableName = "toolCall"`.
-- **Column names**: `camelCase` matching the Swift property name exactly (e.g., `createdAt`, `conversationId`). No `CodingKeys` mapping required.
-- **Primary key**: `id` (String UUID).
-- **Foreign keys**: `<referencedTableSingular>Id` (e.g., `conversationId` → `conversation.id`, `messageId` → `message.id`). This naming lets GRDB auto-synthesize `belongsTo` / `hasMany` associations without explicit keys.
-- **Timestamp columns**: `createdAt`, `updatedAt`, `deletedAt`, `completedAt` — always `camelCase`, always `.datetime` (or `TIMESTAMPTZ` on server).
-- **Indexes**: `<tableName>_on_<column>[_<column>]` (e.g., `message_on_conversationId_createdAt`). The underscore separators are intentional — they denote the "on" pattern, not snake_case.
-
-**Server-side Postgres is different.** Drizzle schemas use `snake_case` per Postgres convention (e.g., `sync_changes`, `user_id`). The sync protocol maps between the two at the JSON boundary. Do not apply GRDB naming to Postgres tables.
+See [`docs/NAMING_CONVENTIONS.md` Part 5 — Persistence schema](./docs/NAMING_CONVENTIONS.md#part-5--persistence-schema) for table, column, foreign-key, timestamp, and index naming. Server-side Postgres (Drizzle) uses `snake_case` and is covered in the same section.
 
 ## Architecture Rules
 

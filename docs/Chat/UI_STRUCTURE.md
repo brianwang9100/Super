@@ -5,7 +5,7 @@
 > **Companion docs:**
 > - [`DESIGN.md`](./DESIGN.md) — visual spec (themes, typography, motion, design tokens, pixel-level layout)
 > - [`ARCHITECTURE.md`](./ARCHITECTURE.md) — data models, persistence, orchestration loop, LLM streaming
-> - [`../NAMING_CONVENTIONS.md`](../NAMING_CONVENTIONS.md) — the taxonomy for naming new SwiftUI views (Part 2). **Read this before coining a new name.**
+> - [`../NAMING_CONVENTIONS.md`](../NAMING_CONVENTIONS.md) — the taxonomy for naming new SwiftUI views (Part 4). **Read this before coining a new name.**
 >
 > This doc is intentionally short. If you want pixels, read DESIGN. If you want the ChatSession/LLM loop, read ARCHITECTURE. If you want naming rules, read NAMING_CONVENTIONS. This one is the org chart.
 
@@ -210,7 +210,7 @@ This means snapshot tests can render any view against any theme by wrapping it i
 
 ## 7. Naming new views
 
-See [`../NAMING_CONVENTIONS.md` Part 2](../NAMING_CONVENTIONS.md#part-2--swiftui-view-layer-chat-applet) for the full taxonomy (Screen / Drawer / Sheet / Pane / Region / Pill / Meter / Row / Bubble / Block / Banner / Group / Toggle / Button / Icon / Primitive / Style / Modifier) and the four rules that govern when to add a `View` suffix, when to one-struct-per-file, and how to name state vs. view types.
+See [`../NAMING_CONVENTIONS.md` Part 4](../NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet) for the full taxonomy (Screen / Drawer / Sheet / Pane / Region / Pill / Meter / Row / Bubble / Block / Banner / Group / Toggle / Button / Icon / Primitive / Style / Modifier) and the four rules that govern when to add a `View` suffix, when to one-struct-per-file, and how to name state vs. view types.
 
 ---
 
