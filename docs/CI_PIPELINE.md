@@ -4,10 +4,10 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the monorepo structure and Swift Package layout, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server stack.
 
-> **What's wired today (2026-05-10):**
-> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-15` runner, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
-> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-15` runner, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`.
-> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-15` runner with Xcode 26+, archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
+> **What's wired today (2026-05-13):**
+> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-26` runner pinned to Xcode 26.4.1, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
+> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-26` runner pinned to Xcode 26.4.1, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`. The `ios-test` job runs Chat snapshot + unit tests on an iPhone simulator at iOS 26.4.
+> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-26` runner pinned to Xcode 26.4.1 (iOS 26.4 SDK), archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
 >
 > Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD for the open items.
 
@@ -142,7 +142,7 @@ jobs:
           echo "applets=$CHANGED" >> "$GITHUB_OUTPUT"
 
   swiftlint:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Install SwiftLint
@@ -152,7 +152,7 @@ jobs:
 
   build:
     needs: [detect-changes]
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       matrix:
         platform: [iOS, macOS]
@@ -186,7 +186,7 @@ jobs:
   test-applets:
     needs: [detect-changes]
     if: needs.detect-changes.outputs.applets != '[]'
-    runs-on: macos-15
+    runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
@@ -219,7 +219,7 @@ jobs:
           flags: ${{ matrix.applet }}
 
   test-core:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -235,7 +235,7 @@ jobs:
 
   ui-tests:
     needs: [build]
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -253,10 +253,10 @@ jobs:
 
 ### 4.2 Xcode/Simulator Setup on GitHub Actions
 
-GitHub-hosted macOS runners (`macos-15`) come with multiple Xcode versions and simulators preinstalled. Key considerations:
+GitHub-hosted macOS runners (`macos-26`) come with multiple Xcode versions and iOS simulator runtimes preinstalled. Key considerations:
 
-- **Pin the Xcode version** via `DEVELOPER_DIR` to prevent drift between agent PRs.
-- **Preinstalled simulators** are sufficient for CI. Do not download additional runtimes — it adds 5-10 minutes.
+- **Pin the Xcode version literally** (`xcode-version: "26.4.1"` via `maxim-lobanov/setup-xcode@v1`), not `latest-stable`, to prevent SwiftUI snapshot drift between agent PRs and across runner image refreshes.
+- **Preinstalled simulators** are sufficient for CI. Do not download additional runtimes — it adds 5-10 minutes. macos-26 ships iOS 26.1 / 26.2 / 26.4 OS-level runtimes; we target 26.4 (the highest available, bundled with Xcode 26.4.1).
 - **Disable code signing** for CI builds (`CODE_SIGNING_ALLOWED=NO`). Signing only happens in the deployment pipeline.
 - **Use `xcbeautify`** for human-readable (and agent-readable) build output.
 
@@ -653,7 +653,7 @@ jobs:
 
 ### 9.2 Client Deployment (TestFlight)
 
-The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-15`, selects Xcode 26+ via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
+The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-26`, pins Xcode `26.4.1` (iOS 26.4 SDK) via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
 
 **Why this way (the four non-obvious choices):**
 
@@ -661,7 +661,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 
 2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
 
-3. **Xcode 26+ must be explicitly selected on the runner.** The `macos-15` runner image defaults to Xcode 16.4 (iOS 18.5 SDK). App Store Connect rejects uploads built with anything older than the iOS 26 SDK with `SDK version issue. This app was built with the iOS 18.5 SDK...`. The `setup-xcode` step pins `latest-stable`, which resolves to the newest Xcode installed on the image.
+3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5 beta) with 26.2 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
 
 4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
 
@@ -795,8 +795,8 @@ jobs:
 | Runner | Cost per minute | Notes |
 |--------|----------------|-------|
 | Linux (ubuntu-latest) | $0.008 | Cheap. Use for everything that doesn't need macOS. |
-| macOS (macos-15) | $0.08 | **10x more expensive.** Minimize macOS runner time. |
-| macOS (macos-15-xlarge) | $0.16 | Only if build times on standard runners are unacceptable. |
+| macOS (macos-26) | $0.08 | **10x more expensive.** Minimize macOS runner time. |
+| macOS (macos-26-xlarge) | $0.16 | Only if build times on standard runners are unacceptable. |
 
 ### 12.2 Cost Optimization Strategies
 

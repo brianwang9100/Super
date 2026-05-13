@@ -15,19 +15,19 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26+
-        # macos-15 image's default Xcode is 16.4 (iOS 18.5 SDK). The repo
-        # targets Swift 6 strict-concurrency rules that newer toolchains
-        # enforce more rigorously, and snapshot baselines are recorded
-        # against iOS 26.x simulators. Pin to latest-stable Xcode so the
-        # runner uses the same toolchain + sim runtime as local dev.
+      - name: Select Xcode
+        # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
+        # baselines stay pixel-stable across runs. macos-26's Xcode
+        # 26.4.1 ships the iOS 26.4 SDK; the older macos-15 image
+        # caps at Xcode 26.3 + iOS 26.2, and iOS 26.2 is no longer
+        # downloadable from Apple — which forced this upgrade.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.4.1"
 
       - name: Show toolchain
         run: xcodebuild -version
@@ -60,19 +60,19 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
   ios-test:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26+
-        # macos-15 image's default Xcode is 16.4 (iOS 18.5 SDK). The repo
-        # targets Swift 6 strict-concurrency rules that newer toolchains
-        # enforce more rigorously, and snapshot baselines are recorded
-        # against iOS 26.x simulators. Pin to latest-stable Xcode so the
-        # runner uses the same toolchain + sim runtime as local dev.
+      - name: Select Xcode
+        # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
+        # baselines stay pixel-stable across runs. macos-26's Xcode
+        # 26.4.1 ships the iOS 26.4 SDK; the older macos-15 image
+        # caps at Xcode 26.3 + iOS 26.2, and iOS 26.2 is no longer
+        # downloadable from Apple — which forced this upgrade.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.4.1"
 
       - name: Show toolchain
         run: xcodebuild -version
@@ -96,18 +96,23 @@ jobs:
       - name: Pick iOS simulator
         id: sim
         run: |
-          DEVICE=$(xcrun simctl list devices available --json \
+          # Pinned literally to "iPhone 17 on iOS 26.4" — both the device
+          # name and the runtime must match between CI and local recording
+          # or SwiftUI snapshot baselines drift (different screen size,
+          # safe-area insets, text-renderer build). When repinning, update
+          # this script, the AGENTS.md trio (§ "iOS testing"), and re-record
+          # every baseline under Packages/Chat/Tests/.../__Snapshots__.
+          DEVICE=$(xcrun simctl list devices --json "iOS 26.4" \
             | python3 -c 'import json,sys; data=json.load(sys.stdin); \
-                runtimes=[k for k in data["devices"] if "iOS" in k]; \
-                runtimes.sort(reverse=True); \
-                target=next((d for r in runtimes for d in data["devices"][r] if "iPhone" in d.get("name","")), None); \
+                target=next((d for r in data["devices"] for d in data["devices"][r] if d.get("name")=="iPhone 17"), None); \
                 print(target["udid"] if target else "")')
           if [ -z "$DEVICE" ]; then
-            echo "::error::No iPhone simulator available on this runner."
+            echo "::error::iPhone 17 on iOS 26.4 not found on this runner."
+            xcrun simctl list devices --json "iOS 26.4"
             exit 1
           fi
           echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $DEVICE"
+          echo "Using simulator $DEVICE (iPhone 17 / iOS 26.4)"
 
       - name: Run Chat snapshot + unit tests on iOS Simulator
         env:

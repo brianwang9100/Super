@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   upload:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     env:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -47,13 +47,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26+
-        # Apple rejects App Store uploads built with anything older than the
-        # iOS 26 SDK (Xcode 26+). The macos-15 runner image's default Xcode
-        # is 16.4, so we pin to the newest stable installation on the image.
+      - name: Select Xcode
+        # Apple rejects App Store uploads built with anything older than
+        # the iOS 26 SDK. macos-26's Xcode 26.4.1 ships the iOS 26.4 SDK,
+        # comfortably above that floor. Pinned literally (not
+        # `latest-stable`) so a runner image refresh can't surprise this
+        # release job with a beta Xcode (26.5 is still preview on the
+        # image as of writing).
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.4.1"
 
       - name: Set AUTH_KEY_PATH
         run: echo "AUTH_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "$GITHUB_ENV"
