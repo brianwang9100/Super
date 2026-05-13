@@ -395,12 +395,68 @@ struct MessageListSnapshotTests {
     // verified by the conditional in source. Tracked for revisit if a
     // reliable env-injection seam appears in a future SDK.
 
+    /// Regression: a freshly-mounted `MessageList` with an overflowing
+    /// transcript anchors at the latest message rather than the top.
+    /// Thirty short bubbles overflow the 402×700 frame, so the
+    /// top-vs-bottom diff is unambiguous. Cross-conversation reset
+    /// (each chat re-anchors instead of inheriting a prior offset)
+    /// depends on the host applying `.id(...)` to force a fresh view
+    /// identity per chat — that path is covered by manual verification.
+    @Test("freshly mounted long transcript anchors at bottom (light)")
+    func freshlyMountedLongTranscriptLight() {
+        verifyLongTranscript(theme: .light, name: "list_long_transcript_anchored_bottom")
+    }
+
+    @Test("freshly mounted long transcript anchors at bottom (dark)")
+    func freshlyMountedLongTranscriptDark() {
+        verifyLongTranscript(theme: .dark, name: "list_long_transcript_anchored_bottom_dark")
+    }
+
+    @Test("freshly mounted long transcript anchors at bottom (sepia)")
+    func freshlyMountedLongTranscriptSepia() {
+        verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
+    }
+
+    // XXL Dynamic Type at this fixture size produces structurally
+    // different bottom-anchor pixels between iOS 26.2 (CI's bundled
+    // runtime) and iOS 26.3 (the closest runtime Apple still offers for
+    // local download) — perceptual delta ~0.5, far beyond what a
+    // tolerance can bridge without making the assertion meaningless. The
+    // XXL variant is deferred until CI is pinned to a downloadable
+    // runtime (see AGENTS.md §Testing.5).
+
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,
         function: String = #function
     ) {
         let view = MessageList(items: items, verbosity: .verbose)
+            .superTheme(.make(theme))
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    /// 30 user/assistant pairs — enough rows to overflow the 402×700
+    /// snapshot frame so the initial-bottom-anchor latch can be observed.
+    private static let longTranscriptItems: [MessageList.Item] = (1...30).flatMap { i in
+        [
+            MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)"),
+            MessageList.Item.assistantText(
+                id: "a\(i)",
+                thinking: nil,
+                thinkingDurationMs: nil,
+                text: "Assistant reply \(i).",
+                toolCalls: []
+            ),
+        ]
+    }
+
+    private func verifyLongTranscript(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
             .superTheme(.make(theme))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
