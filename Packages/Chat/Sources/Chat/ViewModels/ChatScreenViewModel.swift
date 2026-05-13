@@ -56,9 +56,13 @@ public final class ChatScreenViewModel {
     public var onModelSelected: (@MainActor (String) -> Void)?
 
     /// Active verbosity used by `MessageList` to expand or collapse
-    /// thinking and tool-call blocks. Seeded at init from
-    /// `ChatSettings.defaultVerbosity` and pushed in by the host when the
-    /// user changes the Settings → Default Verbosity pane.
+    /// thinking and tool-call blocks. Stored default is `.simple`; the
+    /// host (`ChatHostView` in the App target) constructs the view model
+    /// with the user's `ChatSettings.defaultVerbosity` at the moment
+    /// settings have loaded and pushes subsequent Settings → Default
+    /// Verbosity changes here via `.onChange`, so the open chat reacts
+    /// without a restart. Public `var` (not `private(set)`) because that
+    /// host push is the only writer.
     public var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
