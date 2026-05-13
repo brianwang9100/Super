@@ -1,5 +1,8 @@
 import Core
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Top-level chat surface: header on top, transcript or empty state in the
 /// middle, composer pinned to the bottom. Owned by the App composition
@@ -33,14 +36,28 @@ public struct ChatScreen: View {
     }
 
     @Environment(\.superTheme) private var theme
+    /// Focus state for the composer's `TextField`. Lifted out of
+    /// `ChatComposer` so taps on the transcript, taps on the hamburger,
+    /// and scroll drags can dismiss the keyboard by clearing this value.
+    @FocusState private var composerIsFocused: Bool
 
     public var body: some View {
         VStack(spacing: 0) {
-            ChatHeader(title: viewModel.headerTitle, onMenuTap: onMenuTap)
+            ChatHeader(title: viewModel.headerTitle, onMenuTap: handleMenuTap)
             content
                 .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                // `simultaneousGesture` (not `onTapGesture`) so the tap-to-dismiss
+                // path coexists with any tappable content the empty state or
+                // message list may gain. The populated branch also dismisses
+                // from inside `MessageList`; both firing is harmless because
+                // `dismissKeyboard()` is idempotent.
+                .simultaneousGesture(
+                    TapGesture().onEnded { dismissKeyboard() }
+                )
             ChatComposer(
                 text: composerBinding,
+                isFocused: $composerIsFocused,
                 isStreaming: viewModel.isStreaming,
                 modelOptions: viewModel.modelOptions,
                 selectedModelId: viewModel.selectedModelId,
@@ -71,6 +88,33 @@ public struct ChatScreen: View {
         .onChange(of: viewModel.voice.state) { _, newState in
             viewModel.handleVoiceStateChange(newState)
         }
+    }
+
+    /// Dismiss the on-screen keyboard *and* clear the SwiftUI `@FocusState`
+    /// so the composer's focused-border styling unsets. The UIKit
+    /// `resignFirstResponder` dispatch is the load-bearing piece — on
+    /// iOS 26.x, setting `@FocusState` from a sibling view doesn't always
+    /// tear down the keyboard, so the UIKit call is what reliably hides
+    /// it. The `#if canImport(UIKit)` branch compiles out on macOS where
+    /// there's no on-screen keyboard; the `@FocusState` clear still runs
+    /// so the border styling stays consistent across platforms.
+    private func dismissKeyboard() {
+        composerIsFocused = false
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
+    }
+
+    /// Dismiss the keyboard before opening the sidebar so the drawer
+    /// doesn't slide in over a still-visible keyboard.
+    private func handleMenuTap() {
+        dismissKeyboard()
+        onMenuTap()
     }
 
     /// Composer binding that splices the live partial transcript onto
@@ -116,7 +160,8 @@ public struct ChatScreen: View {
                 streamingTail: viewModel.streamingTail,
                 error: viewModel.error,
                 verbosity: viewModel.verbosity,
-                onRetry: viewModel.retry
+                onRetry: viewModel.retry,
+                onContentTap: dismissKeyboard
             )
         }
     }

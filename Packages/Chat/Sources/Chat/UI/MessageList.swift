@@ -76,6 +76,17 @@ public struct MessageList: View {
     public let error: ErrorState?
     public let verbosity: ChatVerbosity
     public let onRetry: () -> Void
+    /// Fired when the user taps anywhere on the transcript content (a
+    /// message bubble, the spaces between, etc.). `ChatScreen` wires this
+    /// to keyboard dismissal. Lives inside `MessageList` because a tap
+    /// gesture attached *outside* a `ScrollView` is intercepted by the
+    /// scroll view's recognizers and never fires — the gesture must be
+    /// inside the scroll content's `LazyVStack`. Attached as a
+    /// `simultaneousGesture` so it fires alongside taps on interactive
+    /// children (e.g., the `ErrorBanner` retry button) — dismissing the
+    /// keyboard immediately before the child action runs is the intended
+    /// behavior.
+    public let onContentTap: () -> Void
 
     /// State for the live streaming overlay rendered as ``StreamingTail``.
     public struct StreamingState: Sendable, Equatable {
@@ -142,13 +153,15 @@ public struct MessageList: View {
         streamingTail: StreamingState? = nil,
         error: ErrorState? = nil,
         verbosity: ChatVerbosity = .simple,
-        onRetry: @escaping () -> Void = {}
+        onRetry: @escaping () -> Void = {},
+        onContentTap: @escaping () -> Void = {}
     ) {
         self.items = items
         self.streamingTail = streamingTail
         self.error = error
         self.verbosity = verbosity
         self.onRetry = onRetry
+        self.onContentTap = onContentTap
     }
 
     @Environment(\.superTheme) private var theme
@@ -206,8 +219,17 @@ public struct MessageList: View {
             .padding(.horizontal, 14)
             .padding(.top, 8)
             .padding(.bottom, 4)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture().onEnded { onContentTap() }
+            )
         }
         .background(theme.background)
+        // Drag-to-dismiss; the `simultaneousGesture` above handles
+        // tap-to-dismiss. Both routes lead through `ChatScreen`'s
+        // `dismissKeyboard()` via the `onContentTap` callback (taps) and
+        // SwiftUI's native scroll-view keyboard handling (drags).
+        .scrollDismissesKeyboard(.interactively)
         .scrollPosition($scrollPosition)
         .onScrollGeometryChange(for: ContentGeometry.self) { geo in
             ContentGeometry(
