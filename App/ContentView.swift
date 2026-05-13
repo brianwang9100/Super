@@ -211,6 +211,7 @@ struct ChatHostView: View {
                 modelRepository: dependencies.modelConfigurationRepository,
                 conversationRepository: dependencies.conversationRepository,
                 toolRegistry: dependencies.toolRegistry,
+                systemPromptReceiver: dependencies.chatSessionStore,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
                 httpClient: URLSessionHTTPClient()
             )

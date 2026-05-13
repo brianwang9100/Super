@@ -34,6 +34,11 @@ extension EnvironmentValues {
 /// Mirrors `Composer` in `.design-tmp/chat/project/src/chat-view.jsx`.
 public struct ChatComposer: View {
     @Binding public var text: String
+    /// Focus state owned by the parent (`ChatScreen`) so taps outside the
+    /// composer (transcript area, hamburger button) can dismiss the
+    /// keyboard by setting this to `false`. The composer mirrors the value
+    /// onto its `TextField` via `.focused(...)`.
+    @FocusState.Binding public var isFocused: Bool
     public let isStreaming: Bool
     public let isRecording: Bool
     public let isMicAvailable: Bool
@@ -50,6 +55,7 @@ public struct ChatComposer: View {
 
     public init(
         text: Binding<String>,
+        isFocused: FocusState<Bool>.Binding,
         isStreaming: Bool,
         modelOptions: [ModelPill.Option],
         selectedModelId: String?,
@@ -65,6 +71,7 @@ public struct ChatComposer: View {
         onStopRecording: @escaping () -> Void = {}
     ) {
         self._text = text
+        self._isFocused = isFocused
         self.isStreaming = isStreaming
         self.isRecording = isRecording
         self.isMicAvailable = isMicAvailable
@@ -83,7 +90,6 @@ public struct ChatComposer: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
-    @FocusState private var isFocused: Bool
     @State private var pulseScale: CGFloat = 1.0
     @State private var pulseOpacity: CGFloat = 0.6
 

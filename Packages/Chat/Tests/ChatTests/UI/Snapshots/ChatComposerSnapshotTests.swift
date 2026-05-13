@@ -42,15 +42,13 @@ struct ChatComposerSnapshotTests {
     @Test("near-max context fills meter")
     func nearMaxContext() {
         let function = #function
-        let view = ChatComposer(
-            text: .constant(""),
+        let view = FocusHostingChatComposer(
+            text: "",
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            onSelectModel: { _ in },
             usedTokens: 120_000,
-            maxTokens: 128_000,
-            onSubmit: { _ in }
+            maxTokens: 128_000
         )
         .superTheme(.make(.light))
         .frame(width: 402)
@@ -124,15 +122,13 @@ struct ChatComposerSnapshotTests {
         isMicAvailable: Bool = true,
         theme: SuperTheme.Identifier
     ) -> some View {
-        ChatComposer(
-            text: .constant(text),
+        FocusHostingChatComposer(
+            text: text,
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            onSelectModel: { _ in },
             usedTokens: 1_200,
             maxTokens: 128_000,
-            onSubmit: { _ in },
             isRecording: isRecording,
             isMicAvailable: isMicAvailable
         )
@@ -143,15 +139,13 @@ struct ChatComposerSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
-        let view = ChatComposer(
-            text: .constant("Hello world"),
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            onSelectModel: { _ in },
             usedTokens: 1_200,
-            maxTokens: 128_000,
-            onSubmit: { _ in }
+            maxTokens: 128_000
         )
         .superTheme(.make(.light))
         .dynamicTypeSize(.xxLarge)
@@ -166,15 +160,13 @@ struct ChatComposerSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = ChatComposer(
-            text: .constant(text),
+        let view = FocusHostingChatComposer(
+            text: text,
             isStreaming: isStreaming,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            onSelectModel: { _ in },
             usedTokens: 1_200,
-            maxTokens: 128_000,
-            onSubmit: { _ in }
+            maxTokens: 128_000
         )
         .superTheme(.make(theme))
         .frame(width: 402)
@@ -196,6 +188,41 @@ struct ChatComposerSnapshotTests {
         if let failure {
             Issue.record("\(name): \(failure)")
         }
+    }
+}
+
+/// Test-only wrapper that owns the composer's `@FocusState` so snapshot
+/// tests can construct `ChatComposer` (which now takes a
+/// `FocusState<Bool>.Binding`) without each call site declaring its own
+/// focus property. The state stays `false` for the lifetime of the
+/// snapshot render — baselines capture the unfocused composer, matching
+/// the pre-change appearance.
+@MainActor
+private struct FocusHostingChatComposer: View {
+    let text: String
+    let isStreaming: Bool
+    let modelOptions: [ModelPill.Option]
+    let selectedModelId: String?
+    let usedTokens: Int
+    let maxTokens: Int
+    var isRecording: Bool = false
+    var isMicAvailable: Bool = true
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        ChatComposer(
+            text: .constant(text),
+            isFocused: $isFocused,
+            isStreaming: isStreaming,
+            modelOptions: modelOptions,
+            selectedModelId: selectedModelId,
+            onSelectModel: { _ in },
+            usedTokens: usedTokens,
+            maxTokens: maxTokens,
+            onSubmit: { _ in },
+            isRecording: isRecording,
+            isMicAvailable: isMicAvailable
+        )
     }
 }
 #endif
