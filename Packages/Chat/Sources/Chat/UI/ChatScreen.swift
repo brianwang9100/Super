@@ -170,6 +170,12 @@ public struct ChatScreen: View {
                 onRetry: viewModel.retry,
                 onContentTap: dismissKeyboard
             )
+            // Re-mount the transcript per conversation so SwiftUI
+            // discards the prior `MessageList`'s `@State`. Without this,
+            // a stale scroll offset from a longer chat survives into a
+            // shorter one and lands past the new transcript's bottom —
+            // the viewport reads as empty above the composer.
+            .id(viewModel.conversationId)
         }
     }
 }
