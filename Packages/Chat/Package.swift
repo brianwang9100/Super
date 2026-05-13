@@ -29,6 +29,16 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "splash"),
             ],
+            // `.copy` preserves directory structure in the built bundle —
+            // `Resources/DefaultSystemPrompt.md` ends up at
+            // `Chat_Chat.bundle/Resources/DefaultSystemPrompt.md`. The
+            // `subdirectory: "Resources"` arg in
+            // `ChatSettings._loadBundledDefaultSystemPrompt` is paired with
+            // this — switching to `.process` would change the layout and
+            // silently break the lookup at launch.
+            resources: [
+                .copy("Resources"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]
