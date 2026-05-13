@@ -248,18 +248,23 @@ public actor ChatSession {
     /// turn itself is unaffected.
     public func subscribe() -> (snapshot: LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
-        guard liveTurn != nil else {
+        // Bind to a local copy so the snapshot reads below are safe even
+        // if a future refactor introduces a suspension point between the
+        // guard and the dictionary write. The mutation itself uses
+        // optional-chain (`liveTurn?.subscribers[id] = ...`) for the same
+        // reason — no force-unwraps to maintain.
+        guard let live = liveTurn else {
             continuation.finish()
             return (nil, stream)
         }
         let id = UUID()
-        liveTurn!.subscribers[id] = continuation
+        liveTurn?.subscribers[id] = continuation
         continuation.onTermination = { [weak self] _ in
             Task { await self?.removeSubscriber(id: id) }
         }
         let snapshot = LiveTurnSnapshot(
-            accumulatedText: liveTurn!.accumulatedText,
-            accumulatedThinking: liveTurn!.accumulatedThinking
+            accumulatedText: live.accumulatedText,
+            accumulatedThinking: live.accumulatedThinking
         )
         return (snapshot, stream)
     }

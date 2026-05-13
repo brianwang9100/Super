@@ -859,19 +859,18 @@ private actor ScriptedDriver: ChatSessionDriver {
     }
 
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
-        let pending = self.pendingSubscribeEvents
-        let snapshot = self.pendingSnapshot
+        // Drive the AsyncStream synchronously — yield everything we have
+        // and finish the continuation before returning. Avoids the
+        // `Task { ... await Task.yield() }` "race amplifier" pattern that
+        // AGENTS.md §Testing.2 flags. Consumers reading the stream after
+        // this returns drain a pre-filled buffer in their own time.
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
-        let actorRef = self
-        Task {
-            for event in pending {
-                continuation.yield(event)
-                await Task.yield()
-            }
-            continuation.finish()
-            await actorRef.markFinished()
+        for event in pendingSubscribeEvents {
+            continuation.yield(event)
         }
-        return (snapshot, stream)
+        continuation.finish()
+        markFinished()
+        return (pendingSnapshot, stream)
     }
 
     func cancel() async {
