@@ -168,9 +168,16 @@ jobs:
           # APPLE_TEAM_ID is already exported on the job (line 29) from
           # secrets.APPLE_TEAM_ID; PROFILE_NAME is bridged through this
           # step's env: above. Both are shell variables here, never
-          # interpolated as ${{ ... }} into the run script — which is the
-          # GitHub-recommended pattern for keeping run scripts free of
-          # workflow-template expansion.
+          # inlined as workflow-expression substitutions into the run
+          # script — which is the GitHub-recommended pattern for keeping
+          # run scripts free of template expansion.
+          #
+          # NOTE: do not write the literal workflow-expression token
+          # (dollar-brace-brace ... brace-brace) anywhere in this run
+          # block, even inside a shell comment. GitHub parses every such
+          # token in the workflow file before bash sees it, and an
+          # invalid expression body (e.g. an ellipsis) makes the whole
+          # workflow refuse to queue.
           #
           # Config/Base.xcconfig (committed) does `#include? "Local.xcconfig"`
           # and is wired as the Super target's baseConfigurationReference via
