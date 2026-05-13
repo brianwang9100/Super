@@ -405,7 +405,7 @@ Accent hue is globally tunable via the Tweaks dev panel (0–360°) during desig
 
 A single large textarea (10 rows, resizable-vertical), `--bg-raised` background, 14pt border-radius, faint border, 14pt body font. Under the field: `"Applied to new chats. {N} chars."` in faint ink. Editing is immediate — no "Save" button.
 
-Default: `"You are Super, a thoughtful personal assistant. Answer directly and well."`
+Default: shipped as [`Packages/Chat/Sources/Chat/Resources/DefaultSystemPrompt.md`](../../Packages/Chat/Sources/Chat/Resources/DefaultSystemPrompt.md) and loaded into `ChatSettings.default.systemPrompt` at type-init. Editing the file edits the factory default; existing users keep whatever they've saved in this pane.
 
 ### 7.6 Default Verbosity Pane
 

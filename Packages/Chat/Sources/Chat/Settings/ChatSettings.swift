@@ -53,7 +53,16 @@ public struct ChatSettings: Sendable, Equatable {
     /// Contents of the bundled `DefaultSystemPrompt.md`, trimmed of
     /// surrounding whitespace. Loaded once at type init; a missing
     /// resource is a packaging bug, not a runtime condition — fail loud.
-    private static let bundledDefaultSystemPrompt: String = {
+    private static let bundledDefaultSystemPrompt: String = _loadBundledDefaultSystemPrompt()
+
+    /// Reads `Resources/DefaultSystemPrompt.md` from `Bundle.module`
+    /// fresh on every call. Underscore-prefixed because the only legitimate
+    /// caller outside the static-let cache is `ChatSettingsTests`, which
+    /// uses it to verify `default.systemPrompt` matches an independent
+    /// read of the on-disk file (catches a silent revert to a hardcoded
+    /// literal). Production reads should go through
+    /// `ChatSettings.default.systemPrompt`, which caches the result.
+    static func _loadBundledDefaultSystemPrompt() -> String {
         guard let url = Bundle.module.url(
             forResource: "DefaultSystemPrompt",
             withExtension: "md",
@@ -65,7 +74,7 @@ public struct ChatSettings: Sendable, Equatable {
             fatalError("DefaultSystemPrompt.md present but unreadable as UTF-8")
         }
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    }()
+    }
 
     public init(
         themeId: ThemeID,
