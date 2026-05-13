@@ -93,55 +93,18 @@ jobs:
           restore-keys: |
             ios-spm-${{ runner.os }}-
 
-      - name: Install latest iOS simulator runtime
-        # Pin the simulator runtime so snapshot baselines (recorded locally
-        # against the latest iOS simulator) compare against the same
-        # renderer here. Without this, the runner falls back to the iOS
-        # 26.2 SDK that ships with Xcode 26.3, and the small sub-pixel
-        # differences in custom-font rendering (e.g. the Instrument Serif
-        # greeting in ChatEmptyState) blow up exact-pixel snapshot
-        # comparisons. `-downloadPlatform iOS` without `-buildVersion`
-        # downloads the latest compatible runtime for the selected Xcode.
-        # Simulator runtimes are installed under
-        # `/Library/Developer/CoreSimulator/...` which is root-owned and
-        # outside the cacheable workspace, so we can't usefully cache it
-        # across runs — the timeout is the safety net instead.
-        timeout-minutes: 20
-        run: xcodebuild -downloadPlatform iOS
-
       - name: Pick iOS simulator
         id: sim
         run: |
-          # Show what's installed for debugging.
-          xcrun simctl list runtimes
-          # Resolve the highest-version available iOS runtime identifier
-          # so snapshot baselines compare against the same renderer used
-          # at recording time. Then find — or create — an iPhone device
-          # on that runtime. We deliberately pin to the *latest* runtime
-          # (not the runner's pre-installed one) because pre-installed
-          # runtimes lag actual local-dev environments, and exact-pixel
-          # snapshot tests are sub-pixel sensitive across iOS minor
-          # versions.
-          RUNTIME=$(xcrun simctl list runtimes --json \
-            | python3 -c 'import json,sys; rts=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and "iOS" in r.get("name","")]; rts.sort(key=lambda r: tuple(int(p) for p in r["version"].split(".")), reverse=True); print(rts[0]["identifier"] if rts else "")')
-          if [ -z "$RUNTIME" ]; then
-            echo "::error::No iOS simulator runtime available on this runner."
-            exit 1
-          fi
-          echo "Using runtime $RUNTIME"
           DEVICE=$(xcrun simctl list devices available --json \
-            | python3 -c "import json,sys; data=json.load(sys.stdin); print(next((d['udid'] for d in data['devices'].get('$RUNTIME',[]) if 'iPhone' in d.get('name','')), ''))")
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); \
+                runtimes=[k for k in data["devices"] if "iOS" in k]; \
+                runtimes.sort(reverse=True); \
+                target=next((d for r in runtimes for d in data["devices"][r] if "iPhone" in d.get("name","")), None); \
+                print(target["udid"] if target else "")')
           if [ -z "$DEVICE" ]; then
-            # Runtime exists but no default iPhone device — create one
-            # using whatever modern iPhone device-type the runner has.
-            DEVICE_TYPE=$(xcrun simctl list devicetypes --json \
-              | python3 -c 'import json,sys; types=[t for t in json.load(sys.stdin)["devicetypes"] if "iPhone" in t.get("name","") and "Pro" in t.get("name","") and "Max" not in t.get("name","")]; types.sort(key=lambda t: t["name"], reverse=True); print(types[0]["identifier"] if types else "")')
-            if [ -z "$DEVICE_TYPE" ]; then
-              echo "::error::No iPhone Pro device type available."
-              exit 1
-            fi
-            echo "Creating simulator on $DEVICE_TYPE"
-            DEVICE=$(xcrun simctl create "iPhone-CI" "$DEVICE_TYPE" "$RUNTIME")
+            echo "::error::No iPhone simulator available on this runner."
+            exit 1
           fi
           echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
           echo "Using simulator $DEVICE"
