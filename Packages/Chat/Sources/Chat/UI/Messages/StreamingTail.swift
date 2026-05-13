@@ -13,7 +13,7 @@ struct StreamingTail: View {
     /// Base body size, declared via `@ScaledMetric` so the streaming
     /// text composes Dynamic Type with the chat font-scale knob — see
     /// the matching declaration in ``UserBubble`` for the rationale.
-    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 15
+    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     /// The spark spins for the entire duration of the turn so the user
     /// always has a "still working" cue — both before the first delta

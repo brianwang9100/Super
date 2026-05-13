@@ -29,15 +29,18 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "splash"),
             ],
-            // `.copy` preserves directory structure in the built bundle —
+            // `.process` flattens the directory into the bundle root —
             // `Resources/DefaultSystemPrompt.md` ends up at
-            // `Chat_Chat.bundle/Resources/DefaultSystemPrompt.md`. The
-            // `subdirectory: "Resources"` arg in
-            // `ChatSettings._loadBundledDefaultSystemPrompt` is paired with
-            // this — switching to `.process` would change the layout and
-            // silently break the lookup at launch.
+            // `Chat_Chat.bundle/DefaultSystemPrompt.md`. We use `.process`
+            // (not `.copy`) because the `.copy` layout (`Info.plist` at
+            // root + `Resources/` subfolder) is neither iOS-shallow nor
+            // macOS-deep, which makes `codesign` reject the bundle with
+            // "bundle format unrecognized" — breaking simulator builds
+            // that need a signed app for Keychain entitlements.
+            // `ChatSettings._loadBundledDefaultSystemPrompt` looks the
+            // file up without a subdirectory to match this layout.
             resources: [
-                .copy("Resources"),
+                .process("Resources"),
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
