@@ -70,10 +70,12 @@ public struct ChatSettings: Sendable, Equatable {
         ) else {
             fatalError("DefaultSystemPrompt.md missing from Chat bundle resources")
         }
-        guard let raw = try? String(contentsOf: url, encoding: .utf8) else {
-            fatalError("DefaultSystemPrompt.md present but unreadable as UTF-8")
+        do {
+            let raw = try String(contentsOf: url, encoding: .utf8)
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            fatalError("DefaultSystemPrompt.md present but unreadable as UTF-8: \(error)")
         }
-        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public init(

@@ -43,10 +43,10 @@ struct ChatSettingsStoreTests {
     }
 
     @Test("load returns the stored prompt verbatim, not the default")
-    func loadWithStoredPromptReturnsStoredValueNotDefault() async {
+    func loadWithStoredPromptReturnsStoredValueNotDefault() async throws {
         let repo = InMemorySettingRepository()
         let userPrompt = "My custom prompt — do not touch."
-        try? await repo.set(ChatSettingsStore.Keys.systemPrompt, value: userPrompt)
+        try await repo.set(ChatSettingsStore.Keys.systemPrompt, value: userPrompt)
 
         let store = ChatSettingsStore(repository: repo)
         let settings = await store.load()
