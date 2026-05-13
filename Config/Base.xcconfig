@@ -1,0 +1,11 @@
+// Base xcconfig — settings shared across every developer's build.
+//
+// Per-developer overrides (signing team, provisioning specifics, anything tied
+// to an individual Apple Developer account) live in Config/Local.xcconfig,
+// which is gitignored. Copy Config/Local.xcconfig.example to
+// Config/Local.xcconfig and fill in your details before building for a device.
+//
+// The `?` on the include makes Local.xcconfig optional, so simulator-only
+// builds (e.g. CI) work without a Local.xcconfig present.
+
+#include? "Local.xcconfig"
