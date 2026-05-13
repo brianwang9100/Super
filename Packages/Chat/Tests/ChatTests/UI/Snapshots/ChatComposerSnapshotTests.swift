@@ -47,7 +47,6 @@ struct ChatComposerSnapshotTests {
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            verbosity: .verbose,
             usedTokens: 120_000,
             maxTokens: 128_000
         )
@@ -128,7 +127,6 @@ struct ChatComposerSnapshotTests {
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            verbosity: .verbose,
             usedTokens: 1_200,
             maxTokens: 128_000,
             isRecording: isRecording,
@@ -146,7 +144,6 @@ struct ChatComposerSnapshotTests {
             isStreaming: false,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            verbosity: .verbose,
             usedTokens: 1_200,
             maxTokens: 128_000
         )
@@ -168,7 +165,6 @@ struct ChatComposerSnapshotTests {
             isStreaming: isStreaming,
             modelOptions: models,
             selectedModelId: "gpt-4o",
-            verbosity: .verbose,
             usedTokens: 1_200,
             maxTokens: 128_000
         )
@@ -207,7 +203,6 @@ private struct FocusHostingChatComposer: View {
     let isStreaming: Bool
     let modelOptions: [ModelPill.Option]
     let selectedModelId: String?
-    let verbosity: ChatVerbosity
     let usedTokens: Int
     let maxTokens: Int
     var isRecording: Bool = false
@@ -222,8 +217,6 @@ private struct FocusHostingChatComposer: View {
             modelOptions: modelOptions,
             selectedModelId: selectedModelId,
             onSelectModel: { _ in },
-            verbosity: verbosity,
-            onSelectVerbosity: { _ in },
             usedTokens: usedTokens,
             maxTokens: maxTokens,
             onSubmit: { _ in },

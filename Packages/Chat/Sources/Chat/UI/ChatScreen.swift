@@ -22,17 +22,26 @@ public struct ChatScreen: View {
     /// baselines don't drift across the morning/afternoon/evening
     /// hour buckets at recording time.
     private let clock: any Clock
+    /// Calendar used by the empty-state greeting's hour-of-day lookup.
+    /// Production wires `.current` (system timezone); snapshot tests
+    /// pin it to UTC so the hour bucket is identical on developer
+    /// machines (typically America/Los_Angeles) and on CI runners
+    /// (typically UTC) — otherwise the same `FixedClock` instant lands
+    /// in different hour buckets and baselines mismatch.
+    private let calendar: Calendar
 
     public init(
         viewModel: ChatScreenViewModel,
         onMenuTap: @escaping () -> Void = {},
         onManageModels: @escaping () -> Void = {},
-        clock: any Clock = SystemClock()
+        clock: any Clock = SystemClock(),
+        calendar: Calendar = .current
     ) {
         self.viewModel = viewModel
         self.onMenuTap = onMenuTap
         self.onManageModels = onManageModels
         self.clock = clock
+        self.calendar = calendar
     }
 
     @Environment(\.superTheme) private var theme
@@ -63,8 +72,6 @@ public struct ChatScreen: View {
                 selectedModelId: viewModel.selectedModelId,
                 onSelectModel: { viewModel.selectedModelId = $0 },
                 onManageModels: onManageModels,
-                verbosity: viewModel.verbosity,
-                onSelectVerbosity: { viewModel.verbosity = $0 },
                 usedTokens: viewModel.usedTokens,
                 maxTokens: viewModel.maxContextTokens,
                 onSubmit: viewModel.send,
@@ -153,7 +160,7 @@ public struct ChatScreen: View {
     @ViewBuilder
     private var content: some View {
         if viewModel.items.isEmpty && viewModel.streamingTail == nil {
-            ChatEmptyState(clock: clock)
+            ChatEmptyState(clock: clock, calendar: calendar)
         } else {
             MessageList(
                 items: viewModel.items,

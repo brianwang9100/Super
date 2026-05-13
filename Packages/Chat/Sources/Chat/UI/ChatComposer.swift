@@ -46,8 +46,6 @@ public struct ChatComposer: View {
     public let selectedModelId: String?
     public let onSelectModel: (String) -> Void
     public let onManageModels: () -> Void
-    public let verbosity: ChatVerbosity
-    public let onSelectVerbosity: (ChatVerbosity) -> Void
     public let usedTokens: Int
     public let maxTokens: Int
     public let onSubmit: (String) -> Void
@@ -63,8 +61,6 @@ public struct ChatComposer: View {
         selectedModelId: String?,
         onSelectModel: @escaping (String) -> Void,
         onManageModels: @escaping () -> Void = {},
-        verbosity: ChatVerbosity,
-        onSelectVerbosity: @escaping (ChatVerbosity) -> Void,
         usedTokens: Int,
         maxTokens: Int,
         onSubmit: @escaping (String) -> Void,
@@ -83,8 +79,6 @@ public struct ChatComposer: View {
         self.selectedModelId = selectedModelId
         self.onSelectModel = onSelectModel
         self.onManageModels = onManageModels
-        self.verbosity = verbosity
-        self.onSelectVerbosity = onSelectVerbosity
         self.usedTokens = usedTokens
         self.maxTokens = maxTokens
         self.onSubmit = onSubmit
@@ -118,8 +112,6 @@ public struct ChatComposer: View {
                         selectedModelId: selectedModelId,
                         onSelectModel: onSelectModel,
                         onManageModels: onManageModels,
-                        verbosity: verbosity,
-                        onSelectVerbosity: onSelectVerbosity,
                         usedTokens: usedTokens,
                         maxTokens: maxTokens
                     )
