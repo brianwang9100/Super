@@ -245,17 +245,18 @@ public struct MessageList: View {
             )
         } action: { _, newGeo in
             contentGeometry = newGeo
-            // First valid tick after a fresh mount: anchor at the bottom
-            // edge when content overflows the viewport. The overflow
-            // guard preserves the top-anchored layout for chats whose
-            // content already fits.
+            // First overflow tick after a fresh mount: anchor at the
+            // bottom edge. The latch arms only after a successful scroll,
+            // so a partial first-tick `contentHeight` (e.g. a `LazyVStack`
+            // that hasn't laid out off-screen rows yet) doesn't strand
+            // the view at the top — the next tick with a larger
+            // `contentHeight` will scroll. Short chats whose content
+            // always fits never latch and stay top-anchored (default).
             if !didApplyInitialBottomAnchor
-                && newGeo.contentHeight > 0
+                && newGeo.contentHeight > newGeo.viewportHeight
                 && newGeo.viewportHeight > 0 {
                 didApplyInitialBottomAnchor = true
-                if newGeo.contentHeight > newGeo.viewportHeight {
-                    scrollPosition.scrollTo(edge: .bottom)
-                }
+                scrollPosition.scrollTo(edge: .bottom)
             }
             // First geometry tick after a verbosity flip: layout has now
             // settled at the new content height, so apply whichever scroll
