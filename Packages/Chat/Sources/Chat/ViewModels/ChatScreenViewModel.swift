@@ -55,7 +55,10 @@ public final class ChatScreenViewModel {
     /// like `claude-opus-4-7`, not the record UUID).
     public var onModelSelected: (@MainActor (String) -> Void)?
 
-    /// Active verbosity selected in the verbosity pill.
+    /// Active verbosity used by `MessageList` to expand or collapse
+    /// thinking and tool-call blocks. Seeded at init from
+    /// `ChatSettings.defaultVerbosity` and pushed in by the host when the
+    /// user changes the Settings → Default Verbosity pane.
     public var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]

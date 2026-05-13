@@ -46,8 +46,6 @@ public struct ChatScreen: View {
                 selectedModelId: viewModel.selectedModelId,
                 onSelectModel: { viewModel.selectedModelId = $0 },
                 onManageModels: onManageModels,
-                verbosity: viewModel.verbosity,
-                onSelectVerbosity: { viewModel.verbosity = $0 },
                 usedTokens: viewModel.usedTokens,
                 maxTokens: viewModel.maxContextTokens,
                 onSubmit: viewModel.send,

@@ -48,8 +48,6 @@ struct ChatComposerSnapshotTests {
             modelOptions: models,
             selectedModelId: "gpt-4o",
             onSelectModel: { _ in },
-            verbosity: .verbose,
-            onSelectVerbosity: { _ in },
             usedTokens: 120_000,
             maxTokens: 128_000,
             onSubmit: { _ in }
@@ -132,8 +130,6 @@ struct ChatComposerSnapshotTests {
             modelOptions: models,
             selectedModelId: "gpt-4o",
             onSelectModel: { _ in },
-            verbosity: .verbose,
-            onSelectVerbosity: { _ in },
             usedTokens: 1_200,
             maxTokens: 128_000,
             onSubmit: { _ in },
@@ -153,8 +149,6 @@ struct ChatComposerSnapshotTests {
             modelOptions: models,
             selectedModelId: "gpt-4o",
             onSelectModel: { _ in },
-            verbosity: .verbose,
-            onSelectVerbosity: { _ in },
             usedTokens: 1_200,
             maxTokens: 128_000,
             onSubmit: { _ in }
@@ -178,8 +172,6 @@ struct ChatComposerSnapshotTests {
             modelOptions: models,
             selectedModelId: "gpt-4o",
             onSelectModel: { _ in },
-            verbosity: .verbose,
-            onSelectVerbosity: { _ in },
             usedTokens: 1_200,
             maxTokens: 128_000,
             onSubmit: { _ in }

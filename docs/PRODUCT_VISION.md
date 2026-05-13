@@ -568,7 +568,7 @@ Super/
 - [ ] Username/password authentication (see [AUTH.md](./AUTH.md))
 
 ### Phase 2: Chat — Expanded State (the MVP surface)
-- [ ] Expanded chat UI matching [`Chat/DESIGN.md`](./Chat/DESIGN.md): composer pill, model + verbosity pills, context meter, send/mic
+- [ ] Expanded chat UI matching [`Chat/DESIGN.md`](./Chat/DESIGN.md): composer pill, model pill, context meter, send/mic (verbosity lives in Settings → Default Verbosity)
 - [ ] OpenAI-compatible streaming client (BYOK, per-chat model selection)
 - [ ] Tool-call framework: `ToolRegistration`, registry, execution, streaming tool_call delta accumulation
 - [ ] Chat-card registry: mini-apps register renderers by `{appletId, cardKind}`

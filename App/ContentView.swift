@@ -153,6 +153,16 @@ struct ChatHostView: View {
             // the registry, so the picker just needs to re-pull.
             Task { await refreshAvailableModels() }
         }
+        .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
+            // Push the Settings default into the open chat so the
+            // transcript expands/collapses thinking and tool-call blocks
+            // the moment the user flips the pane. Without this, the new
+            // value would only apply on the *next* conversation open
+            // (the init-time seed at `rebuildChatViewModel`).
+            if let newValue {
+                viewModel?.verbosity = newValue
+            }
+        }
     }
 
     private func openSidebar() {
