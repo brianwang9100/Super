@@ -341,7 +341,7 @@ struct SettingsViewModelTests {
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
         conversationRepository: any ConversationRepository = StubConversationRepository(rows: []),
         toolRegistry: ToolRegistry = ToolRegistry(),
-        systemPromptReceiver: (any SystemPromptReceiver)? = nil
+        systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver()
     ) -> SettingsViewModel {
         SettingsViewModel(
             accountEmail: "test@example.com",
@@ -421,18 +421,4 @@ private struct StaticExecutor: ToolExecutor {
     func execute(input: [String: JSONValue]) async throws -> ToolResult {
         ToolResult(toolID: toolID, content: "ok")
     }
-}
-
-/// Captures every `setSystemPrompt(_:)` call so the test can assert that
-/// `SettingsViewModel.setSystemPrompt(_:)` forwarded the value into the
-/// orchestration layer. An actor (rather than a class with a lock) keeps
-/// concurrent appends safe by default.
-private actor FakeSystemPromptReceiver: SystemPromptReceiver {
-    private var prompts: [String] = []
-
-    func setSystemPrompt(_ value: String) async {
-        prompts.append(value)
-    }
-
-    func received() -> [String] { prompts }
 }

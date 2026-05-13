@@ -301,8 +301,8 @@ public actor ChatSession {
             messages: messages,
             toolCalls: toolCalls,
             checkpoint: checkpoint,
-            systemPrompt: currentSystemPrompt,
-            model: model
+            model: model,
+            systemPrompt: currentSystemPrompt
         )
     }
 

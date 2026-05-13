@@ -254,8 +254,8 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
-            systemPrompt: "You are concise.",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: "You are concise."
         )
 
         #expect(assembly.messages.count == 3)
@@ -280,8 +280,8 @@ struct ContextAssemblerTests {
                 messages: messages,
                 toolCalls: [],
                 checkpoint: nil,
-                systemPrompt: prompt,
-                model: makeModel()
+                model: makeModel(),
+                systemPrompt: prompt
             )
             #expect(
                 assembly.messages.count == 1,
@@ -295,8 +295,8 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
-            systemPrompt: "  haiku\nplease  ",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: "  haiku\nplease  "
         )
         #expect(assembly.messages.count == 2)
         if case .text(let body) = assembly.messages[0].content.first {
@@ -328,8 +328,8 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: checkpoint,
-            systemPrompt: "Always answer in haiku.",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: "Always answer in haiku."
         )
 
         // [0] settings prompt, [1] checkpoint summary, [2] m3
@@ -372,8 +372,8 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: checkpoint,
-            systemPrompt: "Always answer in haiku.",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: "Always answer in haiku."
         )
 
         // [0] settings, [1] historical .system, [2] checkpoint, [3] m3
@@ -399,15 +399,15 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
-            systemPrompt: "",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: ""
         )
         let withPrompt = try assembler.assemble(
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
-            systemPrompt: "You are a verbose assistant who loves long answers.",
-            model: makeModel()
+            model: makeModel(),
+            systemPrompt: "You are a verbose assistant who loves long answers."
         )
         #expect(withPrompt.totalTokens > bare.totalTokens)
     }

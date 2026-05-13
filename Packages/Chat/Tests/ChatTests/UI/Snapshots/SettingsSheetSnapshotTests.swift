@@ -176,7 +176,8 @@ struct SettingsSheetSnapshotTests {
             settingRepository: NoopSettingRepository(),
             modelRepository: NoopModelRepository(),
             conversationRepository: NoopConversationRepository(),
-            toolRegistry: ToolRegistry()
+            toolRegistry: ToolRegistry(),
+            systemPromptReceiver: FakeSystemPromptReceiver()
         )
     }
 }
