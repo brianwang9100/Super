@@ -93,21 +93,44 @@ jobs:
           restore-keys: |
             ios-spm-${{ runner.os }}-
 
+      - name: Install latest iOS simulator runtime
+        # Snapshot rendering output is driven by the iOS *simulator
+        # runtime* — not the Xcode SDK — so the runtime version pinned
+        # in CI must match the runtime used to record baselines locally.
+        # The macOS-15 runner image ships Xcode 26.3 with iOS 26.2 SDK
+        # + iOS 26.2 sim runtime preinstalled, but Apple no longer
+        # distributes iOS 26.2 runtime to local installs (only the
+        # latest minor, iOS 26.3.1, is downloadable). Downloading the
+        # latest runtime here aligns CI rendering with `xcodebuild
+        # -downloadPlatform iOS` on a fresh local Xcode 26.3 install.
+        run: |
+          xcodebuild -downloadPlatform iOS
+          xcrun simctl list runtimes | grep iOS
+
       - name: Pick iOS simulator
         id: sim
         run: |
+          # Look at the highest-version iOS runtime *only*, so that an
+          # older pre-bundled runtime can never win when the newer one
+          # has no devices auto-created yet (which is the usual state
+          # right after `xcodebuild -downloadPlatform iOS`). If the top
+          # runtime has no iPhone device, create one explicitly.
+          TOP_RUNTIME=$(xcrun simctl list runtimes --json \
+            | python3 -c 'import json,sys; rs=[r for r in json.load(sys.stdin)["runtimes"] if r.get("isAvailable") and "iOS" in r.get("name","")]; rs.sort(key=lambda r: tuple(int(p) for p in r["version"].split(".")), reverse=True); print(rs[0]["identifier"])')
+          export TOP_RUNTIME
+          echo "Top iOS runtime: $TOP_RUNTIME"
           DEVICE=$(xcrun simctl list devices available --json \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin); \
-                runtimes=[k for k in data["devices"] if "iOS" in k]; \
-                runtimes.sort(reverse=True); \
-                target=next((d for r in runtimes for d in data["devices"][r] if "iPhone" in d.get("name","")), None); \
-                print(target["udid"] if target else "")')
+            | python3 -c "import json,sys,os; data=json.load(sys.stdin); rt=os.environ['TOP_RUNTIME']; ds=[d for d in data['devices'].get(rt, []) if 'iPhone' in d.get('name','')]; print(ds[0]['udid'] if ds else '')")
+          if [ -z "$DEVICE" ]; then
+            DEVICE=$(xcrun simctl create "iPhone17Pro-Snapshot" "iPhone 17 Pro" "$TOP_RUNTIME")
+          fi
           if [ -z "$DEVICE" ]; then
             echo "::error::No iPhone simulator available on this runner."
             exit 1
           fi
           echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $DEVICE"
+          echo "Using simulator $DEVICE (runtime $TOP_RUNTIME)"
+          xcrun simctl list devices | grep "$DEVICE" || true
 
       - name: Run Chat snapshot + unit tests on iOS Simulator
         env:
