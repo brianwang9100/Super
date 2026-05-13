@@ -50,6 +50,12 @@ struct MarkdownText: View {
             // full-message Copy button.
             .textSelection(.enabled)
             .task(id: themeKey) {
+                // Drop the stale cache synchronously before the async
+                // rebuild so the next render falls through to the inline
+                // fallback (which already reads the new theme/appearance)
+                // instead of painting one frame against the prior cached
+                // theme — visible as a flash during slider drags.
+                cachedTheme = nil
                 cachedTheme = theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance)
             }
     }

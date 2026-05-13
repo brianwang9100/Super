@@ -295,6 +295,21 @@ struct MessageListSnapshotTests {
         )
     }
 
+    /// Dark-mode coverage at the upper-bound corner. Per AGENTS.md
+    /// §Testing.2 every new SwiftUI variant needs a light + dark pair.
+    /// One dark variant is enough to catch density padding regressions
+    /// against the dark palette; the light-theme matrix above already
+    /// locks the rest of the (fontScale × density) corners.
+    @Test("appearance: scale max + density spacious (dark)")
+    func appearanceScaleMaxSpaciousDark() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_dark",
+            theme: .dark
+        )
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -363,17 +378,17 @@ struct MessageListSnapshotTests {
     }
 
     /// Renders the populated `items` fixture under a non-default
-    /// `ChatAppearance` and snapshots in the light theme. Used to lock
-    /// in the four endpoint corners of the (fontScale × density)
-    /// knob space.
+    /// `ChatAppearance` and snapshots in the given theme. Used to lock
+    /// in the endpoint corners of the (fontScale × density) knob space.
     private func verifyAppearance(
         fontScale: Double,
         density: ChatSettings.Density,
         name: String,
+        theme: SuperTheme.Identifier = .light,
         function: String = #function
     ) {
         let view = MessageList(items: items, verbosity: .verbose)
-            .superTheme(.make(.light))
+            .superTheme(.make(theme))
             .chatAppearance(ChatAppearance(fontScale: fontScale, density: density))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)

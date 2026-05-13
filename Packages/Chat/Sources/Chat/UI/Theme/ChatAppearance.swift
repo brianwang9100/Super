@@ -15,8 +15,13 @@ public struct ChatAppearance: Sendable, Equatable {
     public let fontScale: Double
     public let density: ChatSettings.Density
 
+    /// Defensive clamp at the boundary: `ChatSettings.clampFontScale`
+    /// already pins the persisted value to `[0.85, 1.15]`, but a future
+    /// caller (test, migration, debug seam) could construct a
+    /// `ChatAppearance` directly and bypass that. Re-clamping here keeps
+    /// the doc-comment contract honest even on the direct path.
     public init(fontScale: Double, density: ChatSettings.Density) {
-        self.fontScale = fontScale
+        self.fontScale = min(max(fontScale, 0.85), 1.15)
         self.density = density
     }
 
