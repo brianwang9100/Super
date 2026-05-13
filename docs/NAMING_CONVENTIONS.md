@@ -674,7 +674,7 @@ Every new SwiftUI view fits into one of these buckets. The bucket determines the
 | **Sheet** | `*Sheet` | Bottom-anchored modal overlay with rounded top corners. | `SettingsSheet` |
 | **Pane** | `*Pane` | Sub-screen content navigated *within* a Sheet/Screen via `NavigationStack`. | `SettingsRootPane`, `SettingsModelsPane`, … |
 | **Region** | bare | Composed strip inside a Screen/Pane. Name *is* the role. Regions can nest (a region inside another region or inside a non-Screen view). | `ChatHeader`, `ChatComposer`, `ChatComposerFooter`, `StreamingTail` |
-| **Pill** | `*Pill` | Small inline rounded control, often a dropdown trigger. | `ModelPill`, `VerbosityPill` |
+| **Pill** | `*Pill` | Small inline rounded control, often a dropdown trigger. | `ModelPill` |
 | **Meter** | `*Meter` | Progress/measurement indicator. | `ContextMeter` |
 | **Row** | `*Row` | One item in a vertical list. | `SettingsRow`, `ChatRow` |
 | **Bubble** | `*Bubble` | Chat-bubble-shaped message container. | `UserBubble` |

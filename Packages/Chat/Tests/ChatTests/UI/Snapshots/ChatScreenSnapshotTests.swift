@@ -23,10 +23,21 @@ struct ChatScreenSnapshotTests {
     )
 
     /// Wed 2026-01-14 14:00:00 UTC — sits squarely in the "afternoon"
-    /// hour bucket regardless of the system calendar in use. Pinning the
-    /// clock removes the wall-clock drift that previously forced baseline
-    /// re-records every time the suite ran in a different hour bucket.
+    /// hour bucket *when interpreted in UTC*. Pinning the clock removes
+    /// wall-clock drift; pairing it with `snapshotCalendar` below
+    /// removes timezone drift (PDT/UTC) between developer machines and
+    /// CI runners, which previously rendered a different greeting.
     private let snapshotClock = FixedClock(Date(timeIntervalSince1970: 1_768_485_600))
+
+    /// UTC calendar so the empty-state greeting's hour-of-day lookup
+    /// is identical on any machine that runs this suite. Without this,
+    /// 14:00 UTC lands in the "afternoon" bucket on a UTC sim and the
+    /// "morning" bucket on a PDT sim — and the baselines diverge.
+    private let snapshotCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }()
 
     @Test("empty state in light theme")
     func emptyLight() {
@@ -67,7 +78,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -80,7 +91,7 @@ struct ChatScreenSnapshotTests {
         function: String = #function
     ) {
         let viewModel = makeViewModel(initialMessages: [])
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
@@ -120,7 +131,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock)
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
         recordOrCompare(view: view, name: name, function: function)

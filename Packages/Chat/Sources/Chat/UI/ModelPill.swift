@@ -83,9 +83,9 @@ public struct ModelPill: View {
     }
 }
 
-/// Visual treatment shared by `ModelPill` and `VerbosityPill`. A capsule
-/// with a faint border, soft ink, and a trailing chevron — matches
-/// `footerPill` in `chat-view.jsx`.
+/// Visual treatment for composer-footer pills. A capsule with a faint
+/// border, soft ink, and a trailing chevron — matches `footerPill` in
+/// `chat-view.jsx`.
 struct FooterPillLabel: View {
     let text: String
     let theme: SuperTheme

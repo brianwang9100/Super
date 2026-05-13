@@ -55,8 +55,10 @@ public final class ChatScreenViewModel {
     /// like `claude-opus-4-7`, not the record UUID).
     public var onModelSelected: (@MainActor (String) -> Void)?
 
-    /// Active verbosity selected in the verbosity pill.
-    public var verbosity: ChatVerbosity = .simple
+    /// Active verbosity used by `MessageList` to expand or collapse
+    /// thinking and tool-call blocks. Mutated only through the init
+    /// argument or `applyExternalVerbosity(_:)`.
+    public private(set) var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
     public private(set) var availableModels: [LLMModel]
@@ -326,6 +328,15 @@ public final class ChatScreenViewModel {
         } else if selectedModelId == nil {
             selectedModelId = models.first?.id
         }
+    }
+
+    /// Apply a new verbosity from an external source. `nil` is a no-op
+    /// so an optional-binding observable (`ChatVerbosity?`) can pass
+    /// straight through during the bootstrap window without an extra
+    /// guard at the call site.
+    public func applyExternalVerbosity(_ newValue: ChatVerbosity?) {
+        guard let newValue else { return }
+        verbosity = newValue
     }
 
     /// Retry after an error: re-send the most recent user message. If we

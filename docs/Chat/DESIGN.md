@@ -73,7 +73,7 @@ Motion is sparse and short: a typing caret inside streaming text, a pulse for th
 │ ╭─────────────────────────────────────╮ │
 │ │ Chat with Super                     │ │ ← rounded composer (26pt radius)
 │ │                                     │ │
-│ │ [Opus 4.7 ▾] [Verbose ▾]  ▃ 42.3K/200K  🎤 │ │ ← model · verbosity · ctx meter · mic/send
+│ │ [Opus 4.7 ▾]              ▃ 42.3K/200K  🎤 │ │ ← model · ctx meter · mic/send
 │ ╰─────────────────────────────────────╯ │
 └─────────────────────────────────────────┘
 ```
@@ -99,7 +99,7 @@ Auto-scroll sticks to the bottom as tokens stream. If the user scrolls up, strea
 ╭─────────────────────────────────────────╮
 │  Chat with Super                        │
 │                                         │
-│  [Opus 4.7 ▾]  [Verbose ▾]    ▃ 42.3K/200K  ▶ │
+│  [Opus 4.7 ▾]                 ▃ 42.3K/200K  ▶ │
 ╰─────────────────────────────────────────╯
 ```
 
@@ -107,7 +107,6 @@ Auto-scroll sticks to the bottom as tokens stream. If the user scrolls up, strea
 - **Textarea:** multi-line, auto-grows up to 120pt, then scrolls internally. Placeholder: "Chat with Super". `Enter` sends; `Shift+Enter` inserts a newline.
 - **Footer row** (below the textarea, inside the pill):
   - **Model pill** — dropdown showing the current model's short name (e.g. "Opus 4.7"). Tapping opens a menu of configured models with their context-max (e.g. "Opus 4.7   200K"). Selecting a model changes it **for the active chat only**.
-  - **Verbosity pill** — dropdown with Simple / Thinking / Verbose (see [§4.3](#43-verbosity)). Each option has a one-line description in the menu.
   - **Context meter** (right-aligned, mono font): a 26×3pt accent-filled progress track followed by `{used}K / {max}K`. Measured in thousands of tokens for the active chat.
   - **Mic/Send button** (34pt circular, far right):
     - Empty text → **mic icon** on a muted background. Tap records a voice message (future; ships as a no-op placeholder in MVP).
@@ -150,6 +149,8 @@ The assistant message has **no bubble and no background**. Parts render directly
 ### 4.3 Verbosity
 
 Verbosity controls the **default expanded/collapsed state** of thinking and tool-call blocks on assistant messages. It does not hide or delete them — all blocks always render; only the open/closed state changes.
+
+The selected verbosity is owned by Settings (see [§7.6](#76-default-verbosity-pane)) — the composer doesn't expose a per-chat picker. Changes in Settings flow into the open chat in real time so the transcript expands or collapses without restarting.
 
 | Mode | Thinking block | Tool call block |
 |------|----------------|-----------------|
@@ -411,9 +412,9 @@ Default: `"You are Super, a thoughtful personal assistant. Answer directly and w
 Three rows (Simple / Thinking / Verbose) in a grouped card, each showing:
 
 - Title (15pt)
-- Description (12.5pt faint ink) — the same descriptions as in the composer's Verbosity pill
+- Description (12.5pt faint ink) — one-line summary of what the level shows ("Just the answer" / "Show thinking" / "Show everything").
 
-Selected option shows a trailing accent check. Applies only to **newly created chats**; the active chat keeps its own verbosity.
+Selected option shows a trailing accent check. Picking a value changes the verbosity for the **open chat** immediately and persists it as the default for newly created chats.
 
 ### 7.7 Appearance Pane
 

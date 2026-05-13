@@ -165,6 +165,12 @@ struct ChatHostView: View {
             // the registry, so the picker just needs to re-pull.
             Task { await refreshAvailableModels() }
         }
+        .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
+            // The chat view model is constructed per-conversation, so without
+            // an explicit push here a settings flip would only take effect
+            // when the user opens the next chat.
+            viewModel?.applyExternalVerbosity(newValue)
+        }
     }
 
     private func openSidebar() {

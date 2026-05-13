@@ -65,7 +65,6 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
     ├── ChatComposerFooter  ⟵ trailing row inside the capsule
     │   │                      (Chat/UI/ChatComposerFooter.swift)
     │   ├── ModelPill          — current model dropdown   (Chat/UI/ModelPill.swift)
-    │   ├── VerbosityPill      — Simple/Thinking/Verbose  (Chat/UI/VerbosityPill.swift)
     │   └── ContextMeter       — token usage progress     (Chat/UI/ContextMeter.swift)
     └── trailingButton      ⟵ 34pt circle, four mutually-exclusive states:
                                 · mic           (empty composer, mic available)
@@ -78,7 +77,7 @@ The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolC
 
 **View model:** `ChatScreenViewModel` (`Chat/ViewModels/ChatScreenViewModel.swift`).
 
-Owns: composer buffer, projected `MessageList.Item` list, live `streamingTail`, terminal `error`, model + verbosity selection, used/max token counts, header title (mutated by `TitleGenerator` after the first exchange), and a `VoiceInputController` collaborator.
+Owns: composer buffer, projected `MessageList.Item` list, live `streamingTail`, terminal `error`, model selection, the active verbosity used for rendering (seeded at init from `ChatSettings.defaultVerbosity` and pushed in by the host when the Settings sheet changes it), used/max token counts, header title (mutated by `TitleGenerator` after the first exchange), and a `VoiceInputController` collaborator.
 
 Driven by: an injected `ChatSessionDriver` (in production a `LiveChatSessionDriver` wrapping the per-conversation `ChatSession` actor from `ChatSessionStore`). The view model consumes the actor's `AsyncStream<ChatEvent>` and folds each event into observable state — that's the bridge between the orchestration loop in ARCHITECTURE §5 and what SwiftUI re-renders.
 

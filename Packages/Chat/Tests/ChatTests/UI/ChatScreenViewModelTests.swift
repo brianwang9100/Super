@@ -672,6 +672,40 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
+    @Test("applyExternalVerbosity updates verbosity when given a non-nil value")
+    func applyExternalVerbosityUpdates() {
+        let viewModel = makeMinimalViewModel()
+        #expect(viewModel.verbosity == .simple)
+
+        viewModel.applyExternalVerbosity(.verbose)
+        #expect(viewModel.verbosity == .verbose)
+
+        viewModel.applyExternalVerbosity(.thinking)
+        #expect(viewModel.verbosity == .thinking)
+    }
+
+    @Test("applyExternalVerbosity is a no-op on nil so an optional observable can pass through directly")
+    func applyExternalVerbosityIgnoresNil() {
+        let viewModel = makeMinimalViewModel()
+        viewModel.applyExternalVerbosity(.verbose)
+        #expect(viewModel.verbosity == .verbose)
+
+        viewModel.applyExternalVerbosity(nil)
+        #expect(viewModel.verbosity == .verbose)
+    }
+
+    private func makeMinimalViewModel() -> ChatScreenViewModel {
+        ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+    }
+
     private func makeVoiceViewModel(voice: VoiceInputController) -> ChatScreenViewModel {
         ChatScreenViewModel(
             conversationId: conversationId,
