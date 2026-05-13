@@ -25,6 +25,16 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 - **Module** = a Swift Package Manager code module (not the same as an applet)
 - **Shell** = the Super app container that hosts applets
 
+## Worktree discipline
+
+When invoked inside a git worktree (path looks like `<repo>/.claude/worktrees/<name>/`), **do all file edits there**. The main repo at `/Users/bwang/Development/Super/` and the worktree share `.git` but have separate working trees; an edit to a file under the main repo path is invisible to the worktree (and vice versa), and the main repo may carry unrelated uncommitted work from another session that your changes would mix into.
+
+- The session env hint (`Primary working directory: …`) is the authoritative workspace root. Treat it as the *only* place file writes are allowed unless the user explicitly says otherwise.
+- Prefer relative paths and the shell's current working directory over hardcoded absolute paths. Absolute paths copied from docs, memory, prior agent output, or `git log` typically point at the main repo and will silently land in the wrong tree.
+- Before writing the first file in a session, sanity-check: does the absolute path you're about to use start with the worktree root? If not, rewrite it.
+- After a batch of edits, run `git status` from the worktree to confirm your changes appear there — not the main repo. A clean `git status` in the worktree when you expected changes is a red flag that you edited the wrong path.
+- If you discover edits landed in the main repo by mistake: `cp` each file from the main repo into the matching worktree path, then `git checkout HEAD -- <files>` and `rm` untracked files in the main repo to restore it. Do **not** stash, commit, or push from the main repo to recover — the main repo may have pre-existing uncommitted work you shouldn't touch.
+
 ## Swift function declarations
 
 Follow the official guidance in [The Swift Programming Language — Functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/). The rules below are the ones we hold the line on; the linked chapter is the source of truth for anything not stated here.

@@ -247,6 +247,54 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_thinking_markdown_light", function: function)
     }
 
+    /// Appearance: minimum font scale + compact density. Covers the
+    /// lower-bound corner of the `ChatAppearance` knob space — the
+    /// markdown body, user bubble text, paragraph line-spacing, and
+    /// per-row vertical padding should all read tighter than the
+    /// default `list_populated_light` baseline.
+    @Test("appearance: scale min + density compact")
+    func appearanceScaleMinCompact() {
+        verifyAppearance(
+            fontScale: 0.85,
+            density: .compact,
+            name: "list_scale_min_compact_light"
+        )
+    }
+
+    /// Appearance: maximum font scale + spacious density. Covers the
+    /// upper-bound corner. Markdown body and user bubble text scale up;
+    /// paragraph line-spacing and per-row padding widen.
+    @Test("appearance: scale max + density spacious")
+    func appearanceScaleMaxSpacious() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_light"
+        )
+    }
+
+    /// Cross variant: small text in a spacious layout — exercises the
+    /// independence of the two knobs.
+    @Test("appearance: scale min + density spacious")
+    func appearanceScaleMinSpacious() {
+        verifyAppearance(
+            fontScale: 0.85,
+            density: .spacious,
+            name: "list_scale_min_spacious_light"
+        )
+    }
+
+    /// Cross variant: large text in a compact layout — the opposite
+    /// independence check.
+    @Test("appearance: scale max + density compact")
+    func appearanceScaleMaxCompact() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .compact,
+            name: "list_scale_max_compact_light"
+        )
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -310,6 +358,23 @@ struct MessageListSnapshotTests {
     ) {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    /// Renders the populated `items` fixture under a non-default
+    /// `ChatAppearance` and snapshots in the light theme. Used to lock
+    /// in the four endpoint corners of the (fontScale × density)
+    /// knob space.
+    private func verifyAppearance(
+        fontScale: Double,
+        density: ChatSettings.Density,
+        name: String,
+        function: String = #function
+    ) {
+        let view = MessageList(items: items, verbosity: .verbose)
+            .superTheme(.make(.light))
+            .chatAppearance(ChatAppearance(fontScale: fontScale, density: density))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
     }

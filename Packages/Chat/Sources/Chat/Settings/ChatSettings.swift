@@ -16,12 +16,14 @@ public struct ChatSettings: Sendable, Equatable {
     /// Default verbosity for new chats. Existing chats keep their own.
     /// Wired live: `ChatHostView.startNewChat` reads it.
     public var defaultVerbosity: ChatVerbosity
-    /// Body-font scale multiplier. Clamped to `[0.85, 1.15]`.
-    /// Persistence wired in M9; live application of the scale across the
-    /// chat surface lands with M12 polish.
+    /// Body-font scale multiplier. Clamped to `[0.85, 1.15]`. Applied
+    /// to message rendering via the `\.chatAppearance` environment value
+    /// injected by `ChatHostView` — see `ChatAppearance`.
     public var fontScale: Double
-    /// Vertical density that affects message + composer + sidebar spacing.
-    /// Persistence wired in M9; spacing-token consumers ship in M12.
+    /// Vertical density preset. Drives paragraph line-spacing inside
+    /// markdown and per-row vertical padding on user/assistant message
+    /// rows via the `\.chatAppearance` environment value — see
+    /// `ChatAppearance`. Composer and sidebar chrome stay fixed-size.
     public var density: Density
     /// Whether the compactor automatically runs when context fills up.
     /// Persistence wired in M9; the `ChatSession` toggle hookup is M10
@@ -68,10 +70,9 @@ public struct ChatSettings: Sendable, Equatable {
         case sepia
     }
 
-    /// Three discrete vertical-spacing presets. Persisted in M9; the
-    /// spacing tokens (message padding, sidebar row height, composer
-    /// padding) that consume this value land with M12 polish — see
-    /// `IMPLEMENTATION_STATUS.md`.
+    /// Three discrete vertical-spacing presets consumed by the
+    /// `\.chatAppearance` environment value — see `ChatAppearance` for
+    /// the resolved per-row paddings and paragraph line-spacing values.
     public enum Density: String, Sendable, Equatable, CaseIterable, Codable {
         case compact
         case comfortable

@@ -21,6 +21,7 @@ struct MarkdownText: View {
     let bodyStyleOverride: BodyStyle?
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.chatAppearance) private var appearance
     @State private var cachedTheme: MarkdownUI.Theme?
 
     init(_ text: String, bodyStyleOverride: BodyStyle? = nil) {
@@ -43,20 +44,29 @@ struct MarkdownText: View {
         // First render before `.task` fires uses an inline build; the
         // task primes the cache so subsequent renders skip the rebuild.
         Markdown(text)
-            .markdownTheme(cachedTheme ?? theme.markdownTheme(bodyStyle: bodyStyleOverride))
+            .markdownTheme(cachedTheme ?? theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance))
             // Selection lets the user copy a partial run from a code
             // block or a sentence from prose without invoking the
             // full-message Copy button.
             .textSelection(.enabled)
             .task(id: themeKey) {
-                cachedTheme = theme.markdownTheme(bodyStyle: bodyStyleOverride)
+                cachedTheme = theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance)
             }
     }
 
-    /// Cache key combines the SuperTheme value with the body-style
-    /// override so a thinking trace doesn't reuse a cached banner theme
-    /// (and vice versa) when both render in the same view tree.
+    /// Cache key combines theme, body-style override, and appearance
+    /// knobs so a thinking trace doesn't reuse a cached banner theme
+    /// (and vice versa), and so a font-scale or density change
+    /// invalidates the cached MarkdownUI theme. Font scale is formatted
+    /// to a fixed precision so two arithmetically-equal but binarily-
+    /// different `Double`s map to the same key.
     private var themeKey: String {
-        "\(theme.id.rawValue):\(bodyStyleOverride.map(String.init(describing:)) ?? "default")"
+        let style: String = switch bodyStyleOverride {
+        case .thinking: "thinking"
+        case .banner: "banner"
+        case .none: "default"
+        }
+        let scale = String(format: "%.3f", appearance.fontScale)
+        return "\(theme.id.rawValue):\(style):\(scale):\(appearance.density.rawValue)"
     }
 }
