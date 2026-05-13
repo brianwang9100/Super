@@ -310,6 +310,35 @@ struct MessageListSnapshotTests {
         )
     }
 
+    /// Sepia coverage at the upper-bound corner. The sepia palette uses a
+    /// warmer background and ink than light/dark — confirms the appearance
+    /// knobs interact correctly with that palette too (no hardcoded
+    /// `.primary` foregrounds slipping through, etc.).
+    @Test("appearance: scale max + density spacious (sepia)")
+    func appearanceScaleMaxSpaciousSepia() {
+        verifyAppearance(
+            fontScale: 1.15,
+            density: .spacious,
+            name: "list_scale_max_spacious_sepia",
+            theme: .sepia
+        )
+    }
+
+    /// Combined Dynamic Type XXL + maxed appearance knobs. Locks the
+    /// "everything turned up" corner so a regression that compounds
+    /// across `@ScaledMetric` + `fontScale` + spacious padding is caught
+    /// in one baseline rather than three.
+    @Test("appearance: scale max + density spacious at dynamic type XXL")
+    func appearanceScaleMaxSpaciousXXL() {
+        let function = #function
+        let view = MessageList(items: items, verbosity: .verbose)
+            .superTheme(.make(.light))
+            .chatAppearance(ChatAppearance(fontScale: 1.15, density: .spacious))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: "list_scale_max_spacious_light_xxl", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function

@@ -91,8 +91,11 @@ public struct ChatAppearance: Sendable, Equatable {
     }
 }
 
-public struct ChatAppearanceKey: EnvironmentKey {
-    public static let defaultValue: ChatAppearance = .default
+/// SwiftUI environment plumbing — only the `\.chatAppearance` accessor
+/// and `View.chatAppearance(_:)` modifier are part of the public surface.
+/// The key itself stays internal so it isn't re-exported as API surface.
+struct ChatAppearanceKey: EnvironmentKey {
+    static let defaultValue: ChatAppearance = .default
 }
 
 public extension EnvironmentValues {

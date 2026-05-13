@@ -102,6 +102,11 @@ jobs:
         # greeting in ChatEmptyState) blow up exact-pixel snapshot
         # comparisons. `-downloadPlatform iOS` without `-buildVersion`
         # downloads the latest compatible runtime for the selected Xcode.
+        # Simulator runtimes are installed under
+        # `/Library/Developer/CoreSimulator/...` which is root-owned and
+        # outside the cacheable workspace, so we can't usefully cache it
+        # across runs — the timeout is the safety net instead.
+        timeout-minutes: 20
         run: xcodebuild -downloadPlatform iOS
 
       - name: Pick iOS simulator

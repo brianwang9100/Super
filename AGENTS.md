@@ -27,7 +27,7 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 
 ## Worktree discipline
 
-When invoked inside a git worktree (path looks like `<repo>/.claude/worktrees/<name>/`), **do all file edits there**. The main repo at `/Users/bwang/Development/Super/` and the worktree share `.git` but have separate working trees; an edit to a file under the main repo path is invisible to the worktree (and vice versa), and the main repo may carry unrelated uncommitted work from another session that your changes would mix into.
+When invoked inside a git worktree (path looks like `<repo>/.claude/worktrees/<name>/`), **do all file edits there**. The main repo checkout and the worktree share `.git` but have separate working trees; an edit to a file under the main repo path is invisible to the worktree (and vice versa), and the main repo may carry unrelated uncommitted work from another session that your changes would mix into.
 
 - The session env hint (`Primary working directory: …`) is the authoritative workspace root. Treat it as the *only* place file writes are allowed unless the user explicitly says otherwise.
 - Prefer relative paths and the shell's current working directory over hardcoded absolute paths. Absolute paths copied from docs, memory, prior agent output, or `git log` typically point at the main repo and will silently land in the wrong tree.
