@@ -674,10 +674,6 @@ struct ChatScreenViewModelTests {
 
     @Test("Verbosity is externally writable so settings changes can flow into the open chat")
     func verbosityIsExternallyWritable() {
-        // `verbosity` is `public var` (not `private(set)`) so external
-        // code can push new values into the open chat. If it's ever
-        // tightened, every push site breaks at compile time and this
-        // test fails first.
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
@@ -702,9 +698,6 @@ struct ChatScreenViewModelTests {
 
     @Test("Verbosity init argument lands in the stored property so the first render uses the caller-provided value")
     func verbosityInitArgumentSeedsStoredProperty() {
-        // Verify the init argument lands in the stored property so the
-        // first render shows the caller-provided value instead of the
-        // `.simple` default.
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
