@@ -417,18 +417,62 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
+    /// The XXL variant captures explicitly *after* a settle wait because
+    /// the bottom-anchor latch in `MessageList` fires async via
+    /// `onScrollGeometryChange`, and XXL Dynamic Type takes more layout
+    /// passes than the default — the synchronous render path inside
+    /// `assertSnapshot` can otherwise capture a mid-settle frame, which
+    /// differs in scroll offset across machines. The non-XXL variants
+    /// happen to settle within the library's render window so don't need
+    /// this seam.
     @Test("freshly mounted long transcript anchors at bottom (XXL)")
-    func freshlyMountedLongTranscriptXXL() {
+    func freshlyMountedLongTranscriptXXL() async {
         let function = #function
         let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 700)
-        recordOrCompare(
+        let image = await Self.renderAfterSettle(
             view: view,
-            name: "list_long_transcript_anchored_bottom_light_xxl",
-            function: function
+            size: CGSize(width: 402, height: 700),
+            settle: .milliseconds(250)
         )
+        let failure = verifySnapshot(
+            of: image,
+            as: .image,
+            named: "list_long_transcript_anchored_bottom_light_xxl",
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("list_long_transcript_anchored_bottom_light_xxl: \(failure)")
+        }
+    }
+
+    /// Host `view` in a temporary window, let SwiftUI's async geometry
+    /// callbacks (e.g. `onScrollGeometryChange`) fire by sleeping
+    /// `settle`, then capture the layer pixels. Returns the rendered
+    /// `UIImage` ready for `assertSnapshot(of:as: .image …)`.
+    @MainActor
+    private static func renderAfterSettle<V: View>(
+        view: V,
+        size: CGSize,
+        settle: Duration
+    ) async -> UIImage {
+        let host = UIHostingController(rootView: view)
+        host.view.bounds = CGRect(origin: .zero, size: size)
+        let window = UIWindow(frame: host.view.bounds)
+        window.rootViewController = host
+        window.isHidden = false
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        try? await Task.sleep(for: settle)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(bounds: host.view.bounds)
+        return renderer.image { ctx in
+            host.view.layer.render(in: ctx.cgContext)
+        }
     }
 
     private func verify(
