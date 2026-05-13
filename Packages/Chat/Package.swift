@@ -29,6 +29,9 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "splash"),
             ],
+            resources: [
+                .copy("Resources"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]
