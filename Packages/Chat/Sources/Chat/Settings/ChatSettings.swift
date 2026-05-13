@@ -63,6 +63,10 @@ public struct ChatSettings: Sendable, Equatable {
     /// literal). Production reads should go through
     /// `ChatSettings.default.systemPrompt`, which caches the result.
     static func _loadBundledDefaultSystemPrompt() -> String {
+        // `subdirectory: "Resources"` is paired with `.copy("Resources")` in
+        // `Package.swift` — `.copy` preserves the directory structure in the
+        // bundle. Changing the Package.swift directive to `.process` without
+        // updating this lookup would silently return nil → fatalError.
         guard let url = Bundle.module.url(
             forResource: "DefaultSystemPrompt",
             withExtension: "md",
