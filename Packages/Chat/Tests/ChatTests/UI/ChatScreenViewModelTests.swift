@@ -672,19 +672,12 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
-    @Test("Verbosity is externally writable so the host can push Settings changes into the open chat")
-    func hostCanPushVerbosityFromSettings() {
-        // Models the live-flow path in `ChatHostView`:
-        //   .onChange(of: settingsViewModel?.settings.defaultVerbosity) { _, newValue in
-        //       if let newValue { viewModel?.verbosity = newValue }
-        //   }
-        // A unit test on the actual SwiftUI `.onChange` modifier isn't
-        // feasible (the modifier requires a hosted view tree), so we cover
-        // the half-of-the-contract that runs in the view model: the host
-        // must be able to assign new values to `verbosity` and have them
-        // stick for `MessageList` to read. If someone tightens this to
-        // `private(set)` in the future, the host wiring breaks at compile
-        // time and this test fails first.
+    @Test("Verbosity is externally writable so settings changes can flow into the open chat")
+    func verbosityIsExternallyWritable() {
+        // `verbosity` is `public var` (not `private(set)`) so external
+        // code can push new values into the open chat. If it's ever
+        // tightened, every push site breaks at compile time and this
+        // test fails first.
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
@@ -707,13 +700,11 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.verbosity == .simple)
     }
 
-    @Test("Verbosity passed via init seeds the property so the first render reflects ChatSettings.defaultVerbosity")
-    func initSeedsVerbosityFromHost() {
-        // The host (`ChatHostView.rebuildChatViewModel`) constructs the
-        // view model with `verbosity: settingsViewModel?.settings.defaultVerbosity ?? .verbose`.
-        // Verify the init parameter actually lands in the stored property
-        // — otherwise the first render would flash `.simple` before the
-        // `.onChange` push corrected it.
+    @Test("Verbosity init argument lands in the stored property so the first render uses the caller-provided value")
+    func verbosityInitArgumentSeedsStoredProperty() {
+        // Verify the init argument lands in the stored property so the
+        // first render shows the caller-provided value instead of the
+        // `.simple` default.
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
