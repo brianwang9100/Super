@@ -32,6 +32,12 @@ public struct ChatSettings: Sendable, Equatable {
     /// Fraction of `maxContextTokens` (0.0–1.0) at which auto-compaction
     /// fires. Persisted now; consumed alongside `autoCompactEnabled` in M10.
     public var autoCompactThreshold: Double
+    /// `LLMModel.id` (e.g. `"claude-opus-4-7"`) of the model the user most
+    /// recently activated in the composer pill. Used as the initial
+    /// selection for every new chat so the picker survives relaunch.
+    /// `nil` until the first chat has been opened and the initial pick
+    /// has been persisted; subsequent launches always read a populated value.
+    public var lastSelectedModelId: String?
 
     /// Factory default for `autoCompactThreshold` — the fraction of
     /// `model.maxContextTokens` at which background auto-compaction fires.
@@ -59,7 +65,8 @@ public struct ChatSettings: Sendable, Equatable {
         defaultVerbosity: .simple,
         fontScale: 1.0,
         autoCompactEnabled: true,
-        autoCompactThreshold: defaultAutoCompactThreshold
+        autoCompactThreshold: defaultAutoCompactThreshold,
+        lastSelectedModelId: nil
     )
 
     /// Contents of the bundled `DefaultSystemPrompt.md`, trimmed of
@@ -100,7 +107,8 @@ public struct ChatSettings: Sendable, Equatable {
         defaultVerbosity: ChatVerbosity,
         fontScale: Double,
         autoCompactEnabled: Bool,
-        autoCompactThreshold: Double
+        autoCompactThreshold: Double,
+        lastSelectedModelId: String? = nil
     ) {
         self.themeId = themeId
         self.systemPrompt = systemPrompt
@@ -108,6 +116,7 @@ public struct ChatSettings: Sendable, Equatable {
         self.fontScale = ChatSettings.clampFontScale(fontScale)
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = ChatSettings.clampThreshold(autoCompactThreshold)
+        self.lastSelectedModelId = lastSelectedModelId
     }
 
     /// Mirror of `SuperTheme.Identifier`. Re-declared (rather than typealiased)

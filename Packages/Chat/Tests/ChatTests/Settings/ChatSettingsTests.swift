@@ -66,6 +66,46 @@ struct ChatSettingsStoreTests {
         #expect(settings.systemPrompt == userPrompt)
         #expect(settings.systemPrompt != ChatSettings.default.systemPrompt)
     }
+
+    @Test("lastSelectedModelId is nil when no row is stored")
+    func lastSelectedModelIdMissingByDefault() async {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+        #expect(settings.lastSelectedModelId == nil)
+    }
+
+    @Test("setLastSelectedModelId round-trips through load")
+    func lastSelectedModelIdRoundTrip() async throws {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        try await store.setLastSelectedModelId("claude-opus-4-7")
+        let settings = await store.load()
+        #expect(settings.lastSelectedModelId == "claude-opus-4-7")
+    }
+
+    @Test("setLastSelectedModelId does not disturb other persisted fields")
+    func lastSelectedModelIdIndependentOfOtherKeys() async throws {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+
+        try await store.setTheme(.dark)
+        try await store.setSystemPrompt("custom")
+        try await store.setDefaultVerbosity(.verbose)
+        try await store.setFontScale(1.10)
+        try await store.setAutoCompactEnabled(false)
+        try await store.setAutoCompactThreshold(0.75)
+        try await store.setLastSelectedModelId("gpt-4o")
+
+        let settings = await store.load()
+        #expect(settings.themeId == .dark)
+        #expect(settings.systemPrompt == "custom")
+        #expect(settings.defaultVerbosity == .verbose)
+        #expect(settings.fontScale == 1.10)
+        #expect(settings.autoCompactEnabled == false)
+        #expect(settings.autoCompactThreshold == 0.75)
+        #expect(settings.lastSelectedModelId == "gpt-4o")
+    }
 }
 
 /// In-memory `SettingRepository` for tests that exercise the store

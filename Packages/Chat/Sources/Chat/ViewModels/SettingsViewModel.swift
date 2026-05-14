@@ -304,6 +304,15 @@ public final class SettingsViewModel {
         try? await store.setModelEnabled(id: id, enabled: enabled)
     }
 
+    /// Remembers the model the user just activated so the next new chat
+    /// opens on it. Called by the host from `ChatScreenViewModel`'s
+    /// `onModelSelected` hook (user picks in the composer) and from the
+    /// initial auto-pick path in `ContentView.rebuildChatViewModel`.
+    public func setLastSelectedModelId(_ id: String) async {
+        settings.lastSelectedModelId = id
+        try? await store.setLastSelectedModelId(id)
+    }
+
     // MARK: - Navigation
 
     /// Push a pane onto the stack. The bound `NavigationStack` animates
