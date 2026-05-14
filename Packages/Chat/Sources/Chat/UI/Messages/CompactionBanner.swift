@@ -1,11 +1,18 @@
 import SwiftUI
 
-/// Divider strip rendered between the pre-compaction history and the new
-/// summary the model wrote. Shows a "COMPACTED" rule and a 3-line
-/// markdown rendering of the summary.
+/// Divider strip rendered at the compaction boundary — a "COMPACTED" rule
+/// over a tappable summary card. Collapsed by default with the summary
+/// clipped to three lines + a "Show more" affordance; tap toggles to the
+/// full markdown summary and a "Show less" affordance.
 struct CompactionBanner: View {
     let summary: String
     @Environment(\.superTheme) private var theme
+    @State private var isExpanded: Bool
+
+    init(summary: String, initiallyExpanded: Bool = false) {
+        self.summary = summary
+        self._isExpanded = State(initialValue: initiallyExpanded)
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -17,15 +24,30 @@ struct CompactionBanner: View {
                     .foregroundStyle(theme.inkFaint)
                 line
             }
-            MarkdownText(summary, bodyStyleOverride: .banner)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                isExpanded.toggle()
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    MarkdownText(summary, bodyStyleOverride: .banner)
+                        .lineLimit(isExpanded ? nil : 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(isExpanded ? "Show less" : "Show more")
+                        .font(.system(.caption2).weight(.medium))
+                        .foregroundStyle(theme.inkSoft)
+                }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(theme.backgroundSunken)
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Compaction summary")
+            .accessibilityHint(isExpanded ? "Tap to collapse" : "Tap to expand")
+            .accessibilityAddTraits(.isButton)
+            .animation(.easeInOut(duration: 0.15), value: isExpanded)
         }
         .padding(.vertical, 8)
     }

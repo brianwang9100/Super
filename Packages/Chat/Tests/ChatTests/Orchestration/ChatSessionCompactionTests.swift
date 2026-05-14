@@ -51,6 +51,7 @@ struct ChatSessionCompactionTests {
         scripts: [[LLMStreamEvent]] = [],
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = 0.75,
+        manualCompactMinThreshold: Double = 0.0,
         model: LLMModel? = nil,
         conversationId: String = "conv-1"
     ) async throws -> Setup {
@@ -87,7 +88,8 @@ struct ChatSessionCompactionTests {
             clock: clock,
             idGenerator: idGen,
             autoCompactEnabled: autoCompactEnabled,
-            autoCompactThreshold: autoCompactThreshold
+            autoCompactThreshold: autoCompactThreshold,
+            manualCompactMinThreshold: manualCompactMinThreshold
         )
         return Setup(
             database: database,
@@ -264,21 +266,100 @@ struct ChatSessionCompactionTests {
         #expect(live != nil)
     }
 
-    @Test func manualCompactWithNothingToSummarizeIsNoOp() async throws {
-        // No history → /compact should silently no-op, no events, no
-        // provider call.
+    @Test func manualCompactBelowMinThresholdEmitsUserFacingError() async throws {
+        // Empty / nearly-empty conversation → ratio is well under the
+        // 30% gate → manual /compact must surface a single `.error` event
+        // with a user-facing message and never invoke the provider.
         let setup = try await makeSetup(
             scripts: [],
-            autoCompactEnabled: false
+            autoCompactEnabled: false,
+            manualCompactMinThreshold: 0.30
         )
 
         let stream = await setup.session.send(text: "/compact", model: setup.model)
         let events = await collect(stream)
         await setup.session.waitUntilFinished()
 
-        #expect(events.isEmpty)
+        #expect(events.count == 1)
+        guard case let .error(.requestFailed(message)) = events.first else {
+            Issue.record("expected a single .error(.requestFailed) event, got \(events)")
+            return
+        }
+        #expect(message.contains("30%"))
+        #expect(message.contains("too short"))
+
         let calls = await setup.provider.capturedRequests()
         #expect(calls.isEmpty)
+
+        // No checkpoint persisted.
+        let live = try await setup.checkpointRepo.liveCheckpoint(for: setup.conversation.id)
+        #expect(live == nil)
+    }
+
+    @Test func manualCompactSummarizesEntireHistory() async throws {
+        // Manual /compact uses keepMostRecent=0 — the persisted
+        // checkpoint's uptoMessageId must point at the last message on
+        // disk so the banner anchors at the bottom of the transcript and
+        // the next assistant turn proceeds against the summary alone.
+        let setup = try await makeSetup(
+            scripts: [
+                [
+                    .messageStart(id: "sum-manual", model: "tiny-model"),
+                    .textDelta(index: 0, text: "Manual summary covers everything."),
+                    .messageComplete(usage: TokenUsage(inputTokens: 40, outputTokens: 4)),
+                ],
+            ],
+            autoCompactEnabled: false,
+            autoCompactThreshold: 0.99,
+            manualCompactMinThreshold: 0.0
+        )
+        try await seedSummarizableHistory(setup: setup)
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let lastBeforeCompact = try #require(stored.last?.id)
+
+        let stream = await setup.session.send(text: "/compact", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let live = try await setup.checkpointRepo.liveCheckpoint(for: setup.conversation.id)
+        let checkpoint = try #require(live)
+        #expect(checkpoint.uptoMessageId == lastBeforeCompact)
+    }
+
+    @Test func autoCompactKeepsTrailingMessagesVerbatim() async throws {
+        // Auto-compaction still uses Compactor.defaultKeepMostRecent (4)
+        // to preserve immediate-context fidelity for the next turn —
+        // assert by checking the checkpoint's uptoMessageId is NOT the
+        // last persisted message.
+        let setup = try await makeSetup(
+            scripts: [
+                [
+                    .messageStart(id: "sum-auto", model: "tiny-model"),
+                    .textDelta(index: 0, text: "Auto summary keeps the tail verbatim."),
+                    .messageComplete(usage: TokenUsage(inputTokens: 80, outputTokens: 8)),
+                ],
+                [
+                    .messageStart(id: "m-final", model: "tiny-model"),
+                    .textDelta(index: 0, text: "ok"),
+                    .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+                ],
+            ],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.5
+        )
+        try await seedSummarizableHistory(setup: setup)
+
+        let storedBefore = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let lastBeforeTurn = try #require(storedBefore.last?.id)
+
+        let stream = await setup.session.send(text: "next prompt", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let live = try await setup.checkpointRepo.liveCheckpoint(for: setup.conversation.id)
+        let checkpoint = try #require(live)
+        #expect(checkpoint.uptoMessageId != lastBeforeTurn)
     }
 
     @Test func autoCompactDoesNotFireMidToolLoopWhenStillUnderThreshold() async throws {
@@ -427,7 +508,8 @@ struct ChatSessionCompactionTests {
             compactor: compactorA,
             clock: clock,
             idGenerator: idGenA,
-            autoCompactEnabled: false
+            autoCompactEnabled: false,
+            manualCompactMinThreshold: 0.0
         )
         let sessionB = ChatSession(
             conversationId: "conv-B",
@@ -439,7 +521,8 @@ struct ChatSessionCompactionTests {
             compactor: compactorB,
             clock: clock,
             idGenerator: idGenB,
-            autoCompactEnabled: false
+            autoCompactEnabled: false,
+            manualCompactMinThreshold: 0.0
         )
 
         // Fire `/compact` on both sessions concurrently via a TaskGroup.

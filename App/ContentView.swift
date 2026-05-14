@@ -221,6 +221,7 @@ struct ChatHostView: View {
                 conversationRepository: dependencies.conversationRepository,
                 toolRegistry: dependencies.toolRegistry,
                 systemPromptReceiver: dependencies.chatSessionStore,
+                autoCompactPolicyReceiver: dependencies.chatSessionStore,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
                 httpClient: URLSessionHTTPClient()
             )

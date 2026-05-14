@@ -57,8 +57,16 @@ public actor ChatSession {
 
     /// Threshold (`tokens / model.maxContextTokens`) at which an
     /// automatic compaction fires. M9 wires this to
-    /// `SettingRecord(key: "autoCompactThreshold")`; default 0.75.
+    /// `SettingRecord(key: "autoCompactThreshold")`; default
+    /// `ChatSettings.defaultAutoCompactThreshold` (0.85).
     private var autoCompactThreshold: Double
+
+    /// Minimum context-usage ratio below which manual `/compact` refuses
+    /// and emits a user-facing `.error(.requestFailed(...))` event. Below
+    /// this the summary would be too short to justify the round-trip.
+    /// Injectable for tests; production constructs default to
+    /// `ChatSettings.defaultManualCompactMinThreshold` (0.30).
+    private let manualCompactMinThreshold: Double
 
     /// User's configured system prompt, sourced from
     /// `ChatSettings.systemPrompt`. Injected as the leading `.system`
@@ -113,7 +121,13 @@ public actor ChatSession {
     ///   - autoCompactEnabled: Whether the session automatically compacts
     ///     before turns when over `autoCompactThreshold`. Default `true`.
     ///   - autoCompactThreshold: Fraction of `model.maxContextTokens` at
-    ///     which auto-compaction kicks in. Default `0.75`.
+    ///     which auto-compaction kicks in. Default
+    ///     `ChatSettings.defaultAutoCompactThreshold`.
+    ///   - manualCompactMinThreshold: Minimum context-usage ratio below
+    ///     which manual `/compact` refuses and emits a user-facing error.
+    ///     Default `ChatSettings.defaultManualCompactMinThreshold`. Tests
+    ///     can pass `0.0` to bypass the gate when exercising the
+    ///     happy-path body.
     ///   - systemPrompt: User's configured system prompt; injected by
     ///     `ContextAssembler` as the leading `.system` row on every turn.
     ///     Default `""` (no injection) so test fixtures and call sites
@@ -130,7 +144,8 @@ public actor ChatSession {
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         autoCompactEnabled: Bool = true,
-        autoCompactThreshold: Double = 0.75,
+        autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
+        manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
         systemPrompt: String = ""
     ) {
         self.conversationId = conversationId
@@ -145,6 +160,7 @@ public actor ChatSession {
         self.idGenerator = idGenerator
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
+        self.manualCompactMinThreshold = manualCompactMinThreshold
         self.currentSystemPrompt = systemPrompt
     }
 
@@ -408,20 +424,38 @@ public actor ChatSession {
     /// Skips silently when disabled, when not over threshold, or when the
     /// compactor returns nil (nothing worth summarizing yet). On success
     /// emits `.compactionStarted` then `.compactionCompleted` so the UI
-    /// can render the same banner it shows for `/compact`.
+    /// can render the same banner it shows for `/compact`. Keeps the
+    /// trailing `Compactor.defaultKeepMostRecent` messages verbatim so the
+    /// next assistant turn retains full-fidelity recent context.
     private func maybeAutoCompact(model: LLMModel) async throws {
         guard autoCompactEnabled else { return }
         let assembly = try await assemble(model: model)
         guard assembly.isOverThreshold(autoCompactThreshold) else { return }
-        try await runCompactionPass(model: model)
+        try await runCompactionPass(model: model, keepMostRecent: Compactor.defaultKeepMostRecent)
     }
 
-    /// Body of `compact(model:)` — owns the cancellation/error mapping so
-    /// the public entry point can stay focused on stream wiring.
+    /// Body of `compact(model:)` — handles the manual `/compact` ratio
+    /// gate and owns the cancellation/error mapping so the public entry
+    /// point can stay focused on stream wiring. Below the minimum context
+    /// ratio the only event broadcast is `.error(.requestFailed(...))`;
+    /// no LLM call, no checkpoint write.
     private func runCompaction(model: LLMModel) async {
         defer { currentTask = nil }
         do {
-            try await runCompactionPass(model: model)
+            let assembly = try await assemble(model: model)
+            guard assembly.ratio >= manualCompactMinThreshold else {
+                let pct = Int((manualCompactMinThreshold * 100).rounded())
+                broadcast(.error(.requestFailed(
+                    "Conversation is too short to compact yet — try again once context usage reaches \(pct)%."
+                )))
+                return
+            }
+            // Manual `/compact` summarizes everything up to now — no
+            // trailing carve-out. The persisted checkpoint's
+            // `uptoMessageId` becomes the last message on disk, so the
+            // banner anchors at the bottom of the transcript and matches
+            // the user's "I compacted everything" mental model.
+            try await runCompactionPass(model: model, keepMostRecent: 0)
         } catch is CancellationError {
             broadcast(.error(.cancelled))
         } catch let err as LLMError {
@@ -450,7 +484,14 @@ public actor ChatSession {
     /// **only** after the compactor commits to running — when there's
     /// nothing to summarize we return without firing any events so the
     /// UI doesn't flash a banner that immediately disappears.
-    private func runCompactionPass(model: LLMModel) async throws {
+    ///
+    /// - Parameter keepMostRecent: How many trailing messages to leave
+    ///   outside the summary window. Auto-compaction passes
+    ///   `Compactor.defaultKeepMostRecent` to preserve immediate-context
+    ///   fidelity for the next turn; manual `/compact` passes `0` so the
+    ///   entire conversation is summarized and the banner lands at the
+    ///   bottom of the transcript.
+    private func runCompactionPass(model: LLMModel, keepMostRecent: Int) async throws {
         let messages = try await messageRepository.fetchAll(conversationId: conversationId)
         let toolCalls = try await toolCallRepository.fetchByConversation(conversationId)
         let prior = try await checkpointRepository.liveCheckpoint(for: conversationId)
@@ -458,7 +499,11 @@ public actor ChatSession {
         // Skip silently when there's nothing to summarize. Pure predicate
         // (no LLM call) sharing slicing rules with `Compactor.compact` so
         // the two paths cannot disagree.
-        guard compactor.wouldCompact(messages: messages, priorCheckpoint: prior) else {
+        guard compactor.wouldCompact(
+            messages: messages,
+            priorCheckpoint: prior,
+            keepMostRecent: keepMostRecent
+        ) else {
             return
         }
 
@@ -468,7 +513,8 @@ public actor ChatSession {
             messages: messages,
             toolCalls: toolCalls,
             priorCheckpoint: prior,
-            model: model
+            model: model,
+            keepMostRecent: keepMostRecent
         )
         // Pre-flight committed `wouldCompact` to true; an actual nil here
         // means the two slicing rules drifted — programmer error, not a
