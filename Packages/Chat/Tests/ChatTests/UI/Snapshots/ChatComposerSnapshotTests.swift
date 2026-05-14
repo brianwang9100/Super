@@ -153,6 +153,29 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_typed_light_xxl", function: function)
     }
 
+    /// Locks the `* appearance.fontScale` wiring on the editor font. At
+    /// the default `fontScale == 1.0` the multiplication is a no-op, so
+    /// the remaining baselines would stay green if the multiplication
+    /// were deleted. Injecting the upper-bound knob proves the editor
+    /// actually tracks the slider, mirroring `MessageListSnapshotTests`'
+    /// `appearanceScaleMax` precedent.
+    @Test("font scale max light")
+    func fontScaleMax() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.light))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_light", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,

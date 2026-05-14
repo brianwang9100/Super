@@ -43,6 +43,21 @@ struct ChatHeaderSnapshotTests {
         recordOrCompare(view: view, name: "header_light_xxl")
     }
 
+    /// Locks the `* appearance.fontScale` wiring on the title font. At the
+    /// default `fontScale == 1.0` the multiplication is a no-op, so the
+    /// remaining baselines would stay green if the multiplication were
+    /// deleted. Injecting the upper-bound knob proves the title actually
+    /// tracks the slider, mirroring `MessageListSnapshotTests`'
+    /// `appearanceScaleMax` precedent.
+    @Test("font scale max light")
+    func fontScaleMax() {
+        let view = ChatHeader(title: "New chat", onMenuTap: {})
+            .superTheme(.make(.light))
+            .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .frame(width: 402)
+        recordOrCompare(view: view, name: "header_font_scale_max_light")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,
