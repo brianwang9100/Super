@@ -114,6 +114,23 @@ struct ChatPresentationStateTests {
         #expect(p == 0)
     }
 
+    @Test("progress at the minimized anchor with a bottom safe area is still 0")
+    func progressAtMinimizedWithSafeAreaIsZero() {
+        // Real iPhones report a 34pt bottom inset for the home indicator.
+        // The minimized anchor height(in:bottomSafeArea:) adds that to
+        // `minimizedBaseHeight`. The progress mapping has to use the same
+        // safe area for `minH` *and* `maxH` (the expanded anchor returns
+        // `containerHeight`, ignoring safe area) or progress at the
+        // minimized release would be non-zero whenever the device has a
+        // bottom safe area — visually nudging the surround/transcript
+        // opacities away from their pill-mode baseline. Verifies the
+        // bottom-safe-area handling is symmetric across both endpoints.
+        let safeArea: CGFloat = 34
+        let minH = ChatPresentationState.minimized.height(in: viewport, bottomSafeArea: safeArea)
+        let p = ChatPresentationState.progress(forHeight: minH, in: viewport, bottomSafeArea: safeArea)
+        #expect(p == 0)
+    }
+
     @Test("progress at the expanded anchor is 1")
     func progressAtExpandedIsOne() {
         let maxH = ChatPresentationState.expanded.height(in: viewport)

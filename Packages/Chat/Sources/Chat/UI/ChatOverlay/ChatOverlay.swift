@@ -43,20 +43,20 @@ public struct ChatOverlay: View {
     }
 
     /// Test-only initializer that pins the chat-surface height to
-    /// `injectedDragHeight` so snapshot suites can capture the morph
+    /// `_injectedDragHeight` so snapshot suites can capture the morph
     /// at a specific in-flight progress without driving a real
     /// `DragGesture`. Production code never calls this.
     @MainActor
     init(
         state: Binding<ChatPresentationState>,
         viewModel: ChatScreenViewModel,
-        injectedDragHeight: CGFloat
+        _injectedDragHeight: CGFloat
     ) {
         self._settledState = state
         self.viewModel = viewModel
         self.onManageModels = {}
         self.onAddModelRequested = {}
-        self.frozenDragHeight = injectedDragHeight
+        self.frozenDragHeight = _injectedDragHeight
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

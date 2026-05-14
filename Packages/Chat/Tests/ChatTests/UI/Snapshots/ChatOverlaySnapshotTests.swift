@@ -111,7 +111,7 @@ struct ChatOverlaySnapshotTests {
         let view = ChatOverlay(
             state: .constant(.minimized),
             viewModel: viewModel,
-            injectedDragHeight: 240
+            _injectedDragHeight: 240
         )
         .superTheme(.make(.light))
         .frame(width: Self.frame.width, height: Self.frame.height)

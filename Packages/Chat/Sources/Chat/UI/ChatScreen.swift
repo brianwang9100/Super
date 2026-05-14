@@ -121,12 +121,16 @@ public struct ChatScreen: View {
 
     /// Pill-mode tap-to-expand overlay. Only mounted in pill mode so it
     /// doesn't swallow taps on the live composer's text field at higher
-    /// progress. The drag affordance is the always-visible
-    /// `ChatDragHandle`; this overlay no longer drives drags — that
-    /// removes the prior "gesture dies when overlay un-mounts at
-    /// `progress = 0.15`" stall and the parallel "drag handle un-mounts
-    /// at `progress = 0.05`" stall.
-    private var pillSurfaceCaptureActive: Bool { progress < 0.15 }
+    /// progress. `<= 0.15` (rather than `< 0.15`) closes the off-by-one
+    /// against ``ChatComposer/editorInteractive``'s `> 0.15` gate so a
+    /// tap exactly on the band edge always lands on a live target —
+    /// the pill overlay at the boundary, the editor immediately past
+    /// it. The drag affordance is the always-visible `ChatDragHandle`;
+    /// this overlay no longer drives drags — that removes the prior
+    /// "gesture dies when overlay un-mounts at `progress = 0.15`" stall
+    /// and the parallel "drag handle un-mounts at `progress = 0.05`"
+    /// stall.
+    private var pillSurfaceCaptureActive: Bool { progress <= 0.15 }
 
     /// Surround opacity: rounded-rect panel background + stroke + shadow
     /// that make the chat read as a floating panel in semi-expanded mode.
@@ -188,7 +192,6 @@ public struct ChatScreen: View {
                 .opacity(headerProgress)
                 .frame(height: CGFloat(headerProgress) * Self.headerIntrinsicHeight, alignment: .top)
                 .clipped()
-                .allowsHitTesting(headerProgress > 0.5)
             content
                 // `minHeight: 0` overrides the inner view's intrinsic
                 // floor (`ChatEmptyState`'s ~90pt icon+greeting,
