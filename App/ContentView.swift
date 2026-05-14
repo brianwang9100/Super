@@ -1,6 +1,9 @@
 import Chat
 import Core
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// App-level shell content. Renders `AppShell` once the bootstrap
 /// dependency graph is `.ready`, a transient progress pane during
@@ -137,21 +140,32 @@ struct AppShell: View {
                     //   .expanded     — chat covers the screen; backdrop
                     //                   is hidden behind it, no hit
                     //                   testing needed.
-                    //   .semiExpanded — backdrop is dimmed and tap on it
-                    //                   minimizes the chat (mirrors iOS
-                    //                   sheet "tap-dim-to-dismiss"). The
-                    //                   onTapGesture below handles this.
+                    //   .semiExpanded — backdrop is dimmed and the
+                    //                   transparent overlay below
+                    //                   catches taps to minimize the
+                    //                   chat (iOS sheet "tap-dim-to-
+                    //                   dismiss" parity).
                     //   .minimized    — backdrop owns the screen; the
                     //                   user is working inside the
                     //                   applet, so hit testing must be
                     //                   enabled for the applet's own UI
-                    //                   to respond.
+                    //                   to respond. No overlay attached
+                    //                   so applet taps pass through.
                     .allowsHitTesting(chatState != .expanded)
-                    .onTapGesture {
+                    .overlay {
                         if chatState == .semiExpanded {
-                            withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
-                                chatState = .minimized
-                            }
+                            // Transparent tap-target sits above the
+                            // dimmed applet only while semi-expanded.
+                            // An always-present `.onTapGesture` would
+                            // consume applet taps in `.minimized` too,
+                            // even though it would no-op there.
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+                                        chatState = .minimized
+                                    }
+                                }
                         }
                     }
                     .animation(
@@ -268,8 +282,28 @@ struct AppShell: View {
 
     private func openSidebar() {
         guard let sidebarViewModel else { return }
+        // Mirror the keyboard-dismiss the old in-`ChatScreen` hamburger
+        // did. Opening the sidebar with the composer focused would
+        // otherwise leave the keyboard up behind the drawer.
+        dismissKeyboard()
         sidebarOpen = true
         Task { await sidebarViewModel.refresh() }
+    }
+
+    /// Resign first responder so the on-screen keyboard tears down
+    /// before a chrome transition. Mirrors `ChatScreen.dismissKeyboard()`
+    /// — the UIKit dispatch is the load-bearing piece on iOS 26.x where
+    /// flipping `@FocusState` from a sibling isn't always enough to
+    /// hide the keyboard.
+    private func dismissKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
     }
 
     private func openSettings(initialPane: SettingsSheet.Pane = .root) {
