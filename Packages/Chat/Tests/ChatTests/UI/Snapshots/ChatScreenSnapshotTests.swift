@@ -81,13 +81,54 @@ struct ChatScreenSnapshotTests {
 
     @Test("no-model error banner over populated transcript, light")
     func noModelErrorPopulatedLight() {
+        verifyNoModelErrorPopulated(theme: .light, name: "screen_no_model_error_populated_light")
+    }
+
+    @Test("no-model error banner over populated transcript, dark")
+    func noModelErrorPopulatedDark() {
+        verifyNoModelErrorPopulated(theme: .dark, name: "screen_no_model_error_populated_dark")
+    }
+
+    @Test("no-model error banner over populated transcript, sepia")
+    func noModelErrorPopulatedSepia() {
+        verifyNoModelErrorPopulated(theme: .sepia, name: "screen_no_model_error_populated_sepia")
+    }
+
+    @Test("no-model error banner over populated transcript at dynamic type XXL")
+    func noModelErrorPopulatedXXL() {
+        // Mirrors `populatedXXL`: pinned to light theme because the
+        // intent of the XXL variant is to catch layout regressions
+        // (line wrap, banner clipping, composer height) — theme
+        // colors are already covered by the light/dark/sepia trio
+        // above.
+        let function = #function
+        let viewModel = makeNoModelErrorPopulatedViewModel()
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 874)
+        recordOrCompare(view: view, name: "screen_no_model_error_populated_xxl", function: function)
+    }
+
+    private func verifyNoModelErrorPopulated(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
         // Reachable in production when the user previously chatted, then
         // deleted every model endpoint in Settings, then tried to send
         // again — the persisted transcript stays on screen while the
         // banner overlays the latest exchange. `availableModels` is
         // empty so the composer's model pill correctly reads
         // "No model", consistent with the banner state.
-        let function = #function
+        let viewModel = makeNoModelErrorPopulatedViewModel()
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(theme))
+            .frame(width: 402, height: 874)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    private func makeNoModelErrorPopulatedViewModel() -> ChatScreenViewModel {
         let now = Date(timeIntervalSince1970: 1_750_000_000)
         let messages: [MessageRecord] = [
             MessageRecord(id: "u1", conversationId: "c", role: .user, content: "What can you do?", createdAt: now),
@@ -107,11 +148,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200,
             error: .noModelConfigured(onAddModel: {})
         )
-
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
-            .superTheme(.make(.light))
-            .frame(width: 402, height: 874)
-        recordOrCompare(view: view, name: "screen_no_model_error_populated_light", function: function)
+        return viewModel
     }
 
     private func verifyNoModelError(
