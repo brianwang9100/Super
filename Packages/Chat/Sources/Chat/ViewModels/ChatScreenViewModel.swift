@@ -96,6 +96,15 @@ public final class ChatScreenViewModel {
     /// the sidebar's "New chat" placeholder flips to the real title.
     public var onTitleGenerated: (@MainActor (String) -> Void)?
 
+    /// Optional callback the host installs to present the "Add Model"
+    /// flow when the user taps the action button on the no-model error
+    /// banner. The host typically deep-links the Settings sheet to
+    /// `.modelDetail(id: nil)`. Kept separate from `onManageModels` (the
+    /// composer's "Manage models…" entry) so the no-model fast path can
+    /// land directly on the Add form instead of the Models list — there
+    /// is by definition no list to browse in this state.
+    public var onAddModelRequested: (@MainActor @Sendable () -> Void)?
+
     private let driver: any ChatSessionDriver
     private let messageRepository: any MessageRepository
     private let toolCallRepository: any ToolCallRepository
@@ -282,11 +291,23 @@ public final class ChatScreenViewModel {
         await cancelTask?.value
     }
 
-    /// Submit the current composer text. No-op when empty or when a turn
-    /// is already in flight.
+    /// Submit the current composer text. Silently no-ops when the text
+    /// trims to empty or a turn is already in flight (both are routine
+    /// user-driven states, not errors). When `activeModel` is `nil`
+    /// (fresh build with zero configured model endpoints, since
+    /// ``activeModel`` falls back to `availableModels.first`), surfaces
+    /// a ``MessageList/ErrorState/noModelConfigured(onAddModel:)`` banner
+    /// instead of dropping the tap on the floor — the user-typed text
+    /// stays in the composer so they can resend after adding a model.
     public func send(_ rawText: String) {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isStreaming, let model = activeModel else { return }
+        guard !text.isEmpty, !isStreaming else { return }
+        guard let model = activeModel else {
+            error = .noModelConfigured { [weak self] in
+                self?.onAddModelRequested?()
+            }
+            return
+        }
         composerText = ""
         error = nil
         startStreaming(text: text, model: model)
@@ -394,6 +415,11 @@ public final class ChatScreenViewModel {
     /// renamed models appear in the composer without an app restart. If
     /// the previously selected id disappears, falls back to the first
     /// available model.
+    ///
+    /// Also clears a `noModelConfigured` error banner the moment any
+    /// model becomes available — the underlying condition is resolved,
+    /// so the banner shouldn't linger. Unrelated `generic` errors are
+    /// left untouched.
     public func setAvailableModels(_ models: [LLMModel]) {
         availableModels = models
         modelOptions = models.map {
@@ -408,6 +434,9 @@ public final class ChatScreenViewModel {
             selectedModelId = models.first?.id
         } else if selectedModelId == nil {
             selectedModelId = models.first?.id
+        }
+        if !models.isEmpty, error?.kind == .noModelConfigured {
+            error = nil
         }
     }
 

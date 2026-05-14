@@ -90,8 +90,8 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error?.message.contains("Authentication failed") == true)
     }
 
-    @Test("send is a no-op when no model is available")
-    func sendNoOpWhenNoModel() {
+    @Test("send surfaces no-model error and preserves composer text when no model is available")
+    func sendSurfacesNoModelErrorWhenNoModel() {
         let driver = ScriptedDriver(events: [])
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
@@ -102,10 +102,108 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: []
         )
+        viewModel.composerText = "hi"
 
         viewModel.send("hi")
         #expect(viewModel.isStreaming == false)
-        #expect(viewModel.composerText == "")
+        #expect(viewModel.composerText == "hi")
+        #expect(viewModel.error?.kind == .noModelConfigured)
+        #expect(viewModel.error?.message == "Add a model to send messages.")
+        #expect(viewModel.error?.actionLabel == "Add model")
+        #expect(viewModel.items.isEmpty)
+    }
+
+    @Test("no-model error banner action invokes onAddModelRequested")
+    func noModelErrorActionInvokesCallback() {
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: []
+        )
+        let counter = MainActorCounter()
+        viewModel.onAddModelRequested = { counter.value += 1 }
+
+        viewModel.send("hi")
+        viewModel.error?.action?()
+
+        #expect(counter.value == 1)
+    }
+
+    @Test("setAvailableModels clears no-model error once any model becomes available")
+    func setAvailableModelsClearsNoModelError() {
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel.send("hi")
+        #expect(viewModel.error?.kind == .noModelConfigured)
+
+        viewModel.setAvailableModels([model])
+
+        #expect(viewModel.error == nil)
+        #expect(viewModel.availableModels.count == 1)
+    }
+
+    @Test("send with a model clears a pre-existing error before streaming")
+    func sendWithModelClearsExistingError() {
+        // Regression: the `send` happy path's `error = nil` clearing
+        // shouldn't be confused with the no-model error path. A stale
+        // banner from an earlier failure has to disappear the moment
+        // the user successfully sends with a real model selected.
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(
+            items: [],
+            error: MessageList.ErrorState(message: "Earlier failure")
+        )
+
+        viewModel.send("hi")
+
+        #expect(viewModel.error == nil)
+        #expect(viewModel.isStreaming == true)
+    }
+
+    @Test("setAvailableModels does not clear unrelated generic errors")
+    func setAvailableModelsLeavesGenericErrorsAlone() {
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: []
+        )
+        // Seed a generic error directly (e.g. a prior LLM failure).
+        viewModel._setSnapshotState(
+            items: [],
+            error: MessageList.ErrorState(message: "Authentication failed.")
+        )
+
+        viewModel.setAvailableModels([model])
+
+        #expect(viewModel.error?.kind == .generic)
+        #expect(viewModel.error?.message == "Authentication failed.")
     }
 
     @Test("load attaches to an in-flight turn and hydrates streamingTail from the snapshot")
@@ -1008,6 +1106,16 @@ private actor TitleSpy {
     func append(_ value: String) {
         values.append(value)
     }
+}
+
+/// Trivial main-actor-isolated counter used as a spy for synchronous
+/// callbacks fired entirely on the main actor (e.g. the no-model error
+/// banner's `onAddModelRequested` hook). `@MainActor` isolation makes
+/// it implicitly `Sendable` so it can be captured by a
+/// `@MainActor @Sendable` closure without `@unchecked`.
+@MainActor
+private final class MainActorCounter {
+    var value: Int = 0
 }
 
 private actor StubCheckpointRepository: CompactionCheckpointRepository {

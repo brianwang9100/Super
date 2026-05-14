@@ -30,10 +30,25 @@ public struct ChatScreen: View {
     /// in different hour buckets and baselines mismatch.
     private let calendar: Calendar
 
+    /// - Parameter onAddModelRequested: Installed on the view model so
+    ///   the no-model error banner's action button can deep-link the
+    ///   host's Settings sheet to its Add Model form. Not stored on
+    ///   the view because nothing in `body` reads it — the view model
+    ///   is the only consumer.
+    ///
+    /// Marked `@MainActor` so the assignment to
+    /// `viewModel.onAddModelRequested` (a `@MainActor`-isolated
+    /// property on `ChatScreenViewModel`) is explicitly main-actor
+    /// isolated. SwiftUI infers `@MainActor` on `View` struct inits
+    /// in Swift 6, but making it explicit keeps the isolation
+    /// contract visible at the declaration site and is robust to
+    /// future callers in non-main-actor contexts.
+    @MainActor
     public init(
         viewModel: ChatScreenViewModel,
         onMenuTap: @escaping () -> Void = {},
         onManageModels: @escaping () -> Void = {},
+        onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
         clock: any Clock = SystemClock(),
         calendar: Calendar = .current
     ) {
@@ -42,6 +57,7 @@ public struct ChatScreen: View {
         self.onManageModels = onManageModels
         self.clock = clock
         self.calendar = calendar
+        viewModel.onAddModelRequested = onAddModelRequested
     }
 
     @Environment(\.superTheme) private var theme
@@ -159,7 +175,12 @@ public struct ChatScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.items.isEmpty && viewModel.streamingTail == nil {
+        // Render `MessageList` (not the empty-state greeting) whenever
+        // an error banner needs a surface, even in a brand-new chat
+        // with zero items. `MessageList` owns the `ErrorBanner`, so an
+        // active error in the empty branch would otherwise have nowhere
+        // to render and the user would still see a silent failure.
+        if viewModel.items.isEmpty && viewModel.streamingTail == nil && viewModel.error == nil {
             ChatEmptyState(clock: clock, calendar: calendar)
         } else {
             MessageList(
