@@ -328,7 +328,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(.system(.subheadline).weight(isActive ? .medium : .regular))
+                    .font(.system(size: 17).weight(isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)

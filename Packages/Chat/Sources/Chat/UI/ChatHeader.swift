@@ -15,6 +15,10 @@ public struct ChatHeader: View {
     }
 
     @Environment(\.superTheme) private var theme
+    /// Title rides the body font anchor so the header tracks the message
+    /// list — slide the font scale and the conversation name resizes with
+    /// the transcript.
+    @Environment(\.chatAppearance) private var appearance
 
     public var body: some View {
         HStack(alignment: .center, spacing: 0) {
@@ -34,7 +38,7 @@ public struct ChatHeader: View {
 
             Spacer(minLength: 0)
             Text(title)
-                .font(.system(.subheadline).weight(.medium))
+                .font(appearance.bodyFont.weight(.medium))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)
