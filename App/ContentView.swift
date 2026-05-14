@@ -426,9 +426,8 @@ struct AppShell: View {
             voice: voice
         )
         let registry = dependencies.llmProviderRegistry
-        let settings = settingsViewModel
         // Fire-and-forget: the auto-pick below writes the same id, so concurrent writes converge.
-        newModel.onModelSelected = { modelId in
+        newModel.onModelSelected = { [weak settings = settingsViewModel] modelId in
             Task {
                 await activateProvider(matching: modelId, in: registry)
                 await settings?.setLastSelectedModelId(modelId)
@@ -440,21 +439,11 @@ struct AppShell: View {
         newModel.onTitleGenerated = { [weak sidebar = sidebarViewModel] _ in
             Task { await sidebar?.refresh() }
         }
-        // Mirror the picker's initial pick so the registry's "active"
-        // matches what the user sees in the composer pill — without this
-        // the chat would route to whatever was first registered, which
-        // isn't necessarily what the picker shows after the user adds a
-        // second model.
+        // Mirror the picker's initial pick into the active provider, and persist if it differs from disk.
         if let id = initialModelId {
             await activateProvider(matching: id, in: registry)
-            // Persist the auto-pick on first open so the next launch
-            // reads a populated value even if the user never touches the
-            // composer pill. `didSet`'s `onModelSelected` doesn't fire
-            // for the value passed into `init`, so we have to write
-            // here. Skip when the resolved id already matches what's
-            // persisted to avoid a redundant DB write on every chat open.
             if id != persistedModelId {
-                await settings?.setLastSelectedModelId(id)
+                await settingsViewModel?.setLastSelectedModelId(id)
             }
         }
         // Pre-load the transcript so the first render of the swapped-in

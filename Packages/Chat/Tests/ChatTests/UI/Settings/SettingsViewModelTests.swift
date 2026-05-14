@@ -31,6 +31,7 @@ struct SettingsViewModelTests {
         try? await settingRepo.set(ChatSettingsStore.Keys.fontScale, value: "1.1")
         try? await settingRepo.set(ChatSettingsStore.Keys.autoCompactEnabled, value: "false")
         try? await settingRepo.set(ChatSettingsStore.Keys.autoCompactThreshold, value: "0.7")
+        try? await settingRepo.set(ChatSettingsStore.Keys.lastSelectedModelId, value: "claude-opus-4-7")
 
         let vm = makeViewModel(settingRepository: settingRepo)
         await vm.load()
@@ -40,6 +41,7 @@ struct SettingsViewModelTests {
         #expect(vm.settings.fontScale == 1.1)
         #expect(vm.settings.autoCompactEnabled == false)
         #expect(vm.settings.autoCompactThreshold == 0.7)
+        #expect(vm.settings.lastSelectedModelId == "claude-opus-4-7")
     }
 
     @Test("setTheme persists and updates observable state")
