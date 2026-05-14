@@ -1,14 +1,16 @@
 import Chat
 import Core
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
-/// App-level shell content. Renders the live `ChatScreen` once the
-/// bootstrap dependency graph is `.ready`, a transient progress pane
-/// during `.loading`, and an inline error pane when the bootstrap fails.
+/// App-level shell content. Renders `AppShell` once the bootstrap
+/// dependency graph is `.ready`, a transient progress pane during
+/// `.loading`, and an inline error pane when the bootstrap fails.
 ///
-/// The Sidebar (M8) and Settings (M9) overlays are hosted by
-/// `ChatHostView` so the chat surface stays a pure presentation of the
-/// active conversation.
+/// `AppShell` owns the chat surface, the applet backdrop, the
+/// hamburger chrome, the sidebar drawer, and the settings sheet.
 struct ContentView: View {
     let state: BootstrapState
 
@@ -20,7 +22,7 @@ struct ContentView: View {
             case .failed(let message):
                 FailureScreen(message: message)
             case .ready(let dependencies):
-                ChatHostView(dependencies: dependencies)
+                AppShell(dependencies: dependencies)
             }
         }
     }
@@ -58,22 +60,38 @@ private struct FailureScreen: View {
     }
 }
 
-// MARK: - Chat host (M7 + M8)
+// MARK: - App shell
 
-/// Hosts the live `ChatScreen` once the bootstrap is ready. Builds the
-/// view model from the dependency graph, applies the default theme, and
-/// drops the user into a fresh draft chat on every launch — previously
-/// persisted conversations stay in the sidebar drawer for one-tap recall.
-/// The draft only hits disk if the user actually sends a message (lazy
-/// persist), so launching and quitting doesn't litter the store with
-/// empty rows.
+/// Hosts the active mini-app's backdrop, the always-on-top chat overlay,
+/// the shell-level hamburger chrome, and the sidebar + settings drawers.
 ///
-/// In M8 this also owns the sidebar drawer state. The drawer overlays the
-/// chat in a `ZStack`; selecting a different conversation rebuilds the
-/// chat view model so the transcript reloads.
-struct ChatHostView: View {
+/// On launch the shell registers the four backdrop applets (Todo, Recipes,
+/// Bible, Finance) with an `AppletRegistry`. Chat is *not* a registered
+/// applet — it's the host surface that overlays everything else.
+/// `AppletRegistry.activeID` starts as `nil`, so the chat fills the screen
+/// on first launch with no backdrop behind it; the user activates a
+/// backdrop by tapping a placeholder applet from the sidebar.
+///
+/// The shell also owns the sidebar drawer and settings sheet visibility
+/// bindings, and the per-conversation view-model rebuild path the chat
+/// surface needs when the user picks a different chat from the sidebar.
+struct AppShell: View {
     let dependencies: AppDependencies
 
+    @State private var registry: AppletRegistry = AppletRegistry(applets: [
+        ToDoPlaceholderApplet(),
+        RecipesPlaceholderApplet(),
+        BiblePlaceholderApplet(),
+        FinancePlaceholderApplet(),
+    ])
+    /// The current chat presentation shape. Starts in `.expanded` so the
+    /// app launches into a full-screen chat surface (no backdrop applet
+    /// is active yet). Mutates in response to (a) the user dragging the
+    /// chat surface's drag handle, (b) tapping the minimized pill, (c)
+    /// tapping the dimmed applet backdrop in semi-expanded (→ minimized),
+    /// (d) selecting an applet from the sidebar (→ minimized), or (e)
+    /// selecting an existing chat / "New Chat" from the sidebar (→ expanded).
+    @State private var chatState: ChatPresentationState = .expanded
     @State private var viewModel: ChatScreenViewModel?
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
@@ -91,12 +109,81 @@ struct ChatHostView: View {
 
     private var appInfo: SuperAppInfo { .fromBundle() }
 
+    /// Honoured by the chat-overlay container's spring and by the
+    /// backdrop's opacity transition. Reading it here so the sidebar's
+    /// programmatic state flip uses the right animation.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Opacity applied to the applet backdrop based on the current chat
+    /// presentation. `.semiExpanded` dims the backdrop to 0.65 per the
+    /// 2026-05-13 design; other states leave it at 1.0. In `.expanded`
+    /// the chat overlay is opaque so this value is effectively unused.
+    private var backdropOpacity: Double {
+        switch chatState {
+        case .semiExpanded: 0.65
+        case .expanded, .minimized: 1.0
+        }
+    }
+
     var body: some View {
         ZStack {
+            // Backdrop: the active applet's rootView. Dimmed to 0.65 in
+            // semi-expanded so the chat panel reads against a faded
+            // applet behind it; full opacity in minimized; effectively
+            // hidden behind the opaque expanded chat (no opacity tweak
+            // needed because the chat covers it).
+            if let activeApplet = registry.activeApplet {
+                activeApplet.rootView()
+                    .ignoresSafeArea()
+                    .opacity(backdropOpacity)
+                    // Backdrop interactivity:
+                    //   .expanded     — chat covers the screen; backdrop
+                    //                   is hidden behind it, no hit
+                    //                   testing needed.
+                    //   .semiExpanded — backdrop is dimmed and the
+                    //                   transparent overlay below
+                    //                   catches taps to minimize the
+                    //                   chat (iOS sheet "tap-dim-to-
+                    //                   dismiss" parity).
+                    //   .minimized    — backdrop owns the screen; the
+                    //                   user is working inside the
+                    //                   applet, so hit testing must be
+                    //                   enabled for the applet's own UI
+                    //                   to respond. No overlay attached
+                    //                   so applet taps pass through.
+                    .allowsHitTesting(chatState != .expanded)
+                    .overlay {
+                        if chatState == .semiExpanded {
+                            // Transparent tap-target sits above the
+                            // dimmed applet only while semi-expanded.
+                            // An always-present `.onTapGesture` would
+                            // consume applet taps in `.minimized` too,
+                            // even though it would no-op there.
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+                                        chatState = .minimized
+                                    }
+                                }
+                        }
+                    }
+                    .animation(
+                        ChatOverlayAnimation.transition(reduceMotion: reduceMotion),
+                        value: chatState
+                    )
+            }
+
+            // Chat overlay. Always rendered now (even when a placeholder
+            // applet is active) — the container picks its shape from
+            // `chatState`: full-screen in `.expanded`, floating panel in
+            // `.semiExpanded`, full-width pill at the bottom in
+            // `.minimized`. The container itself handles the drag-snap
+            // transitions via the drag handle.
             if let viewModel {
-                ChatScreen(
+                ChatOverlayContainer(
+                    state: $chatState,
                     viewModel: viewModel,
-                    onMenuTap: openSidebar,
                     onManageModels: { openSettings(initialPane: .models) },
                     onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
                 )
@@ -108,6 +195,20 @@ struct ChatHostView: View {
                 LoadingScreen()
             }
 
+            // Shell chrome: hamburger at top-left, outside the chat surface.
+            // Aligned to topLeading inside the safe area so the status bar
+            // doesn't sit on top of it.
+            VStack {
+                HStack {
+                    FixedHamburgerButton(onTap: openSidebar)
+                        .superTheme(theme)
+                    Spacer(minLength: 0)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 12)
+            .padding(.top, 4)
+
             if let sidebarViewModel {
                 SidebarDrawer(
                     isPresented: $sidebarOpen,
@@ -115,6 +216,8 @@ struct ChatHostView: View {
                     appInfo: appInfo,
                     userInitials: "BW",
                     userName: "Brian Wang",
+                    applets: registry.applets,
+                    activeAppletID: registry.activeID,
                     onSelectConversation: { id in
                         Task { await selectConversation(id: id) }
                     },
@@ -124,8 +227,15 @@ struct ChatHostView: View {
                     onOpenSettings: {
                         openSettings()
                     },
-                    onSelectApplet: { _ in
-                        // Other applets are visual placeholders in MVP.
+                    onSelectApplet: { appletID in
+                        registry.activeID = appletID
+                        // Selecting any backdrop applet from the sidebar
+                        // collapses the chat to minimized so the user
+                        // can interact with the applet. They can drag
+                        // the pill up to climb back to semi/expanded.
+                        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+                            chatState = .minimized
+                        }
                     }
                 )
                 .superTheme(theme)
@@ -172,8 +282,28 @@ struct ChatHostView: View {
 
     private func openSidebar() {
         guard let sidebarViewModel else { return }
+        // Mirror the keyboard-dismiss the old in-`ChatScreen` hamburger
+        // did. Opening the sidebar with the composer focused would
+        // otherwise leave the keyboard up behind the drawer.
+        dismissKeyboard()
         sidebarOpen = true
         Task { await sidebarViewModel.refresh() }
+    }
+
+    /// Resign first responder so the on-screen keyboard tears down
+    /// before a chrome transition. Mirrors `ChatScreen.dismissKeyboard()`
+    /// — the UIKit dispatch is the load-bearing piece on iOS 26.x where
+    /// flipping `@FocusState` from a sibling isn't always enough to
+    /// hide the keyboard.
+    private func dismissKeyboard() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        #endif
     }
 
     private func openSettings(initialPane: SettingsSheet.Pane = .root) {
@@ -349,6 +479,12 @@ struct ChatHostView: View {
 
     private func selectConversation(id: String) async {
         sidebarOpen = false
+        // Selecting a chat is an intent to focus on chat — snap the
+        // overlay to expanded if the user came from minimized/semi over
+        // an applet backdrop.
+        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+            chatState = .expanded
+        }
         guard id != activeConversationId else { return }
         do {
             guard let row = try await dependencies.conversationRepository.fetch(id: id) else { return }
@@ -363,6 +499,10 @@ struct ChatHostView: View {
 
     private func startNewChat() async {
         sidebarOpen = false
+        // New Chat is an intent to focus on chat — snap to expanded.
+        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+            chatState = .expanded
+        }
         let now = Date()
         // Construct an in-memory draft. Persistence is deferred to the
         // first send (`LazyConversationDriver` writes the record then,

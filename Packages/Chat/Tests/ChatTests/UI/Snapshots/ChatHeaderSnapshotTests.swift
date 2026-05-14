@@ -28,7 +28,7 @@ struct ChatHeaderSnapshotTests {
     @Test("very long title truncates")
     func longTitleTruncates() {
         let long = "An overly long conversation title that should ellipsis"
-        let view = ChatHeader(title: long, onMenuTap: {})
+        let view = ChatHeader(title: long)
             .superTheme(.make(.light))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_long_title")
@@ -36,7 +36,7 @@ struct ChatHeaderSnapshotTests {
 
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402)
@@ -51,7 +51,7 @@ struct ChatHeaderSnapshotTests {
     /// `appearanceScaleMax` precedent.
     @Test("font scale max light")
     func fontScaleMax() {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(.light))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .frame(width: 402)
@@ -64,7 +64,7 @@ struct ChatHeaderSnapshotTests {
     /// palette (border, blur tint, ink) in ways the light baseline misses.
     @Test("font scale max dark")
     func fontScaleMaxDark() {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(.dark))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .frame(width: 402)
@@ -78,7 +78,7 @@ struct ChatHeaderSnapshotTests {
     /// background-blur tint specifically.
     @Test("font scale max sepia")
     func fontScaleMaxSepia() {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(.sepia))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .frame(width: 402)
@@ -94,7 +94,7 @@ struct ChatHeaderSnapshotTests {
     /// shift the centered-layout balance.
     @Test("font scale max at dynamic type XXL")
     func fontScaleMaxXXL() {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(.light))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .dynamicTypeSize(.xxLarge)
@@ -107,7 +107,7 @@ struct ChatHeaderSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = ChatHeader(title: "New chat", onMenuTap: {})
+        let view = ChatHeader(title: "New chat")
             .superTheme(.make(theme))
             .frame(width: 402)
         recordOrCompare(view: view, name: name, function: function)

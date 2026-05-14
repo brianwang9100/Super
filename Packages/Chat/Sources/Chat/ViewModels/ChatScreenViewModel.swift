@@ -224,6 +224,18 @@ public final class ChatScreenViewModel {
     /// immediately sees the in-progress text/thinking. No-op when no turn
     /// is in flight — the returned stream finishes immediately.
     private func attachToLiveTurnIfAny() async {
+        // Bail early if we're already consuming a live turn for this
+        // view model. A `.task(id: viewModel.conversationId)` re-fire
+        // (the chat surface remounting during a chat-presentation-state
+        // transition like expanded → semi-expanded) would otherwise
+        // call `driver.subscribe()` a second time, opening a parallel
+        // `AsyncStream` over the same in-flight turn. Both subscribers
+        // then append every text/thinking event to `streamingTail` and
+        // the transcript, producing visible character duplication in
+        // the live response.
+        if isStreaming, streamTask != nil {
+            return
+        }
         let (snapshot, stream) = await driver.subscribe()
         guard let snapshot else { return }
         // `thinkingStartedAt` rides on the snapshot so the elapsed-time

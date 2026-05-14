@@ -10,16 +10,26 @@
 		0884657F15758B3B5B1C0BEF /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = 8683B0FE0037B0D33755A7F4 /* Core */; };
 		098357BEEFC53ACE5815921E /* Chat in Frameworks */ = {isa = PBXBuildFile; productRef = 70882273C8BB80DC07D294F8 /* Chat */; };
 		12A8BC5F16AB43BB8BBC0576 /* AppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A5AA1BC1015FDF25A767B4 /* AppBootstrap.swift */; };
+		3EBEAF0C813CDCBE67E054BB /* PlaceholderApplets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D156170743E84E91C00F1D /* PlaceholderApplets.swift */; };
+		429B89E42E56D36786685C90 /* FixedHamburgerButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */; };
 		589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC96AB2000823B1110167BEB /* Assets.xcassets */; };
 		697D095559B2C6E8A8698AE0 /* SuperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD771A1B250F9D28FF92CBCC /* SuperApp.swift */; };
+		7CBED293F185C6E0005ECF32 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 5742DF79E0382021EB37C161 /* AGENTS.md */; };
+		8255CBDD1EA1AB20B977C76F /* AppletPlaceholderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */; };
+		AFFC4F2EC3F235C78CAB1453 /* CLAUDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 16443018E7AD54627BC3C99A /* CLAUDE.md */; };
 		B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37040D8281510F5E0053417 /* LazyConversationDriver.swift */; };
 		D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E14DF6F5FC6EE821355D769 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		16443018E7AD54627BC3C99A /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
+		1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedHamburgerButton.swift; sourceTree = "<group>"; };
+		5742DF79E0382021EB37C161 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
+		5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppletPlaceholderScreen.swift; sourceTree = "<group>"; };
 		5CD7248626B357C0C7BCE21F /* Super.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Super.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E14DF6F5FC6EE821355D769 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		61F39965616CCD1C3A93C1E5 /* Chat */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chat; path = Packages/Chat; sourceTree = SOURCE_ROOT; };
+		70D156170743E84E91C00F1D /* PlaceholderApplets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderApplets.swift; sourceTree = "<group>"; };
 		9CC7BF855207A5FF7A4A848B /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		A8BA1600038FF259AD5B228E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
@@ -58,9 +68,30 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		32101702AD3AF185AF1BF78D /* Placeholders */ = {
+			isa = PBXGroup;
+			children = (
+				5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */,
+				70D156170743E84E91C00F1D /* PlaceholderApplets.swift */,
+			);
+			path = Placeholders;
+			sourceTree = "<group>";
+		};
+		39E3D00F8E86FD5DF22F8ABC /* Shell */ = {
+			isa = PBXGroup;
+			children = (
+				32101702AD3AF185AF1BF78D /* Placeholders */,
+				5742DF79E0382021EB37C161 /* AGENTS.md */,
+				16443018E7AD54627BC3C99A /* CLAUDE.md */,
+				1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */,
+			);
+			path = Shell;
+			sourceTree = "<group>";
+		};
 		629F5A105F32CABAE061F024 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				39E3D00F8E86FD5DF22F8ABC /* Shell */,
 				E6A5AA1BC1015FDF25A767B4 /* AppBootstrap.swift */,
 				DC96AB2000823B1110167BEB /* Assets.xcassets */,
 				5E14DF6F5FC6EE821355D769 /* ContentView.swift */,
@@ -156,7 +187,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7CBED293F185C6E0005ECF32 /* AGENTS.md in Resources */,
 				589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */,
+				AFFC4F2EC3F235C78CAB1453 /* CLAUDE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -168,8 +201,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				12A8BC5F16AB43BB8BBC0576 /* AppBootstrap.swift in Sources */,
+				8255CBDD1EA1AB20B977C76F /* AppletPlaceholderScreen.swift in Sources */,
 				D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */,
+				429B89E42E56D36786685C90 /* FixedHamburgerButton.swift in Sources */,
 				B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */,
+				3EBEAF0C813CDCBE67E054BB /* PlaceholderApplets.swift in Sources */,
 				697D095559B2C6E8A8698AE0 /* SuperApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

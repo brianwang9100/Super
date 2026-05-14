@@ -81,9 +81,9 @@ Motion is sparse and short: a typing caret inside streaming text, a pulse for th
 ### 3.1 Header
 
 - Sticky, full-width, sits on a **translucent blurred backdrop** (`backdrop-filter: blur(16px) saturate(1.4)` over the chat background at 85% opacity).
-- **Left:** 40×40 circular menu button (hamburger icon) — opens the sidebar.
-- **Center:** the active chat's title, truncated to **240pt max-width** with ellipsis. Font is UI (Geist), 15.5pt, medium weight. Tooltip on hover shows the full title.
-- **Right:** an invisible 40×40 spacer that keeps the title visually centered relative to the menu button.
+- **Center:** the active chat's title, truncated to **240pt max-width** with ellipsis. Font is UI (Geist), 17pt, medium weight. Tooltip on hover shows the full title.
+- The hamburger menu lives in shell-level chrome (`App/Shell/FixedHamburgerButton.swift`), **not** in this header — it persists across the three chat presentation states. The header only renders when the chat is in the `.expanded` presentation state; semi-expanded omits it because the floating panel is treated as a glance-and-reply surface.
+- A **drag handle** (36 × 4.5pt rounded pill, `ink-mute @ 55%` resting) sits **above** this header at the top of the chat surface. It's the user's grab affordance for snapping between presentation states; see `docs/DESIGN.md` §4 for the state machine and animation tokens.
 
 For a brand-new/empty chat the title renders as "New chat".
 
@@ -288,7 +288,9 @@ When a streaming chat terminates with a transport or provider error, an inline *
 
 ## 6. Sidebar
 
-Revealed by tapping the menu button in the header. The sidebar is a **300pt fixed-width overlay** with a semi-transparent scrim (black @ 30%) behind it. Tapping the scrim or the menu button again closes it.
+Revealed by tapping the shell-level hamburger button (top-left of the viewport, outside the chat surface — see `docs/DESIGN.md` §4). The sidebar is a **300pt fixed-width overlay** with a semi-transparent scrim (black @ 30%) behind it. Tapping the scrim or the hamburger again closes it.
+
+The sidebar's applet rail is driven by the shell's `AppletRegistry` (not by Chat) — Chat itself is the host surface, not a registered applet, so it doesn't appear in the rail. The CHATS history list and New Chat CTA always render at the top of the drawer regardless of which backdrop applet is active, because chat history is the user's primary navigation across all presentation states.
 
 ```
 ╔═════════════════════════════╗

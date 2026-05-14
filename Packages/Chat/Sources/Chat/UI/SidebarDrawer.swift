@@ -1,20 +1,19 @@
 import Core
 import SwiftUI
 
-/// Left-anchored 300pt drawer overlaying `ChatScreen`. Mirrors
-/// `.design-tmp/chat/project/src/sidebar.jsx`. Hosts the Super wordmark, a
-/// New-Chat call-to-action (CTA), the (visual-only for MVP) applet rail,
-/// the chronological chats list, and a footer with an identity capsule +
-/// Settings button.
+/// Left-anchored 300pt drawer overlaying the active applet. Hosts the Super
+/// wordmark, a New-Chat call-to-action (CTA), the registry-driven applet
+/// rail, the chronological chats list (rendered only when Chat is the active
+/// applet), and a footer with an identity capsule + Settings button.
 ///
-/// The host is responsible for placing this in a `ZStack` over the chat
-/// surface and toggling `isPresented`. This view paints its own scrim so
-/// the host doesn't have to coordinate dimming.
+/// The host is responsible for placing this in a `ZStack` over the active
+/// surface and toggling `isPresented`. This view paints its own scrim so the
+/// host doesn't have to coordinate dimming.
 ///
 /// **Callback contract**: every action callback (`onSelectConversation`,
-/// `onNewChat`, `onOpenSettings`, `onSelectApplet`) is invoked *after*
-/// the drawer has already started its dismissal animation. The host can
-/// rely on the drawer being in a closing state when its callback fires.
+/// `onNewChat`, `onOpenSettings`, `onSelectApplet`) is invoked *after* the
+/// drawer has already started its dismissal animation. The host can rely on
+/// the drawer being in a closing state when its callback fires.
 public struct SidebarDrawer: View {
     /// `true` while the drawer is visible (slid in + scrim shown). The
     /// drawer mutates the binding to `false` immediately before each
@@ -34,6 +33,19 @@ public struct SidebarDrawer: View {
     /// Full display name shown next to the initials in the footer capsule.
     public let userName: String
 
+    /// Applets registered with the shell, in display order. Rendered as a
+    /// vertical rail between the New Chat CTA and the CHATS history list.
+    /// Driven by the shell's `AppletRegistry`; the drawer itself doesn't
+    /// decide which applets exist or in what order. Chat is the *host*
+    /// surface — it's not registered as an applet and doesn't appear in
+    /// this list.
+    public let applets: [any MiniApplet]
+
+    /// Identifier of the currently-active backdrop applet, or `nil` if
+    /// no backdrop is active (chat-only surface). The matching rail row
+    /// is highlighted with `theme.accentSoft` when non-`nil`.
+    public let activeAppletID: String?
+
     /// Fires when a row in the CHATS list is tapped. The drawer has
     /// already begun closing; the host should swap the active chat.
     public let onSelectConversation: (String) -> Void
@@ -48,29 +60,10 @@ public struct SidebarDrawer: View {
     public let onOpenSettings: () -> Void
 
     /// Fires when an applet rail row is tapped. The drawer has already
-    /// begun closing; the host typically no-ops in MVP since the listed
-    /// applets are visual placeholders.
-    public let onSelectApplet: (AppletDestination) -> Void
+    /// begun closing; the host should flip the registry's `activeID`.
+    public let onSelectApplet: (String) -> Void
 
     @Environment(\.superTheme) private var theme
-
-    /// Logical applet ids the rail surfaces.
-    ///
-    /// **MVP shortcut.** This enumerates sibling applets directly inside
-    /// the Chat module, which violates the project's "no applet imports
-    /// another applet" rule in spirit. Once a real `AppletRegistry` lands
-    /// (see `docs/MOBILE_ARCHITECTURE.md` §applets), the drawer should
-    /// take a `[SidebarApplet]` data shape supplied by the Shell instead.
-    public enum AppletDestination: String, Sendable, Equatable, CaseIterable {
-        /// Placeholder for the Todo applet.
-        case todo
-        /// Placeholder for the Recipes applet.
-        case recipes
-        /// Placeholder for the Bible applet.
-        case bible
-        /// Placeholder for the Finance applet.
-        case finance
-    }
 
     private let drawerWidth: CGFloat = 300
 
@@ -82,26 +75,33 @@ public struct SidebarDrawer: View {
     ///   - appInfo: Used for the version caption under the wordmark.
     ///   - userInitials: Painted into the footer initials circle.
     ///   - userName: Displayed next to the initials.
+    ///   - applets: Ordered list of registered applets to render in the rail.
+    ///   - activeAppletID: Identifier of the active backdrop applet, or
+    ///     `nil` if no backdrop is active (chat-only surface).
     ///   - onSelectConversation: Invoked with the tapped conversation id.
     ///   - onNewChat: Invoked when the New Chat CTA is tapped.
     ///   - onOpenSettings: Invoked when the Settings gear is tapped.
-    ///   - onSelectApplet: Invoked with the tapped placeholder applet.
+    ///   - onSelectApplet: Invoked with the tapped applet's `appletID`.
     public init(
         isPresented: Binding<Bool>,
         viewModel: SidebarViewModel,
         appInfo: SuperAppInfo,
         userInitials: String,
         userName: String,
+        applets: [any MiniApplet],
+        activeAppletID: String?,
         onSelectConversation: @escaping (String) -> Void,
         onNewChat: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
-        onSelectApplet: @escaping (AppletDestination) -> Void
+        onSelectApplet: @escaping (String) -> Void
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
         self.appInfo = appInfo
         self.userInitials = userInitials
         self.userName = userName
+        self.applets = applets
+        self.activeAppletID = activeAppletID
         self.onSelectConversation = onSelectConversation
         self.onNewChat = onNewChat
         self.onOpenSettings = onOpenSettings
@@ -145,11 +145,16 @@ public struct SidebarDrawer: View {
             wordmarkHeader
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: []) {
+                    // New Chat CTA, applet rail, and chat history always
+                    // render — chat is the shell's host surface, not a
+                    // sidebar-listed applet, so its history is the user's
+                    // primary navigation regardless of which applet
+                    // backdrop is active.
                     newChatButton
-                    appletRow(.todo, label: "Todo")
-                    appletRow(.recipes, label: "Recipes")
-                    appletRow(.bible, label: "Bible")
-                    appletRow(.finance, label: "Finance")
+
+                    ForEach(applets, id: \.appletID) { applet in
+                        appletRow(applet)
+                    }
 
                     sectionLabel("Chats")
 
@@ -215,35 +220,31 @@ public struct SidebarDrawer: View {
         .padding(.bottom, 6)
     }
 
-    private func appletRow(_ destination: AppletDestination, label: String) -> some View {
+    @ViewBuilder
+    private func appletRow(_ applet: any MiniApplet) -> some View {
+        let isActive = applet.appletID == activeAppletID
         Button(action: {
             close()
-            onSelectApplet(destination)
+            onSelectApplet(applet.appletID)
         }) {
             HStack(spacing: 14) {
-                appletIcon(destination)
-                    .foregroundStyle(theme.inkSoft)
-                Text(label)
-                    .font(.system(.body))
-                    .foregroundStyle(theme.ink)
+                applet.iconView(size: 20)
+                    .foregroundStyle(isActive ? theme.accent : theme.inkSoft)
+                Text(applet.displayName)
+                    .font(.system(.body).weight(isActive ? .medium : .regular))
+                    .foregroundStyle(isActive ? theme.accent : theme.ink)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isActive ? theme.accentSoft : Color.clear)
+            )
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .buttonStyle(SidebarPressableRowStyle(theme: theme, cornerRadius: 12))
-    }
-
-    @ViewBuilder
-    private func appletIcon(_ destination: AppletDestination) -> some View {
-        switch destination {
-        case .todo:    TodoIcon(size: 20)
-        case .recipes: RecipeIcon(size: 20)
-        case .bible:   BibleIcon(size: 20)
-        case .finance: FinanceIcon(size: 20)
-        }
+        .buttonStyle(SidebarPressableRowStyle(theme: theme, cornerRadius: 12, suppressBackground: isActive))
     }
 
     private func sectionLabel(_ text: String) -> some View {

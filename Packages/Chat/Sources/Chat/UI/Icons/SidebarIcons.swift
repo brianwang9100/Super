@@ -213,42 +213,42 @@ struct SettingsIconShape: Shape {
 // MARK: - Public icon views
 
 /// Todo applet glyph.
-struct TodoIcon: View {
+public struct TodoIcon: View {
     let size: CGFloat
-    init(size: CGFloat = 20) { self.size = size }
-    var body: some View {
+    public init(size: CGFloat = 20) { self.size = size }
+    public var body: some View {
         StrokedGlyph(shape: TodoIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
 /// Recipes applet glyph.
-struct RecipeIcon: View {
+public struct RecipeIcon: View {
     let size: CGFloat
-    init(size: CGFloat = 20) { self.size = size }
-    var body: some View {
+    public init(size: CGFloat = 20) { self.size = size }
+    public var body: some View {
         StrokedGlyph(shape: RecipeIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
 /// Bible applet glyph.
-struct BibleIcon: View {
+public struct BibleIcon: View {
     let size: CGFloat
-    init(size: CGFloat = 20) { self.size = size }
-    var body: some View {
+    public init(size: CGFloat = 20) { self.size = size }
+    public var body: some View {
         StrokedGlyph(shape: BibleIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
 /// Finance applet glyph.
-struct FinanceIcon: View {
+public struct FinanceIcon: View {
     let size: CGFloat
-    init(size: CGFloat = 20) { self.size = size }
-    var body: some View {
+    public init(size: CGFloat = 20) { self.size = size }
+    public var body: some View {
         StrokedGlyph(shape: FinanceIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
-/// New-Chat (pencil) glyph.
+/// New-Chat (pencil) glyph. Internal-only (used inside the sidebar drawer).
 struct NewChatIcon: View {
     let size: CGFloat
     init(size: CGFloat = 20) { self.size = size }
