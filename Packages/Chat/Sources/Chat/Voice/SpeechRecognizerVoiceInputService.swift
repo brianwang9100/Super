@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Speech
+import os
 
 /// Production ``VoiceInputService`` backed by `SFSpeechRecognizer`
 /// (SFSpeech = Apple's Speech-recognition framework) and `AVAudioEngine`.
@@ -120,8 +121,10 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
 ///
 /// Concurrency: the recognition-task callback fires on Apple's
 /// internal queue and the audio tap closure fires on `AVAudioEngine`'s
-/// real-time render thread. `lock` (`NSLock`) serializes every read /
-/// write of `accumulator`, `taskGeneration`, `recognitionRequest`,
+/// real-time render thread. `lock` (`OSAllocatedUnfairLock`, the
+/// project-prescribed primitive for multi-step atomic mutations per
+/// AGENTS.md §Synchronization) serializes every read / write of
+/// `accumulator`, `taskGeneration`, `recognitionRequest`,
 /// `recognitionTask`, `recognizer`, and the `torndown` flag — so a
 /// concurrent `tearDown` can't race a transparent task restart and
 /// leak the new task past cleanup, and so the tap's reading of
@@ -129,7 +132,10 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
 /// `SFSpeechAudioBufferRecognitionRequest.append(_:)` and
 /// `endAudio()` are documented thread-safe, so we only hold the lock
 /// long enough to snapshot the current request — the `append` itself
-/// happens outside the lock.
+/// happens outside the lock. An unfair lock is preferable to a
+/// futex-backed mutex here because every critical section is a
+/// pointer snapshot or flag flip, well below the spinlock break-even
+/// where contention would otherwise be a concern.
 private final class RecognitionSession: @unchecked Sendable {
     private let continuation: AsyncThrowingStream<VoiceInputEvent, Error>.Continuation
     private let silenceTimeout: Duration
@@ -148,7 +154,7 @@ private final class RecognitionSession: @unchecked Sendable {
     /// capturing.
     private var taskGeneration: Int = 0
     private var torndown = false
-    private let lock = NSLock()
+    private let lock = OSAllocatedUnfairLock()
 
     init(
         continuation: AsyncThrowingStream<VoiceInputEvent, Error>.Continuation,
