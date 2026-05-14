@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [Core, Chat]
+        package: [Core, Chat, Bible]
     steps:
       - uses: actions/checkout@v6
 

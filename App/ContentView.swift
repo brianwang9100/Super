@@ -1,3 +1,4 @@
+import Bible
 import Chat
 import Core
 import SwiftUI
@@ -120,7 +121,7 @@ struct AppShell: View {
         let applets: [any MiniApplet] = [
             ToDoPlaceholderApplet(),
             RecipesPlaceholderApplet(),
-            BiblePlaceholderApplet(),
+            BibleApplet(),
             FinancePlaceholderApplet(),
         ]
         // Read UserDefaults directly because `@State` initializers run
