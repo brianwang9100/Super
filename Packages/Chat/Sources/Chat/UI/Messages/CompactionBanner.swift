@@ -45,8 +45,11 @@ struct CompactionBanner: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Compaction summary")
-            .accessibilityHint(isExpanded ? "Tap to collapse" : "Tap to expand")
-            .accessibilityAddTraits(.isButton)
+            // Hint adds info beyond the gesture VoiceOver already
+            // announces ("double-tap to activate") per Apple HIG. The
+            // `.isButton` trait is synthesized by `Button` itself, so no
+            // explicit `.accessibilityAddTraits(.isButton)` is needed.
+            .accessibilityHint(isExpanded ? "Collapses the summary" : "Expands the summary")
             .animation(.easeInOut(duration: 0.15), value: isExpanded)
         }
         .padding(.vertical, 8)

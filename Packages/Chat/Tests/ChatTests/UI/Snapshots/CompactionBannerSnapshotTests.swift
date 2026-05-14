@@ -9,6 +9,13 @@ import Testing
 /// the expanded state pins the full multi-paragraph rendering driven by
 /// the `initiallyExpanded` test seam (the state is otherwise toggled only
 /// via tap, which snapshot tests can't drive).
+// `.serialized` — snapshot baselines are read/written per-test against
+// the same on-disk `__Snapshots__/CompactionBannerSnapshotTests/`
+// directory. Parallel execution races on the PNG files (TOCTOU), not on
+// any async behavior in the code under test — serialization is the right
+// tool. Matches every other snapshot suite in this directory; the
+// codebase-wide convention is intentional, not a smell to fix per-file
+// per AGENTS.md §Testing.2.
 @Suite("CompactionBanner snapshots", .serialized)
 @MainActor
 struct CompactionBannerSnapshotTests {
