@@ -85,6 +85,23 @@ struct ChatHeaderSnapshotTests {
         recordOrCompare(view: view, name: "header_font_scale_max_sepia")
     }
 
+    /// The extreme upper-bound: maxed font slider stacked on top of XXL
+    /// Dynamic Type. `@ScaledMetric(relativeTo: .subheadline)` already
+    /// scales `titleBase` from 17 → ~20pt at XXL; the further `× 1.20`
+    /// from the slider pushes the rendered title to ~24pt, the largest
+    /// the user can reach. Locks the corner case where the title might
+    /// vertically push the header taller than the menu-button row and
+    /// shift the centered-layout balance.
+    @Test("font scale max at dynamic type XXL")
+    func fontScaleMaxXXL() {
+        let view = ChatHeader(title: "New chat", onMenuTap: {})
+            .superTheme(.make(.light))
+            .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402)
+        recordOrCompare(view: view, name: "header_font_scale_max_light_xxl")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,
