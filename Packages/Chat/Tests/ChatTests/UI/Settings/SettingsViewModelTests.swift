@@ -106,6 +106,35 @@ struct SettingsViewModelTests {
         #expect(vm.settings.autoCompactThreshold == 0.5)
     }
 
+    @Test("setAutoCompactEnabled forwards the new policy into the receiver")
+    func setEnabledForwardsPolicy() async {
+        // Same rationale as the system-prompt fan-out test above: without
+        // this assertion, a refactor that drops the receiver call would
+        // compile, persist the toggle to disk, and leave every running
+        // session stuck on the old policy until app restart.
+        let receiver = FakeAutoCompactPolicyReceiver()
+        let vm = makeViewModel(autoCompactPolicyReceiver: receiver)
+        await vm.setAutoCompactEnabled(false)
+        let calls = await receiver.received()
+        #expect(calls.count == 1)
+        #expect(calls.last?.enabled == false)
+        #expect(calls.last?.threshold == vm.settings.autoCompactThreshold)
+    }
+
+    @Test("setAutoCompactThreshold forwards the clamped policy into the receiver")
+    func setThresholdForwardsPolicy() async {
+        let receiver = FakeAutoCompactPolicyReceiver()
+        let vm = makeViewModel(autoCompactPolicyReceiver: receiver)
+        // Pick a value inside `clampThreshold`'s [0.5, 0.95] window so this
+        // test pins the forwarding behavior, not the clamp boundary (which
+        // is covered separately by `setThresholdClamps`).
+        await vm.setAutoCompactThreshold(0.62)
+        let calls = await receiver.received()
+        #expect(calls.count == 1)
+        #expect(calls.last?.enabled == vm.settings.autoCompactEnabled)
+        #expect(calls.last?.threshold == 0.62)
+    }
+
     @Test("setModelEnabled mutates the in-memory row and persists per-model flag")
     func setModelEnabled() async {
         let settingRepo = InMemorySettingRepository()
@@ -405,7 +434,8 @@ struct SettingsViewModelTests {
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
         conversationRepository: any ConversationRepository = StubConversationRepository(rows: []),
         toolRegistry: ToolRegistry = ToolRegistry(),
-        systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver()
+        systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver(),
+        autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver()
     ) -> SettingsViewModel {
         SettingsViewModel(
             accountEmail: "test@example.com",
@@ -414,7 +444,8 @@ struct SettingsViewModelTests {
             modelRepository: modelRepository,
             conversationRepository: conversationRepository,
             toolRegistry: toolRegistry,
-            systemPromptReceiver: systemPromptReceiver
+            systemPromptReceiver: systemPromptReceiver,
+            autoCompactPolicyReceiver: autoCompactPolicyReceiver
         )
     }
 }

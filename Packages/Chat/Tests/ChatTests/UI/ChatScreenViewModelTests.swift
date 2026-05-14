@@ -155,6 +155,56 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.availableModels.count == 1)
     }
 
+    @Test("send preserves composer text for slash commands so a rejection is retryable")
+    func sendPreservesComposerTextForSlashCommands() {
+        // Manual `/compact` rejects synchronously when context usage is
+        // below the minimum-ratio gate. The composer must keep the typed
+        // command after a rejection so the user can retry once enough
+        // messages have accumulated — clearing it on submit would erase
+        // the only context the user has for "what I just tried."
+        // Regular submissions still clear because their text becomes a
+        // user bubble below the composer.
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel.composerText = "/compact"
+
+        viewModel.send("/compact")
+
+        #expect(viewModel.composerText == "/compact")
+        #expect(viewModel.isStreaming == true)
+    }
+
+    @Test("send clears composer text for ordinary (non-slash) submissions")
+    func sendClearsComposerTextForOrdinarySubmissions() {
+        // Counterpart to the slash-command test above: a regular
+        // submission must still clear the composer because the user's
+        // text gets rendered as its own bubble below.
+        let driver = ScriptedDriver(events: [])
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel.composerText = "Hello there"
+
+        viewModel.send("Hello there")
+
+        #expect(viewModel.composerText == "")
+        #expect(viewModel.isStreaming == true)
+    }
+
     @Test("send with a model clears a pre-existing error before streaming")
     func sendWithModelClearsExistingError() {
         // Regression: the `send` happy path's `error = nil` clearing

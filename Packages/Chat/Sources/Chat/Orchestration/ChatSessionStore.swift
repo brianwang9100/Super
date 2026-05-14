@@ -18,8 +18,14 @@ public actor ChatSessionStore {
     private let compactor: Compactor
     private let clock: any Clock
     private let idGenerator: any IDGenerator
-    private let autoCompactEnabled: Bool
-    private let autoCompactThreshold: Double
+    /// Current auto-compaction toggle. Mutable so a slider/toggle change
+    /// in Settings → Compaction can fan out to active sessions and seed
+    /// any session created afterward — see `setAutoCompactPolicy(...)`.
+    private var autoCompactEnabled: Bool
+    /// Current auto-compaction threshold (fraction of context window).
+    /// Same mutability rationale as `autoCompactEnabled`.
+    private var autoCompactThreshold: Double
+    private let manualCompactMinThreshold: Double
     private var currentSystemPrompt: String
 
     private var sessions: [String: ChatSession] = [:]
@@ -35,7 +41,8 @@ public actor ChatSessionStore {
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         autoCompactEnabled: Bool = true,
-        autoCompactThreshold: Double = 0.75,
+        autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
+        manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
         systemPrompt: String = ""
     ) {
         self.messageRepository = messageRepository
@@ -49,6 +56,7 @@ public actor ChatSessionStore {
         self.idGenerator = idGenerator
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
+        self.manualCompactMinThreshold = manualCompactMinThreshold
         self.currentSystemPrompt = systemPrompt
     }
 
@@ -70,6 +78,7 @@ public actor ChatSessionStore {
             idGenerator: idGenerator,
             autoCompactEnabled: autoCompactEnabled,
             autoCompactThreshold: autoCompactThreshold,
+            manualCompactMinThreshold: manualCompactMinThreshold,
             systemPrompt: currentSystemPrompt
         )
         sessions[conversationId] = session
@@ -97,6 +106,35 @@ public actor ChatSessionStore {
         for (_, session) in snapshot {
             guard currentSystemPrompt == value else { return }
             await session.setSystemPrompt(value)
+        }
+    }
+
+    /// Push a new auto-compaction policy to every active session and
+    /// remember it as the default for sessions created later. The
+    /// Settings → Compaction pane calls this after persisting the toggle
+    /// or threshold slider, so a long-running session picks up the new
+    /// policy on its next turn (and brand-new sessions seed with the
+    /// latest values, not the boot-time ones). No-ops when the
+    /// `(enabled, threshold)` pair is unchanged.
+    ///
+    /// Concurrency rationale mirrors `setSystemPrompt(_:)` exactly: the
+    /// per-session `await` suspends the actor, a racing call can
+    /// interleave, and the intra-loop guard against the live
+    /// `(autoCompactEnabled, autoCompactThreshold)` snapshot bails out
+    /// early once the values have been superseded — last write wins, all
+    /// sessions agree with the store once both calls return.
+    public func setAutoCompactPolicy(enabled: Bool, threshold: Double) async {
+        guard enabled != autoCompactEnabled || threshold != autoCompactThreshold else {
+            return
+        }
+        autoCompactEnabled = enabled
+        autoCompactThreshold = threshold
+        let snapshot = sessions
+        for (_, session) in snapshot {
+            guard autoCompactEnabled == enabled, autoCompactThreshold == threshold else {
+                return
+            }
+            await session.setAutoCompactPolicy(enabled: enabled, threshold: threshold)
         }
     }
 

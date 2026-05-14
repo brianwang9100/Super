@@ -128,6 +128,13 @@ public final class SettingsViewModel {
     /// receiver.
     private let systemPromptReceiver: any SystemPromptReceiver
 
+    /// Receiver that runtime-pushes auto-compaction toggle/threshold
+    /// edits into orchestration (production: `ChatSessionStore`). Same
+    /// required-non-optional rationale as `systemPromptReceiver` — a
+    /// silently-dropped slider would leave the persisted value diverged
+    /// from running sessions until the next app launch.
+    private let autoCompactPolicyReceiver: any AutoCompactPolicyReceiver
+
     /// Optional notification fired after the models list changes via
     /// `createModel`/`updateModel`/`deleteModel`. The host wires this so
     /// the chat surface picks up newly added providers without an app
@@ -142,6 +149,7 @@ public final class SettingsViewModel {
         conversationRepository: any ConversationRepository,
         toolRegistry: ToolRegistry,
         systemPromptReceiver: any SystemPromptReceiver,
+        autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil
     ) {
@@ -153,6 +161,7 @@ public final class SettingsViewModel {
         self.toolRegistry = toolRegistry
         self.llmProviderRegistry = llmProviderRegistry
         self.systemPromptReceiver = systemPromptReceiver
+        self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
         self.httpClient = httpClient
     }
 
@@ -267,12 +276,25 @@ public final class SettingsViewModel {
     public func setAutoCompactEnabled(_ value: Bool) async {
         settings.autoCompactEnabled = value
         try? await store.setAutoCompactEnabled(value)
+        // Fan out to every active `ChatSession` so a long-running
+        // conversation picks up the new toggle on its next turn —
+        // otherwise the persisted value would diverge from running
+        // sessions until the user restarted the app.
+        await autoCompactPolicyReceiver.setAutoCompactPolicy(
+            enabled: settings.autoCompactEnabled,
+            threshold: settings.autoCompactThreshold
+        )
     }
 
     public func setAutoCompactThreshold(_ value: Double) async {
         let clamped = ChatSettings.clampThreshold(value)
         settings.autoCompactThreshold = clamped
         try? await store.setAutoCompactThreshold(clamped)
+        // Same runtime-propagation rationale as `setAutoCompactEnabled`.
+        await autoCompactPolicyReceiver.setAutoCompactPolicy(
+            enabled: settings.autoCompactEnabled,
+            threshold: settings.autoCompactThreshold
+        )
     }
 
     public func setModelEnabled(id: String, enabled: Bool) async {

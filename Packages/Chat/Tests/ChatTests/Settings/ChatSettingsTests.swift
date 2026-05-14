@@ -26,6 +26,18 @@ struct ChatSettingsTests {
         let prompt = ChatSettings.default.systemPrompt
         #expect(prompt == prompt.trimmingCharacters(in: .whitespacesAndNewlines))
     }
+
+    @Test("compaction threshold constants are the single source of truth")
+    func compactionThresholdConstantsAreConsistent() {
+        // Regression test for the 0.75/0.85 drift that shipped before: the
+        // user-facing `default` must reference the named constant, and the
+        // constant itself is what the orchestration-layer fallbacks pin
+        // to. If anyone re-introduces a literal anywhere, this test fails
+        // when they update one but not the other.
+        #expect(ChatSettings.defaultAutoCompactThreshold == 0.85)
+        #expect(ChatSettings.default.autoCompactThreshold == ChatSettings.defaultAutoCompactThreshold)
+        #expect(ChatSettings.defaultManualCompactMinThreshold == 0.30)
+    }
 }
 
 /// Direct tests for `ChatSettingsStore.load()` covering the

@@ -33,6 +33,21 @@ public struct ChatSettings: Sendable, Equatable {
     /// fires. Persisted now; consumed alongside `autoCompactEnabled` in M10.
     public var autoCompactThreshold: Double
 
+    /// Factory default for `autoCompactThreshold` — the fraction of
+    /// `model.maxContextTokens` at which background auto-compaction fires.
+    /// Single source of truth: `ChatSession.init`, `ChatSessionStore.init`,
+    /// and `ChatSettings.default` all reference this constant so the
+    /// defaults can't drift apart.
+    public static let defaultAutoCompactThreshold: Double = 0.85
+
+    /// Minimum context-usage ratio below which manual `/compact` refuses
+    /// to run and surfaces a user-facing error instead. Below this, the
+    /// summary would be too short to be worth the round-trip and the
+    /// resulting checkpoint would represent almost the whole conversation.
+    /// Not user-tunable today; lives as a named constant so the value
+    /// has one home.
+    public static let defaultManualCompactMinThreshold: Double = 0.30
+
     /// Factory defaults. `systemPrompt` is loaded once from
     /// `Resources/DefaultSystemPrompt.md` shipped in `Bundle.module`; all
     /// other fields are inline literals. A user who has edited
@@ -44,7 +59,7 @@ public struct ChatSettings: Sendable, Equatable {
         defaultVerbosity: .simple,
         fontScale: 1.0,
         autoCompactEnabled: true,
-        autoCompactThreshold: 0.85
+        autoCompactThreshold: defaultAutoCompactThreshold
     )
 
     /// Contents of the bundled `DefaultSystemPrompt.md`, trimmed of

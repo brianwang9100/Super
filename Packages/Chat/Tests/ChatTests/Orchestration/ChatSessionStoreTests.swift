@@ -243,6 +243,113 @@ struct ChatSessionStoreTests {
         }
     }
 
+    @Test func setAutoCompactPolicyTriggersAutoCompactionOnExistingSession() async throws {
+        // The store-level fan-out must reach already-created sessions, so a
+        // long-running conversation picks up a slider/toggle change on its
+        // next turn. End-to-end signal: bootstrap the store with auto-
+        // compaction disabled, seed enough history to summarize, flip the
+        // policy via `setAutoCompactPolicy(...)`, then send one more message
+        // and assert the provider was hit for the summarization turn — the
+        // only side effect that proves the new policy actually reached the
+        // existing session.
+        let setup = try await makeStore(scripts: [
+            // Summarization turn fires first (auto-compaction runs at the
+            // top of the turn loop).
+            [
+                .messageStart(id: "sum", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Summary of the older turns."),
+                .messageComplete(usage: TokenUsage(inputTokens: 8, outputTokens: 4)),
+            ],
+            // Then the actual assistant reply.
+            [
+                .messageStart(id: "reply", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 4, outputTokens: 1)),
+            ],
+        ])
+
+        // Seed 12 messages so the compactor has something to summarize once
+        // the policy flips on (keepMostRecent defaults to 4 → 8 messages
+        // are eligible for summarization).
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        for index in 1...6 {
+            try await messageRepo.save(MessageRecord(
+                id: "h-u\(index)", conversationId: "conv-A", role: .user,
+                content: "user message \(index) padded with extra words to bulk the token estimate",
+                createdAt: setup.clock.now()
+            ))
+            try await messageRepo.save(MessageRecord(
+                id: "h-a\(index)", conversationId: "conv-A", role: .assistant,
+                content: "assistant reply \(index) padded with extra words to bulk the token estimate",
+                createdAt: setup.clock.now()
+            ))
+        }
+
+        let session = await setup.store.session(for: "conv-A")
+        // Flip auto-compaction on with a near-zero threshold so the seeded
+        // history is guaranteed to be "over threshold."
+        await setup.store.setAutoCompactPolicy(enabled: true, threshold: 0.0001)
+
+        let stream = await session.send(text: "next prompt", model: setup.model)
+        let events = await self.collect(stream)
+        await session.waitUntilFinished()
+
+        let compactionStarted = events.contains {
+            if case .compactionStarted = $0 { return true } else { return false }
+        }
+        #expect(compactionStarted, "policy fan-out failed to reach the existing session")
+
+        // Two provider calls: summarization + the actual turn.
+        let captured = await setup.provider.capturedRequests()
+        #expect(captured.count == 2)
+    }
+
+    @Test func setAutoCompactPolicyIsInheritedBySessionsCreatedAfterTheCall() async throws {
+        // Sessions created *after* a store-level policy change must seed
+        // with the new values, not the construction-time defaults. Without
+        // this, every newly-opened chat would silently revert to the
+        // boot-time policy until app restart.
+        let setup = try await makeStore(scripts: [
+            [
+                .messageStart(id: "sum", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Summary."),
+                .messageComplete(usage: TokenUsage(inputTokens: 8, outputTokens: 2)),
+            ],
+            [
+                .messageStart(id: "reply", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 4, outputTokens: 1)),
+            ],
+        ])
+
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        for index in 1...6 {
+            try await messageRepo.save(MessageRecord(
+                id: "h-u\(index)", conversationId: "conv-B", role: .user,
+                content: "user message \(index) padded with extra words to bulk the token estimate",
+                createdAt: setup.clock.now()
+            ))
+            try await messageRepo.save(MessageRecord(
+                id: "h-a\(index)", conversationId: "conv-B", role: .assistant,
+                content: "assistant reply \(index) padded with extra words to bulk the token estimate",
+                createdAt: setup.clock.now()
+            ))
+        }
+
+        // Flip policy BEFORE any session for conv-B exists.
+        await setup.store.setAutoCompactPolicy(enabled: true, threshold: 0.0001)
+
+        let session = await setup.store.session(for: "conv-B")
+        let stream = await session.send(text: "hello", model: setup.model)
+        let events = await self.collect(stream)
+        await session.waitUntilFinished()
+
+        let compactionStarted = events.contains {
+            if case .compactionStarted = $0 { return true } else { return false }
+        }
+        #expect(compactionStarted, "newly-created session ignored the store's updated policy")
+    }
+
     @Test func setSystemPromptIsInheritedBySessionsCreatedAfterTheCall() async throws {
         // Sessions created *after* a store-level setSystemPrompt must start
         // with the new value, not the construction-time default. Otherwise
