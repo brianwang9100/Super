@@ -36,8 +36,12 @@ public final class VoiceInputController {
     }
 
     public private(set) var state: State = .idle
-    /// Most recent `.partial` transcript from the active session. Empty
-    /// outside `.listening`.
+    /// Most recent `.partial` transcript from the active session. The
+    /// service accumulates utterances committed across natural pauses
+    /// inside a single session, so this value grows as the user keeps
+    /// speaking — a pause-then-resume looks like a single continuous
+    /// dictation, not two separate sessions. Empty outside
+    /// `.listening`.
     public private(set) var partialTranscript: String = ""
 
     /// Fires once per session with the committed final text (including

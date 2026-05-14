@@ -130,6 +130,51 @@ struct VoiceInputControllerTests {
         #expect(controller.partialTranscript == "")
     }
 
+    @Test("cross-pause accumulation: consecutive partials with no intervening .final render as a single growing transcript")
+    func crossPauseAccumulationFlowsThroughAsPartials() async {
+        // Documents the post-fix service contract: when Apple's
+        // SFSpeechRecognizer auto-endpoints on a natural pause, the
+        // service swallows the `.isFinal=true` callback, commits the
+        // utterance to its internal accumulator, transparently spins
+        // up the next recognition task, and continues emitting
+        // `.partial(...)` events that carry the merged transcript.
+        // The controller sees a single uninterrupted stream of
+        // partials — no `.final` until the user actually stops (or
+        // silence-timeout fires) — so a regression that accidentally
+        // re-introduces a mid-session `.final` (botched merge, future
+        // refactor) would break user-facing behavior even when the
+        // `DictationTranscriptAccumulator` unit tests stay green.
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        let recorded = TranscriptRecorder()
+        controller.onFinalTranscript = { text in recorded.append(text) }
+
+        await controller.toggle()
+        // First utterance refines.
+        service.emit(.partial("hel"))
+        service.emit(.partial("hello"))
+        await yieldUntil { controller.partialTranscript == "hello" }
+
+        // Pause boundary: the service's accumulator now contains
+        // ["hello"] internally; the next partial carries the merged
+        // committed + new-in-flight text.
+        service.emit(.partial("hello world"))
+        await yieldUntil { controller.partialTranscript == "hello world" }
+
+        // No `.final` has been delivered — the controller is still
+        // listening and `onFinalTranscript` hasn't fired even once.
+        #expect(controller.state == .listening)
+        #expect(recorded.values == [])
+
+        // User taps stop / silence-timeout fires; the accumulated
+        // text commits via the normal terminal-event path.
+        service.failNext(with: .silenceTimeout)
+        await yieldUntil { controller.state == .idle }
+
+        #expect(recorded.values == ["hello world"])
+        #expect(controller.partialTranscript == "")
+    }
+
     @Test("rapid toggle inside the same task tick does not double-start the service")
     func rapidToggleDoesNotDoubleStart() async {
         let service = FakeVoiceInputService()
