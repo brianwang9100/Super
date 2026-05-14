@@ -64,6 +64,83 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .dark, name: "screen_populated_dark")
     }
 
+    @Test("no-model error banner over empty state, light")
+    func noModelErrorLight() {
+        verifyNoModelError(theme: .light, name: "screen_no_model_error_light")
+    }
+
+    @Test("no-model error banner over empty state, dark")
+    func noModelErrorDark() {
+        verifyNoModelError(theme: .dark, name: "screen_no_model_error_dark")
+    }
+
+    @Test("no-model error banner over empty state, sepia")
+    func noModelErrorSepia() {
+        verifyNoModelError(theme: .sepia, name: "screen_no_model_error_sepia")
+    }
+
+    @Test("no-model error banner over populated transcript, light")
+    func noModelErrorPopulatedLight() {
+        // Reachable in production when the user previously chatted, then
+        // deleted every model endpoint in Settings, then tried to send
+        // again — the persisted transcript stays on screen while the
+        // banner overlays the latest exchange. `availableModels` is
+        // empty so the composer's model pill correctly reads
+        // "No model", consistent with the banner state.
+        let function = #function
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        let messages: [MessageRecord] = [
+            MessageRecord(id: "u1", conversationId: "c", role: .user, content: "What can you do?", createdAt: now),
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "I can answer questions, write code, and use a few built-in tools.", createdAt: now.addingTimeInterval(1)),
+        ]
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: messages),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel._setSnapshotState(
+            items: ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil),
+            usedTokens: 1_200,
+            error: .noModelConfigured(onAddModel: {})
+        )
+
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(.light))
+            .frame(width: 402, height: 874)
+        recordOrCompare(view: view, name: "screen_no_model_error_populated_light", function: function)
+    }
+
+    private func verifyNoModelError(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        // Fresh build: zero models configured, user typed something and
+        // tapped send. `ChatScreenViewModel.send` sets the no-model error;
+        // `ChatScreen.content` switches from the empty-state greeting to
+        // `MessageList` so the banner renders above the composer.
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: []),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel.composerText = "hi"
+        viewModel.send("hi")
+
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(theme))
+            .frame(width: 402, height: 874)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     @Test("populated transcript at dynamic type XXL")
     func populatedXXL() {
         let function = #function
