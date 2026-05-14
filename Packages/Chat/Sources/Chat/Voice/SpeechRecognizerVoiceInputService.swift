@@ -290,9 +290,13 @@ private final class RecognitionSession: @unchecked Sendable {
             let nextGeneration = taskGeneration
             lock.unlock()
 
-            // No recognizer means `tearDown` already nilled it — fall
-            // through to the yield/watchdog so the user sees the
-            // committed text, but don't try to install a new task.
+            // Defensive: `recognizer` is only nilled by `tearDown`,
+            // which also sets `torndown = true` — the guard at the top
+            // of this method would have returned early on that path,
+            // so this branch shouldn't be reachable. Belt-and-braces:
+            // if it ever is (future refactor relaxing the invariant),
+            // yield the committed text so the user doesn't lose it
+            // and exit without trying to install a new task.
             guard let currentRecognizer else {
                 outgoingRequest?.endAudio()
                 continuation.yield(.partial(rendered))
