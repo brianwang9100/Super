@@ -340,16 +340,7 @@ struct AppShell: View {
             if isDraft {
                 sidebar.draftConversation = conversation
             }
-            // Regression: settings must load *before* the first
-            // `rebuildChatViewModel` so the persisted
-            // `lastSelectedModelId`, `defaultVerbosity`, theme, and font
-            // scale are visible at chat construction. Reordering this
-            // block would silently regress the "new chat opens on the
-            // user's last picked model" guarantee — `settingsViewModel`
-            // reads as nil during the chat build and the picker falls
-            // back to `providerModels.first?.id` on every cold start.
-            // Do not move `await settings.load()` below
-            // `rebuildChatViewModel`.
+            // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
             let settings = SettingsViewModel(
                 accountEmail: "brianwang9100@gmail.com",
                 appInfo: appInfo,
@@ -414,12 +405,7 @@ struct AppShell: View {
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
         let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
-        // Resolve the initial model from the persisted "last selected"
-        // setting so the picker survives relaunch. Stale ids (model was
-        // deleted since last launch) silently fall back to the first
-        // available model — same fallback `setAvailableModels` uses for
-        // mid-session deletions. Logic is unit-tested in
-        // `ChatScreenViewModelTests.resolveInitialModelId*`.
+        // Use the persisted model id so the picker survives relaunch; stale ids fall back to first available.
         let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
         let initialModelId = ChatScreenViewModel.resolveInitialModelId(
             persisted: persistedModelId,
@@ -441,10 +427,7 @@ struct AppShell: View {
         )
         let registry = dependencies.llmProviderRegistry
         let settings = settingsViewModel
-        // Fire-and-forget: a pick that races a "New chat" tap is fine
-        // because the auto-pick write below also persists the resolved
-        // id, so the two writes converge on the same value (last write
-        // wins, both write the same model the user picked).
+        // Fire-and-forget: the auto-pick below writes the same id, so concurrent writes converge.
         newModel.onModelSelected = { modelId in
             Task {
                 await activateProvider(matching: modelId, in: registry)
