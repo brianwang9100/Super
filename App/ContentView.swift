@@ -107,18 +107,14 @@ struct AppShell: View {
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
     /// `UserDefaults` key for the persisted backdrop applet ID. Referenced
-    /// from both the `@AppStorage` wrapper and the `init` bootstrap read
-    /// below — the two must agree or persistence silently breaks.
+    /// from both the bootstrap read in `init` and the write-back in
+    /// `onSelectApplet` — the two must agree or persistence silently breaks.
     private static let activeAppletStorageKey = "shell.activeAppletID"
 
-    /// Persisted backdrop applet ID. Written from `onSelectApplet` so the
-    /// user's pick survives relaunches. The load-bearing read happens in
-    /// `init` (via `UserDefaults` directly, before SwiftUI wires up this
-    /// wrapper); the default below is only returned if something ever
-    /// reads `persistedAppletID` against a missing key — match it to the
-    /// first registered applet so a stray read stays coherent.
-    @AppStorage(Self.activeAppletStorageKey) private var persistedAppletID: String = ToDoPlaceholderApplet.appletID
-
+    /// Resolves the initial backdrop applet from persisted state and builds
+    /// the registry. Reads `UserDefaults` directly because `@State` is not
+    /// yet wired up at `init` time; falls back to the first registered
+    /// applet when no persisted ID exists or the ID no longer matches.
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
         let applets: [any MiniApplet] = [
@@ -262,7 +258,7 @@ struct AppShell: View {
                     },
                     onSelectApplet: { appletID in
                         registry.activeID = appletID
-                        persistedAppletID = appletID
+                        UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
                         // Selecting any backdrop applet from the sidebar
                         // collapses the chat to minimized so the user
                         // can interact with the applet. They can drag
