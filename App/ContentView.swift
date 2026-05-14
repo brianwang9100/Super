@@ -370,9 +370,7 @@ struct AppShell: View {
             if isDraft {
                 sidebar.draftConversation = conversation
             }
-            await rebuildChatViewModel(for: conversation)
-            await sidebar.refresh()
-
+            // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
             let settings = SettingsViewModel(
                 accountEmail: "brianwang9100@gmail.com",
                 appInfo: appInfo,
@@ -389,6 +387,9 @@ struct AppShell: View {
             settingsViewModel = settings
             theme = .make(settings.settings.themeId)
             appearance = ChatAppearance(fontScale: settings.settings.fontScale)
+
+            await rebuildChatViewModel(for: conversation)
+            await sidebar.refresh()
         } catch {
             bootstrapError = "Could not open chat: \(error.localizedDescription)"
         }
@@ -434,6 +435,12 @@ struct AppShell: View {
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
         let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
+        // Use the persisted model id so the picker survives relaunch; stale ids fall back to first available.
+        let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
+        let initialModelId = ChatScreenViewModel.resolveInitialModelId(
+            persisted: persistedModelId,
+            available: providerModels
+        )
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -442,15 +449,19 @@ struct AppShell: View {
             toolCallRepository: dependencies.toolCallRepository,
             checkpointRepository: dependencies.checkpointRepository,
             availableModels: providerModels,
-            selectedModelId: providerModels.first?.id,
+            selectedModelId: initialModelId,
             verbosity: verbosity,
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
             voice: voice
         )
         let registry = dependencies.llmProviderRegistry
-        newModel.onModelSelected = { modelId in
-            Task { await activateProvider(matching: modelId, in: registry) }
+        // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.
+        newModel.onModelSelected = { [weak settings = settingsViewModel] modelId in
+            Task {
+                await activateProvider(matching: modelId, in: registry)
+                await settings?.setLastSelectedModelId(modelId)
+            }
         }
         // When the auto-titler lands, repaint the sidebar so the row's
         // "New chat" placeholder flips to the real title without waiting
@@ -458,13 +469,12 @@ struct AppShell: View {
         newModel.onTitleGenerated = { [weak sidebar = sidebarViewModel] _ in
             Task { await sidebar?.refresh() }
         }
-        // Mirror the picker's initial pick so the registry's "active"
-        // matches what the user sees in the composer pill — without this
-        // the chat would route to whatever was first registered, which
-        // isn't necessarily what the picker shows after the user adds a
-        // second model.
-        if let firstId = providerModels.first?.id {
-            await activateProvider(matching: firstId, in: registry)
+        // Mirror the picker's initial pick into the active provider, and persist if it differs from disk.
+        if let id = initialModelId {
+            await activateProvider(matching: id, in: registry)
+            if id != persistedModelId {
+                await settingsViewModel?.setLastSelectedModelId(id)
+            }
         }
         // Pre-load the transcript so the first render of the swapped-in
         // view model already shows the messages instead of flashing the

@@ -25,6 +25,63 @@ struct ChatScreenViewModelTests {
         maxContextTokens: 1000
     )
 
+    private func makeModel(id: String) -> LLMModel {
+        LLMModel(
+            id: id,
+            displayName: id,
+            supportsThinking: false,
+            supportsTools: true,
+            maxContextTokens: 1000
+        )
+    }
+
+    @Test("resolveInitialModelId returns the persisted id when it is in the available list")
+    func resolveInitialModelIdReturnsPersistedWhenValid() {
+        let a = makeModel(id: "model-a")
+        let b = makeModel(id: "model-b")
+        let resolved = ChatScreenViewModel.resolveInitialModelId(
+            persisted: "model-b",
+            available: [a, b]
+        )
+        #expect(resolved == "model-b")
+    }
+
+    @Test("resolveInitialModelId falls back to first available when persisted is nil")
+    func resolveInitialModelIdFallsBackWhenNilPersisted() {
+        let a = makeModel(id: "model-a")
+        let b = makeModel(id: "model-b")
+        let resolved = ChatScreenViewModel.resolveInitialModelId(
+            persisted: nil,
+            available: [a, b]
+        )
+        #expect(resolved == "model-a")
+    }
+
+    @Test("resolveInitialModelId falls back to first available when persisted id is stale")
+    func resolveInitialModelIdFallsBackWhenStalePersisted() {
+        // Regression: user deleted their previously-selected model
+        // between launches. Resolver must not return the stale id — the
+        // host would otherwise hand a nonexistent id to
+        // `ChatScreenViewModel.init`, where `activeModel` would still
+        // fall back to first but the picker's UI state could lag.
+        let a = makeModel(id: "model-a")
+        let b = makeModel(id: "model-b")
+        let resolved = ChatScreenViewModel.resolveInitialModelId(
+            persisted: "deleted-model",
+            available: [a, b]
+        )
+        #expect(resolved == "model-a")
+    }
+
+    @Test("resolveInitialModelId returns nil when no models are available")
+    func resolveInitialModelIdReturnsNilWhenEmpty() {
+        let resolved = ChatScreenViewModel.resolveInitialModelId(
+            persisted: "any-id",
+            available: []
+        )
+        #expect(resolved == nil)
+    }
+
     @Test("send accumulates streaming text into the tail until completion")
     func streamingTextAccumulatesThenClears() async throws {
         let driver = ScriptedDriver(events: [
