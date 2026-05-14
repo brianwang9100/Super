@@ -88,9 +88,14 @@ public struct ChatComposer: View {
     }
 
     @Environment(\.superTheme) private var theme
-    /// The composer's text editor rides the body font anchor so what the
+    /// The composer's text editor tracks the chat font slider so what the
     /// user types renders at the same size as the message it'll become.
     @Environment(\.chatAppearance) private var appearance
+    /// Base editor size declared via `@ScaledMetric` so Dynamic Type
+    /// composes with the chat font-scale knob — same pattern as
+    /// ``UserBubble``. Plain `appearance.bodyFont` would drop the
+    /// Dynamic-Type response the prior `.subheadline` styling had.
+    @ScaledMetric(relativeTo: .subheadline) private var editorBase: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
     @State private var pulseScale: CGFloat = 1.0
@@ -154,7 +159,7 @@ public struct ChatComposer: View {
             axis: .vertical
         )
         .lineLimit(1...6)
-        .font(appearance.bodyFont)
+        .font(.system(size: editorBase * appearance.fontScale))
         .foregroundStyle(theme.ink)
         .tint(theme.accent)
         .focused($isFocused)
