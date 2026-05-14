@@ -105,9 +105,45 @@ struct SidebarDrawerSnapshotTests {
     /// `appearance.fontScale` multiplication this baseline will diverge,
     /// catching the regression the rest of the suite (which all runs at
     /// the default `fontScale == 1.0`) would silently miss.
-    @Test("font scale max — sidebar rows do not grow")
+    @Test("font scale max — sidebar rows do not grow (light)")
     func fontScaleMaxRowsUnchanged() {
-        let function = #function
+        verifyFontScaleMaxUnchanged(
+            theme: .light,
+            name: "sidebar_font_scale_max_light"
+        )
+    }
+
+    /// Dark-theme counterpart to ``fontScaleMaxRowsUnchanged`` — Chat
+    /// AGENTS.md's matrix is `light/dark/sepia × default/Dynamic Type
+    /// XXL`. Because `ChatRow` never reads `\.chatAppearance`, this
+    /// baseline should be pixel-identical to `sidebar_open_populated_dark`;
+    /// recording both makes the invariant explicit in the dark palette,
+    /// not just the light one.
+    @Test("font scale max — sidebar rows do not grow (dark)")
+    func fontScaleMaxRowsUnchangedDark() {
+        verifyFontScaleMaxUnchanged(
+            theme: .dark,
+            name: "sidebar_font_scale_max_dark"
+        )
+    }
+
+    /// Sepia-theme counterpart to ``fontScaleMaxRowsUnchanged`` —
+    /// completes the `light/dark/sepia` matrix. Pixel-identical to
+    /// `sidebar_open_populated_sepia` by construction; documents the
+    /// invariant for the warm palette.
+    @Test("font scale max — sidebar rows do not grow (sepia)")
+    func fontScaleMaxRowsUnchangedSepia() {
+        verifyFontScaleMaxUnchanged(
+            theme: .sepia,
+            name: "sidebar_font_scale_max_sepia"
+        )
+    }
+
+    private func verifyFontScaleMaxUnchanged(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
         let viewModel = SidebarViewModel(
             conversationRepository: NoopConversationRepository(),
             sessionStore: makeIsolatedStore()
@@ -124,10 +160,10 @@ struct SidebarDrawerSnapshotTests {
             onOpenSettings: {},
             onSelectApplet: { _ in }
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(theme))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .frame(width: Self.frame.width, height: Self.frame.height)
-        recordOrCompare(view: view, name: "sidebar_font_scale_max_light", function: function)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     private func verify(
