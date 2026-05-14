@@ -73,10 +73,9 @@ enum AppBootstrap {
         )
 
         // Pre-load Chat settings so the session store starts with the
-        // user's current system prompt — otherwise newly-created sessions
-        // would carry an empty prompt until the user re-saves it from
-        // Settings. The other settings (auto-compact threshold, etc.)
-        // remain hardcoded here pending the parallel wiring.
+        // user's persisted auto-compact policy and system prompt — newly
+        // created sessions would otherwise pick up the orchestration-layer
+        // fallbacks until the user re-saved each value from Settings.
         //
         // The transient `ChatSettingsStore` is safe to discard: the type
         // is documented as a stateless wrapper over `SettingRepository`
@@ -95,6 +94,8 @@ enum AppBootstrap {
             llmProviderRegistry: llmProviderRegistry,
             toolRegistry: toolRegistry,
             compactor: compactor,
+            autoCompactEnabled: initialSettings.autoCompactEnabled,
+            autoCompactThreshold: initialSettings.autoCompactThreshold,
             systemPrompt: initialSettings.systemPrompt
         )
 

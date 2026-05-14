@@ -299,6 +299,18 @@ public final class ChatScreenViewModel {
     /// a ``MessageList/ErrorState/noModelConfigured(onAddModel:)`` banner
     /// instead of dropping the tap on the floor — the user-typed text
     /// stays in the composer so they can resend after adding a model.
+    ///
+    /// Slash commands (e.g. `/compact`) also keep the composer text
+    /// intact — unconditionally, not just on rejection. Two reasons:
+    /// (1) a synchronous reject (manual `/compact` below the minimum
+    /// context ratio) would otherwise vanish the user's typed command,
+    /// forcing a re-type to retry; (2) even on success, a slash command
+    /// is not written as a user bubble — leaving the text in place gives
+    /// the user a consistent "your input persists until you clear it"
+    /// model for command-style submissions. Regular (non-slash)
+    /// submissions still clear immediately because the typed text gets
+    /// rendered as its own user bubble below. If a future slash command
+    /// has a different ergonomic, special-case it here.
     public func send(_ rawText: String) {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
@@ -308,7 +320,9 @@ public final class ChatScreenViewModel {
             }
             return
         }
-        composerText = ""
+        if SlashCommand(rawText: text) == nil {
+            composerText = ""
+        }
         error = nil
         startStreaming(text: text, model: model)
     }

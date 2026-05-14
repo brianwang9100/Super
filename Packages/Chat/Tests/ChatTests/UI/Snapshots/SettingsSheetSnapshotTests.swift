@@ -177,7 +177,8 @@ struct SettingsSheetSnapshotTests {
             modelRepository: NoopModelRepository(),
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
-            systemPromptReceiver: FakeSystemPromptReceiver()
+            systemPromptReceiver: FakeSystemPromptReceiver(),
+            autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver()
         )
     }
 }

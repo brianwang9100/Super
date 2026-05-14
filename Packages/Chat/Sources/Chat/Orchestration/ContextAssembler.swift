@@ -27,8 +27,9 @@ public struct ContextAssembly: Sendable, Equatable {
         return Double(totalTokens) / Double(maxTokens)
     }
 
-    /// `true` when `ratio >= threshold`. The orchestrator drives auto-compaction
-    /// off this. Threshold is read from settings (default 0.75 per M9).
+    /// `true` when `ratio >= threshold`. The orchestrator drives
+    /// auto-compaction off this. Threshold is read from settings; default
+    /// `ChatSettings.defaultAutoCompactThreshold`.
     public func isOverThreshold(_ threshold: Double) -> Bool {
         ratio >= threshold
     }
