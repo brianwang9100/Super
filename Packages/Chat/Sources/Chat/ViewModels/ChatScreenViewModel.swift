@@ -226,13 +226,13 @@ public final class ChatScreenViewModel {
     private func attachToLiveTurnIfAny() async {
         let (snapshot, stream) = await driver.subscribe()
         guard let snapshot else { return }
-        // `thinkingStartedAt` is only used to render the elapsed-time
-        // label on the thinking block; we don't know the real start
-        // time of the in-progress turn, so use "now" — the label is
-        // approximate from the user's perspective anyway.
+        // `thinkingStartedAt` rides on the snapshot so the elapsed-time
+        // label survives detach + re-attach. Without this the "Thought
+        // for Xs" counter would visibly reset whenever a user navigated
+        // away from a thinking chat and came back.
         streamingTail = MessageList.StreamingState(
             thinking: snapshot.accumulatedThinking,
-            thinkingStartedAt: snapshot.accumulatedThinking.isEmpty ? nil : Date(),
+            thinkingStartedAt: snapshot.thinkingStartedAt,
             text: snapshot.accumulatedText,
             isCompacting: false
         )

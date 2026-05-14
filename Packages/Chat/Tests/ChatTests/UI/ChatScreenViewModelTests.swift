@@ -270,6 +270,43 @@ struct ChatScreenViewModelTests {
         #expect(hasAssistantText, "subsequent events from the subscribed stream must drive items to the final state")
     }
 
+    @Test("load propagates snapshot.thinkingStartedAt into the streaming tail so the elapsed-time counter survives detach + reattach")
+    func loadPropagatesSnapshotThinkingStartedAt() async throws {
+        // Regression: navigating away from a chat that is still
+        // "Thinking..." and back used to reset the "Thought for Xs"
+        // counter to 0 because the view model substituted `Date()` for
+        // the missing start time. The fix routes the actor's stored
+        // start time through `LiveTurnSnapshot.thinkingStartedAt`; this
+        // test asserts the view model copies that value into
+        // `streamingTail.thinkingStartedAt` byte-for-byte instead of
+        // clobbering it with the current wall clock.
+        let originalStart = Date(timeIntervalSince1970: 1_000_000)
+        let snapshot = ChatSession.LiveTurnSnapshot(
+            accumulatedText: "",
+            accumulatedThinking: "reasoning so far",
+            thinkingStartedAt: originalStart
+        )
+        let driver = ScriptedDriver(
+            events: [],
+            pendingSnapshot: snapshot,
+            pendingSubscribeEvents: []
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        await viewModel.load()
+
+        #expect(viewModel.streamingTail?.thinking == "reasoning so far")
+        #expect(viewModel.streamingTail?.thinkingStartedAt == originalStart)
+    }
+
     @Test("cancelStreaming routes through the driver so the underlying session is cancelled")
     func cancelStreamingInvokesDriverCancel() async throws {
         // The composer stop button calls `cancelStreaming()`. Now that
