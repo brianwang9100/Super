@@ -68,9 +68,13 @@ private struct FailureScreen: View {
 /// On launch the shell registers the four backdrop applets (Todo, Recipes,
 /// Bible, Finance) with an `AppletRegistry`. Chat is *not* a registered
 /// applet — it's the host surface that overlays everything else.
-/// `AppletRegistry.activeID` starts as `nil`, so the chat fills the screen
-/// on first launch with no backdrop behind it; the user activates a
-/// backdrop by tapping a placeholder applet from the sidebar.
+/// One backdrop applet is always selected so dragging the chat down
+/// reveals a real applet behind it. `init` seeds `AppletRegistry.activeID`
+/// from `@AppStorage("shell.activeAppletID")` (defaulting to Todo on first
+/// ever launch), and `onSelectApplet` writes the user's pick back so the
+/// selection survives relaunches. If the persisted ID doesn't match any
+/// registered applet (e.g. a future build removed one), the shell falls
+/// back to the first registered applet.
 ///
 /// The shell also owns the sidebar drawer and settings sheet visibility
 /// bindings, and the per-conversation view-model rebuild path the chat
@@ -78,17 +82,13 @@ private struct FailureScreen: View {
 struct AppShell: View {
     let dependencies: AppDependencies
 
-    @State private var registry: AppletRegistry = AppletRegistry(applets: [
-        ToDoPlaceholderApplet(),
-        RecipesPlaceholderApplet(),
-        BiblePlaceholderApplet(),
-        FinancePlaceholderApplet(),
-    ])
+    @State private var registry: AppletRegistry
     /// The current chat presentation shape. Starts in `.expanded` so the
-    /// app launches into a full-screen chat surface (no backdrop applet
-    /// is active yet). Mutates in response to (a) the user dragging the
-    /// chat surface's drag handle, (b) tapping the minimized pill, (c)
-    /// tapping the dimmed applet backdrop in semi-expanded (→ minimized),
+    /// app launches into a full-screen chat surface — the backdrop applet
+    /// (seeded from persisted state) sits behind, ready to reveal when
+    /// the user drags down. Mutates in response to (a) the user dragging
+    /// the chat surface's drag handle, (b) tapping the minimized pill,
+    /// (c) tapping the dimmed applet backdrop in semi-expanded (→ minimized),
     /// (d) selecting an applet from the sidebar (→ minimized), or (e)
     /// selecting an existing chat / "New Chat" from the sidebar (→ expanded).
     @State private var chatState: ChatPresentationState = .expanded
@@ -106,6 +106,35 @@ struct AppShell: View {
     /// second bootstrap before the first finishes. Safe to read/write
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
+    /// `UserDefaults` key for the persisted backdrop applet ID. Referenced
+    /// from both the bootstrap read in `init` and the write-back in
+    /// `onSelectApplet` — the two must agree or persistence silently breaks.
+    private static let activeAppletStorageKey = "shell.activeAppletID"
+
+    /// Resolves the initial backdrop applet from persisted state and builds
+    /// the registry. Reads `UserDefaults` directly because `@State` is not
+    /// yet wired up at `init` time; falls back to the first registered
+    /// applet when no persisted ID exists or the ID no longer matches.
+    init(dependencies: AppDependencies) {
+        self.dependencies = dependencies
+        let applets: [any MiniApplet] = [
+            ToDoPlaceholderApplet(),
+            RecipesPlaceholderApplet(),
+            BiblePlaceholderApplet(),
+            FinancePlaceholderApplet(),
+        ]
+        // Read UserDefaults directly because `@State` initializers run
+        // before `@AppStorage` is wired up. The fallback chain keeps the
+        // invariant that some backdrop is always selected: persisted ID
+        // if it still matches a registered applet, else the first applet.
+        let storedID = UserDefaults.standard.string(forKey: Self.activeAppletStorageKey)
+        let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
+            ?? applets.first?.appletID
+        _registry = State(initialValue: AppletRegistry(
+            applets: applets,
+            initialActiveID: resolvedID
+        ))
+    }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
 
@@ -229,6 +258,7 @@ struct AppShell: View {
                     },
                     onSelectApplet: { appletID in
                         registry.activeID = appletID
+                        UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
                         // Selecting any backdrop applet from the sidebar
                         // collapses the chat to minimized so the user
                         // can interact with the applet. They can drag

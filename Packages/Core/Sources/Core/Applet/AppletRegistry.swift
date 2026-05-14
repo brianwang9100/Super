@@ -21,17 +21,16 @@ public final class AppletRegistry {
     /// Identifier of the applet currently rendered behind the chat overlay.
     /// Mutating triggers re-render in any view that reads it (sidebar's
     /// active highlight, the shell's backdrop layer). `nil` would mean "no
-    /// backdrop"; in practice we always start on Chat so this never goes nil
-    /// in the shipped path — kept optional only to model the empty-registry
-    /// edge case for tests.
+    /// backdrop"; the shipped shell always seeds this from persisted state
+    /// at init so it never goes nil in production — kept optional only to
+    /// model the empty-registry edge case for tests.
     public var activeID: String?
 
     public init(applets: [any MiniApplet], initialActiveID: String? = nil) {
         self.applets = applets
-        // Default: no backdrop applet active. The shell starts on the
-        // chat-only surface (chat is the host, not a registered applet)
-        // and only activates a backdrop when the user picks one from the
-        // sidebar. Pass an explicit `initialActiveID` to override.
+        // `initialActiveID` defaults to `nil` for tests / empty-registry
+        // callers; the shipped shell always supplies an explicit ID seeded
+        // from persisted state so the backdrop layer never renders empty.
         self.activeID = initialActiveID
     }
 
