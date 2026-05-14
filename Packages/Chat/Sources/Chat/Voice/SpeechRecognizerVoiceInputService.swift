@@ -9,19 +9,30 @@ import Speech
 /// per spec §2.
 ///
 /// One session per `startRecognition(locale:)` call: builds a fresh
-/// `SFSpeechAudioBufferRecognitionRequest` and `SFSpeechRecognitionTask`
-/// each time, bridges the task's callback API into an
-/// `AsyncThrowingStream`, and tears down the audio engine + recognition
-/// task in the stream's `onTermination` block. A 30 s trailing-silence
-/// watchdog finishes the stream with `.silenceTimeout` if no `.partial`
-/// event arrives in that window — the controller treats that as a normal
-/// stop and commits the most recent partial.
+/// audio engine + tap and bridges Apple's recognition callbacks into an
+/// `AsyncThrowingStream`. Within a single session the service performs
+/// **long-form dictation**: Apple's on-device recognizer auto-endpoints
+/// after roughly 600 ms–1.5 s of silence and fires `isFinal = true`; the
+/// service treats that as advisory, commits the just-finished utterance
+/// to an internal ``DictationTranscriptAccumulator``, and transparently
+/// spins up a fresh `SFSpeechAudioBufferRecognitionRequest` +
+/// `SFSpeechRecognitionTask` against the same engine so the user can
+/// keep speaking after a pause without re-tapping the mic. Every
+/// `.partial` event carries the merged committed-plus-in-flight
+/// transcript. The session terminates only on user stop (stream
+/// cancellation), the 10 s trailing-silence watchdog, or an error.
 public final class SpeechRecognizerVoiceInputService: VoiceInputService {
-    /// Trailing-silence cap. Reset on every interim result; on fire we
-    /// finish the stream with `.silenceTimeout`.
+    /// Trailing-silence cap. Reset on every `.partial` event the service
+    /// yields (including the synthetic post-commit partial after a
+    /// transparent task restart). On fire we finish the stream with
+    /// `.silenceTimeout` — the controller treats that as a normal stop
+    /// and commits the accumulated transcript. Default 10 s: with
+    /// auto-endpoint no longer terminating the session, the watchdog is
+    /// the only "user has actually stopped" signal, and 30 s is too
+    /// long to wait before auto-committing a forgotten session.
     private let silenceTimeout: Duration
 
-    public init(silenceTimeout: Duration = .seconds(30)) {
+    public init(silenceTimeout: Duration = .seconds(10)) {
         self.silenceTimeout = silenceTimeout
     }
 
@@ -48,7 +59,7 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
             // can tear them down. `@unchecked Sendable` because `AVAudio*`
             // and `SFSpeech*` types aren't `Sendable`-annotated yet —
             // the session enforces single-thread access by routing every
-            // mutation through its own serial queue.
+            // mutation through its own serial queue + lock.
             let session = RecognitionSession(continuation: continuation, silenceTimeout: timeout)
             do {
                 try session.start(locale: resolvedLocale)
@@ -96,18 +107,42 @@ public final class SpeechRecognizerVoiceInputService: VoiceInputService {
 }
 
 /// Owns one in-flight recognition session: the audio engine, the
-/// recognition request, and the recognition task. Lifted out of the
-/// service so a single `RecognitionSession` instance can be referenced
-/// from both the synchronous setup path and the async `onTermination`
-/// callback.
+/// current recognition request/task, and the
+/// ``DictationTranscriptAccumulator`` that merges utterances spoken
+/// across natural pauses into a single rendered transcript. Lifted out
+/// of the service so a single `RecognitionSession` instance can be
+/// referenced from both the synchronous setup path and the async
+/// `onTermination` callback.
+///
+/// Concurrency: the recognition-task callback fires on Apple's
+/// internal queue and the audio tap closure fires on `AVAudioEngine`'s
+/// real-time render thread. `lock` (`NSLock`) serializes every read /
+/// write of `accumulator`, `taskGeneration`, `recognitionRequest`,
+/// `recognitionTask`, `recognizer`, and the `torndown` flag — so a
+/// concurrent `tearDown` can't race a transparent task restart and
+/// leak the new task past cleanup, and so the tap's reading of
+/// `recognitionRequest` always sees a consistent value. Apple's
+/// `SFSpeechAudioBufferRecognitionRequest.append(_:)` and
+/// `endAudio()` are documented thread-safe, so we only hold the lock
+/// long enough to snapshot the current request — the `append` itself
+/// happens outside the lock.
 private final class RecognitionSession: @unchecked Sendable {
     private let continuation: AsyncThrowingStream<VoiceInputEvent, Error>.Continuation
     private let silenceTimeout: Duration
     private let audioEngine = AVAudioEngine()
+    private var recognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var watchdogTask: Task<Void, Never>?
-    private var lastPartial: String = ""
+    private var accumulator = DictationTranscriptAccumulator()
+    /// Bumped each time a new recognition task is installed. The task
+    /// callback closure captures the value it was installed with and
+    /// bails when its captured generation no longer matches the
+    /// session's current generation — a superseded task can still
+    /// deliver one delayed callback, and we must ignore it so it
+    /// doesn't double-commit an utterance the new task has started
+    /// capturing.
+    private var taskGeneration: Int = 0
     private var torndown = false
     private let lock = NSLock()
 
@@ -126,6 +161,7 @@ private final class RecognitionSession: @unchecked Sendable {
         guard recognizer.isAvailable else {
             throw VoiceInputError.unavailable
         }
+        self.recognizer = recognizer
 
         #if os(iOS) || os(visionOS) || os(tvOS)
         let session = AVAudioSession.sharedInstance()
@@ -137,16 +173,32 @@ private final class RecognitionSession: @unchecked Sendable {
         }
         #endif
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.requiresOnDeviceRecognition = true
-        recognitionRequest = request
-
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+        // Tap runs on the render thread. Snapshot the current
+        // `recognitionRequest` under the lock so a mid-session swap
+        // (auto-restart in `handlePartial`) can replace it without
+        // racing the read; do the actual `append` outside the lock —
+        // it's documented thread-safe on Apple's side.
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.recognitionRequest?.append(buffer)
+            guard let self else { return }
+            self.lock.lock()
+            let request = self.recognitionRequest
+            self.lock.unlock()
+            request?.append(buffer)
         }
+
+        // Wire up the initial recognition request + task before the
+        // engine starts so buffers don't fly past a nil
+        // `recognitionRequest`. The engine isn't running yet, so no
+        // audio can race the assignment.
+        lock.lock()
+        taskGeneration += 1
+        let generation = taskGeneration
+        let (request, task) = makeRecognitionTask(on: recognizer, generation: generation)
+        recognitionRequest = request
+        recognitionTask = task
+        lock.unlock()
 
         audioEngine.prepare()
         do {
@@ -155,51 +207,116 @@ private final class RecognitionSession: @unchecked Sendable {
             throw VoiceInputError.audioEngineFailed(error.localizedDescription)
         }
 
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            guard let self else { return }
-            if let result {
-                let text = result.bestTranscription.formattedString
-                self.handlePartial(text: text, isFinal: result.isFinal)
-            }
-            if let error {
-                self.handleError(error)
-            }
-        }
-
         startWatchdog()
     }
 
-    private func handlePartial(text: String, isFinal: Bool) {
-        lock.lock()
-        lastPartial = text
-        lock.unlock()
-        if isFinal {
-            continuation.yield(.final(text))
-            continuation.finish()
-            tearDown()
-        } else {
-            continuation.yield(.partial(text))
-            startWatchdog()
+    /// Build a fresh recognition request + task against `recognizer`,
+    /// tagging the task callback with `generation` so stale delayed
+    /// callbacks from a superseded task can recognize themselves and
+    /// bail. Does **not** touch `taskGeneration` or assign the new
+    /// request/task to `self` — caller is responsible for that under
+    /// the lock so the assignment can't race a concurrent `tearDown`.
+    private func makeRecognitionTask(
+        on recognizer: SFSpeechRecognizer,
+        generation: Int
+    ) -> (SFSpeechAudioBufferRecognitionRequest, SFSpeechRecognitionTask) {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = true
+        let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
+            // Handler runs synchronously on Apple's callback queue.
+            // `handlePartial` and `handleError` serialize their own
+            // state mutations through `lock`, so concurrent tap
+            // appends and a racing `tearDown` can't corrupt the
+            // request/task swap.
+            if let result {
+                self.handlePartial(
+                    text: result.bestTranscription.formattedString,
+                    isFinal: result.isFinal,
+                    generation: generation
+                )
+            }
+            if let error {
+                self.handleError(error, generation: generation)
+            }
         }
+        return (request, task)
     }
 
-    private func handleError(_ error: Error) {
+    /// Either ingests a refining partial for the current utterance OR
+    /// commits a finalized utterance and transparently spins up the
+    /// next recognition task so the same recording session can capture
+    /// more speech after a natural pause. State mutations cross the
+    /// lock so a concurrent `tearDown` can't leak the new task past
+    /// its cleanup pass.
+    private func handlePartial(text: String, isFinal: Bool, generation: Int) {
+        lock.lock()
+        // Stale-callback guard: a superseded task can still deliver one
+        // delayed callback. Ignore it so it doesn't double-commit.
+        guard generation == taskGeneration, !torndown else {
+            lock.unlock()
+            return
+        }
+
+        let rendered: String
+        let outgoingRequest: SFSpeechAudioBufferRecognitionRequest?
+        if isFinal {
+            accumulator.commitCurrentUtterance(text)
+            rendered = accumulator.renderedTranscript
+            outgoingRequest = recognitionRequest
+            // Auto-restart: install a fresh request+task against the
+            // same recognizer so the user can keep speaking after this
+            // pause. Done inside the lock so a racing tearDown can't
+            // leak the new task past its cleanup pass.
+            if let recognizer {
+                taskGeneration += 1
+                let nextGeneration = taskGeneration
+                let (request, task) = makeRecognitionTask(on: recognizer, generation: nextGeneration)
+                recognitionRequest = request
+                recognitionTask = task
+            }
+        } else {
+            accumulator.ingestPartial(text)
+            rendered = accumulator.renderedTranscript
+            outgoingRequest = nil
+        }
+        lock.unlock()
+
+        // End audio on the outgoing request AFTER releasing the lock —
+        // Apple's call is fine without lock coverage, and the new
+        // request is already installed so any pending tap append will
+        // route to the new task.
+        outgoingRequest?.endAudio()
+
+        continuation.yield(.partial(rendered))
+        startWatchdog()
+    }
+
+    /// Maps Apple's errors onto the protocol's terminal events.
+    private func handleError(_ error: Error, generation: Int) {
+        lock.lock()
+        guard generation == taskGeneration, !torndown else {
+            lock.unlock()
+            return
+        }
         let nsError = error as NSError
-        // SFSpeech fires `kAFAssistantErrorDomain` code 1101 ("no speech
-        // detected") when the user taps stop without speaking — a clean
-        // finish, not a banner-worthy failure. Every other code in that
-        // domain (1700-series for missing on-device model, 203 for
-        // network invalidation, 1107 for audio source disabled, etc.)
+        // SFSpeech fires `kAFAssistantErrorDomain` code 1101 ("no
+        // speech detected") when the user taps stop without speaking —
+        // a clean finish, not a banner-worthy failure. Every other code
+        // in that domain (1700-series for missing on-device model, 203
+        // for network invalidation, 1107 for audio source disabled, etc.)
         // is a real failure the user needs to see — surface it through
         // `.recognizerFailed` and include the domain+code in the
         // message so we can diagnose simulator-only failures from the
         // banner text alone, without rebuilding with logs.
         if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1101 {
-            let last: String
-            lock.lock(); last = lastPartial; lock.unlock()
-            continuation.yield(.final(last))
+            let rendered = accumulator.renderedTranscript
+            lock.unlock()
+            continuation.yield(.final(rendered))
             continuation.finish()
         } else {
+            lock.unlock()
             let detail = "\(nsError.domain) #\(nsError.code): \(nsError.localizedDescription)"
             continuation.finish(throwing: VoiceInputError.recognizerFailed(detail))
         }
@@ -242,6 +359,7 @@ private final class RecognitionSession: @unchecked Sendable {
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+        recognizer = nil
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
