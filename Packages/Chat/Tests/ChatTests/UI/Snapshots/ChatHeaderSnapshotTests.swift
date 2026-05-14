@@ -58,6 +58,19 @@ struct ChatHeaderSnapshotTests {
         recordOrCompare(view: view, name: "header_font_scale_max_light")
     }
 
+    /// Dark-mode counterpart to ``fontScaleMax`` — per AGENTS.md §Testing.3
+    /// every new SwiftUI variant needs a light + dark pair. Catches
+    /// regressions where the larger title size interacts with the dark
+    /// palette (border, blur tint, ink) in ways the light baseline misses.
+    @Test("font scale max dark")
+    func fontScaleMaxDark() {
+        let view = ChatHeader(title: "New chat", onMenuTap: {})
+            .superTheme(.make(.dark))
+            .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .frame(width: 402)
+        recordOrCompare(view: view, name: "header_font_scale_max_dark")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,

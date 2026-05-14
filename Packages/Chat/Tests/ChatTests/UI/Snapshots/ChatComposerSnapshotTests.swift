@@ -176,6 +176,28 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_font_scale_max_light", function: function)
     }
 
+    /// Dark-mode counterpart to ``fontScaleMax`` — per AGENTS.md §Testing.3
+    /// every new SwiftUI variant needs a light + dark pair. Catches
+    /// regressions where the larger editor size interacts with the dark
+    /// palette (composer fill, focus border, accent button) in ways the
+    /// light baseline misses.
+    @Test("font scale max dark")
+    func fontScaleMaxDark() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.dark))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_dark", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,

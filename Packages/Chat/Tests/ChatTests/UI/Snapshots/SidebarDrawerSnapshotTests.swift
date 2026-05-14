@@ -98,6 +98,38 @@ struct SidebarDrawerSnapshotTests {
         recordOrCompare(view: view, name: "sidebar_open_populated_light_xxl", function: function)
     }
 
+    /// Negative wiring test: chat rows intentionally don't track the chat
+    /// font-scale slider. Inject the upper-bound knob and the baseline
+    /// stays visually identical to `sidebar_open_populated_light` — if a
+    /// future change reverts the `rowTitleBase` property back to
+    /// `appearance.fontScale` multiplication this baseline will diverge,
+    /// catching the regression the rest of the suite (which all runs at
+    /// the default `fontScale == 1.0`) would silently miss.
+    @Test("font scale max — sidebar rows do not grow")
+    func fontScaleMaxRowsUnchanged() {
+        let function = #function
+        let viewModel = SidebarViewModel(
+            conversationRepository: NoopConversationRepository(),
+            sessionStore: makeIsolatedStore()
+        )
+        viewModel._setSnapshotState(chats: Self.sampleChats, activeId: "c1")
+        let view = SidebarDrawer(
+            isPresented: .constant(true),
+            viewModel: viewModel,
+            appInfo: appInfo,
+            userInitials: "BW",
+            userName: "Brian Wang",
+            onSelectConversation: { _ in },
+            onNewChat: {},
+            onOpenSettings: {},
+            onSelectApplet: { _ in }
+        )
+        .superTheme(.make(.light))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "sidebar_font_scale_max_light", function: function)
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         chats: [SidebarViewModel.ChatItem],
