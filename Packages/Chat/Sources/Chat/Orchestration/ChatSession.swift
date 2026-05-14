@@ -84,6 +84,14 @@ public actor ChatSession {
     private struct LiveTurn {
         var accumulatedText: String = ""
         var accumulatedThinking: String = ""
+        /// Wall-clock instant of the first thinking delta in the current
+        /// round-trip. Held on the actor (not a local in `streamOneTurn`)
+        /// so a late-attaching subscriber's snapshot carries the original
+        /// start time — otherwise the "Thought for Xs" counter would reset
+        /// every time a view model detached and re-attached. Reset to
+        /// `nil` alongside the accumulators on `.assistantMessageSaved` so
+        /// the next round-trip in a tool-call loop starts fresh.
+        var thinkingStartedAt: Date?
         var subscribers: [UUID: AsyncStream<ChatEvent>.Continuation] = [:]
     }
 
@@ -94,10 +102,21 @@ public actor ChatSession {
     public struct LiveTurnSnapshot: Sendable {
         public let accumulatedText: String
         public let accumulatedThinking: String
+        /// Wall-clock instant of the first thinking delta in this
+        /// round-trip, or `nil` if no thinking has been emitted yet. The
+        /// view layer uses this to drive the "Thought for Xs" elapsed
+        /// counter so re-attaching to an in-flight turn doesn't reset it
+        /// to zero.
+        public let thinkingStartedAt: Date?
 
-        public init(accumulatedText: String, accumulatedThinking: String) {
+        public init(
+            accumulatedText: String,
+            accumulatedThinking: String,
+            thinkingStartedAt: Date? = nil
+        ) {
             self.accumulatedText = accumulatedText
             self.accumulatedThinking = accumulatedThinking
+            self.thinkingStartedAt = thinkingStartedAt
         }
     }
 
@@ -264,7 +283,8 @@ public actor ChatSession {
         }
         let snapshot = LiveTurnSnapshot(
             accumulatedText: live.accumulatedText,
-            accumulatedThinking: live.accumulatedThinking
+            accumulatedThinking: live.accumulatedThinking,
+            thinkingStartedAt: live.thinkingStartedAt
         )
         return (snapshot, stream)
     }
@@ -282,6 +302,7 @@ public actor ChatSession {
         case .assistantMessageSaved:
             liveTurn?.accumulatedText = ""
             liveTurn?.accumulatedThinking = ""
+            liveTurn?.thinkingStartedAt = nil
         default:
             break
         }
@@ -507,7 +528,7 @@ public actor ChatSession {
         // executes, and each call is its own assistant message.
         liveTurn?.accumulatedText = ""
         liveTurn?.accumulatedThinking = ""
-        var thinkingStartedAt: Date?
+        liveTurn?.thinkingStartedAt = nil
         var thinkingEndedAt: Date?
         var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
         var capturedUsage: TokenUsage?
@@ -522,7 +543,9 @@ public actor ChatSession {
                 broadcast(.textDelta(text))
             case .thinkingDelta(_, let text):
                 let now = clock.now()
-                if thinkingStartedAt == nil { thinkingStartedAt = now }
+                if liveTurn?.thinkingStartedAt == nil {
+                    liveTurn?.thinkingStartedAt = now
+                }
                 thinkingEndedAt = now
                 broadcast(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
@@ -538,9 +561,12 @@ public actor ChatSession {
 
         // Snapshot the accumulated buffers BEFORE `.assistantMessageSaved`
         // — `broadcast` resets them on that event so the next round-trip
-        // in a tool-call loop starts clean.
+        // in a tool-call loop starts clean. `thinkingStartedAt` reads the
+        // same way: it lives on the actor so a late subscriber's snapshot
+        // can carry it, and is reset on the same broadcast.
         let accumulatedText = liveTurn?.accumulatedText ?? ""
         let accumulatedThinking = liveTurn?.accumulatedThinking ?? ""
+        let thinkingStartedAt = liveTurn?.thinkingStartedAt
 
         // Skip empty turns — the LLM yielded `.messageComplete` without
         // any text or tool calls. Persisting an empty assistant row would

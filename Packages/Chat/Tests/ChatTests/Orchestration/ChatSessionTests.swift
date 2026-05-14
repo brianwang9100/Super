@@ -611,6 +611,78 @@ struct ChatSessionTests {
         #expect(lateToolCompleted)
     }
 
+    @Test func subscribeMidThinkingReturnsSnapshotWithStartedAt() async throws {
+        // Regression: when the user navigated away from a still-thinking
+        // chat and back, the "Thought for Xs" counter reset to 0. Cause:
+        // `thinkingStartedAt` lived as a local in `streamOneTurn`, so a
+        // late-attaching subscriber's `LiveTurnSnapshot` couldn't carry
+        // it and the view model fell back to `Date()` (now). This test
+        // pins the contract that the actor holds the start time and
+        // exposes it through the snapshot. Without the fix, the
+        // `snapshot.thinkingStartedAt` assertion below trips on `nil`.
+        let database = try ChatDatabase.makeInMemory()
+        let conversationRepo = GRDBConversationRepository(database: database)
+        let messageRepo = GRDBMessageRepository(database: database)
+        let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
+        let clock = OrchestrationFixtures.defaultClock()
+        let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
+        let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
+        let model = OrchestrationFixtures.defaultModel()
+        let provider = PausableLLMProvider(model: model)
+        let llmRegistry = LLMProviderRegistry()
+        await llmRegistry.register(provider)
+        let compactor = OrchestrationFixtures.makeCompactor(
+            database: database,
+            llmRegistry: llmRegistry,
+            clock: clock,
+            idGenerator: idGen
+        )
+        let session = ChatSession(
+            conversationId: conversation.id,
+            messageRepository: messageRepo,
+            toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
+            llmProviderRegistry: llmRegistry,
+            toolRegistry: ToolRegistry(),
+            compactor: compactor,
+            clock: clock,
+            idGenerator: idGen,
+            autoCompactEnabled: false
+        )
+
+        // Start the turn. `send(...)` returns a stream we iterate to
+        // observe broadcasts; reading the first `.thinkingDelta` off it
+        // is the deterministic sync point that proves the actor has
+        // already executed the `case .thinkingDelta` block (which sets
+        // `liveTurn?.thinkingStartedAt`) before we call `subscribe()`.
+        let firstStream = await session.send(text: "Hi", model: model)
+        var firstIter = firstStream.makeAsyncIterator()
+
+        // Skip the leading `.userMessageSaved` so the next event we read
+        // is the broadcast for our thinking delta.
+        _ = await firstIter.next()
+
+        await provider.yield(.thinkingDelta(index: 0, text: "reasoning..."))
+        let broadcast = await firstIter.next()
+        guard case .thinkingDelta = broadcast else {
+            Issue.record("expected broadcast of .thinkingDelta, got \(String(describing: broadcast))")
+            await provider.finish()
+            await session.waitUntilFinished()
+            return
+        }
+
+        let (snapshot, _) = await session.subscribe()
+        #expect(snapshot != nil)
+        #expect(snapshot?.accumulatedThinking == "reasoning...")
+        #expect(snapshot?.thinkingStartedAt == clock.now())
+
+        // Wind the turn down so the test fixture cleans up.
+        await provider.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+        await provider.finish()
+        await session.waitUntilFinished()
+    }
+
     @Test func turnSurvivesWhenConsumerDropsTheStream() async throws {
         // The architecture contract (ChatSession docstring lines 8-12, mirrored
         // in ChatSessionStore lines 7-10) is: switching away from a streaming
