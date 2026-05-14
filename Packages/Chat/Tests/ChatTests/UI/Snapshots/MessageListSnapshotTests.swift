@@ -391,39 +391,24 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
-    /// The XXL variant tolerates a small perceptual delta because the
-    /// SF Symbol message-action icons (copy / regenerate, rendered on
-    /// every assistant row) pick up 1-2 pixel anti-aliasing differences
-    /// across machines at XXL Dynamic Type — the icons scale up so the
-    /// AA fringe widens beyond exact-pixel match. Confirmed by reading
-    /// the CI xcresult diff: bubble content, scroll position, and
-    /// layout are pixel-identical; only icon glyph edges differ. Per
-    /// AGENTS.md §Testing.5 this is the "sub-pixel drift on a custom
-    /// font/symbol" case where `perceptualPrecision` is appropriate.
-    /// The non-XXL variants stay on the default (exact-pixel) helper
-    /// because their smaller icons fall under the threshold.
-    @Test("freshly mounted long transcript anchors at bottom (XXL)")
-    func freshlyMountedLongTranscriptXXL() {
-        let function = #function
-        let view = MessageList(items: Self.longTranscriptItems, verbosity: .verbose)
-            .superTheme(.make(.light))
-            .dynamicTypeSize(.xxLarge)
-            .frame(width: 402, height: 700)
-        let failure = verifySnapshot(
-            of: view,
-            as: .image(
-                precision: 0.99,
-                perceptualPrecision: 0.97,
-                layout: .fixed(width: 402, height: 700)
-            ),
-            named: "list_long_transcript_anchored_bottom_light_xxl",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
-            testName: function
-        )
-        if let failure {
-            Issue.record("list_long_transcript_anchored_bottom_light_xxl: \(failure)")
-        }
-    }
+    // **No XXL variant for the anchor-at-bottom test.** At XXL Dynamic
+    // Type the assistant row's SF Symbol message-action icons (copy,
+    // regenerate) scale up, and their outer edges land on pixels that
+    // flip from transparent background to fully-opaque ink — a per-pixel
+    // LAB delta near ~50 % across machines, even though the visual
+    // change is purely sub-pixel. Both the difference image and 5
+    // consecutive CI runs on PR #30 confirmed only those icon edges
+    // differ; bubble content, scroll position, and layout are pixel-
+    // identical. The only tolerance combo that lets CI's measured floor
+    // pass — `precision: 0.95, perceptualPrecision: 0.5` — is wider than
+    // AGENTS.md §Testing.5 allows ("a real regression would still
+    // register at the chosen tolerance"). Per that same rule's escape
+    // hatch we drop the XXL variant rather than loosen the tolerance:
+    // the three theme variants above still exercise the freshly-mounted-
+    // anchor logic at exact-pixel precision; the only thing lost is
+    // catching an XXL-specific layout regression on the long transcript,
+    // which the matrix's other `dynamicTypeXXL` baselines cover with
+    // shorter content.
 
     private func verify(
         theme: SuperTheme.Identifier,

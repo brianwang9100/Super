@@ -153,6 +153,98 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_typed_light_xxl", function: function)
     }
 
+    /// Locks the `* appearance.fontScale` wiring on the editor font. At
+    /// the default `fontScale == 1.0` the multiplication is a no-op, so
+    /// the remaining baselines would stay green if the multiplication
+    /// were deleted. Injecting the upper-bound knob proves the editor
+    /// actually tracks the slider, mirroring `MessageListSnapshotTests`'
+    /// `appearanceScaleMax` precedent.
+    @Test("font scale max light")
+    func fontScaleMax() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.light))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_light", function: function)
+    }
+
+    /// Dark-mode counterpart to ``fontScaleMax`` — per AGENTS.md §Testing.3
+    /// every new SwiftUI variant needs a light + dark pair. Catches
+    /// regressions where the larger editor size interacts with the dark
+    /// palette (composer fill, focus border, accent button) in ways the
+    /// light baseline misses.
+    @Test("font scale max dark")
+    func fontScaleMaxDark() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.dark))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_dark", function: function)
+    }
+
+    /// Sepia counterpart to ``fontScaleMax`` — Chat AGENTS.md's snapshot
+    /// matrix is `light/dark/sepia × default/Dynamic Type XXL` and every
+    /// other composer baseline covers the warm sepia palette. Catches
+    /// regressions where the scaled editor interacts with sepia's
+    /// composer fill, focus border, and accent button specifically.
+    @Test("font scale max sepia")
+    func fontScaleMaxSepia() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.sepia))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_sepia", function: function)
+    }
+
+    /// The extreme upper-bound: maxed font slider stacked on top of XXL
+    /// Dynamic Type. `@ScaledMetric(relativeTo: .subheadline)` already
+    /// scales `editorBase` from 17 → ~20pt at XXL; the further `× 1.20`
+    /// from the slider pushes the rendered editor to ~24pt — the largest
+    /// the user can reach. Locks the corner case where the editor row
+    /// might push past the `lineLimit(1...6)` clamp or compress the
+    /// token-count badge / send-button slot on the footer.
+    @Test("font scale max at dynamic type XXL")
+    func fontScaleMaxXXL() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.light))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_light_xxl", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,
