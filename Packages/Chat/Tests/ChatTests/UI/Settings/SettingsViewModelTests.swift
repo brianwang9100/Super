@@ -97,6 +97,24 @@ struct SettingsViewModelTests {
         #expect(reloaded.settings.defaultVerbosity == .simple)
     }
 
+    @Test("setLastSelectedModelId persists and survives reload")
+    func setLastSelectedModelIdRoundTrip() async {
+        // Regression for the "new chats always pick the first registered
+        // model" bug: the host writes the user's pick through this setter
+        // so the next launch reads it back.
+        let settingRepo = InMemorySettingRepository()
+        let vm = makeViewModel(settingRepository: settingRepo)
+        await vm.setLastSelectedModelId("claude-opus-4-7")
+
+        #expect(vm.settings.lastSelectedModelId == "claude-opus-4-7")
+        let raw = try? await settingRepo.get(ChatSettingsStore.Keys.lastSelectedModelId)
+        #expect(raw == "claude-opus-4-7")
+
+        let reloaded = makeViewModel(settingRepository: settingRepo)
+        await reloaded.load()
+        #expect(reloaded.settings.lastSelectedModelId == "claude-opus-4-7")
+    }
+
     @Test("setAutoCompactThreshold clamps to allowed window")
     func setThresholdClamps() async {
         let vm = makeViewModel()

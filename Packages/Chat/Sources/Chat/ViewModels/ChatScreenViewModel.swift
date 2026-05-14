@@ -205,6 +205,23 @@ public final class ChatScreenViewModel {
         return availableModels.first
     }
 
+    /// Resolves the initial `selectedModelId` for a new chat view model
+    /// from a persisted "last selected" id and the currently-available
+    /// model list. Returns the persisted id when it's still registered;
+    /// otherwise falls back to the first available model (matching the
+    /// stale-id handling in `setAvailableModels`). Returns nil when the
+    /// list is empty.
+    ///
+    /// Lifted out of the host (`App/ContentView.swift`) so the
+    /// stale-id-fallback branch is unit-testable from the Chat package
+    /// — `ContentView` itself isn't covered today.
+    public static func resolveInitialModelId(
+        persisted: String?,
+        available: [LLMModel]
+    ) -> String? {
+        available.first(where: { $0.id == persisted })?.id ?? available.first?.id
+    }
+
     public var maxContextTokens: Int {
         activeModel?.maxContextTokens ?? 0
     }

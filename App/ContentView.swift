@@ -340,9 +340,16 @@ struct AppShell: View {
             if isDraft {
                 sidebar.draftConversation = conversation
             }
-            await rebuildChatViewModel(for: conversation)
-            await sidebar.refresh()
-
+            // Regression: settings must load *before* the first
+            // `rebuildChatViewModel` so the persisted
+            // `lastSelectedModelId`, `defaultVerbosity`, theme, and font
+            // scale are visible at chat construction. Reordering this
+            // block would silently regress the "new chat opens on the
+            // user's last picked model" guarantee — `settingsViewModel`
+            // reads as nil during the chat build and the picker falls
+            // back to `providerModels.first?.id` on every cold start.
+            // Do not move `await settings.load()` below
+            // `rebuildChatViewModel`.
             let settings = SettingsViewModel(
                 accountEmail: "brianwang9100@gmail.com",
                 appInfo: appInfo,
@@ -359,6 +366,9 @@ struct AppShell: View {
             settingsViewModel = settings
             theme = .make(settings.settings.themeId)
             appearance = ChatAppearance(fontScale: settings.settings.fontScale)
+
+            await rebuildChatViewModel(for: conversation)
+            await sidebar.refresh()
         } catch {
             bootstrapError = "Could not open chat: \(error.localizedDescription)"
         }
@@ -404,6 +414,17 @@ struct AppShell: View {
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
         let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
+        // Resolve the initial model from the persisted "last selected"
+        // setting so the picker survives relaunch. Stale ids (model was
+        // deleted since last launch) silently fall back to the first
+        // available model — same fallback `setAvailableModels` uses for
+        // mid-session deletions. Logic is unit-tested in
+        // `ChatScreenViewModelTests.resolveInitialModelId*`.
+        let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
+        let initialModelId = ChatScreenViewModel.resolveInitialModelId(
+            persisted: persistedModelId,
+            available: providerModels
+        )
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -412,15 +433,23 @@ struct AppShell: View {
             toolCallRepository: dependencies.toolCallRepository,
             checkpointRepository: dependencies.checkpointRepository,
             availableModels: providerModels,
-            selectedModelId: providerModels.first?.id,
+            selectedModelId: initialModelId,
             verbosity: verbosity,
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
             voice: voice
         )
         let registry = dependencies.llmProviderRegistry
+        let settings = settingsViewModel
+        // Fire-and-forget: a pick that races a "New chat" tap is fine
+        // because the auto-pick write below also persists the resolved
+        // id, so the two writes converge on the same value (last write
+        // wins, both write the same model the user picked).
         newModel.onModelSelected = { modelId in
-            Task { await activateProvider(matching: modelId, in: registry) }
+            Task {
+                await activateProvider(matching: modelId, in: registry)
+                await settings?.setLastSelectedModelId(modelId)
+            }
         }
         // When the auto-titler lands, repaint the sidebar so the row's
         // "New chat" placeholder flips to the real title without waiting
@@ -433,8 +462,17 @@ struct AppShell: View {
         // the chat would route to whatever was first registered, which
         // isn't necessarily what the picker shows after the user adds a
         // second model.
-        if let firstId = providerModels.first?.id {
-            await activateProvider(matching: firstId, in: registry)
+        if let id = initialModelId {
+            await activateProvider(matching: id, in: registry)
+            // Persist the auto-pick on first open so the next launch
+            // reads a populated value even if the user never touches the
+            // composer pill. `didSet`'s `onModelSelected` doesn't fire
+            // for the value passed into `init`, so we have to write
+            // here. Skip when the resolved id already matches what's
+            // persisted to avoid a redundant DB write on every chat open.
+            if id != persistedModelId {
+                await settings?.setLastSelectedModelId(id)
+            }
         }
         // Pre-load the transcript so the first render of the swapped-in
         // view model already shows the messages instead of flashing the

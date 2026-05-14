@@ -30,7 +30,8 @@ public struct ChatSettingsStore: Sendable {
             autoCompactEnabled: raw[Keys.autoCompactEnabled].flatMap(Self.decodeBool)
                 ?? ChatSettings.default.autoCompactEnabled,
             autoCompactThreshold: raw[Keys.autoCompactThreshold].flatMap(Double.init)
-                ?? ChatSettings.default.autoCompactThreshold
+                ?? ChatSettings.default.autoCompactThreshold,
+            lastSelectedModelId: raw[Keys.lastSelectedModelId]
         )
     }
 
@@ -56,6 +57,15 @@ public struct ChatSettingsStore: Sendable {
 
     public func setAutoCompactThreshold(_ value: Double) async throws {
         try await repository.set(Keys.autoCompactThreshold, value: String(ChatSettings.clampThreshold(value)))
+    }
+
+    /// Persists the upstream `LLMModel.id` the user just activated so the
+    /// next new chat opens on the same model. Stale ids (the model has
+    /// since been deleted) are tolerated at read time — `ContentView`
+    /// falls back to the first available model when the persisted id is
+    /// no longer registered.
+    public func setLastSelectedModelId(_ id: String) async throws {
+        try await repository.set(Keys.lastSelectedModelId, value: id)
     }
 
     /// Whether the user has flipped this model on in Settings. nil ⇒ no
@@ -95,6 +105,9 @@ public struct ChatSettingsStore: Sendable {
         /// String-encoded Double in `[0.5, 0.95]`. Fraction of context
         /// at which auto-compaction fires.
         public static let autoCompactThreshold = "compaction.threshold"
+        /// `LLMModel.id` of the model most recently activated in the
+        /// composer pill. Bootstraps the initial pick of every new chat.
+        public static let lastSelectedModelId = "lastSelectedModel.id"
         /// Per-model enabled flag. Keyed by `id` so each row stays
         /// independent of the others.
         public static func modelEnabled(id: String) -> String {
