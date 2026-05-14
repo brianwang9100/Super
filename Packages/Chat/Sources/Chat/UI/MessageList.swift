@@ -120,31 +120,64 @@ public struct MessageList: View {
     /// for voice-input failures where the parent's `onRetry` would
     /// re-send the last LLM message instead of retrying voice).
     ///
+    /// `kind` discriminates banner *origin* so the host can react to a
+    /// specific class of error (e.g. auto-clear the "no model" banner
+    /// when models become available, without stomping unrelated errors).
+    ///
     /// `Equatable` ignores `action` (closure identity isn't meaningful);
     /// SwiftUI re-renders the banner whenever `message`, `actionLabel`,
-    /// or `showsRetry` change.
+    /// `showsRetry`, or `kind` change.
     public struct ErrorState: Sendable, Equatable {
+        /// Origin discriminator for ``ErrorState``. Lets the host clear
+        /// only the matching class of banner when its underlying condition
+        /// resolves — e.g. ``noModelConfigured`` is cleared by
+        /// `ChatScreenViewModel.setAvailableModels` once at least one
+        /// model is available, while a `generic` banner is left alone.
+        public enum Kind: Sendable, Equatable {
+            case generic
+            case noModelConfigured
+        }
+
         public let message: String
         public let actionLabel: String?
         public let action: (@MainActor @Sendable () -> Void)?
         public let showsRetry: Bool
+        public let kind: Kind
 
         public init(
             message: String,
             actionLabel: String? = nil,
             action: (@MainActor @Sendable () -> Void)? = nil,
-            showsRetry: Bool = true
+            showsRetry: Bool = true,
+            kind: Kind = .generic
         ) {
             self.message = message
             self.actionLabel = actionLabel
             self.action = action
             self.showsRetry = showsRetry
+            self.kind = kind
+        }
+
+        /// Banner shown when the user tries to send a message but has
+        /// no model endpoints configured. The action opens the
+        /// "Add Model" sheet via the host-provided callback.
+        public static func noModelConfigured(
+            onAddModel: @escaping @MainActor @Sendable () -> Void
+        ) -> ErrorState {
+            ErrorState(
+                message: "Add a model to send messages.",
+                actionLabel: "Add model",
+                action: onAddModel,
+                showsRetry: false,
+                kind: .noModelConfigured
+            )
         }
 
         public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
             lhs.message == rhs.message
                 && lhs.actionLabel == rhs.actionLabel
                 && lhs.showsRetry == rhs.showsRetry
+                && lhs.kind == rhs.kind
         }
     }
 

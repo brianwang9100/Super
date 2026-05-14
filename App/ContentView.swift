@@ -97,7 +97,8 @@ struct ChatHostView: View {
                 ChatScreen(
                     viewModel: viewModel,
                     onMenuTap: openSidebar,
-                    onManageModels: { openSettings(initialPane: .models) }
+                    onManageModels: { openSettings(initialPane: .models) },
+                    onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
                 )
                 .superTheme(theme)
                 .chatAppearance(appearance)

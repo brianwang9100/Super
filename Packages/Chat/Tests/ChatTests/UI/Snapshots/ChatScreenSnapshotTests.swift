@@ -64,6 +64,142 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .dark, name: "screen_populated_dark")
     }
 
+    @Test("no-model error banner over empty state, light")
+    func noModelErrorLight() {
+        verifyNoModelError(theme: .light, name: "screen_no_model_error_light")
+    }
+
+    @Test("no-model error banner over empty state, dark")
+    func noModelErrorDark() {
+        verifyNoModelError(theme: .dark, name: "screen_no_model_error_dark")
+    }
+
+    @Test("no-model error banner over empty state, sepia")
+    func noModelErrorSepia() {
+        verifyNoModelError(theme: .sepia, name: "screen_no_model_error_sepia")
+    }
+
+    @Test("no-model error banner over empty state at dynamic type XXL")
+    func noModelErrorEmptyXXL() {
+        // Banner layout on an empty transcript at XXL exercises a
+        // different `MessageList` height path than the populated XXL
+        // variant: with zero rows the banner is the only content, so
+        // its wrap/clip behavior is what's under test here.
+        let function = #function
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: []),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel.composerText = "hi"
+        viewModel.send("hi")
+
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 874)
+        recordOrCompareWithFontTolerance(view: view, name: "screen_no_model_error_empty_xxl", function: function)
+    }
+
+    @Test("no-model error banner over populated transcript, light")
+    func noModelErrorPopulatedLight() {
+        verifyNoModelErrorPopulated(theme: .light, name: "screen_no_model_error_populated_light")
+    }
+
+    @Test("no-model error banner over populated transcript, dark")
+    func noModelErrorPopulatedDark() {
+        verifyNoModelErrorPopulated(theme: .dark, name: "screen_no_model_error_populated_dark")
+    }
+
+    @Test("no-model error banner over populated transcript, sepia")
+    func noModelErrorPopulatedSepia() {
+        verifyNoModelErrorPopulated(theme: .sepia, name: "screen_no_model_error_populated_sepia")
+    }
+
+    // The populated-transcript + no-model-error state at Dynamic Type
+    // XXL is intentionally not snapshotted. Per AGENTS.md §Testing
+    // rule 5, "Dynamic Type XXL and other accessibility-large variants
+    // are the ones most likely to fail and are the candidates for
+    // deferral." Empirically this fixture exhibits sub-pixel anti-
+    // aliasing drift across every text glyph between the local Mac
+    // and the macos-26 CI runner (>1% pixels diff at perceptual
+    // delta) — beyond what the `verifyEmpty`-style tolerance allows.
+    // XXL coverage for the new state is provided by
+    // `noModelErrorEmptyXXL`; the populated/XXL combination's
+    // layout invariants are already covered by `populatedXXL`.
+
+    private func verifyNoModelErrorPopulated(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        // Reachable in production when the user previously chatted, then
+        // deleted every model endpoint in Settings, then tried to send
+        // again — the persisted transcript stays on screen while the
+        // banner overlays the latest exchange. `availableModels` is
+        // empty so the composer's model pill correctly reads
+        // "No model", consistent with the banner state.
+        let viewModel = makeNoModelErrorPopulatedViewModel()
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(theme))
+            .frame(width: 402, height: 874)
+        recordOrCompareWithFontTolerance(view: view, name: name, function: function)
+    }
+
+    private func makeNoModelErrorPopulatedViewModel() -> ChatScreenViewModel {
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        let messages: [MessageRecord] = [
+            MessageRecord(id: "u1", conversationId: "c", role: .user, content: "What can you do?", createdAt: now),
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "I can answer questions, write code, and use a few built-in tools.", createdAt: now.addingTimeInterval(1)),
+        ]
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: messages),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel._setSnapshotState(
+            items: ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil),
+            usedTokens: 1_200,
+            error: .noModelConfigured(onAddModel: {})
+        )
+        return viewModel
+    }
+
+    private func verifyNoModelError(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        // Fresh build: zero models configured, user typed something and
+        // tapped send. `ChatScreenViewModel.send` sets the no-model error;
+        // `ChatScreen.content` switches from the empty-state greeting to
+        // `MessageList` so the banner renders above the composer.
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: []),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel.composerText = "hi"
+        viewModel.send("hi")
+
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(theme))
+            .frame(width: 402, height: 874)
+        recordOrCompareWithFontTolerance(view: view, name: name, function: function)
+    }
+
     @Test("populated transcript at dynamic type XXL")
     func populatedXXL() {
         let function = #function
@@ -161,6 +297,33 @@ struct ChatScreenSnapshotTests {
         let failure = verifySnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 874)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
+    }
+
+    /// Snapshot comparison with the same precision tolerance used by
+    /// `verifyEmpty` — accepts a small fraction of pixels differing
+    /// within a small perceptual delta. Empirically required for the
+    /// `noModelError*` family because the chat header (system font at
+    /// small size) and the composer placeholder ("Chat with Super" / "Ask
+    /// anything") drift by a sub-pixel amount between the local-recording
+    /// Mac and the macos-26 CI runner. The rest of the suite (existing
+    /// `populated`/`empty` baselines) renders byte-equal — only the
+    /// error-banner fixtures expose this drift. Scoped narrowly so the
+    /// rest of the suite stays pixel-exact.
+    private func recordOrCompareWithFontTolerance<V: View>(
+        view: V,
+        name: String,
+        function: String = #function
+    ) {
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
