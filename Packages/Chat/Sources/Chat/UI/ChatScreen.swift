@@ -35,6 +35,15 @@ public struct ChatScreen: View {
     ///   host's Settings sheet to its Add Model form. Not stored on
     ///   the view because nothing in `body` reads it — the view model
     ///   is the only consumer.
+    ///
+    /// Marked `@MainActor` so the assignment to
+    /// `viewModel.onAddModelRequested` (a `@MainActor`-isolated
+    /// property on `ChatScreenViewModel`) is explicitly main-actor
+    /// isolated. SwiftUI infers `@MainActor` on `View` struct inits
+    /// in Swift 6, but making it explicit keeps the isolation
+    /// contract visible at the declaration site and is robust to
+    /// future callers in non-main-actor contexts.
+    @MainActor
     public init(
         viewModel: ChatScreenViewModel,
         onMenuTap: @escaping () -> Void = {},
