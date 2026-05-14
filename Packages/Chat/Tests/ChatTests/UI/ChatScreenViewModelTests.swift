@@ -320,6 +320,55 @@ struct ChatScreenViewModelTests {
         #expect(hasAssistantText, "subsequent events from the subscribed stream must drive items to the final state")
     }
 
+    @Test("load is idempotent during a live turn — re-mount must not double-subscribe (regression)")
+    func loadIsIdempotentDuringLiveTurn() async throws {
+        // Regression: switching chat presentation states (expanded ↔
+        // semi-expanded ↔ minimized) re-mounts the chat surface, which
+        // re-fires `.task(id: viewModel.conversationId) { await
+        // viewModel.load() }`. Before the guard in
+        // `attachToLiveTurnIfAny()` landed, the second call opened a
+        // parallel `AsyncStream` over the same in-flight turn, and both
+        // subscribers appended every text/thinking event to
+        // `streamingTail.text` — producing visible character duplication
+        // in the live response (every word streamed twice). This test
+        // asserts the second `load()` is a no-op while the first stream
+        // is still consuming events.
+        let snapshot = ChatSession.LiveTurnSnapshot(
+            accumulatedText: "in progress",
+            accumulatedThinking: ""
+        )
+        let driver = HangingSubscribeDriver(pendingSnapshot: snapshot)
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        // First load — initial subscribe attaches to the live turn.
+        await viewModel.load()
+        var subscribeCount = await driver.subscribeCount
+        #expect(subscribeCount == 1)
+        #expect(viewModel.isStreaming == true)
+        #expect(viewModel.streamingTail?.text == "in progress")
+
+        // Second load — must NOT re-subscribe while the first stream is
+        // still consuming the live turn.
+        await viewModel.load()
+        subscribeCount = await driver.subscribeCount
+        #expect(subscribeCount == 1, "remount must not re-subscribe while the first stream is still active")
+        #expect(viewModel.streamingTail?.text == "in progress", "snapshot text must not be re-applied on a remount")
+
+        // Close the hanging stream so the streamTask drains cleanly and
+        // the test doesn't leak a suspended `consume(stream:)` task.
+        await driver.closeStream()
+        await viewModel._waitForPendingStreamTask()
+        #expect(viewModel.isStreaming == false)
+    }
+
     @Test("load propagates snapshot.thinkingStartedAt into the streaming tail so the elapsed-time counter survives detach + reattach")
     func loadPropagatesSnapshotThinkingStartedAt() async throws {
         // Regression: navigating away from a chat that is still
@@ -1002,6 +1051,49 @@ struct ChatScreenViewModelTests {
 }
 
 // MARK: - Test doubles
+
+/// `ChatSessionDriver` fake whose `subscribe()` returns a stream that
+/// stays open until the test explicitly calls `closeStream()`. Used to
+/// regression-test that re-mounting the chat surface (via a chat-
+/// presentation-state transition) does **not** double-subscribe to the
+/// in-flight turn — the streaming-duplication bug fixed in
+/// `ChatScreenViewModel.attachToLiveTurnIfAny()`.
+private actor HangingSubscribeDriver: ChatSessionDriver {
+    private let pendingSnapshot: ChatSession.LiveTurnSnapshot?
+    private var continuations: [AsyncStream<ChatEvent>.Continuation] = []
+    private(set) var subscribeCount: Int = 0
+    private(set) var cancelInvocationCount: Int = 0
+
+    init(pendingSnapshot: ChatSession.LiveTurnSnapshot?) {
+        self.pendingSnapshot = pendingSnapshot
+    }
+
+    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
+        // The bug-under-test exercises subscribe(), not send(). Return a
+        // stream that finishes immediately for symmetry with the
+        // production driver's contract.
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuation.finish()
+        return stream
+    }
+
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        subscribeCount += 1
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuations.append(continuation)
+        return (pendingSnapshot, stream)
+    }
+
+    func cancel() async { cancelInvocationCount += 1 }
+
+    /// Test-facing seam: finish all open subscribe streams so the view
+    /// model's `consume(stream:)` task can complete and the test exits
+    /// cleanly without leaking suspended tasks.
+    func closeStream() {
+        for continuation in continuations { continuation.finish() }
+        continuations.removeAll()
+    }
+}
 
 /// `ChatSessionDriver` fake that yields a pre-baked event sequence on each
 /// `send(...)`. Once the events drain the stream finishes, mirroring the

@@ -1,8 +1,8 @@
 # Super: Top-Level Design
 
-> How the Super shell hosts Chat and its mini-apps, and how the three chat overlay states (expanded / floating / bubble) coordinate with the mini-app underneath.
+> How the Super shell hosts Chat and its mini-apps, and how the three chat overlay states (expanded / semi-expanded / minimized) coordinate with the mini-app underneath.
 
-> **Status (2026-05-10):** The Chat surface itself is built and the MVP is shipped (M0–M12 all complete, with M11 voice input verified on hardware 2026-05-10); the three-state overlay system, mini-app hosting, and `AppletManager` registry described below are not yet implemented — there's only one applet today, and the shell renders it full-screen. Tracked in [`TODO.md`](../TODO.md) § Shell.
+> **Status (2026-05-13):** The Chat surface itself is built and the MVP is shipped (M0–M12 all complete, with M11 voice input verified on hardware 2026-05-10). The three-state overlay system, mini-app hosting, and `AppletRegistry` described below are landing in the post-MVP "Shell" track tracked in [`TODO.md`](../TODO.md) § Shell. The fetched 2026-05-13 design (`/tmp/super-design/super/project/ds/chat.html`) supersedes earlier sketches: states are named **minimized / semi-expanded / expanded** and the minimized state is a **full-width "Chat with Super" pill** at the bottom of the viewport (the 44pt circular bubble in older drafts was abandoned).
 
 ---
 
@@ -48,9 +48,9 @@ The shell does NOT own any mini-app's internal UI, data model, or business logic
 Every mini-app declares itself through a standard protocol:
 
 ```swift
-protocol SuperApplet {
+protocol MiniApplet {
     /// Unique identifier for this mini-app
-    static var appletId: String { get }
+    static var appletID: String { get }
 
     /// Display metadata
     var displayName: String { get }
@@ -83,6 +83,8 @@ protocol SuperApplet {
 }
 ```
 
+The shipped Swift type (introduced 2026-05-13) is `MiniApplet` — the older `SuperApplet` draft was dropped because the `Super` prefix duplicated the product name without adding meaning. The initial in-tree version exposes only the *display-metadata* slice (`appletID`, `displayName`, `icon`, `accentColor`, `rootView`); the tools / cards / record-actions / event-bus / lifecycle members will land as those subsystems are built.
+
 ### 3.2 Adding a Mini-App
 
 1. User opens **Settings → Mini-Apps** or taps the "+" row in the sidebar.
@@ -101,7 +103,7 @@ protocol SuperApplet {
 3. **Remove animation:** the entry shrinks and fades; neighbors reflow.
 4. `onUninstall()` runs: deregisters tools, unsubscribes from events, deletes the SQLite file (or archives it), clears cached chat cards.
 
-**Chat cannot be removed.** It is the shell itself.
+**Chat cannot be removed.** It is the shell's host applet.
 
 ### 3.4 Reordering
 
@@ -111,17 +113,22 @@ Drag-and-drop in the Mini-App Manager and sidebar. Order persists in UserDefault
 
 ## 4. Chat Overlay States
 
-Chat is always present. What changes is how much screen it takes and whether a mini-app is visible behind it. There are three states; every mini-app interaction happens through one of them.
+Chat is always present. What changes is how much screen it takes and whether a mini-app is visible behind it. There are three states; every mini-app interaction happens through one of them. Their canonical Swift identifier is `ChatPresentationState { case minimized, semiExpanded, expanded }`.
 
-### 4.1 State A — Expanded Chat (default)
+A **drag handle** (36 × 4.5pt pill, `ink-mute @ 55%` resting → `ink-faint @ 70%` while dragging) sits at the top of the chat surface in expanded and semi-expanded states. Dragging snaps to the nearest state on release; velocity above the threshold skips a state. Spring: `cubic-bezier(0.34, 1.4, 0.5, 1)` over 380ms. Reduce Motion replaces with a 200ms crossfade.
 
-The full-screen chat described in [`Chat/DESIGN.md`](./Chat/DESIGN.md). Nothing behind it; the sidebar is available via the hamburger button.
+A **fixed hamburger button** (36 × 36pt raised pill, top-left inset 12pt, blur backdrop) lives in the shell chrome — it does **not** animate with the chat. It is the entry point to the sidebar applet switcher across all three states.
+
+### 4.1 Expanded
+
+The full-screen chat described in [`Chat/DESIGN.md`](./Chat/DESIGN.md). Nothing behind it; the sidebar is available via the shell-chrome hamburger.
 
 ```
 ┌────────────────────────────────┐
-│  ≡    Chat title     (center)  │
+│  ≡                             │ ← shell chrome: hamburger top-left
+│              ▬▬                │ ← drag handle (36 × 4.5pt)
+│            Chat title          │
 ├────────────────────────────────┤
-│                                │
 │  [assistant message]           │
 │              [user bubble]     │
 │  [thinking / tool / code]      │
@@ -132,10 +139,10 @@ The full-screen chat described in [`Chat/DESIGN.md`](./Chat/DESIGN.md). Nothing 
 └────────────────────────────────┘
 ```
 
-- Entered on app launch (if the last-open surface was Chat) or by tapping **New Chat** or any existing chat in the sidebar.
-- Exited by selecting a mini-app from the sidebar (→ State B) or by pulling the chat down into a bubble (→ State C).
+- Entered on app launch (if the last-open surface was Chat) or by tapping **New Chat** or any existing chat in the sidebar, or by tapping the **Chat** applet entry.
+- Exited by selecting a mini-app from the sidebar (→ minimized, with mini-app behind), or by dragging the chat surface down (→ semi-expanded → minimized).
 
-### 4.2 State B — Mini-App with Floating Chat
+### 4.2 Semi-Expanded
 
 The selected mini-app fills the screen. A **floating composer** sits pinned to the bottom; above it, a **floating chat panel** shows the last ~N messages of the active chat. The mini-app scrolls freely underneath. This is the "do work alongside the AI" mode.
 
@@ -161,21 +168,20 @@ The selected mini-app fills the screen. A **floating composer** sits pinned to t
 └────────────────────────────────┘
 ```
 
-- **Floating chat panel:** a rounded, elevated card with a translucent blurred backdrop. Height is clamped — by default shows the last ~3 messages; user can drag its top edge to grow it up to 75% of the screen, or flick it all the way up to re-enter State A (Expanded).
-- **Floating composer:** the same composer from State A, pinned to the bottom as a pill. Its width matches the floating chat panel.
-- **Mini-app content:** fills the screen behind the chat; scrollable independently. The bottom inset of the mini-app view is sized so content isn't permanently obscured by the composer — a small `safe-area-bottom` reserve matches the composer's height.
-- Entered by selecting a mini-app from the sidebar, or by deep-linking from a chat message into a specific mini-app record.
-- Exited to State A by flicking the chat panel up; exited to State C by flicking the chat panel and composer down together.
+- **Floating chat panel:** a rounded, elevated card with a translucent blurred backdrop (`color-mix(in oklab, var(--bg-raised) 95%, transparent)`, blur 20 + saturate 1.4, radius 22, shadow `0 12px 30px rgba(40,60,50,0.18), 0 30px 80px rgba(40,60,50,0.12)`). Anchored to the bottom with left/right/bottom inset 10pt. Drag handle on top. By default shows the last ~3 messages; the drag-snap is `expanded ↔ semi-expanded ↔ minimized`.
+- **Floating composer:** the same composer from Expanded, pinned inside the panel as an inner pill (radius 18, slightly inset). Its width matches the panel.
+- **Mini-app content:** fills the screen behind the chat at **0.65 opacity**; scrollable independently. The bottom inset of the mini-app view is sized so content isn't permanently obscured by the panel — a small `safe-area-bottom` reserve matches the panel's height.
+- Entered by selecting a mini-app from the sidebar (→ chat snaps from expanded to minimized to give the mini-app its full canvas, then user can tap the pill to climb to semi), or by tapping the minimized pill.
+- Exited to expanded by dragging the chat handle up; exited to minimized by dragging the chat panel down.
 
-### 4.3 State C — Minimized Chat Bubble
+### 4.3 Minimized
 
-The chat collapses to a **44pt circular bubble** in the bottom-right (iPhone) or lower-right corner (iPad/Mac), floating over the mini-app. The mini-app now owns the full screen.
+The chat collapses to a **full-width pill** anchored at the bottom of the viewport. The mini-app now owns the full screen behind it (no opacity dim).
 
 ```
 ┌────────────────────────────────┐
-│  ← Todo                    ⋮  │
+│  ≡                             │ ← shell chrome: hamburger persists
 ├────────────────────────────────┤
-│                                │
 │  ▢ Buy groceries               │
 │  ▢ Pick up laundry             │
 │  ☑ Book dentist                │
@@ -183,45 +189,44 @@ The chat collapses to a **44pt circular bubble** in the bottom-right (iPhone) or
 │  ▢ Call mom                    │
 │  ▢ Schedule oil change         │
 │  ...                           │
-│                                │
-│                                │
-│                          ╭──╮  │
-│                          │✦│  │ ← chat bubble (accent fill, 44pt)
-│                          ╰──╯  │
+├────────────────────────────────┤
+│ ╭──────────────────────────╮   │
+│ │ Chat with Super       🎤 │   │ ← full-width pill, radius 24
+│ ╰──────────────────────────╯   │
 └────────────────────────────────┘
 ```
 
-- **Tap** the bubble → expands back into State B (floating chat + composer).
-- **Long-press / drag** the bubble → can be moved to any corner; position sticks across sessions.
-- **Unread / streaming indicator:** a subtle pulsing ring around the bubble if the AI is mid-response or a new message arrived while minimized.
-- **Silenced while typing:** if the user is typing in a mini-app text field (e.g., editing a todo title), the bubble fades to 40% opacity until the field is dismissed.
-- Entered by dismissing the floating chat (flicking down) in State B.
-- Exited by tapping the bubble (→ State B) or dismissing via a mini-app's back button back to an empty canvas (→ the bubble persists but may auto-hide if no mini-app is active).
+- **Tap** the pill → snaps to semi-expanded.
+- **Geometry:** left/right inset 12pt, bottom inset 14pt + safe-area-bottom. Radius 24. Raised surface (`var(--bg-raised)`) with `1px var(--border-faint)`. Same shadow stack as the semi-expanded panel.
+- **Affordance:** centered "Chat with Super" placeholder text on the left, mic glyph (`ink-soft`) on the right.
+- **Streaming indicator:** a subtle pulsing accent dot on the right edge replaces the mic when the AI is mid-response.
+- Entered by dismissing the semi-expanded panel (drag down) or by selecting a mini-app from the sidebar while Chat was expanded.
+- Exited by tapping the pill (→ semi-expanded) or by selecting Chat from the sidebar (→ expanded).
 
 ### 4.4 State Transitions
 
 ```
-   ┌──────────────────┐   select mini-app   ┌──────────────────────┐
-   │  A — Expanded     │────────────────────▶│  B — Mini-App +      │
-   │  Chat             │◀────────────────────│     Floating Chat    │
-   └──────────────────┘   flick panel up     └──────────────────────┘
-             ▲                                            ▲   │
-             │                                            │   │ flick panel down
-             │                                            │   ▼
-             │                          tap bubble ┌──────────────────┐
-             │                                    │                   │
-             │ (from mini-app back) ◀─────────────▶│  C — Bubble +    │
-             │                                    │     Mini-App      │
-             │                                    └──────────────────┘
+   ┌──────────────────┐   tap mini-app from sidebar    ┌──────────────────┐
+   │     Expanded      │───────────────────────────────▶│    Minimized      │
+   │                   │◀───────────────────────────────│  (pill anchored   │
+   └──────────────────┘     tap Chat from sidebar        │   over mini-app)  │
+        ▲     │                                          └──────────────────┘
+        │     │                                                   ▲   │
+   drag │     │ drag down                              tap pill   │   │ drag down
+   up   │     ▼                                                   │   ▼
+        │  ┌──────────────────┐                                   │
+        └──│  Semi-Expanded    │───────────────────────────────────┘
+           │  (floating panel) │       drag panel down
+           └──────────────────┘
 ```
 
-Transitions are spring animations (damping 0.75, response 0.35); the chat panel's height interpolates with the composer staying visually anchored at the bottom (matched geometry).
+Transitions are spring animations (`Animation.timingCurve(0.34, 1.4, 0.5, 1, duration: 0.38)`); the chat panel's height interpolates with the composer staying visually anchored at the bottom (matched geometry). Reduce Motion replaces them with `.easeInOut(duration: 0.2)` crossfades.
 
 ### 4.5 Platform Adaptations
 
 - **iPhone:** as described above. Sidebar slides over the chat.
-- **iPad:** in landscape the sidebar can be pinned as a persistent left rail (configurable); State B renders the floating chat + composer as a panel on the right half of the screen while the mini-app fills the left half. State C places the bubble in the bottom-right of the active region.
-- **macOS:** the sidebar is a persistent left pane. State B renders the chat as a **right-side floating panel** (draggable, resizable). State C places the bubble in the window corner; it persists across window resizes but is bound to the window, not the screen.
+- **iPad:** in landscape the sidebar can be pinned as a persistent left rail (configurable); semi-expanded renders the floating chat + composer as a panel on the right half of the screen while the mini-app fills the left half. Minimized places the pill at the bottom of the active region.
+- **macOS:** the sidebar is a persistent left pane. Semi-expanded renders the chat as a **right-side floating panel** (draggable, resizable). Minimized places the pill at the bottom of the window; it persists across window resizes but is bound to the window, not the screen.
 - **Reduce Motion** replaces all state-transition springs with crossfades at 200ms.
 
 ---
@@ -293,7 +298,7 @@ The system must support adding new mini-apps with **zero changes to existing min
 
 A new mini-app only needs to:
 
-1. **Conform to `SuperApplet`** — metadata, lifecycle, event subscriptions.
+1. **Conform to `MiniApplet`** — metadata (`appletID`, `displayName`, `icon`, `accentColor`, `rootView`). Tools / chat-card renderers / record-action handlers / lifecycle hooks are added once those subsystems exist.
 2. **Define its GRDB schema** — in its own SQLite file, isolated from other mini-apps.
 3. **Register its tools** (array of `ToolRegistration`) — Chat auto-discovers them.
 4. **Register chat-card renderers** — one per card kind the mini-app wants to render in chat.
@@ -310,6 +315,7 @@ Mini-apps are Swift Packages in the monorepo, registered once at the composition
 @main
 struct SuperApp: App {
     let registry = AppletRegistry(applets: [
+        ChatApplet(),
         ToDoApplet(),
         RecipesApplet(),
         BibleApplet(),
@@ -403,10 +409,11 @@ Anything that could be a detail view should start as one line until tapped.
 
 | Event | Animation | Duration |
 |-------|-----------|----------|
-| Open mini-app from sidebar (A → B) | Mini-app crossfades in, chat panel springs from bottom | 350ms |
-| Minimize chat (B → C) | Panel + composer slide down, bubble scales up from bottom-right | 300ms |
-| Tap bubble (C → B) | Bubble scales down, panel + composer spring up | 300ms |
-| Expand to full chat (B → A) | Panel expands, composer stays anchored, mini-app crossfades out | 400ms |
+| Open mini-app from sidebar (expanded → minimized) | Chat surface springs down into pill; mini-app crossfades in behind | 380ms |
+| Tap minimized pill (minimized → semi-expanded) | Pill height interpolates into panel; backdrop dims to 0.65 | 380ms |
+| Drag down (semi-expanded → minimized) | Panel collapses into pill, backdrop returns to 1.0 opacity | 380ms |
+| Drag up to full chat (semi-expanded → expanded) | Panel height interpolates to full, composer stays anchored | 380ms |
+| Tap Chat from sidebar (minimized → expanded) | Pill expands to full chat; backdrop fades away | 380ms |
 | Chat card appears in chat | Fades in with 4pt upward translate | 200ms |
 | Chat creates record (card ↔ mini-app visible) | Card highlights, record materializes in the mini-app | 400ms staggered |
 | Record long-press → focused view | Scale spring + blur backdrop | 250ms |

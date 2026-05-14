@@ -22,6 +22,13 @@ struct SidebarDrawerSnapshotTests {
 
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
+    /// Applet list passed to every snapshot. Currently only `ChatApplet`
+    /// — the M2 placeholder applets live in the App target, which the
+    /// Chat test target can't import. The 5-applet rail snapshot lands
+    /// in M4 alongside stub `MiniApplet` conformances local to this
+    /// test file or a future Shell-package test target.
+    private static let sampleApplets: [any MiniApplet] = [ChatApplet()]
+
     private static let sampleChats: [SidebarViewModel.ChatItem] = [
         .init(id: "c1", title: "Italy trip planning", updatedAt: now, running: false),
         .init(id: "c2", title: "Pizza dough timing", updatedAt: now.addingTimeInterval(-300), running: false),
@@ -87,6 +94,8 @@ struct SidebarDrawerSnapshotTests {
             appInfo: appInfo,
             userInitials: "BW",
             userName: "Brian Wang",
+            applets: Self.sampleApplets,
+            activeAppletID: nil,
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
@@ -155,6 +164,8 @@ struct SidebarDrawerSnapshotTests {
             appInfo: appInfo,
             userInitials: "BW",
             userName: "Brian Wang",
+            applets: Self.sampleApplets,
+            activeAppletID: nil,
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
@@ -184,6 +195,8 @@ struct SidebarDrawerSnapshotTests {
             appInfo: appInfo,
             userInitials: "BW",
             userName: "Brian Wang",
+            applets: Self.sampleApplets,
+            activeAppletID: nil,
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
