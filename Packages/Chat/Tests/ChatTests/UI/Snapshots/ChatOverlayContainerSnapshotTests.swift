@@ -9,6 +9,13 @@ import Testing
 /// Pixel-stable snapshots of `ChatOverlayContainer` in each of the three
 /// `ChatPresentationState` shapes. M3 smoke: just light theme. The full
 /// state × theme × backdrop matrix lands in M4.
+// `.serialized` — snapshot baselines are read/written per-test against
+// the same on-disk `__Snapshots__/ChatOverlayContainerSnapshotTests/`
+// directory. Parallel execution races on the PNG files (TOCTOU), not on
+// any async behavior in the code under test — serialization is the right
+// tool. Matches every other snapshot suite in this directory; the
+// codebase-wide convention is intentional, not a smell to fix per-file
+// per AGENTS.md §Testing.2.
 @Suite("ChatOverlayContainer snapshots", .serialized)
 @MainActor
 struct ChatOverlayContainerSnapshotTests {

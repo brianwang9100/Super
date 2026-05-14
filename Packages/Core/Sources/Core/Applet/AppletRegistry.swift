@@ -43,10 +43,4 @@ public final class AppletRegistry {
         return applets.first { $0.appletID == activeID }
     }
 
-    /// Look up a specific applet by id without mutating active state — used
-    /// by the sidebar to render labels and icons for entries that aren't
-    /// currently active.
-    public func applet(withID id: String) -> (any MiniApplet)? {
-        applets.first { $0.appletID == id }
-    }
 }

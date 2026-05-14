@@ -33,7 +33,6 @@ public protocol MiniApplet: Sendable {
     /// `AnyView` so individual applets can supply hand-stroked `Shape`-based
     /// icons without forcing every conformance through a single `Image`
     /// shape — see the in-tree `TodoIcon` / `RecipeIcon` / etc.
-    @ViewBuilder
     func iconView(size: CGFloat) -> AnyView
 
     /// Secondary brand color used for the applet's iconography and chat-card
@@ -44,6 +43,5 @@ public protocol MiniApplet: Sendable {
     /// The SwiftUI view the shell embeds behind the chat overlay when this
     /// applet is active. Returned as `AnyView` so conformances can lazily
     /// construct view models without parameterizing the protocol.
-    @ViewBuilder
     func rootView() -> AnyView
 }
