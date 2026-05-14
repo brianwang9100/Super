@@ -35,9 +35,8 @@ public struct ChatSettings: Sendable, Equatable {
     /// `LLMModel.id` (e.g. `"claude-opus-4-7"`) of the model the user most
     /// recently activated in the composer pill. Used as the initial
     /// selection for every new chat so the picker survives relaunch.
-    /// `nil` until the first chat opens — `ContentView` writes the
-    /// auto-pick on first open so subsequent launches always read a
-    /// populated value.
+    /// `nil` until the first chat has been opened and the initial pick
+    /// has been persisted; subsequent launches always read a populated value.
     public var lastSelectedModelId: String?
 
     /// Factory default for `autoCompactThreshold` — the fraction of
