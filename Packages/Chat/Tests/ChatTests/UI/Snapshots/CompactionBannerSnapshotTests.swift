@@ -45,6 +45,17 @@ struct CompactionBannerSnapshotTests {
         verify(initiallyExpanded: true, theme: .dark, name: "compaction_expanded_dark")
     }
 
+    // AGENTS.md §Testing.3 calls for a Reduce Motion snapshot on any view
+    // with animation. `CompactionBanner` has `.animation(.easeInOut(...),
+    // value: isExpanded)` purely on the transition between collapsed and
+    // expanded — the steady-state frames before and after the toggle are
+    // identical regardless of Reduce Motion. SwiftUI's
+    // `\.accessibilityReduceMotion` env value is read-only, so we can't
+    // flip it from a test wrapper either. Snapshot parity therefore adds
+    // no signal beyond what the four collapsed/expanded × light/dark
+    // baselines already pin. Same documented gap as
+    // `MessageListSnapshotTests`'s `TypingCaret` comment (lines 361–370).
+
     private func verify(
         initiallyExpanded: Bool,
         theme: SuperTheme.Identifier,

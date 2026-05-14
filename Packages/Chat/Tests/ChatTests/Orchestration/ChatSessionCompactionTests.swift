@@ -329,9 +329,18 @@ struct ChatSessionCompactionTests {
 
     @Test func autoCompactKeepsTrailingMessagesVerbatim() async throws {
         // Auto-compaction still uses Compactor.defaultKeepMostRecent (4)
-        // to preserve immediate-context fidelity for the next turn —
-        // assert by checking the checkpoint's uptoMessageId is NOT the
-        // last persisted message.
+        // to preserve immediate-context fidelity for the next turn. Pin
+        // the exact slice boundary so a regression that quietly changes
+        // `defaultKeepMostRecent` (or auto's pass-through to it) trips
+        // here rather than waiting on a flake elsewhere.
+        //
+        // Layout at compaction time: the seeded 12 messages plus the
+        // newly-saved user message under test = 13 rows. The auto path
+        // fires *before* the assistant reply persists, so the slice
+        // excludes the trailing 4 → checkpoint.uptoMessageId is index
+        // (13 - 4 - 1) = index 8 of the pre-turn message list (the user
+        // turn the test sends is index 12; the checkpoint cutoff is
+        // 5 messages back from the end of the in-prompt window).
         let setup = try await makeSetup(
             scripts: [
                 [
@@ -350,16 +359,21 @@ struct ChatSessionCompactionTests {
         )
         try await seedSummarizableHistory(setup: setup)
 
-        let storedBefore = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
-        let lastBeforeTurn = try #require(storedBefore.last?.id)
-
         let stream = await setup.session.send(text: "next prompt", model: setup.model)
         _ = await collect(stream)
         await setup.session.waitUntilFinished()
 
+        let storedAfter = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
         let live = try await setup.checkpointRepo.liveCheckpoint(for: setup.conversation.id)
         let checkpoint = try #require(live)
-        #expect(checkpoint.uptoMessageId != lastBeforeTurn)
+
+        // Find the user turn that triggered compaction; the slice the
+        // compactor saw extends from index 0 through that user message
+        // (the assistant reply persists later, after compaction runs).
+        let userTurnIndex = try #require(storedAfter.firstIndex(where: { $0.content == "next prompt" }))
+        let expectedCutoffIndex = userTurnIndex - Compactor.defaultKeepMostRecent
+        let expectedCutoffId = storedAfter[expectedCutoffIndex].id
+        #expect(checkpoint.uptoMessageId == expectedCutoffId)
     }
 
     @Test func autoCompactDoesNotFireMidToolLoopWhenStillUnderThreshold() async throws {
