@@ -63,6 +63,7 @@ that policy.
 - [`*Provider`](#provider) — abstraction over an external resource
 - [`*Driver`](#driver) — protocol-fitting adapter at a layer seam
 - [`*Assembler`](#assembler) — pure projection between shapes
+- [`*Accumulator`](#accumulator) — stateful accrual of value chunks within one logical session
 - [`*Generator`](#generator) — factory for one value
 - [`*Estimator`](#estimator) — pure calculation function
 - [`*Tool`](#tool) — discrete LLM-invokable capability
@@ -380,6 +381,36 @@ typically `*Assembler` → `*Assembly`.
 
 ---
 
+<a id="accumulator"></a>
+
+## `*Accumulator`
+
+**Pattern.** **Stateful accrual** of incremental value chunks within
+one logical session. Unlike [`*Assembler`](#assembler) (which is a
+stateless one-shot projection), an `*Accumulator` is mutated across
+multiple ingest / commit calls during a single session's lifetime,
+then read to render the merged output.
+
+- **Kind:** `struct` (`Sendable`). Caller mutates with `mutating func`
+  on a `var`-stored property; the type holds no I/O collaborators.
+- **State:** internal — the chunks being accrued plus any in-flight
+  fragment. Reset implicitly by allocating a fresh value.
+- **Concurrency:** `Sendable`; thread-safety is the caller's
+  responsibility (typically via a lock or an actor owning the
+  property).
+
+**In-tree examples:**
+- `DictationTranscriptAccumulator` — merges multiple recognizer
+  utterances committed across natural pauses inside a single voice
+  recording session into a single rendered transcript.
+  `Packages/Chat/Sources/Chat/Voice/DictationTranscriptAccumulator.swift`.
+
+**Do not use `*Accumulator` for:**
+- A stateless one-shot projection — that's an [`*Assembler`](#assembler).
+- A worker that does I/O — that's a verb-noun ([`Compactor`-style](#verb-noun-no-suffix)).
+
+---
+
 <a id="generator"></a>
 
 ## `*Generator`
@@ -621,7 +652,8 @@ Working through the right suffix for a new architectural type:
    - Database → [`*Repository`](#repository).
    - API / model backend → [`*Provider`](#provider).
 3. **Does it transform one shape into another?**
-   - Records → prompt shape → [`*Assembler`](#assembler).
+   - Stateless one-shot projection (records → prompt shape) → [`*Assembler`](#assembler).
+   - Stateful accrual of incremental chunks within one session → [`*Accumulator`](#accumulator).
    - Produces one new value → [`*Generator`](#generator).
    - Produces a number → [`*Estimator`](#estimator).
 4. **Is it a value type emitted on a stream/bus?**

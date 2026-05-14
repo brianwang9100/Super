@@ -22,14 +22,18 @@ import Speech
 /// transcript. The session terminates only on user stop (stream
 /// cancellation), the 10 s trailing-silence watchdog, or an error.
 public final class SpeechRecognizerVoiceInputService: VoiceInputService {
-    /// Trailing-silence cap. Reset on every `.partial` event the service
-    /// yields (including the synthetic post-commit partial after a
-    /// transparent task restart). On fire we finish the stream with
-    /// `.silenceTimeout` — the controller treats that as a normal stop
-    /// and commits the accumulated transcript. Default 10 s: with
-    /// auto-endpoint no longer terminating the session, the watchdog is
-    /// the only "user has actually stopped" signal, and 30 s is too
-    /// long to wait before auto-committing a forgotten session.
+    /// Trailing-silence cap. Reset on every `.partial` event the
+    /// service yields (including the synthetic post-commit partial
+    /// after a transparent task restart). On fire we finish the stream
+    /// with `.silenceTimeout` — the controller treats that as a normal
+    /// stop and commits the accumulated transcript. Default 10 s: with
+    /// auto-endpoint no longer terminating the session, the watchdog
+    /// is the only "user has actually stopped" signal, and 30 s is too
+    /// long to wait before auto-committing a forgotten session. This
+    /// value is a UX trade-off, not a hard requirement — if users
+    /// report sessions auto-committing during natural mid-message
+    /// pauses (e.g. "thinking" silences while composing a longer
+    /// thought), raising it is the lowest-impact lever to pull.
     private let silenceTimeout: Duration
 
     public init(silenceTimeout: Duration = .seconds(10)) {
@@ -214,8 +218,14 @@ private final class RecognitionSession: @unchecked Sendable {
     /// tagging the task callback with `generation` so stale delayed
     /// callbacks from a superseded task can recognize themselves and
     /// bail. Does **not** touch `taskGeneration` or assign the new
-    /// request/task to `self` — caller is responsible for that under
-    /// the lock so the assignment can't race a concurrent `tearDown`.
+    /// request/task to `self` — caller bumps `taskGeneration` under
+    /// the lock first, then releases the lock before invoking this so
+    /// Apple's `recognitionTask(with:)` call (50–200 ms on cold paths)
+    /// doesn't stall the audio render thread that takes the same lock
+    /// to snapshot `recognitionRequest`. Caller is then responsible
+    /// for assigning the returned pair to `self` under the lock with a
+    /// torndown / generation recheck so a racing `tearDown` or a
+    /// further auto-restart can't leak the new task.
     private func makeRecognitionTask(
         on recognizer: SFSpeechRecognizer,
         generation: Int
@@ -247,9 +257,14 @@ private final class RecognitionSession: @unchecked Sendable {
     /// Either ingests a refining partial for the current utterance OR
     /// commits a finalized utterance and transparently spins up the
     /// next recognition task so the same recording session can capture
-    /// more speech after a natural pause. State mutations cross the
-    /// lock so a concurrent `tearDown` can't leak the new task past
-    /// its cleanup pass.
+    /// more speech after a natural pause. The auto-restart path builds
+    /// the new task **outside** the lock — Apple's
+    /// `recognitionTask(with:)` can take 50–200 ms on cold paths and
+    /// the audio render thread takes the same lock to snapshot
+    /// `recognitionRequest`, so building under the lock would stall
+    /// audio capture. A torndown / generation recheck on re-acquire
+    /// guarantees a racing `tearDown` (or a further auto-restart)
+    /// can't leak the new task past cleanup.
     private func handlePartial(text: String, isFinal: Bool, generation: Int) {
         lock.lock()
         // Stale-callback guard: a superseded task can still deliver one
@@ -260,34 +275,58 @@ private final class RecognitionSession: @unchecked Sendable {
         }
 
         let rendered: String
-        let outgoingRequest: SFSpeechAudioBufferRecognitionRequest?
         if isFinal {
             accumulator.commitCurrentUtterance(text)
             rendered = accumulator.renderedTranscript
-            outgoingRequest = recognitionRequest
-            // Auto-restart: install a fresh request+task against the
-            // same recognizer so the user can keep speaking after this
-            // pause. Done inside the lock so a racing tearDown can't
-            // leak the new task past its cleanup pass.
-            if let recognizer {
-                taskGeneration += 1
-                let nextGeneration = taskGeneration
-                let (request, task) = makeRecognitionTask(on: recognizer, generation: nextGeneration)
-                recognitionRequest = request
-                recognitionTask = task
+            let outgoingRequest = recognitionRequest
+            let currentRecognizer = recognizer
+            taskGeneration += 1
+            let nextGeneration = taskGeneration
+            lock.unlock()
+
+            // No recognizer means `tearDown` already nilled it — fall
+            // through to the yield/watchdog so the user sees the
+            // committed text, but don't try to install a new task.
+            guard let currentRecognizer else {
+                outgoingRequest?.endAudio()
+                continuation.yield(.partial(rendered))
+                startWatchdog()
+                return
             }
+
+            // Slow Apple call OUTSIDE the lock so the audio tap can
+            // keep snapshotting `recognitionRequest`. The new task's
+            // callbacks won't fire until we install its request below
+            // — until then the tap is still routing buffers to the
+            // old request, which has been `endAudio`'d by the time we
+            // get here on the normal path (or will be momentarily).
+            let (request, task) = makeRecognitionTask(on: currentRecognizer, generation: nextGeneration)
+
+            // Re-acquire to install. If `tearDown` ran (or a later
+            // auto-restart bumped `taskGeneration` past us) during the
+            // slow build, cancel the new task so it doesn't leak past
+            // cleanup and don't yield/restart the watchdog — the
+            // session is over.
+            lock.lock()
+            if torndown || nextGeneration != taskGeneration {
+                lock.unlock()
+                task.cancel()
+                outgoingRequest?.endAudio()
+                return
+            }
+            recognitionRequest = request
+            recognitionTask = task
+            lock.unlock()
+
+            // End audio on the outgoing request AFTER the swap so a
+            // tap buffer that races us routes to the new task; this
+            // call is idempotent and thread-safe per Apple's docs.
+            outgoingRequest?.endAudio()
         } else {
             accumulator.ingestPartial(text)
             rendered = accumulator.renderedTranscript
-            outgoingRequest = nil
+            lock.unlock()
         }
-        lock.unlock()
-
-        // End audio on the outgoing request AFTER releasing the lock —
-        // Apple's call is fine without lock coverage, and the new
-        // request is already installed so any pending tap append will
-        // route to the new task.
-        outgoingRequest?.endAudio()
 
         continuation.yield(.partial(rendered))
         startWatchdog()
