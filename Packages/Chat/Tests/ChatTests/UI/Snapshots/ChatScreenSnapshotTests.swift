@@ -79,6 +79,32 @@ struct ChatScreenSnapshotTests {
         verifyNoModelError(theme: .sepia, name: "screen_no_model_error_sepia")
     }
 
+    @Test("no-model error banner over empty state at dynamic type XXL")
+    func noModelErrorEmptyXXL() {
+        // Banner layout on an empty transcript at XXL exercises a
+        // different `MessageList` height path than the populated XXL
+        // variant: with zero rows the banner is the only content, so
+        // its wrap/clip behavior is what's under test here.
+        let function = #function
+        let viewModel = ChatScreenViewModel(
+            conversationId: "c",
+            conversationTitle: "New chat",
+            driver: NoopDriver(),
+            messageRepository: SnapshotMessageRepository(rows: []),
+            toolCallRepository: SnapshotToolCallRepository(),
+            checkpointRepository: SnapshotCheckpointRepository(),
+            availableModels: []
+        )
+        viewModel.composerText = "hi"
+        viewModel.send("hi")
+
+        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: 402, height: 874)
+        recordOrCompare(view: view, name: "screen_no_model_error_empty_xxl", function: function)
+    }
+
     @Test("no-model error banner over populated transcript, light")
     func noModelErrorPopulatedLight() {
         verifyNoModelErrorPopulated(theme: .light, name: "screen_no_model_error_populated_light")
