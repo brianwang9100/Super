@@ -15,6 +15,14 @@ public struct ChatHeader: View {
     }
 
     @Environment(\.superTheme) private var theme
+    /// Title tracks the chat font slider so the header resizes with the
+    /// message list when the user moves the appearance knob.
+    @Environment(\.chatAppearance) private var appearance
+    /// Base body size declared via `@ScaledMetric` so Dynamic Type composes
+    /// with the chat font-scale knob — same pattern as ``UserBubble``.
+    /// Plain `appearance.bodyFont` would drop the Dynamic-Type response
+    /// the prior `.subheadline` styling had.
+    @ScaledMetric(relativeTo: .subheadline) private var titleBase: CGFloat = 17
 
     public var body: some View {
         HStack(alignment: .center, spacing: 0) {
@@ -34,7 +42,7 @@ public struct ChatHeader: View {
 
             Spacer(minLength: 0)
             Text(title)
-                .font(.system(.subheadline).weight(.medium))
+                .font(.system(size: titleBase * appearance.fontScale).weight(.medium))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)

@@ -318,6 +318,12 @@ private struct ChatRow: View {
     let onSelect: () -> Void
 
     @Environment(\.superTheme) private var theme
+    /// Row title intentionally does **not** track the chat font-scale
+    /// slider — it's drawer chrome, not reading content, so the slider
+    /// stays scoped to the message list. `@ScaledMetric` still composes
+    /// Dynamic Type on top of the 17pt base so accessibility text-size
+    /// preferences continue to apply.
+    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
         Button(action: onSelect) {
@@ -328,7 +334,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(.system(.subheadline).weight(isActive ? .medium : .regular))
+                    .font(.system(size: rowTitleBase).weight(isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
