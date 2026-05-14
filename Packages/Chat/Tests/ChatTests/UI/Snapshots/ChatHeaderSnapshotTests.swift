@@ -71,6 +71,20 @@ struct ChatHeaderSnapshotTests {
         recordOrCompare(view: view, name: "header_font_scale_max_dark")
     }
 
+    /// Sepia counterpart to ``fontScaleMax`` — Chat AGENTS.md's snapshot
+    /// matrix is `light/dark/sepia × default/Dynamic Type XXL` and every
+    /// other ChatHeader baseline covers the warm sepia palette. Catches
+    /// regressions where the scaled title interacts with sepia's ink and
+    /// background-blur tint specifically.
+    @Test("font scale max sepia")
+    func fontScaleMaxSepia() {
+        let view = ChatHeader(title: "New chat", onMenuTap: {})
+            .superTheme(.make(.sepia))
+            .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .frame(width: 402)
+        recordOrCompare(view: view, name: "header_font_scale_max_sepia")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         name: String,

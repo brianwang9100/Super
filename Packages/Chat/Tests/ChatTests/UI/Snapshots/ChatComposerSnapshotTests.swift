@@ -198,6 +198,28 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_font_scale_max_dark", function: function)
     }
 
+    /// Sepia counterpart to ``fontScaleMax`` — Chat AGENTS.md's snapshot
+    /// matrix is `light/dark/sepia × default/Dynamic Type XXL` and every
+    /// other composer baseline covers the warm sepia palette. Catches
+    /// regressions where the scaled editor interacts with sepia's
+    /// composer fill, focus border, and accent button specifically.
+    @Test("font scale max sepia")
+    func fontScaleMaxSepia() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "Hello world",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000
+        )
+        .superTheme(.make(.sepia))
+        .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_font_scale_max_sepia", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,
