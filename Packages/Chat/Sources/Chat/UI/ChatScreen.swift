@@ -4,15 +4,15 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Top-level chat surface: header on top, transcript or empty state in the
-/// middle, composer pinned to the bottom. Owned by the App composition
-/// root which constructs the view model with the live `AppDependencies`.
+/// Top-level chat surface: drag handle on top, centered title, transcript or
+/// empty state in the middle, composer pinned to the bottom. Owned by the
+/// shell which constructs the view model with the live `AppDependencies`.
 ///
-/// The hamburger menu button forwards to `onMenuTap` (`SidebarDrawer` is
-/// M8 — until then the host wires it to a no-op or a debug print).
+/// The hamburger menu lives in the shell chrome (`FixedHamburgerButton` in
+/// `App/Shell/`), not in this surface. The drag handle is visually present
+/// in M1 but the snap-to-presentation-state gesture wires up in M3.
 public struct ChatScreen: View {
     @Bindable public var viewModel: ChatScreenViewModel
-    public let onMenuTap: () -> Void
     /// Tapped when the user picks "Manage models…" from the composer's
     /// model dropdown. The host typically opens the Settings sheet
     /// pre-routed to the Models pane.
@@ -43,18 +43,33 @@ public struct ChatScreen: View {
     /// in Swift 6, but making it explicit keeps the isolation
     /// contract visible at the declaration site and is robust to
     /// future callers in non-main-actor contexts.
+    /// Whether the centered chat title renders below the drag handle.
+    /// `true` for the ``ChatPresentationState/expanded`` state (the full
+    /// chat); `false` for the semi-expanded panel, which omits the title
+    /// since the user is treating the panel as a glance-and-reply surface
+    /// hovering over a different applet.
+    public let showsHeader: Bool
+
+    /// Forwarded to the embedded `ChatDragHandle`. Fires on drag-end with
+    /// the gesture's translation and SwiftUI's predicted-end-translation
+    /// (a velocity proxy). Wired by `ChatOverlayContainer` to snap to the
+    /// nearest presentation state on release.
+    public let onDragHandleEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
+
     @MainActor
     public init(
         viewModel: ChatScreenViewModel,
-        onMenuTap: @escaping () -> Void = {},
+        showsHeader: Bool = true,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
+        onDragHandleEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         clock: any Clock = SystemClock(),
         calendar: Calendar = .current
     ) {
         self.viewModel = viewModel
-        self.onMenuTap = onMenuTap
+        self.showsHeader = showsHeader
         self.onManageModels = onManageModels
+        self.onDragHandleEnded = onDragHandleEnded
         self.clock = clock
         self.calendar = calendar
         viewModel.onAddModelRequested = onAddModelRequested
@@ -62,13 +77,16 @@ public struct ChatScreen: View {
 
     @Environment(\.superTheme) private var theme
     /// Focus state for the composer's `TextField`. Lifted out of
-    /// `ChatComposer` so taps on the transcript, taps on the hamburger,
-    /// and scroll drags can dismiss the keyboard by clearing this value.
+    /// `ChatComposer` so taps on the transcript and scroll drags can
+    /// dismiss the keyboard by clearing this value.
     @FocusState private var composerIsFocused: Bool
 
     public var body: some View {
         VStack(spacing: 0) {
-            ChatHeader(title: viewModel.headerTitle, onMenuTap: handleMenuTap)
+            ChatDragHandle(onDragEnded: onDragHandleEnded)
+            if showsHeader {
+                ChatHeader(title: viewModel.headerTitle)
+            }
             content
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -131,13 +149,6 @@ public struct ChatScreen: View {
             for: nil
         )
         #endif
-    }
-
-    /// Dismiss the keyboard before opening the sidebar so the drawer
-    /// doesn't slide in over a still-visible keyboard.
-    private func handleMenuTap() {
-        dismissKeyboard()
-        onMenuTap()
     }
 
     /// Composer binding that splices the live partial transcript onto

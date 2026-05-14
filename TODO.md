@@ -88,8 +88,9 @@ Per `docs/PRODUCT_VISION.md` §4 + §11 and `docs/CHAT_INTERACTIONS.md`. Every a
 
 ## Shell
 
-- [ ] **P1** Three-state overlay system (expanded / semi-expanded / minimized chat panel) per `docs/DESIGN.md` §4. Today the shell only shows the full Chat surface.
-- [ ] **P1** `AppletManager` registry + plugin contract per `docs/DESIGN.md` §6.
+- [x] **P1** Three-state overlay system (expanded / semi-expanded / minimized chat panel) per `docs/DESIGN.md` §4. Shipped 2026-05-13: `ChatOverlayContainer` + drag-handle snap + spring/reduce-motion + tap-backdrop-to-minimize in `App/Shell/` and `Packages/Chat/Sources/Chat/UI/ChatOverlay/`.
+- [x] **P1** `AppletManager` registry + plugin contract per `docs/DESIGN.md` §6. Shipped 2026-05-13 as `MiniApplet` protocol + `AppletRegistry` in `Packages/Core/Sources/Core/Applet/`; four placeholder applets registered in `App/Shell/Placeholders/`.
+- [ ] **P1** Dynamic drag-resize with composer/pill morph: continuous rubber-band tracking during drag (currently snap-on-release only); composer and minimized pill share UI elements so the transition between them animates as a single shape morph. Larger refinement, separate PR.
 - [ ] **P2** macOS Catalyst / native target. iOS only today; `project.yml` has `SUPPORTS_MACCATALYST: NO`.
 - [ ] **P2** iPad split-view layouts (snapshot baselines per form factor required by `AGENTS.md` §Testing).
 

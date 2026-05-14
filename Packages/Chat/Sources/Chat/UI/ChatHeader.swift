@@ -1,17 +1,17 @@
 import SwiftUI
 
-/// Sticky chat header. Hamburger menu on the leading edge, centered title,
-/// trailing 40×40 spacer to keep the title visually centered without
-/// requiring a measured layout.
+/// Sticky chat header. Centered title that tracks the chat font-scale knob;
+/// background renders a translucent material so the message list scrolls
+/// behind it without showing through to the underlying applet backdrop.
 ///
-/// Mirrors `ChatHeader` in `.design-tmp/chat/project/src/chat-view.jsx`.
+/// The hamburger menu lives in the shell chrome (`FixedHamburgerButton` in
+/// `App/Shell/`) as of the 2026-05-13 design — it persists across the three
+/// chat presentation states and is not part of this header.
 public struct ChatHeader: View {
     public let title: String
-    public let onMenuTap: () -> Void
 
-    public init(title: String, onMenuTap: @escaping () -> Void) {
+    public init(title: String) {
         self.title = title
-        self.onMenuTap = onMenuTap
     }
 
     @Environment(\.superTheme) private var theme
@@ -26,20 +26,6 @@ public struct ChatHeader: View {
 
     public var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            Button(action: onMenuTap) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(.body))
-                    .foregroundStyle(theme.ink)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        Circle()
-                            .fill(theme.backgroundRaised)
-                            .overlay(Circle().stroke(theme.borderFaint, lineWidth: 1))
-                    )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open sidebar")
-
             Spacer(minLength: 0)
             Text(title)
                 .font(.system(size: titleBase * appearance.fontScale).weight(.medium))
@@ -50,13 +36,9 @@ public struct ChatHeader: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
             Spacer(minLength: 0)
-
-            // Spacer matching the menu button so the title stays centered.
-            Color.clear
-                .frame(width: 40, height: 40)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .background(
             theme.background.opacity(0.85)
                 .background(.ultraThinMaterial)
