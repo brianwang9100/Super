@@ -426,7 +426,7 @@ struct AppShell: View {
             voice: voice
         )
         let registry = dependencies.llmProviderRegistry
-        // Fire-and-forget: the auto-pick below writes the same id, so concurrent writes converge.
+        // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.
         newModel.onModelSelected = { [weak settings = settingsViewModel] modelId in
             Task {
                 await activateProvider(matching: modelId, in: registry)
