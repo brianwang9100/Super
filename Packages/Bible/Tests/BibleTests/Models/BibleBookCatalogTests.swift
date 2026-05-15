@@ -81,7 +81,7 @@ struct BibleBookCatalogTests {
     func catalogMatchesBundledText() throws {
         let loader = BundledBibleTextLoader()
         for summary in catalog.books {
-            let book = try loader.loadBook(id: summary.id)
+            let book = try loader.loadBook(id: summary.id, translation: .web)
             #expect(book.name == summary.name, "name mismatch for \(summary.id)")
             #expect(book.testament == summary.testament, "testament mismatch for \(summary.id)")
             #expect(

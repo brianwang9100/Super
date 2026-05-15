@@ -51,12 +51,13 @@ struct BibleNavBarSnapshotTests {
             BibleNavBar(
                 bookName: "1 Peter",
                 chapterNumber: 2,
-                translationId: "WEB",
+                translation: .web,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
                 onPrevious: {},
                 onNext: {},
                 onPill: {},
+                onTranslation: {},
                 onPlus: {}
             )
         }
