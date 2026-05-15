@@ -142,6 +142,20 @@ jobs:
             -derivedDataPath build/derived-bible \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Run Todo snapshot + unit tests on iOS Simulator
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Super.xcodeproj \
+            -scheme Todo \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -enableCodeCoverage YES \
+            -skipPackagePluginValidation \
+            -derivedDataPath build/derived-todo \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Upload xcresult bundle on failure
         # Snapshot diffs (reference.png / failure.png / difference.png)
         # land as test attachments inside the .xcresult. Uploading the
@@ -154,6 +168,7 @@ jobs:
           path: |
             build/derived/Logs/Test/*.xcresult
             build/derived-bible/Logs/Test/*.xcresult
+            build/derived-todo/Logs/Test/*.xcresult
           retention-days: 7
           if-no-files-found: warn
 

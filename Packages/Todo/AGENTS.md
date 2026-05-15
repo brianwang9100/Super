@@ -22,4 +22,4 @@ The Todo applet: local task list with priorities, labels, and (eventually) a lon
 
 ## Tests
 
-`swift test` from `Packages/Todo/` must be green before any PR opens. Snapshot fixtures live in `Tests/TodoTests/UI/__Snapshots__/`.
+`swift test` from `Packages/Todo/` runs the non-UI suites and must be green before any PR opens. SwiftUI snapshot suites are gated behind `#if canImport(UIKit)` and run via `xcodebuild test -scheme Todo` against the CI-pinned simulator (Xcode 26.4.1 + iOS 26.4 + iPhone 17); their fixtures live in `Tests/TodoTests/UI/Snapshots/__Snapshots__/`.
