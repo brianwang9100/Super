@@ -20,6 +20,17 @@ struct BibleBookSheet: View {
     let onSelectChapter: (_ bookId: String, _ chapterNumber: Int) -> Void
     let onClose: () -> Void
 
+    // Font sizes and the chapter cell height are carried as scaled metrics
+    // so the picker tracks Dynamic Type — the design's fixed point sizes,
+    // scaled relative to the nearest system text style.
+    @ScaledMetric(relativeTo: .title3) private var bookNameSize: CGFloat = 18
+    @ScaledMetric(relativeTo: .headline) private var headerSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .subheadline) private var mediumSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .footnote) private var controlSize: CGFloat = 13
+    @ScaledMetric(relativeTo: .caption) private var countSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
+
     var body: some View {
         VStack(spacing: 0) {
             grabber
@@ -47,12 +58,12 @@ struct BibleBookSheet: View {
     private var header: some View {
         ZStack {
             Text("Books")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: headerSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
             HStack {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: controlSize, weight: .semibold))
                         .foregroundStyle(theme.inkSoft)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(theme.backgroundSunken))
@@ -69,18 +80,18 @@ struct BibleBookSheet: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: controlSize, weight: .medium))
                 .foregroundStyle(theme.inkFaint)
 
             TextField("Search books", text: $viewModel.query)
-                .font(.system(size: 14))
+                .font(.system(size: mediumSize))
                 .foregroundStyle(theme.ink)
                 .autocorrectionDisabled()
 
             if !viewModel.query.isEmpty {
                 Button { viewModel.clearQuery() } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.system(size: mediumSize))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .buttonStyle(.plain)
@@ -118,7 +129,7 @@ struct BibleBookSheet: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(.system(size: sectionLabelSize, weight: .medium, design: .monospaced))
             .tracking(0.7)
             .foregroundStyle(theme.inkFaint)
             .padding(.horizontal, 22)
@@ -128,7 +139,7 @@ struct BibleBookSheet: View {
 
     private var emptyState: some View {
         Text("No books match \u{201C}\(viewModel.query)\u{201D}.")
-            .font(.system(size: 13))
+            .font(.system(size: controlSize))
             .foregroundStyle(theme.inkFaint)
             .padding(.horizontal, 22)
             .padding(.vertical, 20)
@@ -145,11 +156,11 @@ struct BibleBookSheet: View {
             } label: {
                 HStack {
                     Text(book.name)
-                        .font(.system(size: 18, weight: isCurrent ? .medium : .regular))
+                        .font(.system(size: bookNameSize, weight: isCurrent ? .medium : .regular))
                         .foregroundStyle(theme.ink)
                     Spacer()
                     Text("\(book.chapterCount)")
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(.system(size: countSize, design: .monospaced))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .padding(.horizontal, 22)
@@ -173,10 +184,12 @@ struct BibleBookSheet: View {
                     onSelectChapter(book.id, number)
                 } label: {
                     Text("\(number)")
-                        .font(.system(size: 14, weight: isCurrent ? .semibold : .medium))
+                        .font(.system(size: mediumSize, weight: isCurrent ? .semibold : .medium))
                         .foregroundStyle(isCurrent ? theme.backgroundRaised : theme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 40)
+                        .frame(height: chapterCellHeight)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(isCurrent ? theme.ink : theme.backgroundRaised)
@@ -212,7 +225,7 @@ struct BibleBookSheet: View {
             viewModel.order = order
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: isActive ? .medium : .regular))
+                .font(.system(size: controlSize, weight: isActive ? .medium : .regular))
                 .foregroundStyle(isActive ? theme.ink : theme.inkSoft)
                 .padding(.horizontal, 22)
                 .padding(.vertical, 8)
