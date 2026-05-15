@@ -126,9 +126,14 @@ public final class TodoScreenViewModel {
         applyFilter(filter, to: tasks, now: clock.now(), calendar: calendar)
     }
 
-    /// The visible tasks split into the design's grouped sections.
+    /// The visible tasks split into the design's grouped sections. Captures
+    /// `now` once so the filter pass and the grouping pass agree on "today"
+    /// — a task due at the instant of render can't land in two passes with
+    /// different timestamps.
     public var groups: [TodoListGroup] {
-        groupTasks(visible, filter: filter, now: clock.now(), calendar: calendar)
+        let now = clock.now()
+        let filtered = applyFilter(filter, to: tasks, now: now, calendar: calendar)
+        return groupTasks(filtered, filter: filter, now: now, calendar: calendar)
     }
 
     /// Label id → record, for resolving filter / chip lookups.
