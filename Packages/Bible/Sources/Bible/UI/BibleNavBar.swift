@@ -60,8 +60,9 @@ struct BibleNavBar: View {
         )
     }
 
-    /// The book / translation pill — two segments split by a hairline. The
-    /// book segment opens the book picker; the translation segment is
+    /// The book / translation pill — two segments split by a hairline,
+    /// matching the 36pt height of the circular nav buttons. The book
+    /// segment opens the book picker; the translation segment is
     /// display-only until that picker lands.
     private var pill: some View {
         HStack(spacing: 0) {
@@ -69,8 +70,15 @@ struct BibleNavBar: View {
                 Text("\(bookName) \(chapterNumber)")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
+                    // A fixed width so the arrows flanking the pill never
+                    // shift as the reader steps between chapters or books;
+                    // the few longest names scale down slightly to fit.
+                    .frame(width: 108)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -83,15 +91,17 @@ struct BibleNavBar: View {
 
             HStack(spacing: 4) {
                 Text(translationId)
+                    .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
             }
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(theme.inkSoft)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 9)
+            .frame(maxHeight: .infinity)
             .accessibilityLabel("Translation \(translationId)")
         }
+        .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
     }

@@ -127,14 +127,15 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.chapter == nil)
     }
 
-    @Test("presenting the book sheet opens it focused on the current book")
-    func presentingBookSheetExpandsCurrentBook() async {
+    @Test("presenting the book sheet opens it with every book collapsed")
+    func presentingBookSheetStartsCollapsed() async {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2
         #expect(viewModel.bookSheet == nil)
 
         viewModel.presentBookSheet()
-        #expect(viewModel.bookSheet?.expandedBookId == "1PE")
+        #expect(viewModel.bookSheet != nil)
+        #expect(viewModel.bookSheet?.expandedBookId == nil)
     }
 
     @Test("dismissing the book sheet clears it")

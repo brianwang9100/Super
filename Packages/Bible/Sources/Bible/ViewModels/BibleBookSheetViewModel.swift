@@ -38,9 +38,8 @@ public final class BibleBookSheetViewModel {
     private let catalog: BibleBookCatalog
 
     /// - Parameters:
-    ///   - expandedBookId: the book to open with its chapter grid showing —
-    ///     the applet passes the reader's current book so the sheet opens
-    ///     focused on where the reader already is.
+    ///   - expandedBookId: the book to open with its chapter grid showing,
+    ///     or `nil` to open with every book collapsed.
     public init(expandedBookId: String?, catalog: BibleBookCatalog = .standard) {
         self.expandedBookId = expandedBookId
         self.catalog = catalog
