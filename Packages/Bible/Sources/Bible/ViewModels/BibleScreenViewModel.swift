@@ -87,8 +87,9 @@ public final class BibleScreenViewModel {
         persist()
     }
 
-    /// Awaits the most recent background reading-position write. Test-only
-    /// seam — production code never needs to observe the persistence task.
+    /// Awaits the pending background reading-position writes. Test-only seam
+    /// — each write chains on the prior, so awaiting the latest drains them
+    /// all. Production code never needs to observe the persistence task.
     public func _waitForPendingPersist() async {
         await persistTask?.value
     }
@@ -98,6 +99,9 @@ public final class BibleScreenViewModel {
             bookName = book.name
             chapter = book.chapter(position.chapterNumber)
         } else {
+            // Keep the nav bar's book name correct even when the text fails
+            // to load, so the reader can still step to an adjacent chapter.
+            bookName = catalog.book(id: position.bookId)?.name ?? bookName
             chapter = nil
         }
     }
@@ -115,7 +119,11 @@ public final class BibleScreenViewModel {
             translationId: translationId,
             updatedAt: clock.now()
         )
+        // Chain each write on the prior so rapid steps persist in order and
+        // awaiting the latest task drains every pending write.
+        let previous = persistTask
         persistTask = Task { [positionRepository] in
+            await previous?.value
             try? await positionRepository?.save(record)
         }
     }

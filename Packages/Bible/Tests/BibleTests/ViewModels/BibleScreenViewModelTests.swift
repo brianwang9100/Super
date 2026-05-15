@@ -65,6 +65,21 @@ struct BibleScreenViewModelTests {
         #expect(saved?.updatedAt == now)
     }
 
+    @Test("rapid steps persist the final position once drained")
+    func rapidStepsPersistFinalPosition() async throws {
+        let repository = GRDBBibleReadingPositionRepository(
+            database: try BibleDatabase.makeInMemory()
+        )
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load()                          // 1 Peter 2
+        viewModel.stepChapter(.next)                     // 1 Peter 3
+        viewModel.stepChapter(.next)                     // 1 Peter 4
+        await viewModel._waitForPendingPersist()
+        let saved = try await repository.load()
+        #expect(saved?.bookId == "1PE")
+        #expect(saved?.chapterNumber == 4)
+    }
+
     @Test("stepping forward past the last chapter crosses into the next book")
     func stepForwardCrossesBook() async {
         let viewModel = makeViewModel()

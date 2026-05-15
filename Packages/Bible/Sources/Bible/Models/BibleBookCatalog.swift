@@ -25,6 +25,10 @@ public struct BibleBookCatalog: Sendable {
     /// lands on chapter 1 of the next — but Genesis 1 has no previous and
     /// Revelation's final chapter has no next, so callers can disable the
     /// nav controls at those edges.
+    ///
+    /// `position.chapterNumber` is expected to be within the book's
+    /// `1...chapterCount`; callers only ever step from positions the
+    /// catalog itself produced. An unknown `bookId` yields `nil`.
     public func step(
         from position: BiblePosition,
         direction: BibleChapterDirection

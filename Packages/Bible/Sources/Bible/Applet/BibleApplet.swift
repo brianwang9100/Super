@@ -27,6 +27,12 @@ public struct BibleApplet: MiniApplet {
 
     /// Production entry point — bundled text plus an on-disk reading-position
     /// store under Application Support.
+    ///
+    /// The database opens synchronously here: it is a single empty table
+    /// behind one tiny migration, and the applet is built in `ContentView`'s
+    /// initializer where no `async` context exists. Should the Bible schema
+    /// ever grow heavy, move this open to `AppBootstrap` alongside
+    /// `ChatDatabase` rather than blocking the launch path.
     @MainActor
     public init() {
         self.viewModel = BibleApplet.makeViewModel()
