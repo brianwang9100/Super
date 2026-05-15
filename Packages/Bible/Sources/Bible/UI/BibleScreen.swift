@@ -11,6 +11,10 @@ public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     private let viewModel: BibleScreenViewModel
 
+    /// Drives the book picker's slide-up / slide-down — a smooth decel
+    /// curve close to the design's `cubic-bezier(0.32, 0.72, 0, 1)`.
+    private let sheetAnimation: Animation = .snappy(duration: 0.34)
+
     public init(viewModel: BibleScreenViewModel) {
         self.viewModel = viewModel
     }
@@ -20,6 +24,9 @@ public struct BibleScreen: View {
             theme.background.ignoresSafeArea()
             content
             navBar
+            if let bookSheet = viewModel.bookSheet {
+                bookPicker(bookSheet)
+            }
         }
         .task { await viewModel.load() }
     }
@@ -31,11 +38,40 @@ public struct BibleScreen: View {
             translationId: viewModel.translationId,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
-            onHamburger: {},
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
+            onPill: { withAnimation(sheetAnimation) { viewModel.presentBookSheet() } },
             onPlus: {}
         )
+    }
+
+    /// A dimmed backdrop plus the book picker, inset from the top so a sliver
+    /// of the reader stays visible behind it. The backdrop fades and the
+    /// sheet slides up from the bottom edge.
+    @ViewBuilder
+    private func bookPicker(_ sheetViewModel: BibleBookSheetViewModel) -> some View {
+        Color.black.opacity(0.32)
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(sheetAnimation) { viewModel.dismissBookSheet() } }
+            .transition(.opacity)
+
+        BibleBookSheet(
+            viewModel: sheetViewModel,
+            currentBookId: viewModel.position.bookId,
+            currentChapterNumber: viewModel.position.chapterNumber,
+            // Lift the order toggle above the shell's minimized chat pill,
+            // mirroring the reader's 76pt bottom reserve.
+            bottomInset: 76,
+            onSelectChapter: { bookId, chapterNumber in
+                withAnimation(sheetAnimation) {
+                    viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
+                }
+            },
+            onClose: { withAnimation(sheetAnimation) { viewModel.dismissBookSheet() } }
+        )
+        .padding(.top, 80)
+        .transition(.move(edge: .bottom))
     }
 
     @ViewBuilder
@@ -74,12 +110,15 @@ public struct BibleScreen: View {
             .padding(.horizontal, 26)
             // Top inset clears the floating nav bar; the bar's gradient
             // fades over the first lines as they scroll up beneath it.
-            .padding(.top, 84)
+            .padding(.top, 68)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // A fresh identity per chapter resets the scroll offset to the top
         // when the reader steps.
         .id(viewModel.position)
+        // Swap chapters instantly even when the jump happens inside the
+        // book picker's slide-down animation transaction.
+        .transition(.identity)
     }
 
     private var unavailable: some View {

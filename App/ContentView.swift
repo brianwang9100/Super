@@ -205,9 +205,13 @@ struct AppShell: View {
             // hidden behind the opaque expanded chat (no opacity tweak
             // needed because the chat covers it).
             if let activeApplet = registry.activeApplet {
+                // The rootView keeps the safe area so each applet can place
+                // its own top chrome below the status bar / Dynamic Island
+                // and clear the shell's floating hamburger. Applets fill
+                // the screen edge-to-edge themselves, extending only their
+                // background under the safe area.
                 activeApplet.rootView()
                     .superTheme(theme)
-                    .ignoresSafeArea()
                     .opacity(backdropOpacity)
                     // Backdrop interactivity follows the live progress
                     // rather than a discrete state switch — by the time
