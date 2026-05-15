@@ -77,19 +77,25 @@ public final class TodoScreenViewModel {
     private let joinRepository: any TaskLabelRepository
     private let clock: any Clock
     private let ids: any IDGenerator
+    /// Calendar used for "due today" grouping. Injected (rather than read
+    /// from `Calendar.current` inside `applyFilter` / `groupTasks`) so the
+    /// list stays deterministic across time zones and under test.
+    private let calendar: Calendar
 
     public init(
         taskRepository: any TaskRepository,
         labelRepository: any LabelRepository,
         joinRepository: any TaskLabelRepository,
         clock: any Clock,
-        ids: any IDGenerator
+        ids: any IDGenerator,
+        calendar: Calendar = .current
     ) {
         self.taskRepository = taskRepository
         self.labelRepository = labelRepository
         self.joinRepository = joinRepository
         self.clock = clock
         self.ids = ids
+        self.calendar = calendar
     }
 
     // MARK: Load
@@ -117,12 +123,12 @@ public final class TodoScreenViewModel {
 
     /// Tasks after the active filter, before grouping.
     public var visible: [TaskWithLabels] {
-        applyFilter(filter, to: tasks, now: clock.now())
+        applyFilter(filter, to: tasks, now: clock.now(), calendar: calendar)
     }
 
     /// The visible tasks split into the design's grouped sections.
     public var groups: [TodoListGroup] {
-        groupTasks(visible, filter: filter, now: clock.now())
+        groupTasks(visible, filter: filter, now: clock.now(), calendar: calendar)
     }
 
     /// Label id → record, for resolving filter / chip lookups.
@@ -150,7 +156,8 @@ public final class TodoScreenViewModel {
 
     // MARK: Mutators
 
-    /// Toggle a row between `open` and `done` (the inline state-box tap).
+    /// Toggle a row's state from the inline state-box tap: an `open` task
+    /// becomes `done`; a `done` or `cancelled` task becomes `open`.
     public func cycleState(_ row: TaskWithLabels) async {
         let next: TaskState = row.task.state == .open ? .done : .open
         await setState(taskID: row.task.id, to: next)
@@ -292,7 +299,7 @@ public final class TodoScreenViewModel {
             if let index = tasks.firstIndex(where: { $0.task.id == id }) {
                 tasks[index] = merged
             } else {
-                tasks.insert(merged, at: 0)
+                tasks.append(merged)
             }
         } catch {
             // Best-effort; the next full `load()` reconciles.

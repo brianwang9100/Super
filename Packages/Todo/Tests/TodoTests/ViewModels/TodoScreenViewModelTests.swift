@@ -40,6 +40,12 @@ struct TodoScreenViewModelTests {
         )
     }
 
+    private func calendar(zone: String) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: zone)!
+        return calendar
+    }
+
     @Test func loadHydratesTasksAndLabels() async throws {
         let (viewModel, taskRepo, labelRepo, joinRepo) = try makeViewModel()
         try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
@@ -136,5 +142,85 @@ struct TodoScreenViewModelTests {
         let id = await viewModel.ensureLabel(name: "Travel")
         #expect(id != nil)
         #expect(viewModel.labels.map(\.name).contains("Travel"))
+    }
+
+    @Test func visibleAppliesTheActiveFilter() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("open", state: .open))
+        try await taskRepo.save(task("done", state: .done))
+        await viewModel.load()
+        viewModel.filter = TodoFilter(state: .done)
+        #expect(viewModel.visible.map(\.id) == ["done"])
+    }
+
+    @Test func countsTallyByState() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("a", state: .open))
+        try await taskRepo.save(task("b", state: .done))
+        try await taskRepo.save(task("c", state: .cancelled))
+        await viewModel.load()
+        let counts = viewModel.counts
+        #expect(counts.open == 1)
+        #expect(counts.done == 1)
+        #expect(counts.cancelled == 1)
+    }
+
+    @Test func filterSummaryDescribesActiveFilter() async throws {
+        let (viewModel, _, _, _) = try makeViewModel()
+        viewModel.filter = TodoFilter(sort: .newest, state: .all)
+        #expect(viewModel.filterSummary == "All · by newest")
+    }
+
+    /// The view model must pass its injected `calendar` through to
+    /// `groupTasks` — otherwise "due today" silently follows the device
+    /// time zone. Tokyo (UTC+9) and UTC disagree on the day of `due`, so
+    /// the same task lands in different groups under each calendar.
+    @Test func groupsUseTheInjectedCalendarNotTheDeviceZone() async throws {
+        let utc = calendar(zone: "UTC")
+        let fixedNow = utc.date(from: DateComponents(year: 2023, month: 11, day: 14, hour: 20))!
+        let due = utc.date(from: DateComponents(year: 2023, month: 11, day: 15, hour: 2))!
+
+        func firstGroupTitle(using calendar: Calendar) async throws -> String? {
+            let db = try TodoDatabase.makeInMemory()
+            let taskRepo = GRDBTaskRepository(database: db)
+            let viewModel = TodoScreenViewModel(
+                taskRepository: taskRepo,
+                labelRepository: GRDBLabelRepository(database: db),
+                joinRepository: GRDBTaskLabelRepository(database: db),
+                clock: FixedClock(fixedNow),
+                ids: DeterministicIDGenerator(prefix: "id-"),
+                calendar: calendar
+            )
+            try await taskRepo.save(TaskRecord(
+                id: "T1", title: "x",
+                sortOrder: 0, createdAt: fixedNow, updatedAt: fixedNow,
+                dueAt: due
+            ))
+            await viewModel.load()
+            viewModel.filter = TodoFilter(sort: .dueDate, state: .open)
+            return viewModel.groups.first?.title
+        }
+
+        #expect(try await firstGroupTitle(using: calendar(zone: "Asia/Tokyo")) == "Today")
+        #expect(try await firstGroupTitle(using: utc) == "Upcoming")
+    }
+
+    @Test func saveDraftAsEditPreservesSortOrderAndCreatedAt() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        let createdAt = now.addingTimeInterval(-86_400)
+        try await taskRepo.save(TaskRecord(
+            id: "T1", title: "old",
+            sortOrder: 7, createdAt: createdAt, updatedAt: createdAt
+        ))
+        await viewModel.load()
+        viewModel.beginEdit(viewModel.tasks[0])
+        viewModel.draft?.title = "new"
+        await viewModel.saveDraft()
+
+        let saved = try await taskRepo.fetch(id: "T1")
+        #expect(saved?.title == "new")
+        #expect(saved?.sortOrder == 7)
+        #expect(saved?.createdAt == createdAt)
+        #expect(saved?.updatedAt == now)
     }
 }
