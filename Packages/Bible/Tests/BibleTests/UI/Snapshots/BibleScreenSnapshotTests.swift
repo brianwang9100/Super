@@ -5,61 +5,90 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleScreen` — the M1 chapter reader.
+/// Snapshots of `BibleScreen` — the M2 chapter reader with its floating nav
+/// bar and prev / next footer.
 ///
-/// The populated state renders the real bundled 1 Peter 2 (prose + poetry
-/// paragraphs both fall within the captured frame) across the three themes
-/// at default and XXL Dynamic Type, per root `AGENTS.md` §Testing. The empty
-/// state covers the "chapter unavailable" fallback in light and dark.
+/// The populated state renders the real bundled 1 Peter 2 across the three
+/// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
+/// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
+/// arrow and a footer card drop out. The unavailable state covers the
+/// "chapter unavailable" fallback.
 @Suite("BibleScreen snapshots")
 @MainActor
 struct BibleScreenSnapshotTests {
     @Test("1 Peter 2 renders in the light theme")
-    func populatedLight() throws {
-        try verify(peter2(), theme: .light, name: "populated_light")
+    func populatedLight() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .light, name: "populated_light")
     }
 
     @Test("1 Peter 2 renders in the dark theme")
-    func populatedDark() throws {
-        try verify(peter2(), theme: .dark, name: "populated_dark")
+    func populatedDark() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .dark, name: "populated_dark")
     }
 
     @Test("1 Peter 2 renders in the sepia theme")
-    func populatedSepia() throws {
-        try verify(peter2(), theme: .sepia, name: "populated_sepia")
+    func populatedSepia() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .sepia, name: "populated_sepia")
     }
 
     @Test("1 Peter 2 renders in the light theme at Dynamic Type XXL")
-    func populatedLightXXL() throws {
-        try verify(peter2(), theme: .light, dynamicType: .xxLarge, name: "populated_light_xxl")
+    func populatedLightXXL() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .light, dynamicType: .xxLarge, name: "populated_light_xxl")
     }
 
     @Test("1 Peter 2 renders in the dark theme at Dynamic Type XXL")
-    func populatedDarkXXL() throws {
-        try verify(peter2(), theme: .dark, dynamicType: .xxLarge, name: "populated_dark_xxl")
+    func populatedDarkXXL() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .dark, dynamicType: .xxLarge, name: "populated_dark_xxl")
     }
 
     @Test("1 Peter 2 renders in the sepia theme at Dynamic Type XXL")
-    func populatedSepiaXXL() throws {
-        try verify(peter2(), theme: .sepia, dynamicType: .xxLarge, name: "populated_sepia_xxl")
+    func populatedSepiaXXL() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .sepia, dynamicType: .xxLarge, name: "populated_sepia_xxl")
+    }
+
+    @Test("Genesis 1 disables the previous arrow and drops the previous footer card")
+    func genesisStart() async throws {
+        verify(await screen(at: BiblePosition(bookId: "GEN", chapterNumber: 1)),
+               theme: .light, name: "genesis_start_light")
+    }
+
+    @Test("Revelation 22 disables the next arrow and drops the next footer card")
+    func revelationEnd() async throws {
+        verify(await screen(at: BiblePosition(bookId: "REV", chapterNumber: 22)),
+               theme: .light, name: "revelation_end_light")
     }
 
     @Test("the unavailable state renders in the light theme")
-    func emptyLight() {
-        verify(BibleScreen(bookName: "Bible", chapter: nil), theme: .light, name: "empty_light")
+    func unavailableLight() async {
+        verify(await unavailableScreen(), theme: .light, name: "unavailable_light")
     }
 
     @Test("the unavailable state renders in the dark theme")
-    func emptyDark() {
-        verify(BibleScreen(bookName: "Bible", chapter: nil), theme: .dark, name: "empty_dark")
+    func unavailableDark() async {
+        verify(await unavailableScreen(), theme: .dark, name: "unavailable_dark")
     }
 
-    /// Builds a `BibleScreen` over the real bundled 1 Peter 2.
-    private func peter2() throws -> BibleScreen {
-        let chapter = try #require(
-            try BundledBibleTextLoader().loadBook(id: "1PE").chapter(2)
+    /// A `BibleScreen` over the real bundled text, loaded to `position`.
+    private func screen(at position: BiblePosition) async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: position
         )
-        return BibleScreen(bookName: "1 Peter", chapter: chapter)
+        await viewModel.load()
+        return BibleScreen(viewModel: viewModel)
+    }
+
+    /// A `BibleScreen` whose text loader always fails.
+    private func unavailableScreen() async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(textLoader: ThrowingBibleTextLoader())
+        await viewModel.load()
+        return BibleScreen(viewModel: viewModel)
     }
 
     private func verify(

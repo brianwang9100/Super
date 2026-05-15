@@ -1,13 +1,14 @@
 import Core
+import Foundation
 import SwiftUI
 
 /// The Bible mini-applet entry point. Registered with the shell's
 /// `AppletRegistry` at composition root; the shell renders `rootView()`
 /// behind the chat overlay.
 ///
-/// M1 loads the bundled World English Bible text and renders 1 Peter 2.
-/// The navigation bar, sheets, selection, and persistence land across the
-/// remaining milestones.
+/// M2 adds chapter navigation and reading-position persistence: the applet
+/// owns one `BibleScreenViewModel` for the lifetime of the registry entry,
+/// so the reader's place survives re-renders of the backdrop.
 public struct BibleApplet: MiniApplet {
     /// Stable, lowercase identifier — used for routing, settings keys, and
     /// deep-link URIs (`super://bible/<recordID>`).
@@ -19,15 +20,29 @@ public struct BibleApplet: MiniApplet {
     public static let accentColor: Color = Color(red: 0.52, green: 0.32, blue: 0.55)
     public var accentColor: Color { Self.accentColor }
 
-    /// The book of 1 Peter, decoded once at composition time. `rootView()`
-    /// renders chapter 2 — the demo chapter — until chapter navigation
-    /// lands in M2; loading here keeps it off the per-frame render path.
-    private let book: BibleBook?
+    /// The single view model backing the reading surface. Held here (not
+    /// rebuilt per `rootView()` call) so navigation state persists while the
+    /// applet is the active backdrop.
+    private let viewModel: BibleScreenViewModel
 
-    /// - Parameter textLoader: source of bundled Bible text. Defaults to the
-    ///   bundled-resource loader; tests inject a double.
-    public init(textLoader: any BibleTextLoader = BundledBibleTextLoader()) {
-        self.book = try? textLoader.loadBook(id: "1PE")
+    /// Production entry point — bundled text plus an on-disk reading-position
+    /// store under Application Support.
+    ///
+    /// The database opens synchronously here: it is a single empty table
+    /// behind one tiny migration, and the applet is built in `ContentView`'s
+    /// initializer where no `async` context exists. Should the Bible schema
+    /// ever grow heavy, move this open to `AppBootstrap` alongside
+    /// `ChatDatabase` rather than blocking the launch path.
+    @MainActor
+    public init() {
+        self.viewModel = BibleApplet.makeViewModel()
+    }
+
+    /// Test seam: inject a view model wired to in-memory doubles so a test
+    /// never touches the real on-disk database.
+    @MainActor
+    init(viewModel: BibleScreenViewModel) {
+        self.viewModel = viewModel
     }
 
     @MainActor
@@ -37,6 +52,39 @@ public struct BibleApplet: MiniApplet {
 
     @MainActor
     public func rootView() -> AnyView {
-        AnyView(BibleScreen(bookName: book?.name ?? displayName, chapter: book?.chapter(2)))
+        AnyView(BibleScreen(viewModel: viewModel))
+    }
+
+    @MainActor
+    private static func makeViewModel() -> BibleScreenViewModel {
+        BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            positionRepository: makeRepository()
+        )
+    }
+
+    /// Opens the reading-position database, or returns `nil` if it can't be
+    /// created — the reader then runs without relaunch restore rather than
+    /// failing outright.
+    private static func makeRepository() -> (any BibleReadingPositionRepository)? {
+        guard let directory = try? dataDirectory(),
+              let database = try? BibleDatabase.open(in: directory) else {
+            return nil
+        }
+        return GRDBBibleReadingPositionRepository(database: database)
+    }
+
+    /// `Application Support/Super/`, created if missing — the same directory
+    /// the shell uses for `chat.sqlite`.
+    private static func dataDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = base.appending(path: "Super", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 }

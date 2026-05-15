@@ -12,6 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../Core"),
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
     ],
     targets: [
@@ -19,6 +20,7 @@ let package = Package(
             name: "Bible",
             dependencies: [
                 "Core",
+                .product(name: "GRDB", package: "GRDB.swift"),
             ],
             // `.process` (not `.copy`) keeps the bundle codesign-valid on the
             // iOS simulator — see the note in `Chat/Package.swift`. The 66
