@@ -43,13 +43,14 @@ public struct TodoFilter: Sendable, Equatable {
     public var sort: Sort
     public var state: StateScope
     /// Selected label ids — OR semantics: a task matches if it carries any
-    /// one of them.
-    public var labelIds: [String]
+    /// one of them. A `Set` because the selection is order-independent and
+    /// a label cannot be selected twice.
+    public var labelIds: Set<String>
 
     public init(
         sort: Sort = .priority,
         state: StateScope = .open,
-        labelIds: [String] = []
+        labelIds: Set<String> = []
     ) {
         self.sort = sort
         self.state = state
@@ -60,11 +61,14 @@ public struct TodoFilter: Sendable, Equatable {
 }
 
 /// Filter and sort the task list. Pure — used by the view model and
-/// unit-tested in isolation.
+/// unit-tested in isolation. `calendar` is injected (rather than read from
+/// `Calendar.current`) so "due today" stays deterministic across time
+/// zones and under test.
 public func applyFilter(
     _ filter: TodoFilter,
     to tasks: [TaskWithLabels],
-    now: Date
+    now: Date,
+    calendar: Calendar = .current
 ) -> [TaskWithLabels] {
     var out = tasks
     switch filter.state {
@@ -74,9 +78,8 @@ public func applyFilter(
     case .all:       break
     }
     if !filter.labelIds.isEmpty {
-        let wanted = Set(filter.labelIds)
         out = out.filter { row in
-            row.labels.contains { wanted.contains($0.id) }
+            row.labels.contains { filter.labelIds.contains($0.id) }
         }
     }
     switch filter.sort {
@@ -88,7 +91,10 @@ public func applyFilter(
             return lhs.task.createdAt > rhs.task.createdAt
         }
     case .dueDate:
-        out.sort { dueRank($0.task.dueAt, now: now) < dueRank($1.task.dueAt, now: now) }
+        out.sort {
+            dueRank($0.task.dueAt, now: now, calendar: calendar)
+                < dueRank($1.task.dueAt, now: now, calendar: calendar)
+        }
     case .newest:
         out.sort { $0.task.createdAt > $1.task.createdAt }
     case .manual:
@@ -98,11 +104,11 @@ public func applyFilter(
 }
 
 /// 0 = due today or overdue, 1 = due in the future, 2 = no due date.
-/// "Today" is measured against the injected `now`, not the wall clock, so
-/// the logic stays deterministic under test.
-private func dueRank(_ date: Date?, now: Date) -> Int {
+/// "Today" is measured against the injected `now` and `calendar`, not the
+/// wall clock or device time zone, so the logic stays deterministic.
+private func dueRank(_ date: Date?, now: Date, calendar: Calendar) -> Int {
     guard let date else { return 2 }
-    if Calendar.current.isDate(date, inSameDayAs: now) { return 0 }
+    if calendar.isDate(date, inSameDayAs: now) { return 0 }
     return date > now ? 1 : 0
 }
 
@@ -123,11 +129,13 @@ public struct TodoListGroup: Sendable, Equatable, Identifiable {
 /// Group a filtered task array per the design's rules: priority sort with
 /// open state groups by Urgent / High / Normal; due-date sort with open
 /// state groups by Today / Upcoming / No date; every other combination is
-/// a single header-less group.
+/// a single header-less group. `calendar` is injected for the same
+/// determinism reason as `applyFilter`.
 public func groupTasks(
     _ tasks: [TaskWithLabels],
     filter: TodoFilter,
-    now: Date
+    now: Date,
+    calendar: Calendar = .current
 ) -> [TodoListGroup] {
     if filter.sort == .priority && filter.state == .open {
         var byPriority: [TaskPriority: [TaskWithLabels]] = [:]
@@ -142,7 +150,6 @@ public func groupTasks(
         var today: [TaskWithLabels] = []
         var upcoming: [TaskWithLabels] = []
         var noDate: [TaskWithLabels] = []
-        let calendar = Calendar.current
         for row in tasks {
             if let due = row.task.dueAt {
                 if calendar.isDate(due, inSameDayAs: now) || due < now { today.append(row) }
@@ -169,7 +176,8 @@ public func describe(_ filter: TodoFilter, labelLookup: [String: LabelRecord]) -
            let label = labelLookup[id] {
             parts.append(label.name)
         } else {
-            parts.append("\(filter.labelIds.count) tags")
+            let count = filter.labelIds.count
+            parts.append("\(count) tag\(count == 1 ? "" : "s")")
         }
     }
     parts.append("by \(filter.sort.displayName)")

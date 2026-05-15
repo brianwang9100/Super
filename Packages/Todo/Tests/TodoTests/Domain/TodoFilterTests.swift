@@ -8,6 +8,14 @@ import Testing
 struct TodoFilterTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    /// Fixed UTC calendar so "same day" grouping is deterministic
+    /// regardless of the machine's time zone.
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
     private func task(
         _ id: String,
         title: String = "x",
@@ -88,20 +96,19 @@ struct TodoFilterTests {
     }
 
     @Test func groupByPriorityProducesThreeBuckets() {
-        let today = Calendar.current.startOfDay(for: now)
+        let today = calendar.startOfDay(for: now)
         let rows = [
             task("a", priority: .urgent),
             task("b", priority: .high),
             task("c", priority: .normal),
         ]
         let filter = TodoFilter(sort: .priority, state: .open)
-        let filtered = applyFilter(filter, to: rows, now: today)
-        let groups = groupTasks(filtered, filter: filter, now: today)
+        let filtered = applyFilter(filter, to: rows, now: today, calendar: calendar)
+        let groups = groupTasks(filtered, filter: filter, now: today, calendar: calendar)
         #expect(groups.map(\.title) == ["Urgent", "High", "Normal"])
     }
 
     @Test func groupByDueProducesTodayUpcomingNoDate() {
-        let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         let rows = [
@@ -110,13 +117,12 @@ struct TodoFilterTests {
             task("none", due: nil),
         ]
         let filter = TodoFilter(sort: .dueDate, state: .open)
-        let filtered = applyFilter(filter, to: rows, now: today)
-        let groups = groupTasks(filtered, filter: filter, now: today)
+        let filtered = applyFilter(filter, to: rows, now: today, calendar: calendar)
+        let groups = groupTasks(filtered, filter: filter, now: today, calendar: calendar)
         #expect(groups.map(\.title) == ["Today", "Upcoming", "No date"])
     }
 
     @Test func sortByDueDateOrdersTodayThenUpcomingThenNoDate() {
-        let calendar = Calendar.current
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         let rows = [
@@ -124,7 +130,9 @@ struct TodoFilterTests {
             task("soon", due: tomorrow),
             task("today", due: today),
         ]
-        let out = applyFilter(TodoFilter(sort: .dueDate, state: .all), to: rows, now: today)
+        let out = applyFilter(
+            TodoFilter(sort: .dueDate, state: .all), to: rows, now: today, calendar: calendar
+        )
         #expect(out.map(\.id) == ["today", "soon", "none"])
     }
 
@@ -132,6 +140,18 @@ struct TodoFilterTests {
         let filter = TodoFilter(sort: .priority, state: .open, labelIds: ["L1"])
         let lookup = ["L1": label("L1", "Work")]
         #expect(describe(filter, labelLookup: lookup) == "Open · Work · by priority")
+    }
+
+    @Test func describeUsesSingularTagWhenLabelUnresolved() {
+        // A single selected label whose id is absent from the lookup must
+        // read "1 tag", not the ungrammatical "1 tags".
+        let filter = TodoFilter(state: .all, labelIds: ["missing"])
+        #expect(describe(filter, labelLookup: [:]) == "All · 1 tag · by priority")
+    }
+
+    @Test func describePluralizesMultipleTags() {
+        let filter = TodoFilter(state: .all, labelIds: ["a", "b"])
+        #expect(describe(filter, labelLookup: [:]) == "All · 2 tags · by priority")
     }
 
     @Test func huePaletteSkipsUsedColors() {
