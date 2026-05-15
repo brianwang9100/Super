@@ -4,12 +4,12 @@ The Todo applet: local task list with priorities, labels, and (eventually) a lon
 
 ## What lives here
 
-- **Models** (`Models/`): `TaskRecord`, `LabelRecord`, `TaskLabelRecord`, `TaskState`, `TaskPriority`. All persistable records conform to `Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable`.
+- **Models** (`Models/`): `TaskRecord`, `LabelRecord`, `TaskLabelRecord`, `TaskState`, `TaskPriority`. All persistable records conform to `Codable, TableRecord, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable` — `TableRecord` is listed explicitly so the GRDBQuery `@Query` / `ValueObservation` query-interface intent is visible at a glance.
 - **Database** (`Database/`): `TodoDatabase` (wraps `DatabaseQueue` on `todo.sqlite`) and `Migrations`.
 - **Repositories** (`Repositories/`): one protocol per table, GRDB-backed `struct` impls.
 - **Domain** (`Domain/`): pure projections and filter logic — `TaskWithLabels`, `TodoFilter`, `LabelHuePalette`.
 - **ViewModels** (`ViewModels/`): `@Observable @MainActor final class` only.
-- **UI** (`UI/`): SwiftUI views — `TodoScreen` (root), `TodoTaskRow`, `TodoStateBox`, `Sheets/Todo*Sheet`, `Sheets/TodoTagPicker`, `Icons/TodoIcon`. View bucket suffixes follow `docs/NAMING_CONVENTIONS.md` Part 4.
+- **UI** (`UI/`): SwiftUI views. The root surface is `TodoScreen`; the applet glyph is `TodoIcon`. Rows, sheets, and nested regions follow the `docs/NAMING_CONVENTIONS.md` Part 4 bucket suffixes (Screen / Sheet / Row / Region / …) — specific view names are coined against that taxonomy as each view is built (M3–M5).
 
 ## Rules
 
