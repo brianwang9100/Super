@@ -74,6 +74,17 @@ struct BibleScreenSnapshotTests {
         verify(await unavailableScreen(), theme: .dark, name: "unavailable_dark")
     }
 
+    @Test("the book picker renders over the reader in the light theme")
+    func bookSheetOpenLight() async {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        viewModel.presentBookSheet()
+        verify(BibleScreen(viewModel: viewModel), theme: .light, name: "book_sheet_open_light")
+    }
+
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(

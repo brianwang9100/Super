@@ -126,4 +126,64 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         #expect(viewModel.chapter == nil)
     }
+
+    @Test("presenting the book sheet opens it with every book collapsed")
+    func presentingBookSheetStartsCollapsed() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+        #expect(viewModel.bookSheet == nil)
+
+        viewModel.presentBookSheet()
+        #expect(viewModel.bookSheet != nil)
+        #expect(viewModel.bookSheet?.expandedBookId == nil)
+    }
+
+    @Test("dismissing the book sheet clears it")
+    func dismissingBookSheetClearsIt() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentBookSheet()
+        viewModel.dismissBookSheet()
+        #expect(viewModel.bookSheet == nil)
+    }
+
+    @Test("selecting a chapter navigates there and closes the sheet")
+    func selectingChapterNavigatesAndClosesSheet() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentBookSheet()
+
+        viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
+        #expect(viewModel.position == BiblePosition(bookId: "ROM", chapterNumber: 8))
+        #expect(viewModel.bookName == "Romans")
+        #expect(viewModel.chapter?.number == 8)
+        #expect(viewModel.bookSheet == nil)
+    }
+
+    @Test("selecting an unknown book or out-of-range chapter is a no-op")
+    func selectingInvalidChapterIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+
+        viewModel.selectChapter(bookId: "1PE", chapterNumber: 99)
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+
+        viewModel.selectChapter(bookId: "ZZZ", chapterNumber: 1)
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+    }
+
+    @Test("selecting a chapter persists the new position")
+    func selectingChapterPersists() async throws {
+        let repository = GRDBBibleReadingPositionRepository(
+            database: try BibleDatabase.makeInMemory()
+        )
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load()                          // 1 Peter 2
+        viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
+
+        await viewModel._waitForPendingPersist()
+        let saved = try await repository.load()
+        #expect(saved?.bookId == "ROM")
+        #expect(saved?.chapterNumber == 8)
+    }
 }

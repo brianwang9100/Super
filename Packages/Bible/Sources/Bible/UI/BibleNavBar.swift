@@ -4,10 +4,11 @@ import SwiftUI
 /// The reading surface's top bar: menu, chapter stepping, and the
 /// book / translation pill.
 ///
-/// M2 wires the prev / next arrows to chapter navigation. The hamburger and
-/// `+` buttons render per the design but are inert until the shell sidebar
-/// and chat hand-off land; the centre pill is display-only until the book
-/// and translation pickers arrive.
+/// M2 wires the prev / next arrows to chapter navigation; M3 wires the pill's
+/// book segment to the book picker. The `+` button renders per the design but
+/// is inert until chat hand-off lands; the pill's translation segment is
+/// display-only until that picker arrives. The sidebar entry point is the
+/// shell's own floating hamburger, so this bar deliberately has none.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
@@ -16,15 +17,16 @@ struct BibleNavBar: View {
     let translationId: String
     let canStepBackward: Bool
     let canStepForward: Bool
-    let onHamburger: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
+    let onPill: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            circleButton(systemImage: "line.3.horizontal", action: onHamburger)
-                .accessibilityLabel("Menu")
+            // Balances the trailing `+` so the chapter group stays centered;
+            // the shell's floating hamburger sits over this gap.
+            Color.clear.frame(width: 36, height: 36)
 
             HStack(spacing: 6) {
                 circleButton(systemImage: "chevron.left", action: onPrevious)
@@ -44,7 +46,7 @@ struct BibleNavBar: View {
             plusButton
         }
         .padding(.horizontal, 12)
-        .padding(.top, 20)
+        .padding(.top, 4)
         .padding(.bottom, 12)
         .background(
             // Solid at the top, fading out at the bottom edge so verses
@@ -58,15 +60,29 @@ struct BibleNavBar: View {
         )
     }
 
-    /// The display-only book / translation pill — two segments split by a
-    /// hairline. Tapping it opens the pickers in later milestones.
+    /// The book / translation pill — two segments split by a hairline,
+    /// matching the 36pt height of the circular nav buttons. The book
+    /// segment opens the book picker; the translation segment is
+    /// display-only until that picker lands.
     private var pill: some View {
         HStack(spacing: 0) {
-            Text("\(bookName) \(chapterNumber)")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(theme.ink)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            Button(action: onPill) {
+                Text("\(bookName) \(chapterNumber)")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .multilineTextAlignment(.center)
+                    // A fixed width so the arrows flanking the pill never
+                    // shift as the reader steps between chapters or books;
+                    // the few longest names scale down slightly to fit.
+                    .frame(width: 108)
+                    .padding(.horizontal, 12)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(bookName) \(chapterNumber), choose book")
 
             Rectangle()
                 .fill(theme.border)
@@ -75,18 +91,19 @@ struct BibleNavBar: View {
 
             HStack(spacing: 4) {
                 Text(translationId)
+                    .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
             }
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(theme.inkSoft)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 9)
+            .frame(maxHeight: .infinity)
+            .accessibilityLabel("Translation \(translationId)")
         }
+        .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(bookName) \(chapterNumber), \(translationId)")
     }
 
     private var plusButton: some View {
