@@ -1,61 +1,84 @@
+import Core
 import SwiftUI
 
-/// M0 placeholder for the Bible applet backdrop. Renders the applet glyph
-/// inside a soft accent disc plus the display name and a "Coming soon"
-/// caption — the same shape `App/Shell/Placeholders/AppletPlaceholderScreen`
-/// used to render before the real package landed. Real chapter rendering
-/// (paragraphs, verse spans, navigation, selection, sheets) lands in M1+.
+/// The Bible reading surface. Renders one already-loaded chapter as a
+/// scrolling column of heading, prose, and poetry paragraphs.
 ///
-/// Uses system colors (`Color.primary`, `Color(.systemBackground)`) so M0
-/// can ship without depending on `SuperTheme` — that type currently lives in
-/// the Chat package and Bible cannot import Chat. M1 either hoists
-/// `SuperTheme` into `Core` or exposes the per-theme tokens applets need
-/// through a smaller protocol; either way the swap is local to this view.
+/// M1 renders a fixed chapter (1 Peter 2). The navigation bar, chapter
+/// stepping, and reading-position persistence land in later milestones; for
+/// now the chapter is supplied by `BibleApplet` at composition time so this
+/// view stays pure and synchronously snapshot-testable.
 public struct BibleScreen: View {
-    /// Reuses `BibleApplet.accentColor` so the literal lives in one place
-    /// until M1's `SuperTheme` migration replaces it.
-    private static let accent = BibleApplet.accentColor
+    @Environment(\.superTheme) private var theme
+    private let bookName: String
+    private let chapter: BibleChapter?
 
-    public init() {}
+    /// - Parameters:
+    ///   - bookName: display name shown in the chapter title.
+    ///   - chapter: the chapter to render, or `nil` when the book text
+    ///     failed to load — the screen then shows an unavailable state.
+    public init(bookName: String, chapter: BibleChapter?) {
+        self.bookName = bookName
+        self.chapter = chapter
+    }
 
     public var body: some View {
         ZStack {
-            #if canImport(UIKit)
-            Color(.systemBackground)
-                .ignoresSafeArea()
-            #else
-            Color.primary.opacity(0.04)
-                .ignoresSafeArea()
-            #endif
+            theme.background.ignoresSafeArea()
+            if let chapter, !chapter.paragraphs.isEmpty {
+                reader(chapter)
+            } else {
+                unavailable
+            }
+        }
+    }
 
-            VStack(spacing: 18) {
-                Spacer()
-                ZStack {
-                    Circle()
-                        .fill(Self.accent.opacity(0.12))
-                        .frame(width: 96, height: 96)
-                    BibleAppletIcon(size: 44)
-                        .foregroundStyle(Self.accent)
-                }
-                Text("Bible")
-                    .font(.system(size: 36, weight: .regular, design: .serif))
+    private func reader(_ chapter: BibleChapter) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(bookName) \(chapter.number)")
+                    .font(.system(.largeTitle, design: .serif))
                     .italic()
-                    .foregroundStyle(.primary)
-                Text("Coming soon.")
-                    .font(.system(.callout))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                // Reserve bottom inset so the chat overlay's minimized pill
-                // doesn't permanently obscure the caption — matches the
-                // 76pt reserve used by `AppletPlaceholderScreen`.
+                    .foregroundStyle(theme.ink)
+                    .padding(.bottom, 6)
+                ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                    BibleParagraphBlock(paragraph: paragraph)
+                }
+                // Bottom inset so the chat overlay's minimized pill doesn't
+                // obscure the last verses — mirrors the shell's 76pt reserve.
                 Color.clear.frame(height: 76)
             }
-            .padding(.horizontal, 28)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 26)
+            .padding(.top, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var unavailable: some View {
+        VStack(spacing: 10) {
+            BibleAppletIcon(size: 40)
+                .foregroundStyle(theme.inkFaint)
+            Text("Chapter unavailable")
+                .font(.system(.headline, design: .serif))
+                .foregroundStyle(theme.inkSoft)
+        }
+        .padding(28)
     }
 }
 
 #Preview {
-    BibleScreen()
+    BibleScreen(
+        bookName: "1 Peter",
+        chapter: BibleChapter(number: 2, paragraphs: [
+            .heading("A Living Stone and a Holy People"),
+            .prose([
+                BibleVerse(number: 1, text: "Putting away therefore all wickedness, all deceit, hypocrisies, envies, and all evil speaking,"),
+                BibleVerse(number: 2, text: "as newborn babies, long for the pure spiritual milk, that with it you may grow,"),
+            ]),
+            .poetry([
+                BibleVerse(number: 6, text: "“Behold, I lay in Zion a chief cornerstone, chosen and precious.\nHe who believes in him will not be disappointed.”"),
+            ]),
+        ])
+    )
+    .superTheme(.make(.light))
 }

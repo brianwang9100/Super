@@ -33,7 +33,7 @@ struct BibleAppletTests {
         _ = view
     }
 
-    @Test("root view returns the M0 placeholder screen")
+    @Test("root view builds without throwing")
     func rootViewCompiles() {
         let view = BibleApplet().rootView()
         _ = view
