@@ -5,9 +5,14 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 ## What lives here (incremental — builds out per the plan)
 
 - **Applet** (`Applet/`): `BibleApplet` — `MiniApplet` conformance, applet id `"bible"`.
+- **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog` (navigation), and the `BibleReadingPositionRecord` GRDB record.
+- **Database** (`Database/`): `BibleDatabase` — wraps the `bible.sqlite` `DatabaseQueue` and the schema migrator.
+- **Repositories** (`Repositories/`): protocol seam + `GRDB`-prefixed impl, one pair per record.
+- **TextSources** (`TextSources/`): `BibleTextLoader` protocol + `BundledBibleTextLoader` over the bundled WEB JSON.
+- **ViewModels** (`ViewModels/`): `@Observable @MainActor` view models, one per screen.
 - **UI** (`UI/`): SwiftUI views. **Before naming a new view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).** Drop the `View` suffix, one struct per file, bucket suffix per the doc (`*Screen`, `*Sheet`, `*Bar`, `*Block`, `*Toast`, `*Bubble`, `*Footer`).
 
-Future milestones add: `Models/`, `Repositories/`, `Database/`, `TextSources/`, `Formatting/`, `ViewModels/`, `Resources/translations/`.
+Future milestones add: `Formatting/`, `Resources/translations/`.
 
 ## Rules
 
