@@ -31,9 +31,13 @@ public struct ActiveTasksRequest: ValueObservationQueryable {
             .filter(Column("deletedAt") == nil)
             .filter(taskIDs.contains(Column("taskId")))
             .fetchAll(db)
+        // Fetch only the labels actually referenced by the in-view tasks'
+        // join rows, not every active label.
+        let labelIDs = Set(joinRows.map(\.labelId))
         let labelsByID = try Dictionary(
             uniqueKeysWithValues: LabelRecord
                 .filter(Column("deletedAt") == nil)
+                .filter(labelIDs.contains(Column("id")))
                 .fetchAll(db)
                 .map { ($0.id, $0) }
         )

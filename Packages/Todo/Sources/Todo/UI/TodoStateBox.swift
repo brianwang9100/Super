@@ -30,6 +30,7 @@ public struct TodoStateBox: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(state.displayName)
+        .accessibilityHint(state == .open ? "Marks the task done" : "Reopens the task")
     }
 
     @ViewBuilder private var glyph: some View {
