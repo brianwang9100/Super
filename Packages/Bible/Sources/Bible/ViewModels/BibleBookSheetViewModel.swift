@@ -29,6 +29,10 @@ public final class BibleBookSheetViewModel {
     /// Whether the list is grouped by testament or flattened A–Z.
     public var order: BibleBookOrder = .traditional
     /// The book whose chapter grid is open, or `nil` if none is expanded.
+    ///
+    /// Independent of `query` — a filtered-out book stays "expanded" and
+    /// reappears as such once the search clears, so the reader returns to
+    /// the book they were focused on.
     public private(set) var expandedBookId: String?
 
     private let catalog: BibleBookCatalog
@@ -84,6 +88,7 @@ public final class BibleBookSheetViewModel {
         expandedBookId = (expandedBookId == bookId) ? nil : bookId
     }
 
+    /// Reset the search field to empty, restoring the full book list.
     public func clearQuery() {
         query = ""
     }

@@ -101,8 +101,12 @@ public final class BibleScreenViewModel {
     }
 
     /// Jump straight to a book and chapter chosen in the picker, then close
-    /// the sheet. Persists the new position like a step does.
+    /// the sheet. Persists the new position like a step does. An unknown
+    /// book or an out-of-range chapter is a no-op — the picker only offers
+    /// valid pairs, but this guards future callers (deep links, hand-off).
     public func selectChapter(bookId: String, chapterNumber: Int) {
+        guard let book = catalog.book(id: bookId),
+              (1...book.chapterCount).contains(chapterNumber) else { return }
         position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         applyCurrentChapter()
         persist()

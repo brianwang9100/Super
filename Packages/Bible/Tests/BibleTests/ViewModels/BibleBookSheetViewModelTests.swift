@@ -96,6 +96,16 @@ struct BibleBookSheetViewModelTests {
         #expect(viewModel.expandedBookId == nil)
     }
 
+    @Test("the expanded book survives a search that filters it out")
+    func expansionPersistsAcrossSearch() {
+        let viewModel = makeViewModel(expandedBookId: "1PE")
+        viewModel.query = "genesis"                     // 1 Peter no longer in the list
+        #expect(viewModel.expandedBookId == "1PE")
+
+        viewModel.clearQuery()
+        #expect(viewModel.expandedBookId == "1PE")
+    }
+
     @Test("clearing the query empties it")
     func clearQueryEmptiesQuery() {
         let viewModel = makeViewModel()

@@ -159,6 +159,18 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.bookSheet == nil)
     }
 
+    @Test("selecting an unknown book or out-of-range chapter is a no-op")
+    func selectingInvalidChapterIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+
+        viewModel.selectChapter(bookId: "1PE", chapterNumber: 99)
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+
+        viewModel.selectChapter(bookId: "ZZZ", chapterNumber: 1)
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+    }
+
     @Test("selecting a chapter persists the new position")
     func selectingChapterPersists() async throws {
         let repository = GRDBBibleReadingPositionRepository(

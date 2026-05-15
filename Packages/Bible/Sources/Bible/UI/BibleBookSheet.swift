@@ -92,10 +92,13 @@ struct BibleBookSheet: View {
     }
 
     private var bookList: some View {
-        ScrollView {
+        let groups = viewModel.groups
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if viewModel.hasResults {
-                    ForEach(viewModel.groups) { group in
+                if groups.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(groups) { group in
                         if let title = group.title {
                             sectionHeader(title)
                         }
@@ -103,8 +106,6 @@ struct BibleBookSheet: View {
                             bookRow(book)
                         }
                     }
-                } else {
-                    emptyState
                 }
             }
             .padding(.bottom, 14)
