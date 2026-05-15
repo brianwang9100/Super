@@ -244,7 +244,7 @@ struct SettingsViewModelTests {
 
         // Opening .root from anywhere clears the stack so the header
         // header always reads "Settings".
-        vm.openPane(.theme)
+        vm.openPane(.appearance)
         vm.openPane(.root)
         #expect(vm.navigationPath.isEmpty)
     }

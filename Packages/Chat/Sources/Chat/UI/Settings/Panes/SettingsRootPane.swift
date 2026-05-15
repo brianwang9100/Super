@@ -2,8 +2,8 @@ import Core
 import SwiftUI
 
 /// Root pane of the Settings sheet. Mirrors the root layout in
-/// `settings.jsx`: account chip · Models/Theme group · System Prompt /
-/// Verbosity / Appearance / Tools / Compaction group · Data / About group.
+/// `settings.jsx`: account chip · Models/Appearance group · System Prompt /
+/// Verbosity / Tools / Compaction group · Data / About group.
 ///
 /// Row taps push panes via the view model's navigation helper so the
 /// `NavigationStack` in `SettingsSheet` animates the transition and
@@ -28,10 +28,10 @@ struct SettingsRootPane: View {
                 )
                 SettingsRow(
                     icon: AnyView(ThemeIcon()),
-                    label: "Theme",
+                    label: "Appearance",
                     value: themeName,
                     borderBottom: false,
-                    action: { viewModel.openPane(.theme) }
+                    action: { viewModel.openPane(.appearance) }
                 )
             }
 
@@ -46,11 +46,6 @@ struct SettingsRootPane: View {
                     label: "Default Verbosity",
                     value: viewModel.settings.defaultVerbosity.displayName,
                     action: { viewModel.openPane(.verbosity) }
-                )
-                SettingsRow(
-                    icon: AnyView(AppearanceIcon()),
-                    label: "Appearance",
-                    action: { viewModel.openPane(.appearance) }
                 )
                 SettingsRow(
                     icon: AnyView(ToolsIcon()),

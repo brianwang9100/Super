@@ -182,25 +182,6 @@ struct VerbosityIconShape: Shape {
     }
 }
 
-/// Window-pane grid — Appearance pane.
-struct AppearanceIconShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let frame = CGRect(
-            x: rect.minX + 4 / 24 * rect.width,
-            y: rect.minY + 4 / 24 * rect.height,
-            width: 16 / 24 * rect.width,
-            height: 16 / 24 * rect.height
-        )
-        p.addRect(frame)
-        smove(&p, CGPoint(x: 4, y: 10), in: rect)
-        sline(&p, CGPoint(x: 20, y: 10), in: rect)
-        smove(&p, CGPoint(x: 10, y: 4), in: rect)
-        sline(&p, CGPoint(x: 10, y: 20), in: rect)
-        return p
-    }
-}
-
 /// Wrench icon — Tools pane.
 ///
 /// Bespoke: not in `settings.jsx`'s `iconFor` block. The Settings sheet
@@ -375,14 +356,6 @@ struct VerbosityIcon: View {
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
         StrokedGlyph(shape: VerbosityIconShape(), size: size, lineWidth: 1.5)
-    }
-}
-
-struct AppearanceIcon: View {
-    let size: CGFloat
-    init(size: CGFloat = 22) { self.size = size }
-    var body: some View {
-        StrokedGlyph(shape: AppearanceIconShape(), size: size, lineWidth: 1.5)
     }
 }
 
