@@ -10,12 +10,6 @@ struct BibleTranslationTests {
         #expect(BibleTranslation.allCases == [.web, .kjv, .asv])
     }
 
-    @Test("a raw value doubles as the short code")
-    func codeMatchesRawValue() {
-        #expect(BibleTranslation.kjv.code == "KJV")
-        #expect(BibleTranslation.kjv.rawValue == "KJV")
-    }
-
     @Test("each translation carries a full display name")
     func displayNames() {
         #expect(BibleTranslation.web.name == "World English Bible")

@@ -91,7 +91,7 @@ struct BibleNavBar: View {
 
             Button(action: onTranslation) {
                 HStack(spacing: 4) {
-                    Text(translation.code)
+                    Text(translation.rawValue)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
@@ -103,7 +103,7 @@ struct BibleNavBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Translation \(translation.code), choose translation")
+            .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
         .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))

@@ -65,7 +65,7 @@ struct BibleTranslationSheet: View {
             onSelect(translation)
         } label: {
             HStack(spacing: 14) {
-                Text(translation.code)
+                Text(translation.rawValue)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .tracking(0.5)
                     .foregroundStyle(isActive ? theme.accentInk : theme.inkSoft)
@@ -76,7 +76,7 @@ struct BibleTranslationSheet: View {
                     )
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(translation.code)
+                    Text(translation.rawValue)
                         .font(.system(size: 15, weight: isActive ? .semibold : .medium))
                         .foregroundStyle(isActive ? theme.accent : theme.ink)
                     Text(translation.name)

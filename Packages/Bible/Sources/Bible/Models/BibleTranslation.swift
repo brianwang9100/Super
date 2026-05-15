@@ -15,10 +15,6 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
 
     public var id: String { rawValue }
 
-    /// Short code shown on the nav-bar pill and the picker's badge, e.g.
-    /// `"KJV"`. Identical to the raw value — named for intent at call sites.
-    public var code: String { rawValue }
-
     /// Full translation name shown as the picker row's subtitle.
     public var name: String {
         switch self {
