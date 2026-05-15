@@ -2,9 +2,9 @@ import Foundation
 
 /// Loads Bible text from the JSON resources bundled in the `Bible` package.
 ///
-/// Each book is one `WEB-<bookID>.json` file. Books decode on demand and the
-/// loader holds no cache — a caller that re-reads a book should retain the
-/// returned `BibleBook`.
+/// Each book is one `<translation>-<bookID>.json` file, e.g. `KJV-1PE.json`.
+/// Books decode on demand and the loader holds no cache — a caller that
+/// re-reads a book should retain the returned `BibleBook`.
 public struct BundledBibleTextLoader: BibleTextLoader {
     private let bundle: Bundle
 
@@ -19,8 +19,9 @@ public struct BundledBibleTextLoader: BibleTextLoader {
         self.bundle = bundle
     }
 
-    public func loadBook(id bookID: String) throws -> BibleBook {
-        guard let url = bundle.url(forResource: "WEB-\(bookID)", withExtension: "json") else {
+    public func loadBook(id bookID: String, translation: BibleTranslation) throws -> BibleBook {
+        let resourceName = "\(translation.rawValue)-\(bookID)"
+        guard let url = bundle.url(forResource: resourceName, withExtension: "json") else {
             throw BibleTextLoaderError.bookNotFound(bookID)
         }
         do {

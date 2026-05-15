@@ -11,8 +11,8 @@ public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     private let viewModel: BibleScreenViewModel
 
-    /// Drives the book picker's slide-up / slide-down — a smooth decel
-    /// curve close to the design's `cubic-bezier(0.32, 0.72, 0, 1)`.
+    /// Drives the book and translation pickers' slide-up / slide-down — a
+    /// smooth decel curve close to the design's `cubic-bezier(0.32, 0.72, 0, 1)`.
     private let sheetAnimation: Animation = .snappy(duration: 0.34)
 
     public init(viewModel: BibleScreenViewModel) {
@@ -27,6 +27,9 @@ public struct BibleScreen: View {
             if let bookSheet = viewModel.bookSheet {
                 bookPicker(bookSheet)
             }
+            if viewModel.isTranslationSheetPresented {
+                translationPicker
+            }
         }
         .task { await viewModel.load() }
     }
@@ -35,14 +38,39 @@ public struct BibleScreen: View {
         BibleNavBar(
             bookName: viewModel.bookName,
             chapterNumber: viewModel.position.chapterNumber,
-            translationId: viewModel.translationId,
+            translation: viewModel.translation,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
             onPill: { withAnimation(sheetAnimation) { viewModel.presentBookSheet() } },
+            onTranslation: { withAnimation(sheetAnimation) { viewModel.presentTranslationSheet() } },
             onPlus: {}
         )
+    }
+
+    /// A dimmed backdrop plus the translation picker. The picker is a short
+    /// sheet — it sizes to its three rows and anchors to the bottom edge.
+    @ViewBuilder
+    private var translationPicker: some View {
+        Color.black.opacity(0.32)
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(sheetAnimation) { viewModel.dismissTranslationSheet() } }
+            .transition(.opacity)
+
+        BibleTranslationSheet(
+            current: viewModel.translation,
+            // Lift the sheet's last row above the shell's minimized chat
+            // pill, mirroring the reader's 76pt bottom reserve.
+            bottomInset: 76,
+            onSelect: { translation in
+                withAnimation(sheetAnimation) { viewModel.selectTranslation(translation) }
+            },
+            onClose: { withAnimation(sheetAnimation) { viewModel.dismissTranslationSheet() } }
+        )
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .transition(.move(edge: .bottom))
     }
 
     /// A dimmed backdrop plus the book picker, inset from the top so a sliver

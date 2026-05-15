@@ -3,10 +3,11 @@
 /// Implementations resolve a book from whatever store backs them — in MVP,
 /// JSON resources bundled in the app.
 public protocol BibleTextLoader: Sendable {
-    /// Load a whole book by its three-letter id, e.g. `"1PE"`.
+    /// Load a whole book of one translation by its three-letter id, e.g.
+    /// `"1PE"`.
     /// - Throws: `BibleTextLoaderError` when the book has no resource or its
     ///   resource can't be decoded.
-    func loadBook(id bookID: String) throws -> BibleBook
+    func loadBook(id bookID: String, translation: BibleTranslation) throws -> BibleBook
 }
 
 /// Failures raised by a `BibleTextLoader`.

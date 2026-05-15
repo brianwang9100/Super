@@ -186,4 +186,80 @@ struct BibleScreenViewModelTests {
         #expect(saved?.bookId == "ROM")
         #expect(saved?.chapterNumber == 8)
     }
+
+    @Test("a fresh load opens in the default translation")
+    func loadDefaultsToWEB() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.translation == .web)
+    }
+
+    @Test("load restores a persisted translation")
+    func loadRestoresTranslation() async throws {
+        let repository = GRDBBibleReadingPositionRepository(
+            database: try BibleDatabase.makeInMemory()
+        )
+        try await repository.save(BibleReadingPositionRecord(
+            bookId: "1PE", chapterNumber: 2, translationId: "ASV", updatedAt: now
+        ))
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load()
+        #expect(viewModel.translation == .asv)
+    }
+
+    @Test("presenting and dismissing the translation sheet toggles the flag")
+    func translationSheetPresentation() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.isTranslationSheetPresented == false)
+
+        viewModel.presentTranslationSheet()
+        #expect(viewModel.isTranslationSheetPresented)
+
+        viewModel.dismissTranslationSheet()
+        #expect(viewModel.isTranslationSheetPresented == false)
+    }
+
+    @Test("selecting a translation reloads the chapter and closes the sheet")
+    func selectingTranslationReloadsChapter() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2, WEB
+        let webChapter = viewModel.chapter
+        viewModel.presentTranslationSheet()
+
+        viewModel.selectTranslation(.kjv)
+        #expect(viewModel.translation == .kjv)
+        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.chapter?.number == 2)
+        #expect(viewModel.chapter != webChapter, "the chapter should re-render in KJV text")
+    }
+
+    @Test("selecting the current translation just closes the sheet")
+    func selectingCurrentTranslationIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // WEB
+        let webChapter = viewModel.chapter
+        viewModel.presentTranslationSheet()
+
+        viewModel.selectTranslation(.web)
+        #expect(viewModel.translation == .web)
+        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.chapter == webChapter)
+    }
+
+    @Test("selecting a translation persists it")
+    func selectingTranslationPersists() async throws {
+        let repository = GRDBBibleReadingPositionRepository(
+            database: try BibleDatabase.makeInMemory()
+        )
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load()                          // 1 Peter 2, WEB
+        viewModel.selectTranslation(.kjv)
+
+        await viewModel._waitForPendingPersist()
+        let saved = try await repository.load()
+        #expect(saved?.translationId == "KJV")
+        #expect(saved?.bookId == "1PE")
+        #expect(saved?.chapterNumber == 2)
+    }
 }

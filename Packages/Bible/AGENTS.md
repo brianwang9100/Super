@@ -5,14 +5,14 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 ## What lives here (incremental — builds out per the plan)
 
 - **Applet** (`Applet/`): `BibleApplet` — `MiniApplet` conformance, applet id `"bible"`.
-- **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog`/`BibleBookOrder` (navigation), and the `BibleReadingPositionRecord` GRDB record.
+- **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog`/`BibleBookOrder`/`BibleTranslation` (navigation), and the `BibleReadingPositionRecord` GRDB record.
 - **Database** (`Database/`): `BibleDatabase` — wraps the `bible.sqlite` `DatabaseQueue` and the schema migrator.
 - **Repositories** (`Repositories/`): protocol seam + `GRDB`-prefixed impl, one pair per record.
-- **TextSources** (`TextSources/`): `BibleTextLoader` protocol + `BundledBibleTextLoader` over the bundled WEB JSON.
+- **TextSources** (`TextSources/`): `BibleTextLoader` protocol + `BundledBibleTextLoader` over the bundled per-book JSON — WEB, KJV, and ASV, one `<CODE>-<bookID>.json` each. The `Scripts/generate_translation_json.py` converter regenerates them from eBible.org USFM.
 - **ViewModels** (`ViewModels/`): `@Observable @MainActor` view models, one per screen or sheet.
 - **UI** (`UI/`): SwiftUI views. **Before naming a new view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).** Drop the `View` suffix, one struct per file, bucket suffix per the doc (`*Screen`, `*Sheet`, `*Bar`, `*Block`, `*Toast`, `*Bubble`, `*Footer`).
 
-Future milestones add: `Formatting/`, `Resources/translations/`.
+Future milestones add: `Formatting/`.
 
 ## Rules
 
