@@ -123,6 +123,14 @@ struct TodoScreenViewModelTests {
         #expect(viewModel.toast?.text == "Reopened")
     }
 
+    @Test func cycleStateFlipsCancelledToOpen() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("T1", state: .cancelled))
+        await viewModel.cycleState(TaskWithLabels(task: task("T1", state: .cancelled), labels: []))
+        #expect(try await taskRepo.fetch(id: "T1")?.state == .open)
+        #expect(viewModel.toast?.text == "Reopened")
+    }
+
     @Test func deleteRemovesTask() async throws {
         let (viewModel, taskRepo, _, _) = try makeViewModel()
         try await taskRepo.save(task("T1"))

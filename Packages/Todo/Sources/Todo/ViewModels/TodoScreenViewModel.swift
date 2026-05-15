@@ -155,6 +155,10 @@ public final class TodoScreenViewModel {
     public func saveDraft() async {
         guard let draft else { return }
         guard !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Capture before the `await`s below: a `beginCreate()` / `beginEdit()`
+        // dispatched between suspension points could otherwise flip the mode
+        // out from under the success toast.
+        let mode = draftMode
         let now = clock.now()
         let id = draft.id ?? ids.nextID()
         do {
@@ -176,7 +180,7 @@ public final class TodoScreenViewModel {
             try await taskRepository.save(record)
             try await joinRepository.setLabels(taskId: id, labelIds: draft.labelIds, at: now)
             self.draft = nil
-            flash(draftMode == .create ? "Created" : "Saved")
+            flash(mode == .create ? "Created" : "Saved")
         } catch {
             flash("Couldn't save task")
         }
