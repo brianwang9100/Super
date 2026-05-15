@@ -77,6 +77,12 @@ public final class TodoScreenViewModel {
     private let clock: any Clock
     private let ids: any IDGenerator
 
+    /// Reentrancy guard for `saveDraft()`. `saveDraft` suspends at `await`
+    /// points; without this a double-tap of Save would let a second call
+    /// pass the entry checks and mint a second task. Not observed — it is
+    /// internal control state, not UI state.
+    @ObservationIgnored private var isSaving = false
+
     public init(
         taskRepository: any TaskRepository,
         labelRepository: any LabelRepository,
@@ -155,6 +161,12 @@ public final class TodoScreenViewModel {
     public func saveDraft() async {
         guard let draft else { return }
         guard !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Reentrancy guard: a second `saveDraft()` dispatched while the
+        // first is suspended at an `await` would otherwise pass the checks
+        // above and mint a duplicate task on a Save double-tap.
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         // Capture before the `await`s below: a `beginCreate()` / `beginEdit()`
         // dispatched between suspension points could otherwise flip the mode
         // out from under the success toast.

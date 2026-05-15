@@ -74,6 +74,9 @@ public struct TodoTaskRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onPress(row) }
+        // `.onTapGesture` is invisible to VoiceOver; expose the row's
+        // open-editor action as the default accessibility action too.
+        .accessibilityAction(.default) { onPress(row) }
     }
 
     /// Priority stripe color from the design's `priColor`:

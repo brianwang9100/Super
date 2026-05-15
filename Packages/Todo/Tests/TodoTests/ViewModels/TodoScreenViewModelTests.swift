@@ -86,6 +86,18 @@ struct TodoScreenViewModelTests {
         #expect(saved?.updatedAt == now)
     }
 
+    @Test func saveDraftIgnoresConcurrentDoubleTap() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        viewModel.beginCreate()
+        viewModel.draft?.title = "Buy milk"
+        // Two saves dispatched together — a Save double-tap. The reentrancy
+        // guard must let only one through, so exactly one task is created.
+        async let first: Void = viewModel.saveDraft()
+        async let second: Void = viewModel.saveDraft()
+        _ = await (first, second)
+        #expect(try await taskRepo.listActive().count == 1)
+    }
+
     @Test func saveDraftWithBlankTitleNoOps() async throws {
         let (viewModel, taskRepo, _, _) = try makeViewModel()
         viewModel.beginCreate()
