@@ -4,10 +4,10 @@ import SwiftUI
 /// The reading surface's top bar: menu, chapter stepping, and the
 /// book / translation pill.
 ///
-/// M2 wires the prev / next arrows to chapter navigation. The hamburger and
-/// `+` buttons render per the design but are inert until the shell sidebar
-/// and chat hand-off land; the centre pill is display-only until the book
-/// and translation pickers arrive.
+/// M2 wires the prev / next arrows to chapter navigation; M3 wires the pill's
+/// book segment to the book picker. The hamburger and `+` buttons render per
+/// the design but are inert until the shell sidebar and chat hand-off land;
+/// the pill's translation segment is display-only until that picker arrives.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
@@ -19,6 +19,7 @@ struct BibleNavBar: View {
     let onHamburger: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
+    let onPill: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
@@ -58,15 +59,21 @@ struct BibleNavBar: View {
         )
     }
 
-    /// The display-only book / translation pill — two segments split by a
-    /// hairline. Tapping it opens the pickers in later milestones.
+    /// The book / translation pill — two segments split by a hairline. The
+    /// book segment opens the book picker; the translation segment is
+    /// display-only until that picker lands.
     private var pill: some View {
         HStack(spacing: 0) {
-            Text("\(bookName) \(chapterNumber)")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(theme.ink)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            Button(action: onPill) {
+                Text("\(bookName) \(chapterNumber)")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(theme.ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(bookName) \(chapterNumber), choose book")
 
             Rectangle()
                 .fill(theme.border)
@@ -82,11 +89,10 @@ struct BibleNavBar: View {
             .foregroundStyle(theme.inkSoft)
             .padding(.horizontal, 11)
             .padding(.vertical, 6)
+            .accessibilityLabel("Translation \(translationId)")
         }
         .background(Capsule().fill(theme.backgroundRaised))
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(bookName) \(chapterNumber), \(translationId)")
     }
 
     private var plusButton: some View {

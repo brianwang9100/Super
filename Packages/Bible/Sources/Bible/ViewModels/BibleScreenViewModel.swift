@@ -23,6 +23,10 @@ public final class BibleScreenViewModel {
     /// translation picker lands.
     public private(set) var translationId: String = "WEB"
 
+    /// The book picker's view model while its sheet is presented; `nil`
+    /// closes the sheet. Non-nil acts as the presentation flag.
+    public private(set) var bookSheet: BibleBookSheetViewModel?
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
@@ -85,6 +89,24 @@ public final class BibleScreenViewModel {
         position = next
         applyCurrentChapter()
         persist()
+    }
+
+    /// Open the book picker, focused on the chapter currently on screen.
+    public func presentBookSheet() {
+        bookSheet = BibleBookSheetViewModel(expandedBookId: position.bookId, catalog: catalog)
+    }
+
+    public func dismissBookSheet() {
+        bookSheet = nil
+    }
+
+    /// Jump straight to a book and chapter chosen in the picker, then close
+    /// the sheet. Persists the new position like a step does.
+    public func selectChapter(bookId: String, chapterNumber: Int) {
+        position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        applyCurrentChapter()
+        persist()
+        bookSheet = nil
     }
 
     /// Awaits the pending background reading-position writes. Test-only seam

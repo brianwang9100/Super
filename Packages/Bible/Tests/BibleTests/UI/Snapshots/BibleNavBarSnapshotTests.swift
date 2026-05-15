@@ -57,6 +57,7 @@ struct BibleNavBarSnapshotTests {
                 onHamburger: {},
                 onPrevious: {},
                 onNext: {},
+                onPill: {},
                 onPlus: {}
             )
         }

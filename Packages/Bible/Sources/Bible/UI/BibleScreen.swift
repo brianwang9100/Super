@@ -20,6 +20,9 @@ public struct BibleScreen: View {
             theme.background.ignoresSafeArea()
             content
             navBar
+            if let bookSheet = viewModel.bookSheet {
+                bookPicker(bookSheet)
+            }
         }
         .task { await viewModel.load() }
     }
@@ -34,8 +37,30 @@ public struct BibleScreen: View {
             onHamburger: {},
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
+            onPill: { viewModel.presentBookSheet() },
             onPlus: {}
         )
+    }
+
+    /// A dimmed backdrop plus the book picker, inset from the top so a sliver
+    /// of the reader stays visible behind it.
+    @ViewBuilder
+    private func bookPicker(_ sheetViewModel: BibleBookSheetViewModel) -> some View {
+        Color.black.opacity(0.32)
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture { viewModel.dismissBookSheet() }
+
+        BibleBookSheet(
+            viewModel: sheetViewModel,
+            currentBookId: viewModel.position.bookId,
+            currentChapterNumber: viewModel.position.chapterNumber,
+            onSelectChapter: { bookId, chapterNumber in
+                viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
+            },
+            onClose: { viewModel.dismissBookSheet() }
+        )
+        .padding(.top, 80)
     }
 
     @ViewBuilder
