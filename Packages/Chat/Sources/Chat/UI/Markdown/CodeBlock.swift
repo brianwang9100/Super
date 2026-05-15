@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Code-block chrome matching `.design-tmp/chat/project/src/message-parts.jsx`

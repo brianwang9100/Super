@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import Core
 import SnapshotTesting
 import SwiftUI
 import Testing

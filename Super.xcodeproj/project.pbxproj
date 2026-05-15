@@ -17,6 +17,7 @@
 		697D095559B2C6E8A8698AE0 /* SuperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD771A1B250F9D28FF92CBCC /* SuperApp.swift */; };
 		7CBED293F185C6E0005ECF32 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 5742DF79E0382021EB37C161 /* AGENTS.md */; };
 		8255CBDD1EA1AB20B977C76F /* AppletPlaceholderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */; };
+		AFC08660B3369D19A6DBBCFA /* Todo in Frameworks */ = {isa = PBXBuildFile; productRef = D584F1599CFA7090D136AA8A /* Todo */; };
 		AFFC4F2EC3F235C78CAB1453 /* CLAUDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 16443018E7AD54627BC3C99A /* CLAUDE.md */; };
 		B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37040D8281510F5E0053417 /* LazyConversationDriver.swift */; };
 		D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E14DF6F5FC6EE821355D769 /* ContentView.swift */; };
@@ -32,6 +33,7 @@
 		5E14DF6F5FC6EE821355D769 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		61F39965616CCD1C3A93C1E5 /* Chat */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Chat; path = Packages/Chat; sourceTree = SOURCE_ROOT; };
 		70D156170743E84E91C00F1D /* PlaceholderApplets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderApplets.swift; sourceTree = "<group>"; };
+		77418FFA7CE4CCEBA18C49CA /* Todo */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Todo; path = Packages/Todo; sourceTree = SOURCE_ROOT; };
 		9CC7BF855207A5FF7A4A848B /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		A8BA1600038FF259AD5B228E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
@@ -49,6 +51,7 @@
 				0884657F15758B3B5B1C0BEF /* Core in Frameworks */,
 				098357BEEFC53ACE5815921E /* Chat in Frameworks */,
 				1BEEBD5EF6A7767EE13B55C6 /* Bible in Frameworks */,
+				AFC08660B3369D19A6DBBCFA /* Todo in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,6 +124,7 @@
 				2655703F58B72885DF901253 /* Bible */,
 				61F39965616CCD1C3A93C1E5 /* Chat */,
 				A9E5647B0A3E4B0A1BFC087D /* Core */,
+				77418FFA7CE4CCEBA18C49CA /* Todo */,
 			);
 			path = Packages;
 			sourceTree = "<group>";
@@ -145,6 +149,7 @@
 				8683B0FE0037B0D33755A7F4 /* Core */,
 				70882273C8BB80DC07D294F8 /* Chat */,
 				FB8F97E45F912C4ADC4820AB /* Bible */,
+				D584F1599CFA7090D136AA8A /* Todo */,
 			);
 			productName = Super;
 			productReference = 5CD7248626B357C0C7BCE21F /* Super.app */;
@@ -177,6 +182,7 @@
 				3E74A70C08F8CAFA28DB79F6 /* XCLocalSwiftPackageReference "Packages/Bible" */,
 				594D4392302D1CE4BBCF2D68 /* XCLocalSwiftPackageReference "Packages/Chat" */,
 				A24F6D26900F94887B129B1A /* XCLocalSwiftPackageReference "Packages/Core" */,
+				00EFD996846361331FD5E2FB /* XCLocalSwiftPackageReference "Packages/Todo" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1E8169B044BFE25AEEFA415C /* Products */;
@@ -421,6 +427,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		00EFD996846361331FD5E2FB /* XCLocalSwiftPackageReference "Packages/Todo" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Todo;
+		};
 		3E74A70C08F8CAFA28DB79F6 /* XCLocalSwiftPackageReference "Packages/Bible" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/Bible;
@@ -443,6 +453,10 @@
 		8683B0FE0037B0D33755A7F4 /* Core */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Core;
+		};
+		D584F1599CFA7090D136AA8A /* Todo */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Todo;
 		};
 		FB8F97E45F912C4ADC4820AB /* Bible */ = {
 			isa = XCSwiftPackageProductDependency;
