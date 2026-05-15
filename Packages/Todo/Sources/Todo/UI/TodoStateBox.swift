@@ -1,0 +1,60 @@
+import Core
+import SwiftUI
+
+/// Circular task-state indicator: an empty ring for `open`, a filled green
+/// disc with a check for `done`, and a muted ring with an ✕ for
+/// `cancelled`. Tapping invokes `onToggle`. Mirrors `StateBox` in the Todo
+/// design source's `components.jsx`.
+public struct TodoStateBox: View {
+    public let state: TaskState
+    public let size: CGFloat
+    public let onToggle: () -> Void
+
+    @Environment(\.superTheme) private var theme
+
+    public init(state: TaskState, size: CGFloat = 19, onToggle: @escaping () -> Void) {
+        self.state = state
+        self.size = size
+        self.onToggle = onToggle
+    }
+
+    public var body: some View {
+        Button(action: onToggle) {
+            ZStack {
+                Circle().fill(state == .done ? Self.doneFill : .clear)
+                Circle().strokeBorder(ringColor, lineWidth: 1.5)
+                glyph
+            }
+            .frame(width: size, height: size)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.displayName)
+    }
+
+    @ViewBuilder private var glyph: some View {
+        switch state {
+        case .open:
+            EmptyView()
+        case .done:
+            Image(systemName: "checkmark")
+                .font(.system(size: size * 0.46, weight: .bold))
+                .foregroundStyle(.white)
+        case .cancelled:
+            Image(systemName: "xmark")
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundStyle(theme.inkFaint)
+        }
+    }
+
+    private var ringColor: Color {
+        switch state {
+        case .open:      theme.inkMute
+        case .done:      Self.doneFill
+        case .cancelled: theme.borderFaint
+        }
+    }
+
+    /// Fixed green from the design's `oklch(0.52 0.09 155)` — the "done"
+    /// state reads as a positive confirmation independent of the theme.
+    private static let doneFill = OKLCH(0.52, 0.09, 155).color
+}
