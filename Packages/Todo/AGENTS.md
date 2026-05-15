@@ -1,6 +1,6 @@
 # Todo — Agent Guidelines
 
-The Todo applet: local task list with priorities, labels, and (eventually) a long-press action menu. UI reference lives at `/tmp/super-design/super/project/Todo.html` (and the loaded `todo/*.jsx` files).
+The Todo applet: local task list with priorities, labels, and (eventually) a long-press action menu. The UI mirrors the Todo design prototype (`Todo.html` + the `todo/*.jsx` files) — an out-of-tree design asset, not committed to the repo.
 
 ## What lives here
 

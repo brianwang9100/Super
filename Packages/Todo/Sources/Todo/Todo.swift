@@ -3,6 +3,6 @@
 /// `ViewModels/`, and `UI/` as later milestones land.
 public enum TodoModule {
     /// Stable applet identifier — used for routing, settings keys, and
-    /// deep-link URIs. Mirrors the value Chat exposes on `ChatApplet`.
-    public static let appletID = "todo"
+    /// deep-link URIs (`super://todo/<recordID>`).
+    public static let appletID: String = "todo"
 }
