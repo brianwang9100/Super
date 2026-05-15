@@ -165,4 +165,46 @@ struct TodoScreenViewModelTests {
         #expect(id != nil)
         #expect(try await labelRepo.findActive(name: "travel") != nil)
     }
+
+    @Test func ensureLabelRecoversWhenConcurrentCreateWins() async throws {
+        let db = try TodoDatabase.makeInMemory()
+        let raced = LabelRecord(id: "raced-1", name: "Work", hue: 200, createdAt: now, updatedAt: now)
+        let viewModel = TodoScreenViewModel(
+            taskRepository: GRDBTaskRepository(database: db),
+            labelRepository: CollidingLabelRepository(racedLabel: raced),
+            joinRepository: GRDBTaskLabelRepository(database: db),
+            clock: FixedClock(now),
+            ids: DeterministicIDGenerator(prefix: "id-")
+        )
+        // `save` throws (as the partial unique index would on a concurrent
+        // create); the catch path must recover the raced label's id and
+        // suppress the failure toast.
+        let id = await viewModel.ensureLabel(name: "Work")
+        #expect(id == "raced-1")
+        #expect(viewModel.toast == nil)
+    }
 }
+
+/// Fake `LabelRepository` that scripts a concurrent-create collision:
+/// `save` always throws, and `findActive` returns the raced label only
+/// once a save has been attempted — exercising `ensureLabel`'s catch-block
+/// recovery deterministically (no real timing race).
+private actor CollidingLabelRepository: LabelRepository {
+    private let racedLabel: LabelRecord
+    private var saveAttempted = false
+
+    init(racedLabel: LabelRecord) { self.racedLabel = racedLabel }
+
+    func listActive() async throws -> [LabelRecord] { [] }
+    func fetch(id: String) async throws -> LabelRecord? { nil }
+    func findActive(name: String) async throws -> LabelRecord? {
+        saveAttempted ? racedLabel : nil
+    }
+    func save(_ record: LabelRecord) async throws {
+        saveAttempted = true
+        throw CollisionError()
+    }
+    func softDelete(id: String, at deletedAt: Date) async throws {}
+}
+
+private struct CollisionError: Error {}
