@@ -19,13 +19,18 @@ public final class BibleScreenViewModel {
     public private(set) var bookName: String
     /// The current chapter's text, or `nil` if its resource failed to load.
     public private(set) var chapter: BibleChapter?
-    /// Translation short code shown in the nav bar — `"WEB"` until the
-    /// translation picker lands.
-    public private(set) var translationId: String = "WEB"
+    /// The translation the chapter is read in — drives both the nav-bar pill
+    /// and which bundled resource the text loads from.
+    public private(set) var translation: BibleTranslation = .defaultTranslation
 
     /// The book picker's view model while its sheet is presented; `nil`
     /// closes the sheet. Non-nil acts as the presentation flag.
     public private(set) var bookSheet: BibleBookSheetViewModel?
+
+    /// Whether the translation picker is on screen. The sheet is stateless —
+    /// it renders `BibleTranslation.allCases` against `translation` — so a
+    /// flag is all the presentation state it needs.
+    public private(set) var isTranslationSheetPresented = false
 
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
@@ -76,7 +81,7 @@ public final class BibleScreenViewModel {
         if let repository = positionRepository,
            let saved = try? await repository.load() {
             position = BiblePosition(bookId: saved.bookId, chapterNumber: saved.chapterNumber)
-            translationId = saved.translationId
+            translation = BibleTranslation.named(saved.translationId)
         }
         applyCurrentChapter()
     }
@@ -97,8 +102,30 @@ public final class BibleScreenViewModel {
         bookSheet = BibleBookSheetViewModel(expandedBookId: nil, catalog: catalog)
     }
 
+    /// Close the book picker without changing the reading position.
     public func dismissBookSheet() {
         bookSheet = nil
+    }
+
+    /// Open the translation picker.
+    public func presentTranslationSheet() {
+        isTranslationSheetPresented = true
+    }
+
+    /// Close the translation picker without changing the translation.
+    public func dismissTranslationSheet() {
+        isTranslationSheetPresented = false
+    }
+
+    /// Switch the reading translation and close the picker. The chapter text
+    /// reloads synchronously in the new translation; the choice is persisted
+    /// like a chapter step. Selecting the current translation just closes.
+    public func selectTranslation(_ selected: BibleTranslation) {
+        isTranslationSheetPresented = false
+        guard selected != translation else { return }
+        translation = selected
+        applyCurrentChapter()
+        persist()
     }
 
     /// Jump straight to a book and chapter chosen in the picker, then close
@@ -122,7 +149,7 @@ public final class BibleScreenViewModel {
     }
 
     private func applyCurrentChapter() {
-        if let book = try? textLoader.loadBook(id: position.bookId) {
+        if let book = try? textLoader.loadBook(id: position.bookId, translation: translation) {
             bookName = book.name
             chapter = book.chapter(position.chapterNumber)
         } else {
@@ -143,7 +170,7 @@ public final class BibleScreenViewModel {
         let record = BibleReadingPositionRecord(
             bookId: position.bookId,
             chapterNumber: position.chapterNumber,
-            translationId: translationId,
+            translationId: translation.rawValue,
             updatedAt: clock.now()
         )
         // Chain each write on the prior so rapid steps persist in order and

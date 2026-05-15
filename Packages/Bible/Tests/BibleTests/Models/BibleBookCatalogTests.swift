@@ -3,7 +3,7 @@ import Testing
 
 /// Tests for `BibleBookCatalog` — chapter stepping across book boundaries
 /// and the canon's two hard ends, plus a faithfulness check that every
-/// catalog entry agrees with the bundled World English Bible text.
+/// catalog entry agrees with every bundled translation's text.
 @Suite("BibleBookCatalog")
 struct BibleBookCatalogTests {
     private let catalog = BibleBookCatalog.standard
@@ -77,16 +77,25 @@ struct BibleBookCatalogTests {
         ) == nil)
     }
 
-    @Test("every catalog entry matches the bundled WEB text")
-    func catalogMatchesBundledText() throws {
+    @Test(
+        "every catalog entry matches every bundled translation",
+        arguments: BibleTranslation.allCases
+    )
+    func catalogMatchesBundledText(_ translation: BibleTranslation) throws {
         let loader = BundledBibleTextLoader()
         for summary in catalog.books {
-            let book = try loader.loadBook(id: summary.id)
-            #expect(book.name == summary.name, "name mismatch for \(summary.id)")
-            #expect(book.testament == summary.testament, "testament mismatch for \(summary.id)")
+            // A missing resource throws here, so this also asserts that all
+            // 66 books exist for the translation — i.e. switching to it can
+            // never strand the reader on a blank chapter.
+            let book = try loader.loadBook(id: summary.id, translation: translation)
+            #expect(book.name == summary.name, "name mismatch for \(translation.rawValue)-\(summary.id)")
+            #expect(
+                book.testament == summary.testament,
+                "testament mismatch for \(translation.rawValue)-\(summary.id)"
+            )
             #expect(
                 book.chapters.count == summary.chapterCount,
-                "chapter count mismatch for \(summary.id)"
+                "chapter count mismatch for \(translation.rawValue)-\(summary.id)"
             )
         }
     }

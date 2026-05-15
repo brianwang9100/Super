@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Convert World English Bible USFM into the Bible applet's per-book JSON.
+"""Convert a public-domain Bible translation's USFM into per-book JSON.
 
-Source text: the World English Bible (WEB), Protestant canon, public domain.
-Download the USFM bundle from eBible.org before running:
+The Bible applet bundles three public-domain, Protestant-canon translations.
+Download each USFM bundle from eBible.org before running:
 
-    curl -sL -o engwebp.zip https://ebible.org/Scriptures/engwebp_usfm.zip
-    unzip -q engwebp.zip -d engwebp_usfm
+    WEB  curl -sL -o web.zip https://ebible.org/Scriptures/engwebp_usfm.zip
+    KJV  curl -sL -o kjv.zip https://ebible.org/Scriptures/eng-kjv2006_usfm.zip
+    ASV  curl -sL -o asv.zip https://ebible.org/Scriptures/eng-asv_usfm.zip
 
-Usage:
+Unzip each into its own directory, then run once per translation:
 
-    python3 generate_web_json.py <usfm_dir> <output_dir>
+    python3 generate_translation_json.py <CODE> <usfm_dir> <output_dir>
 
-Emits one `WEB-<BOOKID>.json` per canonical book into <output_dir>. The JSON
-schema is a discriminated union of paragraph types decoded by `BibleBook`:
+`<CODE>` is the translation's short code (`WEB`, `KJV`, `ASV`) — it only
+names the output files and is not read from the USFM. Emits one
+`<CODE>-<BOOKID>.json` per canonical book into <output_dir>; non-canonical
+files (front matter, intros) are skipped. The JSON schema is a discriminated
+union of paragraph types decoded by `BibleBook`:
 
     { "id", "name", "testament", "chapters": [
         { "number", "paragraphs": [
@@ -60,12 +64,15 @@ def clean(text: str) -> str:
 
     Footnotes and cross-references are dropped entirely; word-level Strong's
     annotations and other character markers are unwrapped to their content.
+    The KJV2006 source embeds literal `¶` pilcrows as paragraph marks — those
+    are a typographic device, not reading text, so they are dropped too.
     """
     text = _FOOTNOTE.sub("", text)
     text = _CROSSREF.sub("", text)
     text = _WORD.sub(r"\1", text)
     text = _CLOSING_MARKER.sub("", text)
     text = _OPENING_MARKER.sub("", text)
+    text = text.replace("¶", "")
     return _SPACES.sub(" ", text).strip()
 
 
@@ -147,16 +154,16 @@ def parse_book(usfm: str) -> dict:
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        sys.exit("usage: generate_web_json.py <usfm_dir> <output_dir>")
-    usfm_dir, output_dir = Path(sys.argv[1]), Path(sys.argv[2])
+    if len(sys.argv) != 4:
+        sys.exit("usage: generate_translation_json.py <CODE> <usfm_dir> <output_dir>")
+    code, usfm_dir, output_dir = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
     output_dir.mkdir(parents=True, exist_ok=True)
     written = 0
     for path in sorted(usfm_dir.glob("*.usfm")):
         book = parse_book(path.read_text(encoding="utf-8"))
         if book["id"] not in TESTAMENT:
             continue
-        out = output_dir / f"WEB-{book['id']}.json"
+        out = output_dir / f"{code}-{book['id']}.json"
         out.write_text(
             json.dumps(book, ensure_ascii=False, separators=(",", ":")) + "\n",
             encoding="utf-8",

@@ -4,22 +4,22 @@ import SwiftUI
 /// The reading surface's top bar: menu, chapter stepping, and the
 /// book / translation pill.
 ///
-/// M2 wires the prev / next arrows to chapter navigation; M3 wires the pill's
-/// book segment to the book picker. The `+` button renders per the design but
-/// is inert until chat hand-off lands; the pill's translation segment is
-/// display-only until that picker arrives. The sidebar entry point is the
-/// shell's own floating hamburger, so this bar deliberately has none.
+/// The prev / next arrows step chapters and the pill's two segments open the
+/// book and translation pickers. The `+` button renders per the design but is
+/// inert until chat hand-off lands. The sidebar entry point is the shell's own
+/// floating hamburger, so this bar deliberately has none.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
     let bookName: String
     let chapterNumber: Int
-    let translationId: String
+    let translation: BibleTranslation
     let canStepBackward: Bool
     let canStepForward: Bool
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
+    let onTranslation: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
@@ -62,8 +62,8 @@ struct BibleNavBar: View {
 
     /// The book / translation pill — two segments split by a hairline,
     /// matching the 36pt height of the circular nav buttons. The book
-    /// segment opens the book picker; the translation segment is
-    /// display-only until that picker lands.
+    /// segment opens the book picker; the translation segment opens the
+    /// translation picker.
     private var pill: some View {
         HStack(spacing: 0) {
             Button(action: onPill) {
@@ -89,17 +89,21 @@ struct BibleNavBar: View {
                 .frame(width: 1, height: 16)
                 .opacity(0.6)
 
-            HStack(spacing: 4) {
-                Text(translationId)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+            Button(action: onTranslation) {
+                HStack(spacing: 4) {
+                    Text(translation.rawValue)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(theme.inkSoft)
+                .padding(.horizontal, 9)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(theme.inkSoft)
-            .padding(.horizontal, 9)
-            .frame(maxHeight: .infinity)
-            .accessibilityLabel("Translation \(translationId)")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
         .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))

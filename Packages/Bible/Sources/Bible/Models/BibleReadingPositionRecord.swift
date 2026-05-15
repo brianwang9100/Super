@@ -6,8 +6,7 @@ import GRDB
 ///
 /// Exactly one row ever exists, keyed by the constant `id` `"current"`:
 /// there is no per-book history, just a single moving cursor. `translationId`
-/// is carried now but only ever `"WEB"` until the translation picker lands
-/// in a later milestone.
+/// holds a `BibleTranslation` raw value — the reader's chosen translation.
 public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleReadingPosition"
 
@@ -17,7 +16,7 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
     public var bookId: String
     /// 1-based chapter number.
     public var chapterNumber: Int
-    /// Translation short code — `"WEB"` for now.
+    /// Translation short code — a `BibleTranslation` raw value, e.g. `"KJV"`.
     public var translationId: String
     public var updatedAt: Date
 
