@@ -49,23 +49,22 @@ public struct TodoToastMessage: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Screen-level state for `TodoScreen`: the loaded tasks and labels, the
-/// active filter, the create/edit draft, and the toast. Persistence is
-/// delegated to the three injected repositories; filtering and grouping
-/// run through the pure `applyFilter` / `groupTasks` functions.
+/// Screen-level UI state for `TodoScreen`: the active filter, the
+/// create/edit draft, and the toast — plus the task/label mutation methods.
+///
+/// The view model deliberately does **not** own the task or label lists.
+/// Those are bound reactively in the view via `@Query(ActiveTasksRequest())`
+/// / `@Query(ActiveLabelsRequest())` so edits from other applets (e.g. Chat
+/// creating a task) flow into the UI without a manual reload. Mutations
+/// here just write through the repositories; the observation refreshes the
+/// view.
 @Observable
 @MainActor
 public final class TodoScreenViewModel {
     /// Whether a create or edit draft is open.
     public enum DraftMode: Sendable { case create, edit }
 
-    // Loaded data
-    public private(set) var tasks: [TaskWithLabels] = []
-    public private(set) var labels: [LabelRecord] = []
-    public private(set) var isLoading: Bool = false
-    public private(set) var loadError: String?
-
-    // User-driven state
+    // User-driven UI state
     public var filter: TodoFilter = .defaults
     public var draft: TaskDraft?
     public var draftMode: DraftMode = .create
@@ -77,86 +76,19 @@ public final class TodoScreenViewModel {
     private let joinRepository: any TaskLabelRepository
     private let clock: any Clock
     private let ids: any IDGenerator
-    /// Calendar used for "due today" grouping. Injected (rather than read
-    /// from `Calendar.current` inside `applyFilter` / `groupTasks`) so the
-    /// list stays deterministic across time zones and under test.
-    private let calendar: Calendar
 
     public init(
         taskRepository: any TaskRepository,
         labelRepository: any LabelRepository,
         joinRepository: any TaskLabelRepository,
         clock: any Clock,
-        ids: any IDGenerator,
-        calendar: Calendar = .current
+        ids: any IDGenerator
     ) {
         self.taskRepository = taskRepository
         self.labelRepository = labelRepository
         self.joinRepository = joinRepository
         self.clock = clock
         self.ids = ids
-        self.calendar = calendar
-    }
-
-    // MARK: Load
-
-    /// Hydrate `tasks` and `labels` from the repositories. Reads the task
-    /// list and label list concurrently, then bulk-loads every task's
-    /// labels in one query.
-    public func load() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            async let taskRows = taskRepository.listActive()
-            async let labelRows = labelRepository.listActive()
-            let (rawTasks, labelsList) = try await (taskRows, labelRows)
-            let bulkLabels = try await joinRepository.labels(forTaskIds: rawTasks.map(\.id))
-            tasks = rawTasks.map { TaskWithLabels(task: $0, labels: bulkLabels[$0.id] ?? []) }
-            labels = labelsList
-            loadError = nil
-        } catch {
-            loadError = error.localizedDescription
-        }
-    }
-
-    // MARK: Derived
-
-    /// Tasks after the active filter, before grouping.
-    public var visible: [TaskWithLabels] {
-        applyFilter(filter, to: tasks, now: clock.now(), calendar: calendar)
-    }
-
-    /// The visible tasks split into the design's grouped sections. Captures
-    /// `now` once so the filter pass and the grouping pass agree on "today"
-    /// — a task due at the instant of render can't land in two passes with
-    /// different timestamps.
-    public var groups: [TodoListGroup] {
-        let now = clock.now()
-        let filtered = applyFilter(filter, to: tasks, now: now, calendar: calendar)
-        return groupTasks(filtered, filter: filter, now: now, calendar: calendar)
-    }
-
-    /// Label id → record, for resolving filter / chip lookups.
-    public var labelLookup: [String: LabelRecord] {
-        Dictionary(uniqueKeysWithValues: labels.map { ($0.id, $0) })
-    }
-
-    /// One-line summary string for the filter pill.
-    public var filterSummary: String {
-        describe(filter, labelLookup: labelLookup)
-    }
-
-    /// Task counts by state, across the full unfiltered list.
-    public var counts: (open: Int, done: Int, cancelled: Int) {
-        var open = 0, done = 0, cancelled = 0
-        for row in tasks {
-            switch row.task.state {
-            case .open:      open += 1
-            case .done:      done += 1
-            case .cancelled: cancelled += 1
-            }
-        }
-        return (open, done, cancelled)
     }
 
     // MARK: Mutators
@@ -168,11 +100,10 @@ public final class TodoScreenViewModel {
         await setState(taskID: row.task.id, to: next)
     }
 
-    /// Set a task's state and refresh its row.
+    /// Set a task's state. The reactive query refreshes the row.
     public func setState(taskID: String, to newState: TaskState) async {
         do {
             try await taskRepository.setState(id: taskID, state: newState, at: clock.now())
-            await reloadTask(taskID)
             switch newState {
             case .done:      flash("Completed")
             case .cancelled: flash("Cancelled")
@@ -183,11 +114,11 @@ public final class TodoScreenViewModel {
         }
     }
 
-    /// Hard-delete a task. The join rows cascade away with it.
+    /// Hard-delete a task. The join rows cascade away with it, and the
+    /// reactive query drops the row.
     public func delete(taskID: String) async {
         do {
             try await taskRepository.hardDelete(id: taskID)
-            tasks.removeAll { $0.task.id == taskID }
             flash("Deleted")
         } catch {
             flash("Couldn't delete task")
@@ -226,25 +157,24 @@ public final class TodoScreenViewModel {
         guard !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let now = clock.now()
         let id = draft.id ?? ids.nextID()
-        // New tasks land at the bottom of the manual order; edits keep the
-        // existing row's `sortOrder` and `createdAt`.
-        let existing = tasks.first(where: { $0.task.id == id })?.task
-        let sortOrder = existing?.sortOrder ?? ((tasks.map(\.task.sortOrder).max() ?? 0) + 1)
-        let record = TaskRecord(
-            id: id,
-            title: draft.title,
-            sortOrder: sortOrder,
-            createdAt: existing?.createdAt ?? now,
-            updatedAt: now,
-            notes: draft.notes,
-            priority: draft.priority,
-            state: draft.state,
-            dueAt: draft.dueAt
-        )
         do {
+            // An edit preserves the row's original `sortOrder` / `createdAt`;
+            // a new task sorts after existing rows by using `now` as its
+            // monotonic `sortOrder`.
+            let existing = draft.id == nil ? nil : try await taskRepository.fetch(id: id)
+            let record = TaskRecord(
+                id: id,
+                title: draft.title,
+                sortOrder: existing?.sortOrder ?? now.timeIntervalSince1970,
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
+                notes: draft.notes,
+                priority: draft.priority,
+                state: draft.state,
+                dueAt: draft.dueAt
+            )
             try await taskRepository.save(record)
             try await joinRepository.setLabels(taskId: id, labelIds: draft.labelIds, at: now)
-            await reloadTask(id)
             self.draft = nil
             flash(draftMode == .create ? "Created" : "Saved")
         } catch {
@@ -261,11 +191,18 @@ public final class TodoScreenViewModel {
             if let existing = try await labelRepository.findActive(name: trimmed) {
                 return existing.id
             }
-            let now = clock.now()
+            let activeLabels = try await labelRepository.listActive()
             let hue = LabelHuePalette.nextHue(
-                usedHues: Set(labels.map(\.hue)),
-                existingCount: labels.count
+                usedHues: Set(activeLabels.map(\.hue)),
+                existingCount: activeLabels.count
             )
+            // Re-check after the suspension points above — a concurrent
+            // call (e.g. a double tap) may have created the label, and the
+            // partial unique index would otherwise reject the second save.
+            if let raced = try await labelRepository.findActive(name: trimmed) {
+                return raced.id
+            }
+            let now = clock.now()
             let record = LabelRecord(
                 id: ids.nextID(),
                 name: trimmed,
@@ -274,8 +211,6 @@ public final class TodoScreenViewModel {
                 updatedAt: now
             )
             try await labelRepository.save(record)
-            labels.append(record)
-            labels.sort { $0.name.lowercased() < $1.name.lowercased() }
             flash("Created label \"\(trimmed)\"")
             return record.id
         } catch {
@@ -290,26 +225,6 @@ public final class TodoScreenViewModel {
     }
 
     // MARK: Internals
-
-    /// Re-fetch one task plus its labels and splice it back into `tasks`.
-    /// A best-effort refresh — on failure the next full `load()` reconciles.
-    private func reloadTask(_ id: String) async {
-        do {
-            guard let row = try await taskRepository.fetch(id: id) else {
-                tasks.removeAll { $0.task.id == id }
-                return
-            }
-            let labelRows = try await joinRepository.labels(forTaskId: id)
-            let merged = TaskWithLabels(task: row, labels: labelRows)
-            if let index = tasks.firstIndex(where: { $0.task.id == id }) {
-                tasks[index] = merged
-            } else {
-                tasks.append(merged)
-            }
-        } catch {
-            // Best-effort; the next full `load()` reconciles.
-        }
-    }
 
     private func flash(_ text: String) {
         toast = TodoToastMessage(id: ids.nextID(), text: text)

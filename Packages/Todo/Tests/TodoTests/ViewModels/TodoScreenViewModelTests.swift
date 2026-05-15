@@ -3,10 +3,11 @@ import Foundation
 import Testing
 @testable import Todo
 
-/// Tests for `TodoScreenViewModel`: load hydration, create / edit save
-/// round-trips, state cycling, delete, and case-insensitive label creation.
-/// Each test runs against an in-memory GRDB database with a `FixedClock`
-/// and `DeterministicIDGenerator` so timestamps and ids stay deterministic.
+/// Tests for `TodoScreenViewModel`: the create/edit save round-trips, state
+/// cycling, delete, and case-insensitive label creation. The view model
+/// owns no task/label list (those bind reactively in the view), so each
+/// test asserts against the repositories directly. Runs against an
+/// in-memory GRDB database with a `FixedClock` and `DeterministicIDGenerator`.
 @Suite("TodoScreenViewModel")
 @MainActor
 struct TodoScreenViewModelTests {
@@ -32,35 +33,16 @@ struct TodoScreenViewModelTests {
         return (viewModel, taskRepo, labelRepo, joinRepo)
     }
 
-    private func task(_ id: String, title: String = "x", priority: TaskPriority = .normal, state: TaskState = .open) -> TaskRecord {
+    private func task(_ id: String, title: String = "x", state: TaskState = .open) -> TaskRecord {
         TaskRecord(
             id: id, title: title,
             sortOrder: 0, createdAt: now, updatedAt: now,
-            priority: priority, state: state
+            priority: .normal, state: state
         )
     }
 
-    private func calendar(zone: String) -> Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: zone)!
-        return calendar
-    }
-
-    @Test func loadHydratesTasksAndLabels() async throws {
-        let (viewModel, taskRepo, labelRepo, joinRepo) = try makeViewModel()
-        try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
-        try await taskRepo.save(task("T1", title: "buy", priority: .urgent))
-        try await joinRepo.setLabels(taskId: "T1", labelIds: ["L1"], at: now)
-
-        await viewModel.load()
-        #expect(viewModel.tasks.count == 1)
-        #expect(viewModel.tasks.first?.labels.first?.name == "Work")
-        #expect(viewModel.labels.count == 1)
-        #expect(viewModel.counts.open == 1)
-    }
-
     @Test func saveDraftAsCreateInsertsNewTask() async throws {
-        let (viewModel, _, _, _) = try makeViewModel()
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
         viewModel.beginCreate()
         viewModel.draft?.title = "Buy milk"
         viewModel.draft?.priority = .high
@@ -68,152 +50,32 @@ struct TodoScreenViewModelTests {
 
         #expect(viewModel.draft == nil)
         #expect(viewModel.toast?.text == "Created")
-        await viewModel.load()
-        #expect(viewModel.tasks.count == 1)
-        #expect(viewModel.tasks.first?.task.title == "Buy milk")
-        #expect(viewModel.tasks.first?.task.priority == .high)
+        let active = try await taskRepo.listActive()
+        #expect(active.count == 1)
+        #expect(active.first?.title == "Buy milk")
+        #expect(active.first?.priority == .high)
     }
 
     @Test func saveDraftAsEditUpdatesExistingTask() async throws {
         let (viewModel, taskRepo, _, _) = try makeViewModel()
         try await taskRepo.save(task("T1", title: "old"))
-        await viewModel.load()
-        viewModel.beginEdit(viewModel.tasks[0])
+        viewModel.beginEdit(TaskWithLabels(task: task("T1", title: "old"), labels: []))
         viewModel.draft?.title = "new"
         await viewModel.saveDraft()
 
         #expect(viewModel.toast?.text == "Saved")
-        await viewModel.load()
-        #expect(viewModel.tasks.count == 1)
-        #expect(viewModel.tasks.first?.task.title == "new")
-    }
-
-    @Test func saveDraftWithBlankTitleNoOps() async throws {
-        let (viewModel, _, _, _) = try makeViewModel()
-        viewModel.beginCreate()
-        viewModel.draft?.title = "   "
-        await viewModel.saveDraft()
-        await viewModel.load()
-        #expect(viewModel.tasks.isEmpty)
-    }
-
-    @Test func cycleStateFlipsOpenToDone() async throws {
-        let (viewModel, taskRepo, _, _) = try makeViewModel()
-        try await taskRepo.save(task("T1"))
-        await viewModel.load()
-        await viewModel.cycleState(viewModel.tasks[0])
-        #expect(viewModel.tasks.first?.task.state == .done)
-        #expect(viewModel.toast?.text == "Completed")
-    }
-
-    @Test func cycleStateFlipsDoneBackToOpen() async throws {
-        let (viewModel, taskRepo, _, _) = try makeViewModel()
-        try await taskRepo.save(task("T1", state: .done))
-        await viewModel.load()
-        await viewModel.cycleState(viewModel.tasks[0])
-        #expect(viewModel.tasks.first?.task.state == .open)
-        #expect(viewModel.toast?.text == "Reopened")
-    }
-
-    @Test func deleteRemovesTaskAndItsLabelJoins() async throws {
-        let (viewModel, taskRepo, labelRepo, joinRepo) = try makeViewModel()
-        try await taskRepo.save(task("T1"))
-        try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
-        try await joinRepo.setLabels(taskId: "T1", labelIds: ["L1"], at: now)
-        await viewModel.load()
-        await viewModel.delete(taskID: "T1")
-
-        #expect(viewModel.tasks.isEmpty)
-        #expect(try await joinRepo.labels(forTaskId: "T1").isEmpty)
-    }
-
-    @Test func ensureLabelReturnsExistingMatchCaseInsensitive() async throws {
-        let (viewModel, _, labelRepo, _) = try makeViewModel()
-        try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
-        await viewModel.load()
-        let id = await viewModel.ensureLabel(name: "work")
-        #expect(id == "L1")
-        #expect(viewModel.labels.count == 1)
-    }
-
-    @Test func ensureLabelCreatesWhenNoMatch() async throws {
-        let (viewModel, _, _, _) = try makeViewModel()
-        await viewModel.load()
-        let id = await viewModel.ensureLabel(name: "Travel")
-        #expect(id != nil)
-        #expect(viewModel.labels.map(\.name).contains("Travel"))
-    }
-
-    @Test func visibleAppliesTheActiveFilter() async throws {
-        let (viewModel, taskRepo, _, _) = try makeViewModel()
-        try await taskRepo.save(task("open", state: .open))
-        try await taskRepo.save(task("done", state: .done))
-        await viewModel.load()
-        viewModel.filter = TodoFilter(state: .done)
-        #expect(viewModel.visible.map(\.id) == ["done"])
-    }
-
-    @Test func countsTallyByState() async throws {
-        let (viewModel, taskRepo, _, _) = try makeViewModel()
-        try await taskRepo.save(task("a", state: .open))
-        try await taskRepo.save(task("b", state: .done))
-        try await taskRepo.save(task("c", state: .cancelled))
-        await viewModel.load()
-        let counts = viewModel.counts
-        #expect(counts.open == 1)
-        #expect(counts.done == 1)
-        #expect(counts.cancelled == 1)
-    }
-
-    @Test func filterSummaryDescribesActiveFilter() async throws {
-        let (viewModel, _, _, _) = try makeViewModel()
-        viewModel.filter = TodoFilter(sort: .newest, state: .all)
-        #expect(viewModel.filterSummary == "All · by newest")
-    }
-
-    /// The view model must pass its injected `calendar` through to
-    /// `groupTasks` — otherwise "due today" silently follows the device
-    /// time zone. Tokyo (UTC+9) and UTC disagree on the day of `due`, so
-    /// the same task lands in different groups under each calendar.
-    @Test func groupsUseTheInjectedCalendarNotTheDeviceZone() async throws {
-        let utc = calendar(zone: "UTC")
-        let fixedNow = utc.date(from: DateComponents(year: 2023, month: 11, day: 14, hour: 20))!
-        let due = utc.date(from: DateComponents(year: 2023, month: 11, day: 15, hour: 2))!
-
-        func firstGroupTitle(using calendar: Calendar) async throws -> String? {
-            let db = try TodoDatabase.makeInMemory()
-            let taskRepo = GRDBTaskRepository(database: db)
-            let viewModel = TodoScreenViewModel(
-                taskRepository: taskRepo,
-                labelRepository: GRDBLabelRepository(database: db),
-                joinRepository: GRDBTaskLabelRepository(database: db),
-                clock: FixedClock(fixedNow),
-                ids: DeterministicIDGenerator(prefix: "id-"),
-                calendar: calendar
-            )
-            try await taskRepo.save(TaskRecord(
-                id: "T1", title: "x",
-                sortOrder: 0, createdAt: fixedNow, updatedAt: fixedNow,
-                dueAt: due
-            ))
-            await viewModel.load()
-            viewModel.filter = TodoFilter(sort: .dueDate, state: .open)
-            return viewModel.groups.first?.title
-        }
-
-        #expect(try await firstGroupTitle(using: calendar(zone: "Asia/Tokyo")) == "Today")
-        #expect(try await firstGroupTitle(using: utc) == "Upcoming")
+        #expect(try await taskRepo.fetch(id: "T1")?.title == "new")
     }
 
     @Test func saveDraftAsEditPreservesSortOrderAndCreatedAt() async throws {
         let (viewModel, taskRepo, _, _) = try makeViewModel()
         let createdAt = now.addingTimeInterval(-86_400)
-        try await taskRepo.save(TaskRecord(
+        let original = TaskRecord(
             id: "T1", title: "old",
             sortOrder: 7, createdAt: createdAt, updatedAt: createdAt
-        ))
-        await viewModel.load()
-        viewModel.beginEdit(viewModel.tasks[0])
+        )
+        try await taskRepo.save(original)
+        viewModel.beginEdit(TaskWithLabels(task: original, labels: []))
         viewModel.draft?.title = "new"
         await viewModel.saveDraft()
 
@@ -222,5 +84,65 @@ struct TodoScreenViewModelTests {
         #expect(saved?.sortOrder == 7)
         #expect(saved?.createdAt == createdAt)
         #expect(saved?.updatedAt == now)
+    }
+
+    @Test func saveDraftWithBlankTitleNoOps() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        viewModel.beginCreate()
+        viewModel.draft?.title = "   "
+        await viewModel.saveDraft()
+        #expect(try await taskRepo.listActive().isEmpty)
+    }
+
+    @Test func saveDraftAttachesLabelsToTheTask() async throws {
+        let (viewModel, taskRepo, labelRepo, joinRepo) = try makeViewModel()
+        try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
+        viewModel.beginCreate()
+        viewModel.draft?.title = "Task with label"
+        viewModel.draft?.labelIds = ["L1"]
+        await viewModel.saveDraft()
+
+        let createdID = try #require(try await taskRepo.listActive().first?.id)
+        let labels = try await joinRepo.labels(forTaskId: createdID)
+        #expect(labels.map(\.id) == ["L1"])
+    }
+
+    @Test func cycleStateFlipsOpenToDone() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("T1", state: .open))
+        await viewModel.cycleState(TaskWithLabels(task: task("T1", state: .open), labels: []))
+        #expect(try await taskRepo.fetch(id: "T1")?.state == .done)
+        #expect(viewModel.toast?.text == "Completed")
+    }
+
+    @Test func cycleStateFlipsDoneBackToOpen() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("T1", state: .done))
+        await viewModel.cycleState(TaskWithLabels(task: task("T1", state: .done), labels: []))
+        #expect(try await taskRepo.fetch(id: "T1")?.state == .open)
+        #expect(viewModel.toast?.text == "Reopened")
+    }
+
+    @Test func deleteRemovesTask() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("T1"))
+        await viewModel.delete(taskID: "T1")
+        #expect(try await taskRepo.fetch(id: "T1") == nil)
+        #expect(viewModel.toast?.text == "Deleted")
+    }
+
+    @Test func ensureLabelReturnsExistingMatchCaseInsensitive() async throws {
+        let (viewModel, _, labelRepo, _) = try makeViewModel()
+        try await labelRepo.save(LabelRecord(id: "L1", name: "Work", hue: 200, createdAt: now, updatedAt: now))
+        let id = await viewModel.ensureLabel(name: "work")
+        #expect(id == "L1")
+        #expect(try await labelRepo.listActive().count == 1)
+    }
+
+    @Test func ensureLabelCreatesWhenNoMatch() async throws {
+        let (viewModel, _, labelRepo, _) = try makeViewModel()
+        let id = await viewModel.ensureLabel(name: "Travel")
+        #expect(id != nil)
+        #expect(try await labelRepo.findActive(name: "travel") != nil)
     }
 }
