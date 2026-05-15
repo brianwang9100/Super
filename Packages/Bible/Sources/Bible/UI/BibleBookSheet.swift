@@ -14,6 +14,9 @@ struct BibleBookSheet: View {
     /// and mark the matching chapter cell.
     let currentBookId: String
     let currentChapterNumber: Int
+    /// Extra bottom padding so the order toggle clears the shell's
+    /// minimized chat pill; `0` in standalone (snapshot) contexts.
+    let bottomInset: CGFloat
     let onSelectChapter: (_ bookId: String, _ chapterNumber: Int) -> Void
     let onClose: () -> Void
 
@@ -200,7 +203,7 @@ struct BibleBookSheet: View {
         .padding(4)
         .background(Capsule().fill(theme.backgroundSunken))
         .padding(.top, 8)
-        .padding(.bottom, 22)
+        .padding(.bottom, 22 + bottomInset)
     }
 
     private func toggleSegment(_ title: String, order: BibleBookOrder) -> some View {
@@ -224,6 +227,7 @@ struct BibleBookSheet: View {
         viewModel: BibleBookSheetViewModel(expandedBookId: "1PE"),
         currentBookId: "1PE",
         currentChapterNumber: 2,
+        bottomInset: 0,
         onSelectChapter: { _, _ in },
         onClose: {}
     )

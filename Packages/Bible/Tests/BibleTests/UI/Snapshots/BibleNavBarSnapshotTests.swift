@@ -54,7 +54,6 @@ struct BibleNavBarSnapshotTests {
                 translationId: "WEB",
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
-                onHamburger: {},
                 onPrevious: {},
                 onNext: {},
                 onPill: {},

@@ -5,9 +5,10 @@ import SwiftUI
 /// book / translation pill.
 ///
 /// M2 wires the prev / next arrows to chapter navigation; M3 wires the pill's
-/// book segment to the book picker. The hamburger and `+` buttons render per
-/// the design but are inert until the shell sidebar and chat hand-off land;
-/// the pill's translation segment is display-only until that picker arrives.
+/// book segment to the book picker. The `+` button renders per the design but
+/// is inert until chat hand-off lands; the pill's translation segment is
+/// display-only until that picker arrives. The sidebar entry point is the
+/// shell's own floating hamburger, so this bar deliberately has none.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
@@ -16,7 +17,6 @@ struct BibleNavBar: View {
     let translationId: String
     let canStepBackward: Bool
     let canStepForward: Bool
-    let onHamburger: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
@@ -24,8 +24,9 @@ struct BibleNavBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            circleButton(systemImage: "line.3.horizontal", action: onHamburger)
-                .accessibilityLabel("Menu")
+            // Balances the trailing `+` so the chapter group stays centered;
+            // the shell's floating hamburger sits over this gap.
+            Color.clear.frame(width: 36, height: 36)
 
             HStack(spacing: 6) {
                 circleButton(systemImage: "chevron.left", action: onPrevious)
@@ -45,7 +46,7 @@ struct BibleNavBar: View {
             plusButton
         }
         .padding(.horizontal, 12)
-        .padding(.top, 20)
+        .padding(.top, 4)
         .padding(.bottom, 12)
         .background(
             // Solid at the top, fading out at the bottom edge so verses

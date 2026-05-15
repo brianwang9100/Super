@@ -34,7 +34,6 @@ public struct BibleScreen: View {
             translationId: viewModel.translationId,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
-            onHamburger: {},
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
             onPill: { viewModel.presentBookSheet() },
@@ -55,6 +54,9 @@ public struct BibleScreen: View {
             viewModel: sheetViewModel,
             currentBookId: viewModel.position.bookId,
             currentChapterNumber: viewModel.position.chapterNumber,
+            // Lift the order toggle above the shell's minimized chat pill,
+            // mirroring the reader's 76pt bottom reserve.
+            bottomInset: 76,
             onSelectChapter: { bookId, chapterNumber in
                 viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
             },
@@ -99,7 +101,7 @@ public struct BibleScreen: View {
             .padding(.horizontal, 26)
             // Top inset clears the floating nav bar; the bar's gradient
             // fades over the first lines as they scroll up beneath it.
-            .padding(.top, 84)
+            .padding(.top, 68)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         // A fresh identity per chapter resets the scroll offset to the top

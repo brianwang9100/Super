@@ -57,6 +57,7 @@ struct BibleBookSheetSnapshotTests {
             viewModel: viewModel,
             currentBookId: "GEN",
             currentChapterNumber: 1,
+            bottomInset: 0,
             onSelectChapter: { _, _ in },
             onClose: {}
         )
