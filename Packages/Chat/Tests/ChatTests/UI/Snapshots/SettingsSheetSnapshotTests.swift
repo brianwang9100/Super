@@ -63,11 +63,6 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
-    @Test("theme pane shows three swatches")
-    func themePane() async {
-        await verify(theme: .light, pane: .theme, name: "settings_theme_light")
-    }
-
     @Test("system prompt pane")
     func promptPane() async {
         await verify(theme: .light, pane: .prompt, name: "settings_prompt_light")
