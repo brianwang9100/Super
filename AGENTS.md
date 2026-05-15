@@ -131,7 +131,6 @@ All naming guidance — files, folders, function parameters, Swift type suffixes
   - **A view whose state is owned solely by that view's own flow, or which merges DB rows with in-memory-only state** (in-flight streaming, actor state, unsaved drafts) **may use an `@Observable` view model with imperative repository reads**, refreshed through its domain's own event channel rather than a DB observation. This is correct, not a violation — `@Query` can only project the DB slice and would force a redundant second mechanism. (Example: Chat's transcript — written only by its own `ChatSession`, merged with a non-persisted streaming tail.)
   - Either way, **never hand-roll a `ValueObservation` inside a view model.** Reactive binding goes through GRDBQuery `@Query`; imperative reads go through repositories. There is no third option.
 - Use **[GRDBSnapshotTesting](https://github.com/groue/GRDBSnapshotTesting)** for snapshot testing of database state
-- Use **[GRDBSnapshotTesting](https://github.com/groue/GRDBSnapshotTesting)** for snapshot testing of database state
 
 ### GRDB schema naming
 
