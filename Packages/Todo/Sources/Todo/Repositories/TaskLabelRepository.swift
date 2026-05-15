@@ -38,6 +38,7 @@ public struct GRDBTaskLabelRepository: TaskLabelRepository {
         return try await queue.read { db in
             let joinRows = try TaskLabelRecord
                 .filter(taskIds.contains(Column("taskId")))
+                .filter(Column("deletedAt") == nil)
                 .fetchAll(db)
             let labelIds = Array(Set(joinRows.map(\.labelId)))
             guard !labelIds.isEmpty else { return [:] }
@@ -65,6 +66,7 @@ public struct GRDBTaskLabelRepository: TaskLabelRepository {
             let existingIds = Set(
                 try TaskLabelRecord
                     .filter(Column("taskId") == taskId)
+                    .filter(Column("deletedAt") == nil)
                     .fetchAll(db)
                     .map(\.labelId)
             )

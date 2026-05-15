@@ -8,14 +8,21 @@ import Testing
 struct TaskLabelRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func makeRepos() throws
-        -> (GRDBTaskRepository, GRDBLabelRepository, GRDBTaskLabelRepository) {
+    private func makeAll() throws
+        -> (TodoDatabase, GRDBTaskRepository, GRDBLabelRepository, GRDBTaskLabelRepository) {
         let db = try TodoDatabase.makeInMemory()
         return (
+            db,
             GRDBTaskRepository(database: db),
             GRDBLabelRepository(database: db),
             GRDBTaskLabelRepository(database: db)
         )
+    }
+
+    private func makeRepos() throws
+        -> (GRDBTaskRepository, GRDBLabelRepository, GRDBTaskLabelRepository) {
+        let (_, taskRepo, labelRepo, joinRepo) = try makeAll()
+        return (taskRepo, labelRepo, joinRepo)
     }
 
     private func task(_ id: String) -> TaskRecord {
@@ -80,6 +87,41 @@ struct TaskLabelRepositoryTests {
         try await joinRepo.setLabels(taskId: "t1", labelIds: ["l1", "l2"], at: now)
         let labels = try await joinRepo.labels(forTaskId: "t1")
         #expect(labels.map(\.name) == ["Admin", "work"])
+    }
+
+    @Test func bulkLookupExcludesSoftDeletedJoinRows() async throws {
+        let (db, taskRepo, labelRepo, joinRepo) = try makeAll()
+        try await taskRepo.save(task("t1"))
+        try await labelRepo.save(label("l1", "Work"))
+        try await joinRepo.setLabels(taskId: "t1", labelIds: ["l1"], at: now)
+        // Tombstone the join row directly — simulates the future sync
+        // write path, which will soft-delete instead of hard-delete.
+        try await db.queue.write { db in
+            try TaskLabelRecord(
+                taskId: "t1", labelId: "l1",
+                createdAt: now, updatedAt: now, deletedAt: now
+            ).save(db)
+        }
+        let bulk = try await joinRepo.labels(forTaskIds: ["t1"])
+        #expect(bulk["t1"] == nil)
+    }
+
+    @Test func setLabelsTreatsSoftDeletedJoinRowAsAbsent() async throws {
+        let (db, taskRepo, labelRepo, joinRepo) = try makeAll()
+        try await taskRepo.save(task("t1"))
+        try await labelRepo.save(label("l1", "Work"))
+        try await joinRepo.setLabels(taskId: "t1", labelIds: ["l1"], at: now)
+        try await db.queue.write { db in
+            try TaskLabelRecord(
+                taskId: "t1", labelId: "l1",
+                createdAt: now, updatedAt: now, deletedAt: now
+            ).save(db)
+        }
+        // A soft-deleted join row counts as absent, so `setLabels` must
+        // re-attach the label rather than treating it as already present.
+        try await joinRepo.setLabels(taskId: "t1", labelIds: ["l1"], at: now.addingTimeInterval(60))
+        let labels = try await joinRepo.labels(forTaskId: "t1")
+        #expect(labels.map(\.id) == ["l1"])
     }
 
     @Test func bulkLookupIgnoresSoftDeletedLabels() async throws {

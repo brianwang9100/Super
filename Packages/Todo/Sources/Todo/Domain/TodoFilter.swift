@@ -7,7 +7,7 @@ public struct TodoFilter: Sendable, Equatable {
     /// Sort order. `.manual` stays in the enum so a future reorder UX can
     /// adopt it without a schema change, but the filter sheet does not
     /// expose it yet.
-    public enum Sort: String, Sendable, CaseIterable {
+    public enum Sort: String, Sendable, Equatable, CaseIterable {
         case priority
         case dueDate
         case newest
