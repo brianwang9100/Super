@@ -63,11 +63,6 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
-    @Test("theme pane shows three swatches")
-    func themePane() async {
-        await verify(theme: .light, pane: .theme, name: "settings_theme_light")
-    }
-
     @Test("system prompt pane")
     func promptPane() async {
         await verify(theme: .light, pane: .prompt, name: "settings_prompt_light")
@@ -81,6 +76,27 @@ struct SettingsSheetSnapshotTests {
     @Test("appearance pane")
     func appearancePane() async {
         await verify(theme: .light, pane: .appearance, name: "settings_appearance_light")
+    }
+
+    // The merged Appearance pane owns the theme grid, so it carries the
+    // full light/dark/sepia matrix per `Packages/Chat/CLAUDE.md`. The
+    // dark/sepia variants seed a matching `themeId` so the selected-card
+    // border + halo render on a non-Light card too.
+
+    @Test("appearance pane in dark")
+    func appearancePaneDark() async {
+        await verify(
+            theme: .dark, pane: .appearance, name: "settings_appearance_dark",
+            settings: Self.settings(themeId: .dark)
+        )
+    }
+
+    @Test("appearance pane in sepia")
+    func appearancePaneSepia() async {
+        await verify(
+            theme: .sepia, pane: .appearance, name: "settings_appearance_sepia",
+            settings: Self.settings(themeId: .sepia)
+        )
     }
 
     @Test("tools pane")
@@ -130,15 +146,25 @@ struct SettingsSheetSnapshotTests {
     // recorded one — the same gap documented in
     // `MessageListSnapshotTests` and `SidebarDrawerSnapshotTests`.
 
+    /// `ChatSettings.default` with `themeId` overridden — used by the
+    /// appearance-pane variants so the grid's selected card matches the
+    /// chrome theme under test.
+    private static func settings(themeId: ChatSettings.ThemeID) -> ChatSettings {
+        var settings = ChatSettings.default
+        settings.themeId = themeId
+        return settings
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         pane: SettingsSheet.Pane,
         name: String,
+        settings: ChatSettings = .default,
         function: String = #function
     ) async {
         let viewModel = makeViewModel()
         viewModel._setSnapshotState(
-            settings: .default,
+            settings: settings,
             models: Self.sampleModels,
             tools: Self.sampleTools,
             chatCount: 7
