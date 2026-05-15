@@ -68,6 +68,16 @@ public struct ChatOverlay: View {
     /// `onDragEnded` once the snap target has been assigned.
     @State private var dragHeight: CGFloat? = nil
 
+    /// Captured chat-surface height at the moment the drag began.
+    /// `DragGesture.translation` is cumulative from the gesture's start,
+    /// so the drag's effective height is `dragStartHeight - translation`.
+    /// Caching the start height in `@State` (rather than re-deriving from
+    /// `settledState.height(in: geo, ...)` on every render) keeps the
+    /// drag immune to geometry changes mid-gesture — keyboard appearing,
+    /// device rotation, split-screen resize — which would otherwise
+    /// recompute a different `settledH` and produce a visible snap.
+    @State private var dragStartHeight: CGFloat? = nil
+
     /// Snapshot-test override. When non-nil, freezes the chat-surface
     /// height at this value so baselines can be recorded mid-morph.
     private let frozenDragHeight: CGFloat?
@@ -103,7 +113,12 @@ public struct ChatOverlay: View {
                 onManageModels: onManageModels,
                 onSurfaceTapped: { surfaceTapped() },
                 onDragChanged: { translation in
-                    updateDrag(translation: translation, settledH: settledH, minH: minH, maxH: maxH)
+                    updateDrag(
+                        translation: translation,
+                        liveSettledH: settledH,
+                        minH: minH,
+                        maxH: maxH
+                    )
                 },
                 onDragEnded: { translation, predicted in
                     endDrag(
@@ -122,11 +137,22 @@ public struct ChatOverlay: View {
 
     // MARK: - Drag handling
 
-    private func updateDrag(translation: CGSize, settledH: CGFloat, minH: CGFloat, maxH: CGFloat) {
+    private func updateDrag(
+        translation: CGSize,
+        liveSettledH: CGFloat,
+        minH: CGFloat,
+        maxH: CGFloat
+    ) {
+        // Lock the drag-start height the first time the gesture fires.
+        // `liveSettledH` is recomputed each render and could shift mid-
+        // gesture if `geo` changes (keyboard, rotation, split-screen);
+        // using the captured value keeps the drag stable across those.
+        let startH = dragStartHeight ?? liveSettledH
+        if dragStartHeight == nil { dragStartHeight = startH }
         // Downward translation (positive height) collapses; upward expands.
         // Clamp to the anchor envelope so the surface can't be dragged
         // past minimized or expanded.
-        let raw = settledH - translation.height
+        let raw = startH - translation.height
         dragHeight = min(maxH, max(minH, raw))
     }
 
@@ -148,6 +174,7 @@ public struct ChatOverlay: View {
         withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
             settledState = snap
             dragHeight = nil
+            dragStartHeight = nil
         }
     }
 
@@ -173,6 +200,12 @@ public struct ChatProgressPreferenceKey: PreferenceKey {
     public static let defaultValue: Double = 1
 
     public static func reduce(value: inout Double, nextValue: () -> Double) {
+        // Single-writer assumption: only one `ChatOverlay` per scene
+        // writes this key, so "last child wins" is fine. If a future
+        // refactor mounts a second overlay this reduce needs a
+        // deliberate merge strategy — without it the shell would
+        // silently read whichever overlay SwiftUI happens to process
+        // last.
         value = nextValue()
     }
 }

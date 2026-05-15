@@ -175,6 +175,26 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_pill_dark", function: function)
     }
 
+    /// Sepia variant for the pill extreme — completes the
+    /// light/dark/sepia matrix required by `Packages/Chat/AGENTS.md`
+    /// for snapshot tests.
+    @Test("composer at progress 0 renders as the minimized pill — sepia")
+    func pillModeSepia() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            progress: 0
+        )
+        .superTheme(.make(.sepia))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_pill_sepia", function: function)
+    }
+
     /// Mid-morph baseline that pins the cross-fade between the pill
     /// label and the editor. Sits inside the editor's [0, 0.2] fade
     /// band — both the label and the editor are partially visible —
