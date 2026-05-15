@@ -113,9 +113,11 @@ Drag-and-drop in the Mini-App Manager and sidebar. Order persists in UserDefault
 
 ## 4. Chat Overlay States
 
-Chat is always present. What changes is how much screen it takes and whether a mini-app is visible behind it. There are three states; every mini-app interaction happens through one of them. Their canonical Swift identifier is `ChatPresentationState { case minimized, semiExpanded, expanded }`.
+Chat is always present. What changes is how much screen it takes and whether a mini-app is visible behind it. There are three **settled anchors**; every mini-app interaction settles into one of them. Their canonical Swift identifier is `ChatPresentationState { case minimized, semiExpanded, expanded }`.
 
-A **drag handle** (36 × 4.5pt pill, `ink-mute @ 55%` resting → `ink-faint @ 70%` while dragging) sits at the top of the chat surface in expanded and semi-expanded states. Dragging snaps to the nearest state on release; velocity above the threshold skips a state. Spring: `cubic-bezier(0.34, 1.4, 0.5, 1)` over 380ms. Reduce Motion replaces with a 200ms crossfade.
+The chat surface is **one morphing view** — a single `ChatScreen` whose frame height tracks the user's finger continuously during a drag and snaps to the nearest anchor on release. There is no swap between separate pill / panel / screen view hierarchies; the same `ChatComposer` resizes to *become* the pill in minimized mode, the panel surround fades in and out, the transcript fades alongside the morph, and the corner radius interpolates from 24pt (pill) → 0pt (expanded). Every visual is driven by a `progress: Double` (0 = pill, 1 = expanded) derived from the chat-surface height.
+
+A **drag handle** (36 × 4.5pt pill, `ink-mute @ 55%` resting → `ink-faint @ 70%` while dragging) sits at the top of the chat surface in expanded and semi-expanded states. In minimized mode the handle is hidden and the entire pill body becomes the drag-or-tap target. Dragging anywhere on the chat surface updates the height continuously; on release the surface snaps to the anchor whose height is nearest the release position (with the SwiftUI predicted-end translation factored in as a velocity bias). A hard flick above 1,200pt of predicted-end travel jumps straight to the endpoint anchor in the flick's direction. Snap spring: `cubic-bezier(0.34, 1.4, 0.5, 1)` over 380ms. Reduce Motion replaces the spring with a 200ms crossfade; the drag itself stays finger-tracked (no animation during drag).
 
 A **fixed hamburger button** (36 × 36pt raised pill, top-left inset 12pt, blur backdrop) lives in the shell chrome — it does **not** animate with the chat. It is the entry point to the sidebar applet switcher across all three states.
 
@@ -197,8 +199,9 @@ The chat collapses to a **full-width pill** anchored at the bottom of the viewpo
 ```
 
 - **Tap** the pill → snaps to semi-expanded.
-- **Geometry:** left/right inset 12pt, bottom inset 14pt + safe-area-bottom. Radius 24. Raised surface (`var(--bg-raised)`) with `1px var(--border-faint)`. Same shadow stack as the semi-expanded panel.
-- **Affordance:** centered "Chat with Super" placeholder text on the left, mic glyph (`ink-soft`) on the right.
+- **Drag** anywhere on the pill body → live resize, snaps to the nearest anchor on release.
+- **Geometry:** left/right inset 12pt, bottom inset 14pt + safe-area-bottom. Radius 26 (matches the composer capsule the pill morphs into — close enough to the prior 24pt). Raised surface (`var(--bg-raised)`) with `1px var(--border-faint)`. Two-layer drop shadow (`0 12px 12px rgba(0,0,0,0.15)` + `0 24px 30px rgba(0,0,0,0.10)`).
+- **Affordance:** centered "Chat with Super" placeholder text on the left (rendered by the same `ChatComposer` that becomes the expanded composer at higher progress — at `progress = 0` the text-field is hidden and the label takes its slot), mic glyph (`ink-soft`) on the right.
 - **Streaming indicator:** a subtle pulsing accent dot on the right edge replaces the mic when the AI is mid-response.
 - Entered by dismissing the semi-expanded panel (drag down) or by selecting a mini-app from the sidebar while Chat was expanded.
 - Exited by tapping the pill (→ semi-expanded) or by selecting Chat from the sidebar (→ expanded).
@@ -220,7 +223,7 @@ The chat collapses to a **full-width pill** anchored at the bottom of the viewpo
            └──────────────────┘
 ```
 
-Transitions are spring animations (`Animation.timingCurve(0.34, 1.4, 0.5, 1, duration: 0.38)`); the chat panel's height interpolates with the composer staying visually anchored at the bottom (matched geometry). Reduce Motion replaces them with `.easeInOut(duration: 0.2)` crossfades.
+Transitions are spring animations (`Animation.timingCurve(0.34, 1.4, 0.5, 1, duration: 0.38)`) applied to the chat-surface's height on snap; during a live drag the height tracks the finger directly with no animation. The composer stays visually anchored at the bottom of the surface at every progress — it never moves; only its content morphs (pill label ↔ multi-line editor, footer row collapses to zero height). Reduce Motion replaces snap springs with `.easeInOut(duration: 0.2)` crossfades; live drag is unaffected.
 
 ### 4.5 Platform Adaptations
 

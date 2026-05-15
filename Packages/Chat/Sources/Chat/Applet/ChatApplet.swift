@@ -7,7 +7,7 @@ import SwiftUI
 /// **Not registered in production.** Chat is the shell's host surface, not
 /// a backdrop applet — `AppShell` deliberately omits `ChatApplet()` from
 /// its `AppletRegistry` (see `App/Shell/AGENTS.md`). The chat overlay
-/// (`ChatOverlayContainer`) is rendered directly by the shell and always
+/// (`ChatOverlay`) is rendered directly by the shell and always
 /// floats on top of whichever backdrop applet is active (or no backdrop
 /// at all when `registry.activeID == nil`). If a future refactor needs
 /// Chat to appear in the sidebar applet rail, prefer adding a "Chat" row

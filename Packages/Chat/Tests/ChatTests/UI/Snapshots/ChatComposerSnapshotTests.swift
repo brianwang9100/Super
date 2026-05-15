@@ -136,6 +136,88 @@ struct ChatComposerSnapshotTests {
         .frame(width: 402)
     }
 
+    // MARK: - Pill-mode morph extreme
+
+    @Test("composer at progress 0 renders as the minimized pill")
+    func pillModeLight() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            progress: 0
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_pill_light", function: function)
+    }
+
+    /// Dark variant for the pill extreme — catches regressions where
+    /// the lifted-pill shadow or the morphing label color drifts on a
+    /// dark palette specifically.
+    @Test("composer at progress 0 renders as the minimized pill — dark")
+    func pillModeDark() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            progress: 0
+        )
+        .superTheme(.make(.dark))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_pill_dark", function: function)
+    }
+
+    /// Sepia variant for the pill extreme — completes the
+    /// light/dark/sepia matrix required by `Packages/Chat/AGENTS.md`
+    /// for snapshot tests.
+    @Test("composer at progress 0 renders as the minimized pill — sepia")
+    func pillModeSepia() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            progress: 0
+        )
+        .superTheme(.make(.sepia))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_pill_sepia", function: function)
+    }
+
+    /// Mid-morph baseline that pins the cross-fade between the pill
+    /// label and the editor. Sits inside the editor's [0, 0.2] fade
+    /// band — both the label and the editor are partially visible —
+    /// and the footer is just starting to appear (≈ progress 0.15 of
+    /// its [0.15, 0.45] fade-in). Catches drift in the smoothstep
+    /// timings that the two endpoint baselines can't see.
+    @Test("composer mid-morph at progress 0.15")
+    func midMorphLight() {
+        let function = #function
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            progress: 0.15
+        )
+        .superTheme(.make(.light))
+        .frame(width: 402)
+        recordOrCompare(view: view, name: "composer_mid_morph_light", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -299,6 +381,7 @@ private struct FocusHostingChatComposer: View {
     let maxTokens: Int
     var isRecording: Bool = false
     var isMicAvailable: Bool = true
+    var progress: Double = 1
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -313,7 +396,8 @@ private struct FocusHostingChatComposer: View {
             maxTokens: maxTokens,
             onSubmit: { _ in },
             isRecording: isRecording,
-            isMicAvailable: isMicAvailable
+            isMicAvailable: isMicAvailable,
+            progress: progress
         )
     }
 }
