@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Theme pane. Mirrors `ThemePane` from `settings.jsx`: a 3-column grid

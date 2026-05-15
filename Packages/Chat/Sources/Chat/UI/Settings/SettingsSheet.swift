@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Modal Settings sheet. Mirrors `SettingsModal` from `settings.jsx`:
