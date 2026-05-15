@@ -69,7 +69,10 @@ public struct GRDBTaskLabelRepository: TaskLabelRepository {
                     .map(\.labelId)
             )
             for labelId in desired.subtracting(existingIds) {
-                try TaskLabelRecord(taskId: taskId, labelId: labelId, createdAt: createdAt).save(db)
+                try TaskLabelRecord(
+                    taskId: taskId, labelId: labelId,
+                    createdAt: createdAt, updatedAt: createdAt
+                ).save(db)
             }
             let toDelete = existingIds.subtracting(desired)
             if !toDelete.isEmpty {

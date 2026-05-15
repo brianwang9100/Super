@@ -38,6 +38,18 @@ struct TodoDatabaseMigrationTests {
         #expect(names.contains("taskLabel_on_labelId"))
     }
 
+    @Test func v1TaskLabelCarriesSyncColumns() async throws {
+        let db = try TodoDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try String.fetchAll(db, sql: "SELECT name FROM pragma_table_info('taskLabel')")
+        }
+        // Sync-readiness per docs/SYNC.md §6.2 — the v1 migration is
+        // immutable, so the tombstone columns must ship in it.
+        #expect(columns.contains("createdAt"))
+        #expect(columns.contains("updatedAt"))
+        #expect(columns.contains("deletedAt"))
+    }
+
     @Test func taskDeleteCascadesToTaskLabel() async throws {
         let db = try TodoDatabase.makeInMemory()
         let now = Date()
@@ -51,7 +63,7 @@ struct TodoDatabaseMigrationTests {
                 createdAt: now, updatedAt: now
             ).save(db)
             try TaskLabelRecord(
-                taskId: "t1", labelId: "l1", createdAt: now
+                taskId: "t1", labelId: "l1", createdAt: now, updatedAt: now
             ).save(db)
         }
         try await db.queue.write { db in
@@ -76,7 +88,7 @@ struct TodoDatabaseMigrationTests {
                 createdAt: now, updatedAt: now
             ).save(db)
             try TaskLabelRecord(
-                taskId: "t1", labelId: "l1", createdAt: now
+                taskId: "t1", labelId: "l1", createdAt: now, updatedAt: now
             ).save(db)
         }
         try await db.queue.write { db in

@@ -59,6 +59,14 @@ public func registerTodoMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("labelId", .text).notNull()
                 .references("label", onDelete: .cascade)
             t.column("createdAt", .datetime).notNull()
+            // `updatedAt` / `deletedAt` make the join table sync-ready per
+            // `docs/SYNC.md` §6.2, so enabling sync later needs no
+            // migration. The MVP write path hard-deletes join rows (see
+            // `TaskLabelRepository.setLabels`), matching how `task` rows
+            // are hard-deleted today; the sync engine will flip both to
+            // soft-delete when it lands.
+            t.column("updatedAt", .datetime).notNull()
+            t.column("deletedAt", .datetime)
             t.primaryKey(["taskId", "labelId"])
         }
         try db.create(
