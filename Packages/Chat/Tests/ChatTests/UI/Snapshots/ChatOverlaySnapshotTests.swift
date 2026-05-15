@@ -6,19 +6,27 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `ChatOverlayContainer` in each of the three
-/// `ChatPresentationState` shapes. M3 smoke: just light theme. The full
-/// state × theme × backdrop matrix lands in M4.
+/// Pixel-stable snapshots of the morphing `ChatOverlay`. Replaces the
+/// prior `ChatOverlayContainerSnapshotTests`, which captured three
+/// discrete view hierarchies. The morphing overlay is one continuous
+/// surface, so we sample it at:
+///
+/// - the three settled anchors (`.expanded` / `.semiExpanded` /
+///   `.minimized`), driven by `state:` only,
+/// - one mid-drag intermediate height between minimized and
+///   semi-expanded so the composer morph (label → editor, footer fade)
+///   is on a baseline.
+///
+/// All four sample points × three themes for the settled anchors;
+/// light only for the mid-drag baseline (the morph timing matters far
+/// more than per-theme color matching at the intermediate point).
 // `.serialized` — snapshot baselines are read/written per-test against
-// the same on-disk `__Snapshots__/ChatOverlayContainerSnapshotTests/`
-// directory. Parallel execution races on the PNG files (TOCTOU), not on
-// any async behavior in the code under test — serialization is the right
-// tool. Matches every other snapshot suite in this directory; the
-// codebase-wide convention is intentional, not a smell to fix per-file
-// per AGENTS.md §Testing.2.
-@Suite("ChatOverlayContainer snapshots", .serialized)
+// the same on-disk `__Snapshots__/ChatOverlaySnapshotTests/` directory.
+// Parallel execution races on the PNG files (TOCTOU), not on any async
+// behavior in the code under test — serialization is the right tool.
+@Suite("ChatOverlay snapshots", .serialized)
 @MainActor
-struct ChatOverlayContainerSnapshotTests {
+struct ChatOverlaySnapshotTests {
     private let model = LLMModel(
         id: "gpt-4o",
         displayName: "GPT-4o",
@@ -81,7 +89,53 @@ struct ChatOverlayContainerSnapshotTests {
         verify(state: .minimized, theme: .sepia, name: "overlay_minimized_sepia")
     }
 
+    // MARK: - Mid-drag morph
+
+    /// Pins the chat surface at ≈ 22% of the way from minimized to
+    /// expanded — well into the composer's cross-fade band so the pill
+    /// label has faded out (≈ progress 0.2) but the footer has only
+    /// just begun to appear (≈ progress 0.15 → 0.45 fade-in). This
+    /// baseline catches regressions in the smoothstep timings that the
+    /// settled-anchor snapshots can't see.
+    @Test("mid-drag intermediate height — light")
+    func midDragLight() {
+        let viewModel = makeViewModel(initialMessages: populatedMessages)
+        viewModel._setSnapshotState(
+            items: ChatScreenViewModel.project(messages: populatedMessages, toolCalls: [], checkpoint: nil),
+            usedTokens: 1_200
+        )
+
+        // Minimized base height (60pt) + 0.22 × (full-height 874 − 60)
+        // ≈ 239pt. Inside the composer's morph band; transcript is
+        // visible at low opacity.
+        let view = ChatOverlay(
+            state: .constant(.minimized),
+            viewModel: viewModel,
+            _injectedDragHeight: 240
+        )
+        .superTheme(.make(.light))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
+            named: "overlay_mid_drag_light",
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: #function
+        )
+        if let failure {
+            Issue.record("overlay_mid_drag_light: \(failure)")
+        }
+    }
+
     // MARK: - Helpers
+
+    private var populatedMessages: [MessageRecord] {
+        [
+            MessageRecord(id: "u1", conversationId: "c", role: .user, content: "What can you do?", createdAt: Self.now),
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "I can answer questions, write code, and use a few built-in tools.", createdAt: Self.now.addingTimeInterval(1)),
+        ]
+    }
 
     private func verify(
         state: ChatPresentationState,
@@ -89,17 +143,14 @@ struct ChatOverlayContainerSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let messages: [MessageRecord] = [
-            MessageRecord(id: "u1", conversationId: "c", role: .user, content: "What can you do?", createdAt: Self.now),
-            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "I can answer questions, write code, and use a few built-in tools.", createdAt: Self.now.addingTimeInterval(1)),
-        ]
+        let messages = populatedMessages
         let viewModel = makeViewModel(initialMessages: messages)
         viewModel._setSnapshotState(
             items: ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil),
             usedTokens: 1_200
         )
 
-        let view = ChatOverlayContainer(
+        let view = ChatOverlay(
             state: .constant(state),
             viewModel: viewModel
         )
@@ -144,7 +195,7 @@ struct ChatOverlayContainerSnapshotTests {
 // Mirrors the `NoopDriver` + `Snapshot*Repository` private helpers in
 // `ChatScreenSnapshotTests.swift`. Inlined here because those types are
 // file-private and the project doesn't yet have a shared snapshot-test
-// helper module. Promotable to a single shared helper file in M4 if more
+// helper module. Promotable to a single shared helper file if more
 // suites need them.
 
 private struct OverlayNoopDriver: ChatSessionDriver {

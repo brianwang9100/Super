@@ -11,6 +11,14 @@ import UIKit
 /// The hamburger menu lives in the shell chrome (`FixedHamburgerButton` in
 /// `App/Shell/`), not in this surface. The drag handle is visually present
 /// in M1 but the snap-to-presentation-state gesture wires up in M3.
+///
+/// `progress` (0 = pill, 1 = expanded screen) drives every visual that
+/// differs between the three presentation states — header visibility,
+/// transcript opacity, panel rounded-rect surround, shadow, and the
+/// composer's own pill/full morph. The chat overlay computes `progress`
+/// from the live chat-surface height and feeds it down so the entire
+/// surface resizes continuously under a drag instead of swapping
+/// between three discrete view hierarchies.
 public struct ChatScreen: View {
     @Bindable public var viewModel: ChatScreenViewModel
     /// Tapped when the user picks "Manage models…" from the composer's
@@ -30,46 +38,48 @@ public struct ChatScreen: View {
     /// in different hour buckets and baselines mismatch.
     private let calendar: Calendar
 
-    /// - Parameter onAddModelRequested: Installed on the view model so
-    ///   the no-model error banner's action button can deep-link the
-    ///   host's Settings sheet to its Add Model form. Not stored on
-    ///   the view because nothing in `body` reads it — the view model
-    ///   is the only consumer.
-    ///
-    /// Marked `@MainActor` so the assignment to
-    /// `viewModel.onAddModelRequested` (a `@MainActor`-isolated
-    /// property on `ChatScreenViewModel`) is explicitly main-actor
-    /// isolated. SwiftUI infers `@MainActor` on `View` struct inits
-    /// in Swift 6, but making it explicit keeps the isolation
-    /// contract visible at the declaration site and is robust to
-    /// future callers in non-main-actor contexts.
-    /// Whether the centered chat title renders below the drag handle.
-    /// `true` for the ``ChatPresentationState/expanded`` state (the full
-    /// chat); `false` for the semi-expanded panel, which omits the title
-    /// since the user is treating the panel as a glance-and-reply surface
-    /// hovering over a different applet.
-    public let showsHeader: Bool
+    /// `0` renders the surface as the minimized pill (only the morphing
+    /// `ChatComposer` shows, panel surround hidden, transcript faded);
+    /// `1` renders the full expanded screen (header + transcript +
+    /// composer, no panel surround, chat fills the viewport). Driven
+    /// from `ChatOverlay` based on the live drag height.
+    public let progress: Double
 
-    /// Forwarded to the embedded `ChatDragHandle`. Fires on drag-end with
-    /// the gesture's translation and SwiftUI's predicted-end-translation
-    /// (a velocity proxy). Wired by `ChatOverlayContainer` to snap to the
-    /// nearest presentation state on release.
-    public let onDragHandleEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
+    /// Fires when the user taps the chat surface in pill mode. Wired by
+    /// `ChatOverlay` to expand to ``ChatPresentationState/semiExpanded`` —
+    /// mirrors the prior `MinimizedChatPill.onTap`.
+    public let onSurfaceTapped: (() -> Void)?
+
+    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
+    /// body-drag overlay. Fires on every drag-changed tick with the live
+    /// translation so the overlay can update its chat-surface height in
+    /// real time.
+    public let onDragChanged: ((_ translation: CGSize) -> Void)?
+
+    /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
+    /// body-drag overlay. Fires on drag-end with the gesture's translation
+    /// and SwiftUI's predicted-end-translation (a velocity proxy). Wired by
+    /// `ChatOverlay` to snap to the nearest presentation state on release.
+    public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
 
     @MainActor
     public init(
         viewModel: ChatScreenViewModel,
-        showsHeader: Bool = true,
+        progress: Double = 1,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
-        onDragHandleEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
+        onSurfaceTapped: (() -> Void)? = nil,
+        onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
+        onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         clock: any Clock = SystemClock(),
         calendar: Calendar = .current
     ) {
         self.viewModel = viewModel
-        self.showsHeader = showsHeader
+        self.progress = progress
         self.onManageModels = onManageModels
-        self.onDragHandleEnded = onDragHandleEnded
+        self.onSurfaceTapped = onSurfaceTapped
+        self.onDragChanged = onDragChanged
+        self.onDragEnded = onDragEnded
         self.clock = clock
         self.calendar = calendar
         viewModel.onAddModelRequested = onAddModelRequested
@@ -81,44 +91,142 @@ public struct ChatScreen: View {
     /// dismiss the keyboard by clearing this value.
     @FocusState private var composerIsFocused: Bool
 
+    // MARK: - Progress-driven interpolations
+
+    /// Header (title row) is hidden in pill and semi-expanded, fading
+    /// in as the surface climbs toward fully expanded. Driven by
+    /// `headerProgress` so opacity, scale, and the slot height stay in
+    /// lockstep — without this the header used to pop in at a hard
+    /// `progress > 0.7` threshold, which felt jarring during the morph.
+    private var headerProgress: Double {
+        Self.smoothstep(progress, from: 0.6, to: 0.95)
+    }
+
+    /// Approximate intrinsic height of `ChatHeader` at default Dynamic
+    /// Type. Used as the upper bound for the header's collapsing slot
+    /// so the row reserves zero vertical space when fully hidden and
+    /// its natural height when fully visible. Reasonable Dynamic Type
+    /// growth (~XXL) still fits inside the expanded chat-surface's
+    /// remaining slack; if it ever doesn't, swap this for a
+    /// PreferenceKey measurement.
+    private static let headerIntrinsicHeight: CGFloat = 38
+
+    /// Transcript / empty-state opacity. Hidden in pill mode (no room),
+    /// fades in around the semi-expanded transition so a glance-and-reply
+    /// surface shows messages.
+    private var contentOpacity: Double {
+        Self.smoothstep(progress, from: 0.15, to: 0.45)
+    }
+
+
+    /// Pill-mode tap-to-expand overlay. Only mounted in pill mode so it
+    /// doesn't swallow taps on the live composer's text field at higher
+    /// progress. `<= 0.15` (rather than `< 0.15`) closes the off-by-one
+    /// against ``ChatComposer/editorInteractive``'s `> 0.15` gate so a
+    /// tap exactly on the band edge always lands on a live target —
+    /// the pill overlay at the boundary, the editor immediately past
+    /// it. The drag affordance is the always-visible `ChatDragHandle`;
+    /// this overlay no longer drives drags — that removes the prior
+    /// "gesture dies when overlay un-mounts at `progress = 0.15`" stall
+    /// and the parallel "drag handle un-mounts at `progress = 0.05`"
+    /// stall.
+    private var pillSurfaceCaptureActive: Bool { progress <= 0.15 }
+
+    /// Surround opacity: rounded-rect panel background + stroke + shadow
+    /// that make the chat read as a floating panel in semi-expanded mode.
+    /// Hidden in pill mode (composer's own capsule shadow takes over) and
+    /// in fully-expanded mode (chat fills the screen, no floating
+    /// effect).
+    private var panelSurroundOpacity: Double {
+        let fadeIn = Self.smoothstep(progress, from: 0, to: 0.1)
+        let fadeOut = 1 - Self.smoothstep(progress, from: 0.9, to: 1.0)
+        return fadeIn * fadeOut
+    }
+
+    /// Chat-surface background opacity. Fades in alongside the panel
+    /// surround so the applet shows through in pill mode and the
+    /// background is solid by semi-expanded. Stays opaque through full
+    /// expansion — the home-indicator fill behind handles the unsafe
+    /// area at progress = 1.
+    private var surfaceBackgroundOpacity: Double {
+        Self.smoothstep(progress, from: 0, to: 0.1)
+    }
+
+    /// Rounded-rect surround corner radius. 24pt at pill (matches the
+    /// prior `MinimizedChatPill` radius) interpolating to 0 at full
+    /// expansion. The surround itself is invisible at both extremes so
+    /// only the mid-range values are visually load-bearing.
+    private var panelCornerRadius: CGFloat {
+        Self.lerp(progress, 24, 0)
+    }
+
+    /// Fade in the home-indicator background extension only as the chat
+    /// fills the screen, so pill / semi modes leave the unsafe area
+    /// showing the applet (their visual identity is "floating panel above
+    /// the applet").
+    private var bottomSafeAreaFillOpacity: Double {
+        Self.smoothstep(progress, from: 0.95, to: 1.0)
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
-            ChatDragHandle(onDragEnded: onDragHandleEnded)
-            if showsHeader {
-                ChatHeader(title: viewModel.headerTitle)
-            }
+            // Always visible — the drag handle is the unified drag
+            // affordance for every settled state. In minimized mode it
+            // sits directly above the composer pill; in semi and
+            // expanded it sits at the top of the panel. Keeping it
+            // mounted at every progress also means a drag started in
+            // one state can carry the chat to any other without the
+            // gesture's host view ever leaving the tree mid-flight.
+            ChatDragHandle(
+                onDragChanged: onDragChanged,
+                onDragEnded: onDragEnded
+            )
+            ChatHeader(title: viewModel.headerTitle)
+                // Scale runs the full 0→1 range so the title's
+                // translucent box collapses to size 0,0 at the bottom
+                // of the animation rather than snapping in at 70%
+                // size. The frame height collapses with the same
+                // `headerProgress` so the row reserves zero space when
+                // the box is at 0,0.
+                .scaleEffect(headerProgress, anchor: .top)
+                .opacity(headerProgress)
+                .frame(height: CGFloat(headerProgress) * Self.headerIntrinsicHeight, alignment: .top)
+                .clipped()
             content
-                .frame(maxHeight: .infinity)
+                // `minHeight: 0` overrides the inner view's intrinsic
+                // floor (`ChatEmptyState`'s ~90pt icon+greeting,
+                // `MessageList`'s row stack) so the content slot takes
+                // *exactly* the leftover space between handle and
+                // composer at every progress. Without this override
+                // the VStack centered its 92.5pt of intrinsic content
+                // inside the larger frame mid-drag — the composer
+                // visibly drifted up with the handle and then
+                // "blipped" back to the bottom once a discrete
+                // threshold flipped the slot to flexible. Now the
+                // composer stays anchored at the bottom continuously
+                // and the surface grows upward from it.
+                .frame(minHeight: 0, maxHeight: .infinity)
+                .opacity(contentOpacity)
+                .clipped()
                 .contentShape(Rectangle())
-                // `simultaneousGesture` (not `onTapGesture`) so the tap-to-dismiss
-                // path coexists with any tappable content the empty state or
-                // message list may gain. The populated branch also dismisses
-                // from inside `MessageList`; both firing is harmless because
-                // `dismissKeyboard()` is idempotent.
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
                 )
-            ChatComposer(
-                text: composerBinding,
-                isFocused: $composerIsFocused,
-                isStreaming: viewModel.isStreaming,
-                modelOptions: viewModel.modelOptions,
-                selectedModelId: viewModel.selectedModelId,
-                onSelectModel: { viewModel.selectedModelId = $0 },
-                onManageModels: onManageModels,
-                usedTokens: viewModel.usedTokens,
-                maxTokens: viewModel.maxContextTokens,
-                onSubmit: viewModel.send,
-                onMicTap: {
-                    Task { await viewModel.handleMicTap() }
-                },
-                onCancelStreaming: viewModel.cancelStreaming,
-                isRecording: viewModel.voice.state == .listening,
-                isMicAvailable: viewModel.voice.state != .unavailable,
-                onStopRecording: viewModel.handleStopRecording
-            )
+            composer
         }
-        .background(theme.background.ignoresSafeArea())
+        .background(panelBackground)
+        .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+        .overlay {
+            // Stroke border around the panel surround. Fades in/out with
+            // the rest of the panel so it doesn't ring the screen at full
+            // expansion.
+            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+                .strokeBorder(theme.borderFaint, lineWidth: 1)
+                .opacity(panelSurroundOpacity)
+        }
+        .shadow(color: Color.black.opacity(0.18 * panelSurroundOpacity), radius: 12, x: 0, y: 12)
+        .shadow(color: Color.black.opacity(0.12 * panelSurroundOpacity), radius: 30, x: 0, y: 30)
+        .background(homeIndicatorFill)
         // Bind the load to the conversation id so swapping the view
         // model when the user picks a different chat from the sidebar
         // re-fires `load()` against the new transcript. A bare `.task`
@@ -129,6 +237,96 @@ public struct ChatScreen: View {
         .onChange(of: viewModel.voice.state) { _, newState in
             viewModel.handleVoiceStateChange(newState)
         }
+    }
+
+    /// Composer pinned to the bottom of the surface. Stacks a pill-mode
+    /// tap-or-drag capture overlay on top at low progress so the user
+    /// can grow the chat by dragging anywhere on the pill (or expand to
+    /// semi by tapping it). At higher progress the overlay is gone and
+    /// the underlying composer's text editor + footer become
+    /// interactive.
+    @ViewBuilder
+    private var composer: some View {
+        ChatComposer(
+            text: composerBinding,
+            isFocused: $composerIsFocused,
+            isStreaming: viewModel.isStreaming,
+            modelOptions: viewModel.modelOptions,
+            selectedModelId: viewModel.selectedModelId,
+            onSelectModel: { viewModel.selectedModelId = $0 },
+            onManageModels: onManageModels,
+            usedTokens: viewModel.usedTokens,
+            maxTokens: viewModel.maxContextTokens,
+            onSubmit: viewModel.send,
+            onMicTap: {
+                Task { await viewModel.handleMicTap() }
+            },
+            onCancelStreaming: viewModel.cancelStreaming,
+            isRecording: viewModel.voice.state == .listening,
+            isMicAvailable: viewModel.voice.state != .unavailable,
+            onStopRecording: viewModel.handleStopRecording,
+            progress: progress
+        )
+        .overlay {
+            if pillSurfaceCaptureActive {
+                pillSurfaceCapture
+            }
+        }
+    }
+
+    /// Transparent overlay that catches a tap on the pill body in
+    /// minimized mode → expand to semi via `onSurfaceTapped`. Only
+    /// mounted at low progress so the live composer's text field stays
+    /// tappable at higher progress. Drag is handled by the always-
+    /// visible `ChatDragHandle`, so this overlay no longer carries a
+    /// `DragGesture` of its own.
+    @ViewBuilder
+    private var pillSurfaceCapture: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSurfaceTapped?()
+            }
+            .accessibilityLabel("Open chat")
+            .accessibilityHint("Tap to expand the chat panel")
+    }
+
+    /// Panel surround background: rounded-rect raised fill that sits
+    /// behind the chat content and fades in/out with `panelSurroundOpacity`.
+    /// In pill mode the composer's own capsule does the lifted-surface
+    /// duty so this layer hides; in expanded mode the chat-surface base
+    /// background handles the solid fill so this layer also hides.
+    @ViewBuilder
+    private var panelBackground: some View {
+        ZStack {
+            // Chat-surface base background — fades in alongside the
+            // panel so pill mode lets the applet through, fully opaque
+            // by mid-drag onward. Doesn't extend past the safe area;
+            // see `homeIndicatorFill` for the at-full-expansion unsafe
+            // area cover.
+            theme.background.opacity(surfaceBackgroundOpacity)
+            // Panel surround — visible only when the chat reads as a
+            // floating panel. The corner radius is shared with the
+            // outer clipShape so the two layers stay aligned during
+            // the morph.
+            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+                .fill(theme.backgroundRaised.opacity(0.95))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+                .opacity(panelSurroundOpacity)
+        }
+    }
+
+    /// Bottom-anchored extension that paints over the home-indicator's
+    /// unsafe area only when the chat is fully (or nearly fully)
+    /// expanded. Applied as an outer background so it sits behind the
+    /// chat-surface and behind `panelBackground`'s clip — without it the
+    /// expanded chat would leave a 34pt strip of applet visible under
+    /// the home indicator.
+    @ViewBuilder
+    private var homeIndicatorFill: some View {
+        theme.background
+            .opacity(bottomSafeAreaFillOpacity)
+            .ignoresSafeArea(.container, edges: .bottom)
     }
 
     /// Dismiss the on-screen keyboard *and* clear the SwiftUI `@FocusState`
@@ -209,5 +407,23 @@ public struct ChatScreen: View {
             // the viewport reads as empty above the composer.
             .id(viewModel.conversationId)
         }
+    }
+
+    // MARK: - Math helpers
+
+    /// Linear interpolation between `a` and `b` by `t` (clamped to [0, 1]).
+    private static func lerp(_ t: Double, _ a: CGFloat, _ b: CGFloat) -> CGFloat {
+        let clamped = min(1, max(0, t))
+        return a + (b - a) * CGFloat(clamped)
+    }
+
+    /// Hermite (3t² − 2t³) smoothstep mapping `value` from `[from, to]`
+    /// onto `[0, 1]`. Outside that band the result clamps. Used to fade
+    /// chat-surface accents around progress milestones without the
+    /// kink a linear ramp would leave at the band endpoints.
+    private static func smoothstep(_ value: Double, from: Double, to: Double) -> Double {
+        guard to > from else { return value >= to ? 1 : 0 }
+        let t = min(1, max(0, (value - from) / (to - from)))
+        return t * t * (3 - 2 * t)
     }
 }

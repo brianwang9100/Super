@@ -84,15 +84,26 @@ struct AppShell: View {
     let dependencies: AppDependencies
 
     @State private var registry: AppletRegistry
-    /// The current chat presentation shape. Starts in `.expanded` so the
+    /// The current settled chat anchor. Starts in `.expanded` so the
     /// app launches into a full-screen chat surface — the backdrop applet
     /// (seeded from persisted state) sits behind, ready to reveal when
     /// the user drags down. Mutates in response to (a) the user dragging
-    /// the chat surface's drag handle, (b) tapping the minimized pill,
-    /// (c) tapping the dimmed applet backdrop in semi-expanded (→ minimized),
-    /// (d) selecting an applet from the sidebar (→ minimized), or (e)
-    /// selecting an existing chat / "New Chat" from the sidebar (→ expanded).
+    /// the chat surface and releasing (`ChatOverlay` snaps to the nearest
+    /// anchor), (b) tapping the minimized pill, (c) tapping the dimmed
+    /// applet backdrop in semi-expanded (→ minimized), (d) selecting an
+    /// applet from the sidebar (→ minimized), or (e) selecting an
+    /// existing chat / "New Chat" from the sidebar (→ expanded). The
+    /// live in-flight drag height lives inside `ChatOverlay`; the
+    /// continuously-changing visual progress reaches us via
+    /// `chatProgress` below.
     @State private var chatState: ChatPresentationState = .expanded
+    /// Live chat-overlay progress (0 = pill, 1 = full screen). Read from
+    /// `ChatOverlay`'s `ChatProgressPreferenceKey` so the backdrop applet
+    /// can interpolate its opacity and hit-testing alongside the chat's
+    /// drag — no more discrete `switch chatState` opacity. Defaults to
+    /// `1` so the backdrop stays hidden behind the expanded chat that
+    /// renders on first launch before the preference reports anything.
+    @State private var chatProgress: Double = 1
     @State private var viewModel: ChatScreenViewModel?
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
@@ -144,15 +155,46 @@ struct AppShell: View {
     /// programmatic state flip uses the right animation.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Opacity applied to the applet backdrop based on the current chat
-    /// presentation. `.semiExpanded` dims the backdrop to 0.65 per the
-    /// 2026-05-13 design; other states leave it at 1.0. In `.expanded`
-    /// the chat overlay is opaque so this value is effectively unused.
+    /// Opacity applied to the applet backdrop, interpolated continuously
+    /// against `chatProgress` so the dim tracks the user's drag in
+    /// lockstep with the chat surface's height.
+    ///
+    /// Anchor points (matching the 2026-05-13 design):
+    /// - progress 0 (pill): 1.0 — backdrop owns the full screen at full
+    ///   opacity.
+    /// - progress ≈ 0.52 (semi-expanded): 0.65 — backdrop is dimmed to
+    ///   read against the floating chat panel.
+    /// - progress 1 (expanded): 1.0 — backdrop is hidden behind the
+    ///   opaque chat anyway, so the value doesn't really matter; we
+    ///   leave it at 1 so a flick-up from semi past expanded settles
+    ///   without an extra dim transition during the last few percent.
+    ///
+    /// The curve is piecewise-linear between these three points so the
+    /// dim feels coupled to the chat's height rather than snapping at
+    /// state boundaries.
     private var backdropOpacity: Double {
-        switch chatState {
-        case .semiExpanded: 0.65
-        case .expanded, .minimized: 1.0
+        let p = chatProgress
+        if p <= ChatPresentationState.semiExpandedRatio {
+            // 0 → 0.52: dim from 1.0 down to 0.65 as the chat grows.
+            let t = p / Double(ChatPresentationState.semiExpandedRatio)
+            return 1.0 + (0.65 - 1.0) * t
+        } else {
+            // 0.52 → 1: dim back up to 1.0 (effectively unused — the
+            // expanded chat covers the backdrop).
+            let t = (p - Double(ChatPresentationState.semiExpandedRatio))
+                / (1 - Double(ChatPresentationState.semiExpandedRatio))
+            return 0.65 + (1.0 - 0.65) * t
         }
+    }
+
+    /// Hit-testing on the backdrop turns off the moment the expanded
+    /// chat covers (or is about to cover) it, so a drag that lands at
+    /// the very top of the screen doesn't end up dispatched to the
+    /// applet underneath. Mirrors the pre-change behavior where the
+    /// `.expanded` state disabled hit-testing wholesale; here we just
+    /// drive it from the live progress so the transition is continuous.
+    private var backdropHitTestingEnabled: Bool {
+        chatProgress < 0.95
     }
 
     var body: some View {
@@ -166,29 +208,27 @@ struct AppShell: View {
                 activeApplet.rootView()
                     .ignoresSafeArea()
                     .opacity(backdropOpacity)
-                    // Backdrop interactivity:
-                    //   .expanded     — chat covers the screen; backdrop
-                    //                   is hidden behind it, no hit
-                    //                   testing needed.
-                    //   .semiExpanded — backdrop is dimmed and the
-                    //                   transparent overlay below
-                    //                   catches taps to minimize the
-                    //                   chat (iOS sheet "tap-dim-to-
-                    //                   dismiss" parity).
-                    //   .minimized    — backdrop owns the screen; the
-                    //                   user is working inside the
-                    //                   applet, so hit testing must be
-                    //                   enabled for the applet's own UI
-                    //                   to respond. No overlay attached
-                    //                   so applet taps pass through.
-                    .allowsHitTesting(chatState != .expanded)
+                    // Backdrop interactivity follows the live progress
+                    // rather than a discrete state switch — by the time
+                    // the chat covers ~95% of the screen the applet is
+                    // visually behind it and shouldn't accept taps;
+                    // below that threshold the user is interacting with
+                    // the applet (or hovering on a semi-expanded panel
+                    // whose tap-overlay below catches dismiss taps).
+                    .allowsHitTesting(backdropHitTestingEnabled)
                     .overlay {
                         if chatState == .semiExpanded {
                             // Transparent tap-target sits above the
                             // dimmed applet only while semi-expanded.
                             // An always-present `.onTapGesture` would
                             // consume applet taps in `.minimized` too,
-                            // even though it would no-op there.
+                            // even though it would no-op there. We
+                            // attach it to the settled-state semi
+                            // anchor so it's gone the instant the
+                            // overlay snaps elsewhere — using
+                            // `chatProgress` instead would leave the
+                            // tap-target armed during the entire
+                            // drag and dismiss mid-drag.
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture {
@@ -198,20 +238,17 @@ struct AppShell: View {
                                 }
                         }
                     }
-                    .animation(
-                        ChatOverlayAnimation.transition(reduceMotion: reduceMotion),
-                        value: chatState
-                    )
             }
 
             // Chat overlay. Always rendered now (even when a placeholder
-            // applet is active) — the container picks its shape from
-            // `chatState`: full-screen in `.expanded`, floating panel in
-            // `.semiExpanded`, full-width pill at the bottom in
-            // `.minimized`. The container itself handles the drag-snap
-            // transitions via the drag handle.
+            // applet is active) — the overlay morphs one `ChatScreen`
+            // continuously between the three settled anchors driven by
+            // `chatState`, tracking the finger during a drag and
+            // snapping to the nearest anchor on release. The
+            // `ChatProgressPreferenceKey` below surfaces the live
+            // progress so the backdrop opacity stays in lockstep.
             if let viewModel {
-                ChatOverlayContainer(
+                ChatOverlay(
                     state: $chatState,
                     viewModel: viewModel,
                     onManageModels: { openSettings(initialPane: .models) },
@@ -219,6 +256,9 @@ struct AppShell: View {
                 )
                 .superTheme(theme)
                 .chatAppearance(appearance)
+                .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
+                    chatProgress = newValue
+                }
             } else if let bootstrapError {
                 FailureScreen(message: bootstrapError)
             } else {
