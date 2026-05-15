@@ -79,8 +79,8 @@ struct SettingsSheetSnapshotTests {
     }
 
     // The merged Appearance pane owns the theme grid, so it carries the
-    // full light/dark/sepia matrix per `Packages/Chat/CLAUDE.md`. The
-    // dark/sepia variants seed a matching `themeId` so the selected-card
+    // full light/dark/sepia × default/XXL matrix per `Packages/Chat/CLAUDE.md`.
+    // The dark/sepia variants seed a matching `themeId` so the selected-card
     // border + halo render on a non-Light card too.
 
     @Test("appearance pane in dark")
@@ -97,6 +97,26 @@ struct SettingsSheetSnapshotTests {
             theme: .sepia, pane: .appearance, name: "settings_appearance_sepia",
             settings: Self.settings(themeId: .sepia)
         )
+    }
+
+    @Test("dynamic type XXL on appearance pane")
+    func appearancePaneXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .appearance
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_appearance_light_xxl", function: function)
     }
 
     @Test("tools pane")
