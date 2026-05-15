@@ -37,5 +37,8 @@ public struct TodoFilterPill: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Filter and sort")
+        .accessibilityValue(summary)
+        .accessibilityHint("Opens the filter options")
     }
 }

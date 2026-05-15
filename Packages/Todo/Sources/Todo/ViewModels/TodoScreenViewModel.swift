@@ -225,6 +225,12 @@ public final class TodoScreenViewModel {
             flash("Created label \"\(trimmed)\"")
             return record.id
         } catch {
+            // The save may have failed because a concurrent call created
+            // the same label (the partial unique index rejects the dupe).
+            // If so, return that label's id rather than reporting failure.
+            if let raced = try? await labelRepository.findActive(name: trimmed) {
+                return raced.id
+            }
             flash("Couldn't create label")
             return nil
         }
