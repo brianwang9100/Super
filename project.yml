@@ -9,12 +9,12 @@ options:
   groupSortPosition: top
   xcodeVersion: "26.4"
   # xcodegen 2.45.4 cannot model SPM-package test schemes via project.yml
-  # (no `package/test-target` reference syntax). Chat.xcscheme is hand-
-  # maintained in Scripts/xcodegen-extras/ and copied into place after
-  # generation so `xcodebuild test -scheme Chat` runs the iOS-runtime
+  # (no `package/test-target` reference syntax). Per-package schemes are
+  # hand-maintained in Scripts/xcodegen-extras/ and copied into place after
+  # generation so `xcodebuild test -scheme <Package>` runs the iOS-runtime
   # snapshot tests in CI. Re-run via Scripts/generate-project.sh
   # (or in CI: `xcodegen generate && cp ...`).
-  postGenCommand: cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme
+  postGenCommand: cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme && cp Scripts/xcodegen-extras/Bible.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Bible.xcscheme
 
 settings:
   base:
@@ -31,6 +31,8 @@ packages:
     path: Packages/Core
   Chat:
     path: Packages/Chat
+  Bible:
+    path: Packages/Bible
 
 targets:
   Super:
@@ -109,6 +111,7 @@ targets:
     dependencies:
       - package: Core
       - package: Chat
+      - package: Bible
 schemes:
   Super:
     build:

@@ -47,3 +47,18 @@ updates:
     labels:
       - dependencies
       - swift
+
+  # Swift Package Manager — Bible applet
+  - package-ecosystem: swift
+    directory: /Packages/Bible
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(bible)"
+    labels:
+      - dependencies
+      - swift
