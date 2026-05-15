@@ -102,6 +102,7 @@ public final class BibleScreenViewModel {
         bookSheet = BibleBookSheetViewModel(expandedBookId: nil, catalog: catalog)
     }
 
+    /// Close the book picker without changing the reading position.
     public func dismissBookSheet() {
         bookSheet = nil
     }
@@ -111,6 +112,7 @@ public final class BibleScreenViewModel {
         isTranslationSheetPresented = true
     }
 
+    /// Close the translation picker without changing the translation.
     public func dismissTranslationSheet() {
         isTranslationSheetPresented = false
     }
