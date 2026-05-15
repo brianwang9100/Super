@@ -24,13 +24,13 @@ public struct TaskRecord: Codable, TableRecord, FetchableRecord, PersistableReco
     public init(
         id: String,
         title: String,
+        sortOrder: Double,
+        createdAt: Date,
+        updatedAt: Date,
         notes: String = "",
         priority: TaskPriority = .normal,
         state: TaskState = .open,
         dueAt: Date? = nil,
-        sortOrder: Double,
-        createdAt: Date,
-        updatedAt: Date,
         deletedAt: Date? = nil
     ) {
         self.id = id

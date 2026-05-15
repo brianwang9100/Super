@@ -23,8 +23,8 @@ struct TaskRepositoryTests {
         let stamp = at ?? now
         return TaskRecord(
             id: id, title: title,
-            priority: .normal, state: state,
-            sortOrder: 0, createdAt: stamp, updatedAt: stamp, deletedAt: deletedAt
+            sortOrder: 0, createdAt: stamp, updatedAt: stamp,
+            priority: .normal, state: state, deletedAt: deletedAt
         )
     }
 

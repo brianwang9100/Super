@@ -29,11 +29,11 @@ struct TodoFilterTests {
         TaskWithLabels(
             task: TaskRecord(
                 id: id, title: title,
-                priority: priority, state: state,
-                dueAt: due,
                 sortOrder: sortOrder,
                 createdAt: createdAt ?? now,
-                updatedAt: createdAt ?? now
+                updatedAt: createdAt ?? now,
+                priority: priority, state: state,
+                dueAt: due
             ),
             labels: labels
         )
