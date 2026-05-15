@@ -12,8 +12,9 @@ public struct BundledBibleTextLoader: BibleTextLoader {
         self.bundle = .module
     }
 
-    /// Test seam: read from a fixture bundle instead of the package bundle,
-    /// so the missing- and malformed-resource paths can be exercised.
+    /// Test seam: read from a caller-supplied bundle instead of the package
+    /// bundle, so a test can point at a bundle holding a malformed fixture
+    /// and exercise the missing- and malformed-resource paths.
     init(bundle: Bundle) {
         self.bundle = bundle
     }

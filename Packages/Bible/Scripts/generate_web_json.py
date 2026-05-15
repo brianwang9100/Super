@@ -100,6 +100,8 @@ def parse_book(usfm: str) -> dict:
         if match is None:
             if chapter is not None and para is not None and verse_num is not None:
                 add_text(clean(line), line_break=(kind == "poetry"))
+            elif line.strip():
+                print(f"warning: dropped stray line: {line!r}", file=sys.stderr)
             continue
         marker, rest = match.group(1), match.group(2)
 

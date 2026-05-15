@@ -44,7 +44,10 @@ struct BundledBibleTextLoaderTests {
 
     @Test("a malformed resource throws malformedResource")
     func malformedResourceThrows() {
-        // The fixture bundle ships `WEB-BAD.json` with invalid JSON.
+        // `.module` here is the BibleTests target bundle, into which
+        // `Fixtures/WEB-BAD.json` (invalid JSON) is processed — the real
+        // 66-book resources live in a separate bundle, so pointing the
+        // loader here isolates the malformed-resource path.
         let loader = BundledBibleTextLoader(bundle: .module)
         #expect(throws: BibleTextLoaderError.malformedResource("BAD")) {
             try loader.loadBook(id: "BAD")
