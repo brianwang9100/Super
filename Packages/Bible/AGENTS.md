@@ -24,6 +24,7 @@ Future milestones add: `Formatting/`, `Resources/translations/`.
 - **View models** are `@Observable @MainActor final class`, named `*ScreenViewModel` / `*SheetViewModel`.
 - **Repositories** are protocol-typed at the seam, `GRDB`-prefixed concrete impls.
 - **Inject side effects.** Clocks, ID generators, and any future network paths come through Core's protocols. No `Date()` / `UUID()` in testable logic.
+- **Reactive vs. imperative reads — split by data source.** Chapter *text* is a bundled static resource and reading position is single-writer (only the Bible screen writes it): both stay imperative `@Observable` view model loads — do not reactive-ify them. *Decorations* — highlights, saved verses, reading-plan progress — get written from outside the chapter on screen (a detail sheet, a highlights list, and later Chat via an event-bus projection into `bible.sqlite`), so the chapter renderer **must** bind those through GRDBQuery `@Query` over the decoration tables, layered over the static text. See root AGENTS.md §Persistence for the full rule.
 - **Snapshot tests** land in the same PR as the view they cover. Per root AGENTS.md §Testing.2: light/dark/sepia × default/Dynamic Type XXL for any view-level change, recorded against CI's Xcode 26.4.1 + iOS 26.4 + iPhone 17 pin.
 - **Coverage target ≥70%** per root AGENTS.md.
 
