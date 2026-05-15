@@ -5,6 +5,8 @@ import SwiftUI
 /// Mirrors the empty branch of the list in the Todo design source's
 /// `app.jsx`.
 public struct TodoEmptyState: View {
+    @ScaledMetric(relativeTo: .title2) private var headlineSize: CGFloat = 22
+    @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 13
     @Environment(\.superTheme) private var theme
 
     public init() {}
@@ -12,10 +14,10 @@ public struct TodoEmptyState: View {
     public var body: some View {
         VStack(spacing: 6) {
             Text("Nothing here.")
-                .font(.system(size: 22, design: .serif))
+                .font(.system(size: headlineSize, design: .serif))
                 .foregroundStyle(theme.inkSoft)
             Text("Adjust your filter or tap ＋ to add a task.")
-                .font(.system(size: 13))
+                .font(.system(size: captionSize))
                 .foregroundStyle(theme.inkFaint)
                 .multilineTextAlignment(.center)
         }

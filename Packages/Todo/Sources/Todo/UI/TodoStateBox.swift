@@ -3,18 +3,19 @@ import SwiftUI
 
 /// Circular task-state indicator: an empty ring for `open`, a filled green
 /// disc with a check for `done`, and a muted ring with an ✕ for
-/// `cancelled`. Tapping invokes `onToggle`. Mirrors `StateBox` in the Todo
-/// design source's `components.jsx`.
+/// `cancelled`. Tapping invokes `onToggle`. The box scales with Dynamic
+/// Type. Mirrors `StateBox` in the Todo design source's `components.jsx`.
 public struct TodoStateBox: View {
     public let state: TaskState
-    public let size: CGFloat
     public let onToggle: () -> Void
 
+    /// Box diameter — 19pt at the default text size, scaled for Dynamic
+    /// Type so the control grows alongside the row's text.
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 19
     @Environment(\.superTheme) private var theme
 
-    public init(state: TaskState, size: CGFloat = 19, onToggle: @escaping () -> Void) {
+    public init(state: TaskState, onToggle: @escaping () -> Void) {
         self.state = state
-        self.size = size
         self.onToggle = onToggle
     }
 

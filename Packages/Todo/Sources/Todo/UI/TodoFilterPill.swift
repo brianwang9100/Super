@@ -8,6 +8,9 @@ public struct TodoFilterPill: View {
     public let summary: String
     public let onTap: () -> Void
 
+    @ScaledMetric(relativeTo: .footnote) private var textSize: CGFloat = 12
+    @ScaledMetric(relativeTo: .footnote) private var iconSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .footnote) private var chevronSize: CGFloat = 8
     @Environment(\.superTheme) private var theme
 
     public init(summary: String, onTap: @escaping () -> Void) {
@@ -19,11 +22,11 @@ public struct TodoFilterPill: View {
         Button(action: onTap) {
             HStack(spacing: 6) {
                 Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: iconSize, weight: .semibold))
                 Text(summary)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: textSize, weight: .medium))
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(.system(size: chevronSize, weight: .semibold))
                     .opacity(0.6)
             }
             .foregroundStyle(theme.inkSoft)

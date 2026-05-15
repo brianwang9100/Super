@@ -14,6 +14,8 @@ public struct TodoTaskRow: View {
     public let onToggleState: (TaskWithLabels) -> Void
     public let onPress: (TaskWithLabels) -> Void
 
+    @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption2) private var dueSize: CGFloat = 10
     @Environment(\.superTheme) private var theme
 
     public init(
@@ -36,7 +38,7 @@ public struct TodoTaskRow: View {
             TodoStateBox(state: row.task.state) { onToggleState(row) }
             VStack(alignment: .leading, spacing: 7) {
                 Text(row.task.title)
-                    .font(.system(size: 14))
+                    .font(.system(size: titleSize))
                     .strikethrough(row.task.state == .cancelled, color: theme.inkFaint)
                     .foregroundStyle(theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -45,7 +47,7 @@ public struct TodoTaskRow: View {
                         ForEach(row.labels) { TodoTagChip(label: $0) }
                         if let due = row.task.dueAt {
                             Text("· \(dueText(due))")
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.system(size: dueSize, design: .monospaced))
                                 .fontWeight(dueIsToday(due) && !muted ? .semibold : .regular)
                                 .foregroundStyle(dueIsToday(due) && !muted ? Self.dueAccent : theme.inkFaint)
                         }
@@ -103,9 +105,11 @@ public struct TodoTaskRow: View {
 struct TodoTagChip: View {
     let label: LabelRecord
 
+    @ScaledMetric(relativeTo: .caption2) private var fontSize: CGFloat = 10
+
     var body: some View {
         Text(label.name)
-            .font(.system(size: 10, weight: .medium))
+            .font(.system(size: fontSize, weight: .medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(OKLCH(0.94, 0.035, label.hue).color)
