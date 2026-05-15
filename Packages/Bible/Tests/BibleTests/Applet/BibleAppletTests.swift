@@ -10,6 +10,12 @@ import Testing
 @Suite("BibleApplet conformance")
 @MainActor
 struct BibleAppletTests {
+    /// Build the applet via its test seam — an in-memory view model with no
+    /// persistence, so the suite never opens the real on-disk database.
+    private func makeApplet() -> BibleApplet {
+        BibleApplet(viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()))
+    }
+
     @Test("appletID is stable and matches the persisted shell value")
     func appletIDMatchesPlaceholderPersistence() {
         // The shell reads `UserDefaults["shell.activeAppletID"]` at launch.
@@ -17,31 +23,29 @@ struct BibleAppletTests {
         // applet must keep the same id or every existing install loses
         // their persisted backdrop choice on upgrade.
         #expect(BibleApplet.appletID == "bible")
-        #expect(BibleApplet().appletID == "bible")
+        #expect(makeApplet().appletID == "bible")
     }
 
     @Test("display name renders as the sidebar label")
     func displayName() {
-        #expect(BibleApplet().displayName == "Bible")
+        #expect(makeApplet().displayName == "Bible")
     }
 
     @Test("icon view renders without throwing for the sidebar size")
     func iconViewCompiles() {
-        let view = BibleApplet().iconView(size: 20)
         // Touching `body` would force a SwiftUI render pipeline; here we
         // just confirm the protocol contract returns a non-empty `AnyView`.
-        _ = view
+        _ = makeApplet().iconView(size: 20)
     }
 
     @Test("root view builds without throwing")
     func rootViewCompiles() {
-        let view = BibleApplet().rootView()
-        _ = view
+        _ = makeApplet().rootView()
     }
 
     @Test("conforms to MiniApplet")
     func miniAppletConformance() {
-        let applet: any MiniApplet = BibleApplet()
+        let applet: any MiniApplet = makeApplet()
         #expect(applet.appletID == "bible")
     }
 }

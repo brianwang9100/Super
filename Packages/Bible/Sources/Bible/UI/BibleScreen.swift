@@ -1,57 +1,85 @@
 import Core
 import SwiftUI
 
-/// The Bible reading surface. Renders one already-loaded chapter as a
-/// scrolling column of heading, prose, and poetry paragraphs.
+/// The Bible reading surface: a floating nav bar over a scrolling column of
+/// heading, prose, and poetry paragraphs, ending in prev / next cards.
 ///
-/// M1 renders a fixed chapter (1 Peter 2). The navigation bar, chapter
-/// stepping, and reading-position persistence land in later milestones; for
-/// now the chapter is supplied by `BibleApplet` at composition time so this
-/// view stays pure and synchronously snapshot-testable.
+/// All chapter state lives in `BibleScreenViewModel`; the view reads it and
+/// renders. The chapter text loads synchronously, so a step repaints at
+/// once — only the persisted reading position is written asynchronously.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
-    private let bookName: String
-    private let chapter: BibleChapter?
+    private let viewModel: BibleScreenViewModel
 
-    /// - Parameters:
-    ///   - bookName: display name shown in the chapter title.
-    ///   - chapter: the chapter to render, or `nil` when the book text
-    ///     failed to load — the screen then shows an unavailable state.
-    public init(bookName: String, chapter: BibleChapter?) {
-        self.bookName = bookName
-        self.chapter = chapter
+    public init(viewModel: BibleScreenViewModel) {
+        self.viewModel = viewModel
     }
 
     public var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             theme.background.ignoresSafeArea()
-            if let chapter, !chapter.paragraphs.isEmpty {
-                reader(chapter)
-            } else {
-                unavailable
-            }
+            content
+            navBar
+        }
+        .task { await viewModel.load() }
+    }
+
+    private var navBar: some View {
+        BibleNavBar(
+            bookName: viewModel.bookName,
+            chapterNumber: viewModel.position.chapterNumber,
+            translationId: viewModel.translationId,
+            canStepBackward: viewModel.canStepBackward,
+            canStepForward: viewModel.canStepForward,
+            onHamburger: {},
+            onPrevious: { viewModel.stepChapter(.previous) },
+            onNext: { viewModel.stepChapter(.next) },
+            onPlus: {}
+        )
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let chapter = viewModel.chapter, !chapter.paragraphs.isEmpty {
+            reader(chapter)
+        } else {
+            unavailable
         }
     }
 
     private func reader(_ chapter: BibleChapter) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("\(bookName) \(chapter.number)")
+                Text("\(viewModel.bookName) \(chapter.number)")
                     .font(.system(.largeTitle, design: .serif))
                     .italic()
                     .foregroundStyle(theme.ink)
                     .padding(.bottom, 6)
+
                 ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
                     BibleParagraphBlock(paragraph: paragraph)
                 }
+
+                BibleChapterFooter(
+                    previousLabel: viewModel.previousChapterLabel,
+                    nextLabel: viewModel.nextChapterLabel,
+                    onPrevious: { viewModel.stepChapter(.previous) },
+                    onNext: { viewModel.stepChapter(.next) }
+                )
+
                 // Bottom inset so the chat overlay's minimized pill doesn't
-                // obscure the last verses — mirrors the shell's 76pt reserve.
+                // obscure the footer — mirrors the shell's 76pt reserve.
                 Color.clear.frame(height: 76)
             }
             .padding(.horizontal, 26)
-            .padding(.top, 24)
+            // Top inset clears the floating nav bar; the bar's gradient
+            // fades over the first lines as they scroll up beneath it.
+            .padding(.top, 84)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // A fresh identity per chapter resets the scroll offset to the top
+        // when the reader steps.
+        .id(viewModel.position)
     }
 
     private var unavailable: some View {
@@ -63,22 +91,11 @@ public struct BibleScreen: View {
                 .foregroundStyle(theme.inkSoft)
         }
         .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 #Preview {
-    BibleScreen(
-        bookName: "1 Peter",
-        chapter: BibleChapter(number: 2, paragraphs: [
-            .heading("A Living Stone and a Holy People"),
-            .prose([
-                BibleVerse(number: 1, text: "Putting away therefore all wickedness, all deceit, hypocrisies, envies, and all evil speaking,"),
-                BibleVerse(number: 2, text: "as newborn babies, long for the pure spiritual milk, that with it you may grow,"),
-            ]),
-            .poetry([
-                BibleVerse(number: 6, text: "“Behold, I lay in Zion a chief cornerstone, chosen and precious.\nHe who believes in him will not be disappointed.”"),
-            ]),
-        ])
-    )
-    .superTheme(.make(.light))
+    BibleScreen(viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()))
+        .superTheme(.make(.light))
 }
