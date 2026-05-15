@@ -179,7 +179,14 @@ public final class TodoScreenViewModel {
             )
             try await taskRepository.save(record)
             try await joinRepository.setLabels(taskId: id, labelIds: draft.labelIds, at: now)
-            self.draft = nil
+            // Only clear the draft we just persisted. If the user opened a
+            // different draft at an `await` suspension point above, leave
+            // it intact rather than discarding their input. Value equality
+            // (not an `id` check) is used because two create drafts both
+            // carry `id == nil` and must still be told apart.
+            if self.draft == draft {
+                self.draft = nil
+            }
             flash(mode == .create ? "Created" : "Saved")
         } catch {
             flash("Couldn't save task")

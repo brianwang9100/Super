@@ -1,3 +1,9 @@
+// `import Combine` is mandatory, not stray: `ValueObservationQueryable`
+// inherits `Queryable`, whose `ValuePublisher` associated type is
+// `AnyPublisher<Value, any Error>`. Conforming a type to it requires the
+// `AnyPublisher: Publisher` conformance to be visible in this file — the
+// build fails without the import. No Combine data flow is used in our
+// code; observation runs through GRDB's `ValueObservation` and `@Query`.
 import Combine
 import GRDB
 import GRDBQuery
