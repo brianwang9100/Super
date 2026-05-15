@@ -206,6 +206,7 @@ struct AppShell: View {
             // needed because the chat covers it).
             if let activeApplet = registry.activeApplet {
                 activeApplet.rootView()
+                    .superTheme(theme)
                     .ignoresSafeArea()
                     .opacity(backdropOpacity)
                     // Backdrop interactivity follows the live progress

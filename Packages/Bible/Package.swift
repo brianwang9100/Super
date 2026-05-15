@@ -20,6 +20,13 @@ let package = Package(
             dependencies: [
                 "Core",
             ],
+            // `.process` (not `.copy`) keeps the bundle codesign-valid on the
+            // iOS simulator — see the note in `Chat/Package.swift`. The 66
+            // `WEB-<bookID>.json` files land flat at the bundle root, where
+            // `BundledBibleTextLoader` looks them up by name.
+            resources: [
+                .process("Resources"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]
@@ -29,6 +36,17 @@ let package = Package(
             dependencies: [
                 "Bible",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+            ],
+            // Snapshot baselines are read from the source tree at test time
+            // via `#filePath`, not the bundle — exclude them from resource
+            // processing.
+            exclude: [
+                "UI/Snapshots/__Snapshots__",
+            ],
+            // `Fixtures/WEB-BAD.json` is a deliberately malformed resource
+            // the loader's malformed-resource test reads via the test bundle.
+            resources: [
+                .process("Fixtures"),
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),

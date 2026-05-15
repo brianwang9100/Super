@@ -1,55 +1,82 @@
 #if canImport(UIKit)
+import Core
 import SnapshotTesting
 import SwiftUI
 import Testing
 @testable import Bible
 
-/// M0 placeholder-screen snapshots. Light + dark cover what `BibleScreen`'s
-/// system colours (`Color.primary`, `Color(.systemBackground)`) actually
-/// distinguish, plus a Dynamic Type XXL variant per root `AGENTS.md`
-/// §Testing rule 3 to catch regressions in the `.callout`-sized "Coming
-/// soon." caption (the 36-pt `Bible` title is fixed-point and won't scale).
-/// Sepia lands in M1 once Bible can consume `SuperTheme`.
+/// Snapshots of `BibleScreen` — the M1 chapter reader.
+///
+/// The populated state renders the real bundled 1 Peter 2 (prose + poetry
+/// paragraphs both fall within the captured frame) across the three themes
+/// at default and XXL Dynamic Type, per root `AGENTS.md` §Testing. The empty
+/// state covers the "chapter unavailable" fallback in light and dark.
 @Suite("BibleScreen snapshots")
 @MainActor
 struct BibleScreenSnapshotTests {
-    @Test("M0 placeholder renders in system light")
-    func placeholderLight() {
-        verify(colorScheme: .light, name: "placeholder_light")
+    @Test("1 Peter 2 renders in the light theme")
+    func populatedLight() throws {
+        try verify(peter2(), theme: .light, name: "populated_light")
     }
 
-    @Test("M0 placeholder renders in system dark")
-    func placeholderDark() {
-        verify(colorScheme: .dark, name: "placeholder_dark")
+    @Test("1 Peter 2 renders in the dark theme")
+    func populatedDark() throws {
+        try verify(peter2(), theme: .dark, name: "populated_dark")
     }
 
-    @Test("M0 placeholder renders in system light at Dynamic Type XXL")
-    func placeholderLightXXL() {
-        verify(
-            colorScheme: .light,
-            dynamicTypeSize: .xxLarge,
-            name: "placeholder_light_xxl"
+    @Test("1 Peter 2 renders in the sepia theme")
+    func populatedSepia() throws {
+        try verify(peter2(), theme: .sepia, name: "populated_sepia")
+    }
+
+    @Test("1 Peter 2 renders in the light theme at Dynamic Type XXL")
+    func populatedLightXXL() throws {
+        try verify(peter2(), theme: .light, dynamicType: .xxLarge, name: "populated_light_xxl")
+    }
+
+    @Test("1 Peter 2 renders in the dark theme at Dynamic Type XXL")
+    func populatedDarkXXL() throws {
+        try verify(peter2(), theme: .dark, dynamicType: .xxLarge, name: "populated_dark_xxl")
+    }
+
+    @Test("1 Peter 2 renders in the sepia theme at Dynamic Type XXL")
+    func populatedSepiaXXL() throws {
+        try verify(peter2(), theme: .sepia, dynamicType: .xxLarge, name: "populated_sepia_xxl")
+    }
+
+    @Test("the unavailable state renders in the light theme")
+    func emptyLight() {
+        verify(BibleScreen(bookName: "Bible", chapter: nil), theme: .light, name: "empty_light")
+    }
+
+    @Test("the unavailable state renders in the dark theme")
+    func emptyDark() {
+        verify(BibleScreen(bookName: "Bible", chapter: nil), theme: .dark, name: "empty_dark")
+    }
+
+    /// Builds a `BibleScreen` over the real bundled 1 Peter 2.
+    private func peter2() throws -> BibleScreen {
+        let chapter = try #require(
+            try BundledBibleTextLoader().loadBook(id: "1PE").chapter(2)
         )
+        return BibleScreen(bookName: "1 Peter", chapter: chapter)
     }
 
     private func verify(
-        colorScheme: ColorScheme,
-        dynamicTypeSize: DynamicTypeSize = .large,
+        _ screen: BibleScreen,
+        theme: SuperTheme.Identifier,
+        dynamicType: DynamicTypeSize = .large,
         name: String,
         function: String = #function
     ) {
-        // `.environment(\.colorScheme, ...)` flips the environment value
-        // SwiftUI views actually read; `.preferredColorScheme(...)` is a
-        // window-scene-level hint that doesn't propagate into the
-        // `UIHostingController` snapshot-testing wraps the view in.
-        let view = BibleScreen()
-            .environment(\.colorScheme, colorScheme)
-            .dynamicTypeSize(dynamicTypeSize)
-            .frame(width: 402, height: 600)
+        let view = screen
+            .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicType)
+            .frame(width: 402, height: 760)
 
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 600)),
+            as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
