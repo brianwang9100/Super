@@ -95,36 +95,6 @@ struct RecipeIconShape: Shape {
     }
 }
 
-/// Book glyph with cross — the Bible applet.
-struct BibleIconShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        // Book outline (rounded right edge)
-        move(&p, to: CGPoint(x: 6, y: 4), in: rect)
-        line(&p, to: CGPoint(x: 17, y: 4), in: rect)
-        // Use a quadCurve for the rounded top-right
-        p.addQuadCurve(
-            to: scaled(CGPoint(x: 19, y: 6), in: rect),
-            control: scaled(CGPoint(x: 19, y: 4), in: rect)
-        )
-        line(&p, to: CGPoint(x: 19, y: 19), in: rect)
-        p.addQuadCurve(
-            to: scaled(CGPoint(x: 17, y: 21), in: rect),
-            control: scaled(CGPoint(x: 19, y: 21), in: rect)
-        )
-        line(&p, to: CGPoint(x: 6, y: 21), in: rect)
-        line(&p, to: CGPoint(x: 5, y: 20), in: rect)
-        line(&p, to: CGPoint(x: 5, y: 5), in: rect)
-        line(&p, to: CGPoint(x: 6, y: 4), in: rect)
-        // Cross
-        move(&p, to: CGPoint(x: 12, y: 7), in: rect)
-        line(&p, to: CGPoint(x: 12, y: 15), in: rect)
-        move(&p, to: CGPoint(x: 9, y: 11), in: rect)
-        line(&p, to: CGPoint(x: 15, y: 11), in: rect)
-        return p
-    }
-}
-
 /// Trending-up sparkline glyph — the Finance applet.
 struct FinanceIconShape: Shape {
     func path(in rect: CGRect) -> Path {
@@ -227,15 +197,6 @@ public struct RecipeIcon: View {
     public init(size: CGFloat = 20) { self.size = size }
     public var body: some View {
         StrokedGlyph(shape: RecipeIconShape(), size: size, lineWidth: 1.5)
-    }
-}
-
-/// Bible applet glyph.
-public struct BibleIcon: View {
-    let size: CGFloat
-    public init(size: CGFloat = 20) { self.size = size }
-    public var body: some View {
-        StrokedGlyph(shape: BibleIconShape(), size: size, lineWidth: 1.5)
     }
 }
 

@@ -10,6 +10,7 @@
 		0884657F15758B3B5B1C0BEF /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = 8683B0FE0037B0D33755A7F4 /* Core */; };
 		098357BEEFC53ACE5815921E /* Chat in Frameworks */ = {isa = PBXBuildFile; productRef = 70882273C8BB80DC07D294F8 /* Chat */; };
 		12A8BC5F16AB43BB8BBC0576 /* AppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6A5AA1BC1015FDF25A767B4 /* AppBootstrap.swift */; };
+		1BEEBD5EF6A7767EE13B55C6 /* Bible in Frameworks */ = {isa = PBXBuildFile; productRef = FB8F97E45F912C4ADC4820AB /* Bible */; };
 		3EBEAF0C813CDCBE67E054BB /* PlaceholderApplets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D156170743E84E91C00F1D /* PlaceholderApplets.swift */; };
 		429B89E42E56D36786685C90 /* FixedHamburgerButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */; };
 		589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC96AB2000823B1110167BEB /* Assets.xcassets */; };
@@ -24,6 +25,7 @@
 /* Begin PBXFileReference section */
 		16443018E7AD54627BC3C99A /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedHamburgerButton.swift; sourceTree = "<group>"; };
+		2655703F58B72885DF901253 /* Bible */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Bible; path = Packages/Bible; sourceTree = SOURCE_ROOT; };
 		5742DF79E0382021EB37C161 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
 		5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppletPlaceholderScreen.swift; sourceTree = "<group>"; };
 		5CD7248626B357C0C7BCE21F /* Super.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Super.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -46,6 +48,7 @@
 			files = (
 				0884657F15758B3B5B1C0BEF /* Core in Frameworks */,
 				098357BEEFC53ACE5815921E /* Chat in Frameworks */,
+				1BEEBD5EF6A7767EE13B55C6 /* Bible in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,6 +118,7 @@
 		D18728D82C01571E5AD1589C /* Packages */ = {
 			isa = PBXGroup;
 			children = (
+				2655703F58B72885DF901253 /* Bible */,
 				61F39965616CCD1C3A93C1E5 /* Chat */,
 				A9E5647B0A3E4B0A1BFC087D /* Core */,
 			);
@@ -140,6 +144,7 @@
 			packageProductDependencies = (
 				8683B0FE0037B0D33755A7F4 /* Core */,
 				70882273C8BB80DC07D294F8 /* Chat */,
+				FB8F97E45F912C4ADC4820AB /* Bible */,
 			);
 			productName = Super;
 			productReference = 5CD7248626B357C0C7BCE21F /* Super.app */;
@@ -169,6 +174,7 @@
 			mainGroup = 6F830D648380D0F60AB776FB;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				3E74A70C08F8CAFA28DB79F6 /* XCLocalSwiftPackageReference "Packages/Bible" */,
 				594D4392302D1CE4BBCF2D68 /* XCLocalSwiftPackageReference "Packages/Chat" */,
 				A24F6D26900F94887B129B1A /* XCLocalSwiftPackageReference "Packages/Core" */,
 			);
@@ -415,6 +421,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		3E74A70C08F8CAFA28DB79F6 /* XCLocalSwiftPackageReference "Packages/Bible" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Bible;
+		};
 		594D4392302D1CE4BBCF2D68 /* XCLocalSwiftPackageReference "Packages/Chat" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/Chat;
@@ -433,6 +443,10 @@
 		8683B0FE0037B0D33755A7F4 /* Core */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Core;
+		};
+		FB8F97E45F912C4ADC4820AB /* Bible */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Bible;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
