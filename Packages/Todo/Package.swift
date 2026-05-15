@@ -36,6 +36,10 @@ let package = Package(
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],
+            exclude: [
+                "Database/__Snapshots__",
+                "UI/Snapshots/__Snapshots__",
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]
