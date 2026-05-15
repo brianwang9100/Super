@@ -1,5 +1,5 @@
 import Testing
-@testable import Todo
+import Todo
 
 /// Smoke test for the Todo module identifier.
 @Suite("Todo module")
