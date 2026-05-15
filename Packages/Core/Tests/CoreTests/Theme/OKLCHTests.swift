@@ -1,5 +1,5 @@
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Sanity coverage on the OKLCH (Oklab Lightness-Chroma-Hue) → sRGB
 /// conversion pipeline. The transform is purely arithmetic, so a few
