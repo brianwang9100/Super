@@ -1,0 +1,16 @@
+sqlite_master
+CREATE TABLE "label" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, "hue" DOUBLE NOT NULL, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
+CREATE UNIQUE INDEX label_unique_name_active
+    ON label(lower(name)) WHERE deletedAt IS NULL;
+CREATE TABLE "task" ("id" TEXT PRIMARY KEY NOT NULL, "title" TEXT NOT NULL, "notes" TEXT NOT NULL DEFAULT '', "priority" INTEGER NOT NULL, "state" TEXT NOT NULL, "dueAt" DATETIME, "sortOrder" DOUBLE NOT NULL, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
+CREATE INDEX "task_on_dueAt" ON "task"("dueAt");
+CREATE INDEX "task_on_state_priority" ON "task"("state", "priority");
+CREATE INDEX "task_on_updatedAt" ON "task"("updatedAt");
+CREATE TABLE "taskLabel" ("taskId" TEXT NOT NULL REFERENCES "task"("id") ON DELETE CASCADE, "labelId" TEXT NOT NULL REFERENCES "label"("id") ON DELETE CASCADE, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME, PRIMARY KEY ("taskId", "labelId"));
+CREATE INDEX "taskLabel_on_labelId" ON "taskLabel"("labelId");
+
+label
+
+task
+
+taskLabel

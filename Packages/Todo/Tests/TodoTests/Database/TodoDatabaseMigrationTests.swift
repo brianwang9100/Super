@@ -106,15 +106,11 @@ struct TodoDatabaseMigrationTests {
         try await db.queue.write { db in
             try LabelRecord(id: "a", name: "Work", hue: 200, createdAt: now, updatedAt: now).save(db)
         }
-        var threw = false
-        do {
+        await #expect(throws: (any Error).self) {
             try await db.queue.write { db in
                 try LabelRecord(id: "b", name: "work", hue: 100, createdAt: now, updatedAt: now).save(db)
             }
-        } catch {
-            threw = true
         }
-        #expect(threw)
     }
 
     @Test func softDeletedLabelNameMayBeReused() async throws {

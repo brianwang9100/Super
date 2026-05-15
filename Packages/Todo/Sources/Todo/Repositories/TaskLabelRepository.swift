@@ -13,7 +13,7 @@ public protocol TaskLabelRepository: Sendable {
     func labels(forTaskIds taskIds: [String]) async throws -> [String: [LabelRecord]]
     /// Replace the full set of labels for `taskId`: inserts join rows for
     /// ids not yet present, deletes rows no longer in `labelIds`. Atomic.
-    func setLabels(taskId: String, labelIds: [String], at createdAt: Date) async throws
+    func setLabels(taskId: String, labelIds: [String], at timestamp: Date) async throws
 }
 
 /// GRDB-backed `TaskLabelRepository`.
@@ -60,7 +60,7 @@ public struct GRDBTaskLabelRepository: TaskLabelRepository {
         }
     }
 
-    public func setLabels(taskId: String, labelIds: [String], at createdAt: Date) async throws {
+    public func setLabels(taskId: String, labelIds: [String], at timestamp: Date) async throws {
         try await queue.write { db in
             let desired = Set(labelIds)
             let existingIds = Set(
@@ -73,7 +73,7 @@ public struct GRDBTaskLabelRepository: TaskLabelRepository {
             for labelId in desired.subtracting(existingIds) {
                 try TaskLabelRecord(
                     taskId: taskId, labelId: labelId,
-                    createdAt: createdAt, updatedAt: createdAt
+                    createdAt: timestamp, updatedAt: timestamp
                 ).save(db)
             }
             let toDelete = existingIds.subtracting(desired)
