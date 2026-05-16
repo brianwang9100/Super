@@ -16,26 +16,31 @@ struct VerseFlowResult: Equatable {
 /// line-breaking SwiftUI's own `Text` applies to left-aligned text — so the
 /// result matches a single concatenated `Text` visually.
 struct VerseFlowLayout: Layout {
-    /// The subviews' measured sizes, carried from `sizeThatFits` to
-    /// `placeSubviews` so each word is measured once per layout pass.
-    typealias Cache = [CGSize]
+    /// The subviews' measured sizes plus the width they were measured at,
+    /// carried from `sizeThatFits` to `placeSubviews` so each word is measured
+    /// once per layout pass. Keyed by width because the over-wide clamp in
+    /// `measuredSizes` is width-dependent — a stale cache from a different
+    /// proposed width would mis-place a clamped subview.
+    struct Cache {
+        var maxWidth: CGFloat
+        var sizes: [CGSize]
+    }
 
     /// Vertical gap between wrapped lines, in points.
     var lineSpacing: CGFloat = 5
 
-    func makeCache(subviews: Subviews) -> Cache { [] }
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache(maxWidth: .nan, sizes: [])
+    }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
-        cache = measuredSizes(subviews, maxWidth: maxWidth)
-        return Self.flow(itemSizes: cache, maxWidth: maxWidth, lineSpacing: lineSpacing).size
+        let sizes = cachedSizes(subviews, maxWidth: maxWidth, cache: &cache)
+        return Self.flow(itemSizes: sizes, maxWidth: maxWidth, lineSpacing: lineSpacing).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Cache) {
-        if cache.count != subviews.count {
-            cache = measuredSizes(subviews, maxWidth: bounds.width)
-        }
-        let sizes = cache
+        let sizes = cachedSizes(subviews, maxWidth: bounds.width, cache: &cache)
         let result = Self.flow(itemSizes: sizes, maxWidth: bounds.width, lineSpacing: lineSpacing)
         for (index, subview) in subviews.enumerated() {
             let origin = result.origins[index]
@@ -45,6 +50,19 @@ struct VerseFlowLayout: Layout {
                 proposal: ProposedViewSize(sizes[index])
             )
         }
+    }
+
+    /// The subviews' sizes for `maxWidth`, reusing the cache only when it was
+    /// filled at the same width — and subview count — so a pass with a
+    /// different proposed width re-measures rather than placing with stale,
+    /// possibly mis-clamped sizes.
+    private func cachedSizes(_ subviews: Subviews, maxWidth: CGFloat, cache: inout Cache) -> [CGSize] {
+        if cache.maxWidth == maxWidth, cache.sizes.count == subviews.count {
+            return cache.sizes
+        }
+        let sizes = measuredSizes(subviews, maxWidth: maxWidth)
+        cache = Cache(maxWidth: maxWidth, sizes: sizes)
+        return sizes
     }
 
     /// Each subview's size — a subview wider than the line is re-measured

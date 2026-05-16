@@ -42,27 +42,27 @@ struct BibleNavBarSnapshotTests {
     @Test("selection mode collapses the centre group to a citation pill")
     func selectionLight() {
         verify(theme: .light, canStepBackward: true, canStepForward: true,
-               selectionCitation: "1 Peter 2:4-6, 9", name: "selection_light")
+               name: "selection_light", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
     @Test("selection mode renders in the dark theme")
     func selectionDark() {
         verify(theme: .dark, canStepBackward: true, canStepForward: true,
-               selectionCitation: "1 Peter 2:4-6, 9", name: "selection_dark")
+               name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
     @Test("selection mode renders in the sepia theme")
     func selectionSepia() {
         verify(theme: .sepia, canStepBackward: true, canStepForward: true,
-               selectionCitation: "1 Peter 2:4-6, 9", name: "selection_sepia")
+               name: "selection_sepia", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
     private func verify(
         theme themeID: SuperTheme.Identifier,
         canStepBackward: Bool,
         canStepForward: Bool,
-        selectionCitation: String? = nil,
         name: String,
+        selectionCitation: String? = nil,
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)

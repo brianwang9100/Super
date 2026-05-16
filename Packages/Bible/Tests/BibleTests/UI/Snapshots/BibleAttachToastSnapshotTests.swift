@@ -7,8 +7,9 @@ import Testing
 
 /// Snapshots of `BibleAttachToast` — the chat-attach "coming soon" toast.
 ///
-/// The toast is a fixed dark card regardless of theme; the two baselines
-/// confirm it reads against both a light and a dark page.
+/// The toast is a fixed dark card regardless of theme; the baselines confirm
+/// it reads against the light, dark, and sepia page backgrounds. The card
+/// uses fixed type sizes, so no Dynamic Type variant is recorded.
 @Suite("BibleAttachToast snapshots")
 @MainActor
 struct BibleAttachToastSnapshotTests {
@@ -20,6 +21,11 @@ struct BibleAttachToastSnapshotTests {
     @Test("the toast renders over a dark page")
     func dark() {
         verify(theme: .dark, name: "dark")
+    }
+
+    @Test("the toast renders over a sepia page")
+    func sepia() {
+        verify(theme: .sepia, name: "sepia")
     }
 
     private func verify(
