@@ -5,13 +5,15 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleScreen` — the M2 chapter reader with its floating nav
-/// bar and prev / next footer.
+/// Snapshots of `BibleScreen` — the chapter reader with its floating nav
+/// bar, prev / next footer, verse selection, and chat stubs.
 ///
 /// The populated state renders the real bundled 1 Peter 2 across the three
 /// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
 /// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
-/// arrow and a footer card drop out. The unavailable state covers the
+/// arrow and a footer card drop out. The selection state shows the citation
+/// pill, highlighted verses, and the action sheet together; the toast state
+/// covers the chat "coming soon" stub. The unavailable state covers the
 /// "chapter unavailable" fallback.
 @Suite("BibleScreen snapshots")
 @MainActor
@@ -85,6 +87,27 @@ struct BibleScreenSnapshotTests {
         verify(BibleScreen(viewModel: viewModel), theme: .light, name: "book_sheet_open_light")
     }
 
+    @Test("selected verses show the citation pill, highlights, and action sheet")
+    func selectionActiveLight() async {
+        verify(await selectionScreen(), theme: .light, name: "selection_active_light")
+    }
+
+    @Test("verse selection renders in the dark theme")
+    func selectionActiveDark() async {
+        verify(await selectionScreen(), theme: .dark, name: "selection_active_dark")
+    }
+
+    @Test("the chat stub raises the coming-soon toast over the reader")
+    func chatToastLight() async {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        viewModel.presentChatComingSoon()
+        verify(BibleScreen(viewModel: viewModel), theme: .light, name: "chat_toast_light")
+    }
+
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
@@ -92,6 +115,17 @@ struct BibleScreenSnapshotTests {
             initialPosition: position
         )
         await viewModel.load()
+        return BibleScreen(viewModel: viewModel)
+    }
+
+    /// A `BibleScreen` on 1 Peter 2 with verses 4-6 and 9 selected.
+    private func selectionScreen() async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        for verse in [4, 5, 6, 9] { viewModel.toggleVerse(verse) }
         return BibleScreen(viewModel: viewModel)
     }
 

@@ -5,7 +5,8 @@ import Testing
 
 /// Tests for `BibleScreenViewModel` — default and restored reading position,
 /// chapter stepping (within a book, across book boundaries, and the no-op at
-/// the canon's ends), and that each step persists.
+/// the canon's ends), translation switching, and verse selection with its
+/// citation, Copy, and chat-stub toast.
 @Suite("BibleScreenViewModel")
 @MainActor
 struct BibleScreenViewModelTests {
@@ -13,12 +14,14 @@ struct BibleScreenViewModelTests {
 
     private func makeViewModel(
         repository: (any BibleReadingPositionRepository)? = nil,
+        clipboard: any ClipboardWriter = SystemClipboard(),
         at position: BiblePosition = BibleScreenViewModel.defaultPosition
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
             positionRepository: repository,
             clock: FixedClock(now),
+            clipboard: clipboard,
             initialPosition: position
         )
     }
@@ -261,5 +264,136 @@ struct BibleScreenViewModelTests {
         #expect(saved?.translationId == "KJV")
         #expect(saved?.bookId == "1PE")
         #expect(saved?.chapterNumber == 2)
+    }
+
+    // MARK: Verse selection
+
+    @Test("a fresh load has no verses selected")
+    func freshLoadHasNoSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(viewModel.selectionCitation == nil)
+    }
+
+    @Test("toggling a verse selects it, and toggling again clears it")
+    func togglingAVerse() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+
+        viewModel.toggleVerse(9)
+        #expect(viewModel.selectedVerses == [9])
+        #expect(viewModel.selectionCitation == "1 Peter 2:9")
+
+        viewModel.toggleVerse(9)
+        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(viewModel.selectionCitation == nil)
+    }
+
+    @Test("the selection citation compresses contiguous verses to a range")
+    func multiVerseSelectionCitation() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+        for verse in [9, 4, 6, 5] { viewModel.toggleVerse(verse) }
+        #expect(viewModel.selectionCitation == "1 Peter 2:4-6, 9")
+    }
+
+    @Test("clearing the selection drops every verse")
+    func clearSelectionDropsEverything() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.toggleVerse(5)
+        viewModel.clearSelection()
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("stepping to another chapter clears the selection")
+    func steppingClearsSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.stepChapter(.next)
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("jumping to a chapter from the picker clears the selection")
+    func selectingChapterClearsSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("switching translation clears the selection")
+    func switchingTranslationClearsSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.selectTranslation(.kjv)
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("copying writes the verse text and citation, then clears the selection")
+    func copyWritesPassageThenClears() async throws {
+        let clipboard = FakeClipboard()
+        let viewModel = makeViewModel(clipboard: clipboard)
+        await viewModel.load()                          // 1 Peter 2, WEB
+        viewModel.toggleVerse(9)
+        viewModel.copySelection()
+
+        let copied = try #require(clipboard.lastWritten)
+        let suffix = "— 1 Peter 2:9 (WEB)"
+        #expect(copied.hasSuffix(suffix))
+        #expect(copied.count > suffix.count + 10, "the verse body should precede the citation")
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("the share text carries the selected verses and a range citation")
+    func shareTextForMultiVerseSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.toggleVerse(5)
+        #expect(viewModel.selectionShareText?.hasSuffix("— 1 Peter 2:4-5 (WEB)") == true)
+    }
+
+    @Test("a verse straddling a paragraph boundary joins all its fragments")
+    func straddlingVerseJoinsFragments() async {
+        // In 1 Peter 2 (WEB) verse 6 spans a prose sentence and the poetry
+        // quotation that follows it — the share text must carry both.
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(6)
+        let share = viewModel.selectionShareText
+        #expect(share?.contains("Because it is contained in Scripture") == true)
+        #expect(share?.contains("Behold, I lay in Zion") == true)
+    }
+
+    @Test("there is no share text without a selection")
+    func noShareTextWithoutSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.selectionShareText == nil)
+    }
+
+    @Test("the chat stub raises a coming-soon toast and clears the selection")
+    func chatComingSoonToast() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.presentChatComingSoon()
+        #expect(viewModel.toast != nil)
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("dismissing the toast clears it")
+    func dismissToastClearsIt() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentChatComingSoon()
+        viewModel.dismissToast()
+        #expect(viewModel.toast == nil)
     }
 }
