@@ -166,6 +166,20 @@ public final class TodoScreenViewModel {
         draft = nil
     }
 
+    /// Applies an in-flight edit from the editor sheet's two-way bindings.
+    ///
+    /// A no-op once the draft has been cleared by `saveDraft()` or
+    /// `cancelDraft()`: as the editor sheet animates away, its text fields
+    /// can still commit a final value through the binding. Without this
+    /// guard that late write would resurrect a draft — the editor's binding
+    /// falls back to an empty `TaskDraft` when `draft` is `nil` — and
+    /// immediately re-present the editor as a blank task seconds after the
+    /// user saved and dismissed it.
+    public func updateDraft(_ newValue: TaskDraft) {
+        guard draft != nil else { return }
+        draft = newValue
+    }
+
     /// Persist the open draft (create or edit) and its label set. A draft
     /// with a blank title is a no-op so an empty create can't slip through.
     public func saveDraft() async {

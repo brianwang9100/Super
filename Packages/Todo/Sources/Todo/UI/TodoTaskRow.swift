@@ -34,7 +34,6 @@ public struct TodoTaskRow: View {
     }
 
     public var body: some View {
-        let muted = row.task.state.isTerminal
         HStack(alignment: .top, spacing: 12) {
             TodoStateBox(state: row.task.state) { onToggleState(row) }
             VStack(alignment: .leading, spacing: 7) {
@@ -44,14 +43,15 @@ public struct TodoTaskRow: View {
                     .foregroundStyle(theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 if !row.labels.isEmpty || row.task.dueAt != nil {
-                    HStack(spacing: 5) {
+                    // Chips keep their natural width and the row truncates
+                    // with a trailing "…" rather than compressing chips into
+                    // unreadable text-wrapped blobs. The due badge is pinned.
+                    TruncatingRowLayout(spacing: 5) {
                         ForEach(row.labels) { TodoTagChip(label: $0) }
-                        if let due = row.task.dueAt {
-                            Text("· \(dueText(due))")
-                                .font(.system(size: dueSize * fontScale, design: .monospaced))
-                                .fontWeight(dueIsToday(due) && !muted ? .semibold : .regular)
-                                .foregroundStyle(dueIsToday(due) && !muted ? Self.dueAccent : theme.inkFaint)
-                        }
+                        Text("…")
+                            .font(.system(size: dueSize * fontScale))
+                            .foregroundStyle(theme.inkFaint)
+                        dueBadge
                     }
                 }
             }
@@ -62,7 +62,7 @@ public struct TodoTaskRow: View {
             .accessibilityAction(.default) { onPress(row) }
             Spacer(minLength: 0)
         }
-        .opacity(muted ? 0.62 : 1)
+        .opacity(isMuted ? 0.62 : 1)
         .padding(.vertical, 13)
         .padding(.trailing, 14)
         .padding(.leading, 16)
@@ -71,7 +71,7 @@ public struct TodoTaskRow: View {
             Rectangle()
                 .fill(stripeColor)
                 .frame(width: 3)
-                .opacity(muted ? 0.35 : 1)
+                .opacity(isMuted ? 0.35 : 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay {
@@ -80,6 +80,27 @@ public struct TodoTaskRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onPress(row) }
+    }
+
+    /// A terminal task (done or cancelled) renders dimmed, and its due
+    /// badge drops the due-today emphasis.
+    private var isMuted: Bool { row.task.state.isTerminal }
+
+    /// The pinned trailing badge for the meta line — the due date, or a
+    /// zero-size placeholder when the task has none. Always emitted so
+    /// `TruncatingRowLayout` can treat the last subview as the pinned slot.
+    @ViewBuilder private var dueBadge: some View {
+        if let due = row.task.dueAt {
+            Text("· \(dueText(due))")
+                .font(.system(size: dueSize * fontScale, design: .monospaced))
+                .fontWeight(dueIsToday(due) && !isMuted ? .semibold : .regular)
+                .foregroundStyle(dueIsToday(due) && !isMuted ? Self.dueAccent : theme.inkFaint)
+        } else {
+            // A zero-size placeholder so `TruncatingRowLayout` can always
+            // treat the last subview as the pinned-badge slot; measuring
+            // exactly zero, it tells the layout to reserve no trailing room.
+            Color.clear.frame(width: 0, height: 0)
+        }
     }
 
     /// Spoken VoiceOver description — title plus state, priority, due, and
