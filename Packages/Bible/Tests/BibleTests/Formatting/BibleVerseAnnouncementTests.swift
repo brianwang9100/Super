@@ -30,10 +30,18 @@ struct BibleVerseAnnouncementTests {
         )
     }
 
-    @Test("a highlighted verse announces its colour as the value")
-    func highlightValueNamesTheColour() {
-        #expect(BibleVerseAnnouncement.highlightValue(.yellow) == "Highlighted yellow")
-        #expect(BibleVerseAnnouncement.highlightValue(.lavender) == "Highlighted lavender")
+    @Test(
+        "a highlighted verse announces its colour as the value",
+        arguments: [
+            (BibleHighlightColor.yellow, "Highlighted yellow"),
+            (.green, "Highlighted green"),
+            (.blue, "Highlighted blue"),
+            (.pink, "Highlighted pink"),
+            (.lavender, "Highlighted lavender"),
+        ]
+    )
+    func highlightValueNamesTheColour(color: BibleHighlightColor, expected: String) {
+        #expect(BibleVerseAnnouncement.highlightValue(color) == expected)
     }
 
     @Test("an unhighlighted verse has an empty value")

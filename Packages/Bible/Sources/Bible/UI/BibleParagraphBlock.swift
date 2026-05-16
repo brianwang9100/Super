@@ -77,24 +77,29 @@ private struct VerseWord: View {
     let onTap: (Int) -> Void
 
     var body: some View {
-        styledText
+        let word = styledText
             .padding(.vertical, 1.5)
             .background(wordBackground)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
-            // The verse's first word stands in for the whole verse as one
-            // VoiceOver element reading the full text; every other word is
-            // hidden so the verse isn't re-announced word by word.
-            .accessibilityElement()
-            .accessibilityHidden(!token.isVerseStart)
-            .accessibilityLabel(BibleVerseAnnouncement.label(
-                verseNumber: token.verseNumber,
-                verseText: token.verseText
-            ))
-            .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlightColor))
-            .accessibilityHint(accessibilityHint)
-            .accessibilityAddTraits(accessibilityTraits)
-            .accessibilityAction(.default) { onTap(token.verseNumber) }
+        if token.isVerseStart {
+            // The verse's first word stands in for the whole verse as a
+            // single VoiceOver element reading the full text.
+            word
+                .accessibilityElement()
+                .accessibilityLabel(BibleVerseAnnouncement.label(
+                    verseNumber: token.verseNumber,
+                    verseText: token.verseText
+                ))
+                .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlightColor))
+                .accessibilityHint(accessibilityHint)
+                .accessibilityAddTraits(accessibilityTraits)
+                .accessibilityAction(.default) { onTap(token.verseNumber) }
+        } else {
+            // Every later word folds into the verse's first — hidden so the
+            // verse isn't re-announced word by word.
+            word.accessibilityHidden(true)
+        }
     }
 
     /// A button always; also `.isSelected` while the verse is in the pending
