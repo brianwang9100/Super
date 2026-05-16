@@ -165,17 +165,17 @@ struct TodoTaskEditorSheet: View {
         field("Due · optional") {
             VStack(alignment: .leading, spacing: 8) {
                 FlowLayout(spacing: 6) {
-                    duePill("No date", selected: draft.dueAt == nil) { draft.dueAt = nil }
+                    duePill("No date", selected: draft.dueAt == nil) { selectPreset(nil) }
                     duePill("Today", selected: isSameDay(draft.dueAt, offsetDays: 0)) {
-                        draft.dueAt = dayOffset(0)
+                        selectPreset(dayOffset(0))
                     }
                     duePill("Tomorrow", selected: isSameDay(draft.dueAt, offsetDays: 1)) {
-                        draft.dueAt = dayOffset(1)
+                        selectPreset(dayOffset(1))
                     }
                     duePill("This week", selected: isSameDay(draft.dueAt, offsetDays: 7)) {
-                        draft.dueAt = dayOffset(7)
+                        selectPreset(dayOffset(7))
                     }
-                    duePill("Pick…", selected: isCustomDate) { showingDatePicker = true }
+                    duePill(pickPillTitle, selected: isCustomDate) { showingDatePicker = true }
                 }
                 if showingDatePicker {
                     DatePicker(
@@ -256,6 +256,22 @@ struct TodoTaskEditorSheet: View {
     }
 
     // MARK: Due-date helpers
+
+    /// Applies a preset due date (or clears it) and collapses the custom
+    /// date picker — the presets and the graphical picker are mutually
+    /// exclusive ways to set the date, so choosing a preset dismisses the
+    /// picker and drops "Pick…" back to its neutral prompt.
+    private func selectPreset(_ date: Date?) {
+        draft.dueAt = date
+        showingDatePicker = false
+    }
+
+    /// The "Pick…" pill's label: the chosen date once a custom (non-preset)
+    /// due date is set, otherwise the neutral "Pick…" prompt.
+    private var pickPillTitle: String {
+        guard isCustomDate, let due = draft.dueAt else { return "Pick…" }
+        return due.formatted(.dateTime.month(.abbreviated).day())
+    }
 
     private func dayOffset(_ days: Int) -> Date {
         let start = calendar.startOfDay(for: now)
