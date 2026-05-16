@@ -33,7 +33,9 @@ public struct TodoScreen: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 header
-                    .padding(.top, 110)
+                    // Clears the floating add-button row (safe-area top + 4,
+                    // 36pt tall) with an 8pt gap beneath it.
+                    .padding(.top, 48)
                     .padding(.horizontal, 18)
                 TodoFilterPill(summary: filterSummary) { filterSheetOpen = true }
                     .padding(.horizontal, 18)
@@ -112,17 +114,15 @@ public struct TodoScreen: View {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
-                // 36×36 mirrors the shell's hamburger button; the top
-                // offset aligns it to the same baseline (safe-area top + 4)
-                // — `TodoScreen`'s root ignores the safe area, so the inset
-                // is applied here as an explicit offset.
+                // 36×36 mirrors the shell's hamburger button; the 4pt top
+                // offset puts it on the same baseline (safe-area top + 4).
                 .frame(width: 36, height: 36)
                 .background(theme.accent)
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
         }
         .buttonStyle(.plain)
-        .padding(.top, 66)
+        .padding(.top, 4)
         .padding(.trailing, 12)
         .accessibilityLabel("Add task")
     }
@@ -169,13 +169,13 @@ public struct TodoScreen: View {
     }
 
     /// Bottom inset that clears the shell's minimized "Chat with Super"
-    /// dock. The dock is `ChatPresentationState.minimizedBaseHeight` plus
-    /// the home-indicator safe area (≈94pt) with the composer pill's
-    /// intrinsic height overshooting that — so the visible capsule top
-    /// sits well above 100pt. The Todo applet can't import Chat, so the
-    /// clearance is mirrored here as a constant; both the scroll content
-    /// and the toast use it so neither renders behind the dock.
-    private static let chatDockClearance: CGFloat = 130
+    /// dock. `TodoScreen` keeps the safe area, so the dock intrudes upward
+    /// by `ChatPresentationState.minimizedBaseHeight` (60pt) plus the
+    /// composer pill's intrinsic overshoot — measured from the safe-area
+    /// bottom, not the screen edge. The Todo applet can't import Chat, so
+    /// the clearance is mirrored here as a constant; both the scroll
+    /// content and the toast use it so neither renders behind the dock.
+    private static let chatDockClearance: CGFloat = 96
 
     // MARK: Derived state
 

@@ -19,8 +19,9 @@ public struct BibleScreen: View {
     private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
 
     /// Space at the bottom reserved for the shell's minimized chat pill —
-    /// the action sheet and toast both clear it.
-    private let bottomReserve: CGFloat = 84
+    /// the action sheet and toast both clear it, settling a few points above
+    /// the pill's drag handle rather than touching it.
+    private let bottomReserve: CGFloat = 100
 
     public init(viewModel: BibleScreenViewModel) {
         self.viewModel = viewModel
