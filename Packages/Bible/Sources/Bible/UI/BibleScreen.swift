@@ -7,8 +7,8 @@ import SwiftUI
 /// All chapter and selection state lives in `BibleScreenViewModel`; the view
 /// reads it and renders. The chapter text loads synchronously, so a step
 /// repaints at once — only the persisted reading position is written
-/// asynchronously. Tapping verses drives the action sheet; the chat bubble,
-/// `+` button, and chat actions are deferred stubs that raise a toast.
+/// asynchronously. Tapping verses drives the action sheet; the `+` button and
+/// the action sheet's chat actions are deferred stubs that raise a toast.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     private let viewModel: BibleScreenViewModel
@@ -18,7 +18,7 @@ public struct BibleScreen: View {
     private let sheetAnimation: Animation = .snappy(duration: 0.34)
 
     /// Space at the bottom reserved for the shell's minimized chat pill —
-    /// the floating bubble, action sheet, and toast all clear it.
+    /// the action sheet and toast both clear it.
     private let bottomReserve: CGFloat = 84
 
     public init(viewModel: BibleScreenViewModel) {
@@ -68,8 +68,8 @@ public struct BibleScreen: View {
         )
     }
 
-    /// The selection action sheet when verses are selected, otherwise the
-    /// floating chat bubble — both anchored above the shell's chat pill.
+    /// The selection action sheet, anchored above the shell's chat pill while
+    /// verses are selected.
     @ViewBuilder
     private var bottomOverlay: some View {
         if !viewModel.selectedVerses.isEmpty {
@@ -86,14 +86,6 @@ public struct BibleScreen: View {
             .padding(.bottom, bottomReserve)
             .frame(maxHeight: .infinity, alignment: .bottom)
             .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if viewModel.toast == nil {
-            BibleChatBubble(
-                onTap: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } }
-            )
-            .padding(.horizontal, 12)
-            .padding(.bottom, bottomReserve)
-            .frame(maxHeight: .infinity, alignment: .bottom)
-            .transition(.opacity)
         }
     }
 

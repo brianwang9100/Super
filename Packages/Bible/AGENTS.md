@@ -18,7 +18,7 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 ## Rules
 
 - **Do not import other applets.** Cross-applet communication runs through Core. Hand-off to Chat is explicitly deferred (no `SuperEventBus` work in this package).
-- **No chat hand-off / bidirectional AI in MVP.** The `+` nav button, the floating "Ask about this chapter…" bubble, and the action sheet's chat rows render per design but no-op with a "Coming soon" toast. Hand-off lands in a follow-up plan once `SuperEventBus` exists.
+- **No chat hand-off / bidirectional AI in MVP.** The `+` nav button and the action sheet's chat rows render per design but no-op with a "Coming soon" toast. Hand-off lands in a follow-up plan once `SuperEventBus` exists. (The floating "Ask about this chapter…" bubble was dropped — it duplicated the shell's chat composer.)
 - **Persistence is GRDB only** when it lands (M2+). No SwiftData / Core Data.
 - **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See [`docs/NAMING_CONVENTIONS.md` Part 5](../../docs/NAMING_CONVENTIONS.md#part-5--persistence-schema).
 - **Records** are `struct` + `Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable`.
