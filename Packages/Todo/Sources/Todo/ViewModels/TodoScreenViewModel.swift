@@ -83,19 +83,29 @@ public final class TodoScreenViewModel {
     /// internal control state, not UI state.
     @ObservationIgnored private var isSaving = false
 
+    /// Calendar for the screen's "due today" grouping. Injected so the
+    /// list stays deterministic across time zones and under snapshot test.
+    public let calendar: Calendar
+
     public init(
         taskRepository: any TaskRepository,
         labelRepository: any LabelRepository,
         joinRepository: any TaskLabelRepository,
         clock: any Clock,
-        ids: any IDGenerator
+        ids: any IDGenerator,
+        calendar: Calendar = .current
     ) {
         self.taskRepository = taskRepository
         self.labelRepository = labelRepository
         self.joinRepository = joinRepository
         self.clock = clock
         self.ids = ids
+        self.calendar = calendar
     }
+
+    /// Current instant from the injected clock — read by the screen for
+    /// filtering and grouping.
+    public var now: Date { clock.now() }
 
     // MARK: Mutators
 
