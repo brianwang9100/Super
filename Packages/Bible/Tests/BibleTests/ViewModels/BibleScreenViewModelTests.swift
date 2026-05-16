@@ -14,7 +14,7 @@ struct BibleScreenViewModelTests {
 
     private func makeViewModel(
         repository: (any BibleReadingPositionRepository)? = nil,
-        clipboard: any ClipboardWriter = SystemClipboard(),
+        clipboard: any ClipboardWriter = FakeClipboard(),
         at position: BiblePosition = BibleScreenViewModel.defaultPosition
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(

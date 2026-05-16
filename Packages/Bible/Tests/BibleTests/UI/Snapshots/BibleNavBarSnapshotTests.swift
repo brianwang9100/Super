@@ -51,6 +51,12 @@ struct BibleNavBarSnapshotTests {
                selectionCitation: "1 Peter 2:4-6, 9", name: "selection_dark")
     }
 
+    @Test("selection mode renders in the sepia theme")
+    func selectionSepia() {
+        verify(theme: .sepia, canStepBackward: true, canStepForward: true,
+               selectionCitation: "1 Peter 2:4-6, 9", name: "selection_sepia")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         canStepBackward: Bool,
