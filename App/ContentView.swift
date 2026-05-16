@@ -214,7 +214,6 @@ struct AppShell: View {
                 activeApplet.rootView()
                     .superTheme(theme)
                     .superFontScale(appearance.fontScale)
-                    .ignoresSafeArea()
                     .opacity(backdropOpacity)
                     // Backdrop interactivity follows the live progress
                     // rather than a discrete state switch — by the time
