@@ -13,6 +13,10 @@ struct TodoTaskEditorSheet: View {
     let onCancel: () -> Void
     let onDelete: () async -> Void
     let onCreateLabel: (String) async -> String?
+    /// "Now" for the due-date pills' day arithmetic. Injected (rather than
+    /// reading `Date()`) so the pill highlight logic is deterministic and
+    /// testable, per `AGENTS.md` §Testing.
+    let now: Date
     /// Calendar for the due-date pills' day arithmetic. Injected so "Today"
     /// / "Tomorrow" resolve to the same day boundaries the screen's grouping
     /// uses — a mismatch would land a `dueAt` the list classifies elsewhere.
@@ -176,7 +180,7 @@ struct TodoTaskEditorSheet: View {
                 if showingDatePicker {
                     DatePicker(
                         "Due date",
-                        selection: Binding(get: { draft.dueAt ?? Date() }, set: { draft.dueAt = $0 }),
+                        selection: Binding(get: { draft.dueAt ?? now }, set: { draft.dueAt = $0 }),
                         displayedComponents: .date
                     )
                     .datePickerStyle(.graphical)
@@ -254,7 +258,7 @@ struct TodoTaskEditorSheet: View {
     // MARK: Due-date helpers
 
     private func dayOffset(_ days: Int) -> Date {
-        let start = calendar.startOfDay(for: Date())
+        let start = calendar.startOfDay(for: now)
         return calendar.date(byAdding: .day, value: days, to: start) ?? start
     }
 

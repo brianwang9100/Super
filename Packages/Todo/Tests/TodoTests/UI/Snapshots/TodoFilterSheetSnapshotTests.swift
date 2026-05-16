@@ -8,7 +8,7 @@ import Testing
 /// Snapshots for `TodoFilterSheet`. Each theme renders the sheet with a
 /// non-default filter (a sort, a state scope, and one selected tag) plus a
 /// label set, so the selected-pill and selected-chip styling is exercised.
-@Suite("TodoFilterSheet snapshots", .serialized)
+@Suite("TodoFilterSheet snapshots")
 @MainActor
 struct TodoFilterSheetSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

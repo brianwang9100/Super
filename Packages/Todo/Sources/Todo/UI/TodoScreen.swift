@@ -69,6 +69,7 @@ public struct TodoScreen: View {
                     viewModel.cancelDraft()
                 },
                 onCreateLabel: { await viewModel.ensureLabel(name: $0) },
+                now: viewModel.now,
                 calendar: viewModel.calendar
             )
             .presentationDetents([.large])

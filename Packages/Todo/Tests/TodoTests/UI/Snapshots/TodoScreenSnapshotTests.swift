@@ -16,7 +16,7 @@ import Testing
 /// The *populated* list rendering — grouped section headers and task rows —
 /// is covered deterministically by `TodoSectionHeaderSnapshotTests` and
 /// `TodoTaskRowSnapshotTests` instead.
-@Suite("TodoScreen snapshots", .serialized)
+@Suite("TodoScreen snapshots")
 @MainActor
 struct TodoScreenSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

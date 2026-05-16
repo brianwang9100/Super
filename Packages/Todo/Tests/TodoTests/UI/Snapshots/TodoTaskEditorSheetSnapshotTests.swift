@@ -9,7 +9,7 @@ import Testing
 /// empty draft (placeholder text, no state row or delete button); the
 /// edit-mode fixture renders a fully-populated draft so the state row,
 /// selected priority, selected due pill, and delete button are exercised.
-@Suite("TodoTaskEditorSheet snapshots", .serialized)
+@Suite("TodoTaskEditorSheet snapshots")
 @MainActor
 struct TodoTaskEditorSheetSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -20,6 +20,10 @@ struct TodoTaskEditorSheetSnapshotTests {
 
     @Test("create mode, dark") func createDark() {
         verify(theme: .dark, mode: .create, draft: .empty, name: "editor_create_dark")
+    }
+
+    @Test("create mode, sepia") func createSepia() {
+        verify(theme: .sepia, mode: .create, draft: .empty, name: "editor_create_sepia")
     }
 
     @Test("edit mode, light") func editLight() {
@@ -71,6 +75,7 @@ struct TodoTaskEditorSheetSnapshotTests {
             onCancel: {},
             onDelete: {},
             onCreateLabel: { _ in nil },
+            now: now,
             calendar: utc
         )
         .frame(width: 402, height: 760, alignment: .top)
