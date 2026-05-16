@@ -73,4 +73,35 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("updatedAt", .datetime).notNull()
         }
     }
+
+    migrator.registerMigration("v2_createHighlight") { db in
+        try db.create(table: "bibleHighlight") { t in
+            t.primaryKey("id", .text)
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer).notNull()
+            t.column("verseNumber", .integer).notNull()
+            t.column("colorId", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+            t.column("updatedAt", .datetime).notNull()
+            t.column("deletedAt", .datetime)
+        }
+        // One row per (book, chapter, verse) — active or cleared — is a hard
+        // invariant the repository's read-then-upsert relies on; a UNIQUE
+        // index enforces it at the database so a future concurrent writer
+        // fails loudly instead of silently duplicating a verse. Its leading
+        // (bookId, chapterNumber) columns also serve the chapter renderer's
+        // `@Query`. The soft-delete index keeps the active-only filter off a
+        // table scan.
+        try db.create(
+            index: "bibleHighlight_on_bookId_chapterNumber_verseNumber",
+            on: "bibleHighlight",
+            columns: ["bookId", "chapterNumber", "verseNumber"],
+            unique: true
+        )
+        try db.create(
+            index: "bibleHighlight_on_deletedAt",
+            on: "bibleHighlight",
+            columns: ["deletedAt"]
+        )
+    }
 }

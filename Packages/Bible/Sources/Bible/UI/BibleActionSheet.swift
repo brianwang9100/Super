@@ -4,10 +4,9 @@ import SwiftUI
 /// The bottom sheet shown while verses are selected: the passage citation, a
 /// highlight-colour row, and the Copy / Share / chat actions.
 ///
-/// The highlight row is presentational only this milestone — the swatches
-/// render but do not persist anything; colour application lands with the
-/// highlight store. Copy and Share are live; the two chat actions stand in
-/// for the deferred hand-off and raise a "coming soon" toast.
+/// The highlight row, Copy, and Share are all live: a swatch paints the
+/// selected verses, the dashed circle clears them. The two chat actions stand
+/// in for the deferred hand-off and raise a "coming soon" toast.
 struct BibleActionSheet: View {
     @Environment(\.superTheme) private var theme
 
@@ -15,20 +14,14 @@ struct BibleActionSheet: View {
     let citation: String
     /// The verse text + citation handed to the system share sheet.
     let shareText: String
+    /// Invoked with the chosen colour when a highlight swatch is tapped.
+    let onHighlight: (BibleHighlightColor) -> Void
+    /// Invoked when the dashed "clear" circle is tapped.
+    let onClearHighlight: () -> Void
     let onCopy: () -> Void
     let onAddToChat: () -> Void
     let onNewChat: () -> Void
     let onClose: () -> Void
-
-    /// The five highlight colours, matching the design palette. Presentational
-    /// until the highlight store lands.
-    private static let swatches: [(name: String, color: OKLCH)] = [
-        ("Yellow", OKLCH(0.92, 0.10, 95)),
-        ("Green", OKLCH(0.88, 0.09, 150)),
-        ("Blue", OKLCH(0.88, 0.06, 235)),
-        ("Pink", OKLCH(0.86, 0.08, 350)),
-        ("Lavender", OKLCH(0.88, 0.07, 295)),
-    ]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,25 +65,30 @@ struct BibleActionSheet: View {
                 .tracking(0.6)
                 .foregroundStyle(theme.inkFaint)
             Spacer()
-            ForEach(Self.swatches, id: \.name) { swatch in
-                Circle()
-                    .fill(swatch.color.color)
-                    .frame(width: 22, height: 22)
-                    .overlay(Circle().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-            }
-            Circle()
-                .strokeBorder(theme.border, style: StrokeStyle(lineWidth: 0.5, dash: [2.5]))
-                .background(Circle().fill(theme.backgroundSunken))
-                .frame(width: 22, height: 22)
-                .overlay {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(theme.inkFaint)
+            ForEach(BibleHighlightColor.allCases) { color in
+                Button { onHighlight(color) } label: {
+                    Circle()
+                        .fill(color.swatch.color)
+                        .frame(width: 22, height: 22)
+                        .overlay(Circle().strokeBorder(theme.borderFaint, lineWidth: 0.5))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Highlight \(color.displayName.lowercased())")
+            }
+            Button(action: onClearHighlight) {
+                Circle()
+                    .strokeBorder(theme.border, style: StrokeStyle(lineWidth: 0.5, dash: [2.5]))
+                    .background(Circle().fill(theme.backgroundSunken))
+                    .frame(width: 22, height: 22)
+                    .overlay {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(theme.inkFaint)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear highlight")
         }
-        // The swatch row is presentational until the highlight store lands —
-        // hidden from VoiceOver so it doesn't announce inert controls.
-        .accessibilityHidden(true)
         .padding(.horizontal, 4)
         .padding(.bottom, 10)
     }

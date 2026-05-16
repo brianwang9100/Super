@@ -45,22 +45,29 @@ public final class BibleScreenViewModel {
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
+    private let highlightRepository: (any BibleHighlightRepository)?
     private let clock: any Clock
     private let clipboard: any ClipboardWriter
 
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
 
+    /// In-flight highlight write, retained so tests can await it.
+    private var highlightTask: Task<Void, Never>?
+
     /// - Parameters:
     ///   - positionRepository: persists the reading position; `nil` disables
     ///     persistence (the applet passes `nil` only if its database fails
     ///     to open, so the reader still works, just without restore).
+    ///   - highlightRepository: persists verse highlights; `nil` disables
+    ///     highlighting for the same database-unavailable reason.
     ///   - initialPosition: the position before `load()` reads persisted
     ///     state — defaults to `defaultPosition`.
     public init(
         textLoader: any BibleTextLoader,
         catalog: BibleBookCatalog = .standard,
         positionRepository: (any BibleReadingPositionRepository)? = nil,
+        highlightRepository: (any BibleHighlightRepository)? = nil,
         clock: any Clock = SystemClock(),
         clipboard: any ClipboardWriter = SystemClipboard(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition
@@ -68,6 +75,7 @@ public final class BibleScreenViewModel {
         self.textLoader = textLoader
         self.catalog = catalog
         self.positionRepository = positionRepository
+        self.highlightRepository = highlightRepository
         self.clock = clock
         self.clipboard = clipboard
         self.position = initialPosition
@@ -205,6 +213,71 @@ public final class BibleScreenViewModel {
         clearSelection()
     }
 
+    /// Paint `color` onto every selected verse, then leave selection mode. The
+    /// write is asynchronous; the chapter's reactive `@Query` repaints once it
+    /// lands. A no-op without a highlight store or with nothing selected.
+    public func applyHighlight(_ color: BibleHighlightColor) {
+        writeHighlights(failureMessage: "Couldn't save the highlight.") {
+            repository, bookId, chapterNumber, verseNumber, now in
+            try await repository.setHighlight(
+                bookId: bookId,
+                chapterNumber: chapterNumber,
+                verseNumber: verseNumber,
+                color: color,
+                at: now
+            )
+        }
+    }
+
+    /// Clear the highlight on every selected verse, then leave selection mode.
+    public func clearHighlight() {
+        writeHighlights(failureMessage: "Couldn't clear the highlight.") {
+            repository, bookId, chapterNumber, verseNumber, now in
+            try await repository.clearHighlight(
+                bookId: bookId,
+                chapterNumber: chapterNumber,
+                verseNumber: verseNumber,
+                at: now
+            )
+        }
+    }
+
+    /// Run `write` for every selected verse on a background task chained after
+    /// any prior highlight write, then clear the selection. The two highlight
+    /// actions — apply and clear — differ only in this per-verse operation and
+    /// in the toast shown when a write fails.
+    ///
+    /// - Parameter failureMessage: shown in the toast if any verse's write
+    ///   throws. The selection clears synchronously, so without this a failed
+    ///   write would read as success — the chapter just never repaints.
+    private func writeHighlights(
+        failureMessage: String,
+        _ write: @escaping @Sendable (
+            any BibleHighlightRepository, String, Int, Int, Date
+        ) async throws -> Void
+    ) {
+        guard let highlightRepository, !selectedVerses.isEmpty else { return }
+        let verses = selectedVerses.sorted()
+        let bookId = position.bookId
+        let chapterNumber = position.chapterNumber
+        let now = clock.now()
+        // Chain on the prior write so awaiting the latest task drains them all.
+        let previous = highlightTask
+        highlightTask = Task { [weak self] in
+            await previous?.value
+            var anyFailed = false
+            for verse in verses {
+                do {
+                    try await write(highlightRepository, bookId, chapterNumber, verse, now)
+                } catch {
+                    anyFailed = true
+                }
+            }
+            if anyFailed { self?.toast = failureMessage }
+        }
+        clearSelection()
+    }
+
     /// Stand-in for the deferred chat hand-off: the `+` button, the floating
     /// bubble, and the action sheet's two chat rows all land here, raising a
     /// "coming soon" toast instead of attaching the passage to a chat.
@@ -244,6 +317,12 @@ public final class BibleScreenViewModel {
     /// all. Production code never needs to observe the persistence task.
     public func _waitForPendingPersist() async {
         await persistTask?.value
+    }
+
+    /// Awaits the pending background highlight writes. Test-only seam, with
+    /// the same chained-drain behaviour as `_waitForPendingPersist()`.
+    public func _waitForPendingHighlightWrite() async {
+        await highlightTask?.value
     }
 
     private func applyCurrentChapter() {

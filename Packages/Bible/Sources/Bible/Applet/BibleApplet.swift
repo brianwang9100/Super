@@ -1,14 +1,17 @@
 import Core
 import Foundation
+import GRDBQuery
 import SwiftUI
 
 /// The Bible mini-applet entry point. Registered with the shell's
 /// `AppletRegistry` at composition root; the shell renders `rootView()`
 /// behind the chat overlay.
 ///
-/// M2 adds chapter navigation and reading-position persistence: the applet
-/// owns one `BibleScreenViewModel` for the lifetime of the registry entry,
-/// so the reader's place survives re-renders of the backdrop.
+/// The applet owns one `BibleScreenViewModel` for the lifetime of the
+/// registry entry, so the reader's place survives re-renders of the backdrop.
+/// It also holds the read-only `DatabaseContext` injected into the SwiftUI
+/// environment so the chapter renderer's highlight `@Query` can observe the
+/// `bibleHighlight` table.
 public struct BibleApplet: MiniApplet {
     /// Stable, lowercase identifier — used for routing, settings keys, and
     /// deep-link URIs (`super://bible/<recordID>`).
@@ -25,24 +28,40 @@ public struct BibleApplet: MiniApplet {
     /// applet is the active backdrop.
     private let viewModel: BibleScreenViewModel
 
-    /// Production entry point — bundled text plus an on-disk reading-position
-    /// store under Application Support.
+    /// Read-only database access for the chapter renderer's highlight
+    /// `@Query`, injected into the SwiftUI environment by `rootView()`. `nil`
+    /// when the database failed to open — the reader then shows no highlights
+    /// rather than failing outright.
+    private let databaseContext: DatabaseContext?
+
+    /// Production entry point — bundled text plus an on-disk store under
+    /// Application Support for the reading position and verse highlights.
     ///
-    /// The database opens synchronously here: it is a single empty table
-    /// behind one tiny migration, and the applet is built in `ContentView`'s
+    /// The database opens synchronously here: it is two small tables behind
+    /// two tiny migrations, and the applet is built in `ContentView`'s
     /// initializer where no `async` context exists. Should the Bible schema
     /// ever grow heavy, move this open to `AppBootstrap` alongside
     /// `ChatDatabase` rather than blocking the launch path.
     @MainActor
     public init() {
-        self.viewModel = BibleApplet.makeViewModel()
+        let database = BibleApplet.openDatabase()
+        self.databaseContext = database.map { db in
+            DatabaseContext.readOnly { db.queue }
+        }
+        self.viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            positionRepository: database.map { GRDBBibleReadingPositionRepository(database: $0) },
+            highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) }
+        )
     }
 
     /// Test seam: inject a view model wired to in-memory doubles so a test
-    /// never touches the real on-disk database.
+    /// never touches the real on-disk database. The highlight `@Query` runs
+    /// without a database context — it falls back to an empty result.
     @MainActor
-    init(viewModel: BibleScreenViewModel) {
+    init(viewModel: BibleScreenViewModel, databaseContext: DatabaseContext? = nil) {
         self.viewModel = viewModel
+        self.databaseContext = databaseContext
     }
 
     @MainActor
@@ -52,26 +71,17 @@ public struct BibleApplet: MiniApplet {
 
     @MainActor
     public func rootView() -> AnyView {
-        AnyView(BibleScreen(viewModel: viewModel))
+        let screen = BibleScreen(viewModel: viewModel)
+        guard let databaseContext else { return AnyView(screen) }
+        return AnyView(screen.databaseContext(databaseContext))
     }
 
-    @MainActor
-    private static func makeViewModel() -> BibleScreenViewModel {
-        BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
-            positionRepository: makeRepository()
-        )
-    }
-
-    /// Opens the reading-position database, or returns `nil` if it can't be
-    /// created — the reader then runs without relaunch restore rather than
-    /// failing outright.
-    private static func makeRepository() -> (any BibleReadingPositionRepository)? {
-        guard let directory = try? dataDirectory(),
-              let database = try? BibleDatabase.open(in: directory) else {
-            return nil
-        }
-        return GRDBBibleReadingPositionRepository(database: database)
+    /// Opens the Bible database, or returns `nil` if it can't be created — the
+    /// reader then runs without relaunch restore or highlight persistence
+    /// rather than failing outright.
+    private static func openDatabase() -> BibleDatabase? {
+        guard let directory = try? dataDirectory() else { return nil }
+        return try? BibleDatabase.open(in: directory)
     }
 
     /// `Application Support/Super/`, created if missing — the same directory

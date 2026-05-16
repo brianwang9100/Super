@@ -1,5 +1,6 @@
 import Core
 import Foundation
+import GRDB
 import Testing
 @testable import Bible
 
@@ -14,16 +15,35 @@ struct BibleScreenViewModelTests {
 
     private func makeViewModel(
         repository: (any BibleReadingPositionRepository)? = nil,
+        highlightRepository: (any BibleHighlightRepository)? = nil,
         clipboard: any ClipboardWriter = FakeClipboard(),
         at position: BiblePosition = BibleScreenViewModel.defaultPosition
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
             positionRepository: repository,
+            highlightRepository: highlightRepository,
             clock: FixedClock(now),
             clipboard: clipboard,
             initialPosition: position
         )
+    }
+
+    /// A view model wired to a fresh in-memory highlight store, returned
+    /// alongside the database so a test can assert the persisted rows.
+    private func makeHighlightingViewModel() throws -> (BibleScreenViewModel, BibleDatabase) {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleHighlightRepository(
+            database: database, ids: DeterministicIDGenerator()
+        )
+        return (makeViewModel(highlightRepository: repository), database)
+    }
+
+    /// The active highlights persisted for 1 Peter 2.
+    private func highlights(in database: BibleDatabase) throws -> [BibleHighlightRecord] {
+        try database.queue.read { db in
+            try ChapterHighlightsRequest(bookId: "1PE", chapterNumber: 2).fetch(db)
+        }
     }
 
     @Test("load with no persisted position opens the default chapter")
@@ -395,5 +415,71 @@ struct BibleScreenViewModelTests {
         viewModel.presentChatComingSoon()
         viewModel.dismissToast()
         #expect(viewModel.toast == nil)
+    }
+
+    // MARK: Highlights
+
+    @Test("applying a highlight paints every selected verse and clears the selection")
+    func applyHighlightPaintsSelectedVerses() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()                          // 1 Peter 2
+        viewModel.toggleVerse(4)
+        viewModel.toggleVerse(5)
+        viewModel.applyHighlight(.green)
+        #expect(viewModel.selectedVerses.isEmpty, "applying a highlight leaves selection mode")
+
+        await viewModel._waitForPendingHighlightWrite()
+        let rows = try highlights(in: database)
+        #expect(rows.map(\.verseNumber) == [4, 5])
+        #expect(rows.allSatisfy { $0.color == .green })
+    }
+
+    @Test("clearing a highlight soft-deletes it for every selected verse")
+    func clearHighlightRemovesSelectedVerses() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+
+        viewModel.toggleVerse(9)
+        viewModel.clearHighlight()
+        #expect(viewModel.selectedVerses.isEmpty)
+
+        await viewModel._waitForPendingHighlightWrite()
+        #expect(try highlights(in: database).isEmpty)
+    }
+
+    @Test("applying a highlight with no selection writes nothing")
+    func applyHighlightWithoutSelectionIsNoOp() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()
+        viewModel.applyHighlight(.blue)
+        await viewModel._waitForPendingHighlightWrite()
+        let count = try await database.queue.read { db in try BibleHighlightRecord.fetchCount(db) }
+        #expect(count == 0)
+    }
+
+    @Test("applying a highlight without a highlight store leaves the selection intact")
+    func applyHighlightWithoutRepositoryIsSafe() async {
+        let viewModel = makeViewModel()                 // no highlight repository
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.pink)
+        // The guard returns before clearing the selection, so the action
+        // sheet doesn't appear to have succeeded when it could not.
+        #expect(viewModel.selectedVerses == [9])
+    }
+
+    @Test("a failed highlight write surfaces a toast")
+    func failedHighlightWriteShowsToast() async {
+        let viewModel = makeViewModel(highlightRepository: ThrowingBibleHighlightRepository())
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        // The selection clears synchronously; the toast must surface so the
+        // dismissed sheet doesn't read as a successful highlight.
+        await viewModel._waitForPendingHighlightWrite()
+        #expect(viewModel.toast == "Couldn't save the highlight.")
     }
 }
