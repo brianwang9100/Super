@@ -44,6 +44,48 @@ struct TodoTaskEditorSheetSnapshotTests {
         verify(theme: .light, mode: .create, draft: .empty, fontScale: 1.5, name: "editor_create_light_large")
     }
 
+    // A draft with enough labels that the chip row can't fit on one line —
+    // the tag picker must wrap them rather than widen the whole sheet.
+    // Captured in every theme so the wrapped chip colors are verified.
+    @Test("labels wrap, light") func editManyLabels() {
+        verify(theme: .light, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+               name: "editor_edit_many_labels")
+    }
+
+    @Test("labels wrap, dark") func editManyLabelsDark() {
+        verify(theme: .dark, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+               name: "editor_edit_many_labels_dark")
+    }
+
+    @Test("labels wrap, sepia") func editManyLabelsSepia() {
+        verify(theme: .sepia, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+               name: "editor_edit_many_labels_sepia")
+    }
+
+    // The `FlowLayout` chip wrap is font-sensitive — at a larger scale the
+    // chips are wider and the row breaks at a different point. The existing
+    // large-font variant uses an empty draft, so wrapping is never exercised
+    // at scale.
+    @Test("labels wrap, large font scale") func editManyLabelsLargeFontScale() {
+        verify(theme: .light, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+               fontScale: 1.5, name: "editor_edit_many_labels_large")
+    }
+
+    // A custom (non-preset) due date: the "Pick…" pill shows the chosen
+    // date rather than the neutral prompt, and reads as selected. Captured
+    // in every theme so the pill's selected coloring is verified.
+    @Test("custom due date, light") func editCustomDate() {
+        verify(theme: .light, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date")
+    }
+
+    @Test("custom due date, dark") func editCustomDateDark() {
+        verify(theme: .dark, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_dark")
+    }
+
+    @Test("custom due date, sepia") func editCustomDateSepia() {
+        verify(theme: .sepia, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_sepia")
+    }
+
     private var populatedDraft: TaskDraft {
         TaskDraft(
             id: "task-1",
@@ -56,6 +98,30 @@ struct TodoTaskEditorSheetSnapshotTests {
         )
     }
 
+    private var manyLabelsDraft: TaskDraft {
+        TaskDraft(
+            id: "task-2",
+            title: "Plan the quarterly offsite",
+            notes: "",
+            priority: .urgent,
+            dueAt: nil,
+            state: .open,
+            labelIds: ["home", "finance", "health", "errands"]
+        )
+    }
+
+    private var customDateDraft: TaskDraft {
+        TaskDraft(
+            id: "task-3",
+            title: "Renew passport",
+            notes: "",
+            priority: .normal,
+            dueAt: now.addingTimeInterval(4 * 86_400),
+            state: .open,
+            labelIds: []
+        )
+    }
+
     private var labels: [LabelRecord] {
         [
             LabelRecord(id: "travel", name: "Travel", hue: 220, createdAt: now, updatedAt: now),
@@ -63,10 +129,20 @@ struct TodoTaskEditorSheetSnapshotTests {
         ]
     }
 
+    private var manyLabels: [LabelRecord] {
+        [
+            LabelRecord(id: "home", name: "Home improvement", hue: 230, createdAt: now, updatedAt: now),
+            LabelRecord(id: "finance", name: "Finance", hue: 25, createdAt: now, updatedAt: now),
+            LabelRecord(id: "health", name: "Health", hue: 150, createdAt: now, updatedAt: now),
+            LabelRecord(id: "errands", name: "Errands", hue: 290, createdAt: now, updatedAt: now),
+        ]
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         mode: TodoScreenViewModel.DraftMode,
         draft: TaskDraft,
+        labels: [LabelRecord]? = nil,
         fontScale: CGFloat = 1,
         name: String,
         function: String = #function
@@ -77,7 +153,7 @@ struct TodoTaskEditorSheetSnapshotTests {
         let view = TodoTaskEditorSheet(
             draft: .constant(draft),
             mode: mode,
-            labels: labels,
+            labels: labels ?? self.labels,
             onSave: {},
             onCancel: {},
             onDelete: {},

@@ -24,6 +24,14 @@ public struct TodoStateBox: View {
     /// app-wide font slider are applied.
     private var scaledSize: CGFloat { size * fontScale }
 
+    /// Transparent padding added around the visible ring so the *tappable*
+    /// area reaches ~44pt — Apple's recommended minimum. A 19pt control is
+    /// far below that, so edge taps missed the button and fell through to
+    /// the enclosing row's tap gesture, opening the editor instead of
+    /// toggling state. Clamped so a Dynamic-Type-enlarged ring (already at
+    /// or past 44pt) never produces negative slop.
+    private var hitSlop: CGFloat { max(0, (44 - scaledSize) / 2) }
+
     public var body: some View {
         Button(action: onToggle) {
             ZStack {
@@ -32,8 +40,14 @@ public struct TodoStateBox: View {
                 glyph
             }
             .frame(width: scaledSize, height: scaledSize)
+            .padding(hitSlop)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Cancel the hit-slop padding from the layout so the row's spacing
+        // and the ring's on-screen position are unchanged — only the
+        // button's hit-test region grows.
+        .padding(-hitSlop)
         .accessibilityLabel(state.displayName)
         .accessibilityHint(state == .open ? "Marks the task done" : "Reopens the task")
     }

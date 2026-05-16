@@ -154,7 +154,7 @@ public struct TodoScreen: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.bottom, 130)
+                .padding(.bottom, Self.chatDockClearance)
             }
         }
     }
@@ -162,11 +162,20 @@ public struct TodoScreen: View {
     @ViewBuilder private var toastLayer: some View {
         if let toast = viewModel.toast {
             TodoToast(text: toast.text)
-                .padding(.bottom, 100)
+                .padding(.bottom, Self.chatDockClearance)
                 .id(toast.id)
                 .transition(.opacity)
         }
     }
+
+    /// Bottom inset that clears the shell's minimized "Chat with Super"
+    /// dock. The dock is `ChatPresentationState.minimizedBaseHeight` plus
+    /// the home-indicator safe area (≈94pt) with the composer pill's
+    /// intrinsic height overshooting that — so the visible capsule top
+    /// sits well above 100pt. The Todo applet can't import Chat, so the
+    /// clearance is mirrored here as a constant; both the scroll content
+    /// and the toast use it so neither renders behind the dock.
+    private static let chatDockClearance: CGFloat = 130
 
     // MARK: Derived state
 
@@ -203,7 +212,7 @@ public struct TodoScreen: View {
     }
 
     private var draftBinding: Binding<TaskDraft> {
-        Binding(get: { viewModel.draft ?? .empty }, set: { viewModel.draft = $0 })
+        Binding(get: { viewModel.draft ?? .empty }, set: { viewModel.updateDraft($0) })
     }
 
     private func scheduleToastDismiss(id: String) {

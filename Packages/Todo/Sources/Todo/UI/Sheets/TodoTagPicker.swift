@@ -49,8 +49,12 @@ struct TodoTagPicker: View {
         }
     }
 
+    /// Selected-label chips wrap with the text field via `FlowLayout` so a
+    /// long label set grows the box downward instead of demanding a wider
+    /// row — an `HStack` here reported an intrinsic width past the screen
+    /// edge and pushed the whole editor sheet wider.
     private var inputRow: some View {
-        HStack(spacing: 5) {
+        FlowLayout(spacing: 5) {
             ForEach(selectedIds, id: \.self) { id in
                 if let label = labelsByID[id] {
                     selectedChip(label)

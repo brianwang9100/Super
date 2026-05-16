@@ -23,8 +23,12 @@ struct FlowLayout: Layout {
             var x = bounds.minX
             for index in row.indices {
                 let size = subviews[index].sizeThatFits(.unspecified)
+                // Center each subview within the row's height so a row that
+                // mixes tall and short items stays vertically aligned (e.g.
+                // the tag picker's chips beside its text field). Rows of
+                // uniform-height items are unaffected.
                 subviews[index].place(
-                    at: CGPoint(x: x, y: y),
+                    at: CGPoint(x: x, y: y + (row.height - size.height) / 2),
                     anchor: .topLeading,
                     proposal: ProposedViewSize(size)
                 )

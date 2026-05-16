@@ -39,9 +39,26 @@ struct TodoScreenSnapshotTests {
         try verify(theme: .light, fontScale: 1.5, name: "screen_empty_light_large")
     }
 
+    // The toast layer renders in a bottom overlay. These variants pin a
+    // toast so its resting position is captured — it must sit clear of
+    // the bottom edge where the shell docks its minimized chat bar, not
+    // flush against it — across all themes so its dark pill stays legible.
+    @Test("toast, light") func toastVisible() throws {
+        try verify(theme: .light, toast: "Saved", name: "screen_toast")
+    }
+
+    @Test("toast, dark") func toastVisibleDark() throws {
+        try verify(theme: .dark, toast: "Saved", name: "screen_toast_dark")
+    }
+
+    @Test("toast, sepia") func toastVisibleSepia() throws {
+        try verify(theme: .sepia, toast: "Saved", name: "screen_toast_sepia")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
         fontScale: CGFloat = 1,
+        toast: String? = nil,
         name: String,
         function: String = #function
     ) throws {
@@ -54,6 +71,9 @@ struct TodoScreenSnapshotTests {
             clock: FixedClock(now),
             ids: DeterministicIDGenerator(prefix: "id-")
         )
+        if let toast {
+            viewModel.toast = TodoToastMessage(id: "toast-1", text: toast)
+        }
         let view = TodoScreen(viewModel: viewModel)
             .databaseContext(.readWrite { database.queue })
             .frame(width: 402, height: 874)

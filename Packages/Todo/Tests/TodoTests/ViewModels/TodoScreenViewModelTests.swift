@@ -86,6 +86,37 @@ struct TodoScreenViewModelTests {
         #expect(saved?.updatedAt == now)
     }
 
+    @Test func updateDraftAppliesEditWhileDraftIsOpen() throws {
+        let (viewModel, _, _, _) = try makeViewModel()
+        viewModel.beginCreate()
+        viewModel.updateDraft(TaskDraft(title: "typed in the editor"))
+        #expect(viewModel.draft?.title == "typed in the editor")
+    }
+
+    @Test func lateEditorWriteDoesNotResurrectClearedDraft() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        try await taskRepo.save(task("T1", title: "old"))
+        viewModel.beginEdit(TaskWithLabels(task: task("T1", title: "old"), labels: []))
+        viewModel.draft?.title = "new"
+        await viewModel.saveDraft()
+        #expect(viewModel.draft == nil)
+        // The editor sheet is mid-dismiss: a text field commits one last
+        // value through its binding. This must not re-open a blank editor.
+        viewModel.updateDraft(TaskDraft(id: "T1", title: "new"))
+        #expect(viewModel.draft == nil, "a late binding write must not re-present the editor")
+    }
+
+    @Test func lateEditorWriteAfterCancelDoesNotResurrectDraft() throws {
+        let (viewModel, _, _, _) = try makeViewModel()
+        viewModel.beginEdit(TaskWithLabels(task: task("T1", title: "old"), labels: []))
+        viewModel.cancelDraft()
+        #expect(viewModel.draft == nil)
+        // Same dismissal race as the post-save case, but via the Cancel
+        // button: a late text-field commit must not re-open the editor.
+        viewModel.updateDraft(TaskDraft(id: "T1", title: "old"))
+        #expect(viewModel.draft == nil, "a late binding write after cancel must not re-present the editor")
+    }
+
     @Test func saveDraftIgnoresConcurrentDoubleTap() async throws {
         let (viewModel, taskRepo, _, _) = try makeViewModel()
         viewModel.beginCreate()
