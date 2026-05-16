@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Bible
 
@@ -32,9 +33,26 @@ struct BibleDatabaseTests {
     func v2CreatesHighlightIndexes() throws {
         let database = try BibleDatabase.makeInMemory()
         let indexes = try database.queue.read { db in
-            try db.indexes(on: "bibleHighlight").map(\.name)
+            try db.indexes(on: "bibleHighlight")
         }
-        #expect(indexes.contains("bibleHighlight_on_bookId_chapterNumber"))
-        #expect(indexes.contains("bibleHighlight_on_deletedAt"))
+        let verseIndex = indexes.first { $0.name == "bibleHighlight_on_bookId_chapterNumber_verseNumber" }
+        #expect(verseIndex?.isUnique == true, "the verse index enforces one row per verse")
+        #expect(indexes.contains { $0.name == "bibleHighlight_on_deletedAt" })
+    }
+
+    @Test("v2 rejects a second row for the same verse")
+    func v2EnforcesOneRowPerVerse() throws {
+        let database = try BibleDatabase.makeInMemory()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func row(_ id: String) -> BibleHighlightRecord {
+            BibleHighlightRecord(
+                id: id, bookId: "1PE", chapterNumber: 2, verseNumber: 9,
+                colorId: "yellow", createdAt: now, updatedAt: now
+            )
+        }
+        try database.queue.write { db in try row("a").insert(db) }
+        #expect(throws: (any Error).self) {
+            try database.queue.write { db in try row("b").insert(db) }
+        }
     }
 }

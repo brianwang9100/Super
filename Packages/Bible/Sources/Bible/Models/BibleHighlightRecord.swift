@@ -4,11 +4,17 @@ import GRDB
 /// One verse the reader has highlighted, persisted so the colour survives
 /// navigation away and app relaunch.
 ///
-/// At most one row ever exists per `(bookId, chapterNumber, verseNumber)`:
-/// re-highlighting a verse updates the row's `colorId` in place rather than
-/// inserting a second. Clearing a highlight soft-deletes the row (`deletedAt`)
-/// so a later re-highlight can restore it without losing `createdAt` — and so
-/// a future sync engine sees a tombstone rather than a vanished row.
+/// At most one row ever exists per `(bookId, chapterNumber, verseNumber)`,
+/// enforced by a UNIQUE index: re-highlighting a verse updates the row's
+/// `colorId` in place rather than inserting a second. Clearing a highlight
+/// soft-deletes the row (`deletedAt`) so a later re-highlight can restore it
+/// without losing `createdAt` — and so a future sync engine sees a tombstone
+/// rather than a vanished row.
+///
+/// Highlights are **translation-agnostic**: there is no `translationId`.
+/// Verse numbering is shared across the bundled WEB / KJV / ASV, so a verse
+/// highlighted while reading one translation stays highlighted in the others.
+/// This is the design in the M6 plan, not an omission.
 public struct BibleHighlightRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleHighlight"
 
