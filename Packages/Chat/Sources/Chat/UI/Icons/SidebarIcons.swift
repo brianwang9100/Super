@@ -44,29 +44,6 @@ private func line(_ p: inout Path, to pt: CGPoint, in rect: CGRect) {
 
 // MARK: - Applet glyphs (mirrors icons.jsx)
 
-/// Checkmark-in-rounded-square — the Todo applet glyph.
-struct TodoIconShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        // RoundedRect outer
-        let outer = CGRect(
-            x: rect.minX + 4 / 24 * rect.width,
-            y: rect.minY + 4 / 24 * rect.height,
-            width: 16 / 24 * rect.width,
-            height: 16 / 24 * rect.height
-        )
-        p.addRoundedRect(in: outer, cornerSize: CGSize(
-            width: 3 / 24 * rect.width,
-            height: 3 / 24 * rect.height
-        ))
-        // Check
-        move(&p, to: CGPoint(x: 8, y: 12), in: rect)
-        line(&p, to: CGPoint(x: 10.5, y: 14.5), in: rect)
-        line(&p, to: CGPoint(x: 16, y: 9), in: rect)
-        return p
-    }
-}
-
 /// Pot-with-handles glyph — the Recipes applet.
 struct RecipeIconShape: Shape {
     func path(in rect: CGRect) -> Path {
@@ -181,15 +158,6 @@ struct SettingsIconShape: Shape {
 }
 
 // MARK: - Public icon views
-
-/// Todo applet glyph.
-public struct TodoIcon: View {
-    let size: CGFloat
-    public init(size: CGFloat = 20) { self.size = size }
-    public var body: some View {
-        StrokedGlyph(shape: TodoIconShape(), size: size, lineWidth: 1.5)
-    }
-}
 
 /// Recipes applet glyph.
 public struct RecipeIcon: View {

@@ -12,12 +12,17 @@ public struct TodoStateBox: View {
     /// Box diameter — 19pt at the default text size, scaled for Dynamic
     /// Type so the control grows alongside the row's text.
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 19
+    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
 
     public init(state: TaskState, onToggle: @escaping () -> Void) {
         self.state = state
         self.onToggle = onToggle
     }
+
+    /// Box diameter after both Dynamic Type (`@ScaledMetric`) and the
+    /// app-wide font slider are applied.
+    private var scaledSize: CGFloat { size * fontScale }
 
     public var body: some View {
         Button(action: onToggle) {
@@ -26,7 +31,7 @@ public struct TodoStateBox: View {
                 Circle().strokeBorder(ringColor, lineWidth: 1.5)
                 glyph
             }
-            .frame(width: size, height: size)
+            .frame(width: scaledSize, height: scaledSize)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(state.displayName)
@@ -39,11 +44,11 @@ public struct TodoStateBox: View {
             EmptyView()
         case .done:
             Image(systemName: "checkmark")
-                .font(.system(size: size * 0.46, weight: .bold))
+                .font(.system(size: scaledSize * 0.46, weight: .bold))
                 .foregroundStyle(.white)
         case .cancelled:
             Image(systemName: "xmark")
-                .font(.system(size: size * 0.42, weight: .semibold))
+                .font(.system(size: scaledSize * 0.42, weight: .semibold))
                 .foregroundStyle(theme.inkFaint)
         }
     }
