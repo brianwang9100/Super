@@ -32,5 +32,6 @@ Anything chat-overlay-specific (the three state shapes, the drag handle, the spr
 
 - `Core` — `MiniApplet`, `AppletRegistry`
 - `Chat` — the chat surfaces (`ChatOverlay` + `ChatScreen` + the morphing `ChatComposer`), the chat view models, the sidebar drawer, the settings sheet, the icon glyphs
+- `Bible`, `Todo` — real applet packages, imported and registered at the composition root
 
-No reverse imports — the shell never imports applet packages other than `Chat`. Placeholder applets are local to `App/Shell/Placeholders/` precisely so the shell doesn't pull in non-existent Todo / Recipes / Bible / Finance packages.
+The shell, as the composition root, imports each real applet package and registers its `MiniApplet`. Applets are added here as they graduate from a local placeholder stub to a full SwiftPM package; applets still backed by a stub (`Recipes`, `Finance`) live in `App/Shell/Placeholders/` until their package exists. Applets never import *each other* — cross-applet communication goes through `Core`.

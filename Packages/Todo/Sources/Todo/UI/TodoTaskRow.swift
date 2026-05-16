@@ -14,8 +14,9 @@ public struct TodoTaskRow: View {
     public let onToggleState: (TaskWithLabels) -> Void
     public let onPress: (TaskWithLabels) -> Void
 
-    @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 14
-    @ScaledMetric(relativeTo: .caption2) private var dueSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .footnote) private var dueSize: CGFloat = 13
+    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
 
     public init(
@@ -38,7 +39,7 @@ public struct TodoTaskRow: View {
             TodoStateBox(state: row.task.state) { onToggleState(row) }
             VStack(alignment: .leading, spacing: 7) {
                 Text(row.task.title)
-                    .font(.system(size: titleSize))
+                    .font(.system(size: titleSize * fontScale))
                     .strikethrough(row.task.state == .cancelled, color: theme.inkFaint)
                     .foregroundStyle(theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -47,13 +48,18 @@ public struct TodoTaskRow: View {
                         ForEach(row.labels) { TodoTagChip(label: $0) }
                         if let due = row.task.dueAt {
                             Text("· \(dueText(due))")
-                                .font(.system(size: dueSize, design: .monospaced))
+                                .font(.system(size: dueSize * fontScale, design: .monospaced))
                                 .fontWeight(dueIsToday(due) && !muted ? .semibold : .regular)
                                 .foregroundStyle(dueIsToday(due) && !muted ? Self.dueAccent : theme.inkFaint)
                         }
                     }
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Opens the task editor")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default) { onPress(row) }
             Spacer(minLength: 0)
         }
         .opacity(muted ? 0.62 : 1)
@@ -74,9 +80,22 @@ public struct TodoTaskRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onPress(row) }
-        // `.onTapGesture` is invisible to VoiceOver; expose the row's
-        // open-editor action as the default accessibility action too.
-        .accessibilityAction(.default) { onPress(row) }
+    }
+
+    /// Spoken VoiceOver description — title plus state, priority, due, and
+    /// labels — so the row reads as one meaningful element and its default
+    /// "open editor" action is announced against a real label rather than
+    /// the raw stacked subviews. `.onTapGesture` is invisible to VoiceOver,
+    /// hence the explicit `.accessibilityAction(.default)` on the text.
+    private var accessibilityLabel: String {
+        var parts = [row.task.title]
+        if row.task.state != .open { parts.append(row.task.state.displayName) }
+        parts.append("\(row.task.priority.displayName) priority")
+        if let due = row.task.dueAt { parts.append("due \(dueText(due))") }
+        if !row.labels.isEmpty {
+            parts.append("labels: \(row.labels.map(\.name).joined(separator: ", "))")
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// Priority stripe color from the design's `priColor`:
@@ -108,11 +127,12 @@ public struct TodoTaskRow: View {
 struct TodoTagChip: View {
     let label: LabelRecord
 
-    @ScaledMetric(relativeTo: .caption2) private var fontSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .footnote) private var fontSize: CGFloat = 13
+    @Environment(\.superFontScale) private var fontScale
 
     var body: some View {
         Text(label.name)
-            .font(.system(size: fontSize, weight: .medium))
+            .font(.system(size: fontSize * fontScale, weight: .medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(OKLCH(0.94, 0.035, label.hue).color)

@@ -1,6 +1,7 @@
 import Chat
 import Core
 import Foundation
+import Todo
 
 /// Wired-up dependency graph the Shell hands to its views.
 ///
@@ -21,6 +22,9 @@ struct AppDependencies: Sendable {
     /// Sorted ids of tools registered at boot. Surfaced so the Shell can
     /// show "Tools: time.now" until the real Settings UI lands.
     let registeredToolIDs: [String]
+    /// The Todo applet's own database + repositories, bundled so the Shell
+    /// can hand them to `TodoApplet`.
+    let todoDependencies: TodoDependencies
 }
 
 /// One-shot composition root. Bootstraps the on-disk database, every
@@ -49,6 +53,9 @@ enum AppBootstrap {
 
         let database = try ChatDatabase.open(in: dataDirectory)
         let keychain = keychain ?? AppleKeychainClient()
+
+        // The Todo applet owns its own `todo.sqlite` alongside `chat.sqlite`.
+        let todoDependencies = try TodoDependencies.live(in: dataDirectory)
 
         let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
@@ -112,7 +119,8 @@ enum AppBootstrap {
             checkpointRepository: checkpointRepo,
             modelConfigurationRepository: modelConfigRepo,
             settingRepository: settingRepo,
-            registeredToolIDs: registeredToolIDs
+            registeredToolIDs: registeredToolIDs,
+            todoDependencies: todoDependencies
         )
     }
 

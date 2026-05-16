@@ -14,29 +14,6 @@ import SwiftUI
 /// with hand-picked SwiftUI `Color` values that read in the same hue/satur-
 /// ation neighborhood across all three themes.
 
-// MARK: - Todo
-
-struct ToDoPlaceholderApplet: MiniApplet {
-    static let appletID: String = "todo"
-    var appletID: String { Self.appletID }
-    var displayName: String { "Todo" }
-    var accentColor: Color { Color(red: 0.30, green: 0.45, blue: 0.78) }   // cobalt
-
-    @MainActor
-    func iconView(size: CGFloat) -> AnyView {
-        AnyView(TodoIcon(size: size))
-    }
-
-    @MainActor
-    func rootView() -> AnyView {
-        AnyView(AppletPlaceholderScreen(
-            displayName: "Todo",
-            accent: accentColor,
-            icon: { TodoIcon(size: 44) }
-        ))
-    }
-}
-
 // MARK: - Recipes
 
 struct RecipesPlaceholderApplet: MiniApplet {

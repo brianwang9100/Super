@@ -2,6 +2,7 @@ import Bible
 import Chat
 import Core
 import SwiftUI
+import Todo
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -130,7 +131,7 @@ struct AppShell: View {
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
         let applets: [any MiniApplet] = [
-            ToDoPlaceholderApplet(),
+            TodoApplet(dependencies: dependencies.todoDependencies),
             RecipesPlaceholderApplet(),
             BibleApplet(),
             FinancePlaceholderApplet(),
@@ -212,6 +213,8 @@ struct AppShell: View {
                 // background under the safe area.
                 activeApplet.rootView()
                     .superTheme(theme)
+                    .superFontScale(appearance.fontScale)
+                    .ignoresSafeArea()
                     .opacity(backdropOpacity)
                     // Backdrop interactivity follows the live progress
                     // rather than a discrete state switch — by the time
