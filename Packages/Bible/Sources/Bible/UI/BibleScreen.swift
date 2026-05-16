@@ -76,6 +76,8 @@ public struct BibleScreen: View {
             BibleActionSheet(
                 citation: viewModel.selectionCitation ?? "",
                 shareText: viewModel.selectionShareText ?? "",
+                onHighlight: { color in withAnimation(sheetAnimation) { viewModel.applyHighlight(color) } },
+                onClearHighlight: { withAnimation(sheetAnimation) { viewModel.clearHighlight() } },
                 onCopy: { withAnimation(sheetAnimation) { viewModel.copySelection() } },
                 onAddToChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
                 onNewChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
@@ -151,57 +153,32 @@ public struct BibleScreen: View {
     @ViewBuilder
     private var content: some View {
         if let chapter = viewModel.chapter, !chapter.paragraphs.isEmpty {
-            reader(chapter)
+            BibleChapterReader(
+                chapter: chapter,
+                bookId: viewModel.position.bookId,
+                bookName: viewModel.bookName,
+                selectedVerses: viewModel.selectedVerses,
+                previousLabel: viewModel.previousChapterLabel,
+                nextLabel: viewModel.nextChapterLabel,
+                onTapVerse: { number in
+                    withAnimation(sheetAnimation) { viewModel.toggleVerse(number) }
+                },
+                onPrevious: { viewModel.stepChapter(.previous) },
+                onNext: { viewModel.stepChapter(.next) },
+                onClearSelection: {
+                    withAnimation(sheetAnimation) { viewModel.clearSelection() }
+                }
+            )
+            // A fresh identity per chapter resets the scroll offset to the
+            // top and re-subscribes the highlight `@Query` when the reader
+            // steps.
+            .id(viewModel.position)
+            // Swap chapters instantly even when the jump happens inside the
+            // book picker's slide-down animation transaction.
+            .transition(.identity)
         } else {
             unavailable
         }
-    }
-
-    private func reader(_ chapter: BibleChapter) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("\(viewModel.bookName) \(chapter.number)")
-                    .font(.system(.largeTitle, design: .serif))
-                    .italic()
-                    .foregroundStyle(theme.ink)
-                    .padding(.bottom, 6)
-
-                ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                    BibleParagraphBlock(
-                        paragraph: paragraph,
-                        selectedVerses: viewModel.selectedVerses,
-                        onTapVerse: { number in
-                            withAnimation(sheetAnimation) { viewModel.toggleVerse(number) }
-                        }
-                    )
-                }
-
-                BibleChapterFooter(
-                    previousLabel: viewModel.previousChapterLabel,
-                    nextLabel: viewModel.nextChapterLabel,
-                    onPrevious: { viewModel.stepChapter(.previous) },
-                    onNext: { viewModel.stepChapter(.next) }
-                )
-
-                // Bottom inset so the chat overlay's minimized pill doesn't
-                // obscure the footer — mirrors the shell's 76pt reserve.
-                Color.clear.frame(height: 76)
-            }
-            .padding(.horizontal, 26)
-            // Top inset clears the floating nav bar; the bar's gradient
-            // fades over the first lines as they scroll up beneath it.
-            .padding(.top, 68)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // A tap that misses every verse word clears the selection.
-            .contentShape(Rectangle())
-            .onTapGesture { withAnimation(sheetAnimation) { viewModel.clearSelection() } }
-        }
-        // A fresh identity per chapter resets the scroll offset to the top
-        // when the reader steps.
-        .id(viewModel.position)
-        // Swap chapters instantly even when the jump happens inside the
-        // book picker's slide-down animation transaction.
-        .transition(.identity)
     }
 
     private var unavailable: some View {

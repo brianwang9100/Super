@@ -44,6 +44,8 @@ struct BibleActionSheetSnapshotTests {
             BibleActionSheet(
                 citation: citation,
                 shareText: "…",
+                onHighlight: { _ in },
+                onClearHighlight: {},
                 onCopy: {},
                 onAddToChat: {},
                 onNewChat: {},

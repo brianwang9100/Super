@@ -73,4 +73,30 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("updatedAt", .datetime).notNull()
         }
     }
+
+    migrator.registerMigration("v2_createHighlight") { db in
+        try db.create(table: "bibleHighlight") { t in
+            t.primaryKey("id", .text)
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer).notNull()
+            t.column("verseNumber", .integer).notNull()
+            t.column("colorId", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+            t.column("updatedAt", .datetime).notNull()
+            t.column("deletedAt", .datetime)
+        }
+        // The chapter renderer's `@Query` fetches every active highlight for
+        // one (book, chapter); the soft-delete index keeps that filter and the
+        // re-highlight lookup off a table scan.
+        try db.create(
+            index: "bibleHighlight_on_bookId_chapterNumber",
+            on: "bibleHighlight",
+            columns: ["bookId", "chapterNumber"]
+        )
+        try db.create(
+            index: "bibleHighlight_on_deletedAt",
+            on: "bibleHighlight",
+            columns: ["deletedAt"]
+        )
+    }
 }
