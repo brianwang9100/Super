@@ -4,16 +4,22 @@ import SwiftUI
 /// The Bible reading surface: a floating nav bar over a scrolling column of
 /// heading, prose, and poetry paragraphs, ending in prev / next cards.
 ///
-/// All chapter state lives in `BibleScreenViewModel`; the view reads it and
-/// renders. The chapter text loads synchronously, so a step repaints at
-/// once — only the persisted reading position is written asynchronously.
+/// All chapter and selection state lives in `BibleScreenViewModel`; the view
+/// reads it and renders. The chapter text loads synchronously, so a step
+/// repaints at once — only the persisted reading position is written
+/// asynchronously. Tapping verses drives the action sheet; the chat bubble,
+/// `+` button, and chat actions are deferred stubs that raise a toast.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     private let viewModel: BibleScreenViewModel
 
-    /// Drives the book and translation pickers' slide-up / slide-down — a
+    /// Drives the sheets, action sheet, and toast slide-up / slide-down — a
     /// smooth decel curve close to the design's `cubic-bezier(0.32, 0.72, 0, 1)`.
     private let sheetAnimation: Animation = .snappy(duration: 0.34)
+
+    /// Space at the bottom reserved for the shell's minimized chat pill —
+    /// the floating bubble, action sheet, and toast all clear it.
+    private let bottomReserve: CGFloat = 84
 
     public init(viewModel: BibleScreenViewModel) {
         self.viewModel = viewModel
@@ -24,11 +30,22 @@ public struct BibleScreen: View {
             theme.background.ignoresSafeArea()
             content
             navBar
+            bottomOverlay
             if let bookSheet = viewModel.bookSheet {
                 bookPicker(bookSheet)
             }
             if viewModel.isTranslationSheetPresented {
                 translationPicker
+            }
+            if let toast = viewModel.toast {
+                BibleAttachToast(
+                    message: toast,
+                    onDismiss: { withAnimation(sheetAnimation) { viewModel.dismissToast() } }
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, bottomReserve)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .task { await viewModel.load() }
@@ -39,14 +56,43 @@ public struct BibleScreen: View {
             bookName: viewModel.bookName,
             chapterNumber: viewModel.position.chapterNumber,
             translation: viewModel.translation,
+            selectionCitation: viewModel.selectionCitation,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
             onPill: { withAnimation(sheetAnimation) { viewModel.presentBookSheet() } },
             onTranslation: { withAnimation(sheetAnimation) { viewModel.presentTranslationSheet() } },
-            onPlus: {}
+            onClearSelection: { withAnimation(sheetAnimation) { viewModel.clearSelection() } },
+            onPlus: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } }
         )
+    }
+
+    /// The selection action sheet when verses are selected, otherwise the
+    /// floating chat bubble — both anchored above the shell's chat pill.
+    @ViewBuilder
+    private var bottomOverlay: some View {
+        if !viewModel.selectedVerses.isEmpty {
+            BibleActionSheet(
+                citation: viewModel.selectionCitation ?? "",
+                shareText: viewModel.selectionShareText ?? "",
+                onCopy: { withAnimation(sheetAnimation) { viewModel.copySelection() } },
+                onAddToChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
+                onNewChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
+                onClose: { withAnimation(sheetAnimation) { viewModel.clearSelection() } }
+            )
+            .padding(.bottom, bottomReserve)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if viewModel.toast == nil {
+            BibleChatBubble(
+                onTap: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } }
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, bottomReserve)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .transition(.opacity)
+        }
     }
 
     /// A dimmed backdrop plus the translation picker. The picker is a short
@@ -121,7 +167,13 @@ public struct BibleScreen: View {
                     .padding(.bottom, 6)
 
                 ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                    BibleParagraphBlock(paragraph: paragraph)
+                    BibleParagraphBlock(
+                        paragraph: paragraph,
+                        selectedVerses: viewModel.selectedVerses,
+                        onTapVerse: { number in
+                            withAnimation(sheetAnimation) { viewModel.toggleVerse(number) }
+                        }
+                    )
                 }
 
                 BibleChapterFooter(
@@ -140,6 +192,9 @@ public struct BibleScreen: View {
             // fades over the first lines as they scroll up beneath it.
             .padding(.top, 68)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // A tap that misses every verse word clears the selection.
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(sheetAnimation) { viewModel.clearSelection() } }
         }
         // A fresh identity per chapter resets the scroll offset to the top
         // when the reader steps.

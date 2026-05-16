@@ -6,8 +6,9 @@ import Testing
 @testable import Bible
 
 /// Snapshots of `BibleNavBar` — the reading surface's top bar in its default
-/// state across the three themes, and with each chapter arrow disabled at
-/// the canon's two ends.
+/// state across the three themes, with each chapter arrow disabled at the
+/// canon's two ends, and in selection mode where the centre group collapses
+/// to a citation pill.
 @Suite("BibleNavBar snapshots")
 @MainActor
 struct BibleNavBarSnapshotTests {
@@ -38,11 +39,30 @@ struct BibleNavBarSnapshotTests {
                name: "next_disabled_light")
     }
 
+    @Test("selection mode collapses the centre group to a citation pill")
+    func selectionLight() {
+        verify(theme: .light, canStepBackward: true, canStepForward: true,
+               name: "selection_light", selectionCitation: "1 Peter 2:4-6, 9")
+    }
+
+    @Test("selection mode renders in the dark theme")
+    func selectionDark() {
+        verify(theme: .dark, canStepBackward: true, canStepForward: true,
+               name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
+    }
+
+    @Test("selection mode renders in the sepia theme")
+    func selectionSepia() {
+        verify(theme: .sepia, canStepBackward: true, canStepForward: true,
+               name: "selection_sepia", selectionCitation: "1 Peter 2:4-6, 9")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         canStepBackward: Bool,
         canStepForward: Bool,
         name: String,
+        selectionCitation: String? = nil,
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
@@ -52,12 +72,14 @@ struct BibleNavBarSnapshotTests {
                 bookName: "1 Peter",
                 chapterNumber: 2,
                 translation: .web,
+                selectionCitation: selectionCitation,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
                 onPrevious: {},
                 onNext: {},
                 onPill: {},
                 onTranslation: {},
+                onClearSelection: {},
                 onPlus: {}
             )
         }
