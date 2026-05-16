@@ -5,13 +5,19 @@ import SwiftUI
 /// poetry stanza.
 ///
 /// Prose and poetry lay each word out as its own tappable subview reflowed by
-/// `VerseFlowLayout`, so a tap toggles the word's verse into the selection and
-/// a selected verse's words carry a highlight. Poetry is italic, indented, and
-/// keeps the `\n` line breaks carried in its verse text.
+/// `VerseFlowLayout`, so a tap toggles the word's verse into the selection.
+/// A word carries a wash behind it when its verse is selected (the transient
+/// selection tint) or persistently highlighted; selection wins when a verse
+/// is both. Poetry is italic, indented, and keeps the `\n` line breaks
+/// carried in its verse text.
 struct BibleParagraphBlock: View {
     let paragraph: BibleParagraph
-    /// Verse numbers currently selected — their words render highlighted.
+    /// Verse numbers currently selected — their words render with the
+    /// transient selection tint.
     let selectedVerses: Set<Int>
+    /// Persisted highlight colour per verse number — their words render with
+    /// that colour's wash unless the verse is also selected.
+    let highlightedVerses: [Int: BibleHighlightColor]
     /// Invoked with a verse number when any of its words is tapped.
     let onTapVerse: (Int) -> Void
     @Environment(\.superTheme) private var theme
@@ -46,6 +52,7 @@ struct BibleParagraphBlock: View {
                 VerseWord(
                     token: token,
                     isSelected: selectedVerses.contains(token.verseNumber),
+                    highlightColor: highlightedVerses[token.verseNumber],
                     isPoetry: isPoetry,
                     theme: theme,
                     onTap: onTapVerse
@@ -102,12 +109,14 @@ struct VerseWordToken {
 }
 
 /// A single tappable word of a verse — the smallest unit `VerseFlowLayout`
-/// reflows. A tap reports the word's verse number; a selected verse tints the
-/// word, the trailing space included so adjacent selected words read as one
-/// continuous highlight.
+/// reflows. A tap reports the word's verse number; a selected or highlighted
+/// verse tints the word, the trailing space included so adjacent words read
+/// as one continuous wash.
 private struct VerseWord: View {
     let token: VerseWordToken
     let isSelected: Bool
+    /// The verse's persisted highlight colour, or `nil` when not highlighted.
+    let highlightColor: BibleHighlightColor?
     let isPoetry: Bool
     let theme: SuperTheme
     let onTap: (Int) -> Void
@@ -115,9 +124,21 @@ private struct VerseWord: View {
     var body: some View {
         styledText
             .padding(.vertical, 1.5)
-            .background(isSelected ? selectionTint : Color.clear)
+            .background(wordBackground)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
+    }
+
+    /// The wash behind the word: the selection tint when selected, otherwise
+    /// the persisted highlight colour, otherwise nothing. Selection wins so
+    /// the reader can see which verses a pending action will act on even when
+    /// they are already highlighted.
+    private var wordBackground: Color {
+        if isSelected { return selectionTint }
+        if let highlightColor {
+            return highlightColor.verseTint(forDarkPage: theme.id == .dark).color
+        }
+        return .clear
     }
 
     /// The word `Text`, prefixed with the raised verse marker when this is the

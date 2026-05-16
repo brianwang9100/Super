@@ -1,20 +1,24 @@
 #if canImport(UIKit)
 import Core
+import Foundation
+import GRDBQuery
 import SnapshotTesting
 import SwiftUI
 import Testing
 @testable import Bible
 
 /// Snapshots of `BibleScreen` — the chapter reader with its floating nav
-/// bar, prev / next footer, verse selection, and chat stubs.
+/// bar, prev / next footer, verse selection, persisted highlights, and chat
+/// stubs.
 ///
 /// The populated state renders the real bundled 1 Peter 2 across the three
 /// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
 /// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
 /// arrow and a footer card drop out. The selection state shows the citation
-/// pill, highlighted verses, and the action sheet together; the toast state
-/// covers the chat "coming soon" stub. The unavailable state covers the
-/// "chapter unavailable" fallback.
+/// pill, the transient selection tint, and the action sheet together; the
+/// highlighted state shows verses painted in three persisted colours; the
+/// toast state covers the chat "coming soon" stub. The unavailable state
+/// covers the "chapter unavailable" fallback.
 @Suite("BibleScreen snapshots")
 @MainActor
 struct BibleScreenSnapshotTests {
@@ -153,6 +157,39 @@ struct BibleScreenSnapshotTests {
                name: "chat_toast_sepia_xxl")
     }
 
+    @Test("persisted highlights paint their verses in the light theme")
+    func highlightedLight() async throws {
+        verify(try await highlightedScreen(), theme: .light, name: "highlighted_light")
+    }
+
+    @Test("persisted highlights render in the dark theme")
+    func highlightedDark() async throws {
+        verify(try await highlightedScreen(), theme: .dark, name: "highlighted_dark")
+    }
+
+    @Test("persisted highlights render in the sepia theme")
+    func highlightedSepia() async throws {
+        verify(try await highlightedScreen(), theme: .sepia, name: "highlighted_sepia")
+    }
+
+    @Test("persisted highlights render in the light theme at Dynamic Type XXL")
+    func highlightedLightXXL() async throws {
+        verify(try await highlightedScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "highlighted_light_xxl")
+    }
+
+    @Test("persisted highlights render in the dark theme at Dynamic Type XXL")
+    func highlightedDarkXXL() async throws {
+        verify(try await highlightedScreen(), theme: .dark, dynamicType: .xxLarge,
+               name: "highlighted_dark_xxl")
+    }
+
+    @Test("persisted highlights render in the sepia theme at Dynamic Type XXL")
+    func highlightedSepiaXXL() async throws {
+        verify(try await highlightedScreen(), theme: .sepia, dynamicType: .xxLarge,
+               name: "highlighted_sepia_xxl")
+    }
+
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
@@ -192,8 +229,36 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
+    /// A `BibleScreen` on 1 Peter 2 with three verses highlighted in three
+    /// colours, wired to the database context whose `bibleHighlight` rows the
+    /// chapter renderer's `@Query` observes. Verses 2, 4, and 7 are chosen so
+    /// all three colours sit above the snapshot fold.
+    private func highlightedScreen() async throws -> some View {
+        let database = try BibleDatabase.makeInMemory()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let repository = GRDBBibleHighlightRepository(
+            database: database, ids: DeterministicIDGenerator()
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 2, color: .blue, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 4, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 7, color: .green, at: now
+        )
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        return BibleScreen(viewModel: viewModel)
+            .databaseContext(.readOnly { database.queue })
+    }
+
     private func verify(
-        _ screen: BibleScreen,
+        _ screen: some View,
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
         name: String,
