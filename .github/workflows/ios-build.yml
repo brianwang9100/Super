@@ -135,40 +135,35 @@ jobs:
           xcrun simctl boot "$SIM_UDID" || true
           xcrun simctl bootstatus "$SIM_UDID" -b
 
-      - name: Collect snapshot test suites
-        id: suites
-        # The simulator only runs SwiftUI snapshot suites — pure-logic unit
-        # tests already run on macOS in the Swift Tests workflow, so running
-        # them here too is duplicated work. Every snapshot file under
-        # UI/Snapshots/ holds one `@Suite` struct whose name matches the
-        # file basename; emit an `-only-testing:` arg per file. GRDB schema
-        # snapshots live elsewhere (no UIKit guard) and stay in `swift test`.
-        env:
-          SCHEME: ${{ matrix.scheme }}
-        run: |
-          DIR="Packages/$SCHEME/Tests/${SCHEME}Tests/UI/Snapshots"
-          ARGS=""
-          for f in "$DIR"/*SnapshotTests.swift; do
-            [ -e "$f" ] || continue
-            name=$(basename "$f" .swift)
-            ARGS="$ARGS -only-testing:${SCHEME}Tests/$name"
-          done
-          if [ -z "$ARGS" ]; then
-            echo "::error::No snapshot test suites found under $DIR"
-            exit 1
-          fi
-          echo "Snapshot suites for $SCHEME:$ARGS"
-          echo "only-testing=$ARGS" >> "$GITHUB_OUTPUT"
-
       - name: Run snapshot tests on iOS Simulator
+        # The simulator runs only SwiftUI snapshot suites — pure-logic unit
+        # tests already run on macOS in the Swift Tests workflow, so running
+        # them here too is duplicated work. GRDB schema snapshots live
+        # outside UI/Snapshots/ (no UIKit guard) and stay in `swift test`.
+        #
+        # The `@Suite` type name is read from each file's source (the struct
+        # that follows the `@Suite` attribute) rather than inferred from the
+        # filename: a struct whose name diverges from its filename would
+        # otherwise yield an `-only-testing:` arg matching zero tests, and
+        # xcodebuild would still exit 0 — silently dropping that suite.
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
           SCHEME: ${{ matrix.scheme }}
-          ONLY_TESTING: ${{ steps.suites.outputs.only-testing }}
         run: |
           set -o pipefail
-          # $ONLY_TESTING is intentionally unquoted: it expands to one or
-          # more `-only-testing:<target>/<suite>` arguments.
+          DIR="Packages/$SCHEME/Tests/${SCHEME}Tests/UI/Snapshots"
+          ONLY_TESTING=()
+          for f in "$DIR"/*SnapshotTests.swift; do
+            [ -e "$f" ] || continue
+            while IFS= read -r suite; do
+              ONLY_TESTING+=( "-only-testing:${SCHEME}Tests/$suite" )
+            done < <(awk '/@Suite/{f=1} f && /^struct /{print $2; f=0}' "$f")
+          done
+          if [ ${#ONLY_TESTING[@]} -eq 0 ]; then
+            echo "::error::No @Suite snapshot tests found under $DIR"
+            exit 1
+          fi
+          echo "Snapshot suites for $SCHEME: ${ONLY_TESTING[*]}"
           xcodebuild test \
             -project Super.xcodeproj \
             -scheme "$SCHEME" \
@@ -176,7 +171,7 @@ jobs:
             -enableCodeCoverage YES \
             -skipPackagePluginValidation \
             -derivedDataPath build/derived \
-            $ONLY_TESTING \
+            "${ONLY_TESTING[@]}" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Upload xcresult bundle on failure
