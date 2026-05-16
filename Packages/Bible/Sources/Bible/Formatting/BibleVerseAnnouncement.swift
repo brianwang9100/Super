@@ -15,8 +15,8 @@ enum BibleVerseAnnouncement {
     }
 
     /// The spoken value naming the verse's persisted highlight, or the empty
-    /// string when the verse carries none — an empty value is announced as
-    /// "no value", which VoiceOver simply skips.
+    /// string when the verse carries none — an empty string is ignored by
+    /// VoiceOver.
     static func highlightValue(_ color: BibleHighlightColor?) -> String {
         guard let color else { return "" }
         return "Highlighted \(color.displayName.lowercased())"

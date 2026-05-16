@@ -55,7 +55,7 @@ enum VerseTokenizer {
 
 /// One layout unit of a verse: a single word, tagged with its verse number
 /// and whether it is the verse's first word.
-struct VerseWordToken {
+struct VerseWordToken: Sendable {
     let verseNumber: Int
     /// The verse's first word — it carries the raised verse number and stands
     /// in for the whole verse as the verse's single VoiceOver element.
