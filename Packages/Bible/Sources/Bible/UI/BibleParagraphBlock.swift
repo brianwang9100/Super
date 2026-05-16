@@ -33,10 +33,10 @@ struct BibleParagraphBlock: View {
                 .padding(.top, 20)
                 .padding(.bottom, 2)
         case .prose(let verses):
-            flow(proseTokens(verses), isPoetry: false)
+            flow(VerseTokenizer.proseTokens(verses), isPoetry: false)
         case .poetry(let verses):
             VStack(alignment: .leading, spacing: 5) {
-                let lines = poetryLines(verses)
+                let lines = VerseTokenizer.poetryLines(verses)
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     flow(line, isPoetry: true)
                 }
@@ -61,57 +61,6 @@ struct BibleParagraphBlock: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    /// Flattens prose verses into a single wrappable run of word tokens.
-    private func proseTokens(_ verses: [BibleVerse]) -> [VerseWordToken] {
-        var tokens: [VerseWordToken] = []
-        for verse in verses {
-            let words = verse.text.split(whereSeparator: \.isWhitespace)
-            for (index, word) in words.enumerated() {
-                tokens.append(VerseWordToken(
-                    verseNumber: verse.number,
-                    showsNumber: index == 0,
-                    word: String(word),
-                    verseText: verse.text
-                ))
-            }
-        }
-        return tokens
-    }
-
-    /// Splits poetry verses into lines, breaking on the `\n` marks carried in
-    /// the verse text. Each line wraps independently.
-    private func poetryLines(_ verses: [BibleVerse]) -> [[VerseWordToken]] {
-        var lines: [[VerseWordToken]] = [[]]
-        for verse in verses {
-            let segments = verse.text.split(separator: "\n", omittingEmptySubsequences: false)
-            for (segmentIndex, segment) in segments.enumerated() {
-                if segmentIndex > 0 { lines.append([]) }
-                let words = segment.split(whereSeparator: \.isWhitespace)
-                for (wordIndex, word) in words.enumerated() {
-                    lines[lines.count - 1].append(VerseWordToken(
-                        verseNumber: verse.number,
-                        showsNumber: segmentIndex == 0 && wordIndex == 0,
-                        word: String(word),
-                        verseText: verse.text
-                    ))
-                }
-            }
-        }
-        return lines.filter { !$0.isEmpty }
-    }
-}
-
-/// One layout unit of a verse: a single word, tagged with its verse number
-/// and whether it is the verse's first word (which carries the verse marker).
-struct VerseWordToken {
-    let verseNumber: Int
-    let showsNumber: Bool
-    let word: String
-    /// The verse fragment's full reading text. Carried on every word but only
-    /// read by the first — it lets that word stand in for the whole verse as
-    /// a single VoiceOver element.
-    let verseText: String
 }
 
 /// A single tappable word of a verse — the smallest unit `VerseFlowLayout`
@@ -137,7 +86,7 @@ private struct VerseWord: View {
             // VoiceOver element reading the full text; every other word is
             // hidden so the verse isn't re-announced word by word.
             .accessibilityElement()
-            .accessibilityHidden(!token.showsNumber)
+            .accessibilityHidden(!token.isVerseStart)
             .accessibilityLabel(BibleVerseAnnouncement.label(
                 verseNumber: token.verseNumber,
                 verseText: token.verseText
@@ -145,7 +94,7 @@ private struct VerseWord: View {
             .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlightColor))
             .accessibilityHint(accessibilityHint)
             .accessibilityAddTraits(accessibilityTraits)
-            .accessibilityAction { onTap(token.verseNumber) }
+            .accessibilityAction(.default) { onTap(token.verseNumber) }
     }
 
     /// A button always; also `.isSelected` while the verse is in the pending
@@ -179,7 +128,7 @@ private struct VerseWord: View {
         let word = Text(token.word + " ")
             .font(isPoetry ? .body.italic() : .body)
             .foregroundStyle(theme.ink)
-        guard token.showsNumber else { return word }
+        guard token.isVerseStart else { return word }
         return BibleVerseNumber(number: token.verseNumber).text(color: theme.inkFaint)
             + Text(" ")
             + word
