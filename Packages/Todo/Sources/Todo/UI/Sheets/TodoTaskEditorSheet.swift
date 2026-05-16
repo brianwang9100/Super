@@ -13,6 +13,10 @@ struct TodoTaskEditorSheet: View {
     let onCancel: () -> Void
     let onDelete: () async -> Void
     let onCreateLabel: (String) async -> String?
+    /// Calendar for the due-date pills' day arithmetic. Injected so "Today"
+    /// / "Tomorrow" resolve to the same day boundaries the screen's grouping
+    /// uses — a mismatch would land a `dueAt` the list classifies elsewhere.
+    let calendar: Calendar
 
     @State private var showingDatePicker = false
     @Environment(\.superFontScale) private var fontScale
@@ -248,13 +252,13 @@ struct TodoTaskEditorSheet: View {
     // MARK: Due-date helpers
 
     private func dayOffset(_ days: Int) -> Date {
-        let start = Calendar.current.startOfDay(for: Date())
-        return Calendar.current.date(byAdding: .day, value: days, to: start) ?? start
+        let start = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .day, value: days, to: start) ?? start
     }
 
     private func isSameDay(_ date: Date?, offsetDays: Int) -> Bool {
         guard let date else { return false }
-        return Calendar.current.isDate(date, inSameDayAs: dayOffset(offsetDays))
+        return calendar.isDate(date, inSameDayAs: dayOffset(offsetDays))
     }
 
     /// True when a due date is set that is neither today nor tomorrow — the

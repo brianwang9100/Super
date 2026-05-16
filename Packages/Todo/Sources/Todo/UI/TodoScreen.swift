@@ -68,7 +68,8 @@ public struct TodoScreen: View {
                     }
                     viewModel.cancelDraft()
                 },
-                onCreateLabel: { await viewModel.ensureLabel(name: $0) }
+                onCreateLabel: { await viewModel.ensureLabel(name: $0) },
+                calendar: viewModel.calendar
             )
             .presentationDetents([.large])
         }
@@ -77,6 +78,7 @@ public struct TodoScreen: View {
             guard let id else { return }
             scheduleToastDismiss(id: id)
         }
+        .onDisappear { toastDismissTask?.cancel() }
     }
 
     // MARK: Header
@@ -128,7 +130,7 @@ public struct TodoScreen: View {
     // MARK: List
 
     @ViewBuilder private var taskList: some View {
-        if visibleTasks.isEmpty {
+        if filteredTasks.isEmpty {
             TodoEmptyState()
                 .frame(maxWidth: .infinity)
                 .padding(.top, 50)
@@ -168,14 +170,14 @@ public struct TodoScreen: View {
 
     // MARK: Derived state
 
-    private var visibleTasks: [TaskWithLabels] {
+    /// Tasks after the active filter — the single definition both the
+    /// empty-state check and `groupedTasks` derive from.
+    private var filteredTasks: [TaskWithLabels] {
         applyFilter(viewModel.filter, to: tasks, now: viewModel.now, calendar: viewModel.calendar)
     }
 
     private var groupedTasks: [TodoListGroup] {
-        let now = viewModel.now
-        let filtered = applyFilter(viewModel.filter, to: tasks, now: now, calendar: viewModel.calendar)
-        return groupTasks(filtered, filter: viewModel.filter, now: now, calendar: viewModel.calendar)
+        groupTasks(filteredTasks, filter: viewModel.filter, now: viewModel.now, calendar: viewModel.calendar)
     }
 
     private var stateCounts: (open: Int, done: Int, cancelled: Int) {

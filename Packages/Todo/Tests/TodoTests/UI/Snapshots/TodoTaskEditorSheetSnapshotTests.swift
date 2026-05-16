@@ -61,6 +61,8 @@ struct TodoTaskEditorSheetSnapshotTests {
         function: String = #function
     ) {
         let resolved = SuperTheme.make(theme)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
         let view = TodoTaskEditorSheet(
             draft: .constant(draft),
             mode: mode,
@@ -68,7 +70,8 @@ struct TodoTaskEditorSheetSnapshotTests {
             onSave: {},
             onCancel: {},
             onDelete: {},
-            onCreateLabel: { _ in nil }
+            onCreateLabel: { _ in nil },
+            calendar: utc
         )
         .frame(width: 402, height: 760, alignment: .top)
         .background(resolved.background)

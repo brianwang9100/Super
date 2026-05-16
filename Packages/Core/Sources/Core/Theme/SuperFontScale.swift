@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// App-wide font-size multiplier driven by the Settings → Appearance
-/// slider (≈0.80×–1.20×, `1.0` = normal). Applets multiply their base
-/// font sizes by this so one control scales text consistently across
+/// App-wide font-size multiplier (`1.0` = normal). Applets multiply their
+/// base font sizes by this so one control scales text consistently across
 /// every applet.
+///
+/// The value is an unclamped multiplier — the Settings → Appearance slider
+/// feeds it within ≈0.80×–1.20×, but the primitive itself enforces no
+/// range, so other callers (snapshot fixtures, previews) may pass any
+/// positive scale.
 ///
 /// This is the shared, Core-level primitive — the Chat applet's richer
 /// `ChatAppearance` (which also derives spacing) is constructed from the
