@@ -5,13 +5,15 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleScreen` — the M2 chapter reader with its floating nav
-/// bar and prev / next footer.
+/// Snapshots of `BibleScreen` — the chapter reader with its floating nav
+/// bar, prev / next footer, verse selection, and chat stubs.
 ///
 /// The populated state renders the real bundled 1 Peter 2 across the three
 /// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
 /// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
-/// arrow and a footer card drop out. The unavailable state covers the
+/// arrow and a footer card drop out. The selection state shows the citation
+/// pill, highlighted verses, and the action sheet together; the toast state
+/// covers the chat "coming soon" stub. The unavailable state covers the
 /// "chapter unavailable" fallback.
 @Suite("BibleScreen snapshots")
 @MainActor
@@ -85,6 +87,72 @@ struct BibleScreenSnapshotTests {
         verify(BibleScreen(viewModel: viewModel), theme: .light, name: "book_sheet_open_light")
     }
 
+    @Test("selected verses show the citation pill, highlights, and action sheet")
+    func selectionActiveLight() async {
+        verify(await selectionScreen(), theme: .light, name: "selection_active_light")
+    }
+
+    @Test("verse selection renders in the dark theme")
+    func selectionActiveDark() async {
+        verify(await selectionScreen(), theme: .dark, name: "selection_active_dark")
+    }
+
+    @Test("verse selection renders in the sepia theme")
+    func selectionActiveSepia() async {
+        verify(await selectionScreen(), theme: .sepia, name: "selection_active_sepia")
+    }
+
+    @Test("verse selection renders in the light theme at Dynamic Type XXL")
+    func selectionActiveLightXXL() async {
+        verify(await selectionScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "selection_active_light_xxl")
+    }
+
+    @Test("verse selection renders in the dark theme at Dynamic Type XXL")
+    func selectionActiveDarkXXL() async {
+        verify(await selectionScreen(), theme: .dark, dynamicType: .xxLarge,
+               name: "selection_active_dark_xxl")
+    }
+
+    @Test("verse selection renders in the sepia theme at Dynamic Type XXL")
+    func selectionActiveSepiaXXL() async {
+        verify(await selectionScreen(), theme: .sepia, dynamicType: .xxLarge,
+               name: "selection_active_sepia_xxl")
+    }
+
+    @Test("the chat stub raises the coming-soon toast over the reader")
+    func chatToastLight() async {
+        verify(await toastScreen(), theme: .light, name: "chat_toast_light")
+    }
+
+    @Test("the chat toast renders in the dark theme")
+    func chatToastDark() async {
+        verify(await toastScreen(), theme: .dark, name: "chat_toast_dark")
+    }
+
+    @Test("the chat toast renders in the sepia theme")
+    func chatToastSepia() async {
+        verify(await toastScreen(), theme: .sepia, name: "chat_toast_sepia")
+    }
+
+    @Test("the chat toast renders in the light theme at Dynamic Type XXL")
+    func chatToastLightXXL() async {
+        verify(await toastScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "chat_toast_light_xxl")
+    }
+
+    @Test("the chat toast renders in the dark theme at Dynamic Type XXL")
+    func chatToastDarkXXL() async {
+        verify(await toastScreen(), theme: .dark, dynamicType: .xxLarge,
+               name: "chat_toast_dark_xxl")
+    }
+
+    @Test("the chat toast renders in the sepia theme at Dynamic Type XXL")
+    func chatToastSepiaXXL() async {
+        verify(await toastScreen(), theme: .sepia, dynamicType: .xxLarge,
+               name: "chat_toast_sepia_xxl")
+    }
+
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
@@ -92,6 +160,28 @@ struct BibleScreenSnapshotTests {
             initialPosition: position
         )
         await viewModel.load()
+        return BibleScreen(viewModel: viewModel)
+    }
+
+    /// A `BibleScreen` on 1 Peter 2 with verses 4-6 and 9 selected.
+    private func selectionScreen() async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        for verse in [4, 5, 6, 9] { viewModel.toggleVerse(verse) }
+        return BibleScreen(viewModel: viewModel)
+    }
+
+    /// A `BibleScreen` on 1 Peter 2 with the chat "coming soon" toast raised.
+    private func toastScreen() async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        viewModel.presentChatComingSoon()
         return BibleScreen(viewModel: viewModel)
     }
 

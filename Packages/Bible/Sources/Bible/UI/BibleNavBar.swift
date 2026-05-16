@@ -5,41 +5,41 @@ import SwiftUI
 /// book / translation pill.
 ///
 /// The prev / next arrows step chapters and the pill's two segments open the
-/// book and translation pickers. The `+` button renders per the design but is
-/// inert until chat hand-off lands. The sidebar entry point is the shell's own
-/// floating hamburger, so this bar deliberately has none.
+/// book and translation pickers. When verses are selected (`selectionCitation`
+/// is non-`nil`) the centre group collapses to a citation pill with a clear
+/// control. The `+` button renders per the design but is inert until chat
+/// hand-off lands. The sidebar entry point is the shell's own floating
+/// hamburger, so this bar deliberately has none.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
     let bookName: String
     let chapterNumber: Int
     let translation: BibleTranslation
+    /// The selection's citation, or `nil` when no verse is selected — its
+    /// presence switches the centre group into selection mode.
+    let selectionCitation: String?
     let canStepBackward: Bool
     let canStepForward: Bool
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
     let onTranslation: () -> Void
+    let onClearSelection: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            // Balances the trailing `+` so the chapter group stays centered;
+            // Balances the trailing `+` so the centre group stays centered;
             // the shell's floating hamburger sits over this gap.
             Color.clear.frame(width: 36, height: 36)
 
-            HStack(spacing: 6) {
-                circleButton(systemImage: "chevron.left", action: onPrevious)
-                    .disabled(!canStepBackward)
-                    .opacity(canStepBackward ? 1 : 0.35)
-                    .accessibilityLabel("Previous chapter")
-
-                pill
-
-                circleButton(systemImage: "chevron.right", action: onNext)
-                    .disabled(!canStepForward)
-                    .opacity(canStepForward ? 1 : 0.35)
-                    .accessibilityLabel("Next chapter")
+            Group {
+                if let selectionCitation {
+                    selectionPill(selectionCitation)
+                } else {
+                    chapterControls
+                }
             }
             .frame(maxWidth: .infinity)
 
@@ -58,6 +58,24 @@ struct BibleNavBar: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+    }
+
+    /// Chapter stepping arrows flanking the book / translation pill — the
+    /// bar's default (no selection) centre group.
+    private var chapterControls: some View {
+        HStack(spacing: 6) {
+            circleButton(systemImage: "chevron.left", action: onPrevious)
+                .disabled(!canStepBackward)
+                .opacity(canStepBackward ? 1 : 0.35)
+                .accessibilityLabel("Previous chapter")
+
+            pill
+
+            circleButton(systemImage: "chevron.right", action: onNext)
+                .disabled(!canStepForward)
+                .opacity(canStepForward ? 1 : 0.35)
+                .accessibilityLabel("Next chapter")
+        }
     }
 
     /// The book / translation pill — two segments split by a hairline,
@@ -110,6 +128,33 @@ struct BibleNavBar: View {
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
     }
 
+    /// The selection-mode centre group: the verse citation with a clear
+    /// control that drops the whole selection.
+    private func selectionPill(_ citation: String) -> some View {
+        HStack(spacing: 8) {
+            Text(citation)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Button(action: onClearSelection) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(theme.inkSoft)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(theme.backgroundSunken))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear selection")
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
+        .frame(height: 36)
+        .background(Capsule().fill(theme.backgroundRaised))
+        .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
+    }
+
     private var plusButton: some View {
         Button(action: onPlus) {
             Image(systemName: "plus")
@@ -117,9 +162,24 @@ struct BibleNavBar: View {
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.accent))
+                .overlay(alignment: .topTrailing) {
+                    // A dot marks that the selected verses, not the whole
+                    // chapter, are what the `+` would hand to a chat.
+                    if selectionCitation != nil {
+                        Circle()
+                            .fill(theme.errorAccent)
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().strokeBorder(theme.background, lineWidth: 2))
+                            .offset(x: 2, y: -2)
+                    }
+                }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Start chat with this chapter")
+        .accessibilityLabel(
+            selectionCitation == nil
+                ? "Start chat with this chapter"
+                : "Start chat with the selected verses"
+        )
     }
 
     private func circleButton(

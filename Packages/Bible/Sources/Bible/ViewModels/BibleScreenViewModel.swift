@@ -1,4 +1,5 @@
 import Core
+import Foundation
 import Observation
 
 /// Drives the Bible reading surface: which chapter is on screen, the text
@@ -32,10 +33,20 @@ public final class BibleScreenViewModel {
     /// flag is all the presentation state it needs.
     public private(set) var isTranslationSheetPresented = false
 
+    /// Verse numbers the reader has tapped to select. Non-empty drives the
+    /// nav bar into selection mode and presents the action sheet.
+    public private(set) var selectedVerses: Set<Int> = []
+
+    /// A transient message shown in the chat-attach toast, or `nil` when no
+    /// toast is up. Used only for the "chat ships later" stub until hand-off
+    /// lands; the toast is dismissed by a tap, never on a timer.
+    public private(set) var toast: String?
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
     private let clock: any Clock
+    private let clipboard: any ClipboardWriter
 
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
@@ -51,12 +62,14 @@ public final class BibleScreenViewModel {
         catalog: BibleBookCatalog = .standard,
         positionRepository: (any BibleReadingPositionRepository)? = nil,
         clock: any Clock = SystemClock(),
+        clipboard: any ClipboardWriter = SystemClipboard(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition
     ) {
         self.textLoader = textLoader
         self.catalog = catalog
         self.positionRepository = positionRepository
         self.clock = clock
+        self.clipboard = clipboard
         self.position = initialPosition
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
     }
@@ -92,6 +105,7 @@ public final class BibleScreenViewModel {
     public func stepChapter(_ direction: BibleChapterDirection) {
         guard let next = catalog.step(from: position, direction: direction) else { return }
         position = next
+        clearSelection()
         applyCurrentChapter()
         persist()
     }
@@ -124,6 +138,7 @@ public final class BibleScreenViewModel {
         isTranslationSheetPresented = false
         guard selected != translation else { return }
         translation = selected
+        clearSelection()
         applyCurrentChapter()
         persist()
     }
@@ -136,9 +151,92 @@ public final class BibleScreenViewModel {
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
         position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        clearSelection()
         applyCurrentChapter()
         persist()
         bookSheet = nil
+    }
+
+    /// Toggle a verse's membership in the selection. The first tap enters
+    /// selection mode (the nav-bar citation pill and the action sheet);
+    /// clearing the last verse leaves it.
+    public func toggleVerse(_ number: Int) {
+        if selectedVerses.contains(number) {
+            selectedVerses.remove(number)
+        } else {
+            selectedVerses.insert(number)
+        }
+    }
+
+    /// Drop the whole selection, leaving selection mode. A no-op when empty.
+    public func clearSelection() {
+        selectedVerses.removeAll()
+    }
+
+    /// The selection's citation, e.g. `"1 Peter 2:4-6, 9"`, or `nil` when no
+    /// verse is selected. Drives the nav bar's selection-mode pill.
+    public var selectionCitation: String? {
+        let verses = selectedVerses.sorted()
+        guard !verses.isEmpty else { return nil }
+        return BibleCitationFormatter.cite(
+            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+        )
+    }
+
+    /// The selected verses' text followed by their citation — the payload for
+    /// Copy and Share. `nil` when nothing is selected or the chapter text is
+    /// unavailable.
+    public var selectionShareText: String? {
+        let verses = selectedVerses.sorted()
+        guard !verses.isEmpty else { return nil }
+        let texts = verseTextsByNumber()
+        let body = verses.compactMap { texts[$0] }.joined(separator: " ")
+        guard !body.isEmpty else { return nil }
+        let citation = BibleCitationFormatter.cite(
+            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+        )
+        return "\(body)\n— \(citation) (\(translation.rawValue))"
+    }
+
+    /// Copy the selected verses to the clipboard, then leave selection mode.
+    public func copySelection() {
+        guard let text = selectionShareText else { return }
+        clipboard.write(text)
+        clearSelection()
+    }
+
+    /// Stand-in for the deferred chat hand-off: the `+` button, the floating
+    /// bubble, and the action sheet's two chat rows all land here, raising a
+    /// "coming soon" toast instead of attaching the passage to a chat.
+    public func presentChatComingSoon() {
+        toast = "Chat integration ships in a later update."
+        clearSelection()
+    }
+
+    /// Dismiss the chat-attach toast.
+    public func dismissToast() {
+        toast = nil
+    }
+
+    /// The chapter's verse text keyed by verse number — joining the fragments
+    /// of a verse that straddles a paragraph boundary and flattening the `\n`
+    /// line breaks poetry carries so copied text stays on one line.
+    private func verseTextsByNumber() -> [Int: String] {
+        guard let chapter else { return [:] }
+        var fragments: [Int: [String]] = [:]
+        for paragraph in chapter.paragraphs {
+            switch paragraph {
+            case .heading:
+                continue
+            case .prose(let verses), .poetry(let verses):
+                for verse in verses {
+                    fragments[verse.number, default: []].append(verse.text)
+                }
+            }
+        }
+        return fragments.mapValues {
+            $0.joined(separator: " ").replacingOccurrences(of: "\n", with: " ")
+        }
     }
 
     /// Awaits the pending background reading-position writes. Test-only seam
