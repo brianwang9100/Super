@@ -33,8 +33,15 @@ struct TodoScreenSnapshotTests {
         try verify(theme: .sepia, name: "screen_empty_sepia")
     }
 
+    // The screen scales its type through the app-wide `superFontScale`
+    // slider rather than `@ScaledMetric`; this variant drives that path.
+    @Test("empty, large font scale") func emptyLargeFontScale() throws {
+        try verify(theme: .light, fontScale: 1.5, name: "screen_empty_light_large")
+    }
+
     private func verify(
         theme: SuperTheme.Identifier,
+        fontScale: CGFloat = 1,
         name: String,
         function: String = #function
     ) throws {
@@ -52,7 +59,7 @@ struct TodoScreenSnapshotTests {
             .frame(width: 402, height: 874)
             .background(resolved.background)
             .superTheme(resolved)
-            .superFontScale(1)
+            .superFontScale(fontScale)
 
         let failure = verifySnapshot(
             of: view,

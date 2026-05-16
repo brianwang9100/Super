@@ -38,6 +38,12 @@ struct TodoTaskEditorSheetSnapshotTests {
         verify(theme: .sepia, mode: .edit, draft: populatedDraft, name: "editor_edit_sepia")
     }
 
+    // The sheet scales its type through the app-wide `superFontScale`
+    // slider rather than `@ScaledMetric`; this variant drives that path.
+    @Test("create mode, large font scale") func createLargeFontScale() {
+        verify(theme: .light, mode: .create, draft: .empty, fontScale: 1.5, name: "editor_create_light_large")
+    }
+
     private var populatedDraft: TaskDraft {
         TaskDraft(
             id: "task-1",
@@ -61,6 +67,7 @@ struct TodoTaskEditorSheetSnapshotTests {
         theme: SuperTheme.Identifier,
         mode: TodoScreenViewModel.DraftMode,
         draft: TaskDraft,
+        fontScale: CGFloat = 1,
         name: String,
         function: String = #function
     ) {
@@ -81,6 +88,7 @@ struct TodoTaskEditorSheetSnapshotTests {
         .frame(width: 402, height: 760, alignment: .top)
         .background(resolved.background)
         .superTheme(resolved)
+        .superFontScale(fontScale)
 
         let failure = verifySnapshot(
             of: view,

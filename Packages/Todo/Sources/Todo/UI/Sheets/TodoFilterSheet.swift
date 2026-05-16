@@ -8,7 +8,6 @@ import SwiftUI
 struct TodoFilterSheet: View {
     @Binding var filter: TodoFilter
     let labels: [LabelRecord]
-    let onClose: () -> Void
 
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme

@@ -51,8 +51,7 @@ struct TodoFilterSheetSnapshotTests {
         let filter = TodoFilter(sort: .dueDate, state: .all, labelIds: ["work"])
         let view = TodoFilterSheet(
             filter: .constant(filter),
-            labels: labels,
-            onClose: {}
+            labels: labels
         )
         .frame(width: 402, height: 540, alignment: .top)
         .background(resolved.background)

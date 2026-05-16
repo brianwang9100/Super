@@ -47,8 +47,7 @@ public struct TodoScreen: View {
         .sheet(isPresented: $filterSheetOpen) {
             TodoFilterSheet(
                 filter: filterBinding,
-                labels: labels,
-                onClose: { filterSheetOpen = false }
+                labels: labels
             )
             .presentationDetents([.medium, .large])
         }
