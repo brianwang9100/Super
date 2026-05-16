@@ -14,8 +14,24 @@ public struct TodoApplet: MiniApplet {
 
     private let dependencies: TodoDependencies
 
+    /// The single view model backing the task surface. Held here, not
+    /// rebuilt per `rootView()` call, so the open draft / active filter /
+    /// toast survive re-renders of the backdrop (`AppShell.body` re-runs
+    /// `rootView()` every frame of the chat overlay animation). Matches
+    /// `BibleApplet`'s registry-lifetime view model.
+    private let viewModel: TodoScreenViewModel
+
+    @MainActor
     public init(dependencies: TodoDependencies) {
         self.dependencies = dependencies
+        self.viewModel = TodoScreenViewModel(
+            taskRepository: dependencies.taskRepository,
+            labelRepository: dependencies.labelRepository,
+            joinRepository: dependencies.joinRepository,
+            clock: dependencies.clock,
+            ids: dependencies.ids,
+            calendar: dependencies.calendar
+        )
     }
 
     @MainActor
@@ -25,18 +41,10 @@ public struct TodoApplet: MiniApplet {
 
     @MainActor
     public func rootView() -> AnyView {
-        let viewModel = TodoScreenViewModel(
-            taskRepository: dependencies.taskRepository,
-            labelRepository: dependencies.labelRepository,
-            joinRepository: dependencies.joinRepository,
-            clock: dependencies.clock,
-            ids: dependencies.ids,
-            calendar: dependencies.calendar
-        )
         // The `@Query`s in `TodoScreen` read their `DatabaseContext` from the
         // environment; provide a read/write context over `todo.sqlite` here
         // so the applet is self-contained and the shell stays applet-agnostic.
-        return AnyView(
+        AnyView(
             TodoScreen(viewModel: viewModel)
                 .databaseContext(.readWrite { dependencies.database.queue })
         )

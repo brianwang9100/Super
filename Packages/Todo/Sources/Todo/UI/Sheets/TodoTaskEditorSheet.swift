@@ -168,7 +168,9 @@ struct TodoTaskEditorSheet: View {
                     duePill("Tomorrow", selected: isSameDay(draft.dueAt, offsetDays: 1)) {
                         draft.dueAt = dayOffset(1)
                     }
-                    duePill("This week", selected: false) { draft.dueAt = dayOffset(7) }
+                    duePill("This week", selected: isSameDay(draft.dueAt, offsetDays: 7)) {
+                        draft.dueAt = dayOffset(7)
+                    }
                     duePill("Pick…", selected: isCustomDate) { showingDatePicker = true }
                 }
                 if showingDatePicker {
@@ -261,10 +263,12 @@ struct TodoTaskEditorSheet: View {
         return calendar.isDate(date, inSameDayAs: dayOffset(offsetDays))
     }
 
-    /// True when a due date is set that is neither today nor tomorrow — the
-    /// "Pick…" pill owns those.
+    /// True when a due date is set that none of the preset pills (Today,
+    /// Tomorrow, This week) own — only then does "Pick…" light up.
     private var isCustomDate: Bool {
         guard draft.dueAt != nil else { return false }
-        return !isSameDay(draft.dueAt, offsetDays: 0) && !isSameDay(draft.dueAt, offsetDays: 1)
+        return !isSameDay(draft.dueAt, offsetDays: 0)
+            && !isSameDay(draft.dueAt, offsetDays: 1)
+            && !isSameDay(draft.dueAt, offsetDays: 7)
     }
 }
