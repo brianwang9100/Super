@@ -11,11 +11,12 @@ import SwiftUI
 /// the action sheet's chat actions are deferred stubs that raise a toast.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let viewModel: BibleScreenViewModel
 
-    /// Drives the sheets, action sheet, and toast slide-up / slide-down — a
-    /// smooth decel curve close to the design's `cubic-bezier(0.32, 0.72, 0, 1)`.
-    private let sheetAnimation: Animation = .snappy(duration: 0.34)
+    /// How sheets, the action sheet, and the toast animate in and out — a
+    /// bottom slide by default, a cross-fade when Reduce Motion is on.
+    private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
 
     /// Space at the bottom reserved for the shell's minimized chat pill —
     /// the action sheet and toast both clear it.
@@ -40,12 +41,12 @@ public struct BibleScreen: View {
             if let toast = viewModel.toast {
                 BibleAttachToast(
                     message: toast,
-                    onDismiss: { withAnimation(sheetAnimation) { viewModel.dismissToast() } }
+                    onDismiss: { withAnimation(motion.animation) { viewModel.dismissToast() } }
                 )
                 .padding(.horizontal, 12)
                 .padding(.bottom, bottomReserve)
                 .frame(maxHeight: .infinity, alignment: .bottom)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(motion.transition)
             }
         }
         .task { await viewModel.load() }
@@ -61,10 +62,10 @@ public struct BibleScreen: View {
             canStepForward: viewModel.canStepForward,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
-            onPill: { withAnimation(sheetAnimation) { viewModel.presentBookSheet() } },
-            onTranslation: { withAnimation(sheetAnimation) { viewModel.presentTranslationSheet() } },
-            onClearSelection: { withAnimation(sheetAnimation) { viewModel.clearSelection() } },
-            onPlus: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } }
+            onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
+            onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
+            onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
+            onPlus: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } }
         )
     }
 
@@ -76,16 +77,16 @@ public struct BibleScreen: View {
             BibleActionSheet(
                 citation: viewModel.selectionCitation ?? "",
                 shareText: viewModel.selectionShareText ?? "",
-                onHighlight: { color in withAnimation(sheetAnimation) { viewModel.applyHighlight(color) } },
-                onClearHighlight: { withAnimation(sheetAnimation) { viewModel.clearHighlight() } },
-                onCopy: { withAnimation(sheetAnimation) { viewModel.copySelection() } },
-                onAddToChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
-                onNewChat: { withAnimation(sheetAnimation) { viewModel.presentChatComingSoon() } },
-                onClose: { withAnimation(sheetAnimation) { viewModel.clearSelection() } }
+                onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
+                onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
+                onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
+                onAddToChat: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } },
+                onNewChat: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } },
+                onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
             .padding(.bottom, bottomReserve)
             .frame(maxHeight: .infinity, alignment: .bottom)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(motion.transition)
         }
     }
 
@@ -96,7 +97,7 @@ public struct BibleScreen: View {
         Color.black.opacity(0.32)
             .ignoresSafeArea()
             .contentShape(Rectangle())
-            .onTapGesture { withAnimation(sheetAnimation) { viewModel.dismissTranslationSheet() } }
+            .onTapGesture { withAnimation(motion.animation) { viewModel.dismissTranslationSheet() } }
             .transition(.opacity)
 
         BibleTranslationSheet(
@@ -105,12 +106,12 @@ public struct BibleScreen: View {
             // pill, mirroring the reader's 76pt bottom reserve.
             bottomInset: 76,
             onSelect: { translation in
-                withAnimation(sheetAnimation) { viewModel.selectTranslation(translation) }
+                withAnimation(motion.animation) { viewModel.selectTranslation(translation) }
             },
-            onClose: { withAnimation(sheetAnimation) { viewModel.dismissTranslationSheet() } }
+            onClose: { withAnimation(motion.animation) { viewModel.dismissTranslationSheet() } }
         )
         .frame(maxHeight: .infinity, alignment: .bottom)
-        .transition(.move(edge: .bottom))
+        .transition(motion.transition)
     }
 
     /// A dimmed backdrop plus the book picker, inset from the top so a sliver
@@ -121,7 +122,7 @@ public struct BibleScreen: View {
         Color.black.opacity(0.32)
             .ignoresSafeArea()
             .contentShape(Rectangle())
-            .onTapGesture { withAnimation(sheetAnimation) { viewModel.dismissBookSheet() } }
+            .onTapGesture { withAnimation(motion.animation) { viewModel.dismissBookSheet() } }
             .transition(.opacity)
 
         BibleBookSheet(
@@ -132,14 +133,14 @@ public struct BibleScreen: View {
             // mirroring the reader's 76pt bottom reserve.
             bottomInset: 76,
             onSelectChapter: { bookId, chapterNumber in
-                withAnimation(sheetAnimation) {
+                withAnimation(motion.animation) {
                     viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
                 }
             },
-            onClose: { withAnimation(sheetAnimation) { viewModel.dismissBookSheet() } }
+            onClose: { withAnimation(motion.animation) { viewModel.dismissBookSheet() } }
         )
         .padding(.top, 80)
-        .transition(.move(edge: .bottom))
+        .transition(motion.transition)
     }
 
     @ViewBuilder
@@ -153,12 +154,12 @@ public struct BibleScreen: View {
                 previousLabel: viewModel.previousChapterLabel,
                 nextLabel: viewModel.nextChapterLabel,
                 onTapVerse: { number in
-                    withAnimation(sheetAnimation) { viewModel.toggleVerse(number) }
+                    withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },
                 onPrevious: { viewModel.stepChapter(.previous) },
                 onNext: { viewModel.stepChapter(.next) },
                 onClearSelection: {
-                    withAnimation(sheetAnimation) { viewModel.clearSelection() }
+                    withAnimation(motion.animation) { viewModel.clearSelection() }
                 }
             )
             // A fresh identity per chapter resets the scroll offset to the

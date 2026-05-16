@@ -71,7 +71,8 @@ struct BibleParagraphBlock: View {
                 tokens.append(VerseWordToken(
                     verseNumber: verse.number,
                     showsNumber: index == 0,
-                    word: String(word)
+                    word: String(word),
+                    verseText: verse.text
                 ))
             }
         }
@@ -91,7 +92,8 @@ struct BibleParagraphBlock: View {
                     lines[lines.count - 1].append(VerseWordToken(
                         verseNumber: verse.number,
                         showsNumber: segmentIndex == 0 && wordIndex == 0,
-                        word: String(word)
+                        word: String(word),
+                        verseText: verse.text
                     ))
                 }
             }
@@ -106,6 +108,10 @@ struct VerseWordToken {
     let verseNumber: Int
     let showsNumber: Bool
     let word: String
+    /// The verse fragment's full reading text. Carried on every word but only
+    /// read by the first — it lets that word stand in for the whole verse as
+    /// a single VoiceOver element.
+    let verseText: String
 }
 
 /// A single tappable word of a verse — the smallest unit `VerseFlowLayout`
@@ -127,6 +133,31 @@ private struct VerseWord: View {
             .background(wordBackground)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
+            // The verse's first word stands in for the whole verse as one
+            // VoiceOver element reading the full text; every other word is
+            // hidden so the verse isn't re-announced word by word.
+            .accessibilityElement()
+            .accessibilityHidden(!token.showsNumber)
+            .accessibilityLabel(BibleVerseAnnouncement.label(
+                verseNumber: token.verseNumber,
+                verseText: token.verseText
+            ))
+            .accessibilityValue(BibleVerseAnnouncement.highlightValue(highlightColor))
+            .accessibilityHint(accessibilityHint)
+            .accessibilityAddTraits(accessibilityTraits)
+            .accessibilityAction { onTap(token.verseNumber) }
+    }
+
+    /// A button always; also `.isSelected` while the verse is in the pending
+    /// selection, so VoiceOver appends "Selected".
+    private var accessibilityTraits: AccessibilityTraits {
+        isSelected ? [.isButton, .isSelected] : .isButton
+    }
+
+    private var accessibilityHint: String {
+        isSelected
+            ? "Removes the verse from the selection"
+            : "Selects the verse for highlight, copy, and share"
     }
 
     /// The wash behind the word: the selection tint when selected, otherwise
