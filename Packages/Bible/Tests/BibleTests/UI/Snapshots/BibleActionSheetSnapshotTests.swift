@@ -7,8 +7,9 @@ import Testing
 
 /// Snapshots of `BibleActionSheet` — the selection action sheet across the
 /// three themes and for both a single-verse and a multi-range citation. The
-/// sheet uses fixed type sizes (OS Dynamic Type support is deferred
-/// app-wide), so no Dynamic Type variant is recorded.
+/// sheet's own type sizes are fixed, but a Dynamic Type XXL variant is
+/// recorded per root `AGENTS.md` §Testing — it guards against a future font
+/// change reflowing the swatch / action rows.
 @Suite("BibleActionSheet snapshots")
 @MainActor
 struct BibleActionSheetSnapshotTests {
@@ -32,9 +33,16 @@ struct BibleActionSheetSnapshotTests {
         verify(theme: .light, citation: "1 Peter 2:4-6, 9", name: "multi_range_light")
     }
 
+    @Test("the action sheet renders at Dynamic Type XXL")
+    func lightXXL() {
+        verify(theme: .light, citation: "1 Peter 2:9", dynamicType: .xxLarge,
+               name: "light_xxl")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         citation: String,
+        dynamicType: DynamicTypeSize = .large,
         name: String,
         function: String = #function
     ) {
@@ -54,6 +62,7 @@ struct BibleActionSheetSnapshotTests {
         }
         .frame(width: 402, height: 220)
         .superTheme(theme)
+        .dynamicTypeSize(dynamicType)
 
         let failure = verifySnapshot(
             of: view,

@@ -217,7 +217,8 @@ public final class BibleScreenViewModel {
     /// write is asynchronous; the chapter's reactive `@Query` repaints once it
     /// lands. A no-op without a highlight store or with nothing selected.
     public func applyHighlight(_ color: BibleHighlightColor) {
-        writeHighlights { repository, bookId, chapterNumber, verseNumber, now in
+        writeHighlights(failureMessage: "Couldn't save the highlight.") {
+            repository, bookId, chapterNumber, verseNumber, now in
             try await repository.setHighlight(
                 bookId: bookId,
                 chapterNumber: chapterNumber,
@@ -230,7 +231,8 @@ public final class BibleScreenViewModel {
 
     /// Clear the highlight on every selected verse, then leave selection mode.
     public func clearHighlight() {
-        writeHighlights { repository, bookId, chapterNumber, verseNumber, now in
+        writeHighlights(failureMessage: "Couldn't clear the highlight.") {
+            repository, bookId, chapterNumber, verseNumber, now in
             try await repository.clearHighlight(
                 bookId: bookId,
                 chapterNumber: chapterNumber,
@@ -242,8 +244,14 @@ public final class BibleScreenViewModel {
 
     /// Run `write` for every selected verse on a background task chained after
     /// any prior highlight write, then clear the selection. The two highlight
-    /// actions — apply and clear — differ only in this per-verse operation.
+    /// actions — apply and clear — differ only in this per-verse operation and
+    /// in the toast shown when a write fails.
+    ///
+    /// - Parameter failureMessage: shown in the toast if any verse's write
+    ///   throws. The selection clears synchronously, so without this a failed
+    ///   write would read as success — the chapter just never repaints.
     private func writeHighlights(
+        failureMessage: String,
         _ write: @escaping @Sendable (
             any BibleHighlightRepository, String, Int, Int, Date
         ) async throws -> Void
@@ -255,11 +263,17 @@ public final class BibleScreenViewModel {
         let now = clock.now()
         // Chain on the prior write so awaiting the latest task drains them all.
         let previous = highlightTask
-        highlightTask = Task {
+        highlightTask = Task { [weak self] in
             await previous?.value
+            var anyFailed = false
             for verse in verses {
-                try? await write(highlightRepository, bookId, chapterNumber, verse, now)
+                do {
+                    try await write(highlightRepository, bookId, chapterNumber, verse, now)
+                } catch {
+                    anyFailed = true
+                }
             }
+            if anyFailed { self?.toast = failureMessage }
         }
         clearSelection()
     }

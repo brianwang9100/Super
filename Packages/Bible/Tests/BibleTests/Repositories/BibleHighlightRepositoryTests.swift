@@ -11,6 +11,7 @@ import Testing
 struct BibleHighlightRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
     private let later = Date(timeIntervalSince1970: 1_700_000_600)
+    private let evenLater = Date(timeIntervalSince1970: 1_700_001_200)
 
     private func makeFixture() throws -> (GRDBBibleHighlightRepository, BibleDatabase) {
         let database = try BibleDatabase.makeInMemory()
@@ -103,5 +104,25 @@ struct BibleHighlightRepositoryTests {
         )
         let total = try await database.queue.read { db in try BibleHighlightRecord.fetchCount(db) }
         #expect(total == 0)
+    }
+
+    @Test("clearing an already-cleared highlight leaves the tombstone untouched")
+    func clearAlreadyClearedIsNoOp() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, color: .yellow, at: now
+        )
+        try await repository.clearHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, at: later
+        )
+        // The second clear must not re-stamp deletedAt or advance updatedAt —
+        // the guard bails on a row that is already soft-deleted.
+        try await repository.clearHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, at: evenLater
+        )
+        let rows = try await database.queue.read { db in try BibleHighlightRecord.fetchAll(db) }
+        #expect(rows.count == 1)
+        #expect(rows.first?.deletedAt == later)
+        #expect(rows.first?.updatedAt == later)
     }
 }

@@ -470,4 +470,16 @@ struct BibleScreenViewModelTests {
         // sheet doesn't appear to have succeeded when it could not.
         #expect(viewModel.selectedVerses == [9])
     }
+
+    @Test("a failed highlight write surfaces a toast")
+    func failedHighlightWriteShowsToast() async {
+        let viewModel = makeViewModel(highlightRepository: ThrowingBibleHighlightRepository())
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        // The selection clears synchronously; the toast must surface so the
+        // dismissed sheet doesn't read as a successful highlight.
+        await viewModel._waitForPendingHighlightWrite()
+        #expect(viewModel.toast == "Couldn't save the highlight.")
+    }
 }
