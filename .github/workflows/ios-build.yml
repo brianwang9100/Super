@@ -59,7 +59,39 @@ jobs:
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
 
+  discover:
+    # Emits the snapshot-test matrix by globbing for packages that own a
+    # `Tests/<Pkg>Tests/UI/Snapshots/` directory, so a new applet's snapshot
+    # suites run with zero workflow edits. Globbing the test dirs (not
+    # `*.xcscheme`) is deliberate: a package with snapshot tests but no
+    # registered scheme then fails its leg loudly rather than vanishing
+    # from CI. A GitHub Actions matrix must come from a prior job's output.
+    runs-on: ubuntu-latest
+    outputs:
+      schemes: ${{ steps.find.outputs.schemes }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: Packages
+      - id: find
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          schemes=$(for d in Packages/*/Tests/*/UI/Snapshots; do
+            [ -d "$d" ] || continue
+            echo "$d" | cut -d/ -f2
+          done | sort -u | jq -R . | jq -cs .)
+          # Fail loud on an empty result: an empty matrix would skip every
+          # snapshot leg, and the gate could then read a vacuous success.
+          if [ -z "$schemes" ] || [ "$schemes" = "[]" ]; then
+            echo "::error::No snapshot-test directories found under Packages/*/Tests/*/UI/Snapshots."
+            exit 1
+          fi
+          echo "Discovered snapshot schemes: $schemes"
+          echo "schemes=$schemes" >> "$GITHUB_OUTPUT"
+
   ios-snapshot-test:
+    needs: discover
     runs-on: macos-26
     # One leg per applet scheme. Each leg runs on its own runner, so it
     # builds its dependency graph (Core, GRDB, SnapshotTesting, …) exactly
@@ -70,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scheme: [Chat, Bible, Todo]
+        scheme: ${{ fromJSON(needs.discover.outputs.schemes) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -209,14 +241,21 @@ jobs:
     # (`ios-snapshot-test (Chat)` …), so this job re-exports a single stable
     # `ios-test` status that depends on every leg. A required check that
     # never reports blocks merge forever — see the note at the top of file.
-    needs: ios-snapshot-test
+    needs: [discover, ios-snapshot-test]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Verify all snapshot test legs passed
+      - name: Verify discovery and all snapshot test legs passed
         env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
           RESULT: ${{ needs.ios-snapshot-test.result }}
         run: |
+          # Check `discover` explicitly: if it failed, the snapshot matrix
+          # is skipped, and an empty/skipped matrix must not read as success.
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::Snapshot-scheme discovery failed — no snapshot tests ran."
+            exit 1
+          fi
           if [ "$RESULT" != "success" ]; then
             echo "::error::One or more ios-snapshot-test matrix legs failed."
             exit 1

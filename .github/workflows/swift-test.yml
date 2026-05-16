@@ -14,12 +14,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discover:
+    # Emits the package matrix by globbing `Packages/*/Package.swift`, so a
+    # new SwiftPM package is tested with zero workflow edits. A GitHub
+    # Actions matrix cannot be computed inline — it must come from a prior
+    # job's output, hence this tiny job runs as a serial prefix.
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.find.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: Packages
+      - id: find
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          pkgs=$(for d in Packages/*/Package.swift; do
+            basename "$(dirname "$d")"
+          done | sort -u | jq -R . | jq -cs .)
+          # Fail loud on an empty result: an empty matrix would skip every
+          # `test` leg, and the gate could then read a vacuous success and
+          # go green having tested nothing.
+          if [ -z "$pkgs" ] || [ "$pkgs" = "[]" ]; then
+            echo "::error::No SwiftPM packages found under Packages/*/Package.swift."
+            exit 1
+          fi
+          echo "Discovered packages: $pkgs"
+          echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: discover
     runs-on: macos-26
     strategy:
       fail-fast: false
       matrix:
-        package: [Core, Chat, Bible, Todo]
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -67,3 +97,31 @@ jobs:
             -instr-profile="$PROFDATA" \
             -ignore-filename-regex='\.build/|/Tests/' \
             | tail -40
+
+  swift-test:
+    # Aggregation gate. The `test` job above publishes one check per
+    # discovered package (`test (Core)` …); this job re-exports a single
+    # stable `swift-test` status that depends on every leg. Branch
+    # protection requires `swift-test` alone, so adding a package never
+    # needs a branch-protection edit. A required check that never reports
+    # blocks merge forever — keep this job's name and trigger stable.
+    needs: [discover, test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify discovery and all package test legs passed
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          # Check `discover` explicitly: if it failed, the `test` matrix is
+          # skipped, and an empty/skipped matrix must not read as success.
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::Package discovery failed — no packages were tested."
+            exit 1
+          fi
+          if [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::One or more swift-test matrix legs failed."
+            exit 1
+          fi
+          echo "All swift-test matrix legs passed."
