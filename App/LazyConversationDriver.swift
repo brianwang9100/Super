@@ -30,7 +30,7 @@ actor LazyConversationDriver: ChatSessionDriver {
         self.onPersisted = onPersisted
     }
 
-    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         if let pending = ensureSaved {
             ensureSaved = nil
             await pending()
@@ -39,7 +39,7 @@ actor LazyConversationDriver: ChatSessionDriver {
                 await notify()
             }
         }
-        return await inner.send(text: text, references: references, model: model)
+        return await inner.send(text: text, model: model, references: references)
     }
 
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {

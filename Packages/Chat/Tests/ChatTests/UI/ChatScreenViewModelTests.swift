@@ -1269,7 +1269,7 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
         self.pendingSnapshot = pendingSnapshot
     }
 
-    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         // The bug-under-test exercises subscribe(), not send(). Return a
         // stream that finishes immediately for symmetry with the
         // production driver's contract.
@@ -1321,7 +1321,7 @@ private actor ScriptedDriver: ChatSessionDriver {
         self.pendingSubscribeEvents = pendingSubscribeEvents
     }
 
-    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         let scripted = self.scripted
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         let actorRef = self
@@ -1382,7 +1382,7 @@ private actor RecordingDriver: ChatSessionDriver {
     private(set) var sentReferences: [[RecordReference]] = []
     private var sendWaiter: CheckedContinuation<Void, Never>?
 
-    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         sentText.append(text)
         sentReferences.append(references)
         sendWaiter?.resume()
