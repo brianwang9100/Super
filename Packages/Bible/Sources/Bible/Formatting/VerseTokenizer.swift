@@ -1,5 +1,11 @@
 /// Breaks `BibleVerse` fragments into the per-word tokens `VerseFlowLayout`
-/// reflows, flagging each verse's first word.
+/// reflows, flagging each verse fragment's first word.
+///
+/// A verse straddling a paragraph or poetry boundary appears as more than one
+/// fragment sharing the same `number`. Every fragment keeps an `isVerseStart`
+/// anchor word (for VoiceOver), but the raised verse number is drawn once per
+/// verse — only its first fragment carries `showsVerseNumber`. Callers pass
+/// the `numberedEarlier` set so a later fragment knows its number is taken.
 ///
 /// A caseless namespace, deliberately kept off the `View` layer: SwiftUI
 /// infers `@MainActor` on `View`-conforming types, which would isolate this
@@ -7,8 +13,13 @@
 /// stays nonisolated and unit-testable.
 enum VerseTokenizer {
     /// Flattens prose verses into a single wrappable run of word tokens. The
-    /// first word of each verse is flagged `isVerseStart`.
-    static func proseTokens(_ verses: [BibleVerse]) -> [VerseWordToken] {
+    /// first word of each verse is flagged `isVerseStart`; it also carries the
+    /// raised number unless the verse number is in `numberedEarlier` — i.e. an
+    /// earlier paragraph already numbered this straddling verse.
+    static func proseTokens(
+        _ verses: [BibleVerse],
+        numberedEarlier: Set<Int> = []
+    ) -> [VerseWordToken] {
         var tokens: [VerseWordToken] = []
         for verse in verses {
             let words = verse.text.split(whereSeparator: \.isWhitespace)
@@ -16,6 +27,7 @@ enum VerseTokenizer {
                 tokens.append(VerseWordToken(
                     verseNumber: verse.number,
                     isVerseStart: index == 0,
+                    showsVerseNumber: index == 0 && !numberedEarlier.contains(verse.number),
                     word: String(word),
                     verseText: verse.text
                 ))
@@ -29,9 +41,13 @@ enum VerseTokenizer {
     ///
     /// `isVerseStart` flags the verse's first *word*, found wherever the text
     /// actually begins — a leading line break pushes it off the opening
-    /// segment, but the flag follows it so the verse keeps exactly one raised
-    /// number and one VoiceOver anchor.
-    static func poetryLines(_ verses: [BibleVerse]) -> [[VerseWordToken]] {
+    /// segment, but the flag follows it so the verse keeps exactly one VoiceOver
+    /// anchor. `showsVerseNumber` follows the same word but is suppressed when
+    /// `numberedEarlier` already holds the verse number.
+    static func poetryLines(
+        _ verses: [BibleVerse],
+        numberedEarlier: Set<Int> = []
+    ) -> [[VerseWordToken]] {
         var lines: [[VerseWordToken]] = [[]]
         for verse in verses {
             var seenFirstWord = false
@@ -39,9 +55,11 @@ enum VerseTokenizer {
             for (segmentIndex, segment) in segments.enumerated() {
                 if segmentIndex > 0 { lines.append([]) }
                 for word in segment.split(whereSeparator: \.isWhitespace) {
+                    let isVerseStart = !seenFirstWord
                     lines[lines.count - 1].append(VerseWordToken(
                         verseNumber: verse.number,
-                        isVerseStart: !seenFirstWord,
+                        isVerseStart: isVerseStart,
+                        showsVerseNumber: isVerseStart && !numberedEarlier.contains(verse.number),
                         word: String(word),
                         verseText: verse.text
                     ))
@@ -51,15 +69,40 @@ enum VerseTokenizer {
         }
         return lines.filter { !$0.isEmpty }
     }
+
+    /// For each paragraph in reading order, the verse numbers an earlier
+    /// paragraph already drew a raised number for — a verse straddling a
+    /// paragraph break numbers only its first fragment. The result is parallel
+    /// to `paragraphs`; element `i` is the set to pass as `numberedEarlier`
+    /// when tokenizing paragraph `i`.
+    static func priorlyNumberedVerses(_ paragraphs: [BibleParagraph]) -> [Set<Int>] {
+        var result: [Set<Int>] = []
+        var seen: Set<Int> = []
+        for paragraph in paragraphs {
+            result.append(seen)
+            switch paragraph {
+            case .heading:
+                break
+            case .prose(let verses), .poetry(let verses):
+                seen.formUnion(verses.map(\.number))
+            }
+        }
+        return result
+    }
 }
 
-/// One layout unit of a verse: a single word, tagged with its verse number
-/// and whether it is the verse's first word.
+/// One layout unit of a verse: a single word, tagged with its verse number,
+/// whether it is the verse fragment's first word, and whether it draws the
+/// raised verse number.
 struct VerseWordToken: Sendable {
     let verseNumber: Int
-    /// The verse's first word — it carries the raised verse number and stands
-    /// in for the whole verse as the verse's single VoiceOver element.
+    /// The verse fragment's first word — it stands in for the whole fragment
+    /// as that fragment's single VoiceOver element.
     let isVerseStart: Bool
+    /// The word that carries the raised verse number. True only for the first
+    /// fragment of a verse: a verse straddling a paragraph break is numbered
+    /// once, so later fragments leave this `false`.
+    let showsVerseNumber: Bool
     let word: String
     /// The verse fragment's full reading text. Carried on every word but only
     /// read by the first — it lets that word stand in for the whole verse as

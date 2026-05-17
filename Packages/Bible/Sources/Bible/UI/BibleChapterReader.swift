@@ -77,11 +77,13 @@ struct BibleChapterReader: View {
                     .padding(.bottom, 6)
 
                 let highlightsByVerse = highlightsByVerse
-                ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                let numberedEarlier = VerseTokenizer.priorlyNumberedVerses(chapter.paragraphs)
+                ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, paragraph in
                     BibleParagraphBlock(
                         paragraph: paragraph,
                         selectedVerses: selectedVerses,
                         highlightedVerses: highlightsByVerse,
+                        numberedEarlier: numberedEarlier[index],
                         onTapVerse: onTapVerse
                     )
                 }

@@ -18,6 +18,10 @@ struct BibleParagraphBlock: View {
     /// Persisted highlight colour per verse number — their words render with
     /// that colour's wash unless the verse is also selected.
     let highlightedVerses: [Int: BibleHighlightColor]
+    /// Verse numbers an earlier paragraph already drew the raised number for —
+    /// a verse straddling a paragraph break is numbered once, at its first
+    /// fragment, so this block leaves those numbers off.
+    let numberedEarlier: Set<Int>
     /// Invoked with a verse number when any of its words is tapped.
     let onTapVerse: (Int) -> Void
     @Environment(\.superTheme) private var theme
@@ -33,10 +37,13 @@ struct BibleParagraphBlock: View {
                 .padding(.top, 20)
                 .padding(.bottom, 2)
         case .prose(let verses):
-            flow(VerseTokenizer.proseTokens(verses), isPoetry: false)
+            flow(
+                VerseTokenizer.proseTokens(verses, numberedEarlier: numberedEarlier),
+                isPoetry: false
+            )
         case .poetry(let verses):
             VStack(alignment: .leading, spacing: 5) {
-                let lines = VerseTokenizer.poetryLines(verses)
+                let lines = VerseTokenizer.poetryLines(verses, numberedEarlier: numberedEarlier)
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     flow(line, isPoetry: true)
                 }
@@ -126,14 +133,15 @@ private struct VerseWord: View {
         return .clear
     }
 
-    /// The word `Text`, prefixed with the raised verse marker when this is the
-    /// verse's first word. A trailing space is baked in so the selection
-    /// background bridges the gap to the next word.
+    /// The word `Text`, prefixed with the raised verse marker on the word that
+    /// carries the verse number — a verse straddling a paragraph break draws it
+    /// once. A trailing space is baked in so the selection background bridges
+    /// the gap to the next word.
     private var styledText: Text {
         let word = Text(token.word + " ")
             .font(isPoetry ? .body.italic() : .body)
             .foregroundStyle(theme.ink)
-        guard token.isVerseStart else { return word }
+        guard token.showsVerseNumber else { return word }
         return BibleVerseNumber(number: token.verseNumber).text(color: theme.inkFaint)
             + Text(" ")
             + word
