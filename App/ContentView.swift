@@ -106,6 +106,10 @@ struct AppShell: View {
     /// renders on first launch before the preference reports anything.
     @State private var chatProgress: Double = 1
     @State private var viewModel: ChatScreenViewModel?
+    /// App-session-lived inbox: subscribes to the `SuperEventBus` and
+    /// buffers verse references handed in from Bible until a composer
+    /// drains them. Outlives the per-conversation `viewModel`.
+    @State private var referenceInbox = ChatReferenceInbox()
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
@@ -356,6 +360,16 @@ struct AppShell: View {
             // when the user opens the next chat.
             viewModel?.applyExternalVerbosity(newValue)
         }
+        // Bible's "New chat with this verse" hand-off: start a fresh
+        // conversation; the new view model then adopts the verse
+        // reference the inbox is still buffering.
+        .onChange(of: referenceInbox.wantsNewConversation) { _, wants in
+            guard wants, referenceInbox.consumeNewConversationRequest() else { return }
+            Task { await startNewChat() }
+        }
+        // One bus instance shared by every applet — the Bible backdrop
+        // publishes verse references, the Chat overlay's inbox consumes.
+        .environment(\.superEventBus, dependencies.eventBus)
     }
 
     private func openSidebar() {
@@ -399,6 +413,9 @@ struct AppShell: View {
         guard !bootstrapStarted else { return }
         bootstrapStarted = true
         do {
+            // Begin draining the cross-applet bus before any composer
+            // mounts, so a verse added early is buffered, not lost.
+            await referenceInbox.attach(to: dependencies.eventBus)
             let conversation = ensureConversation()
             // Whether this conversation came from disk or is a fresh
             // launch-into-empty-DB draft. Captured before
@@ -501,7 +518,8 @@ struct AppShell: View {
             verbosity: verbosity,
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
-            voice: voice
+            voice: voice,
+            referenceInbox: referenceInbox
         )
         let registry = dependencies.llmProviderRegistry
         // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.

@@ -27,6 +27,11 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     public var toolCallId: String?
     public var createdAt: Date
     public var tokenCount: Int?
+    /// JSON-encoded ``MessageAttachments``, or nil when the message
+    /// carries no structured attachments. Stored as a raw string so
+    /// `MessageRecord` stays a flat `Codable`/`PersistableRecord` with no
+    /// custom column coding; read it back through ``attachments``.
+    public var attachmentsJSON: String?
 
     public init(
         id: String,
@@ -37,7 +42,8 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         thinkingDurationMs: Int? = nil,
         toolCallId: String? = nil,
         createdAt: Date,
-        tokenCount: Int? = nil
+        tokenCount: Int? = nil,
+        attachmentsJSON: String? = nil
     ) {
         self.id = id
         self.conversationId = conversationId
@@ -48,5 +54,25 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.toolCallId = toolCallId
         self.createdAt = createdAt
         self.tokenCount = tokenCount
+        self.attachmentsJSON = attachmentsJSON
+    }
+
+    /// Decoded structured attachments, or nil when `attachmentsJSON` is
+    /// absent or fails to decode.
+    public var attachments: MessageAttachments? {
+        guard let attachmentsJSON, let data = attachmentsJSON.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(MessageAttachments.self, from: data)
+    }
+
+    /// Encode `attachments` to the raw column string. Returns nil when
+    /// there is nothing worth persisting, so the column stays NULL rather
+    /// than holding an empty payload.
+    public static func encode(_ attachments: MessageAttachments) -> String? {
+        guard !attachments.isEmpty, let data = try? JSONEncoder().encode(attachments) else {
+            return nil
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 }

@@ -25,6 +25,9 @@ struct AppDependencies: Sendable {
     /// The Todo applet's own database + repositories, bundled so the Shell
     /// can hand them to `TodoApplet`.
     let todoDependencies: TodoDependencies
+    /// App-wide cross-applet event bus. The Shell injects it into every
+    /// applet's environment so Bible can hand verse references to Chat.
+    let eventBus: SuperEventBus
 }
 
 /// One-shot composition root. Bootstraps the on-disk database, every
@@ -120,7 +123,8 @@ enum AppBootstrap {
             modelConfigurationRepository: modelConfigRepo,
             settingRepository: settingRepo,
             registeredToolIDs: registeredToolIDs,
-            todoDependencies: todoDependencies
+            todoDependencies: todoDependencies,
+            eventBus: SuperEventBus()
         )
     }
 

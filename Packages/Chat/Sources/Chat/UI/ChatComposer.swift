@@ -71,6 +71,12 @@ public struct ChatComposer: View {
     /// the chat surface resizes smoothly under a drag.
     public let progress: Double
 
+    /// Verse-reference pills attached in the composer. Rendered in a strip
+    /// above the text editor; empty for an ordinary message.
+    public let references: [VerseReferencePillModel]
+    /// Invoked with a pill's id when the user taps its × control.
+    public let onRemoveReference: (String) -> Void
+
     public init(
         text: Binding<String>,
         isFocused: FocusState<Bool>.Binding,
@@ -87,7 +93,9 @@ public struct ChatComposer: View {
         isRecording: Bool = false,
         isMicAvailable: Bool = true,
         onStopRecording: @escaping () -> Void = {},
-        progress: Double = 1
+        progress: Double = 1,
+        references: [VerseReferencePillModel] = [],
+        onRemoveReference: @escaping (String) -> Void = { _ in }
     ) {
         self._text = text
         self._isFocused = isFocused
@@ -105,6 +113,8 @@ public struct ChatComposer: View {
         self.onStopRecording = onStopRecording
         self.onCancelStreaming = onCancelStreaming
         self.progress = progress
+        self.references = references
+        self.onRemoveReference = onRemoveReference
     }
 
     @Environment(\.superTheme) private var theme
@@ -220,6 +230,7 @@ public struct ChatComposer: View {
     public var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 4) {
+                referencesStrip
                 HStack(spacing: 4) {
                     editorSlot
                     trailingButton
@@ -262,6 +273,29 @@ public struct ChatComposer: View {
 
     private var focusGlowColor: Color {
         isFocused ? theme.accent.opacity(0.12) : .black.opacity(0.05)
+    }
+
+    /// Horizontal strip of attached verse-reference pills above the text
+    /// editor. Hidden in pill mode (`editorOpacity` near zero) — there's
+    /// no room — so references added while the composer is minimized
+    /// surface only once it expands. Scrolls horizontally when the pills
+    /// overflow the composer width.
+    @ViewBuilder
+    private var referencesStrip: some View {
+        if !references.isEmpty && editorOpacity > 0.05 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(references) { reference in
+                        VerseReferencePill(
+                            label: reference.label,
+                            onRemove: { onRemoveReference(reference.id) }
+                        )
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .opacity(editorOpacity)
+        }
     }
 
     @ViewBuilder

@@ -335,7 +335,7 @@ struct ChatScreenSnapshotTests {
 }
 
 private struct NoopDriver: ChatSessionDriver {
-    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in
             continuation.finish()
         }

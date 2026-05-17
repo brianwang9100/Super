@@ -235,7 +235,12 @@ public struct ChatScreen: View {
         // (no id) only fires on first appear — switching chats would
         // otherwise leave the new view model unloaded and the surface
         // stuck on the empty state.
-        .task(id: viewModel.conversationId) { await viewModel.load() }
+        .task(id: viewModel.conversationId) {
+            // Drain any verse pills the shell inbox buffered before this
+            // composer mounted, then load the transcript.
+            viewModel.adoptPendingReferences()
+            await viewModel.load()
+        }
         .onChange(of: viewModel.voice.state) { _, newState in
             viewModel.handleVoiceStateChange(newState)
         }
@@ -252,6 +257,11 @@ public struct ChatScreen: View {
             if ChatPresentationState.crossedBelowEditorThreshold(from: oldValue, to: newValue) {
                 dismissKeyboard()
             }
+        }
+        // A verse added from Bible while this screen is already on-screen
+        // grows the inbox; adopt it without waiting for a remount.
+        .onChange(of: viewModel.inboxPendingCount) { _, _ in
+            viewModel.adoptPendingReferences()
         }
     }
 
@@ -281,7 +291,11 @@ public struct ChatScreen: View {
             isRecording: viewModel.voice.state == .listening,
             isMicAvailable: viewModel.voice.state != .unavailable,
             onStopRecording: viewModel.handleStopRecording,
-            progress: progress
+            progress: progress,
+            references: viewModel.pendingReferences.map {
+                VerseReferencePillModel(id: $0.id, label: $0.displayLabel)
+            },
+            onRemoveReference: viewModel.removeReference
         )
         .overlay {
             if pillSurfaceCaptureActive {
