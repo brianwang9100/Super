@@ -130,7 +130,9 @@ public struct ChatScreen: View {
     /// "gesture dies when overlay un-mounts at `progress = 0.15`" stall
     /// and the parallel "drag handle un-mounts at `progress = 0.05`"
     /// stall.
-    private var pillSurfaceCaptureActive: Bool { progress <= 0.15 }
+    private var pillSurfaceCaptureActive: Bool {
+        progress <= ChatPresentationState.editorInteractiveThreshold
+    }
 
     /// Surround opacity: rounded-rect panel background + stroke + shadow
     /// that make the chat read as a floating panel in semi-expanded mode.
@@ -236,6 +238,20 @@ public struct ChatScreen: View {
         .task(id: viewModel.conversationId) { await viewModel.load() }
         .onChange(of: viewModel.voice.state) { _, newState in
             viewModel.handleVoiceStateChange(newState)
+        }
+        // When the surface collapses past the editor-interactive threshold
+        // the composer's `TextField` becomes `.disabled`. Disabling a
+        // focused field does not clear `@FocusState`, so without this the
+        // keyboard would stay wedged half-open over a dead field — and
+        // re-expanding would resurrect it because focus was never released.
+        // Dismissing on the downward crossing tears the keyboard down
+        // deterministically and keeps it down until the user taps the
+        // field again. `crossedBelowEditorThreshold` fires only when
+        // `progress` is decreasing, so an expand never trips it.
+        .onChange(of: progress) { oldValue, newValue in
+            if ChatPresentationState.crossedBelowEditorThreshold(from: oldValue, to: newValue) {
+                dismissKeyboard()
+            }
         }
     }
 

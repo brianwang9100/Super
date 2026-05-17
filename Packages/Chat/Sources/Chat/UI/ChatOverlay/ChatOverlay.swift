@@ -82,54 +82,41 @@ public struct ChatOverlay: View {
     /// height at this value so baselines can be recorded mid-morph.
     private let frozenDragHeight: CGFloat?
 
-    /// Bottom safe-area inset for the chat anchor geometry, resolved with
-    /// the software keyboard *excluded* (see `body`'s probe). The chat
-    /// anchors are device geometry — they must track only the home
-    /// indicator, never the keyboard. `nil` until the probe reports on
-    /// the first layout pass; `content(in:)` falls back to the live
-    /// `GeometryProxy` inset until then so the minimized pill doesn't
-    /// pop from a `0`-inset height to its real height on frame one.
-    @State private var anchorBottomInset: CGFloat? = nil
-
     public var body: some View {
-        GeometryReader { geo in
-            content(in: geo)
-        }
-        // Resolve the bottom safe-area inset for the anchor geometry from
-        // a probe that ignores the keyboard. `GeometryProxy.safeAreaInsets`
-        // folds the software keyboard into the bottom inset whenever a
-        // field is focused; feeding that into the anchor math inflates
-        // `minimized`'s height and drags the semi-expanded anchor's
-        // `progress` below the composer's `editorInteractive` threshold
-        // the instant the keyboard appears. That disables the text field
-        // mid-keyboard-presentation, which resigns first responder and
-        // leaves the keyboard wedged half-open over the composer. Reading
-        // the inset from a `.ignoresSafeArea(.keyboard)` probe keeps the
-        // anchors pinned to the home indicator while the surface itself
-        // stays keyboard-aware so the composer still dodges the keyboard.
-        .background {
-            GeometryReader { probe in
-                Color.clear.preference(
-                    key: AnchorBottomInsetKey.self,
-                    value: probe.safeAreaInsets.bottom
-                )
+        // Two nested readers separate the keyboard from the device
+        // geometry. The *outer* reader is keyboard-aware — when a field is
+        // focused its height shrinks by the keyboard's height. The *inner*
+        // reader carries `.ignoresSafeArea(.keyboard)`, so its `geo` is
+        // pure device geometry (size + insets) that never moves when the
+        // keyboard toggles. The anchor math (`minH`/`maxH`/`progress`/…)
+        // all runs off the inner `geo`; the keyboard-aware height only
+        // caps the surface's *rendered* height so it stays above the
+        // keyboard (see `content(in:)`).
+        //
+        // Driving the anchor math off a keyboard-aware height instead
+        // collapses the whole anchor envelope (`maxH`, `semiExpanded`
+        // height, `progress`) the instant the keyboard appears — which,
+        // mid-transition, fights the snap spring and leaves the surface
+        // translated off the bottom of the screen.
+        GeometryReader { keyboardAware in
+            GeometryReader { geo in
+                content(in: geo, keyboardAwareHeight: keyboardAware.size.height)
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
-        }
-        .onPreferenceChange(AnchorBottomInsetKey.self) { newValue in
-            anchorBottomInset = newValue
         }
     }
 
     @ViewBuilder
-    private func content(in geo: GeometryProxy) -> some View {
-        // `anchorBottomInset` is the keyboard-free inset resolved by the
-        // probe in `body`; reading `geo.safeAreaInsets.bottom` here would
-        // re-introduce the software keyboard into the anchor math. Until
-        // the probe reports (frame one) fall back to the live inset —
-        // correct on mount because a freshly-mounted overlay has no
-        // focused field, so there's no keyboard folded into it yet.
-        let safeAreaBottom = anchorBottomInset ?? geo.safeAreaInsets.bottom
+    private func content(
+        in geo: GeometryProxy,
+        keyboardAwareHeight: CGFloat
+    ) -> some View {
+        // `geo` is the keyboard-free inner reader (see `body`): its size
+        // and insets are pure device geometry, so the anchor math below
+        // never moves when the software keyboard toggles. `progress` —
+        // which gates editor interactivity and every morph interpolation —
+        // is therefore stable across keyboard show/hide.
+        let safeAreaBottom = geo.safeAreaInsets.bottom
         let containerH = geo.size.height
         let minH = ChatPresentationState.minimized.height(in: containerH, bottomSafeArea: safeAreaBottom)
         let maxH = ChatPresentationState.expanded.height(in: containerH, bottomSafeArea: safeAreaBottom)
@@ -142,6 +129,18 @@ public struct ChatOverlay: View {
             forHeight: effectiveH,
             in: containerH,
             bottomSafeArea: safeAreaBottom
+        )
+        // On-screen height: the keyboard-free `effectiveH` clamped to the
+        // space above the keyboard. This is the *only* place the keyboard
+        // enters the layout — it shortens the rendered surface so the
+        // composer stays above the keyboard, while the anchor math and
+        // `progress` above remain keyboard-independent. The surface is
+        // bottom-pinned (the `Spacer` below), so the composer always rests
+        // exactly on the keyboard's top edge — or the screen bottom when
+        // no keyboard is up — and can never be pushed off-screen.
+        let renderedHeight = ChatPresentationState.renderedSurfaceHeight(
+            effectiveHeight: effectiveH,
+            keyboardAwareHeight: keyboardAwareHeight
         )
 
         VStack(spacing: 0) {
@@ -168,9 +167,20 @@ public struct ChatOverlay: View {
                     )
                 }
             )
-            .frame(height: effectiveH)
+            // Bottom-align: if `renderedHeight` is ever shorter than the
+            // surface's intrinsic content (handle + composer capsule —
+            // possible at the minimized anchor on a device with no home
+            // indicator), the overflow clips from the top (transcript)
+            // rather than spilling the composer past the bottom edge.
+            .frame(height: renderedHeight, alignment: .bottom)
         }
-        .frame(width: geo.size.width, height: geo.size.height)
+        // The surface lives in the keyboard-aware region and is bottom-
+        // pinned by the `Spacer` above, so its bottom edge tracks the
+        // keyboard's top edge (or the screen bottom when no keyboard is
+        // up). The inner reader is keyboard-free, so this frame is
+        // top-pinned to the screen top — the chat header stays put while
+        // only the surface's height yields to the keyboard.
+        .frame(width: geo.size.width, height: keyboardAwareHeight)
         .preference(key: ChatProgressPreferenceKey.self, value: progress)
     }
 
@@ -245,19 +255,6 @@ public struct ChatProgressPreferenceKey: PreferenceKey {
         // deliberate merge strategy — without it the shell would
         // silently read whichever overlay SwiftUI happens to process
         // last.
-        value = nextValue()
-    }
-}
-
-/// Carries the chat overlay's keyboard-free bottom safe-area inset (the
-/// home-indicator inset) up from a `.ignoresSafeArea(.keyboard)` probe so
-/// the anchor geometry never sees the software keyboard. Private to
-/// `ChatOverlay` — only its own probe writes it and only its own body
-/// reads it.
-private struct AnchorBottomInsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
 }

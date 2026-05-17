@@ -172,7 +172,7 @@ public struct ChatComposer: View {
     /// the pill surface falls through to the chat-screen overlay rather
     /// than landing on a barely-visible text field.
     private var editorInteractive: Bool {
-        progress > 0.15 && !isRecording
+        progress > ChatPresentationState.editorInteractiveThreshold && !isRecording
     }
 
     /// Composer outer gradient backdrop — the transcript-to-composer
