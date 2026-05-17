@@ -21,8 +21,12 @@ public struct LiveChatSessionDriver: ChatSessionDriver {
         self.temperature = temperature
     }
 
-    public func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
-        await session.send(text: text, model: model, temperature: temperature)
+    public func send(
+        text: String,
+        references: [RecordReference],
+        model: LLMModel
+    ) async -> AsyncStream<ChatEvent> {
+        await session.send(text: text, model: model, references: references, temperature: temperature)
     }
 
     public func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
