@@ -181,4 +181,13 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["conversationId", "isLive"]
         )
     }
+
+    // Adds the nullable `attachmentsJSON` column carrying a JSON-encoded
+    // `MessageAttachments` (verse-reference pills). Additive and nullable —
+    // existing rows keep NULL. Never queried, so no index.
+    migrator.registerMigration("v2_messageAttachments") { db in
+        try db.alter(table: "message") { t in
+            t.add(column: "attachmentsJSON", .text)
+        }
+    }
 }
