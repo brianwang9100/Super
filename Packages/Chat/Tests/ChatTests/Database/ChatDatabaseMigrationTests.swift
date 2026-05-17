@@ -185,11 +185,12 @@ struct ChatDatabaseMigrationTests {
         #expect(count == 7)
     }
 
-    /// End-to-end schema + content snapshot via `GRDBSnapshotTesting`.
+    /// End-to-end snapshot of the schema after *all* migrations have run
+    /// (currently through `v2_messageAttachments`) via `GRDBSnapshotTesting`.
     /// Catches column-type drift, FK clauses, and DEFAULT expressions
     /// that the targeted PRAGMA assertions don't cover. Snapshot files
     /// land under `Tests/ChatTests/Database/__Snapshots__/`.
-    @Test func v1SchemaSnapshot() async throws {
+    @Test func migratedSchemaSnapshot() async throws {
         let db = try ChatDatabase.makeInMemory()
         assertSnapshot(of: db.queue, as: .dumpContent())
     }
