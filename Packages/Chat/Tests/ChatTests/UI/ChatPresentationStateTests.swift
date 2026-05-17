@@ -154,4 +154,54 @@ struct ChatPresentationStateTests {
         #expect(below == 0)
         #expect(above == 1)
     }
+
+    // MARK: - Keyboard-independence of the anchor geometry
+    //
+    // `ChatComposer.editorInteractive` gates the text field on
+    // `progress > 0.15` and `ChatScreen.pillSurfaceCaptureActive` mounts
+    // the tap-to-expand overlay at `progress <= 0.15`. The bottom inset
+    // fed into the anchor geometry therefore decides, via `progress`,
+    // whether the composer is a live text field or a tap target. It must
+    // be the home-indicator inset only — never the software keyboard.
+
+    /// The composer-interactivity threshold mirrored from
+    /// `ChatComposer.editorInteractive` / `ChatScreen.pillSurfaceCaptureActive`.
+    private let editorInteractiveThreshold = 0.15
+
+    @Test("semi-expanded stays above the composer threshold for every home-indicator inset")
+    func semiExpandedProgressStaysInteractiveAcrossHomeIndicatorInsets() {
+        // Real devices report a 0–48pt bottom inset for the home
+        // indicator. Across that whole range the semi-expanded anchor
+        // must resolve well above the 0.15 threshold so a composer that
+        // is interactive in semi-expanded mode stays interactive.
+        for homeInset in stride(from: CGFloat(0), through: 48, by: 4) {
+            let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: homeInset)
+            let p = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset)
+            #expect(p > editorInteractiveThreshold)
+        }
+    }
+
+    @Test("a keyboard-sized bottom inset would force semi-expanded below the composer threshold")
+    func keyboardSizedInsetCollapsesSemiExpandedProgress() {
+        // Regression guard for the composer-wedge bug. Focusing the
+        // composer raises the software keyboard, which a `GeometryProxy`
+        // folds into `safeAreaInsets.bottom` (~290–340pt on an iPhone).
+        // Feeding that inflated inset into the anchor geometry drops the
+        // semi-expanded anchor's progress below 0.15, which disables the
+        // field mid-keyboard-presentation and wedges the keyboard
+        // half-open. `ChatOverlay` resolves the inset from a
+        // `.ignoresSafeArea(.keyboard)` probe precisely so this can't
+        // happen — this test pins the hazard the probe defends against.
+        let keyboardInset: CGFloat = 336
+        let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: keyboardInset)
+        let collapsed = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: keyboardInset)
+        #expect(collapsed < editorInteractiveThreshold)
+
+        // Same anchor, same viewport — only the inset differs. The
+        // home-indicator inset keeps the composer interactive, proving
+        // the keyboard is the sole cause of the threshold crossing.
+        let homeInset: CGFloat = 34
+        let safe = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset)
+        #expect(safe > editorInteractiveThreshold)
+    }
 }
