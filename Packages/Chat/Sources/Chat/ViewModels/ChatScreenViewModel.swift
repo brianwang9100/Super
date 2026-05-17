@@ -564,7 +564,7 @@ public final class ChatScreenViewModel {
     }
 
     private func run(text: String, references: [RecordReference], model: LLMModel) async {
-        let stream = await driver.send(text: text, references: references, model: model)
+        let stream = await driver.send(text: text, model: model, references: references)
         await consume(stream: stream)
     }
 
@@ -933,7 +933,7 @@ public protocol ChatSessionDriver: Sendable {
     /// attached in the composer; the underlying session persists them on
     /// the user `MessageRecord` and `ContextAssembler` expands them into
     /// the prompt.
-    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent>
+    func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent>
 
     /// Attach to the underlying session's in-flight turn (if any). The
     /// view model calls this on `load()` so a re-mounted screen for a

@@ -383,6 +383,18 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_reference_pills_multiple_light", function: function)
     }
 
+    @Test("composer with one verse pill at Dynamic Type XXL — light")
+    func oneReferencePillXXL() {
+        let function = #function
+        let view = composerWithReferences(
+            [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
+            text: "What does this mean?",
+            theme: .light
+        )
+        .dynamicTypeSize(.xxLarge)
+        recordOrCompare(view: view, name: "composer_reference_pill_light_xxl", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,

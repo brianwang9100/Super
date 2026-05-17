@@ -23,8 +23,8 @@ public struct LiveChatSessionDriver: ChatSessionDriver {
 
     public func send(
         text: String,
-        references: [RecordReference],
-        model: LLMModel
+        model: LLMModel,
+        references: [RecordReference]
     ) async -> AsyncStream<ChatEvent> {
         await session.send(text: text, model: model, references: references, temperature: temperature)
     }
