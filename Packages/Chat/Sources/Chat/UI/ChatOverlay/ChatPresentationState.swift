@@ -118,6 +118,33 @@ extension ChatPresentationState {
 // MARK: - Progress
 
 extension ChatPresentationState {
+    /// Progress threshold above which the composer's text editor is live
+    /// and below which the chat reads as the minimized pill. The single
+    /// source of truth for the pill ⇄ editor handover, shared by
+    /// ``ChatComposer/editorInteractive`` (`> threshold`), `ChatScreen`'s
+    /// `pillSurfaceCaptureActive` (`<= threshold`), and `ChatScreen`'s
+    /// keyboard-dismiss-on-collapse `.onChange`. The `>` / `<=` split
+    /// closes the off-by-one so a tap exactly on the boundary always lands
+    /// on a live target.
+    public static let editorInteractiveThreshold: Double = 0.15
+
+    /// Whether `progress` just crossed *downward* past
+    /// ``editorInteractiveThreshold`` — the chat collapsing far enough
+    /// that the composer's editor goes non-interactive. `ChatScreen` uses
+    /// this to dismiss the keyboard exactly once on that crossing.
+    ///
+    /// The predicate requires `oldProgress > newProgress`, so it returns
+    /// `false` for every non-decreasing change: an expand — even one
+    /// whose snap curve overshoots its target — only ever raises
+    /// `progress`, so it can never trip a dismissal.
+    public static func crossedBelowEditorThreshold(
+        from oldProgress: Double,
+        to newProgress: Double
+    ) -> Bool {
+        oldProgress > editorInteractiveThreshold
+            && newProgress <= editorInteractiveThreshold
+    }
+
     /// Maps an absolute chat-surface height to a `[0, 1]` progress where
     /// `0` is the minimized pill and `1` is the fully-expanded screen.
     /// `semiExpanded` lands at whatever fraction its height occupies along
@@ -137,6 +164,33 @@ extension ChatPresentationState {
         guard maxH > minH else { return 0 }
         let raw = Double((height - minH) / (maxH - minH))
         return min(1, max(0, raw))
+    }
+}
+
+// MARK: - Keyboard avoidance
+
+extension ChatPresentationState {
+    /// The chat surface's *rendered* height: the keyboard-free
+    /// `effectiveHeight` (the settled/dragged anchor height that drives all
+    /// the morph math) clamped to `keyboardAwareHeight` — the space left
+    /// above the software keyboard.
+    ///
+    /// Capping the rendered height here, rather than feeding the keyboard
+    /// into the anchor math, is what keeps `progress` and the anchor
+    /// envelope keyboard-independent: the chat's *logical* size never
+    /// changes when a field is focused, only how much of it fits on screen.
+    /// Because the surface is bottom-pinned, capping the height lifts its
+    /// bottom edge to exactly the keyboard's top — so the composer is
+    /// always reachable and never renders behind, or below, the keyboard.
+    ///
+    /// `keyboardAwareHeight` already equals the full container height when
+    /// no keyboard is up, so this is a no-op (`effectiveHeight`) in that
+    /// case.
+    public static func renderedSurfaceHeight(
+        effectiveHeight: CGFloat,
+        keyboardAwareHeight: CGFloat
+    ) -> CGFloat {
+        min(effectiveHeight, keyboardAwareHeight)
     }
 }
 

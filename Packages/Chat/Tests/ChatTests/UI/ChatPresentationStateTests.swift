@@ -158,15 +158,17 @@ struct ChatPresentationStateTests {
     // MARK: - Keyboard-independence of the anchor geometry
     //
     // `ChatComposer.editorInteractive` gates the text field on
-    // `progress > 0.15` and `ChatScreen.pillSurfaceCaptureActive` mounts
-    // the tap-to-expand overlay at `progress <= 0.15`. The bottom inset
-    // fed into the anchor geometry therefore decides, via `progress`,
-    // whether the composer is a live text field or a tap target. It must
-    // be the home-indicator inset only — never the software keyboard.
+    // `progress > editorInteractiveThreshold` and
+    // `ChatScreen.pillSurfaceCaptureActive` mounts the tap-to-expand
+    // overlay at `progress <= editorInteractiveThreshold`. The container
+    // height and bottom inset fed into the anchor geometry therefore
+    // decide, via `progress`, whether the composer is a live text field or
+    // a tap target. Both must be pure device geometry — never folding in
+    // the software keyboard.
 
-    /// The composer-interactivity threshold mirrored from
-    /// `ChatComposer.editorInteractive` / `ChatScreen.pillSurfaceCaptureActive`.
-    private let editorInteractiveThreshold = 0.15
+    /// The composer-interactivity threshold — the same constant
+    /// `ChatComposer` and `ChatScreen` gate on.
+    private let editorInteractiveThreshold = ChatPresentationState.editorInteractiveThreshold
 
     @Test("semi-expanded stays above the composer threshold for every home-indicator inset")
     func semiExpandedProgressStaysInteractiveAcrossHomeIndicatorInsets() {
@@ -183,15 +185,17 @@ struct ChatPresentationStateTests {
 
     @Test("a keyboard-sized bottom inset would force semi-expanded below the composer threshold")
     func keyboardSizedInsetCollapsesSemiExpandedProgress() {
-        // Regression guard for the composer-wedge bug. Focusing the
-        // composer raises the software keyboard, which a `GeometryProxy`
-        // folds into `safeAreaInsets.bottom` (~290–340pt on an iPhone).
-        // Feeding that inflated inset into the anchor geometry drops the
-        // semi-expanded anchor's progress below 0.15, which disables the
-        // field mid-keyboard-presentation and wedges the keyboard
-        // half-open. `ChatOverlay` resolves the inset from a
-        // `.ignoresSafeArea(.keyboard)` probe precisely so this can't
-        // happen — this test pins the hazard the probe defends against.
+        // Regression guard for the composer-wedge / surface-shift bugs.
+        // Focusing the composer raises the software keyboard, which a
+        // `GeometryProxy` folds into both `safeAreaInsets.bottom` *and*
+        // `size.height` (~290–340pt on an iPhone). Feeding either into the
+        // anchor geometry drops the semi-expanded anchor's progress below
+        // the threshold — disabling the field mid-keyboard-presentation
+        // and, mid-transition, shifting the surface off the bottom of the
+        // screen. `ChatOverlay` runs every anchor calculation off a
+        // keyboard-free inner `GeometryReader` (`.ignoresSafeArea(.keyboard)`)
+        // precisely so this can't happen — this test pins the hazard that
+        // design defends against.
         let keyboardInset: CGFloat = 336
         let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: keyboardInset)
         let collapsed = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: keyboardInset)
@@ -203,5 +207,95 @@ struct ChatPresentationStateTests {
         let homeInset: CGFloat = 34
         let safe = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset)
         #expect(safe > editorInteractiveThreshold)
+    }
+
+    // MARK: - Editor-threshold crossing (keyboard dismissal)
+    //
+    // `ChatScreen` dismisses the keyboard when `progress` crosses below
+    // the threshold — disabling the composer's `TextField` does not clear
+    // `@FocusState`, so the keyboard would otherwise wedge. The crossing
+    // predicate must fire on a genuine collapse and *never* on an expand.
+
+    @Test("a genuine downward crossing of the threshold is detected")
+    func crossingBelowThresholdIsDetected() {
+        let t = ChatPresentationState.editorInteractiveThreshold
+        #expect(ChatPresentationState.crossedBelowEditorThreshold(from: 0.5, to: 0.0))
+        // Landing exactly on the threshold counts as crossing below it —
+        // `editorInteractive` gates on `> threshold`, so `== threshold`
+        // is already non-interactive.
+        #expect(ChatPresentationState.crossedBelowEditorThreshold(from: 0.5, to: t))
+    }
+
+    @Test("a rising progress never trips the threshold crossing")
+    func risingProgressNeverCrosses() {
+        // An expand only ever raises `progress` — even the snap curve's
+        // end-overshoot raises it past the target, never dips it below
+        // the start. So no expand, however animated, can trip a keyboard
+        // dismissal. Sweep every from→to pair where `to >= from`.
+        for from in stride(from: 0.0, through: 1.0, by: 0.05) {
+            for to in stride(from: from, through: 1.0, by: 0.05) {
+                #expect(!ChatPresentationState.crossedBelowEditorThreshold(from: from, to: to))
+            }
+        }
+    }
+
+    @Test("a decrease that stays on one side of the threshold does not cross")
+    func decreaseWithoutCrossingDoesNotFire() {
+        // Collapsing but still interactive — no crossing yet.
+        #expect(!ChatPresentationState.crossedBelowEditorThreshold(from: 0.9, to: 0.3))
+        // Already below the threshold and collapsing further — the
+        // crossing already happened on an earlier tick; don't re-fire.
+        #expect(!ChatPresentationState.crossedBelowEditorThreshold(from: 0.1, to: 0.0))
+    }
+
+    // MARK: - Rendered surface height (keyboard avoidance)
+
+    @Test("rendered height caps to the space above the keyboard")
+    func renderedHeightCapsToKeyboardAwareSpace() {
+        // Expanded surface (778pt) with the keyboard up: only 477pt is
+        // free above the keyboard, so the surface renders 477pt — short
+        // enough that the bottom-pinned composer clears the keyboard.
+        let rendered = ChatPresentationState.renderedSurfaceHeight(
+            effectiveHeight: 778,
+            keyboardAwareHeight: 477
+        )
+        #expect(rendered == 477)
+    }
+
+    @Test("rendered height is the effective height when the surface already fits")
+    func renderedHeightUncappedWhenItFits() {
+        // Semi-expanded panel (404pt) with the keyboard up (477pt free):
+        // the panel already clears the keyboard, so it keeps its full
+        // height and simply slides up — no cap applied.
+        let fits = ChatPresentationState.renderedSurfaceHeight(
+            effectiveHeight: 404,
+            keyboardAwareHeight: 477
+        )
+        #expect(fits == 404)
+
+        // No keyboard: `keyboardAwareHeight` equals the full container, so
+        // the rendered height is exactly the effective height.
+        let noKeyboard = ChatPresentationState.renderedSurfaceHeight(
+            effectiveHeight: 404,
+            keyboardAwareHeight: viewport
+        )
+        #expect(noKeyboard == 404)
+    }
+
+    @Test("rendered height never exceeds the keyboard-aware space")
+    func renderedHeightNeverExceedsKeyboardAwareSpace() {
+        // The composer is pinned to the surface's bottom edge, so as long
+        // as the rendered height never exceeds the space above the
+        // keyboard the composer can never be pushed off-screen — whatever
+        // the effective height resolves to mid-transition.
+        for effectiveH in stride(from: CGFloat(60), through: 900, by: 30) {
+            for keyboardAwareH in stride(from: CGFloat(300), through: 874, by: 41) {
+                let rendered = ChatPresentationState.renderedSurfaceHeight(
+                    effectiveHeight: effectiveH,
+                    keyboardAwareHeight: keyboardAwareH
+                )
+                #expect(rendered <= keyboardAwareH)
+            }
+        }
     }
 }
