@@ -1105,6 +1105,150 @@ struct ChatScreenViewModelTests {
             await Task.yield()
         }
     }
+
+    // MARK: - Verse reference pills
+
+    private func verseReference(_ id: String) -> RecordReference {
+        RecordReference(
+            appletID: "bible", kind: "verseRange", sourceID: "WEB/JHN/3/\(id)",
+            displayLabel: "John 3:\(id) (WEB)", citation: "John 3:\(id) (WEB)",
+            snapshot: "verse \(id)", id: id
+        )
+    }
+
+    /// Build a view model wired to a fresh `ChatReferenceInbox`, returning
+    /// both so a test can publish onto the bus and drive adoption.
+    private func makeViewModelWithInbox(
+        driver: any ChatSessionDriver
+    ) -> (viewModel: ChatScreenViewModel, inbox: ChatReferenceInbox) {
+        let inbox = ChatReferenceInbox()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model],
+            referenceInbox: inbox
+        )
+        return (viewModel, inbox)
+    }
+
+    /// Publish onto `bus` and return once `inbox` has processed the event.
+    private func publishAndWait(
+        _ event: SuperEvent,
+        on bus: SuperEventBus,
+        inbox: ChatReferenceInbox
+    ) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            inbox._onNextEvent { continuation.resume() }
+            Task { await bus.publish(event) }
+        }
+    }
+
+    @Test("adoptPendingReferences drains the inbox into the composer")
+    func adoptPendingReferencesDrainsTheInbox() async {
+        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+
+        viewModel.adoptPendingReferences()
+
+        #expect(viewModel.pendingReferences == [verseReference("16")])
+        #expect(inbox.pending.isEmpty)
+    }
+
+    @Test("adoptPendingReferences dedupes a doubled bus delivery by id")
+    func adoptPendingReferencesDedupesByID() async {
+        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        // Same reference id delivered twice.
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+
+        viewModel.adoptPendingReferences()
+
+        #expect(viewModel.pendingReferences.count == 1)
+    }
+
+    @Test("removeReference drops the pill before send")
+    func removeReferenceDropsThePill() async {
+        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        viewModel.adoptPendingReferences()
+
+        viewModel.removeReference(id: "16")
+
+        #expect(viewModel.pendingReferences.isEmpty)
+    }
+
+    @Test("send passes attached references to the driver and clears them")
+    func sendPassesReferencesToDriverAndClears() async {
+        let driver = RecordingDriver()
+        let (viewModel, inbox) = makeViewModelWithInbox(driver: driver)
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        viewModel.adoptPendingReferences()
+
+        viewModel.send("Explain this verse")
+        await driver.waitForSend()
+
+        #expect(await driver.sentReferences == [[verseReference("16")]])
+        #expect(await driver.sentText == ["Explain this verse"])
+        // Cleared synchronously by `send(_:)` so the pill doesn't linger.
+        #expect(viewModel.pendingReferences.isEmpty)
+    }
+
+    @Test("send is allowed with empty text when a reference is attached")
+    func sendAllowedWithEmptyTextWhenReferenceAttached() async {
+        let driver = RecordingDriver()
+        let (viewModel, inbox) = makeViewModelWithInbox(driver: driver)
+        let bus = SuperEventBus()
+        await inbox.attach(to: bus)
+        await publishAndWait(
+            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        viewModel.adoptPendingReferences()
+
+        viewModel.send("")
+        await driver.waitForSend()
+
+        #expect(await driver.sentText == [""])
+        #expect(await driver.sentReferences == [[verseReference("16")]])
+    }
+
+    @Test("send with neither text nor references is a no-op")
+    func sendWithNothingIsANoOp() async {
+        let driver = RecordingDriver()
+        let (viewModel, _) = makeViewModelWithInbox(driver: driver)
+
+        viewModel.send("   ")
+
+        #expect(await driver.sentText.isEmpty)
+        #expect(viewModel.isStreaming == false)
+    }
 }
 
 // MARK: - Test doubles
@@ -1125,7 +1269,7 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
         self.pendingSnapshot = pendingSnapshot
     }
 
-    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
         // The bug-under-test exercises subscribe(), not send(). Return a
         // stream that finishes immediately for symmetry with the
         // production driver's contract.
@@ -1177,7 +1321,7 @@ private actor ScriptedDriver: ChatSessionDriver {
         self.pendingSubscribeEvents = pendingSubscribeEvents
     }
 
-    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
         let scripted = self.scripted
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         let actorRef = self
@@ -1227,6 +1371,39 @@ private actor ScriptedDriver: ChatSessionDriver {
             if await self.finished { return }
             try await Task.sleep(nanoseconds: 5_000_000)
         }
+    }
+}
+
+/// `ChatSessionDriver` fake that records the `text` and `references` of
+/// every `send(...)` and returns an immediately-finished stream. Exposes
+/// `waitForSend()` so a test can await the first call without polling.
+private actor RecordingDriver: ChatSessionDriver {
+    private(set) var sentText: [String] = []
+    private(set) var sentReferences: [[RecordReference]] = []
+    private var sendWaiter: CheckedContinuation<Void, Never>?
+
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
+        sentText.append(text)
+        sentReferences.append(references)
+        sendWaiter?.resume()
+        sendWaiter = nil
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuation.finish()
+        return stream
+    }
+
+    func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuation.finish()
+        return (nil, stream)
+    }
+
+    func cancel() async {}
+
+    /// Await the first `send(...)`; returns immediately if it already ran.
+    func waitForSend() async {
+        guard sentText.isEmpty else { return }
+        await withCheckedContinuation { sendWaiter = $0 }
     }
 }
 

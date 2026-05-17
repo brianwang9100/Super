@@ -113,6 +113,51 @@ struct ChatSessionTests {
         #expect(storedUser != nil)
     }
 
+    @Test func userMessageReferencesPersistAsAttachmentsOnTheSavedRow() async throws {
+        // A verse pill carried on `send(references:)` must be encoded onto
+        // the persisted user `MessageRecord` so the sent bubble re-renders
+        // the pill and `ContextAssembler` can expand it for the LLM.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let reference = RecordReference(
+            appletID: "bible", kind: "verseRange", sourceID: "WEB/JHN/3/16",
+            displayLabel: "John 3:16 (WEB)", citation: "John 3:16 (WEB)",
+            snapshot: "For God so loved the world...", id: "ref-1"
+        )
+        let stream = await setup.session.send(
+            text: "What does this teach?", model: setup.model, references: [reference]
+        )
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetch(id: "id-1")
+        #expect(stored?.content == "What does this teach?")
+        #expect(stored?.attachments?.references == [reference])
+    }
+
+    @Test func userMessageWithoutReferencesLeavesAttachmentsColumnNil() async throws {
+        // `encode` returns nil for an empty reference set, so a plain
+        // message must leave `attachmentsJSON` NULL — not an empty JSON blob.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetch(id: "id-1")
+        #expect(stored?.attachmentsJSON == nil)
+        #expect(stored?.attachments == nil)
+    }
+
     @Test func textDeltasAccumulateAndAssistantSavesOnceOnMessageComplete() async throws {
         let setup = try await makeSetup(scripts: [
             [

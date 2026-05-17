@@ -328,6 +328,61 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_font_scale_max_light_xxl", function: function)
     }
 
+    // MARK: - Verse reference pills
+
+    private func composerWithReferences(
+        _ references: [VerseReferencePillModel],
+        text: String = "",
+        theme: SuperTheme.Identifier
+    ) -> some View {
+        FocusHostingChatComposer(
+            text: text,
+            isStreaming: false,
+            modelOptions: models,
+            selectedModelId: "gpt-4o",
+            usedTokens: 1_200,
+            maxTokens: 128_000,
+            references: references
+        )
+        .superTheme(.make(theme))
+        .frame(width: 402)
+    }
+
+    @Test("composer with one verse pill — light")
+    func oneReferencePillLight() {
+        let function = #function
+        let view = composerWithReferences(
+            [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
+            text: "What does this mean?",
+            theme: .light
+        )
+        recordOrCompare(view: view, name: "composer_reference_pill_light", function: function)
+    }
+
+    @Test("composer with one verse pill — dark")
+    func oneReferencePillDark() {
+        let function = #function
+        let view = composerWithReferences(
+            [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
+            text: "What does this mean?",
+            theme: .dark
+        )
+        recordOrCompare(view: view, name: "composer_reference_pill_dark", function: function)
+    }
+
+    @Test("composer with multiple verse pills — light")
+    func multipleReferencePillsLight() {
+        let function = #function
+        let view = composerWithReferences(
+            [
+                VerseReferencePillModel(id: "r1", label: "John 3:16 (WEB)"),
+                VerseReferencePillModel(id: "r2", label: "Romans 8:28 (WEB)"),
+            ],
+            theme: .light
+        )
+        recordOrCompare(view: view, name: "composer_reference_pills_multiple_light", function: function)
+    }
+
     private func verify(
         text: String,
         isStreaming: Bool,
@@ -383,6 +438,7 @@ private struct FocusHostingChatComposer: View {
     var isRecording: Bool = false
     var isMicAvailable: Bool = true
     var progress: Double = 1
+    var references: [VerseReferencePillModel] = []
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -398,7 +454,8 @@ private struct FocusHostingChatComposer: View {
             onSubmit: { _ in },
             isRecording: isRecording,
             isMicAvailable: isMicAvailable,
-            progress: progress
+            progress: progress,
+            references: references
         )
     }
 }

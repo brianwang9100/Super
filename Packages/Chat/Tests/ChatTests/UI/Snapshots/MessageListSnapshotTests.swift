@@ -13,7 +13,7 @@ import Testing
 @MainActor
 struct MessageListSnapshotTests {
     private let items: [MessageList.Item] = [
-        .userBubble(id: "u1", text: "What's the time in Tokyo?"),
+        .userBubble(id: "u1", text: "What's the time in Tokyo?", references: []),
         .assistantText(
             id: "a1",
             thinking: nil,
@@ -29,7 +29,7 @@ struct MessageListSnapshotTests {
                 )
             ]
         ),
-        .userBubble(id: "u2", text: "Thanks!"),
+        .userBubble(id: "u2", text: "Thanks!", references: []),
     ]
 
     @Test("populated list in light theme")
@@ -56,7 +56,7 @@ struct MessageListSnapshotTests {
             isCompacting: false
         )
         let view = MessageList(
-            items: [.userBubble(id: "u1", text: "Hi there")],
+            items: [.userBubble(id: "u1", text: "Hi there", references: [])],
             streamingTail: tail,
             verbosity: .verbose
         )
@@ -69,7 +69,7 @@ struct MessageListSnapshotTests {
     func errorBanner() {
         let function = #function
         let view = MessageList(
-            items: [.userBubble(id: "u1", text: "What now?")],
+            items: [.userBubble(id: "u1", text: "What now?", references: [])],
             error: .init(message: "Authentication failed. Check the API key in Settings.")
         )
         .superTheme(.make(.light))
@@ -85,7 +85,7 @@ struct MessageListSnapshotTests {
     func errorBannerWithAction() {
         let function = #function
         let view = MessageList(
-            items: [.userBubble(id: "u1", text: "Try voice")],
+            items: [.userBubble(id: "u1", text: "Try voice", references: [])],
             error: .init(
                 message: "Voice input needs Speech Recognition and Microphone permissions. Open Settings to enable them.",
                 actionLabel: "Settings",
@@ -101,10 +101,10 @@ struct MessageListSnapshotTests {
     func compactionBanner() {
         let function = #function
         let withBanner: [MessageList.Item] = [
-            .userBubble(id: "u1", text: "older"),
+            .userBubble(id: "u1", text: "older", references: []),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
             .compactionBanner(id: "b1", summary: "User said hello, assistant replied with the time."),
-            .userBubble(id: "u2", text: "follow-up"),
+            .userBubble(id: "u2", text: "follow-up", references: []),
         ]
         let view = MessageList(items: withBanner, verbosity: .verbose)
             .superTheme(.make(.light))
@@ -131,7 +131,7 @@ struct MessageListSnapshotTests {
         """
         let view = MessageList(
             items: [
-                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
             ],
             verbosity: .verbose
@@ -165,7 +165,7 @@ struct MessageListSnapshotTests {
         """
         let view = MessageList(
             items: [
-                .userBubble(id: "u1", text: "Show me a fetch helper"),
+                .userBubble(id: "u1", text: "Show me a fetch helper", references: []),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
             ],
             verbosity: .verbose
@@ -209,10 +209,10 @@ struct MessageListSnapshotTests {
         let function = #function
         let summary = "User asked about **Lisbon** itinerary; assistant replied with `tram 28` and pastry-shop tips."
         let view = MessageList(items: [
-            .userBubble(id: "u1", text: "older"),
+            .userBubble(id: "u1", text: "older", references: []),
             .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: []),
             .compactionBanner(id: "b1", summary: summary),
-            .userBubble(id: "u2", text: "follow-up"),
+            .userBubble(id: "u2", text: "follow-up", references: []),
         ], verbosity: .verbose)
         .superTheme(.make(.light))
         .frame(width: 402, height: 600)
@@ -234,7 +234,7 @@ struct MessageListSnapshotTests {
         - Save Sintra for a day trip
         """
         let view = MessageList(items: [
-            .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+            .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
             .assistantText(
                 id: "a1",
                 thinking: thinking,
@@ -348,7 +348,7 @@ struct MessageListSnapshotTests {
         """
         let view = MessageList(
             items: [
-                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon"),
+                .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
                 .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: []),
             ],
             verbosity: .verbose
@@ -426,7 +426,7 @@ struct MessageListSnapshotTests {
     /// snapshot frame so the initial-bottom-anchor latch can be observed.
     private static let longTranscriptItems: [MessageList.Item] = (1...30).flatMap { i in
         [
-            MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)"),
+            MessageList.Item.userBubble(id: "u\(i)", text: "User question \(i)", references: []),
             MessageList.Item.assistantText(
                 id: "a\(i)",
                 thinking: nil,

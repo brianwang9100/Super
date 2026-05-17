@@ -222,6 +222,7 @@ public actor ChatSession {
     public func send(
         text: String,
         model: LLMModel,
+        references: [RecordReference] = [],
         temperature: Double = 1.0
     ) async -> AsyncStream<ChatEvent> {
         if let command = SlashCommand(rawText: text) {
@@ -236,7 +237,7 @@ public actor ChatSession {
         liveTurn = LiveTurn()
         let subscription = subscribe()
         let task = Task {
-            await self.run(userText: text, model: model, temperature: temperature)
+            await self.run(userText: text, references: references, model: model, temperature: temperature)
             await self.finishLiveTurn()
         }
         currentTask = task
@@ -369,6 +370,7 @@ public actor ChatSession {
 
     private func run(
         userText: String,
+        references: [RecordReference],
         model: LLMModel,
         temperature: Double
     ) async {
@@ -382,7 +384,10 @@ public actor ChatSession {
                 content: userText,
                 toolCallId: nil,
                 createdAt: clock.now(),
-                tokenCount: nil
+                tokenCount: nil,
+                // `encode` returns nil for an empty set, so a message
+                // without verse pills leaves the column NULL.
+                attachmentsJSON: MessageRecord.encode(MessageAttachments(references: references))
             )
             try await messageRepository.save(userMessage)
             broadcast(.userMessageSaved(userMessage))

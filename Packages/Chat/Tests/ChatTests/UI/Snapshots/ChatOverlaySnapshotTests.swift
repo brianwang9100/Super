@@ -199,7 +199,7 @@ struct ChatOverlaySnapshotTests {
 // suites need them.
 
 private struct OverlayNoopDriver: ChatSessionDriver {
-    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent> {
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in continuation.finish() }
     }
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {

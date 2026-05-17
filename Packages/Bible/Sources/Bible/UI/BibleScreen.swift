@@ -7,11 +7,16 @@ import SwiftUI
 /// All chapter and selection state lives in `BibleScreenViewModel`; the view
 /// reads it and renders. The chapter text loads synchronously, so a step
 /// repaints at once — only the persisted reading position is written
-/// asynchronously. Tapping verses drives the action sheet; the `+` button and
-/// the action sheet's chat actions are deferred stubs that raise a toast.
+/// asynchronously. Tapping verses drives the action sheet, whose chat
+/// actions publish the selection to the `SuperEventBus` for the Chat
+/// composer; the `+` whole-chapter button is still a deferred stub.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Cross-applet event bus, injected by the shell. `nil` in previews
+    /// and isolated tests — the chat hand-off then falls back to the
+    /// "coming soon" toast.
+    @Environment(\.superEventBus) private var eventBus
     private let viewModel: BibleScreenViewModel
 
     /// How sheets, the action sheet, and the toast animate in and out — a
@@ -53,6 +58,25 @@ public struct BibleScreen: View {
         .task { await viewModel.load() }
     }
 
+    /// Hand the current verse selection to the Chat composer over the
+    /// `SuperEventBus`. `startNew` picks "New chat" vs. "Add to chat".
+    /// Falls back to the "coming soon" toast when no bus is wired.
+    private func addSelectionToChat(startNew: Bool) {
+        guard let reference = viewModel.makeVerseReference() else { return }
+        guard let eventBus else {
+            withAnimation(motion.animation) { viewModel.presentChatComingSoon() }
+            return
+        }
+        Task {
+            await eventBus.publish(
+                .recordAddedToChat(reference: reference, startNewConversation: startNew)
+            )
+        }
+        withAnimation(motion.animation) {
+            viewModel.confirmAddedToChat(citation: reference.citation)
+        }
+    }
+
     private var navBar: some View {
         BibleNavBar(
             bookName: viewModel.bookName,
@@ -81,8 +105,8 @@ public struct BibleScreen: View {
                 onHighlight: { color in withAnimation(motion.animation) { viewModel.applyHighlight(color) } },
                 onClearHighlight: { withAnimation(motion.animation) { viewModel.clearHighlight() } },
                 onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
-                onAddToChat: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } },
-                onNewChat: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } },
+                onAddToChat: { addSelectionToChat(startNew: false) },
+                onNewChat: { addSelectionToChat(startNew: true) },
                 onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
             .padding(.bottom, bottomReserve)

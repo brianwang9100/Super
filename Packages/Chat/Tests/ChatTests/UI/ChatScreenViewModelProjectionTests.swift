@@ -22,7 +22,7 @@ struct ChatScreenViewModelProjectionTests {
         )
 
         #expect(items.count == 2)
-        if case .userBubble(let id, let text) = items[0] {
+        if case .userBubble(let id, let text, _) = items[0] {
             #expect(id == "u1")
             #expect(text == "hello")
         } else {
@@ -176,7 +176,7 @@ struct ChatScreenViewModelProjectionTests {
             return
         }
         #expect(summary == "Earlier turn including a tool call.")
-        if case .userBubble(let id, _) = items[3] {
+        if case .userBubble(let id, _, _) = items[3] {
             #expect(id == "u2")
         } else {
             Issue.record("expected user bubble after the banner")

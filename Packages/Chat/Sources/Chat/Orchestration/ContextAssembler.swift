@@ -158,7 +158,7 @@ public struct ContextAssembler: Sendable {
             case .system:
                 llmMessages.append(LLMMessage(role: .system, text: record.content))
             case .user:
-                llmMessages.append(LLMMessage(role: .user, text: record.content))
+                llmMessages.append(LLMMessage(role: .user, text: Self.expandedUserText(for: record)))
             case .assistant:
                 var blocks: [LLMContent] = []
                 if !record.content.isEmpty {
@@ -180,5 +180,22 @@ public struct ContextAssembler: Sendable {
             }
         }
         return llmMessages
+    }
+
+    /// A user row's text with any verse-reference attachments prepended as
+    /// citation + verbatim snapshot blocks, so the model is handed exact
+    /// scripture rather than asked to recall it (BYOK small/local models
+    /// misquote translations). With no attachments this returns
+    /// `record.content` unchanged; the on-disk `content` always stays the
+    /// user's typed text only — the expansion exists only in the prompt.
+    /// When the typed text is empty (a pill-only message) the result is
+    /// just the reference blocks.
+    static func expandedUserText(for record: MessageRecord) -> String {
+        guard let references = record.attachments?.references, !references.isEmpty else {
+            return record.content
+        }
+        let blocks = references.map { "[Bible — \($0.citation)]\n\($0.snapshot)" }
+        let typed = record.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (typed.isEmpty ? blocks : blocks + [typed]).joined(separator: "\n\n")
     }
 }

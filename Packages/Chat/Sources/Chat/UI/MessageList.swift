@@ -17,7 +17,7 @@ public struct MessageList: View {
     /// inside its body. Tool calls render alongside their parent assistant
     /// row as a single sequence of blocks.
     public enum Item: Identifiable, Sendable, Equatable {
-        case userBubble(id: String, text: String)
+        case userBubble(id: String, text: String, references: [VerseReferencePillModel])
         case assistantText(
             id: String,
             thinking: String?,
@@ -29,7 +29,7 @@ public struct MessageList: View {
 
         public var id: String {
             switch self {
-            case .userBubble(let id, _),
+            case .userBubble(let id, _, _),
                  .assistantText(let id, _, _, _, _),
                  .compactionBanner(let id, _):
                 return id
@@ -332,8 +332,8 @@ public struct MessageList: View {
     @ViewBuilder
     private func row(for item: Item) -> some View {
         switch item {
-        case .userBubble(_, let text):
-            UserBubble(text: text)
+        case .userBubble(_, let text, let references):
+            UserBubble(text: text, references: references)
         case .assistantText(_, let thinking, let thinkingDurationMs, let text, let toolCalls):
             AssistantMessage(
                 thinking: thinking,

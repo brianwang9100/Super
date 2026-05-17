@@ -36,6 +36,12 @@ public final class ChatScreenViewModel {
     /// Composer text. Two-way bound from the view.
     public var composerText: String = ""
 
+    /// Verse-reference pills attached in the composer, pending send.
+    /// Drained from the shell-owned `ChatReferenceInbox` via
+    /// `adoptPendingReferences()` and folded into the outgoing message by
+    /// `send(_:)`.
+    public private(set) var pendingReferences: [RecordReference] = []
+
     /// Active model id selected in the model pill. Falls back to the
     /// first available model if nil. The didSet hook fires
     /// `onModelSelected` so the host can promote the matching provider
@@ -111,6 +117,10 @@ public final class ChatScreenViewModel {
     private let checkpointRepository: any CompactionCheckpointRepository
     private let conversationRepository: (any ConversationRepository)?
     private let titleGenerator: TitleGenerator?
+    /// Shell-owned inbox of cross-applet references awaiting a composer.
+    /// Optional so previews, snapshot tests, and view-model unit tests
+    /// without cross-applet wiring keep working.
+    private let referenceInbox: ChatReferenceInbox?
 
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
@@ -148,7 +158,8 @@ public final class ChatScreenViewModel {
         verbosity: ChatVerbosity = .simple,
         conversationRepository: (any ConversationRepository)? = nil,
         titleGenerator: TitleGenerator? = nil,
-        voice: VoiceInputController? = nil
+        voice: VoiceInputController? = nil,
+        referenceInbox: ChatReferenceInbox? = nil
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -158,6 +169,7 @@ public final class ChatScreenViewModel {
         self.checkpointRepository = checkpointRepository
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
+        self.referenceInbox = referenceInbox
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
             ModelPill.Option(
@@ -338,18 +350,51 @@ public final class ChatScreenViewModel {
     /// has a different ergonomic, special-case it here.
     public func send(_ rawText: String) {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isStreaming else { return }
+        guard !isStreaming else { return }
+        let isSlashCommand = SlashCommand(rawText: text) != nil
+        // A slash command never becomes a user message, so it carries no
+        // verse pills; a regular send consumes whatever is attached.
+        let references = isSlashCommand ? [] : pendingReferences
+        // A message may be pills-only — empty typed text is fine as long
+        // as at least one verse is attached.
+        guard !text.isEmpty || !references.isEmpty else { return }
         guard let model = activeModel else {
             error = .noModelConfigured { [weak self] in
                 self?.onAddModelRequested?()
             }
             return
         }
-        if SlashCommand(rawText: text) == nil {
+        if !isSlashCommand {
             composerText = ""
+            pendingReferences = []
         }
         error = nil
-        startStreaming(text: text, model: model)
+        startStreaming(text: text, references: references, model: model)
+    }
+
+    /// Drain the shell-owned `ChatReferenceInbox` into `pendingReferences`,
+    /// deduping by reference id so a doubled bus delivery doesn't double a
+    /// pill. Called by `ChatScreen` on mount and whenever the inbox grows.
+    public func adoptPendingReferences() {
+        guard let referenceInbox else { return }
+        var seenIDs = Set(pendingReferences.map(\.id))
+        // `insert(_:).inserted` dedupes against both the already-attached
+        // pills and repeats within this drained batch.
+        for reference in referenceInbox.drainPending() where seenIDs.insert(reference.id).inserted {
+            pendingReferences.append(reference)
+        }
+    }
+
+    /// Remove an attached verse pill (composer × button) before send.
+    public func removeReference(id: String) {
+        pendingReferences.removeAll { $0.id == id }
+    }
+
+    /// Count of references waiting in the shell-owned inbox. The view
+    /// observes this — the inbox is `@Observable` — to know when to call
+    /// `adoptPendingReferences()` for a verse added while already mounted.
+    public var inboxPendingCount: Int {
+        referenceInbox?.pending.count ?? 0
     }
 
     /// Cancel the in-flight turn (composer stop button). Routes through
@@ -494,15 +539,17 @@ public final class ChatScreenViewModel {
         guard let lastUser = items.reversed().first(where: {
             if case .userBubble = $0 { return true }
             return false
-        }), case .userBubble(_, let text) = lastUser, let model = activeModel else {
+        }), case .userBubble(_, let text, _) = lastUser, let model = activeModel else {
             error = nil
             return
         }
         error = nil
-        startStreaming(text: text, model: model)
+        // Retry re-sends the message text only — the prior message's verse
+        // pills stay on its already-persisted row, untouched.
+        startStreaming(text: text, references: [], model: model)
     }
 
-    private func startStreaming(text: String, model: LLMModel) {
+    private func startStreaming(text: String, references: [RecordReference], model: LLMModel) {
         isStreaming = true
         streamingTail = MessageList.StreamingState(
             thinking: "",
@@ -512,12 +559,12 @@ public final class ChatScreenViewModel {
         )
         streamTask = Task { [weak self] in
             guard let self else { return }
-            await self.run(text: text, model: model)
+            await self.run(text: text, references: references, model: model)
         }
     }
 
-    private func run(text: String, model: LLMModel) async {
-        let stream = await driver.send(text: text, model: model)
+    private func run(text: String, references: [RecordReference], model: LLMModel) async {
+        let stream = await driver.send(text: text, references: references, model: model)
         await consume(stream: stream)
     }
 
@@ -730,7 +777,7 @@ public final class ChatScreenViewModel {
     /// half of the first exchange.
     private func lastPersistedUserText() -> String? {
         for item in items.reversed() {
-            if case .userBubble(_, let text) = item { return text }
+            if case .userBubble(_, let text, _) = item { return text }
         }
         return nil
     }
@@ -804,7 +851,13 @@ public final class ChatScreenViewModel {
 
             switch message.role {
             case .user:
-                items.append(.userBubble(id: message.id, text: message.content))
+                items.append(.userBubble(
+                    id: message.id,
+                    text: message.content,
+                    references: (message.attachments?.references ?? []).map {
+                        VerseReferencePillModel(id: $0.id, label: $0.displayLabel)
+                    }
+                ))
             case .assistant:
                 let calls = (toolCallsByMessage[message.id] ?? []).map { call in
                     MessageList.ToolCallItem(
@@ -876,7 +929,11 @@ public final class ChatScreenViewModel {
 /// LLM provider. The production conformer lives in
 /// `ChatSessionDriver+Adapter.swift`.
 public protocol ChatSessionDriver: Sendable {
-    func send(text: String, model: LLMModel) async -> AsyncStream<ChatEvent>
+    /// Submit a user turn. `references` carries any verse-reference pills
+    /// attached in the composer; the underlying session persists them on
+    /// the user `MessageRecord` and `ContextAssembler` expands them into
+    /// the prompt.
+    func send(text: String, references: [RecordReference], model: LLMModel) async -> AsyncStream<ChatEvent>
 
     /// Attach to the underlying session's in-flight turn (if any). The
     /// view model calls this on `load()` so a re-mounted screen for a

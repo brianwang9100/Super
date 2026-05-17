@@ -48,6 +48,7 @@ public final class BibleScreenViewModel {
     private let highlightRepository: (any BibleHighlightRepository)?
     private let clock: any Clock
     private let clipboard: any ClipboardWriter
+    private let idGenerator: any IDGenerator
 
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
@@ -70,6 +71,7 @@ public final class BibleScreenViewModel {
         highlightRepository: (any BibleHighlightRepository)? = nil,
         clock: any Clock = SystemClock(),
         clipboard: any ClipboardWriter = SystemClipboard(),
+        idGenerator: any IDGenerator = UUIDGenerator(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition
     ) {
         self.textLoader = textLoader
@@ -78,6 +80,7 @@ public final class BibleScreenViewModel {
         self.highlightRepository = highlightRepository
         self.clock = clock
         self.clipboard = clipboard
+        self.idGenerator = idGenerator
         self.position = initialPosition
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
     }
@@ -278,9 +281,46 @@ public final class BibleScreenViewModel {
         clearSelection()
     }
 
-    /// Stand-in for the deferred chat hand-off: the `+` button, the floating
-    /// bubble, and the action sheet's two chat rows all land here, raising a
-    /// "coming soon" toast instead of attaching the passage to a chat.
+    /// Build a `RecordReference` for the current verse selection — its
+    /// citation, translation, and a verbatim text snapshot — for hand-off
+    /// to the Chat composer. Returns nil when nothing is selected or the
+    /// chapter text is unavailable. The view model stays bus-agnostic;
+    /// `BibleScreen` publishes the returned reference.
+    public func makeVerseReference() -> RecordReference? {
+        let verses = selectedVerses.sorted()
+        guard !verses.isEmpty else { return nil }
+        let texts = verseTextsByNumber()
+        let snapshot = verses.compactMap { texts[$0] }.joined(separator: " ")
+        guard !snapshot.isEmpty else { return nil }
+        let citation = BibleCitationFormatter.cite(
+            bookName: bookName, chapterNumber: position.chapterNumber, verses: verses
+        )
+        // The translation is part of the user-facing label and citation —
+        // a verse's exact wording is translation-specific.
+        let label = "\(citation) (\(translation.rawValue))"
+        return RecordReference(
+            appletID: BibleApplet.appletID,
+            kind: "verseRange",
+            sourceID: "\(translation.rawValue)/\(position.bookId)/\(position.chapterNumber)/"
+                + verses.map(String.init).joined(separator: ","),
+            displayLabel: label,
+            citation: label,
+            snapshot: snapshot,
+            id: idGenerator.nextID()
+        )
+    }
+
+    /// Confirm a verse selection was handed to Chat: show a toast and
+    /// leave selection mode. Mirrors `copySelection()`'s cleanup.
+    public func confirmAddedToChat(citation: String) {
+        toast = "Added \(citation) to chat."
+        clearSelection()
+    }
+
+    /// Stand-in for the still-deferred whole-chapter hand-off: the `+` nav
+    /// button lands here, raising a "coming soon" toast. The action
+    /// sheet's verse-selection chat rows now publish a real reference —
+    /// see `BibleScreen.addSelectionToChat`.
     public func presentChatComingSoon() {
         toast = "Chat integration ships in a later update."
         clearSelection()

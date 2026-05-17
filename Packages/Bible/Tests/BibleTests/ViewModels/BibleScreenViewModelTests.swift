@@ -482,4 +482,60 @@ struct BibleScreenViewModelTests {
         await viewModel._waitForPendingHighlightWrite()
         #expect(viewModel.toast == "Couldn't save the highlight.")
     }
+
+    // MARK: - Chat hand-off
+
+    @Test("makeVerseReference returns nil when nothing is selected")
+    func makeVerseReferenceNilWhenEmpty() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.makeVerseReference() == nil)
+    }
+
+    @Test("makeVerseReference carries the citation, applet id, and verse text")
+    func makeVerseReferenceForSingleVerse() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2, WEB
+        viewModel.toggleVerse(9)
+
+        let reference = viewModel.makeVerseReference()
+        #expect(reference?.appletID == "bible")
+        #expect(reference?.kind == "verseRange")
+        #expect(reference?.citation == "1 Peter 2:9 (WEB)")
+        #expect(reference?.displayLabel == "1 Peter 2:9 (WEB)")
+        #expect(reference?.snapshot.isEmpty == false)
+    }
+
+    @Test("makeVerseReference compresses a discontiguous selection in the citation")
+    func makeVerseReferenceForDiscontiguousSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        for verse in [9, 4, 6, 5] { viewModel.toggleVerse(verse) }
+
+        #expect(viewModel.makeVerseReference()?.citation == "1 Peter 2:4-6, 9 (WEB)")
+    }
+
+    @Test("makeVerseReference reflects the active translation")
+    func makeVerseReferenceUsesActiveTranslation() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.selectTranslation(.kjv)
+        viewModel.toggleVerse(9)
+
+        let reference = viewModel.makeVerseReference()
+        #expect(reference?.citation == "1 Peter 2:9 (KJV)")
+        #expect(reference?.sourceID.hasPrefix("KJV/") == true)
+    }
+
+    @Test("confirmAddedToChat shows a toast and leaves selection mode")
+    func confirmAddedToChatShowsToastAndClears() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+
+        viewModel.confirmAddedToChat(citation: "1 Peter 2:9 (WEB)")
+
+        #expect(viewModel.toast == "Added 1 Peter 2:9 (WEB) to chat.")
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
 }
