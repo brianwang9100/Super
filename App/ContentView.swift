@@ -243,7 +243,7 @@ struct AppShell: View {
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+                                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                                         chatState = .minimized
                                     }
                                 }
@@ -315,7 +315,7 @@ struct AppShell: View {
                         // collapses the chat to minimized so the user
                         // can interact with the applet. They can drag
                         // the pill up to climb back to semi/expanded.
-                        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+                        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                             chatState = .minimized
                         }
                     }
@@ -588,7 +588,7 @@ struct AppShell: View {
         // Selecting a chat is an intent to focus on chat — snap the
         // overlay to expanded if the user came from minimized/semi over
         // an applet backdrop.
-        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             chatState = .expanded
         }
         guard id != activeConversationId else { return }
@@ -606,7 +606,7 @@ struct AppShell: View {
     private func startNewChat() async {
         sidebarOpen = false
         // New Chat is an intent to focus on chat — snap to expanded.
-        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             chatState = .expanded
         }
         let now = Date()
