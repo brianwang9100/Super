@@ -419,23 +419,62 @@ public struct ChatScreen: View {
         // with zero items. `MessageList` owns the `ErrorBanner`, so an
         // active error in the empty branch would otherwise have nowhere
         // to render and the user would still see a silent failure.
-        if viewModel.items.isEmpty && viewModel.streamingTail == nil && viewModel.error == nil {
+        //
+        // Reads `viewModel.isStreaming` (not `viewModel.streamingTail`)
+        // for the empty-state guard so per-token deltas don't invalidate
+        // `ChatScreen.body`. The view-model invariant we rely on:
+        // `streamingTail != nil ⇔ isStreaming == true` from any observer's
+        // perspective. The view model writes both flags inside the same
+        // synchronous `@MainActor` turn whenever it enters or leaves a
+        // streaming window (`startStreaming`, `attachToLiveTurnIfAny`,
+        // and the `consume` cleanup all do), so SwiftUI's body evaluation
+        // cannot observe one without the other — the write order between
+        // them is therefore not load-bearing. `_setSnapshotState`
+        // preconditions the pair so test fixtures can't violate it
+        // either.
+        if viewModel.items.isEmpty && !viewModel.isStreaming && viewModel.error == nil {
             ChatEmptyState(clock: clock, calendar: calendar)
         } else {
-            MessageList(
-                items: viewModel.items,
-                streamingTail: viewModel.streamingTail,
-                error: viewModel.error,
+            // The streaming tail observation is confined to
+            // `TranscriptObserver` so token-delta writes only invalidate
+            // the transcript leaf — not `ChatScreen.body` (which would
+            // re-run every interpolation against `progress`) nor the
+            // overlay's geometry math (which derives from `metrics`,
+            // not the tail). The `.id(conversationId)` re-mounts the
+            // observer + its child `MessageList` per conversation so
+            // SwiftUI discards the prior `@State` (scroll offset etc.).
+            TranscriptObserver(
+                viewModel: viewModel,
                 verbosity: viewModel.verbosity,
                 onRetry: viewModel.retry,
                 onContentTap: dismissKeyboard
             )
-            // Re-mount the transcript per conversation so SwiftUI
-            // discards the prior `MessageList`'s `@State`. Without this,
-            // a stale scroll offset from a longer chat survives into a
-            // shorter one and lands past the new transcript's bottom —
-            // the viewport reads as empty above the composer.
             .id(viewModel.conversationId)
+        }
+    }
+
+    /// Owns the `viewModel.streamingTail` read so streaming token deltas
+    /// invalidate only this view (and its `MessageList` child), not
+    /// `ChatScreen.body` or the overlay's geometry. The view-body
+    /// dependencies are the streaming tail, the persisted-items list,
+    /// and the error banner — i.e. exactly the inputs `MessageList`
+    /// already consumes — so this observer is effectively a thin
+    /// "transcript projection" of the view model.
+    private struct TranscriptObserver: View {
+        @Bindable var viewModel: ChatScreenViewModel
+        let verbosity: ChatVerbosity
+        let onRetry: () -> Void
+        let onContentTap: () -> Void
+
+        var body: some View {
+            MessageList(
+                items: viewModel.items,
+                streamingTail: viewModel.streamingTail,
+                error: viewModel.error,
+                verbosity: verbosity,
+                onRetry: onRetry,
+                onContentTap: onContentTap
+            )
         }
     }
 

@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// The three settled positions Chat can rest at when the shell is hosting
@@ -80,12 +81,21 @@ extension ChatPresentationState {
         return scored.min(by: { $0.delta < $1.delta })?.state ?? .semiExpanded
     }
 
+    /// Vertical predicted-end translation (in points) above which a flick
+    /// on release jumps straight to the endpoint anchor in the flick's
+    /// direction. Compared against `predictedEndTranslation.height -
+    /// translation.height` — SwiftUI's projection of how much further the
+    /// gesture would travel given current velocity, which is a friendlier
+    /// proxy than a raw points-per-second figure because the gesture
+    /// callback hands it to us directly.
+    public static let skipVelocity: CGFloat = 1_200
+
     /// Snap target on drag release. Combines the live release height with a
     /// velocity bias so:
     ///
-    /// - A hard flick past ``ChatOverlayAnimation/skipVelocity`` jumps to
-    ///   the endpoint anchor in the flick's direction (positive velocity =
-    ///   collapsing toward `.minimized`).
+    /// - A hard flick past ``skipVelocity`` jumps to the endpoint anchor in
+    ///   the flick's direction (positive velocity = collapsing toward
+    ///   `.minimized`).
     /// - A softer release projects the height forward by `velocity` and
     ///   snaps to the nearest anchor for that projected height, so a
     ///   medium drag with momentum settles past the geometric midpoint.
@@ -103,7 +113,7 @@ extension ChatPresentationState {
         containerHeight: CGFloat,
         bottomSafeArea: CGFloat = 0
     ) -> ChatPresentationState {
-        if abs(velocity) >= ChatOverlayAnimation.skipVelocity {
+        if abs(velocity) >= Self.skipVelocity {
             return velocity > 0 ? .minimized : .expanded
         }
         let projectedHeight = currentHeight - velocity
@@ -194,31 +204,10 @@ extension ChatPresentationState {
     }
 }
 
-// MARK: - Animation tokens
+// MARK: - Migration notes
 
-/// Spring + crossfade tokens used by the chat-overlay surface. Match the
-/// 2026-05-13 design spec (`/tmp/super-design/super/project/ds/chat.jsx`):
-/// `cubic-bezier(0.34, 1.4, 0.5, 1)` over 380ms.
-public enum ChatOverlayAnimation {
-    /// The default snap-to-anchor spring on drag release. Lifts up on
-    /// overshoot for a soft Apple-style settle.
-    public static let snap: Animation = .timingCurve(0.34, 1.4, 0.5, 1, duration: 0.38)
-
-    /// Reduce-Motion fallback — replaces the spring with a short crossfade.
-    public static let reducedMotion: Animation = .easeInOut(duration: 0.2)
-
-    /// Returns the appropriate animation given the environment's
-    /// `accessibilityReduceMotion` value.
-    public static func transition(reduceMotion: Bool) -> Animation {
-        reduceMotion ? reducedMotion : snap
-    }
-
-    /// Vertical predicted-end translation (in points) above which a flick
-    /// on release jumps straight to the endpoint anchor in the flick's
-    /// direction. Compared against `predictedEndTranslation.height -
-    /// translation.height` — SwiftUI's projection of how much further the
-    /// gesture would travel given current velocity, which is a friendlier
-    /// proxy than a raw points-per-second figure because the gesture
-    /// callback hands it to us directly.
-    public static let skipVelocity: CGFloat = 1_200
-}
+// Spring/crossfade animation tokens previously declared here as
+// `ChatOverlayAnimation` now live in `Core.SuperMotion` so other applets
+// adopting the same bottom-sheet morph can reuse them; the chat-specific
+// `skipVelocity` (a snap-target-selection threshold, not an animation
+// token) is hoisted onto ``ChatPresentationState`` itself above.

@@ -63,7 +63,7 @@ struct ChatPresentationStateTests {
     func hardDownwardFlickJumpsToMinimized() {
         let target = ChatPresentationState.snapTarget(
             currentHeight: viewport - 40, // basically expanded
-            velocity: ChatOverlayAnimation.skipVelocity + 100, // downward = collapsing
+            velocity: ChatPresentationState.skipVelocity + 100, // downward = collapsing
             containerHeight: viewport
         )
         #expect(target == .minimized)
@@ -73,7 +73,7 @@ struct ChatPresentationStateTests {
     func hardUpwardFlickJumpsToExpanded() {
         let target = ChatPresentationState.snapTarget(
             currentHeight: 80, // basically minimized
-            velocity: -(ChatOverlayAnimation.skipVelocity + 100), // upward = expanding
+            velocity: -(ChatPresentationState.skipVelocity + 100), // upward = expanding
             containerHeight: viewport
         )
         #expect(target == .expanded)
