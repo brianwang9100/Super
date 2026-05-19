@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// The shell's chat-overlay layer. Hosts a single morphing `ChatScreen`
@@ -213,7 +214,7 @@ public struct ChatOverlay: View {
             containerHeight: containerH,
             bottomSafeArea: safeAreaBottom
         )
-        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             settledState = snap
             dragHeight = nil
             dragStartHeight = nil
@@ -225,7 +226,7 @@ public struct ChatOverlay: View {
         // prior `MinimizedChatPill.onTap`. Only fires when the chat is in
         // pill mode (the surface-tap overlay only activates at low
         // progress; see `ChatScreen.surfaceTapOverlay`).
-        withAnimation(ChatOverlayAnimation.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             settledState = .semiExpanded
         }
     }
