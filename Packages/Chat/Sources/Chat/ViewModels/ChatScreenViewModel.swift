@@ -293,6 +293,16 @@ public final class ChatScreenViewModel {
         error: MessageList.ErrorState? = nil,
         isStreaming: Bool = false
     ) {
+        // The view-model invariant — `streamingTail != nil ⇔ isStreaming
+        // == true` — is what `ChatScreen`'s empty-state guard relies on
+        // (it reads `isStreaming` to decide whether to show the greeting
+        // vs. the transcript). Pin the pair here so a fixture that primes
+        // a live tail without flipping `isStreaming` fails fast instead
+        // of silently rendering the empty state during a streaming turn.
+        precondition(
+            (streamingTail != nil) == isStreaming,
+            "streamingTail and isStreaming must agree; got tail=\(streamingTail != nil), isStreaming=\(isStreaming)"
+        )
         self.items = items
         self.usedTokens = usedTokens
         self.streamingTail = streamingTail
