@@ -133,44 +133,47 @@ public struct ChatOverlay: View {
             )
         )
 
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            ChatScreen(
-                viewModel: viewModel,
-                progress: metrics.progress,
-                onManageModels: onManageModels,
-                onSurfaceTapped: { surfaceTapped() },
-                onDragChanged: { translation in
-                    updateDrag(
-                        translation: translation,
-                        liveSettledH: metrics.settledHeight,
-                        minH: metrics.minHeight,
-                        maxH: metrics.maxHeight
-                    )
-                },
-                onDragEnded: { translation, predicted in
-                    endDrag(
-                        translation: translation,
-                        predicted: predicted,
-                        containerH: geo.size.height,
-                        safeAreaBottom: geo.safeAreaInsets.bottom
-                    )
-                }
-            )
-            // Bottom-align: if `renderedHeight` is ever shorter than the
-            // surface's intrinsic content (handle + composer capsule —
-            // possible at the minimized anchor on a device with no home
-            // indicator), the overflow clips from the top (transcript)
-            // rather than spilling the composer past the bottom edge.
-            .frame(height: metrics.renderedHeight, alignment: .bottom)
-        }
-        // The surface lives in the keyboard-aware region and is bottom-
-        // pinned by the `Spacer` above, so its bottom edge tracks the
-        // keyboard's top edge (or the screen bottom when no keyboard is
-        // up). The inner reader is keyboard-free, so this frame is
-        // top-pinned to the screen top — the chat header stays put while
-        // only the surface's height yields to the keyboard.
-        .frame(width: geo.size.width, height: keyboardAwareHeight)
+        // The chat surface's position is *declared* — `alignment: .bottom`
+        // on the outer frame pins ChatScreen to the bottom edge of the
+        // keyboard-aware region, no `Spacer` slack arithmetic. The bottom
+        // pin is a layout fact, not a side effect of `containerH - effectiveH`
+        // happening to land at zero. The motivating regression (PR #65,
+        // user-reported as: "submit a message, then minimize/expand while
+        // it streams, and the whole composer slides off the bottom of the
+        // screen"): when the slack expression drifted mid-stream, the
+        // surface silently translated off-screen. With a declared anchor,
+        // that failure mode is structurally impossible — there is no
+        // arithmetic for the position.
+        //
+        // The inner frame is `renderedHeight` tall with `alignment: .bottom`
+        // so ChatScreen's intrinsic content (handle + composer capsule)
+        // clips from the top (transcript) when the rendered height dips
+        // below the intrinsic minimum, rather than spilling the composer
+        // past the bottom edge.
+        ChatScreen(
+            viewModel: viewModel,
+            progress: metrics.progress,
+            onManageModels: onManageModels,
+            onSurfaceTapped: { surfaceTapped() },
+            onDragChanged: { translation in
+                updateDrag(
+                    translation: translation,
+                    liveSettledH: metrics.settledHeight,
+                    minH: metrics.minHeight,
+                    maxH: metrics.maxHeight
+                )
+            },
+            onDragEnded: { translation, predicted in
+                endDrag(
+                    translation: translation,
+                    predicted: predicted,
+                    containerH: geo.size.height,
+                    safeAreaBottom: geo.safeAreaInsets.bottom
+                )
+            }
+        )
+        .frame(height: metrics.renderedHeight, alignment: .bottom)
+        .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
     }
 
