@@ -111,77 +111,70 @@ public struct ChatOverlay: View {
         in geo: GeometryProxy,
         keyboardAwareHeight: CGFloat
     ) -> some View {
-        // `geo` is the keyboard-free inner reader (see `body`): its size
-        // and insets are pure device geometry, so the anchor math below
-        // never moves when the software keyboard toggles. `progress` —
-        // which gates editor interactivity and every morph interpolation —
-        // is therefore stable across keyboard show/hide.
-        let safeAreaBottom = geo.safeAreaInsets.bottom
-        let containerH = geo.size.height
-        let minH = ChatPresentationState.minimized.height(in: containerH, bottomSafeArea: safeAreaBottom)
-        let maxH = ChatPresentationState.expanded.height(in: containerH, bottomSafeArea: safeAreaBottom)
-        let settledH = settledState.height(in: containerH, bottomSafeArea: safeAreaBottom)
-        // Frozen height (snapshot tests) wins over the in-flight drag
-        // height, which wins over the settled anchor's height.
-        let rawH = frozenDragHeight ?? dragHeight ?? settledH
-        let effectiveH = min(maxH, max(minH, rawH))
-        let progress = ChatPresentationState.progress(
-            forHeight: effectiveH,
-            in: containerH,
-            bottomSafeArea: safeAreaBottom
-        )
-        // On-screen height: the keyboard-free `effectiveH` clamped to the
-        // space above the keyboard. This is the *only* place the keyboard
-        // enters the layout — it shortens the rendered surface so the
-        // composer stays above the keyboard, while the anchor math and
-        // `progress` above remain keyboard-independent. The surface is
-        // bottom-pinned (the `Spacer` below), so the composer always rests
-        // exactly on the keyboard's top edge — or the screen bottom when
-        // no keyboard is up — and can never be pushed off-screen.
-        let renderedHeight = ChatPresentationState.renderedSurfaceHeight(
-            effectiveHeight: effectiveH,
-            keyboardAwareHeight: keyboardAwareHeight
+        // The resolver consolidates every anchor/height/progress value
+        // into one typed value — `metrics` — so the view layer is a
+        // projection rather than an inline computation. The three input
+        // categories are separated: `device` (keyboard-free, from `geo`),
+        // `keyboard` (the only seam the software keyboard enters at),
+        // `interaction` (the settled anchor and any live drag/freeze
+        // override). See `ChatOverlayMetrics` for the input/output contract.
+        let metrics = ChatOverlayMetrics(
+            device: .init(
+                containerHeight: geo.size.height,
+                bottomSafeArea: geo.safeAreaInsets.bottom
+            ),
+            keyboard: .init(availableHeight: keyboardAwareHeight),
+            interaction: .init(
+                settledState: settledState,
+                // Frozen height (snapshot tests) wins over the in-flight
+                // drag height — both are caller-collapsed before the
+                // resolver sees them.
+                dragHeight: frozenDragHeight ?? dragHeight
+            )
         )
 
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            ChatScreen(
-                viewModel: viewModel,
-                progress: progress,
-                onManageModels: onManageModels,
-                onSurfaceTapped: { surfaceTapped() },
-                onDragChanged: { translation in
-                    updateDrag(
-                        translation: translation,
-                        liveSettledH: settledH,
-                        minH: minH,
-                        maxH: maxH
-                    )
-                },
-                onDragEnded: { translation, predicted in
-                    endDrag(
-                        translation: translation,
-                        predicted: predicted,
-                        containerH: containerH,
-                        safeAreaBottom: safeAreaBottom
-                    )
-                }
-            )
-            // Bottom-align: if `renderedHeight` is ever shorter than the
-            // surface's intrinsic content (handle + composer capsule —
-            // possible at the minimized anchor on a device with no home
-            // indicator), the overflow clips from the top (transcript)
-            // rather than spilling the composer past the bottom edge.
-            .frame(height: renderedHeight, alignment: .bottom)
-        }
-        // The surface lives in the keyboard-aware region and is bottom-
-        // pinned by the `Spacer` above, so its bottom edge tracks the
-        // keyboard's top edge (or the screen bottom when no keyboard is
-        // up). The inner reader is keyboard-free, so this frame is
-        // top-pinned to the screen top — the chat header stays put while
-        // only the surface's height yields to the keyboard.
-        .frame(width: geo.size.width, height: keyboardAwareHeight)
-        .preference(key: ChatProgressPreferenceKey.self, value: progress)
+        // The chat surface's position is *declared* — `alignment: .bottom`
+        // on the outer frame pins ChatScreen to the bottom edge of the
+        // keyboard-aware region, no `Spacer` slack arithmetic. The bottom
+        // pin is a layout fact, not a side effect of `containerH - effectiveH`
+        // happening to land at zero. The motivating regression (PR #65,
+        // user-reported as: "submit a message, then minimize/expand while
+        // it streams, and the whole composer slides off the bottom of the
+        // screen"): when the slack expression drifted mid-stream, the
+        // surface silently translated off-screen. With a declared anchor,
+        // that failure mode is structurally impossible — there is no
+        // arithmetic for the position.
+        //
+        // The inner frame is `renderedHeight` tall with `alignment: .bottom`
+        // so ChatScreen's intrinsic content (handle + composer capsule)
+        // clips from the top (transcript) when the rendered height dips
+        // below the intrinsic minimum, rather than spilling the composer
+        // past the bottom edge.
+        ChatScreen(
+            viewModel: viewModel,
+            progress: metrics.progress,
+            onManageModels: onManageModels,
+            onSurfaceTapped: { surfaceTapped() },
+            onDragChanged: { translation in
+                updateDrag(
+                    translation: translation,
+                    liveSettledH: metrics.settledHeight,
+                    minH: metrics.minHeight,
+                    maxH: metrics.maxHeight
+                )
+            },
+            onDragEnded: { translation, predicted in
+                endDrag(
+                    translation: translation,
+                    predicted: predicted,
+                    containerH: geo.size.height,
+                    safeAreaBottom: geo.safeAreaInsets.bottom
+                )
+            }
+        )
+        .frame(height: metrics.renderedHeight, alignment: .bottom)
+        .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
+        .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
     }
 
     // MARK: - Drag handling
