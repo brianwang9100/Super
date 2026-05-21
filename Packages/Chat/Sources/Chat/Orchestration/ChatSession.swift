@@ -453,6 +453,19 @@ public actor ChatSession {
             broadcast(.error(.cancelled))
         } catch let err as LLMError {
             broadcast(.error(err))
+        } catch let err as CompactorError {
+            // Auto-compaction (triggered inside `runTurnLoop` via
+            // `maybeAutoCompact`) can fail with its own typed error. Map
+            // it with curated copy here so a send/retry that hits the
+            // auto-compact path before reaching the LLM doesn't fall
+            // through to the generic `localizedDescription`. Matches the
+            // mapping in `runCompaction` (manual `/compact`).
+            switch err {
+            case .emptySummary:
+                broadcast(.error(.requestFailed("compaction returned empty summary")))
+            case .llmError(let underlying):
+                broadcast(.error(underlying))
+            }
         } catch let err as LLMProviderRegistryError {
             switch err {
             case .noActiveProvider:

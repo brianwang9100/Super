@@ -548,8 +548,13 @@ public final class ChatScreenViewModel {
     /// still on disk from the failed turn, so retry must not write a
     /// second one — that's why this calls `driver.retry(...)` instead of
     /// the normal `send(...)` path. If no model is active, just clear
-    /// the error.
+    /// the error. Mirrors `send`'s `!isStreaming` guard so a double-tap
+    /// while a turn is already in flight (in practice rare, since the
+    /// banner the pill lives on is only shown between turns) cannot spawn
+    /// a second `consume` task racing the first over the same observable
+    /// state.
     public func retry() {
+        guard !isStreaming else { return }
         guard let model = activeModel else {
             error = nil
             return
