@@ -128,6 +128,43 @@ struct ChatOverlaySnapshotTests {
         }
     }
 
+    // MARK: - Semi-expanded with the keyboard up (handle stays in place)
+
+    /// Pins the outer keyboard-aware region to 538pt (≈ 874pt viewport
+    /// minus a 336pt iPhone keyboard) so the semi-expanded surface
+    /// renders as it would with the user typing. The surface should
+    /// hold its top edge at the semi anchor's `topInset` (just below
+    /// the backdrop applet's nav-bar reserve) and shrink its interior
+    /// to keep the composer above the keyboard — the handle stays at
+    /// the same y position as the no-keyboard semi snapshot.
+    @Test("semi-expanded with the keyboard up — light")
+    func semiExpandedKeyboardLight() {
+        let viewModel = makeViewModel(initialMessages: populatedMessages)
+        viewModel._setSnapshotState(
+            items: ChatScreenViewModel.project(messages: populatedMessages, toolCalls: [], checkpoint: nil),
+            usedTokens: 1_200
+        )
+
+        let view = ChatOverlay(
+            state: .constant(.semiExpanded),
+            viewModel: viewModel,
+            _injectedKeyboardAwareHeight: 538
+        )
+        .superTheme(.make(.light))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
+            named: "overlay_semi_expanded_keyboard_light",
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: #function
+        )
+        if let failure {
+            Issue.record("overlay_semi_expanded_keyboard_light: \(failure)")
+        }
+    }
+
     // MARK: - Helpers
 
     private var populatedMessages: [MessageRecord] {
