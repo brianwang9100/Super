@@ -45,7 +45,9 @@ actor LazyConversationDriver: ChatSessionDriver {
     func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
         // Retry is only reachable after an error from a prior send, so the
         // conversation has already been persisted via the send path and
-        // `ensureSaved` is `nil`. Forward straight to the inner driver.
+        // `ensureSaved` is `nil`. Forward straight to the inner driver. If
+        // that assumption is ever violated, `runRetry` guards on
+        // no-user-messages and returns an empty stream — safe no-op.
         await inner.retry(model: model)
     }
 
