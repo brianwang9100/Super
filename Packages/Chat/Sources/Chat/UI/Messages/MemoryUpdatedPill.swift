@@ -1,0 +1,104 @@
+import SwiftUI
+
+/// Inline pill rendered under an assistant message whose turn produced a
+/// successful `memory` tool call.
+///
+/// Compact and faint so it doesn't compete with the message body — the
+/// LLM (Large Language Model) saving a memory should feel ambient, not
+/// like a tool-use receipt. Tap toggles between the collapsed "Memory
+/// updated" chip and an expanded line that names the op (Saved / Updated
+/// / Forgot) and the text. Failed memory calls fall back to the normal
+/// `ToolCallBlock` upstream so the error is still surfaced.
+struct MemoryUpdatedPill: View {
+    /// Single successful memory tool call rendered by this pill. The
+    /// `parametersJSON` is parsed once at appear time; failure to parse
+    /// (a malformed payload from a future tool revision) collapses to
+    /// the generic "Memory updated" label without leaking JSON.
+    let call: MessageList.ToolCallItem
+    @State private var isExpanded: Bool = false
+    @Environment(\.superTheme) private var theme
+
+    /// Parsed view of the tool's `op` and `text` parameters. Lifts the
+    /// JSON read out of `body` so unexpected payloads degrade quietly
+    /// (no crash, no JSON in the UI).
+    private var parsed: ParsedMemoryCall {
+        ParsedMemoryCall.parse(call.parametersJSON)
+    }
+
+    var body: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.system(.caption2))
+                    .foregroundStyle(theme.inkFaint)
+                Text(headline)
+                    .font(.system(.caption))
+                    .foregroundStyle(theme.inkSoft)
+                if let detail = isExpanded ? parsed.text : nil, !detail.isEmpty {
+                    Text("— \(detail)")
+                        .font(.system(.caption))
+                        .foregroundStyle(theme.inkFaint)
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(theme.backgroundSunken)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(theme.borderFaint, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var headline: String {
+        switch parsed.op {
+        case .save: return "Saved to memory"
+        case .update: return "Updated memory"
+        case .forget: return "Forgot memory"
+        case .unknown: return "Memory updated"
+        }
+    }
+
+    private var accessibilityLabel: String {
+        if parsed.text.isEmpty {
+            return headline
+        }
+        return "\(headline): \(parsed.text)"
+    }
+}
+
+/// Two parameters extracted from the memory tool call's input JSON. Kept
+/// as a dedicated value type so the parsing logic is shared between
+/// `body` and the accessibility label, and so future descriptors that
+/// add fields stay localized.
+struct ParsedMemoryCall: Equatable {
+    enum Op: String, Equatable {
+        case save, update, forget, unknown
+    }
+
+    let op: Op
+    let text: String
+
+    static func parse(_ raw: String) -> ParsedMemoryCall {
+        guard let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return ParsedMemoryCall(op: .unknown, text: "")
+        }
+        let opRaw = (json["op"] as? String) ?? ""
+        let op = Op(rawValue: opRaw) ?? .unknown
+        let text = (json["text"] as? String) ?? ""
+        return ParsedMemoryCall(op: op, text: text)
+    }
+}

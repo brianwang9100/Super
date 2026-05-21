@@ -49,6 +49,13 @@ public actor ChatSession {
     private let clock: any Clock
     private let idGenerator: any IDGenerator
 
+    /// User-preference memory store. Read once per `assemble(...)` so
+    /// the very next turn sees an edit made from the Settings memory
+    /// pane or via the LLM's own `memory` tool call. `nil` when the host
+    /// is built without memory support (test fixtures, the live-LLM
+    /// script, anything pre-M-memory).
+    private let memoryRepository: (any MemoryRepository)?
+
     /// Auto-compaction toggle. M9 wires this to `SettingRecord(key:
     /// "autoCompactEnabled")`. When false the session never invokes
     /// `Compactor` automatically, even above the threshold; `/compact`
@@ -165,7 +172,8 @@ public actor ChatSession {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        memoryRepository: (any MemoryRepository)? = nil
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
@@ -181,6 +189,7 @@ public actor ChatSession {
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
         self.currentSystemPrompt = systemPrompt
+        self.memoryRepository = memoryRepository
     }
 
     /// Update the auto-compaction policy at runtime. M9's settings pane
@@ -437,13 +446,26 @@ public actor ChatSession {
         async let messages = messageRepository.fetchAll(conversationId: conversationId)
         async let toolCalls = toolCallRepository.fetchByConversation(conversationId)
         async let checkpoint = checkpointRepository.liveCheckpoint(for: conversationId)
+        async let memories = currentMemories()
         return try await contextAssembler.assemble(
             messages: messages,
             toolCalls: toolCalls,
             checkpoint: checkpoint,
             model: model,
-            systemPrompt: currentSystemPrompt
+            systemPrompt: currentSystemPrompt,
+            memories: memories
         )
+    }
+
+    /// Fetch stored memories when the `memory` tool is enabled, otherwise
+    /// `[]`. Disabled-tool branch returns immediately without touching
+    /// the repository so an off toggle has zero query cost.
+    private func currentMemories() async -> [String] {
+        guard let memoryRepository else { return [] }
+        guard let registration = await toolRegistry.registration(toolID: MemoryTool.toolID),
+              registration.isEnabled else { return [] }
+        let entries = (try? await memoryRepository.all()) ?? []
+        return entries.map(\.text)
     }
 
     /// Auto-compaction gate. Called before every turn within the run loop.

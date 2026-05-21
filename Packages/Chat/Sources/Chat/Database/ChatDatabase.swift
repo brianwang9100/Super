@@ -190,4 +190,24 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "attachmentsJSON", .text)
         }
     }
+
+    // Adds the `memory` table backing the chat-memory tool: one row per
+    // stored user preference. `createdAt` is indexed because every prompt
+    // assembly fetches all rows ordered by it — the table is small (capped
+    // at `MemoryLimits.maxEntries`) but the index makes the order
+    // deterministic at SQLite's level rather than relying on insertion
+    // order.
+    migrator.registerMigration("v3_memory") { db in
+        try db.create(table: "memory") { t in
+            t.primaryKey("id", .text)
+            t.column("text", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+            t.column("updatedAt", .datetime).notNull()
+        }
+        try db.create(
+            index: "memory_on_createdAt",
+            on: "memory",
+            columns: ["createdAt"]
+        )
+    }
 }

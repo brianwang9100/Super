@@ -411,4 +411,116 @@ struct ContextAssemblerTests {
         )
         #expect(withPrompt.totalTokens > bare.totalTokens)
     }
+
+    @Test func memoriesBlockInjectedAheadOfSystemPrompt() throws {
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            systemPrompt: "Always answer in haiku.",
+            memories: ["Prefers metric units.", "Vegetarian."]
+        )
+
+        // [0] memories block, [1] settings prompt, [2] user
+        #expect(assembly.messages.count == 3)
+        #expect(assembly.messages[0].role == .system)
+        if case .text(let body) = assembly.messages[0].content.first {
+            #expect(body.contains("What I remember about you"))
+            #expect(body.contains("- Prefers metric units."))
+            #expect(body.contains("- Vegetarian."))
+        } else {
+            Issue.record("expected memories block at [0], got \(assembly.messages[0].content)")
+        }
+        #expect(assembly.messages[1].role == .system)
+        if case .text(let body) = assembly.messages[1].content.first {
+            #expect(body == "Always answer in haiku.")
+        }
+        #expect(assembly.messages[2].role == .user)
+    }
+
+    @Test func emptyMemoriesArrayInjectsNothing() throws {
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            memories: []
+        )
+
+        #expect(assembly.messages.count == 1)
+        #expect(assembly.messages[0].role == .user)
+    }
+
+    @Test func whitespaceOnlyMemoriesAreFiltered() throws {
+        // A mid-flight repository hiccup or a user-edited blank shouldn't
+        // produce a stray empty bullet — the block should render only the
+        // real entries, and the whole block should disappear when *all*
+        // entries are blank.
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+
+        let mixed = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            memories: ["  ", "Real preference.", "\n\n"]
+        )
+        if case .text(let body) = mixed.messages[0].content.first {
+            #expect(body.contains("- Real preference."))
+            #expect(body.contains("- \n") == false)
+        }
+
+        let allBlank = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            memories: ["", "  ", "\n"]
+        )
+        #expect(allBlank.messages.count == 1)
+        #expect(allBlank.messages[0].role == .user)
+    }
+
+    @Test func memoriesBlockOrderingIsStable() throws {
+        // The block must reflect the caller-provided order verbatim (the
+        // orchestrator sorts by createdAt before passing) — re-ordering
+        // here would flicker "what I remember about you" across turns.
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+        let inputs = ["first", "second", "third"]
+
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            memories: inputs
+        )
+
+        guard case .text(let body) = assembly.messages[0].content.first else {
+            Issue.record("missing memories block")
+            return
+        }
+        let firstIdx = body.range(of: "first")!.lowerBound
+        let secondIdx = body.range(of: "second")!.lowerBound
+        let thirdIdx = body.range(of: "third")!.lowerBound
+        #expect(firstIdx < secondIdx)
+        #expect(secondIdx < thirdIdx)
+    }
 }

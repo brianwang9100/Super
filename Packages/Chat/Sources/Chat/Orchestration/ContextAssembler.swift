@@ -66,12 +66,20 @@ public struct ContextAssembler: Sendable {
     ///     the conversation. Defaults to empty (no injection) to keep
     ///     callers that don't carry settings — fixtures, snapshots —
     ///     working unchanged.
+    ///   - memories: Stored user-preference memories surfaced by the
+    ///     `memory` tool. Rendered as a bulleted "What I remember about
+    ///     you" block ahead of `systemPrompt` so the model sees them
+    ///     before any persona instructions. Empty array = no block
+    ///     injected. The orchestrator passes `[]` when the memory tool
+    ///     is disabled, so this same code path serves the "off" case
+    ///     without a separate flag.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
         checkpoint: CompactionCheckpointRecord?,
         model: LLMModel,
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        memories: [String] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls)
@@ -91,12 +99,29 @@ public struct ContextAssembler: Sendable {
         if !trimmedSystemPrompt.isEmpty {
             prompt.insert(LLMMessage(role: .system, text: trimmedSystemPrompt), at: 0)
         }
+        if let memoriesBlock = Self.formatMemoriesBlock(memories) {
+            prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
+        }
         let total = estimator.estimate(messages: prompt)
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,
             maxTokens: model.maxContextTokens
         )
+    }
+
+    /// Format the bulleted "What I remember about you" block, or `nil`
+    /// when there's nothing to surface (skipping the insert entirely
+    /// avoids a stray blank `.system` row when memory is enabled but
+    /// empty). Each entry collapses internal whitespace and trims so the
+    /// LLM doesn't see ragged bullet indentation from copy-pasted text.
+    static func formatMemoriesBlock(_ memories: [String]) -> String? {
+        let cleaned = memories
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !cleaned.isEmpty else { return nil }
+        let bullets = cleaned.map { "- \($0)" }.joined(separator: "\n")
+        return "What I remember about you:\n\(bullets)"
     }
 
     /// Returns the `.system` rows that sit at or before the checkpoint's

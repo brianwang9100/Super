@@ -1,4 +1,5 @@
 import Core
+import GRDBQuery
 import SwiftUI
 
 /// Modal Settings sheet. Mirrors `SettingsModal` from `settings.jsx`:
@@ -27,6 +28,10 @@ public struct SettingsSheet: View {
         case verbosity
         case appearance
         case tools
+        /// Per-tool configuration pane for the `memory` tool — view /
+        /// edit / delete saved memories. Reached by tapping the gear
+        /// affordance on the Memory row in `.tools`.
+        case memory
         case compaction
         case data
         case about
@@ -40,6 +45,7 @@ public struct SettingsSheet: View {
             case .verbosity: return "Default Verbosity"
             case .appearance: return "Appearance"
             case .tools: return "Tools"
+            case .memory: return "Memory"
             case .compaction: return "Compaction"
             case .data: return "Data"
             case .about: return "About"
@@ -56,15 +62,24 @@ public struct SettingsSheet: View {
     /// deep-link by mutating `viewModel.navigationPath`.
     @Bindable public var viewModel: SettingsViewModel
 
+    /// Read-only access to `chat.sqlite` for sub-panes that bind data
+    /// reactively via GRDBQuery `@Query` (currently `SettingsMemoryPane`,
+    /// which must repaint when the LLM writes to the memory table from
+    /// outside the pane). `nil` in snapshot tests and previews —
+    /// `@Query` then falls back to the request's `defaultValue`.
+    public let databaseContext: DatabaseContext?
+
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
         isPresented: Binding<Bool>,
-        viewModel: SettingsViewModel
+        viewModel: SettingsViewModel,
+        databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
+        self.databaseContext = databaseContext
     }
 
     /// Test seam: lets snapshot tests render any sub-pane without
@@ -75,10 +90,12 @@ public struct SettingsSheet: View {
     init(
         isPresented: Binding<Bool>,
         viewModel: SettingsViewModel,
-        initialPane: Pane
+        initialPane: Pane,
+        databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
+        self.databaseContext = databaseContext
         if initialPane != .root {
             viewModel.navigationPath = [initialPane]
         }
@@ -106,6 +123,12 @@ public struct SettingsSheet: View {
                 await viewModel.load()
             }
         }
+        // Apply the read-only database context only when the host wired
+        // one — snapshot tests and previews pass nil and fall through to
+        // each `@Query` request's defaultValue. The `databaseContext`
+        // ViewModifier requires a value, so we apply a no-op pass through
+        // an inline overload when nil.
+        .modifier(OptionalDatabaseContextModifier(context: databaseContext))
     }
 
     private func close() {
@@ -178,12 +201,29 @@ public struct SettingsSheet: View {
             SettingsAppearancePane(viewModel: viewModel)
         case .tools:
             SettingsToolsPane(viewModel: viewModel)
+        case .memory:
+            SettingsMemoryPane(viewModel: viewModel)
         case .compaction:
             SettingsCompactionPane(viewModel: viewModel)
         case .data:
             SettingsDataPane(viewModel: viewModel)
         case .about:
             SettingsAboutPane(viewModel: viewModel)
+        }
+    }
+}
+
+/// Apply the GRDBQuery read-only `DatabaseContext` when one is wired,
+/// otherwise pass the content through unchanged. Lets snapshot tests
+/// render the sheet without spinning up a database queue while
+/// production wires the real chat-database context.
+private struct OptionalDatabaseContextModifier: ViewModifier {
+    let context: DatabaseContext?
+    func body(content: Content) -> some View {
+        if let context {
+            content.databaseContext(context)
+        } else {
+            content
         }
     }
 }

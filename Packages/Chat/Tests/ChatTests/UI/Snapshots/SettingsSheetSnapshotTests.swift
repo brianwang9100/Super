@@ -31,6 +31,16 @@ struct SettingsSheetSnapshotTests {
 
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "time.now", name: "Current time", summary: "Returns the current local time in ISO-8601.", isEnabled: true),
+        // Memory is enabled in the snapshot so the gear affordance
+        // (visible only when both enabled AND configurable) renders;
+        // disabling it would hide the very thing this snapshot covers.
+        .init(
+            id: MemoryTool.toolID,
+            name: "Memory",
+            summary: "Lets me remember preferences across conversations.",
+            isEnabled: true,
+            configPane: .memory
+        ),
     ]
 
     @Test("root pane in light")
