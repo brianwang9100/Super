@@ -16,6 +16,14 @@ import Testing
 /// wire a fully-migrated in-memory `ChatDatabase` so the pane's
 /// `@Query` resolves through the real `MemoriesRequest` — recording
 /// against the request's `defaultValue` would mask binding regressions.
+///
+/// `.serialized` — snapshot baselines are read/written per-test against
+/// the same on-disk `__Snapshots__/SettingsMemoryPaneSnapshotTests/`
+/// directory. Parallel execution races on the PNG files (TOCTOU), not on
+/// any async behavior in the code under test — serialization is the right
+/// tool. Matches every other snapshot suite in this directory; the
+/// codebase-wide convention is intentional, not a smell to fix per-file
+/// per AGENTS.md §Testing.2.
 @Suite("SettingsMemoryPane snapshots", .serialized)
 @MainActor
 struct SettingsMemoryPaneSnapshotTests {

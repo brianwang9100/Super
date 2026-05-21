@@ -15,8 +15,24 @@ struct MemoryUpdatedPill: View {
     /// (a malformed payload from a future tool revision) collapses to
     /// the generic "Memory updated" label without leaking JSON.
     let call: MessageList.ToolCallItem
-    @State private var isExpanded: Bool = false
+    @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
+
+    /// Production initializer — pill starts collapsed; user taps to expand.
+    init(call: MessageList.ToolCallItem) {
+        self.call = call
+        self._isExpanded = State(initialValue: false)
+    }
+
+    /// Test-only seam that seeds the `isExpanded` `@State` so snapshot
+    /// tests can pin the expanded baseline without driving a tap. The
+    /// underscore prefix follows the codebase convention for surfaces
+    /// that are not stable API (see `ChatScreenViewModel
+    /// ._waitForPendingTitleTask()` per AGENTS.md §Testing rule 2).
+    init(call: MessageList.ToolCallItem, _isExpanded: Bool) {
+        self.call = call
+        self._isExpanded = State(initialValue: _isExpanded)
+    }
 
     /// Parsed view of the tool's `op` and `text` parameters. Lifts the
     /// JSON read out of `body` so unexpected payloads degrade quietly

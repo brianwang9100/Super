@@ -11,6 +11,21 @@ import Testing
 /// memory — Prefers metric units."). Dark + sepia variants are recorded
 /// once on the populated `.save` case since the chrome is shared across
 /// ops.
+///
+/// `.serialized` — snapshot baselines are read/written per-test against
+/// the same on-disk `__Snapshots__/MemoryUpdatedPillSnapshotTests/`
+/// directory. Parallel execution races on the PNG files (TOCTOU), not on
+/// any async behavior in the code under test — serialization is the right
+/// tool. Matches every other snapshot suite in this directory; the
+/// codebase-wide convention is intentional, not a smell to fix per-file
+/// per AGENTS.md §Testing.2.
+///
+/// Reduce Motion is not recorded as a separate variant: the pill toggles
+/// `isExpanded` via a plain `Button` action with no `withAnimation` and
+/// no `.animation(...)` modifier, so the steady-state collapsed and
+/// expanded frames are pixel-identical regardless of the
+/// `accessibilityReduceMotion` env value. Same documented gap as
+/// `CompactionBannerSnapshotTests` (lines 56–65).
 @Suite("MemoryUpdatedPill snapshots", .serialized)
 @MainActor
 struct MemoryUpdatedPillSnapshotTests {
@@ -96,7 +111,11 @@ struct MemoryUpdatedPillSnapshotTests {
             resultText: "Saved memory mem-1: \(text)",
             status: .success
         )
-        let view = MemoryUpdatedPillHarness(call: call, initiallyExpanded: initiallyExpanded)
+        // Seed `@State isExpanded` via the underscore-prefixed test seam
+        // so the snapshot pins the actual production view, not a hand-
+        // rolled mirror — the previous local `ExpandedPill` could
+        // silently drift from the real layout on any future tweak.
+        let view = MemoryUpdatedPill(call: call, _isExpanded: initiallyExpanded)
             .superTheme(.make(theme))
             .dynamicTypeSize(dynamicType)
             .padding(.horizontal, 12)
@@ -116,68 +135,4 @@ struct MemoryUpdatedPillSnapshotTests {
     }
 }
 
-/// Wrapper that seeds `MemoryUpdatedPill`'s `@State isExpanded` for the
-/// expanded snapshots. The pill toggles on tap in production; snapshot
-/// tests can't drive taps, so we seed via init by re-creating the view
-/// each render with the desired state preset.
-private struct MemoryUpdatedPillHarness: View {
-    let call: MessageList.ToolCallItem
-    let initiallyExpanded: Bool
-
-    var body: some View {
-        if initiallyExpanded {
-            ExpandedPill(call: call)
-        } else {
-            MemoryUpdatedPill(call: call)
-        }
-    }
-}
-
-/// Mirrors `MemoryUpdatedPill` but seeded as expanded — kept as a sibling
-/// view so the production pill stays a single-state machine driven by
-/// taps, while the snapshot harness can pin the expanded baseline.
-private struct ExpandedPill: View {
-    let call: MessageList.ToolCallItem
-    @State private var isExpanded = true
-    @Environment(\.superTheme) private var theme
-
-    var body: some View {
-        let parsed = ParsedMemoryCall.parse(call.parametersJSON)
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "brain")
-                .font(.system(.caption2))
-                .foregroundStyle(theme.inkFaint)
-            Text(headline(for: parsed))
-                .font(.system(.caption))
-                .foregroundStyle(theme.inkSoft)
-            if !parsed.text.isEmpty {
-                Text("— \(parsed.text)")
-                    .font(.system(.caption))
-                    .foregroundStyle(theme.inkFaint)
-                    .lineLimit(3)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(theme.backgroundSunken)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(theme.borderFaint, lineWidth: 1)
-        )
-    }
-
-    private func headline(for parsed: ParsedMemoryCall) -> String {
-        switch parsed.op {
-        case .save: return "Saved to memory"
-        case .update: return "Updated memory"
-        case .forget: return "Forgot memory"
-        case .unknown: return "Memory updated"
-        }
-    }
-}
 #endif
