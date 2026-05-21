@@ -41,6 +41,7 @@ public struct ChatOverlay: View {
         self.onManageModels = onManageModels
         self.onAddModelRequested = onAddModelRequested
         self.frozenDragHeight = nil
+        self.frozenKeyboardAwareHeight = nil
     }
 
     /// Test-only initializer that pins the chat-surface height to
@@ -58,6 +59,26 @@ public struct ChatOverlay: View {
         self.onManageModels = {}
         self.onAddModelRequested = {}
         self.frozenDragHeight = _injectedDragHeight
+        self.frozenKeyboardAwareHeight = nil
+    }
+
+    /// Test-only initializer that overrides the outer keyboard-aware
+    /// region's height so snapshot suites can capture "keyboard is up"
+    /// geometry without booting a real simulator keyboard — used to
+    /// baseline the "handle stays in place" promise at the semi-
+    /// expanded anchor. Production code never calls this.
+    @MainActor
+    init(
+        state: Binding<ChatPresentationState>,
+        viewModel: ChatScreenViewModel,
+        _injectedKeyboardAwareHeight: CGFloat
+    ) {
+        self._settledState = state
+        self.viewModel = viewModel
+        self.onManageModels = {}
+        self.onAddModelRequested = {}
+        self.frozenDragHeight = nil
+        self.frozenKeyboardAwareHeight = _injectedKeyboardAwareHeight
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -79,9 +100,31 @@ public struct ChatOverlay: View {
     /// recompute a different `settledH` and produce a visible snap.
     @State private var dragStartHeight: CGFloat? = nil
 
+    /// Live, in-flight top edge of the chat surface in keyboard-aware
+    /// local space. Non-nil for the duration of a drag. Drives the
+    /// resolver's `renderedHeight` directly so the visual handle tracks
+    /// the finger 1:1 — independent of the top-inset cap that the
+    /// settled-semi rest state applies. See ``dragHeight`` for the
+    /// anchor-space companion the snap envelope reads.
+    @State private var dragTopEdge: CGFloat? = nil
+
+    /// Captured top edge at the moment the drag began. `dragTopEdge` is
+    /// updated as `dragStartTopEdge + translation.height` each frame so a
+    /// no-motion tap (translation = 0) yields `dragTopEdge ==
+    /// startTopEdge` — i.e. exactly what was already on screen, no jump.
+    @State private var dragStartTopEdge: CGFloat? = nil
+
     /// Snapshot-test override. When non-nil, freezes the chat-surface
     /// height at this value so baselines can be recorded mid-morph.
     private let frozenDragHeight: CGFloat?
+
+    /// Snapshot-test override for the outer keyboard-aware region's
+    /// height. When non-nil, the resolver receives this value as
+    /// `Keyboard.availableHeight` and the outer frame renders at this
+    /// height — emulating "keyboard is up" without a real keyboard.
+    /// `nil` falls back to the live `keyboardAware.size.height` from
+    /// SwiftUI.
+    private let frozenKeyboardAwareHeight: CGFloat?
 
     public var body: some View {
         // Two nested readers separate the keyboard from the device
@@ -101,7 +144,10 @@ public struct ChatOverlay: View {
         // translated off the bottom of the screen.
         GeometryReader { keyboardAware in
             GeometryReader { geo in
-                content(in: geo, keyboardAwareHeight: keyboardAware.size.height)
+                content(
+                    in: geo,
+                    keyboardAwareHeight: frozenKeyboardAwareHeight ?? keyboardAware.size.height
+                )
             }
             .ignoresSafeArea(.keyboard, edges: .bottom)
         }
@@ -122,7 +168,8 @@ public struct ChatOverlay: View {
         let metrics = ChatOverlayMetrics(
             device: .init(
                 containerHeight: geo.size.height,
-                bottomSafeArea: geo.safeAreaInsets.bottom
+                bottomSafeArea: geo.safeAreaInsets.bottom,
+                topSafeArea: geo.safeAreaInsets.top
             ),
             keyboard: .init(availableHeight: keyboardAwareHeight),
             interaction: .init(
@@ -130,7 +177,12 @@ public struct ChatOverlay: View {
                 // Frozen height (snapshot tests) wins over the in-flight
                 // drag height — both are caller-collapsed before the
                 // resolver sees them.
-                dragHeight: frozenDragHeight ?? dragHeight
+                dragHeight: frozenDragHeight ?? dragHeight,
+                // Snapshot freezes don't supply a top edge — they only
+                // pin a settled-state morph, so leaving `dragTopEdge`
+                // nil keeps the settled-cap branch active and matches
+                // the live render at that anchor.
+                dragTopEdge: dragTopEdge
             )
         )
 
@@ -160,6 +212,8 @@ public struct ChatOverlay: View {
                 updateDrag(
                     translation: translation,
                     liveSettledH: metrics.settledHeight,
+                    liveTopEdge: keyboardAwareHeight - metrics.renderedHeight,
+                    keyboardAwareHeight: keyboardAwareHeight,
                     minH: metrics.minHeight,
                     maxH: metrics.maxHeight
                 )
@@ -169,13 +223,15 @@ public struct ChatOverlay: View {
                     translation: translation,
                     predicted: predicted,
                     containerH: geo.size.height,
-                    safeAreaBottom: geo.safeAreaInsets.bottom
+                    safeAreaBottom: geo.safeAreaInsets.bottom,
+                    safeAreaTop: geo.safeAreaInsets.top
                 )
             }
         )
         .frame(height: metrics.renderedHeight, alignment: .bottom)
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
+        .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
     }
 
     // MARK: - Drag handling
@@ -183,41 +239,65 @@ public struct ChatOverlay: View {
     private func updateDrag(
         translation: CGSize,
         liveSettledH: CGFloat,
+        liveTopEdge: CGFloat,
+        keyboardAwareHeight: CGFloat,
         minH: CGFloat,
         maxH: CGFloat
     ) {
-        // Lock the drag-start height the first time the gesture fires.
-        // `liveSettledH` is recomputed each render and could shift mid-
-        // gesture if `geo` changes (keyboard, rotation, split-screen);
-        // using the captured value keeps the drag stable across those.
+        // Lock the drag-start values the first time the gesture fires.
+        // `liveSettledH` / `liveTopEdge` are recomputed each render and
+        // could shift mid-gesture if `geo` changes (keyboard, rotation,
+        // split-screen); using captured start values keeps the drag
+        // stable across those.
         let startH = dragStartHeight ?? liveSettledH
         if dragStartHeight == nil { dragStartHeight = startH }
+        let startTopEdge = dragStartTopEdge ?? liveTopEdge
+        if dragStartTopEdge == nil { dragStartTopEdge = startTopEdge }
         // Downward translation (positive height) collapses; upward expands.
-        // Clamp to the anchor envelope so the surface can't be dragged
-        // past minimized or expanded.
-        let raw = startH - translation.height
-        dragHeight = min(maxH, max(minH, raw))
+        // `dragHeight` lives in anchor space and drives `progress` /
+        // snap / `crossedBelowEditorThreshold`. `dragTopEdge` lives in
+        // keyboard-aware local space (y=0 at the top of the keyboard-
+        // aware region) and drives the rendered geometry directly so
+        // the visual handle tracks the finger 1:1 — even from the
+        // capped settled-semi position.
+        let rawH = startH - translation.height
+        dragHeight = min(maxH, max(minH, rawH))
+        let rawTopEdge = startTopEdge + translation.height
+        // Top edge can't dip below 0 (top of the kb-aware region) and
+        // can't sit lower than the minimized pill's top (kbAwareH - minH).
+        dragTopEdge = min(max(0, rawTopEdge), max(0, keyboardAwareHeight - minH))
     }
 
     private func endDrag(
         translation: CGSize,
         predicted: CGSize,
         containerH: CGFloat,
-        safeAreaBottom: CGFloat
+        safeAreaBottom: CGFloat,
+        safeAreaTop: CGFloat
     ) {
         let velocity = predicted.height - translation.height
+        // Mirror the resolver's top-inset formula so the snap envelope
+        // recognises the same semi anchor the user just dragged against.
+        // Without this, releases in the band between the legacy ~52%
+        // anchor and the new "under nav bar" anchor would snap to
+        // whichever neighbour was nearest by the *old* math and visibly
+        // jump on release.
+        let topInset = safeAreaTop + ChatOverlayMetrics.semiExpandedChromeReserve
         let releaseHeight = dragHeight
-            ?? settledState.height(in: containerH, bottomSafeArea: safeAreaBottom)
+            ?? settledState.height(in: containerH, bottomSafeArea: safeAreaBottom, topInset: topInset)
         let snap = ChatPresentationState.snapTarget(
             currentHeight: releaseHeight,
             velocity: velocity,
             containerHeight: containerH,
-            bottomSafeArea: safeAreaBottom
+            bottomSafeArea: safeAreaBottom,
+            topInset: topInset
         )
         withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             settledState = snap
             dragHeight = nil
             dragStartHeight = nil
+            dragTopEdge = nil
+            dragStartTopEdge = nil
         }
     }
 
@@ -249,6 +329,22 @@ public struct ChatProgressPreferenceKey: PreferenceKey {
         // deliberate merge strategy — without it the shell would
         // silently read whichever overlay SwiftUI happens to process
         // last.
+        value = nextValue()
+    }
+}
+
+/// Preference key the chat overlay writes its resolved semi-expanded
+/// progress onto. `AppShell.backdropOpacity` reads it as the mid-knot
+/// of the dim curve so the backdrop's 0.65 opacity point lands at the
+/// actual semi anchor's progress (now `containerHeight - topInset`-
+/// derived) rather than the legacy 0.52 ratio.
+public struct ChatSemiProgressPreferenceKey: PreferenceKey {
+    /// Fallback equal to the legacy semi anchor's progress (≈0.52) so
+    /// the first frame before the overlay has reported in still draws
+    /// a sensible dim curve.
+    public static let defaultValue: Double = 0.52
+
+    public static func reduce(value: inout Double, nextValue: () -> Double) {
         value = nextValue()
     }
 }
