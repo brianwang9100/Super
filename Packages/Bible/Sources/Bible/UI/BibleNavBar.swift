@@ -5,11 +5,14 @@ import SwiftUI
 /// book / translation pill.
 ///
 /// The prev / next arrows step chapters and the pill's two segments open the
-/// book and translation pickers. When verses are selected (`selectionCitation`
-/// is non-`nil`) the centre group collapses to a citation pill with a clear
-/// control. The `+` button renders per the design but is inert until chat
-/// hand-off lands. The sidebar entry point is the shell's own floating
-/// hamburger, so this bar deliberately has none.
+/// book and translation pickers. The arrows are pinned to the adjacent edge
+/// controls (the leading hamburger placeholder and the trailing `+`), so the
+/// pill's content can grow or shrink without shifting them. When verses are
+/// selected (`selectionCitation` is non-`nil`) the arrows step out and the
+/// centre slot becomes a citation pill with a clear control. The `+` button
+/// renders per the design but is inert until chat hand-off lands. The
+/// sidebar entry point is the shell's own floating hamburger, so this bar
+/// deliberately has none.
 struct BibleNavBar: View {
     @Environment(\.superTheme) private var theme
 
@@ -34,14 +37,36 @@ struct BibleNavBar: View {
             // the shell's floating hamburger sits over this gap.
             Color.clear.frame(width: 36, height: 36)
 
+            // Arrows pin to the edge controls (hamburger / plus) rather than
+            // to the pill, so chapter / book / translation length never
+            // shifts their position. In selection mode the arrows step out
+            // and the citation pill takes the full centre slot.
+            if selectionCitation == nil {
+                circleButton(systemImage: "chevron.left", action: onPrevious)
+                    .disabled(!canStepBackward)
+                    .opacity(canStepBackward ? 1 : 0.35)
+                    .accessibilityLabel("Previous chapter")
+            }
+
             Group {
                 if let selectionCitation {
                     selectionPill(selectionCitation)
                 } else {
-                    chapterControls
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        pill
+                        Spacer(minLength: 0)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
+
+            if selectionCitation == nil {
+                circleButton(systemImage: "chevron.right", action: onNext)
+                    .disabled(!canStepForward)
+                    .opacity(canStepForward ? 1 : 0.35)
+                    .accessibilityLabel("Next chapter")
+            }
 
             plusButton
         }
@@ -60,24 +85,6 @@ struct BibleNavBar: View {
         )
     }
 
-    /// Chapter stepping arrows flanking the book / translation pill — the
-    /// bar's default (no selection) centre group.
-    private var chapterControls: some View {
-        HStack(spacing: 6) {
-            circleButton(systemImage: "chevron.left", action: onPrevious)
-                .disabled(!canStepBackward)
-                .opacity(canStepBackward ? 1 : 0.35)
-                .accessibilityLabel("Previous chapter")
-
-            pill
-
-            circleButton(systemImage: "chevron.right", action: onNext)
-                .disabled(!canStepForward)
-                .opacity(canStepForward ? 1 : 0.35)
-                .accessibilityLabel("Next chapter")
-        }
-    }
-
     /// The book / translation pill — two segments split by a hairline,
     /// matching the 36pt height of the circular nav buttons. The book
     /// segment opens the book picker; the translation segment opens the
@@ -91,15 +98,14 @@ struct BibleNavBar: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .multilineTextAlignment(.center)
-                    // A fixed width so the arrows flanking the pill never
-                    // shift as the reader steps between chapters or books;
-                    // the few longest names scale down slightly to fit.
-                    .frame(width: 108)
                     .padding(.horizontal, 12)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // Lower priority than the translation segment: when the centre
+            // slot is tight the book name compresses (and scales) first.
+            .layoutPriority(0)
             .accessibilityLabel("\(bookName) \(chapterNumber), choose book")
 
             Rectangle()
@@ -114,6 +120,9 @@ struct BibleNavBar: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 9, weight: .semibold))
                 }
+                // The translation code is short and never truncates, even
+                // when the book segment is scaling down to fit.
+                .fixedSize(horizontal: true, vertical: false)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.inkSoft)
                 .padding(.horizontal, 9)
@@ -121,6 +130,7 @@ struct BibleNavBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .layoutPriority(1)
             .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
         .frame(height: 36)
