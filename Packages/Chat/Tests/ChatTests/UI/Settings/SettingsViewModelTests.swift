@@ -447,6 +447,95 @@ struct SettingsViewModelTests {
         #expect(SettingsViewModel.shortEndpoint(URL(string: "file:///tmp/local")!) == "file:///tmp/local")
     }
 
+    // MARK: - Memory CRUD
+
+    @Test("updateMemory writes trimmed text and the injected updatedAt")
+    func updateMemoryUsesInjectedNow() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let repo = GRDBMemoryRepository(database: db)
+        let seedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repo.save(MemoryEntry(
+            id: "mem-1", text: "old", createdAt: seedDate, updatedAt: seedDate
+        ))
+
+        let vm = makeViewModel(memoryRepository: repo)
+        let pinned = Date(timeIntervalSince1970: 1_700_000_900)
+        await vm.updateMemory(id: "mem-1", text: "  new  ", now: pinned)
+
+        let stored = try await repo.fetch(id: "mem-1")
+        #expect(stored?.text == "new")
+        // Pins the injection seam: without `now:` defaulting to Date(),
+        // this assertion would race the wall clock — the regression
+        // signal AGENTS.md §Testing rule 1 calls for.
+        #expect(stored?.updatedAt == pinned)
+        // createdAt must not move on update — surfaces would re-sort
+        // and the system-prompt memories block would flicker.
+        #expect(stored?.createdAt == seedDate)
+    }
+
+    @Test("updateMemory silently ignores empty / whitespace-only text")
+    func updateMemoryIgnoresBlank() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let repo = GRDBMemoryRepository(database: db)
+        let seedDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repo.save(MemoryEntry(
+            id: "mem-1", text: "keep me", createdAt: seedDate, updatedAt: seedDate
+        ))
+
+        let vm = makeViewModel(memoryRepository: repo)
+        await vm.updateMemory(id: "mem-1", text: "   \n  ", now: seedDate.addingTimeInterval(60))
+
+        let stored = try await repo.fetch(id: "mem-1")
+        #expect(stored?.text == "keep me")
+        #expect(stored?.updatedAt == seedDate)
+    }
+
+    @Test("deleteMemory removes the row")
+    func deleteMemoryRemovesRow() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let repo = GRDBMemoryRepository(database: db)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repo.save(MemoryEntry(id: "m1", text: "A", createdAt: now, updatedAt: now))
+        try await repo.save(MemoryEntry(id: "m2", text: "B", createdAt: now.addingTimeInterval(1), updatedAt: now.addingTimeInterval(1)))
+
+        let vm = makeViewModel(memoryRepository: repo)
+        await vm.deleteMemory(id: "m1")
+
+        let remaining = try await repo.all().map(\.id)
+        #expect(remaining == ["m2"])
+    }
+
+    @Test("clearAllMemories wipes everything")
+    func clearAllWipesEverything() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let repo = GRDBMemoryRepository(database: db)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for i in 0..<3 {
+            try await repo.save(MemoryEntry(
+                id: "m\(i)", text: "fact \(i)",
+                createdAt: now.addingTimeInterval(TimeInterval(i)),
+                updatedAt: now.addingTimeInterval(TimeInterval(i))
+            ))
+        }
+
+        let vm = makeViewModel(memoryRepository: repo)
+        await vm.clearAllMemories()
+
+        #expect(try await repo.all().isEmpty)
+    }
+
+    @Test("memory mutations no-op when no memoryRepository is wired")
+    func memoryMutationsNoopWithoutRepository() async {
+        // Snapshot tests and the bare VM rely on this — without the
+        // `guard let memoryRepository else { return }` early-return,
+        // tapping CRUD affordances would crash. Pin the no-op contract.
+        let vm = makeViewModel()
+        await vm.updateMemory(id: "anything", text: "x", now: Date())
+        await vm.deleteMemory(id: "anything")
+        await vm.clearAllMemories()
+        // No assertion needed — the absence of a crash IS the contract.
+    }
+
     // MARK: - Builders
 
     private func makeViewModel(
@@ -455,7 +544,8 @@ struct SettingsViewModelTests {
         conversationRepository: any ConversationRepository = StubConversationRepository(rows: []),
         toolRegistry: ToolRegistry = ToolRegistry(),
         systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver(),
-        autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver()
+        autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
+        memoryRepository: (any MemoryRepository)? = nil
     ) -> SettingsViewModel {
         SettingsViewModel(
             accountEmail: "test@example.com",
@@ -465,7 +555,8 @@ struct SettingsViewModelTests {
             conversationRepository: conversationRepository,
             toolRegistry: toolRegistry,
             systemPromptReceiver: systemPromptReceiver,
-            autoCompactPolicyReceiver: autoCompactPolicyReceiver
+            autoCompactPolicyReceiver: autoCompactPolicyReceiver,
+            memoryRepository: memoryRepository
         )
     }
 }

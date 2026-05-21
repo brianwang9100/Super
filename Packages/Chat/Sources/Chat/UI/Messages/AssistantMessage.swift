@@ -28,7 +28,15 @@ struct AssistantMessage: View {
                 )
             }
             ForEach(toolCalls) { call in
-                ToolCallBlock(call: call, verbosity: verbosity)
+                // Successful `memory` calls collapse into the friendlier
+                // inline pill — the verbose tool-call card is overkill
+                // for a one-line preference write. Failures still hit
+                // the generic card so the error surface stays consistent.
+                if call.toolName == MemoryTool.toolID, call.status == .success {
+                    MemoryUpdatedPill(call: call)
+                } else {
+                    ToolCallBlock(call: call, verbosity: verbosity)
+                }
             }
             if hasText {
                 MarkdownText(text)

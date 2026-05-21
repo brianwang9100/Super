@@ -27,6 +27,11 @@ public actor ChatSessionStore {
     private var autoCompactThreshold: Double
     private let manualCompactMinThreshold: Double
     private var currentSystemPrompt: String
+    /// Stored memories source handed to each session it constructs.
+    /// `nil` when the host wires the store without memory support
+    /// (test fixtures, the live-LLM script). See ``ChatSession``'s
+    /// `memoryRepository` for the per-session contract.
+    private let memoryRepository: (any MemoryRepository)?
 
     private var sessions: [String: ChatSession] = [:]
 
@@ -43,7 +48,8 @@ public actor ChatSessionStore {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        memoryRepository: (any MemoryRepository)? = nil
     ) {
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
@@ -58,6 +64,7 @@ public actor ChatSessionStore {
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
         self.currentSystemPrompt = systemPrompt
+        self.memoryRepository = memoryRepository
     }
 
     /// Get-or-create the session for a conversation. Subsequent calls with
@@ -79,7 +86,8 @@ public actor ChatSessionStore {
             autoCompactEnabled: autoCompactEnabled,
             autoCompactThreshold: autoCompactThreshold,
             manualCompactMinThreshold: manualCompactMinThreshold,
-            systemPrompt: currentSystemPrompt
+            systemPrompt: currentSystemPrompt,
+            memoryRepository: memoryRepository
         )
         sessions[conversationId] = session
         return session
