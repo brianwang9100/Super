@@ -32,10 +32,17 @@ public struct ChatOverlayMetrics: Sendable, Equatable {
         /// Bottom home-indicator inset (also keyboard-free), so the
         /// minimized pill rests *above* the indicator rather than behind it.
         public let bottomSafeArea: CGFloat
+        /// Top safe-area inset (status bar / Dynamic Island). Combined
+        /// with ``ChatOverlayMetrics/semiExpandedChromeReserve`` to form
+        /// the top inset the semi-expanded anchor reserves so the drag
+        /// handle lands flush under the backdrop applet's nav bar
+        /// instead of mid-screen.
+        public let topSafeArea: CGFloat
 
-        public init(containerHeight: CGFloat, bottomSafeArea: CGFloat) {
+        public init(containerHeight: CGFloat, bottomSafeArea: CGFloat, topSafeArea: CGFloat = 0) {
             self.containerHeight = containerHeight
             self.bottomSafeArea = bottomSafeArea
+            self.topSafeArea = topSafeArea
         }
     }
 
@@ -57,14 +64,40 @@ public struct ChatOverlayMetrics: Sendable, Equatable {
         public let settledState: ChatPresentationState
         /// Live, in-flight chat-surface height. `nil` when not dragging
         /// (and no snapshot freeze applied), in which case the settled
-        /// anchor's height is used.
+        /// anchor's height is used. Drives `progress`, the snap envelope,
+        /// and `crossedBelowEditorThreshold` — i.e. the anchor-space
+        /// (keyboard-free) interpretation of the gesture.
         public let dragHeight: CGFloat?
+        /// Live, in-flight chat-surface *top edge* in the keyboard-aware
+        /// region's local space, captured at gesture start as
+        /// `kbAwareH - renderedHeight` and updated as
+        /// `startTopEdge + translation.height` (clamped). `nil` when not
+        /// dragging. Drives ``renderedHeight`` directly during a drag so
+        /// the visual top edge tracks the finger 1:1 — even from the
+        /// capped semi-with-keyboard rest position, where ``dragHeight``
+        /// alone would lift the chat off-finger.
+        public let dragTopEdge: CGFloat?
 
-        public init(settledState: ChatPresentationState, dragHeight: CGFloat?) {
+        public init(
+            settledState: ChatPresentationState,
+            dragHeight: CGFloat?,
+            dragTopEdge: CGFloat? = nil
+        ) {
             self.settledState = settledState
             self.dragHeight = dragHeight
+            self.dragTopEdge = dragTopEdge
         }
     }
+
+    /// Reserved space above the semi-expanded chat surface in points,
+    /// added to ``Device/topSafeArea`` to form the inset the semi anchor
+    /// uses (so the drag handle lands flush under the backdrop applet's
+    /// nav bar). 52pt matches `BibleNavBar`'s total height (the one
+    /// backdrop applet today with a nav bar); for backdrops without a
+    /// nav bar (Todo, the placeholders) the handle simply sits 52pt
+    /// below the safe-area top — a Chat-side constant by design (no
+    /// per-applet plumbing).
+    public static let semiExpandedChromeReserve: CGFloat = 52
 
     /// Minimized-anchor height. The lower bound of ``effectiveHeight``.
     public let minHeight: CGFloat
@@ -79,42 +112,83 @@ public struct ChatOverlayMetrics: Sendable, Equatable {
     /// `[0, 1]` morph progress mapped from ``effectiveHeight`` —
     /// `0` = minimized pill, `1` = full-screen expanded.
     public let progress: Double
-    /// On-screen height: ``effectiveHeight`` clamped to
-    /// ``Keyboard/availableHeight``. The only output that depends on the
-    /// keyboard input; the bottom-pinned surface uses it so the composer
-    /// always rests above the keyboard's top edge.
+    /// `[0, 1]` progress at the semi-expanded anchor for the current
+    /// device geometry — the mid-knot the host's backdrop dim curve
+    /// reads. Lifted onto metrics so callers don't have to know about
+    /// `topInset`.
+    public let semiExpandedProgress: Double
+    /// On-screen height of the bottom-pinned surface. Two regimes:
+    /// during a drag (``Interaction/dragTopEdge`` is non-nil) the
+    /// rendered height is `kbAwareH - dragTopEdge` so the visual top
+    /// edge tracks the finger; otherwise ``effectiveHeight`` is clamped
+    /// to ``Keyboard/availableHeight`` minus the semi top inset when
+    /// settled at semi-expanded (so the handle holds its y under the
+    /// keyboard). The only output that depends on the keyboard input.
     public let renderedHeight: CGFloat
 
     public init(device: Device, keyboard: Keyboard, interaction: Interaction) {
+        let topInset = device.topSafeArea + Self.semiExpandedChromeReserve
         let minH = ChatPresentationState.minimized.height(
             in: device.containerHeight,
-            bottomSafeArea: device.bottomSafeArea
+            bottomSafeArea: device.bottomSafeArea,
+            topInset: topInset
         )
         let maxH = ChatPresentationState.expanded.height(
             in: device.containerHeight,
-            bottomSafeArea: device.bottomSafeArea
+            bottomSafeArea: device.bottomSafeArea,
+            topInset: topInset
         )
         let settledH = interaction.settledState.height(
             in: device.containerHeight,
-            bottomSafeArea: device.bottomSafeArea
+            bottomSafeArea: device.bottomSafeArea,
+            topInset: topInset
         )
         let rawH = interaction.dragHeight ?? settledH
         let effectiveH = min(maxH, max(minH, rawH))
         let resolvedProgress = ChatPresentationState.progress(
             forHeight: effectiveH,
             in: device.containerHeight,
-            bottomSafeArea: device.bottomSafeArea
+            bottomSafeArea: device.bottomSafeArea,
+            topInset: topInset
         )
-        let renderedH = ChatPresentationState.renderedSurfaceHeight(
-            effectiveHeight: effectiveH,
-            keyboardAwareHeight: keyboard.availableHeight
+        let semiProgress = ChatPresentationState.semiExpandedProgress(
+            in: device.containerHeight,
+            bottomSafeArea: device.bottomSafeArea,
+            topInset: topInset
         )
+        // Rendered-height resolution has two regimes:
+        //
+        // 1. **During a drag** — `dragTopEdge` is non-nil, captured at
+        //    gesture start as `kbAwareH - renderedHeight` and tracked by
+        //    `startTopEdge + translation.height`. The rendered height is
+        //    `kbAwareH - dragTopEdge` so the visual top edge follows the
+        //    finger 1:1, even from the capped semi-with-keyboard rest
+        //    position (where the prior cap-vs-no-cap binary jumped the
+        //    handle to y=0 the instant `dragHeight` flipped non-nil).
+        //
+        // 2. **Settled** — fall back to the keyboard-avoidance cap. The
+        //    top-inset cap applies whenever the surface is settled at
+        //    semi-expanded, so the handle holds its y under the keyboard.
+        //    Every other settled state uses cap = 0 (top edge free to
+        //    lift with the keyboard).
+        let renderedH: CGFloat
+        if let dragTopEdge = interaction.dragTopEdge {
+            renderedH = max(0, keyboard.availableHeight - dragTopEdge)
+        } else {
+            let renderedCap: CGFloat = interaction.settledState == .semiExpanded ? topInset : 0
+            renderedH = ChatPresentationState.renderedSurfaceHeight(
+                effectiveHeight: effectiveH,
+                keyboardAwareHeight: keyboard.availableHeight,
+                topInsetCap: renderedCap
+            )
+        }
 
         self.minHeight = minH
         self.maxHeight = maxH
         self.settledHeight = settledH
         self.effectiveHeight = effectiveH
         self.progress = resolvedProgress
+        self.semiExpandedProgress = semiProgress
         self.renderedHeight = renderedH
     }
 }

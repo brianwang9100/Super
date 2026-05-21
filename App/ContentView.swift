@@ -105,6 +105,14 @@ struct AppShell: View {
     /// `1` so the backdrop stays hidden behind the expanded chat that
     /// renders on first launch before the preference reports anything.
     @State private var chatProgress: Double = 1
+    /// Live mid-knot of the backdrop's dim curve — the progress value
+    /// at which the chat overlay is settled at semi-expanded. Read from
+    /// `ChatOverlay`'s `ChatSemiProgressPreferenceKey` because the semi
+    /// anchor's progress is no longer the literal 0.52 ratio; it's
+    /// derived from `containerHeight - topInset` and shifts with
+    /// device geometry. Defaults to the legacy 0.52 so the first
+    /// frame draws a sensible curve before the overlay reports.
+    @State private var chatSemiProgress: Double = 0.52
     @State private var viewModel: ChatScreenViewModel?
     /// App-session-lived inbox: subscribes to the `SuperEventBus` and
     /// buffers verse references handed in from Bible until a composer
@@ -167,8 +175,11 @@ struct AppShell: View {
     /// Anchor points (matching the 2026-05-13 design):
     /// - progress 0 (pill): 1.0 — backdrop owns the full screen at full
     ///   opacity.
-    /// - progress ≈ 0.52 (semi-expanded): 0.65 — backdrop is dimmed to
-    ///   read against the floating chat panel.
+    /// - progress = `chatSemiProgress` (semi-expanded): 0.65 — backdrop
+    ///   is dimmed to read against the floating chat panel. The
+    ///   mid-knot is the live semi anchor's resolved progress (now
+    ///   geometry-dependent because the semi anchor sits at
+    ///   `containerHeight - topInset`), not the legacy 0.52 ratio.
     /// - progress 1 (expanded): 1.0 — backdrop is hidden behind the
     ///   opaque chat anyway, so the value doesn't really matter; we
     ///   leave it at 1 so a flick-up from semi past expanded settles
@@ -179,15 +190,15 @@ struct AppShell: View {
     /// state boundaries.
     private var backdropOpacity: Double {
         let p = chatProgress
-        if p <= ChatPresentationState.semiExpandedRatio {
-            // 0 → 0.52: dim from 1.0 down to 0.65 as the chat grows.
-            let t = p / Double(ChatPresentationState.semiExpandedRatio)
+        let mid = max(0.001, min(0.999, chatSemiProgress))
+        if p <= mid {
+            // 0 → mid: dim from 1.0 down to 0.65 as the chat grows.
+            let t = p / mid
             return 1.0 + (0.65 - 1.0) * t
         } else {
-            // 0.52 → 1: dim back up to 1.0 (effectively unused — the
+            // mid → 1: dim back up to 1.0 (effectively unused — the
             // expanded chat covers the backdrop).
-            let t = (p - Double(ChatPresentationState.semiExpandedRatio))
-                / (1 - Double(ChatPresentationState.semiExpandedRatio))
+            let t = (p - mid) / (1 - mid)
             return 0.65 + (1.0 - 0.65) * t
         }
     }
@@ -269,6 +280,9 @@ struct AppShell: View {
                 .chatAppearance(appearance)
                 .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
                     chatProgress = newValue
+                }
+                .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
+                    chatSemiProgress = newValue
                 }
             } else if let bootstrapError {
                 FailureScreen(message: bootstrapError)

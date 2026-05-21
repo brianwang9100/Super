@@ -17,16 +17,29 @@ struct ChatPresentationStateTests {
         #expect(h == viewport)
     }
 
-    @Test("semi-expanded anchor uses the design ratio above the floor")
-    func semiExpandedHeightUsesRatio() {
+    @Test("semi-expanded anchor reserves `topInset` from the container")
+    func semiExpandedHeightReservesTopInset() {
+        // With a 100pt top inset (e.g. ~48pt safe area + 52pt chrome
+        // reserve) the semi anchor leaves exactly that much room above
+        // for the backdrop applet's nav bar — handle lands at y=100.
+        let h = ChatPresentationState.semiExpanded.height(in: viewport, topInset: 100)
+        #expect(h == viewport - 100)
+    }
+
+    @Test("semi-expanded anchor falls back to the container with zero top inset")
+    func semiExpandedHeightWithNoTopInset() {
+        // `topInset = 0` is the default — meaningful only as a "no chrome
+        // to avoid" case (every production caller threads in a non-zero
+        // value via ``ChatOverlayMetrics``); the anchor's height collapses
+        // to the container itself, the floor still wins under it.
         let h = ChatPresentationState.semiExpanded.height(in: viewport)
-        #expect(h == viewport * ChatPresentationState.semiExpandedRatio)
+        #expect(h == viewport)
     }
 
     @Test("semi-expanded anchor enforces a floor on small viewports")
     func semiExpandedHeightFloorOnSmallViewports() {
-        // 400pt × 0.52 ≈ 208pt — below the 280pt floor.
-        let h = ChatPresentationState.semiExpanded.height(in: 400)
+        // 300pt − 100pt topInset = 200pt — below the 280pt floor.
+        let h = ChatPresentationState.semiExpanded.height(in: 300, topInset: 100)
         #expect(h == ChatPresentationState.semiExpandedMinHeight)
     }
 
@@ -46,8 +59,33 @@ struct ChatPresentationStateTests {
 
     @Test("a release near the semi-expanded height snaps to semi-expanded")
     func nearestAtSemi() {
-        let target = ChatPresentationState.semiExpanded.height(in: viewport)
-        let nearest = ChatPresentationState.nearestAnchor(forHeight: target + 30, in: viewport)
+        // Match `ChatOverlayMetrics`'s topInset shape (safe area + 52pt
+        // chrome reserve) so the snap envelope sees the same anchor the
+        // user dragged against.
+        let topInset: CGFloat = 88
+        let target = ChatPresentationState.semiExpanded.height(in: viewport, topInset: topInset)
+        let nearest = ChatPresentationState.nearestAnchor(
+            forHeight: target + 30,
+            in: viewport,
+            topInset: topInset
+        )
+        #expect(nearest == .semiExpanded)
+    }
+
+    @Test("a release in the band below the new semi anchor still snaps to semi")
+    func semiSnapDominatesAroundNewAnchor() {
+        // Regression guard against the upgrade from the legacy 0.52
+        // ratio anchor (~454pt on a 874pt viewport) to the new
+        // `containerH - topInset` anchor (~786pt). A release at 730pt
+        // sits between the legacy and new semi heights; without
+        // threading `topInset` through `nearestAnchor`, the snap would
+        // have picked `.expanded` (closer to 874 than to 454).
+        let topInset: CGFloat = 88
+        let nearest = ChatPresentationState.nearestAnchor(
+            forHeight: 730,
+            in: viewport,
+            topInset: topInset
+        )
         #expect(nearest == .semiExpanded)
     }
 
@@ -96,11 +134,13 @@ struct ChatPresentationStateTests {
 
     @Test("a stationary release picks the nearest anchor without bias")
     func stationaryReleasePicksNearest() {
-        let semiHeight = ChatPresentationState.semiExpanded.height(in: viewport)
+        let topInset: CGFloat = 88
+        let semiHeight = ChatPresentationState.semiExpanded.height(in: viewport, topInset: topInset)
         let target = ChatPresentationState.snapTarget(
             currentHeight: semiHeight - 5,
             velocity: 0,
-            containerHeight: viewport
+            containerHeight: viewport,
+            topInset: topInset
         )
         #expect(target == .semiExpanded)
     }
@@ -138,13 +178,30 @@ struct ChatPresentationStateTests {
         #expect(p == 1)
     }
 
-    @Test("progress at the semi-expanded anchor matches the design ratio")
-    func progressAtSemiMatchesRatio() {
-        let semiH = ChatPresentationState.semiExpanded.height(in: viewport)
-        let p = ChatPresentationState.progress(forHeight: semiH, in: viewport)
-        // (semi - min) / (max - min) — close to 0.52 with the small min offset.
-        let expected = Double((semiH - ChatPresentationState.minimizedBaseHeight) / (viewport - ChatPresentationState.minimizedBaseHeight))
+    @Test("progress at the semi-expanded anchor matches the linear projection")
+    func progressAtSemiMatchesLinearProjection() {
+        let topInset: CGFloat = 88
+        let semiH = ChatPresentationState.semiExpanded.height(in: viewport, topInset: topInset)
+        let p = ChatPresentationState.progress(forHeight: semiH, in: viewport, topInset: topInset)
+        // (semi - min) / (max - min) — well above 0.5 now because the
+        // anchor sits at `containerH - topInset` rather than at half-height.
+        let minH = ChatPresentationState.minimizedBaseHeight
+        let expected = Double((semiH - minH) / (viewport - minH))
         #expect(abs(p - expected) < 0.001)
+    }
+
+    @Test("semiExpandedProgress matches progress at the resolved semi height")
+    func semiExpandedProgressMatchesAnchorProgress() {
+        // The `AppShell`'s backdrop-dim mid-knot reads `semiExpandedProgress`
+        // directly. It must agree with the long-form `progress(forHeight:)`
+        // call against the resolved semi anchor for the curve to land on
+        // 0.65 opacity precisely at the semi rest position.
+        for topInset in stride(from: CGFloat(0), through: 160, by: 20) {
+            let semiH = ChatPresentationState.semiExpanded.height(in: viewport, topInset: topInset)
+            let p = ChatPresentationState.progress(forHeight: semiH, in: viewport, topInset: topInset)
+            let helper = ChatPresentationState.semiExpandedProgress(in: viewport, topInset: topInset)
+            #expect(abs(p - helper) < 0.0001)
+        }
     }
 
     @Test("progress clamps to [0, 1] outside the anchor range")
@@ -176,36 +233,48 @@ struct ChatPresentationStateTests {
         // indicator. Across that whole range the semi-expanded anchor
         // must resolve well above the 0.15 threshold so a composer that
         // is interactive in semi-expanded mode stays interactive.
+        let topInset: CGFloat = 88
         for homeInset in stride(from: CGFloat(0), through: 48, by: 4) {
-            let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: homeInset)
-            let p = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset)
+            let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: homeInset, topInset: topInset)
+            let p = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset, topInset: topInset)
             #expect(p > editorInteractiveThreshold)
         }
     }
 
-    @Test("a keyboard-sized bottom inset would force semi-expanded below the composer threshold")
-    func keyboardSizedInsetCollapsesSemiExpandedProgress() {
-        // Regression guard for the composer-wedge / surface-shift bugs.
-        // Focusing the composer raises the software keyboard, which a
-        // `GeometryProxy` folds into both `safeAreaInsets.bottom` *and*
-        // `size.height` (~290–340pt on an iPhone). Feeding either into the
-        // anchor geometry drops the semi-expanded anchor's progress below
-        // the threshold — disabling the field mid-keyboard-presentation
-        // and, mid-transition, shifting the surface off the bottom of the
-        // screen. `ChatOverlay` runs every anchor calculation off a
-        // keyboard-free inner `GeometryReader` (`.ignoresSafeArea(.keyboard)`)
-        // precisely so this can't happen — this test pins the hazard that
-        // design defends against.
+    @Test("semi-expanded stays above the composer threshold even under contaminated insets")
+    func semiExpandedStaysInteractiveUnderInsetContamination() {
+        // Robustness check for the new "containerH - topInset" semi
+        // anchor: it sits close enough to the expanded anchor that even
+        // an accidentally-keyboard-sized bottom or top inset can't drag
+        // its `progress` below the composer-interactivity threshold.
+        // The structural defense — `ChatOverlay`'s two-reader split
+        // keeping the keyboard out of `topSafeArea` and `bottomSafeArea`
+        // — is enforced elsewhere; this test pins that the math
+        // tolerates a violation without disabling the field.
         let keyboardInset: CGFloat = 336
-        let semiH = ChatPresentationState.semiExpanded.height(in: viewport, bottomSafeArea: keyboardInset)
-        let collapsed = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: keyboardInset)
-        #expect(collapsed < editorInteractiveThreshold)
+        let topInset: CGFloat = 88
+        let semiH = ChatPresentationState.semiExpanded.height(
+            in: viewport,
+            bottomSafeArea: keyboardInset,
+            topInset: topInset
+        )
+        let p = ChatPresentationState.progress(
+            forHeight: semiH,
+            in: viewport,
+            bottomSafeArea: keyboardInset,
+            topInset: topInset
+        )
+        #expect(p > editorInteractiveThreshold)
 
-        // Same anchor, same viewport — only the inset differs. The
-        // home-indicator inset keeps the composer interactive, proving
-        // the keyboard is the sole cause of the threshold crossing.
+        // Same anchor, only the bottom inset differs — the realistic
+        // home-indicator value also stays well above the threshold.
         let homeInset: CGFloat = 34
-        let safe = ChatPresentationState.progress(forHeight: semiH, in: viewport, bottomSafeArea: homeInset)
+        let safe = ChatPresentationState.progress(
+            forHeight: semiH,
+            in: viewport,
+            bottomSafeArea: homeInset,
+            topInset: topInset
+        )
         #expect(safe > editorInteractiveThreshold)
     }
 
