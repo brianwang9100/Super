@@ -88,6 +88,26 @@ struct MemoryToolTests {
         #expect(stored[0].createdAt == Self.fixedInstant)
     }
 
+    @Test func saveTrimsSurroundingWhitespaceBeforeStoring() async throws {
+        // Regression for PR #72: `stringValue` returned the raw
+        // (untrimmed) string, so an LLM payload like
+        // `"  prefer metric  "` stored verbatim with its spaces while
+        // SettingsViewModel.updateMemory trimmed before writing —
+        // leaving the two write paths with different byte sequences
+        // for logically equivalent text.
+        let (tool, repository, _) = makeTool()
+
+        let result = try await tool.execute(input: [
+            "op": .string("save"),
+            "text": .string("  prefer metric  "),
+        ])
+
+        #expect(result.isError == false)
+        let stored = try await repository.all()
+        #expect(stored.count == 1)
+        #expect(stored[0].text == "prefer metric")
+    }
+
     @Test func saveMissingTextIsSoftError() async throws {
         let (tool, repository, _) = makeTool()
 

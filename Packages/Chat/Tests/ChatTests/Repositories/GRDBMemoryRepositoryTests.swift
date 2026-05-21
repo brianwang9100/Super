@@ -118,6 +118,17 @@ struct GRDBMemoryRepositoryTests {
         }
     }
 
+    @Test func saveAcceptsMaxLengthPlusTrailingWhitespace() async throws {
+        // Regression for PR #72: the length guard used `text.count`
+        // (raw) instead of `trimmed.count`, so a 500-char memory with
+        // a single trailing newline was rejected as `textTooLong` even
+        // though its meaningful content was exactly at the limit.
+        let (_, store) = try makeStore()
+        let maxBody = String(repeating: "a", count: MemoryLimits.maxTextLength)
+        try await store.save(makeEntry(id: "m1", text: maxBody + "\n", offset: 0))
+        #expect(try await store.all().count == 1)
+    }
+
     @Test func saveRejectsAtCapacity() async throws {
         let (_, store) = try makeStore()
         for i in 0..<MemoryLimits.maxEntries {

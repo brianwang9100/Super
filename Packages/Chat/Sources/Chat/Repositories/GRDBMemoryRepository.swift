@@ -73,7 +73,13 @@ public struct GRDBMemoryRepository: MemoryRepository {
         if trimmed.isEmpty {
             throw MemoryRepositoryError.emptyText
         }
-        if text.count > MemoryLimits.maxTextLength {
+        // Measure the trimmed length, not the raw length: a 500-char
+        // memory with a trailing newline (the LLM occasionally appends
+        // one) would otherwise be rejected even though its meaningful
+        // content is at the limit. The two write paths (MemoryTool +
+        // SettingsViewModel) both trim before storing, so trimmed
+        // length is what actually lands in the row.
+        if trimmed.count > MemoryLimits.maxTextLength {
             throw MemoryRepositoryError.textTooLong(limit: MemoryLimits.maxTextLength)
         }
     }

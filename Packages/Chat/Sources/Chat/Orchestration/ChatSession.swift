@@ -1,5 +1,12 @@
 import Core
 import Foundation
+import os
+
+/// Production diagnostics for `ChatSession`. Lives at file scope so
+/// the actor's methods share one Logger instance. Category
+/// `chat-session` so future orchestration-layer telemetry can join
+/// under the same filter.
+private let chatSessionLog = Logger(subsystem: "com.brianwang.Super", category: "chat-session")
 
 /// Owns the turn loop for a single conversation. One `ChatSession` per
 /// conversation; multiple sessions run concurrently under a
@@ -460,12 +467,25 @@ public actor ChatSession {
     /// Fetch stored memories when the `memory` tool is enabled, otherwise
     /// `[]`. Disabled-tool branch returns immediately without touching
     /// the repository so an off toggle has zero query cost.
+    ///
+    /// A repository read failure (transient GRDB error, WAL lock,
+    /// schema migration in progress) falls back to `[]` rather than
+    /// throwing — losing the memories block for one turn is preferable
+    /// to failing the entire turn. The failure is logged so a recurring
+    /// fault surfaces in `os_log` instead of silently wiping the user's
+    /// stored preferences from every prompt.
     private func currentMemories() async -> [String] {
         guard let memoryRepository else { return [] }
         guard let registration = await toolRegistry.registration(toolID: MemoryTool.toolID),
               registration.isEnabled else { return [] }
-        let entries = (try? await memoryRepository.all()) ?? []
-        return entries.map(\.text)
+        do {
+            return try await memoryRepository.all().map(\.text)
+        } catch {
+            chatSessionLog.error(
+                "memoryRepository.all() failed; injecting empty memories block this turn: \(String(describing: error), privacy: .public)"
+            )
+            return []
+        }
     }
 
     /// Auto-compaction gate. Called before every turn within the run loop.

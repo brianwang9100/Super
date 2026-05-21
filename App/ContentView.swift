@@ -1,6 +1,7 @@
 import Bible
 import Chat
 import Core
+import GRDBQuery
 import SwiftUI
 import Todo
 #if canImport(UIKit)
@@ -327,7 +328,14 @@ struct AppShell: View {
             if let settingsViewModel {
                 SettingsSheet(
                     isPresented: $settingsOpen,
-                    viewModel: settingsViewModel
+                    viewModel: settingsViewModel,
+                    // Read-only context so SettingsMemoryPane's `@Query`
+                    // observes the same `chat.sqlite` the LLM writes
+                    // through MemoryTool. Without it the pane's @Query
+                    // falls back to its empty defaultValue and the
+                    // user sees "No memories yet" even when memories
+                    // exist (verified by PR #72 review).
+                    databaseContext: .readOnly { dependencies.chatDatabase.queue }
                 )
                 .superTheme(theme)
                 .chatAppearance(appearance)
@@ -445,6 +453,11 @@ struct AppShell: View {
                 toolRegistry: dependencies.toolRegistry,
                 systemPromptReceiver: dependencies.chatSessionStore,
                 autoCompactPolicyReceiver: dependencies.chatSessionStore,
+                // Required for SettingsMemoryPane edit/delete/clear-all
+                // to reach the GRDB store. Optional in the type so test
+                // fixtures can construct the VM without one — production
+                // always wires it (verified by PR #72 review).
+                memoryRepository: dependencies.memoryRepository,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
                 httpClient: URLSessionHTTPClient()
             )

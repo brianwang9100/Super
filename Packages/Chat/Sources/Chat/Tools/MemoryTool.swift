@@ -242,7 +242,11 @@ public struct MemoryTool: ToolExecutor {
     private func stringValue(_ value: JSONValue?) -> String? {
         guard case .string(let raw) = value else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : raw
+        // Return the trimmed form, not `raw`: `SettingsViewModel.updateMemory`
+        // trims before writing, so without trimming here the two write
+        // paths would leave different byte sequences for logically
+        // equivalent memory text.
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func message(for error: MemoryRepositoryError) -> String {

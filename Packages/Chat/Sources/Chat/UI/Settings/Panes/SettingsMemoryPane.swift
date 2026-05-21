@@ -80,13 +80,20 @@ struct SettingsMemoryPane: View {
     private func memoryRow(memory: MemoryRecord, isLast: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
             if editingId == memory.id {
+                // Commit only on focus loss, matching SettingsPromptPane's
+                // pattern. An earlier `.onSubmit` paired with the
+                // `.onChange` below double-fired on Return (the submit
+                // handler sets `focusedId = nil`, which re-triggers
+                // onChange), spawning two updateMemory tasks per
+                // Return-keypress. `axis: .vertical` already treats
+                // Return as a newline, so dropping onSubmit costs no
+                // UX — the user dismisses the keyboard by tapping
+                // outside.
                 TextField("Memory text", text: $draft, axis: .vertical)
                     .font(.system(.subheadline))
                     .foregroundStyle(theme.ink)
                     .focused($focusedId, equals: memory.id)
-                    .submitLabel(.done)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onSubmit { commitEdit(for: memory) }
                     .onChange(of: focusedId) { _, newValue in
                         if newValue != memory.id { commitEdit(for: memory) }
                     }
