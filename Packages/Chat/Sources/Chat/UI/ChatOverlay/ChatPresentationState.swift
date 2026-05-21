@@ -237,7 +237,14 @@ extension ChatPresentationState {
         keyboardAwareHeight: CGFloat,
         topInsetCap: CGFloat = 0
     ) -> CGFloat {
-        min(effectiveHeight, keyboardAwareHeight - topInsetCap)
+        // Floored at 0 so unusual geometry — landscape iPhone with a
+        // full-screen keyboard, very short split-view window, anything
+        // where `topInsetCap` exceeds `keyboardAwareHeight` — can't
+        // produce a negative `.frame(height:)` that silently renders
+        // nothing. The drag-time branch in `ChatOverlayMetrics.init`
+        // already floors; pulling the floor into the function makes
+        // both call paths safe.
+        max(0, min(effectiveHeight, keyboardAwareHeight - topInsetCap))
     }
 }
 

@@ -282,6 +282,18 @@ struct ChatOverlayMetricsTests {
         #expect(dragged.renderedHeight == minH + 700)
     }
 
+    @Test("settled rendered height is floored at 0 when topInset exceeds keyboard-available space")
+    func settledRenderedHeightFlooredAtZero() {
+        // Defensive: landscape iPhone with a full-screen keyboard or a
+        // very short split-view window can drive `availableHeight`
+        // below `topInset`, which would produce a negative
+        // `.frame(height:)` (silently rendering nothing) without the
+        // floor inside `renderedSurfaceHeight`.
+        let available: CGFloat = topInset - 20
+        let metrics = makeMetrics(settled: .semiExpanded, available: available)
+        #expect(metrics.renderedHeight == 0)
+    }
+
     @Test("expanded with the keyboard up still caps to the available space, not topInset")
     func expandedWithKeyboardIgnoresTopInsetCap() {
         // The top-inset cap is semi-only by intent — expanded keeps the
