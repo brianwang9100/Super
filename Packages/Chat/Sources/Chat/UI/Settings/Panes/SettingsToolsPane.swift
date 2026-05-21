@@ -41,6 +41,24 @@ struct SettingsToolsPane: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // Gear appears only for tools that declare a config pane AND
+            // are enabled — no point configuring an off tool. Pushes
+            // onto the existing sheet `NavigationStack` rather than
+            // presenting a nested modal.
+            if let pane = tool.configPane, tool.isEnabled {
+                Button {
+                    viewModel.openPane(pane)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(theme.inkSoft)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Configure \(tool.name)")
+            }
+
             SettingsToggle(
                 isOn: Binding(
                     get: { tool.isEnabled },

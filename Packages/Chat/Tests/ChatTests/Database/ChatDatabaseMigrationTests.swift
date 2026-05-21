@@ -52,6 +52,7 @@ struct ChatDatabaseMigrationTests {
         #expect(names == [
             "compactionCheckpoint",
             "conversation",
+            "memory",
             "message",
             "modelConfiguration",
             "setting",
@@ -72,6 +73,7 @@ struct ChatDatabaseMigrationTests {
         #expect(names == [
             "compactionCheckpoint_on_conversationId_isLive",
             "conversation_on_updatedAt",
+            "memory_on_createdAt",
             "message_on_conversationId_createdAt",
             "modelConfiguration_unique_selected",
             "toolCall_on_conversationId",
@@ -182,7 +184,7 @@ struct ChatDatabaseMigrationTests {
                 WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'grdb_%'
             """) ?? -1
         }
-        #expect(count == 7)
+        #expect(count == 8)
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run

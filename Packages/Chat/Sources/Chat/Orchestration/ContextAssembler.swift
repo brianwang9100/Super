@@ -66,12 +66,24 @@ public struct ContextAssembler: Sendable {
     ///     the conversation. Defaults to empty (no injection) to keep
     ///     callers that don't carry settings — fixtures, snapshots —
     ///     working unchanged.
+    ///   - memories: Stored user-preference memories surfaced by the
+    ///     `memory` tool. Rendered as a bulleted "What I remember about
+    ///     you" block ahead of `systemPrompt` so the model sees them
+    ///     before any persona instructions. Each bullet carries the
+    ///     entry's id (`- [<id>] <text>`) so the LLM can call
+    ///     `memory(op:'update'|'forget', id:...)` in conversations
+    ///     where it didn't perform the original `save` and therefore
+    ///     has no other source for the id. Empty array = no block
+    ///     injected. The orchestrator passes `[]` when the memory tool
+    ///     is disabled, so this same code path serves the "off" case
+    ///     without a separate flag.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
         checkpoint: CompactionCheckpointRecord?,
         model: LLMModel,
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        memories: [MemoryEntry] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls)
@@ -91,12 +103,42 @@ public struct ContextAssembler: Sendable {
         if !trimmedSystemPrompt.isEmpty {
             prompt.insert(LLMMessage(role: .system, text: trimmedSystemPrompt), at: 0)
         }
+        // Each insert above can produce a `.system` row (memories block,
+        // settings prompt, historical leading `.system` rows, checkpoint
+        // summary), so the projected prompt can carry up to four
+        // consecutive `.system` entries. The Anthropic Messages API
+        // accepts that natively and `OpenAICompatibleLLMProvider`
+        // forwards each one as its own message — which the OpenAI Chat
+        // Completions API also accepts (it concatenates internally).
+        // If a future provider with a stricter single-system contract
+        // is added, merge these blocks into a single newline-joined
+        // `.system` entry at this insertion point.
+        if let memoriesBlock = Self.formatMemoriesBlock(memories) {
+            prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
+        }
         let total = estimator.estimate(messages: prompt)
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,
             maxTokens: model.maxContextTokens
         )
+    }
+
+    /// Format the bulleted "What I remember about you" block, or `nil`
+    /// when there's nothing to surface (skipping the insert entirely
+    /// avoids a stray blank `.system` row when memory is enabled but
+    /// empty). Each bullet leads with `[<id>]` so the LLM can pass the
+    /// id back to `memory(op:'update'|'forget', id:...)` in a follow-up
+    /// turn — without it, those ops would only be callable on the same
+    /// turn that produced the `save` artifact. Text is trimmed so the
+    /// LLM doesn't see ragged whitespace from copy-pasted input.
+    static func formatMemoriesBlock(_ memories: [MemoryEntry]) -> String? {
+        let cleaned = memories
+            .map { (id: $0.id, text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.text.isEmpty }
+        guard !cleaned.isEmpty else { return nil }
+        let bullets = cleaned.map { "- [\($0.id)] \($0.text)" }.joined(separator: "\n")
+        return "What I remember about you:\n\(bullets)"
     }
 
     /// Returns the `.system` rows that sit at or before the checkpoint's
