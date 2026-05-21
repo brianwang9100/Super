@@ -98,7 +98,7 @@ struct MemoryUpdatedPill: View {
 /// as a dedicated value type so the parsing logic is shared between
 /// `body` and the accessibility label, and so future descriptors that
 /// add fields stay localized.
-struct ParsedMemoryCall: Equatable {
+private struct ParsedMemoryCall: Equatable {
     enum Op: String, Equatable {
         case save, update, forget, unknown
     }

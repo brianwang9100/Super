@@ -88,6 +88,26 @@ struct GRDBMemoryRepositoryTests {
         #expect(try await store.all().isEmpty)
     }
 
+    @Test func fetchAndDeleteReturnsThePriorRowAndRemovesIt() async throws {
+        let (_, store) = try makeStore()
+        try await store.save(makeEntry(id: "m1", text: "Vegetarian.", offset: 0))
+        try await store.save(makeEntry(id: "m2", text: "Lives in Tokyo.", offset: 1))
+
+        let prior = try await store.fetchAndDelete(id: "m1")
+        #expect(prior?.text == "Vegetarian.")
+        #expect(try await store.all().map(\.id) == ["m2"])
+    }
+
+    @Test func fetchAndDeleteReturnsNilForUnknownId() async throws {
+        let (_, store) = try makeStore()
+        try await store.save(makeEntry(id: "m1", text: "Vegetarian.", offset: 0))
+
+        let prior = try await store.fetchAndDelete(id: "ghost")
+        #expect(prior == nil)
+        // Existing row is untouched.
+        #expect(try await store.all().map(\.id) == ["m1"])
+    }
+
     @Test func clearAllRemovesEverything() async throws {
         let (_, store) = try makeStore()
         for i in 0..<5 {

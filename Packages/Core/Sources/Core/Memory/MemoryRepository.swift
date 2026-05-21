@@ -32,6 +32,18 @@ public protocol MemoryRepository: Sendable {
     /// Delete one memory. No-op when `id` does not exist.
     func delete(id: String) async throws
 
+    /// Atomically read a memory and delete it in one write transaction.
+    /// Returns the row that was deleted, or `nil` if no row matched —
+    /// in which case nothing is written.
+    ///
+    /// Single-call semantics matter for the `memory` tool's `forget`
+    /// path: the tool needs the prior text to surface in the artifact
+    /// shown under the assistant bubble, and a separate
+    /// `fetch` + `delete` pair would race a concurrent Settings-pane
+    /// write between the two calls, leaving the artifact carrying
+    /// stale text.
+    func fetchAndDelete(id: String) async throws -> MemoryEntry?
+
     /// Delete every memory. Used by the Settings "Clear All" affordance.
     func clearAll() async throws
 }

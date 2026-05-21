@@ -146,24 +146,75 @@ struct SettingsMemoryPane: View {
     }
 
     private func beginEditing(memory: MemoryRecord) {
+        // Commit the previously-editing row's in-flight draft *before*
+        // overwriting `draft` with the new target's text. Without this,
+        // tapping directly from row A's editor into row B loses A's
+        // unsaved edit (draft gets reassigned to B.text, then A's
+        // onChange-driven commit sees B.text instead of A.text). The
+        // commit's own guard skips the no-longer-active case so the
+        // post-overwrite onChange becomes a true no-op.
+        if let priorId = editingId, priorId != memory.id,
+           let prior = memories.first(where: { $0.id == priorId }) {
+            commitEdit(for: prior)
+        }
         draft = memory.text
         editingId = memory.id
         focusedId = memory.id
     }
 
     private func commitEdit(for memory: MemoryRecord) {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Only clear the edit state when this row is still the active
-        // target. A direct tap from row A's editor into row B fires
-        // beginEditing(B) — which sets `editingId = B, focusedId = B` —
-        // before A's onChange-driven commitEdit runs; without the guard
-        // we'd then overwrite both with nil and B's TextField never
-        // appears.
-        if editingId == memory.id {
+        let decision = Self.decideCommit(
+            editingId: editingId,
+            target: memory,
+            draft: draft
+        )
+        if decision.clearsEditState {
             editingId = nil
             focusedId = nil
         }
-        guard !trimmed.isEmpty, trimmed != memory.text else { return }
-        Task { await viewModel.updateMemory(id: memory.id, text: trimmed) }
+        if let update = decision.update {
+            Task { await viewModel.updateMemory(id: update.id, text: update.text) }
+        }
+    }
+
+    /// Pure decision function backing `commitEdit(for:)`. Lifted out as
+    /// a `static` so the A→B-row-tap corruption case (and the simpler
+    /// happy paths) can be unit-tested without driving SwiftUI focus
+    /// transitions — see `SettingsMemoryPaneCommitTests`.
+    ///
+    /// Both clearing the edit state and firing `updateMemory` are gated
+    /// on `editingId == target.id`. Without that gate, an A→B tap would
+    /// race a stale `commitEdit(for: A)` after `draft` had already been
+    /// overwritten with B's text — silently writing B's draft into A's
+    /// row (data corruption, per PR #72 round-5 review).
+    static func decideCommit(
+        editingId: String?,
+        target: MemoryRecord,
+        draft: String
+    ) -> CommitDecision {
+        guard editingId == target.id else {
+            // The user has already moved focus to another row, so
+            // `draft` now belongs to that row. Committing it here would
+            // overwrite `target` with the other row's text.
+            return CommitDecision(clearsEditState: false, update: nil)
+        }
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == target.text {
+            return CommitDecision(clearsEditState: true, update: nil)
+        }
+        return CommitDecision(
+            clearsEditState: true,
+            update: PendingUpdate(id: target.id, text: trimmed)
+        )
+    }
+
+    struct CommitDecision: Equatable {
+        let clearsEditState: Bool
+        let update: PendingUpdate?
+    }
+
+    struct PendingUpdate: Equatable {
+        let id: String
+        let text: String
     }
 }

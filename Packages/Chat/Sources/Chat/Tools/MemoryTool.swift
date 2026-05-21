@@ -202,8 +202,11 @@ public struct MemoryTool: ToolExecutor {
             return errorResult("`op:'forget'` requires an `id` parameter.")
         }
         do {
-            let priorText = (try await repository.fetch(id: id))?.text
-            try await repository.delete(id: id)
+            // Single transaction — without this the artifact's `text`
+            // could race a concurrent Settings-pane update between the
+            // read and the delete, and the expanded pill would show
+            // stale content for what we just forgot.
+            let priorText = (try await repository.fetchAndDelete(id: id))?.text
             return ToolResult(
                 toolID: MemoryTool.toolID,
                 content: "Forgot memory \(id).",

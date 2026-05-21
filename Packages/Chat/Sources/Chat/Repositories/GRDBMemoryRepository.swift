@@ -62,6 +62,19 @@ public struct GRDBMemoryRepository: MemoryRepository {
         }
     }
 
+    public func fetchAndDelete(id: String) async throws -> MemoryEntry? {
+        // Both the read and the delete share one write transaction so a
+        // concurrent `update`/`delete` from the Settings pane can't slip
+        // in between and stale the returned entry.
+        try await queue.write { db in
+            guard let record = try MemoryRecord.fetchOne(db, key: id) else {
+                return nil
+            }
+            try record.delete(db)
+            return record.entry
+        }
+    }
+
     public func clearAll() async throws {
         _ = try await queue.write { db in
             try MemoryRecord.deleteAll(db)
