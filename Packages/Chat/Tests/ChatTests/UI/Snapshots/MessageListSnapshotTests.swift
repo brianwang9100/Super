@@ -47,7 +47,7 @@ struct MessageListSnapshotTests {
         verify(theme: .sepia, name: "list_populated_sepia")
     }
 
-    @Test("streaming tail with typing caret")
+    @Test("streaming tail with plain prose")
     func streamingTail() {
         let function = #function
         let tail = MessageList.StreamingState(
@@ -63,6 +63,149 @@ struct MessageListSnapshotTests {
         .superTheme(.make(.light))
         .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_streaming_light", function: function)
+    }
+
+    // MARK: - Streaming markdown — partial-input variants
+    //
+    // These cover the in-flight rendering pipeline: `StreamingTail` runs
+    // its text through `MarkdownText(treatAsPartial: true)`, which closes
+    // dangling fences/links/emphasis via `MarkdownAutocloser` so the
+    // overlay doesn't visually break while the closer is still in flight.
+    // Each variant exercises one shape of partial markdown.
+
+    @Test("streaming tail mid-fence (unclosed code block)")
+    func streamingTailMidFence() {
+        verifyStreamingMarkdown(
+            text: """
+            Here's the snippet:
+
+            ```swift
+            let total = items.reduce(0, +)
+            print(total)
+            """,
+            theme: .light,
+            name: "list_streaming_midfence_light"
+        )
+    }
+
+    @Test("streaming tail mid-fence in dark theme")
+    func streamingTailMidFenceDark() {
+        verifyStreamingMarkdown(
+            text: """
+            Here's the snippet:
+
+            ```swift
+            let total = items.reduce(0, +)
+            print(total)
+            """,
+            theme: .dark,
+            name: "list_streaming_midfence_dark"
+        )
+    }
+
+    @Test("streaming tail mid-fence in sepia theme")
+    func streamingTailMidFenceSepia() {
+        verifyStreamingMarkdown(
+            text: """
+            Here's the snippet:
+
+            ```swift
+            let total = items.reduce(0, +)
+            print(total)
+            """,
+            theme: .sepia,
+            name: "list_streaming_midfence_sepia"
+        )
+    }
+
+    @Test("streaming tail mid-bold (unclosed emphasis)")
+    func streamingTailMidBold() {
+        verifyStreamingMarkdown(
+            text: "The key insight is that **partial markdown",
+            theme: .light,
+            name: "list_streaming_midbold_light"
+        )
+    }
+
+    @Test("streaming tail mid-bold in dark theme")
+    func streamingTailMidBoldDark() {
+        verifyStreamingMarkdown(
+            text: "The key insight is that **partial markdown",
+            theme: .dark,
+            name: "list_streaming_midbold_dark"
+        )
+    }
+
+    @Test("streaming tail mid-list (third item just opened)")
+    func streamingTailMidList() {
+        verifyStreamingMarkdown(
+            text: """
+            Three things to remember:
+
+            - first item complete
+            - second item complete
+            - third item
+            """,
+            theme: .light,
+            name: "list_streaming_midlist_light"
+        )
+    }
+
+    @Test("streaming tail mid-list in dark theme")
+    func streamingTailMidListDark() {
+        verifyStreamingMarkdown(
+            text: """
+            Three things to remember:
+
+            - first item complete
+            - second item complete
+            - third item
+            """,
+            theme: .dark,
+            name: "list_streaming_midlist_dark"
+        )
+    }
+
+    @Test("streaming tail with inline code mid-formation")
+    func streamingTailMidInlineCode() {
+        verifyStreamingMarkdown(
+            text: "Wrap the value in `Array(",
+            theme: .light,
+            name: "list_streaming_midcode_light"
+        )
+    }
+
+    @Test("streaming tail with inline code mid-formation in dark theme")
+    func streamingTailMidInlineCodeDark() {
+        verifyStreamingMarkdown(
+            text: "Wrap the value in `Array(",
+            theme: .dark,
+            name: "list_streaming_midcode_dark"
+        )
+    }
+
+    /// Renders a streaming-overlay snapshot with `tail.text == text`,
+    /// the same harness the four mid-* variants share. Frame matches the
+    /// existing `streamingTail` baseline at 402×600.
+    private func verifyStreamingMarkdown(
+        text: String,
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        let tail = MessageList.StreamingState(
+            thinking: "",
+            text: text,
+            isCompacting: false
+        )
+        let view = MessageList(
+            items: [.userBubble(id: "u1", text: "Show me", references: [])],
+            streamingTail: tail,
+            verbosity: .verbose
+        )
+        .superTheme(.make(theme))
+        .frame(width: 402, height: 600)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     @Test("error banner above composer")
@@ -362,13 +505,14 @@ struct MessageListSnapshotTests {
     // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view
     // with animation. SwiftUI's `\.accessibilityReduceMotion` env value
     // is read-only, so we can't flip it from a test wrapper. The
-    // `TypingCaret.body` does branch on it (`onAppear` early-returns when
-    // the env reads true) but the steady-state first frame is identical
-    // either way — visible: true. The behavioral difference would only
-    // show after the first animation tick. Snapshot parity therefore
-    // adds no signal here; the reduce-motion branch in TypingCaret is
-    // verified by the conditional in source. Tracked for revisit if a
-    // reliable env-injection seam appears in a future SDK.
+    // remaining animated surface in the streaming overlay is
+    // `WaitingSpark` (which short-circuits its rotation when reduce
+    // motion is on), but its steady-state first frame is identical
+    // either way and the behavioral difference would only show after
+    // the first tick. Snapshot parity therefore adds no signal; the
+    // reduce-motion branch is verified by the conditional in source.
+    // Tracked for revisit if a reliable env-injection seam appears in
+    // a future SDK.
 
     /// Regression: a freshly-mounted `MessageList` with an overflowing
     /// transcript anchors at the latest message rather than the top.

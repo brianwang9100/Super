@@ -124,6 +124,12 @@ public final class ChatScreenViewModel {
 
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
+    /// Decouples the per-SSE delta rate from the rate at which
+    /// `streamingTail.text` repaints — `StreamingTail` renders MarkdownUI,
+    /// so reparsing the AST on every delta would compound. Owned here
+    /// because the view model owns the visible `streamingTail`. The
+    /// callback is wired in `init` once all stored properties are set.
+    private let streamingCoalescer: StreamingTextCoalescer
     /// The fire-and-forget cancel `Task` spawned by `cancelStreaming()`.
     /// Held only so tests can deterministically await it via
     /// `_waitForPendingCancelTask()` — production never reads it.
@@ -170,6 +176,7 @@ public final class ChatScreenViewModel {
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
         self.referenceInbox = referenceInbox
+        self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
             ModelPill.Option(
@@ -207,6 +214,12 @@ public final class ChatScreenViewModel {
                 self.composerText = "\(prefix) \(text)"
             }
             self.committedComposerText = ""
+        }
+        // Wired after all stored props are set so the closure can
+        // legally capture `self`. The coalescer publishes drained
+        // chunks back into `streamingTail.text`.
+        self.streamingCoalescer.onFlush = { [weak self] chunk in
+            self?.publishStreamingChunk(chunk)
         }
     }
 
@@ -431,6 +444,10 @@ public final class ChatScreenViewModel {
     /// than mutating observable state or firing background work.
     public func detachFromLiveTurn() {
         isDetached = true
+        // Cancel the deferred flush so it doesn't wake into a torn-down
+        // view model and re-emit characters into a tail that will never
+        // be observed.
+        streamingCoalescer.reset()
         streamTask?.cancel()
     }
 
@@ -560,6 +577,11 @@ public final class ChatScreenViewModel {
     }
 
     private func startStreaming(text: String, references: [RecordReference], model: LLMModel) {
+        // Defensive: a prior turn that finished cleanly already drained
+        // its buffer via the `consume` end-of-stream flush, but a turn
+        // that was cancelled mid-burst could leave the timer scheduled.
+        // Reset so a new turn never inherits a stale tail-piece.
+        streamingCoalescer.reset()
         isStreaming = true
         streamingTail = MessageList.StreamingState(
             thinking: "",
@@ -590,6 +612,11 @@ public final class ChatScreenViewModel {
             await handle(event)
         }
         if isDetached { return }
+        // Stream-end may arrive with characters still in the coalescer
+        // buffer (cancel, error, or a turn that finished without a
+        // closing whitespace). Drain before tearing down the overlay so
+        // a later timer fire can't write into a nil `streamingTail`.
+        streamingCoalescer.flush()
         await refreshTranscript()
         streamingTail = nil
         isStreaming = false
@@ -610,12 +637,17 @@ public final class ChatScreenViewModel {
             await refreshTranscript()
             await applyFallbackTitleIfNeeded(userText: userMessage.content)
         case .textDelta(let chunk):
-            appendStreamingText(chunk)
+            streamingCoalescer.append(chunk)
         case .thinkingDelta(let chunk):
             appendStreamingThinking(chunk)
         case .toolCallStarted, .toolCallCompleted, .toolCallFailed:
             await refreshTranscript()
         case .assistantMessageSaved(let assistantMessage):
+            // Drain any buffered coalescer characters into the visible
+            // tail before clearing — keeps the overlay byte-for-byte
+            // identical to what the persisted assistant row will render
+            // a moment later through `refreshTranscript()`.
+            streamingCoalescer.flush()
             // Clear the streaming text now that the canonical row exists.
             streamingTail = MessageList.StreamingState(
                 thinking: "",
@@ -653,8 +685,12 @@ public final class ChatScreenViewModel {
         }
     }
 
-    private func appendStreamingText(_ chunk: String) {
-        let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
+    /// Coalescer callback: append a drained chunk to the visible tail.
+    /// Discards silently if the tail has already been torn down — a
+    /// timer that fires just after `streamingTail = nil` would
+    /// otherwise revive a stale overlay.
+    private func publishStreamingChunk(_ chunk: String) {
+        guard let current = streamingTail else { return }
         streamingTail = MessageList.StreamingState(
             thinking: current.thinking,
             thinkingStartedAt: current.thinkingStartedAt,

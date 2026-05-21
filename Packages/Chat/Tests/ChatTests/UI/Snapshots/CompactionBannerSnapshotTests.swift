@@ -62,7 +62,7 @@ struct CompactionBannerSnapshotTests {
     // flip it from a test wrapper either. Snapshot parity therefore adds
     // no signal beyond what the four collapsed/expanded × light/dark
     // baselines already pin. Same documented gap as
-    // `MessageListSnapshotTests`'s `TypingCaret` comment (lines 361–370).
+    // `MessageListSnapshotTests`'s reduce-motion comment (lines 362–371).
 
     private func verify(
         initiallyExpanded: Bool,
