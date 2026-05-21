@@ -42,6 +42,13 @@ actor LazyConversationDriver: ChatSessionDriver {
         return await inner.send(text: text, model: model, references: references)
     }
 
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        // Retry is only reachable after an error from a prior send, so the
+        // conversation has already been persisted via the send path and
+        // `ensureSaved` is `nil`. Forward straight to the inner driver.
+        await inner.retry(model: model)
+    }
+
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         // A draft conversation that hasn't been persisted has no session
         // either, but the inner driver can answer either way: the live

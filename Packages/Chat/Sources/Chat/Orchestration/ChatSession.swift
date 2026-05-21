@@ -249,6 +249,32 @@ public actor ChatSession {
         return subscription.stream
     }
 
+    /// Re-run the LLM loop for this conversation against the
+    /// already-persisted transcript. Used by the Chat UI's Retry pill
+    /// after an LLM error: the failed user `MessageRecord` is still on
+    /// disk from the failed turn, so retry must **not** create a second
+    /// one. Same prior-turn fence + `liveTurn`/subscribe wiring as
+    /// `send(...)`. If no user message exists yet for this conversation,
+    /// the stream finishes with no events (silent no-op).
+    public func retry(
+        model: LLMModel,
+        temperature: Double = 1.0
+    ) async -> AsyncStream<ChatEvent> {
+        if let prior = currentTask {
+            prior.cancel()
+            await prior.value
+        }
+
+        liveTurn = LiveTurn()
+        let subscription = subscribe()
+        let task = Task {
+            await self.runRetry(model: model, temperature: temperature)
+            await self.finishLiveTurn()
+        }
+        currentTask = task
+        return subscription.stream
+    }
+
     /// Manually invoke a compaction pass. Returns an `AsyncStream` so the
     /// composer can render the same `.compactionStarted` /
     /// `.compactionCompleted` UI it shows for auto-compaction. If a turn
@@ -393,22 +419,7 @@ public actor ChatSession {
             broadcast(.userMessageSaved(userMessage))
 
             let provider = try await llmProviderRegistry.requireActive()
-
-            while true {
-                try Task.checkCancellation()
-                try await maybeAutoCompact(model: model)
-                let history = try await assembleHistory(model: model)
-                let enabledTools = await toolRegistry.enabledTools(for: provider)
-                let toolCalls = try await streamOneTurn(
-                    provider: provider,
-                    messages: history,
-                    model: model,
-                    tools: enabledTools,
-                    temperature: temperature
-                )
-                if toolCalls.isEmpty { return }
-                try await executeToolCalls(toolCalls)
-            }
+            try await runTurnLoop(model: model, temperature: temperature, provider: provider)
         } catch is CancellationError {
             broadcast(.error(.cancelled))
         } catch let err as LLMError {
@@ -422,6 +433,62 @@ public actor ChatSession {
             }
         } catch {
             broadcast(.error(.requestFailed(error.localizedDescription)))
+        }
+    }
+
+    /// Body of `retry(model:temperature:)` — resolves the provider and
+    /// re-enters the turn loop against the persisted transcript. Silently
+    /// no-ops (no broadcast, no rows written) when the conversation has
+    /// no user message yet, so a stray tap on a stale Retry pill can't
+    /// flash a bogus error.
+    private func runRetry(model: LLMModel, temperature: Double) async {
+        defer { currentTask = nil }
+
+        do {
+            let persisted = try await messageRepository.fetchAll(conversationId: conversationId)
+            guard persisted.contains(where: { $0.role == .user }) else { return }
+
+            let provider = try await llmProviderRegistry.requireActive()
+            try await runTurnLoop(model: model, temperature: temperature, provider: provider)
+        } catch is CancellationError {
+            broadcast(.error(.cancelled))
+        } catch let err as LLMError {
+            broadcast(.error(err))
+        } catch let err as LLMProviderRegistryError {
+            switch err {
+            case .noActiveProvider:
+                broadcast(.error(.requestFailed("no active LLM provider configured")))
+            case .unknownProvider(let id):
+                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
+            }
+        } catch {
+            broadcast(.error(.requestFailed(error.localizedDescription)))
+        }
+    }
+
+    /// The provider-streaming loop shared by `run(userText:...)` and
+    /// `runRetry(...)`. Assembles history, streams a turn, executes any
+    /// requested tool calls, and repeats until the model emits a turn
+    /// with no tool calls.
+    private func runTurnLoop(
+        model: LLMModel,
+        temperature: Double,
+        provider: LLMProvider
+    ) async throws {
+        while true {
+            try Task.checkCancellation()
+            try await maybeAutoCompact(model: model)
+            let history = try await assembleHistory(model: model)
+            let enabledTools = await toolRegistry.enabledTools(for: provider)
+            let toolCalls = try await streamOneTurn(
+                provider: provider,
+                messages: history,
+                model: model,
+                tools: enabledTools,
+                temperature: temperature
+            )
+            if toolCalls.isEmpty { return }
+            try await executeToolCalls(toolCalls)
         }
     }
 

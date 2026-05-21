@@ -147,6 +147,114 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error?.message.contains("Authentication failed") == true)
     }
 
+    @Test("retry routes through driver.retry, not driver.send, so no duplicate user row is written")
+    func retryInvokesDriverRetryNotSend() async {
+        // Regression: previously the Retry pill called driver.send(text:) with
+        // the failed message's text, which created a *second* MessageRecord
+        // in the database and rendered as a duplicate user bubble. The fix
+        // routes Retry through a dedicated driver.retry(model:) entry point
+        // that re-runs the LLM loop against the already-persisted transcript.
+        let driver = RecordingDriver()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        // Prime an error state without going through send — equivalent to
+        // the post-failure state the user taps Retry from.
+        viewModel._setSnapshotState(
+            items: [],
+            error: MessageList.ErrorState(message: "Authentication failed.")
+        )
+
+        viewModel.retry()
+        await driver.waitForRetry()
+        await viewModel._waitForPendingStreamTask()
+
+        #expect(await driver.retryInvocations == 1)
+        #expect(await driver.sendInvocationCount == 0)
+        #expect(viewModel.error == nil)
+    }
+
+    @Test("retry after an LLM error does not duplicate the user bubble in the transcript")
+    func retryDoesNotDuplicateUserBubble() async throws {
+        // End-to-end regression for the duplicate-message bug: send fails,
+        // user taps Retry, retry succeeds — final transcript must contain
+        // exactly one user bubble (the original), not two.
+        let userRow = MessageRecord(
+            id: "u1",
+            conversationId: conversationId,
+            role: .user,
+            content: "test",
+            createdAt: Date()
+        )
+        let assistantRow = MessageRecord(
+            id: "a1",
+            conversationId: conversationId,
+            role: .assistant,
+            content: "ok",
+            createdAt: Date().addingTimeInterval(1)
+        )
+        let messages = StubMessageRepository(initial: [])
+        // Mirror production: the failed turn persisted the user row before
+        // the LLM errored, so the row exists on disk during the error.
+        await messages.set([userRow])
+
+        let driver = ScriptedDriver(
+            events: [
+                .userMessageSaved(userRow),
+                .error(.unauthorized),
+            ],
+            retryEvents: [
+                .textDelta("ok"),
+                .assistantMessageSaved(assistantRow),
+            ]
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        viewModel.send("test")
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+        let userBubbleCountAfterError = viewModel.items.filter {
+            if case .userBubble = $0 { return true }
+            return false
+        }.count
+        #expect(userBubbleCountAfterError == 1)
+        #expect(viewModel.error?.message.contains("Authentication failed") == true)
+
+        // Mirror production: by the time retry succeeds, the assistant row
+        // has been persisted by ChatSession on `.messageComplete`.
+        await messages.set([userRow, assistantRow])
+
+        viewModel.retry()
+        try await driver.waitUntilFinished()
+        await yieldUntilNotStreaming(viewModel)
+
+        let userBubbleCountAfterRetry = viewModel.items.filter {
+            if case .userBubble = $0 { return true }
+            return false
+        }.count
+        #expect(userBubbleCountAfterRetry == 1)
+        #expect(viewModel.error == nil)
+        // Sanity check: the new assistant content landed.
+        #expect(viewModel.items.contains(where: {
+            if case .assistantText = $0 { return true }
+            return false
+        }))
+    }
+
     @Test("send surfaces no-model error and preserves composer text when no model is available")
     func sendSurfacesNoModelErrorWhenNoModel() {
         let driver = ScriptedDriver(events: [])
@@ -1278,6 +1386,12 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
         return stream
     }
 
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuation.finish()
+        return stream
+    }
+
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         subscribeCount += 1
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
@@ -1301,6 +1415,10 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
 /// always-finishes contract `ChatSession` provides.
 private actor ScriptedDriver: ChatSessionDriver {
     private let scripted: [ChatEvent]
+    /// Events the driver yields on `retry(...)`. A separate sequence so a
+    /// single driver can script "first send fails, retry succeeds." When
+    /// empty, `retry` returns an immediately-finished stream.
+    private let retryScripted: [ChatEvent]
     /// Events for a fake "already in flight" turn, replayed by
     /// `subscribe()`. Tests that exercise the re-attach path enqueue
     /// these; the default empty list keeps `subscribe()` finishing
@@ -1310,19 +1428,39 @@ private actor ScriptedDriver: ChatSessionDriver {
     private var finished = false
     private var continuation: AsyncStream<Void>.Continuation?
     private var cancelInvocationCount: Int = 0
+    private(set) var retryInvocations: Int = 0
 
     init(
         events: [ChatEvent],
+        retryEvents: [ChatEvent] = [],
         pendingSnapshot: ChatSession.LiveTurnSnapshot? = nil,
         pendingSubscribeEvents: [ChatEvent] = []
     ) {
         self.scripted = events
+        self.retryScripted = retryEvents
         self.pendingSnapshot = pendingSnapshot
         self.pendingSubscribeEvents = pendingSubscribeEvents
     }
 
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         let scripted = self.scripted
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        let actorRef = self
+        Task {
+            for event in scripted {
+                continuation.yield(event)
+                await Task.yield()
+            }
+            continuation.finish()
+            await actorRef.markFinished()
+        }
+        return stream
+    }
+
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        retryInvocations += 1
+        finished = false
+        let scripted = retryScripted
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         let actorRef = self
         Task {
@@ -1380,13 +1518,26 @@ private actor ScriptedDriver: ChatSessionDriver {
 private actor RecordingDriver: ChatSessionDriver {
     private(set) var sentText: [String] = []
     private(set) var sentReferences: [[RecordReference]] = []
+    private(set) var retryInvocations: Int = 0
     private var sendWaiter: CheckedContinuation<Void, Never>?
+    private var retryWaiter: CheckedContinuation<Void, Never>?
+
+    var sendInvocationCount: Int { sentText.count }
 
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         sentText.append(text)
         sentReferences.append(references)
         sendWaiter?.resume()
         sendWaiter = nil
+        let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
+        continuation.finish()
+        return stream
+    }
+
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        retryInvocations += 1
+        retryWaiter?.resume()
+        retryWaiter = nil
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
         continuation.finish()
         return stream
@@ -1404,6 +1555,12 @@ private actor RecordingDriver: ChatSessionDriver {
     func waitForSend() async {
         guard sentText.isEmpty else { return }
         await withCheckedContinuation { sendWaiter = $0 }
+    }
+
+    /// Await the first `retry(...)`; returns immediately if it already ran.
+    func waitForRetry() async {
+        guard retryInvocations == 0 else { return }
+        await withCheckedContinuation { retryWaiter = $0 }
     }
 }
 
