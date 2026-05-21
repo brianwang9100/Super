@@ -11,8 +11,8 @@ struct MemoryToolTests {
 
     private static let fixedInstant = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func makeTool() -> (MemoryTool, GRDBMemoryRepository, DeterministicIDGenerator) {
-        let database = try! ChatDatabase.makeInMemory()
+    private func makeTool() throws -> (MemoryTool, GRDBMemoryRepository, DeterministicIDGenerator) {
+        let database = try ChatDatabase.makeInMemory()
         let repository = GRDBMemoryRepository(database: database)
         let ids = DeterministicIDGenerator(prefix: "mem-")
         let tool = MemoryTool(
@@ -64,7 +64,7 @@ struct MemoryToolTests {
     // MARK: - Save
 
     @Test func savePersistsEntryAndReturnsId() async throws {
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
 
         let result = try await tool.execute(input: [
             "op": .string("save"),
@@ -94,7 +94,7 @@ struct MemoryToolTests {
         // SettingsViewModel.updateMemory trimmed before writing —
         // leaving the two write paths with different byte sequences
         // for logically equivalent text.
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
 
         let result = try await tool.execute(input: [
             "op": .string("save"),
@@ -108,7 +108,7 @@ struct MemoryToolTests {
     }
 
     @Test func saveMissingTextIsSoftError() async throws {
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
 
         let result = try await tool.execute(input: ["op": .string("save")])
 
@@ -118,7 +118,7 @@ struct MemoryToolTests {
     }
 
     @Test func saveOverCapacityReportsCleanly() async throws {
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
         for i in 0..<MemoryLimits.maxEntries {
             try await repository.save(MemoryEntry(
                 id: "seed-\(i)",
@@ -140,7 +140,7 @@ struct MemoryToolTests {
     // MARK: - Update
 
     @Test func updateRewritesText() async throws {
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
         _ = try await tool.execute(input: [
             "op": .string("save"),
             "text": .string("Prefers metric."),
@@ -158,7 +158,7 @@ struct MemoryToolTests {
     }
 
     @Test func updateMissingIdIsSoftError() async throws {
-        let (tool, _, _) = makeTool()
+        let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: [
             "op": .string("update"),
             "text": .string("x"),
@@ -168,7 +168,7 @@ struct MemoryToolTests {
     }
 
     @Test func updateUnknownIdReportsCleanly() async throws {
-        let (tool, _, _) = makeTool()
+        let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: [
             "op": .string("update"),
             "id": .string("ghost"),
@@ -181,7 +181,7 @@ struct MemoryToolTests {
     // MARK: - Forget
 
     @Test func forgetRemovesRowAndCarriesPriorTextInArtifact() async throws {
-        let (tool, repository, _) = makeTool()
+        let (tool, repository, _) = try makeTool()
         _ = try await tool.execute(input: [
             "op": .string("save"),
             "text": .string("Vegetarian."),
@@ -202,7 +202,7 @@ struct MemoryToolTests {
         // `delete` is no-op on missing rows in the repository, and the
         // tool surfaces that as a clean success — the LLM should not
         // re-try on a forget that already happened.
-        let (tool, _, _) = makeTool()
+        let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: [
             "op": .string("forget"),
             "id": .string("nope"),
@@ -213,14 +213,14 @@ struct MemoryToolTests {
     // MARK: - Op parsing
 
     @Test func missingOpIsSoftError() async throws {
-        let (tool, _, _) = makeTool()
+        let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: [:])
         #expect(result.isError == true)
         #expect(result.content.contains("op"))
     }
 
     @Test func unknownOpIsSoftError() async throws {
-        let (tool, _, _) = makeTool()
+        let (tool, _, _) = try makeTool()
         let result = try await tool.execute(input: ["op": .string("delete")])
         #expect(result.isError == true)
         #expect(result.content.contains("delete"))

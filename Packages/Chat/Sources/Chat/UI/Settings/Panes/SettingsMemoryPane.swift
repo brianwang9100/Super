@@ -5,7 +5,7 @@ import SwiftUI
 /// row in `SettingsToolsPane`.
 ///
 /// Lets the user review what the LLM (Large Language Model) has saved
-/// about them, edit individual entries inline, swipe-delete a row, or
+/// about them, edit individual entries inline, tap the trash icon to delete a row, or
 /// clear everything. Memories are bound reactively via GRDBQuery `@Query`
 /// so a write from the `memory` tool (mid-conversation, in a sibling
 /// chat surface) repaints the pane without an explicit refresh — per

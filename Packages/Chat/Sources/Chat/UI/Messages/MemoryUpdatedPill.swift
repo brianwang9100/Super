@@ -75,6 +75,7 @@ struct MemoryUpdatedPill: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
     }
 
     private var headline: String {
@@ -106,6 +107,19 @@ struct MemoryUpdatedPill: View {
             return headline
         }
         return "\(headline): \(parsed.text)"
+    }
+
+    /// VoiceOver hint describing what tapping the pill does. Without it,
+    /// VO users hear "Saved to memory, button" with no signal that the
+    /// row is expandable. Forget pills never reveal extra detail (the
+    /// input JSON has no `text`), so the hint reflects that no-op.
+    private var accessibilityHint: String {
+        switch parsed.op {
+        case .save, .update, .unknown:
+            return isExpanded ? "Collapse details" : "Show details"
+        case .forget:
+            return ""
+        }
     }
 }
 
