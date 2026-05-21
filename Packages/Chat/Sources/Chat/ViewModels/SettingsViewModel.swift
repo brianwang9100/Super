@@ -565,11 +565,15 @@ public final class SettingsViewModel {
     /// Empty / whitespace-only text is silently ignored — the pane
     /// commits on focus loss, so a momentarily-cleared editor would
     /// otherwise wipe the row.
-    public func updateMemory(id: String, text: String) async {
+    ///
+    /// `now` is an injection seam (matching `clearChatHistory(now:)`)
+    /// so tests can assert the exact `updatedAt` written without
+    /// reaching for the wall clock — per AGENTS.md §Testing rule 1.
+    public func updateMemory(id: String, text: String, now: Date = Date()) async {
         guard let memoryRepository else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try? await memoryRepository.update(id: id, text: trimmed, updatedAt: Date())
+        try? await memoryRepository.update(id: id, text: trimmed, updatedAt: now)
     }
 
     /// Drop one memory.

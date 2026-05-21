@@ -153,8 +153,16 @@ struct SettingsMemoryPane: View {
 
     private func commitEdit(for memory: MemoryRecord) {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        editingId = nil
-        focusedId = nil
+        // Only clear the edit state when this row is still the active
+        // target. A direct tap from row A's editor into row B fires
+        // beginEditing(B) — which sets `editingId = B, focusedId = B` —
+        // before A's onChange-driven commitEdit runs; without the guard
+        // we'd then overwrite both with nil and B's TextField never
+        // appears.
+        if editingId == memory.id {
+            editingId = nil
+            focusedId = nil
+        }
         guard !trimmed.isEmpty, trimmed != memory.text else { return }
         Task { await viewModel.updateMemory(id: memory.id, text: trimmed) }
     }

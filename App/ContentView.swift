@@ -334,7 +334,7 @@ struct AppShell: View {
                     // through MemoryTool. Without it the pane's @Query
                     // falls back to its empty defaultValue and the
                     // user sees "No memories yet" even when memories
-                    // exist (verified by PR #72 review).
+                    // exist.
                     databaseContext: .readOnly { dependencies.chatDatabase.queue }
                 )
                 .superTheme(theme)
@@ -456,7 +456,7 @@ struct AppShell: View {
                 // Required for SettingsMemoryPane edit/delete/clear-all
                 // to reach the GRDB store. Optional in the type so test
                 // fixtures can construct the VM without one — production
-                // always wires it (verified by PR #72 review).
+                // always wires it.
                 memoryRepository: dependencies.memoryRepository,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
                 httpClient: URLSessionHTTPClient()
