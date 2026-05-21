@@ -225,8 +225,7 @@ struct ChatScreenViewModelTests {
         )
 
         viewModel.send("test")
-        try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
+        await viewModel._waitForPendingStreamTask()
         let userBubbleCountAfterError = viewModel.items.filter {
             if case .userBubble = $0 { return true }
             return false
@@ -239,8 +238,7 @@ struct ChatScreenViewModelTests {
         await messages.set([userRow, assistantRow])
 
         viewModel.retry()
-        try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
+        await viewModel._waitForPendingStreamTask()
 
         let userBubbleCountAfterRetry = viewModel.items.filter {
             if case .userBubble = $0 { return true }

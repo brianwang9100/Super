@@ -400,39 +400,24 @@ public actor ChatSession {
         model: LLMModel,
         temperature: Double
     ) async {
-        defer { currentTask = nil }
-
-        do {
+        await runGuardedTurn {
             let userMessage = MessageRecord(
-                id: idGenerator.nextID(),
-                conversationId: conversationId,
+                id: self.idGenerator.nextID(),
+                conversationId: self.conversationId,
                 role: .user,
                 content: userText,
                 toolCallId: nil,
-                createdAt: clock.now(),
+                createdAt: self.clock.now(),
                 tokenCount: nil,
                 // `encode` returns nil for an empty set, so a message
                 // without verse pills leaves the column NULL.
                 attachmentsJSON: MessageRecord.encode(MessageAttachments(references: references))
             )
-            try await messageRepository.save(userMessage)
-            broadcast(.userMessageSaved(userMessage))
+            try await self.messageRepository.save(userMessage)
+            self.broadcast(.userMessageSaved(userMessage))
 
-            let provider = try await llmProviderRegistry.requireActive()
-            try await runTurnLoop(model: model, temperature: temperature, provider: provider)
-        } catch is CancellationError {
-            broadcast(.error(.cancelled))
-        } catch let err as LLMError {
-            broadcast(.error(err))
-        } catch let err as LLMProviderRegistryError {
-            switch err {
-            case .noActiveProvider:
-                broadcast(.error(.requestFailed("no active LLM provider configured")))
-            case .unknownProvider(let id):
-                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
-            }
-        } catch {
-            broadcast(.error(.requestFailed(error.localizedDescription)))
+            let provider = try await self.llmProviderRegistry.requireActive()
+            try await self.runTurnLoop(model: model, temperature: temperature, provider: provider)
         }
     }
 
@@ -442,14 +427,28 @@ public actor ChatSession {
     /// no user message yet, so a stray tap on a stale Retry pill can't
     /// flash a bogus error.
     private func runRetry(model: LLMModel, temperature: Double) async {
-        defer { currentTask = nil }
-
-        do {
-            let persisted = try await messageRepository.fetchAll(conversationId: conversationId)
+        await runGuardedTurn {
+            let persisted = try await self.messageRepository.fetchAll(conversationId: self.conversationId)
             guard persisted.contains(where: { $0.role == .user }) else { return }
 
-            let provider = try await llmProviderRegistry.requireActive()
-            try await runTurnLoop(model: model, temperature: temperature, provider: provider)
+            let provider = try await self.llmProviderRegistry.requireActive()
+            try await self.runTurnLoop(model: model, temperature: temperature, provider: provider)
+        }
+    }
+
+    /// Run a turn-shaped body inside the shared error→event mapping that
+    /// every entry point into the turn loop needs: `CancellationError`
+    /// becomes `.error(.cancelled)`, `LLMError` and `LLMProviderRegistryError`
+    /// get user-facing copy, and any other throw is reported as
+    /// `.requestFailed(...)`. Also clears `currentTask` on the way out so
+    /// `isStreaming` flips back to `false` as soon as the work finishes —
+    /// previously each call site duplicated this with its own `defer` and
+    /// its own 14-line `catch` ladder, which would silently drift if a new
+    /// error type were added on one side and not the other.
+    private func runGuardedTurn(_ body: () async throws -> Void) async {
+        defer { currentTask = nil }
+        do {
+            try await body()
         } catch is CancellationError {
             broadcast(.error(.cancelled))
         } catch let err as LLMError {
