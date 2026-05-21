@@ -76,8 +76,13 @@ struct MemoryUpdatedPillSnapshotTests {
 
     @Test("expanded forget in light")
     func expandedForgetLight() {
+        // Production `forget` tool calls only carry `id` (no `text`),
+        // so the parametersJSON the pill parses never has text to show
+        // even in the expanded state — verify renders "Forgot memory"
+        // alone. Earlier this test passed a synthetic `text` field the
+        // LLM would never produce, masking the production rendering.
         verify(
-            op: .forget, text: "Vegetarian.",
+            op: .forget, text: nil,
             initiallyExpanded: true, theme: .light,
             name: "memory_pill_expanded_forget_light"
         )
@@ -97,18 +102,31 @@ struct MemoryUpdatedPillSnapshotTests {
 
     private func verify(
         op: Op,
-        text: String,
+        text: String?,
         initiallyExpanded: Bool,
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
         name: String,
         function: String = #function
     ) {
+        // Mirror the shape of the JSON the LLM actually sends: `forget`
+        // carries only `id`; `save` / `update` carry `text` (and `id`
+        // only on update). Building the parameters payload here keeps
+        // the test fixture honest against production.
+        let parametersJSON: String
+        switch op {
+        case .save:
+            parametersJSON = "{\"op\":\"save\",\"text\":\"\(text ?? "")\"}"
+        case .update:
+            parametersJSON = "{\"op\":\"update\",\"id\":\"mem-1\",\"text\":\"\(text ?? "")\"}"
+        case .forget:
+            parametersJSON = "{\"op\":\"forget\",\"id\":\"mem-1\"}"
+        }
         let call = MessageList.ToolCallItem(
             id: "tc-1",
             toolName: MemoryTool.toolID,
-            parametersJSON: "{\"op\":\"\(op.rawValue)\",\"text\":\"\(text)\"}",
-            resultText: "Saved memory mem-1: \(text)",
+            parametersJSON: parametersJSON,
+            resultText: "Memory \(op.rawValue) mem-1: \(text ?? "")",
             status: .success
         )
         // Seed `@State isExpanded` via the underscore-prefixed test seam

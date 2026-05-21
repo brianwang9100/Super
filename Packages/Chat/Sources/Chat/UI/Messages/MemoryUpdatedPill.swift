@@ -52,7 +52,7 @@ struct MemoryUpdatedPill: View {
                 Text(headline)
                     .font(.system(.caption))
                     .foregroundStyle(theme.inkSoft)
-                if let detail = isExpanded ? parsed.text : nil, !detail.isEmpty {
+                if let detail = detailText {
                     Text("— \(detail)")
                         .font(.system(.caption))
                         .foregroundStyle(theme.inkFaint)
@@ -83,6 +83,21 @@ struct MemoryUpdatedPill: View {
         case .update: return "Updated memory"
         case .forget: return "Forgot memory"
         case .unknown: return "Memory updated"
+        }
+    }
+
+    /// Detail text rendered in the expanded state. `nil` when nothing
+    /// meaningful would render — either the pill is collapsed, the
+    /// parsed `text` is empty, or the op is `forget` (whose input JSON
+    /// only carries `id`, never the text being forgotten; "Forgot
+    /// memory" alone is the right ambient confirmation).
+    private var detailText: String? {
+        guard isExpanded else { return nil }
+        switch parsed.op {
+        case .save, .update, .unknown:
+            return parsed.text.isEmpty ? nil : parsed.text
+        case .forget:
+            return nil
         }
     }
 

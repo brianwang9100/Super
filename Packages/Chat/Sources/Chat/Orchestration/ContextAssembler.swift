@@ -103,6 +103,16 @@ public struct ContextAssembler: Sendable {
         if !trimmedSystemPrompt.isEmpty {
             prompt.insert(LLMMessage(role: .system, text: trimmedSystemPrompt), at: 0)
         }
+        // Each insert above can produce a `.system` row (memories block,
+        // settings prompt, historical leading `.system` rows, checkpoint
+        // summary), so the projected prompt can carry up to four
+        // consecutive `.system` entries. The Anthropic Messages API
+        // accepts that natively and `OpenAICompatibleLLMProvider`
+        // forwards each one as its own message — which the OpenAI Chat
+        // Completions API also accepts (it concatenates internally).
+        // If a future provider with a stricter single-system contract
+        // is added, merge these blocks into a single newline-joined
+        // `.system` entry at this insertion point.
         if let memoriesBlock = Self.formatMemoriesBlock(memories) {
             prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
         }
