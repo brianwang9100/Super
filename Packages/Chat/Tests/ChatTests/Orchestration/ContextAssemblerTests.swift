@@ -424,7 +424,10 @@ struct ContextAssemblerTests {
             checkpoint: nil,
             model: makeModel(),
             systemPrompt: "Always answer in haiku.",
-            memories: ["Prefers metric units.", "Vegetarian."]
+            memories: [
+                makeMemoryEntry(id: "mem-1", text: "Prefers metric units."),
+                makeMemoryEntry(id: "mem-2", text: "Vegetarian."),
+            ]
         )
 
         // [0] memories block, [1] settings prompt, [2] user
@@ -432,8 +435,8 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
             #expect(body.contains("What I remember about you"))
-            #expect(body.contains("- Prefers metric units."))
-            #expect(body.contains("- Vegetarian."))
+            #expect(body.contains("- [mem-1] Prefers metric units."))
+            #expect(body.contains("- [mem-2] Vegetarian."))
         } else {
             Issue.record("expected memories block at [0], got \(assembly.messages[0].content)")
         }
@@ -442,6 +445,36 @@ struct ContextAssemblerTests {
             #expect(body == "Always answer in haiku.")
         }
         #expect(assembly.messages[2].role == .user)
+    }
+
+    @Test func memoriesBlockSurfacesIdsAlongsideText() throws {
+        // Regression for PR #72 round-4: the bullets must lead with
+        // `[<id>]` so the LLM can call `memory(op:'update'|'forget',
+        // id:...)` on entries it didn't `save` this session — without
+        // the id, the descriptor's "Ids come from the surfaced memory
+        // block" contract is broken on every follow-up conversation.
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            memories: [
+                makeMemoryEntry(id: "A1B2C3D4", text: "Vegetarian."),
+            ]
+        )
+
+        guard case .text(let body) = assembly.messages[0].content.first else {
+            Issue.record("missing memories block")
+            return
+        }
+        // Bullet form `- [<id>] <text>` so a regex on the LLM side
+        // can extract the id deterministically.
+        #expect(body.contains("- [A1B2C3D4] Vegetarian."))
     }
 
     @Test func emptyMemoriesArrayInjectsNothing() throws {
@@ -477,11 +510,18 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            memories: ["  ", "Real preference.", "\n\n"]
+            memories: [
+                makeMemoryEntry(id: "blank-1", text: "  "),
+                makeMemoryEntry(id: "real-1", text: "Real preference."),
+                makeMemoryEntry(id: "blank-2", text: "\n\n"),
+            ]
         )
         if case .text(let body) = mixed.messages[0].content.first {
-            #expect(body.contains("- Real preference."))
-            #expect(body.contains("- \n") == false)
+            #expect(body.contains("- [real-1] Real preference."))
+            // Blank entries are dropped entirely — no bullet, no stray
+            // id-only line either.
+            #expect(body.contains("[blank-1]") == false)
+            #expect(body.contains("[blank-2]") == false)
         }
 
         let allBlank = try assembler.assemble(
@@ -489,7 +529,11 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            memories: ["", "  ", "\n"]
+            memories: [
+                makeMemoryEntry(id: "b1", text: ""),
+                makeMemoryEntry(id: "b2", text: "  "),
+                makeMemoryEntry(id: "b3", text: "\n"),
+            ]
         )
         #expect(allBlank.messages.count == 1)
         #expect(allBlank.messages[0].role == .user)
@@ -503,7 +547,11 @@ struct ContextAssemblerTests {
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
         ]
-        let inputs = ["first", "second", "third"]
+        let inputs = [
+            makeMemoryEntry(id: "id1", text: "first"),
+            makeMemoryEntry(id: "id2", text: "second"),
+            makeMemoryEntry(id: "id3", text: "third"),
+        ]
 
         let assembly = try assembler.assemble(
             messages: messages,
@@ -522,5 +570,9 @@ struct ContextAssemblerTests {
         let thirdIdx = body.range(of: "third")!.lowerBound
         #expect(firstIdx < secondIdx)
         #expect(secondIdx < thirdIdx)
+    }
+
+    private func makeMemoryEntry(id: String, text: String) -> MemoryEntry {
+        MemoryEntry(id: id, text: text, createdAt: baseDate, updatedAt: baseDate)
     }
 }

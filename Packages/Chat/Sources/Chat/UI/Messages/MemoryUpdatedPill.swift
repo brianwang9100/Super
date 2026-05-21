@@ -11,16 +11,22 @@ import SwiftUI
 /// `ToolCallBlock` upstream so the error is still surfaced.
 struct MemoryUpdatedPill: View {
     /// Single successful memory tool call rendered by this pill. The
-    /// `parametersJSON` is parsed once at appear time; failure to parse
+    /// `parametersJSON` is parsed once at init time; failure to parse
     /// (a malformed payload from a future tool revision) collapses to
     /// the generic "Memory updated" label without leaking JSON.
     let call: MessageList.ToolCallItem
+    /// Parsed view of the tool's `op` and `text` parameters, computed
+    /// once in init so `body`'s repeated reads from `headline` and the
+    /// accessibility label don't re-run `JSONSerialization` per render.
+    /// Unexpected payloads collapse to `.unknown` with empty text.
+    private let parsed: ParsedMemoryCall
     @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
 
     /// Production initializer — pill starts collapsed; user taps to expand.
     init(call: MessageList.ToolCallItem) {
         self.call = call
+        self.parsed = ParsedMemoryCall.parse(call.parametersJSON)
         self._isExpanded = State(initialValue: false)
     }
 
@@ -31,14 +37,8 @@ struct MemoryUpdatedPill: View {
     /// ._waitForPendingTitleTask()` per AGENTS.md §Testing rule 2).
     init(call: MessageList.ToolCallItem, _isExpanded: Bool) {
         self.call = call
+        self.parsed = ParsedMemoryCall.parse(call.parametersJSON)
         self._isExpanded = State(initialValue: _isExpanded)
-    }
-
-    /// Parsed view of the tool's `op` and `text` parameters. Lifts the
-    /// JSON read out of `body` so unexpected payloads degrade quietly
-    /// (no crash, no JSON in the UI).
-    private var parsed: ParsedMemoryCall {
-        ParsedMemoryCall.parse(call.parametersJSON)
     }
 
     var body: some View {

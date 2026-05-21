@@ -69,7 +69,11 @@ public struct ContextAssembler: Sendable {
     ///   - memories: Stored user-preference memories surfaced by the
     ///     `memory` tool. Rendered as a bulleted "What I remember about
     ///     you" block ahead of `systemPrompt` so the model sees them
-    ///     before any persona instructions. Empty array = no block
+    ///     before any persona instructions. Each bullet carries the
+    ///     entry's id (`- [<id>] <text>`) so the LLM can call
+    ///     `memory(op:'update'|'forget', id:...)` in conversations
+    ///     where it didn't perform the original `save` and therefore
+    ///     has no other source for the id. Empty array = no block
     ///     injected. The orchestrator passes `[]` when the memory tool
     ///     is disabled, so this same code path serves the "off" case
     ///     without a separate flag.
@@ -79,7 +83,7 @@ public struct ContextAssembler: Sendable {
         checkpoint: CompactionCheckpointRecord?,
         model: LLMModel,
         systemPrompt: String = "",
-        memories: [String] = []
+        memories: [MemoryEntry] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls)
@@ -113,14 +117,17 @@ public struct ContextAssembler: Sendable {
     /// Format the bulleted "What I remember about you" block, or `nil`
     /// when there's nothing to surface (skipping the insert entirely
     /// avoids a stray blank `.system` row when memory is enabled but
-    /// empty). Each entry collapses internal whitespace and trims so the
-    /// LLM doesn't see ragged bullet indentation from copy-pasted text.
-    static func formatMemoriesBlock(_ memories: [String]) -> String? {
+    /// empty). Each bullet leads with `[<id>]` so the LLM can pass the
+    /// id back to `memory(op:'update'|'forget', id:...)` in a follow-up
+    /// turn — without it, those ops would only be callable on the same
+    /// turn that produced the `save` artifact. Text is trimmed so the
+    /// LLM doesn't see ragged whitespace from copy-pasted input.
+    static func formatMemoriesBlock(_ memories: [MemoryEntry]) -> String? {
         let cleaned = memories
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .map { (id: $0.id, text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .filter { !$0.text.isEmpty }
         guard !cleaned.isEmpty else { return nil }
-        let bullets = cleaned.map { "- \($0)" }.joined(separator: "\n")
+        let bullets = cleaned.map { "- [\($0.id)] \($0.text)" }.joined(separator: "\n")
         return "What I remember about you:\n\(bullets)"
     }
 

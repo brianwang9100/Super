@@ -468,18 +468,24 @@ public actor ChatSession {
     /// `[]`. Disabled-tool branch returns immediately without touching
     /// the repository so an off toggle has zero query cost.
     ///
+    /// Returns full `MemoryEntry` values (not just text) so the
+    /// downstream block renderer can surface each id to the LLM —
+    /// required for `memory(op:'update'|'forget', id:...)` to work in
+    /// conversations where the model didn't perform the original
+    /// `save` and therefore has no other id source.
+    ///
     /// A repository read failure (transient GRDB error, WAL lock,
     /// schema migration in progress) falls back to `[]` rather than
     /// throwing — losing the memories block for one turn is preferable
     /// to failing the entire turn. The failure is logged so a recurring
     /// fault surfaces in `os_log` instead of silently wiping the user's
     /// stored preferences from every prompt.
-    private func currentMemories() async -> [String] {
+    private func currentMemories() async -> [MemoryEntry] {
         guard let memoryRepository else { return [] }
         guard let registration = await toolRegistry.registration(toolID: MemoryTool.toolID),
               registration.isEnabled else { return [] }
         do {
-            return try await memoryRepository.all().map(\.text)
+            return try await memoryRepository.all()
         } catch {
             chatSessionLog.error(
                 "memoryRepository.all() failed; injecting empty memories block this turn: \(String(describing: error), privacy: .public)"

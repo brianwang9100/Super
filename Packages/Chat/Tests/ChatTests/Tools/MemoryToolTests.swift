@@ -7,7 +7,6 @@ import Testing
 /// validation, repository error mapping, and artifact emission so the
 /// transcript pill can render without parsing natural language.
 @Suite("MemoryTool")
-@MainActor
 struct MemoryToolTests {
 
     private static let fixedInstant = Date(timeIntervalSince1970: 1_700_000_000)
