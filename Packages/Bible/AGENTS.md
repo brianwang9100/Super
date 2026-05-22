@@ -9,7 +9,7 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 - **Database** (`Database/`): `BibleDatabase` — wraps the `bible.sqlite` `DatabaseQueue` and the schema migrator.
 - **Repositories** (`Repositories/`): protocol seam + `GRDB`-prefixed impl, one pair per record.
 - **Queries** (`Queries/`): GRDBQuery `ValueObservationQueryable` requests — `ChapterHighlightsRequest` is what the chapter renderer's `@Query` observes.
-- **TextSources** (`TextSources/`): `BibleTextLoader` protocol + `BundledBibleTextLoader` over the bundled per-book JSON — WEB, KJV, and ASV, one `<CODE>-<bookID>.json` each. The `Scripts/generate_translation_json.py` converter regenerates them from eBible.org USFM.
+- **TextSources** (`TextSources/`): `BibleTextLoader` protocol + `BundledBibleTextLoader` over the bundled per-book JSON — WEB, KJV, ASV, and BSB, one `<CODE>-<bookID>.json` each. The `Scripts/generate_translation_json.py` converter regenerates them from USFM (WEB / KJV / ASV from eBible.org; BSB from bereanbible.com).
 - **Formatting** (`Formatting/`): pure, view-free text rendering — `BibleCitationFormatter` compresses contiguous verse runs to ranges (`"4-6, 9"`); `BibleVerseAnnouncement` builds the VoiceOver label a verse span speaks; `VerseTokenizer` breaks verse fragments into the per-word tokens `VerseFlowLayout` reflows (kept off the `View` layer so the pure tokenizing stays nonisolated and testable).
 - **Clipboard** (`Clipboard/`): `ClipboardWriter` protocol + `SystemClipboard` — the injectable seam the reader's Copy action writes through.
 - **ViewModels** (`ViewModels/`): `@Observable @MainActor` view models, one per screen or sheet.

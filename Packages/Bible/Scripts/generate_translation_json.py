@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Convert a public-domain Bible translation's USFM into per-book JSON.
 
-The Bible applet bundles three public-domain, Protestant-canon translations.
-Download each USFM bundle from eBible.org before running:
+The Bible applet bundles four public-domain, Protestant-canon translations.
+Download each USFM bundle before running:
 
     WEB  curl -sL -o web.zip https://ebible.org/Scriptures/engwebp_usfm.zip
     KJV  curl -sL -o kjv.zip https://ebible.org/Scriptures/eng-kjv2006_usfm.zip
     ASV  curl -sL -o asv.zip https://ebible.org/Scriptures/eng-asv_usfm.zip
+    BSB  curl -sL -o bsb.zip https://bereanbible.com/bsb_usfm.zip
 
 Unzip each into its own directory, then run once per translation:
 
     python3 generate_translation_json.py <CODE> <usfm_dir> <output_dir>
 
-`<CODE>` is the translation's short code (`WEB`, `KJV`, `ASV`) — it only
-names the output files and is not read from the USFM. Emits one
+`<CODE>` is the translation's short code (`WEB`, `KJV`, `ASV`, `BSB`) — it
+only names the output files and is not read from the USFM. Emits one
 `<CODE>-<BOOKID>.json` per canonical book into <output_dir>; non-canonical
 files (front matter, intros) are skipped. The JSON schema is a discriminated
 union of paragraph types decoded by `BibleBook`:
@@ -44,11 +45,38 @@ NEW_TESTAMENT = (
 ).split()
 TESTAMENT = {b: "OT" for b in OLD_TESTAMENT} | {b: "NT" for b in NEW_TESTAMENT}
 
-PROSE_MARKERS = {"p", "m", "nb", "pi1", "mi", "li1", "ili"}
-POETRY_MARKERS = {"q1", "q2"}
+# Canonical display names per book ID, matching `BibleBookCatalog.standard`.
+# Used in preference to the source USFM's `\h` field so a translation that
+# spells a book differently (BSB uses `\h Psalm` rather than `Psalms`) still
+# lines up with the catalog that the picker and tests are keyed against.
+CANONICAL_NAMES = {
+    "GEN": "Genesis", "EXO": "Exodus", "LEV": "Leviticus", "NUM": "Numbers",
+    "DEU": "Deuteronomy", "JOS": "Joshua", "JDG": "Judges", "RUT": "Ruth",
+    "1SA": "1 Samuel", "2SA": "2 Samuel", "1KI": "1 Kings", "2KI": "2 Kings",
+    "1CH": "1 Chronicles", "2CH": "2 Chronicles", "EZR": "Ezra",
+    "NEH": "Nehemiah", "EST": "Esther", "JOB": "Job", "PSA": "Psalms",
+    "PRO": "Proverbs", "ECC": "Ecclesiastes", "SNG": "Song of Solomon",
+    "ISA": "Isaiah", "JER": "Jeremiah", "LAM": "Lamentations",
+    "EZK": "Ezekiel", "DAN": "Daniel", "HOS": "Hosea", "JOL": "Joel",
+    "AMO": "Amos", "OBA": "Obadiah", "JON": "Jonah", "MIC": "Micah",
+    "NAM": "Nahum", "HAB": "Habakkuk", "ZEP": "Zephaniah", "HAG": "Haggai",
+    "ZEC": "Zechariah", "MAL": "Malachi", "MAT": "Matthew", "MRK": "Mark",
+    "LUK": "Luke", "JHN": "John", "ACT": "Acts", "ROM": "Romans",
+    "1CO": "1 Corinthians", "2CO": "2 Corinthians", "GAL": "Galatians",
+    "EPH": "Ephesians", "PHP": "Philippians", "COL": "Colossians",
+    "1TH": "1 Thessalonians", "2TH": "2 Thessalonians", "1TI": "1 Timothy",
+    "2TI": "2 Timothy", "TIT": "Titus", "PHM": "Philemon", "HEB": "Hebrews",
+    "JAS": "James", "1PE": "1 Peter", "2PE": "2 Peter", "1JN": "1 John",
+    "2JN": "2 John", "3JN": "3 John", "JUD": "Jude", "REV": "Revelation",
+}
+
+PROSE_MARKERS = {"p", "m", "nb", "pi1", "mi", "li1", "li2", "ili", "pc", "pmo"}
+POETRY_MARKERS = {"q1", "q2", "qr"}
 # Headings that follow their chapter: psalm titles (\d), speaker labels (\sp),
-# and the five "BOOK N" dividers of Psalms (\ms1).
-HEADING_MARKERS = {"d", "sp", "is1", "ms1"}
+# the five "BOOK N" dividers of Psalms (\ms / \ms1), in-chapter section
+# headings (\s1, \s2), acrostic-stanza letters in Psalm 119 (\qa), and the
+# scripture-range subheadings under major sections (\mr).
+HEADING_MARKERS = {"d", "sp", "is1", "ms", "ms1", "s1", "s2", "qa", "mr"}
 
 _FOOTNOTE = re.compile(r"\\f .+?\\f\*")
 _CROSSREF = re.compile(r"\\x .+?\\x\*")
@@ -57,6 +85,15 @@ _CLOSING_MARKER = re.compile(r"\\\+?[a-z]+\d?\*")
 _OPENING_MARKER = re.compile(r"\\\+?[a-z]+\d? ?")
 _SPACES = re.compile(r"[ \t]+")
 _LINE = re.compile(r"\\(\+?[a-z]+\d?) ?(.*)")
+# BSB-style USFM packs many verse markers per source line, e.g.
+# `\p \v 1 text \v 2 text \v 3 text`, and the chapter+psalm-superscription
+# pattern `\d \v 1 A Psalm of David.`. Inserting a newline before every
+# `\v <digit>` token normalises the input so each verse marker starts its
+# own logical line — the main loop then handles them one at a time via the
+# existing `\v` branch, without any marker-by-marker inline-verse special
+# case. The lookahead requires `\s+\d` so unrelated markers that begin with
+# `v` (e.g. `\vp ... \vp*` for verse publication info) are not split.
+_INLINE_VERSE = re.compile(r"\\v(?=\s+\d)")
 
 
 def clean(text: str) -> str:
@@ -77,6 +114,9 @@ def clean(text: str) -> str:
 
 
 def parse_book(usfm: str) -> dict:
+    # Normalise BSB-style multi-verse lines so every `\v N` starts its own
+    # logical line. A no-op for sources that already put one verse per line.
+    usfm = _INLINE_VERSE.sub(r"\n\\v", usfm)
     book = {"id": None, "name": None, "testament": None, "chapters": []}
     chapter = None
     para = None
@@ -137,7 +177,13 @@ def parse_book(usfm: str) -> dict:
         elif marker in HEADING_MARKERS:
             flush_para()
             kind = None
-            chapter["paragraphs"].append({"type": "heading", "text": clean(rest)})
+            # A heading marker whose verse marker was split off (e.g. BSB's
+            # `\d \v 1 A Psalm of David.` becomes a bare `\d` line plus a
+            # `\v 1 ...` line) leaves an empty heading — suppress those so
+            # the reader doesn't render a blank section break.
+            heading_text = clean(rest)
+            if heading_text:
+                chapter["paragraphs"].append({"type": "heading", "text": heading_text})
         elif marker == "b":
             flush_para()
             kind = None
@@ -150,6 +196,11 @@ def parse_book(usfm: str) -> dict:
 
     flush_para()
     book["testament"] = TESTAMENT.get(book["id"])
+    # Override the source USFM's `\h` with the canonical display name when the
+    # book is in the standard 66-book canon — keeps every bundled translation
+    # lined up with `BibleBookCatalog.standard`.
+    if book["id"] in CANONICAL_NAMES:
+        book["name"] = CANONICAL_NAMES[book["id"]]
     return book
 
 
