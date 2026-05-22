@@ -116,7 +116,7 @@ public struct BibleScreen: View {
     }
 
     /// A dimmed backdrop plus the translation picker. The picker is a short
-    /// sheet — it sizes to its three rows and anchors to the bottom edge.
+    /// sheet that sizes to its rows and anchors to the bottom edge.
     @ViewBuilder
     private var translationPicker: some View {
         Color.black.opacity(0.32)

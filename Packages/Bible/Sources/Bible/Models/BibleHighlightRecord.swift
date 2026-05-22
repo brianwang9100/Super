@@ -12,9 +12,21 @@ import GRDB
 /// rather than a vanished row.
 ///
 /// Highlights are **translation-agnostic**: there is no `translationId`.
-/// Verse numbering is shared across the bundled WEB / KJV / ASV, so a verse
-/// highlighted while reading one translation stays highlighted in the others.
-/// This is the design in the M6 plan, not an omission.
+/// Verse numbers are shared across the bundled WEB / KJV / ASV / BSB, so a
+/// verse highlighted while reading one translation stays highlighted in the
+/// others. This is the design in the M6 plan, not an omission.
+///
+/// Two caveats the user can encounter:
+/// 1. Critical-text translations (ASV, BSB) and the partially-hybrid WEB omit
+///    a small set of textual-variant verses (e.g. Matthew 17:21, Acts 8:37);
+///    KJV includes them. A highlight on one of those verses in KJV has no
+///    equivalent verse to attach to in ASV/BSB, so the highlight is invisible
+///    while reading those translations and re-appears in KJV.
+/// 2. BSB folds Hebrew-style superscriptions ("For the choirmaster…", "A
+///    Psalm of David.") into verse 1 of the psalms that have them, while
+///    WEB/KJV/ASV emit the superscription as a heading and start verse 1 at
+///    the body. The verse number lines up, but BSB's verse 1 text in those
+///    psalms includes a leading line the other three render as a heading.
 public struct BibleHighlightRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleHighlight"
 

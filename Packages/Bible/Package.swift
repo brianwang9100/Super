@@ -25,9 +25,10 @@ let package = Package(
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
             ],
             // `.process` (not `.copy`) keeps the bundle codesign-valid on the
-            // iOS simulator — see the note in `Chat/Package.swift`. The 66
-            // `WEB-<bookID>.json` files land flat at the bundle root, where
-            // `BundledBibleTextLoader` looks them up by name.
+            // iOS simulator — see the note in `Chat/Package.swift`. The 264
+            // `<CODE>-<bookID>.json` files (66 each for WEB, KJV, ASV, BSB)
+            // land flat at the bundle root, where `BundledBibleTextLoader`
+            // looks them up by name.
             resources: [
                 .process("Resources"),
             ],

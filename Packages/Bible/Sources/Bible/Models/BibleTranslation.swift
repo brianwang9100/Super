@@ -1,6 +1,6 @@
 /// One of the bundled Bible translations.
 ///
-/// All three are public-domain, Protestant-canon translations whose text
+/// All four are public-domain, Protestant-canon translations whose text
 /// ships in the package as `<rawValue>-<bookID>.json` resources. The raw
 /// value is the storage code persisted in `BibleReadingPositionRecord` and
 /// the lookup key `BundledBibleTextLoader` resolves resources by.
@@ -12,6 +12,9 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
     case kjv = "KJV"
     /// American Standard Version (1901).
     case asv = "ASV"
+    /// Berean Standard Bible — the modern-English option, released into the
+    /// public domain under Creative Commons Zero on 2023-04-30.
+    case bsb = "BSB"
 
     public var id: String { rawValue }
 
@@ -21,6 +24,7 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
         case .web: "World English Bible"
         case .kjv: "King James Version"
         case .asv: "American Standard Version"
+        case .bsb: "Berean Standard Bible"
         }
     }
 

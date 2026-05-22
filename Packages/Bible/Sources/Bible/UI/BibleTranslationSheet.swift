@@ -1,9 +1,9 @@
 import Core
 import SwiftUI
 
-/// The translation picker: a short bottom-aligned sheet listing the three
-/// bundled translations. Tapping a row switches the reading translation and
-/// closes the sheet; the active translation's row is tinted and checked.
+/// The translation picker: a short bottom-aligned sheet listing the bundled
+/// translations. Tapping a row switches the reading translation and closes
+/// the sheet; the active translation's row is tinted and checked.
 struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
 
