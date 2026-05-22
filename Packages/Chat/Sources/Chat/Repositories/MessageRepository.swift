@@ -59,10 +59,19 @@ public struct GRDBMessageRepository: MessageRepository {
 
     public func hasUserMessage(conversationId: String) async throws -> Bool {
         try await queue.read { db in
+            // `.limit(1).fetchOne` translates to `SELECT * ... LIMIT 1`,
+            // which the SQLite planner satisfies with an index seek into
+            // `message_on_conversationId_createdAt` and stops after the
+            // first match — effectively O(1) because the user row is
+            // always the earliest message in a conversation. Avoids the
+            // `fetchCount` → `SELECT COUNT(*)` full scan that would
+            // violate the protocol's O(1) contract on a long
+            // conversation.
             try MessageRecord
                 .filter(Column("conversationId") == conversationId)
                 .filter(Column("role") == MessageRole.user.rawValue)
-                .fetchCount(db) > 0
+                .limit(1)
+                .fetchOne(db) != nil
         }
     }
 
