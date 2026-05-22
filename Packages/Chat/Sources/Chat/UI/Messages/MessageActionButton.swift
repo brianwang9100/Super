@@ -5,6 +5,10 @@ import SwiftUI
 struct MessageActionButton: View {
     let systemName: String
     let label: String
+    /// When `true`, the button still renders so the action row's layout
+    /// stays stable, but taps are ignored and the glyph dims to half
+    /// opacity. Regenerate uses this during in-flight streaming.
+    var disabled: Bool = false
     let action: () -> Void
     @Environment(\.superTheme) private var theme
 
@@ -16,6 +20,8 @@ struct MessageActionButton: View {
                 .frame(width: 26, height: 26)
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
         .accessibilityLabel(label)
     }
 }

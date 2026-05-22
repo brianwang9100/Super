@@ -6,12 +6,14 @@ import GRDB
 /// `docs/Chat/ARCHITECTURE.md`), so this protocol intentionally exposes no
 /// "append delta" surface.
 ///
-/// No per-message delete by design: removing one message mid-conversation
-/// would break the LLM (Large Language Model) history contract, and
-/// soft-deleting a single row has no Chat product surface ("undo a sent
-/// message" doesn't exist). Use `deleteAll(conversationId:)` to drop a
-/// whole conversation's history, or rely on the `ConversationRecord`
-/// cascade to wipe everything for a deleted conversation.
+/// Per-message delete (`delete(ids:)`) exists to support Regenerate —
+/// rewinding the transcript to an earlier assistant turn — and is intended
+/// to be called with a contiguous tail of rows ending at the conversation's
+/// latest message. Deleting a row from the middle of a conversation would
+/// break the LLM (Large Language Model) history contract; callers are
+/// responsible for collecting the right id set. `deleteAll(conversationId:)`
+/// drops a whole conversation's history; the `ConversationRecord` cascade
+/// wipes everything for a deleted conversation.
 public protocol MessageRepository: Sendable {
     /// All messages in `conversationId`, ordered by `createdAt` ascending
     /// with `rowid` as tiebreaker — the order an LLM (Large Language Model)
@@ -38,6 +40,10 @@ public protocol MessageRepository: Sendable {
     func hasUserMessage(conversationId: String) async throws -> Bool
     /// Insert or update.
     func save(_ record: MessageRecord) async throws
+    /// Delete the messages with the given ids in a single statement.
+    /// Tool calls cascade with the message rows. Empty `ids` is a no-op.
+    /// See the protocol doc for the contiguous-tail constraint.
+    func delete(ids: [String]) async throws
     /// Drop every message for the conversation. Tool calls cascade with
     /// the message rows; the conversation itself is untouched.
     func deleteAll(conversationId: String) async throws
@@ -89,6 +95,15 @@ public struct GRDBMessageRepository: MessageRepository {
     public func save(_ record: MessageRecord) async throws {
         try await queue.write { db in
             try record.save(db)
+        }
+    }
+
+    public func delete(ids: [String]) async throws {
+        guard !ids.isEmpty else { return }
+        _ = try await queue.write { db in
+            try MessageRecord
+                .filter(ids.contains(Column("id")))
+                .deleteAll(db)
         }
     }
 

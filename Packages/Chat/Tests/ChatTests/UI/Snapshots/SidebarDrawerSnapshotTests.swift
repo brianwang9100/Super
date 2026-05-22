@@ -252,6 +252,7 @@ private actor NoopMessageRepository: MessageRepository {
     func fetch(id: String) async throws -> MessageRecord? { nil }
     func hasUserMessage(conversationId: String) async throws -> Bool { false }
     func save(_ record: MessageRecord) async throws {}
+    func delete(ids: [String]) async throws {}
     func deleteAll(conversationId: String) async throws {}
 }
 

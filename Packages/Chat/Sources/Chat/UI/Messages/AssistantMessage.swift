@@ -9,9 +9,21 @@ struct AssistantMessage: View {
     let text: String
     let toolCalls: [MessageList.ToolCallItem]
     let verbosity: ChatVerbosity
+    /// Disables Regenerate while a turn is mid-stream. Copy stays
+    /// enabled — copying text from an older response during a new one
+    /// is harmless.
+    var isStreaming: Bool = false
+    /// Fired when the user taps Copy. The host is responsible for both
+    /// writing to the pasteboard and surfacing the transient
+    /// confirmation pill so the side effects stay co-located in
+    /// ``ChatScreen``.
+    var onCopyTapped: () -> Void = {}
+    /// Fired when the user taps Regenerate. The host stages a
+    /// confirmation dialog before actually trimming the transcript and
+    /// re-streaming.
+    var onRegenerateRequested: () -> Void = {}
     @Environment(\.superTheme) private var theme
     @Environment(\.chatAppearance) private var appearance
-    @Environment(\.pasteboardClient) private var pasteboard
 
     var body: some View {
         // Some providers emit a stray newline or single space alongside a
@@ -47,13 +59,17 @@ struct AssistantMessage: View {
                 // nothing to copy and the next turn carries the real reply,
                 // so the action row would just be visual noise.
                 HStack(spacing: 4) {
-                    MessageActionButton(systemName: "doc.on.doc", label: "Copy") {
-                        pasteboard.copy(text)
-                    }
-                    MessageActionButton(systemName: "arrow.clockwise", label: "Regenerate") {
-                        // M12 wires this; the button is visible per the design
-                        // but not yet functional in the MVP.
-                    }
+                    MessageActionButton(
+                        systemName: "doc.on.doc",
+                        label: "Copy",
+                        action: onCopyTapped
+                    )
+                    MessageActionButton(
+                        systemName: "arrow.clockwise",
+                        label: "Regenerate",
+                        disabled: isStreaming,
+                        action: onRegenerateRequested
+                    )
                 }
             }
         }

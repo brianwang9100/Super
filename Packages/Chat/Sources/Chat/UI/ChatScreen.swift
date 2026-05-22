@@ -98,6 +98,11 @@ public struct ChatScreen: View {
     }
 
     @Environment(\.superTheme) private var theme
+    /// System pasteboard client. Owned at this level so the Copy
+    /// callback for each ``AssistantMessage`` writes the text *and*
+    /// flips the view-model's transient "Copied!" pill in the same
+    /// gesture handler.
+    @Environment(\.pasteboardClient) private var pasteboard
     /// Fallback focus state used only when no external binding is passed in
     /// (snapshot tests, previews). The composer reads
     /// ``composerIsFocused`` which prefers the external binding when
@@ -189,6 +194,46 @@ public struct ChatScreen: View {
         Self.smoothstep(progress, from: 0.95, to: 1.0)
     }
 
+    /// Title shown in the Regenerate confirmation dialog. Switches between
+    /// the single-message form and the multi-message form so the user
+    /// reads the right severity for the targeted point.
+    private var regenerationDialogTitle: String {
+        viewModel.pendingRegenerationDeleteCount <= 1
+            ? "Regenerate this response?"
+            : "Regenerate from here?"
+    }
+
+    /// Subtitle below the title. Naming the explicit count of later
+    /// messages that will be deleted is the load-bearing part — it's
+    /// what makes the destructive nature visible at the targeted point.
+    private var regenerationDialogMessage: String {
+        let count = viewModel.pendingRegenerationDeleteCount
+        if count <= 1 {
+            return "This response will be replaced."
+        }
+        let later = count - 1
+        let plural = later == 1 ? "message" : "messages"
+        return "This response and \(later) later \(plural) will be deleted."
+    }
+
+    /// Two-way binding from `pendingRegenerationTargetID != nil` to the
+    /// dialog's `isPresented`. SwiftUI calls the setter with `false`
+    /// when the user taps Cancel or hits the dim — route that through
+    /// `cancelRegeneration()` so the pending state clears cleanly.
+    /// Setter ignores `true` writes — the only path that opens the
+    /// dialog is `requestRegeneration(fromAssistantMessageID:)` from a
+    /// button tap.
+    private var regenerationDialogIsPresented: Binding<Bool> {
+        Binding(
+            get: { viewModel.pendingRegenerationTargetID != nil },
+            set: { newValue in
+                if !newValue {
+                    viewModel.cancelRegeneration()
+                }
+            }
+        )
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             // Always visible — the drag handle is the unified drag
@@ -228,7 +273,23 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
+                .overlay(alignment: .bottom) {
+                    // Transient "Copied!" pill floats at the bottom edge
+                    // of the transcript area, which puts it directly
+                    // above the composer at every progress level.
+                    // Attached *before* `.clipped()` so the slide-in's
+                    // off-screen start is clipped away — the pill
+                    // visually emerges from behind the composer's top
+                    // edge instead of sliding across it.
+                    if viewModel.showCopyConfirmation {
+                        CopyConfirmationPill()
+                            .padding(.bottom, 8)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            .allowsHitTesting(false)
+                    }
+                }
                 .clipped()
+                .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
                 .contentShape(Rectangle())
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
@@ -248,6 +309,20 @@ public struct ChatScreen: View {
         .shadow(color: Color.black.opacity(0.18 * panelSurroundOpacity), radius: 12, x: 0, y: 12)
         .shadow(color: Color.black.opacity(0.12 * panelSurroundOpacity), radius: 30, x: 0, y: 30)
         .background(homeIndicatorFill)
+        .confirmationDialog(
+            regenerationDialogTitle,
+            isPresented: regenerationDialogIsPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Regenerate", role: .destructive) {
+                viewModel.confirmRegeneration()
+            }
+            Button("Cancel", role: .cancel) {
+                viewModel.cancelRegeneration()
+            }
+        } message: {
+            Text(regenerationDialogMessage)
+        }
         // Bind the load to the conversation id so swapping the view
         // model when the user picks a different chat from the sidebar
         // re-fires `load()` against the new transcript. A bare `.task`
@@ -469,7 +544,14 @@ public struct ChatScreen: View {
                 viewModel: viewModel,
                 verbosity: viewModel.verbosity,
                 onRetry: viewModel.retry,
-                onContentTap: dismissKeyboard
+                onContentTap: dismissKeyboard,
+                onCopyTapped: { text in
+                    pasteboard.copy(text)
+                    viewModel.confirmCopy()
+                },
+                onRegenerateTapped: { id in
+                    viewModel.requestRegeneration(fromAssistantMessageID: id)
+                }
             )
             .id(viewModel.conversationId)
         }
@@ -487,6 +569,8 @@ public struct ChatScreen: View {
         let verbosity: ChatVerbosity
         let onRetry: () -> Void
         let onContentTap: () -> Void
+        let onCopyTapped: (String) -> Void
+        let onRegenerateTapped: (String) -> Void
 
         var body: some View {
             MessageList(
@@ -495,7 +579,10 @@ public struct ChatScreen: View {
                 error: viewModel.error,
                 verbosity: verbosity,
                 onRetry: onRetry,
-                onContentTap: onContentTap
+                onContentTap: onContentTap,
+                isStreaming: viewModel.isStreaming,
+                onCopyTapped: onCopyTapped,
+                onRegenerateTapped: onRegenerateTapped
             )
         }
     }
