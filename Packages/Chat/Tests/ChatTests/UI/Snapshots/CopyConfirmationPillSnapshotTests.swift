@@ -9,6 +9,14 @@ import Testing
 /// "Copied!" pill that floats above the composer after the user taps
 /// Copy on an assistant message. Covers light/dark/sepia plus a
 /// Dynamic Type XXL variant.
+///
+/// Reduce Motion is not recorded as a separate variant: the pill view
+/// body has no `withAnimation`, no `.animation(...)`, and no
+/// `.transition(...)` modifier. The animation that wraps it lives on
+/// the parent `ChatScreen`'s `.overlay { … .transition(...) }` /
+/// `.animation(...)` — not in this view. Same documented gap as
+/// `MemoryUpdatedPillSnapshotTests`: steady-state frames are
+/// pixel-identical regardless of `accessibilityReduceMotion`.
 @Suite("CopyConfirmationPill snapshots")
 @MainActor
 struct CopyConfirmationPillSnapshotTests {

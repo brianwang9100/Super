@@ -551,7 +551,17 @@ public final class ChatScreenViewModel {
             guard let targetIndex = all.firstIndex(where: { $0.id == targetID }) else { return }
             let trimmedIDs = all[targetIndex...].map(\.id)
             guard !trimmedIDs.isEmpty else { return }
+            // Collect stale checkpoints — any `CompactionCheckpointRecord`
+            // whose `uptoMessageId` anchor lands in the trim range. If
+            // they survived, `ContextAssembler` would prepend a summary
+            // covering messages that no longer exist.
+            let trimmedIDSet = Set(trimmedIDs)
+            let staleCheckpointIDs = try await checkpointRepository
+                .all(for: conversationId)
+                .filter { trimmedIDSet.contains($0.uptoMessageId) }
+                .map(\.id)
             try await messageRepository.delete(ids: trimmedIDs)
+            try await checkpointRepository.delete(ids: staleCheckpointIDs)
             await refreshTranscript()
             // `retry()` runs its own guards (no model, no user bubble,
             // already streaming) and is the canonical entry into the
@@ -560,8 +570,15 @@ public final class ChatScreenViewModel {
             // with the error-banner Retry path.
             retry()
         } catch {
-            // Intentionally silent; a transient DB write failure on
-            // regenerate is a UI-recoverable nuisance, not a crash.
+            // Surface the failure so the user knows the regenerate didn't
+            // land — without this the dialog dismissed (synchronously in
+            // `confirmRegeneration`) and the user saw no change, with no
+            // signal that anything went wrong. The error banner offers
+            // the same `Retry` affordance as the post-LLM-error path,
+            // which then re-runs against whatever state survived.
+            self.error = MessageList.ErrorState(
+                message: "Could not regenerate. Try again."
+            )
         }
     }
 

@@ -269,6 +269,7 @@ private actor NoopCheckpointRepository: CompactionCheckpointRepository {
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? { nil }
     func all(for conversationId: String) async throws -> [CompactionCheckpointRecord] { [] }
     func save(_ record: CompactionCheckpointRecord) async throws {}
+    func delete(ids: [String]) async throws {}
 }
 
 private actor NoopEnablementRepository: ToolEnablementRepository {
