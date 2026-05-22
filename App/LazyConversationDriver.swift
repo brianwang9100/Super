@@ -35,14 +35,13 @@ actor LazyConversationDriver: ChatSessionDriver {
         return await inner.send(text: text, model: model, references: references)
     }
 
+    /// In practice retry is only reachable after an error from a prior
+    /// send, so `ensureSaved` is already `nil`. Flush defensively anyway
+    /// so a future UI path that surfaces Retry without a preceding
+    /// `send` (restored session, deeplink, etc.) doesn't operate against
+    /// an orphaned `conversationId`. The flush is idempotent — once
+    /// `ensureSaved` is consumed, subsequent calls short-circuit.
     func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
-        // In practice retry is only reachable after an error from a prior
-        // send, so `ensureSaved` is already `nil`. Flush defensively
-        // anyway so a future UI path that surfaces Retry without a
-        // preceding `send` (restored session, deeplink, etc.) doesn't
-        // operate against an orphaned `conversationId`. The flush is
-        // idempotent: once `ensureSaved` is consumed, subsequent calls
-        // short-circuit.
         await flushEnsureSavedIfPending()
         return await inner.retry(model: model)
     }
