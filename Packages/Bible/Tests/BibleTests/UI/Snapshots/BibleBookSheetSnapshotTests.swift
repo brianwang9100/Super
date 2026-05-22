@@ -6,8 +6,9 @@ import Testing
 @testable import Bible
 
 /// Snapshots of `BibleBookSheet` — the book picker in its default expanded
-/// state across the three themes, plus the search, alphabetical, and
-/// no-results variants and one Dynamic Type XXL pass.
+/// state across the three themes, the search, alphabetical, and no-results
+/// variants, one Dynamic Type XXL pass, plus two scroll-anchor variants
+/// covering the mid-canon short-book and long-book late-chapter branches.
 @Suite("BibleBookSheet snapshots")
 @MainActor
 struct BibleBookSheetSnapshotTests {
@@ -46,17 +47,39 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(), theme: .light, dynamicType: .xxLarge, name: "expanded_light_xxl")
     }
 
-    /// A `BibleBookSheet` with Genesis as the reader's current book — it is
-    /// expanded at the top of the list, so the chapter grid is on screen —
-    /// in the given order with the given query applied.
-    private func sheet(order: BibleBookOrder = .traditional, query: String = "") -> BibleBookSheet {
-        let viewModel = BibleBookSheetViewModel(expandedBookId: "GEN")
+    @Test("a mid-canon short-book position anchors the book row at the top")
+    func midListLight() {
+        verify(
+            sheet(currentPosition: BiblePosition(bookId: "ROM", chapterNumber: 8)),
+            theme: .light,
+            name: "mid_list_light"
+        )
+    }
+
+    @Test("a long-book late chapter pulls the chapter cell into view")
+    func longBookLateChapterLight() {
+        verify(
+            sheet(currentPosition: BiblePosition(bookId: "PSA", chapterNumber: 119)),
+            theme: .light,
+            name: "long_book_late_chapter_light"
+        )
+    }
+
+    /// A `BibleBookSheet` opened on the given current position (defaulting
+    /// to Genesis 1, which keeps the existing baselines stable), in the
+    /// given order with the given query applied.
+    private func sheet(
+        currentPosition: BiblePosition = BiblePosition(bookId: "GEN", chapterNumber: 1),
+        order: BibleBookOrder = .traditional,
+        query: String = ""
+    ) -> BibleBookSheet {
+        let viewModel = BibleBookSheetViewModel(currentPosition: currentPosition)
         viewModel.order = order
         viewModel.query = query
         return BibleBookSheet(
             viewModel: viewModel,
-            currentBookId: "GEN",
-            currentChapterNumber: 1,
+            currentBookId: currentPosition.bookId,
+            currentChapterNumber: currentPosition.chapterNumber,
             bottomInset: 0,
             onSelectChapter: { _, _ in },
             onClose: {}
