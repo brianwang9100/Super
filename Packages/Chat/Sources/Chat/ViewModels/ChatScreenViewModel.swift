@@ -479,6 +479,12 @@ public final class ChatScreenViewModel {
     /// the view model.
     public func confirmCopy() {
         showCopyConfirmation = true
+        // The visible pill is a sighted-only affordance — VoiceOver
+        // users never get focus on it, since it appears for ~1.2 s and
+        // is `.allowsHitTesting(false)`. Posting an Announcement makes
+        // the same confirmation perceivable to VoiceOver in lockstep
+        // with the pill animating in.
+        AccessibilityNotification.Announcement("Copied to clipboard").post()
         copyDismissalTask?.cancel()
         copyDismissalTask = Task { [weak self] in
             do {

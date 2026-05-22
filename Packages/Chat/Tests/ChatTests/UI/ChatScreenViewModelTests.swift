@@ -1720,6 +1720,56 @@ struct ChatScreenViewModelTests {
         #expect(await driver.retryInvocations == 0)
     }
 
+    @Test("confirmRegeneration: when checkpoint delete throws, no messages are trimmed")
+    func confirmRegenerationCheckpointDeleteThrowsLeavesMessagesIntact() async {
+        // The regen path deletes checkpoints *before* messages so a
+        // throw on the first write leaves both stores untouched — never
+        // the half-trimmed state where messages are gone but stale
+        // checkpoints survive. Pins that ordering invariant.
+        let driver = RecordingDriver()
+        let userRow = MessageRecord(
+            id: "u1", conversationId: conversationId, role: .user, content: "q", createdAt: Date()
+        )
+        let assistantRow = MessageRecord(
+            id: "a1", conversationId: conversationId, role: .assistant, content: "ans",
+            createdAt: Date().addingTimeInterval(1)
+        )
+        let messages = StubMessageRepository(initial: [userRow, assistantRow])
+        let checkpoints = StubCheckpointRepository()
+        await checkpoints.seed([
+            CompactionCheckpointRecord(
+                id: "cp1", conversationId: conversationId, uptoMessageId: "a1",
+                summary: "...", tokensBefore: 0, tokensAfter: 0,
+                createdAt: Date(), isLive: true
+            )
+        ])
+        await checkpoints.setDeleteError(StubError.boom)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: checkpoints,
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        // Error banner surfaced; messages untouched; no retry kicked off.
+        #expect(viewModel.error?.message == "Could not regenerate. Try again.")
+        let remainingMessages = try? await messages.fetchAll(conversationId: conversationId).map(\.id)
+        #expect(remainingMessages == ["u1", "a1"])
+        #expect(await driver.retryInvocations == 0)
+    }
+
     @Test("confirmRegeneration: deletes checkpoints whose anchor is in the trim range")
     func confirmRegenerationDeletesStaleCheckpoint() async {
         // A `CompactionCheckpointRecord` whose `uptoMessageId` is among
@@ -2192,6 +2242,10 @@ private final class MainActorCounter {
 
 private actor StubCheckpointRepository: CompactionCheckpointRepository {
     private var rows: [CompactionCheckpointRecord] = []
+    /// When set, the next `delete(ids:)` call throws this. Mirrors the
+    /// `StubMessageRepository.setDeleteError` seam — covers the
+    /// regenerate path's first-write-failure branch.
+    private var deleteError: Error?
 
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? {
         rows.first(where: { $0.conversationId == conversationId && $0.isLive })
@@ -2212,7 +2266,14 @@ private actor StubCheckpointRepository: CompactionCheckpointRepository {
     }
 
     func delete(ids: [String]) async throws {
+        if let deleteError {
+            throw deleteError
+        }
         rows.removeAll { ids.contains($0.id) }
+    }
+
+    func setDeleteError(_ error: Error?) {
+        self.deleteError = error
     }
 
     /// Test helper: inspect persisted checkpoint rows.
