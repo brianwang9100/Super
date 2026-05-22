@@ -18,11 +18,14 @@ struct SettingsSheetSnapshotTests {
     private static let appInfo = SuperAppInfo(bundleName: "Super", version: "0.3.1", build: "1")
 
     private static let sampleModels: [SettingsViewModel.ModelRow] = [
+        // opus is the row used by the model-detail-edit snapshot — flag
+        // `hasAPIKey: true` so the pane seeds the SecureField with the
+        // placeholder bullets that signal "a key is already stored."
         .init(
             id: "opus", name: "Opus 4.7", monogram: "O4",
             endpoint: "api.example.com/v1", maxContextTokens: 200_000, isEnabled: true,
             baseURL: URL(string: "https://api.example.com/v1")!,
-            modelId: "claude-opus-4-7", supportsThinking: true
+            modelId: "claude-opus-4-7", supportsThinking: true, hasAPIKey: true
         ),
         .init(id: "gpt", name: "GPT 5.5", monogram: "G5", endpoint: "api.example.com/v1", maxContextTokens: 256_000, isEnabled: true),
         .init(id: "qwen", name: "Qwen3.6", monogram: "Q", endpoint: "api.example.com/v1", maxContextTokens: 128_000, isEnabled: false),

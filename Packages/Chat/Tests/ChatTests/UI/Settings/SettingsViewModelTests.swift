@@ -250,6 +250,95 @@ struct SettingsViewModelTests {
         #expect(vm.navigationPath.isEmpty)
     }
 
+    @Test("loadModels reports hasAPIKey true when a key is stored at the ref")
+    func loadModelsFlagsKeychainPresence() async {
+        // Drives the model-detail pane's "pre-fill the SecureField with
+        // bullets" affordance: ModelRow.hasAPIKey is what the pane reads
+        // at init time to decide whether to seed the placeholder. A
+        // ref-with-no-entry must read as `false` so the pane shows an
+        // empty field and prompts for a real key.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "with-key",
+                name: "With Key",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-with",
+                modelId: "gpt",
+                supportsThinking: false,
+                maxContextTokens: 8_000,
+                isSelected: false,
+                createdAt: Date()
+            ),
+            .init(
+                id: "no-key",
+                name: "No Key",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-without",
+                modelId: "gpt",
+                supportsThinking: false,
+                maxContextTokens: 8_000,
+                isSelected: false,
+                createdAt: Date().addingTimeInterval(1)
+            ),
+        ])
+        modelRepo.storedKeys["ref-with"] = "sk-real"
+        // ref-without intentionally absent from storedKeys
+
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        let withKey = vm.models.first { $0.id == "with-key" }
+        let noKey = vm.models.first { $0.id == "no-key" }
+        #expect(withKey?.hasAPIKey == true)
+        #expect(noKey?.hasAPIKey == false)
+    }
+
+    @Test("updateModel with blank key preserves both ref and stored key")
+    func updateModelPlaceholderSavePreservesKey() async {
+        // Pairs with the model-detail pane's "user opened the edit form
+        // and saved without re-typing the key" path: the pane passes ""
+        // for apiKey in that case, and the existing key must survive.
+        // Stricter than `updateModelKeepsRef` above — that one asserts
+        // `storedKeys.isEmpty` (no rotation), this one asserts the
+        // original key is still readable through the repository after
+        // the save round-trip.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "GPT",
+                baseURL: URL(string: "https://x.example.com")!,
+                apiKeyRef: "ref-1",
+                modelId: "gpt",
+                supportsThinking: false,
+                maxContextTokens: 8_000,
+                isSelected: false,
+                createdAt: Date()
+            ),
+        ])
+        modelRepo.storedKeys["ref-1"] = "sk-original"
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "m1",
+            name: "GPT renamed",
+            baseURL: URL(string: "https://x.example.com")!,
+            modelId: "gpt",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 8_000
+        )
+
+        // Key still readable through the repository — the placeholder
+        // bullets must NOT have overwritten it.
+        let resolved = try? await modelRepo.loadAPIKey(ref: "ref-1")
+        #expect(resolved == "sk-original")
+        // And the row continues to report hasAPIKey after the rename.
+        let updated = vm.models.first { $0.id == "m1" }
+        #expect(updated?.hasAPIKey == true)
+        #expect(updated?.name == "GPT renamed")
+    }
+
     @Test("createModel writes to repository and refreshes models list")
     func createModelPersists() async {
         let modelRepo = StubModelRepository(rows: [])
