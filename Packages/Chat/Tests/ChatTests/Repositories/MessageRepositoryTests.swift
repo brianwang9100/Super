@@ -138,4 +138,69 @@ struct MessageRepositoryTests {
         #expect(try await repo.fetchAll(conversationId: "c1").isEmpty)
         #expect(try await repo.fetchAll(conversationId: "c2").map(\.id) == ["m2"])
     }
+
+    @Test func deleteRemovesOnlyTheGivenIds() async throws {
+        // The Regenerate path calls `delete(ids:)` with the contiguous
+        // tail of messages from the targeted assistant onward. Survivors
+        // ahead of the trim must stay; the deleted ids must be gone in
+        // a single round trip.
+        let (_, repo, _) = try await makeRepo()
+        try await repo.save(MessageRecord(
+            id: "m1", conversationId: "c1", role: .user, content: "first", createdAt: now
+        ))
+        try await repo.save(MessageRecord(
+            id: "m2", conversationId: "c1", role: .assistant, content: "second",
+            createdAt: now.addingTimeInterval(1)
+        ))
+        try await repo.save(MessageRecord(
+            id: "m3", conversationId: "c1", role: .user, content: "third",
+            createdAt: now.addingTimeInterval(2)
+        ))
+        try await repo.save(MessageRecord(
+            id: "m4", conversationId: "c1", role: .assistant, content: "fourth",
+            createdAt: now.addingTimeInterval(3)
+        ))
+
+        try await repo.delete(ids: ["m2", "m3", "m4"])
+
+        #expect(try await repo.fetchAll(conversationId: "c1").map(\.id) == ["m1"])
+    }
+
+    @Test func deleteWithEmptyIdsIsANoOp() async throws {
+        let (_, repo, _) = try await makeRepo()
+        try await repo.save(MessageRecord(
+            id: "m1", conversationId: "c1", role: .user, content: "x", createdAt: now
+        ))
+
+        try await repo.delete(ids: [])
+
+        #expect(try await repo.fetchAll(conversationId: "c1").map(\.id) == ["m1"])
+    }
+
+    @Test func deleteCascadesToToolCallRows() async throws {
+        // The `toolCall.messageId` foreign key has `ON DELETE CASCADE`,
+        // so a Regenerate trim removes the assistant message's tool-call
+        // rows transitively. Worth pinning so the regen flow doesn't
+        // need a second explicit `ToolCallRepository.delete(...)` call.
+        let (db, repo, _) = try await makeRepo()
+        let toolCalls = GRDBToolCallRepository(database: db)
+        try await repo.save(MessageRecord(
+            id: "m1", conversationId: "c1", role: .assistant, content: "calls", createdAt: now
+        ))
+        try await toolCalls.save(ToolCallRecord(
+            id: "tc1",
+            messageId: "m1",
+            conversationId: "c1",
+            toolName: "test",
+            parameters: "{}",
+            result: nil,
+            status: .success,
+            createdAt: now,
+            completedAt: nil
+        ))
+
+        try await repo.delete(ids: ["m1"])
+
+        #expect(try await toolCalls.fetch(id: "tc1") == nil)
+    }
 }

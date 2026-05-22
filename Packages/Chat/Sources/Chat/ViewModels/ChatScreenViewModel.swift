@@ -78,6 +78,23 @@ public final class ChatScreenViewModel {
     /// the trailing button to a stop affordance).
     public private(set) var isStreaming: Bool = false
 
+    /// True while the transient "Copied!" pill should be visible above the
+    /// composer. Flipped on by `confirmCopy()` and auto-cleared by an
+    /// internal dismissal `Task` after a short window.
+    public private(set) var showCopyConfirmation: Bool = false
+
+    /// ID of the assistant message the user tapped Regenerate on, or `nil`
+    /// when no confirmation dialog is showing. `ChatScreen` binds the
+    /// dialog's presentation to this being non-nil.
+    public private(set) var pendingRegenerationTargetID: String?
+
+    /// Count of transcript rows (target + everything after) that
+    /// `confirmRegeneration()` will delete. Drives the dialog's wording
+    /// — "Regenerate this response?" at 1, "… N later message(s) will be
+    /// deleted." otherwise. Compaction banners are excluded from the
+    /// count because they aren't deleted with the messages.
+    public private(set) var pendingRegenerationDeleteCount: Int = 0
+
     /// Title shown in the chat header. Initialized from the persisted
     /// `ConversationRecord.title`; mutated when the auto-titler finishes
     /// summarizing the first exchange. Stored (not computed) so SwiftUI
@@ -134,6 +151,14 @@ public final class ChatScreenViewModel {
     /// Held only so tests can deterministically await it via
     /// `_waitForPendingCancelTask()` — production never reads it.
     private var cancelTask: Task<Void, Never>?
+    /// The auto-dismissal `Task` for `showCopyConfirmation`. Cancelled on
+    /// each fresh `confirmCopy()` so a rapid second copy resets the timer
+    /// instead of letting the prior task race the new one.
+    private var copyDismissalTask: Task<Void, Never>?
+    /// The fire-and-forget regenerate `Task` spawned by
+    /// `confirmRegeneration()`. Held so the test seam can await its
+    /// completion deterministically.
+    private var regenerationTask: Task<Void, Never>?
     /// Set once `detachFromLiveTurn()` has been called. Gates `handle(_:)`
     /// and `consume`'s final-cleanup writes so events already buffered in
     /// this view model's subscription (`AsyncStream` delivers them even
@@ -351,6 +376,20 @@ public final class ChatScreenViewModel {
         await cancelTask?.value
     }
 
+    /// Test seam: await the auto-dismissal `Task` for the copy
+    /// confirmation pill so a test can synchronize on "the pill has
+    /// finished its dwell" without polling `showCopyConfirmation`.
+    func _waitForPendingCopyDismissalTask() async {
+        await copyDismissalTask?.value
+    }
+
+    /// Test seam: await the in-flight regeneration `Task` so a test can
+    /// synchronize on "the trim + retry have actually run" without
+    /// polling `pendingRegenerationTargetID` or `isStreaming`.
+    func _waitForPendingRegenerationTask() async {
+        await regenerationTask?.value
+    }
+
     /// Submit the current composer text. Silently no-ops when the text
     /// trims to empty or a turn is already in flight (both are routine
     /// user-driven states, not errors). When `activeModel` is `nil`
@@ -428,6 +467,147 @@ public final class ChatScreenViewModel {
     public func cancelStreaming() {
         cancelTask = Task { [driver] in
             await driver.cancel()
+        }
+    }
+
+    /// User tapped Copy on an assistant message: flip the pill state on
+    /// and schedule its auto-dismissal. A fresh tap mid-dwell cancels the
+    /// prior dismissal `Task` and restarts the timer — without the cancel
+    /// the old task would fire after the new tap and clip the pill early.
+    /// The pasteboard write itself stays at the call site so the
+    /// `PasteboardClient` environment injection point doesn't move into
+    /// the view model.
+    public func confirmCopy() {
+        showCopyConfirmation = true
+        // The visible pill is a sighted-only affordance — VoiceOver
+        // users never get focus on it, since it appears for ~1.2 s and
+        // is `.allowsHitTesting(false)`. Posting an Announcement makes
+        // the same confirmation perceivable to VoiceOver in lockstep
+        // with the pill animating in.
+        AccessibilityNotification.Announcement("Copied to clipboard").post()
+        copyDismissalTask?.cancel()
+        copyDismissalTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(1.2))
+                self?.showCopyConfirmation = false
+            } catch {
+                // Cancelled by a subsequent confirmCopy() — leave state unchanged.
+            }
+        }
+    }
+
+    /// User tapped Regenerate on an assistant message. Stages the
+    /// confirmation dialog by recording the target id and how many
+    /// transcript rows would be deleted on confirm — `ChatScreen` reads
+    /// these to present a `.confirmationDialog` with copy adapted to the
+    /// count. No-ops while a turn is mid-stream (matches the existing
+    /// `send`/`retry` streaming guards) and when the target id isn't in
+    /// the current items.
+    public func requestRegeneration(fromAssistantMessageID id: String) {
+        guard !isStreaming else { return }
+        // Hard-pin the target to an assistant row. The production caller
+        // (the Regenerate button under each assistant bubble) already
+        // satisfies this, but the guard keeps the contract enforceable
+        // against future callers — passing a user-bubble id would trim
+        // a user turn off the persisted transcript and break the LLM
+        // history contract that `MessageRepository.delete(ids:)` warns
+        // about ("contiguous tail of rows ending at the conversation's
+        // latest message"), since the immediate predecessor would no
+        // longer be a user message.
+        guard let targetIndex = items.firstIndex(where: { $0.id == id }),
+              case .assistantText = items[targetIndex] else { return }
+        let deletableCount = items[targetIndex...].reduce(into: 0) { acc, item in
+            switch item {
+            case .userBubble, .assistantText:
+                acc += 1
+            case .compactionBanner:
+                // Compaction banners project from `CompactionCheckpointRecord`,
+                // not `MessageRecord`, so they aren't deleted by the trim
+                // and shouldn't inflate the count shown to the user.
+                break
+            }
+        }
+        pendingRegenerationTargetID = id
+        pendingRegenerationDeleteCount = deletableCount
+    }
+
+    /// User dismissed the regenerate confirmation dialog without
+    /// confirming. Clears the pending state with no other side effects.
+    public func cancelRegeneration() {
+        pendingRegenerationTargetID = nil
+        pendingRegenerationDeleteCount = 0
+    }
+
+    /// User confirmed the regenerate dialog. Spawns a background `Task`
+    /// that trims the target assistant message and every persisted row
+    /// after it, refreshes the transcript, then drives the existing
+    /// `retry()` path. Tool-call rows cascade with their parent message
+    /// via the `toolCall.messageId` foreign key, so deleting messages is
+    /// sufficient. The pending dialog state clears synchronously so the
+    /// dialog dismisses immediately.
+    public func confirmRegeneration() {
+        guard !isStreaming else { return }
+        guard let targetID = pendingRegenerationTargetID else { return }
+        pendingRegenerationTargetID = nil
+        pendingRegenerationDeleteCount = 0
+        regenerationTask = Task { [weak self] in
+            await self?.performRegeneration(targetID: targetID)
+        }
+    }
+
+    /// Trim → refresh → retry. Pulled into its own method so
+    /// `confirmRegeneration()` can stay synchronous (clearing the dialog
+    /// state in the same tick the button is tapped) while the async work
+    /// runs in the spawned `Task`. A throw on either delete or on the
+    /// fetch sets the standard error banner with a Retry pill, matching
+    /// the post-LLM-error path the user is already familiar with.
+    private func performRegeneration(targetID: String) async {
+        do {
+            let all = try await messageRepository.fetchAll(conversationId: conversationId)
+            guard let targetIndex = all.firstIndex(where: { $0.id == targetID }) else { return }
+            let trimmedIDs = all[targetIndex...].map(\.id)
+            guard !trimmedIDs.isEmpty else { return }
+            // Collect stale checkpoints — any `CompactionCheckpointRecord`
+            // whose `uptoMessageId` anchor lands in the trim range. If
+            // they survived, `ContextAssembler` would prepend a summary
+            // covering messages that no longer exist.
+            //
+            // Delete order: checkpoints *first*, then messages. The two
+            // writes can't be a single transaction without coupling the
+            // two repos through a shared `DatabaseQueue` handle, so a
+            // throw between them leaves the DB partially trimmed. With
+            // this order, the failure mode of a thrown second delete is
+            // "messages survived their anchored checkpoint" — `Context-
+            // Assembler.messagesAfterCheckpoint`'s missing-anchor branch
+            // doesn't apply (no checkpoint to apply it to) and the prior
+            // turns get re-sent as normal history. The reverse order
+            // would leave a checkpoint whose `uptoMessageId` points at a
+            // deleted message, which is exactly the bug this cleanup is
+            // meant to prevent.
+            let trimmedIDSet = Set(trimmedIDs)
+            let staleCheckpointIDs = try await checkpointRepository
+                .all(for: conversationId)
+                .filter { trimmedIDSet.contains($0.uptoMessageId) }
+                .map(\.id)
+            try await checkpointRepository.delete(ids: staleCheckpointIDs)
+            try await messageRepository.delete(ids: trimmedIDs)
+            await refreshTranscript()
+            // `retry()` runs its own guards (no model, no user bubble,
+            // already streaming) and is the canonical entry into the
+            // LLM loop against the persisted transcript — calling it
+            // keeps the streaming-tail/error-state plumbing consistent
+            // with the error-banner Retry path.
+            retry()
+        } catch {
+            // Surface the failure so the user knows the regenerate didn't
+            // land — without this the dialog dismissed (synchronously in
+            // `confirmRegeneration`) and the user saw no change, with no
+            // signal that anything went wrong. The error banner offers
+            // the same `Retry` affordance as the post-LLM-error path,
+            // which then re-runs against whatever state survived.
+            self.error = MessageList.ErrorState(
+                message: "Could not regenerate. Try again."
+            )
         }
     }
 

@@ -368,6 +368,9 @@ private actor SnapshotMessageRepository: MessageRepository {
         rows.contains { $0.conversationId == conversationId && $0.role == .user }
     }
     func save(_ record: MessageRecord) async throws { rows.append(record) }
+    func delete(ids: [String]) async throws {
+        rows.removeAll { ids.contains($0.id) }
+    }
     func deleteAll(conversationId: String) async throws {
         rows.removeAll { $0.conversationId == conversationId }
     }
@@ -393,5 +396,6 @@ private actor SnapshotCheckpointRepository: CompactionCheckpointRepository {
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? { nil }
     func all(for conversationId: String) async throws -> [CompactionCheckpointRecord] { [] }
     func save(_ record: CompactionCheckpointRecord) async throws {}
+    func delete(ids: [String]) async throws {}
 }
 #endif
