@@ -34,10 +34,24 @@ struct SettingsModelDetailPane: View {
     @State private var name: String
     @State private var baseURLText: String
     @State private var modelId: String
-    @State private var apiKey: String = ""
+    @State private var apiKey: String
     @State private var supportsThinking: Bool
     @State private var maxContextText: String
     @State private var showingDeleteConfirm: Bool = false
+    /// `true` while `apiKey` holds the synthetic bullets we seeded to
+    /// signal "a key is stored" — flips to `false` the first time the
+    /// field gains focus (clearing the bullets) or the user mutates the
+    /// text any other way (e.g. paste). When `true`, `save()` passes
+    /// `""` for apiKey so the existing "blank ⇒ don't rotate" contract
+    /// in `SettingsViewModel.updateModel` preserves the stored key.
+    @State private var apiKeyIsPlaceholder: Bool
+    @FocusState private var apiKeyFieldFocused: Bool
+
+    /// Fixed number of bullets used as the synthetic stand-in for an
+    /// existing key. Length is intentionally fixed rather than matching
+    /// the real key length — leaking key length is a small information
+    /// disclosure we have no reason to invite.
+    private static let apiKeyPlaceholderDots = String(repeating: "•", count: 12)
 
     private var isEditing: Bool { editingId != nil }
 
@@ -54,6 +68,9 @@ struct SettingsModelDetailPane: View {
         _modelId = State(initialValue: row?.modelId ?? "")
         _supportsThinking = State(initialValue: row?.supportsThinking ?? false)
         _maxContextText = State(initialValue: row.map { String($0.maxContextTokens) } ?? "200000")
+        let seedDots = row?.hasAPIKey == true
+        _apiKey = State(initialValue: seedDots ? Self.apiKeyPlaceholderDots : "")
+        _apiKeyIsPlaceholder = State(initialValue: seedDots)
     }
 
     /// All four required fields legal. URL must parse and pass
@@ -77,13 +94,7 @@ struct SettingsModelDetailPane: View {
                 fieldRow(label: "Name", placeholder: "GPT 5.5", text: $name)
                 fieldRow(label: "Base URL", placeholder: "https://api.openai.com/v1", text: $baseURLText, keyboard: .url)
                 fieldRow(label: "Model ID", placeholder: "gpt-5.5", text: $modelId)
-                fieldRow(
-                    label: "API Key",
-                    placeholder: isEditing ? "•••• (tap to change)" : "sk-…",
-                    text: $apiKey,
-                    isSecure: true,
-                    borderBottom: true
-                )
+                apiKeyFieldRow()
                 fieldRow(label: "Max context", placeholder: "200000", text: $maxContextText, keyboard: .numberPad, monospaced: true)
                 toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: false)
             }
@@ -173,6 +184,52 @@ struct SettingsModelDetailPane: View {
                     .frame(height: 1)
                     .padding(.leading, 18)
             }
+        }
+    }
+
+    /// Dedicated row for the API-key `SecureField`. Owns the focus
+    /// binding and the placeholder-bullet bookkeeping so the rest of
+    /// the form keeps using the plain `fieldRow` helper. On first focus
+    /// the synthetic bullets clear so the user types into an empty
+    /// field; any other mutation (e.g. paste) also drops the
+    /// placeholder flag so we don't accidentally treat user input as
+    /// "no change."
+    @ViewBuilder
+    private func apiKeyFieldRow() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("API Key")
+                .font(.system(.caption).weight(.medium))
+                .foregroundStyle(theme.inkFaint)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            SecureField(isEditing ? "•••• (tap to change)" : "sk-…", text: $apiKey)
+                .focused($apiKeyFieldFocused)
+                .font(.system(.callout))
+                .foregroundStyle(theme.ink)
+                .onChange(of: apiKeyFieldFocused) { _, focused in
+                    if focused, apiKeyIsPlaceholder {
+                        apiKey = ""
+                        apiKeyIsPlaceholder = false
+                    }
+                }
+                .onChange(of: apiKey) { _, newValue in
+                    // Catch paste / programmatic edits that bypass the
+                    // focus-clear path. If the value diverged from the
+                    // sentinel bullets we're no longer showing a
+                    // placeholder.
+                    if apiKeyIsPlaceholder, newValue != Self.apiKeyPlaceholderDots {
+                        apiKeyIsPlaceholder = false
+                    }
+                }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(theme.borderFaint)
+                .frame(height: 1)
+                .padding(.leading, 18)
         }
     }
 
@@ -302,8 +359,18 @@ struct SettingsModelDetailPane: View {
         // dismissal — iOS sees a populated field on tear-down and offers
         // to save the credential in iCloud Keychain. (On Back without
         // save the cleanup runs and clears the field, suppressing that
-        // same prompt.)
-        viewModel.beforePopCleanup = nil
+        // same prompt.) Exception: when only the synthetic bullets are
+        // in the field (user didn't touch the key), leave the scrub
+        // armed so iOS doesn't offer to save the bullets as a password.
+        if !apiKeyIsPlaceholder {
+            viewModel.beforePopCleanup = nil
+        }
+        // When the user opened an existing row and never tapped into
+        // the API-key field, `apiKey` still holds the synthetic
+        // bullets — pass "" so `updateModel`'s blank-key branch leaves
+        // the stored Keychain entry alone. Without this guard the
+        // bullets would be persisted as the literal API key on save.
+        let keyForSave = apiKeyIsPlaceholder ? "" : apiKey
         Task {
             if let editingId {
                 await viewModel.updateModel(
@@ -311,7 +378,7 @@ struct SettingsModelDetailPane: View {
                     name: trimmedName,
                     baseURL: url,
                     modelId: trimmedModelId,
-                    apiKey: apiKey,
+                    apiKey: keyForSave,
                     supportsThinking: supportsThinking,
                     maxContextTokens: maxCtx
                 )
@@ -320,7 +387,7 @@ struct SettingsModelDetailPane: View {
                     name: trimmedName,
                     baseURL: url,
                     modelId: trimmedModelId,
-                    apiKey: apiKey,
+                    apiKey: keyForSave,
                     supportsThinking: supportsThinking,
                     maxContextTokens: maxCtx
                 )

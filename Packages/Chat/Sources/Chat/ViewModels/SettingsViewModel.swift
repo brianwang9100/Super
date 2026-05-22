@@ -36,6 +36,13 @@ public final class SettingsViewModel {
         public let baseURL: URL
         public let modelId: String
         public let supportsThinking: Bool
+        /// `true` when a Keychain entry exists for this row's `apiKeyRef`.
+        /// Resolved once in `loadModels()` so `SettingsModelDetailPane`
+        /// can pre-fill the API-key `SecureField` with placeholder bullets
+        /// synchronously at init time (the alternative — an async check
+        /// in `.task` — would flicker an empty field on first frame and
+        /// leave snapshot tests racing the load).
+        public let hasAPIKey: Bool
 
         public init(
             id: String,
@@ -46,7 +53,8 @@ public final class SettingsViewModel {
             isEnabled: Bool,
             baseURL: URL = URL(string: "https://api.openai.com/v1")!,
             modelId: String = "",
-            supportsThinking: Bool = false
+            supportsThinking: Bool = false,
+            hasAPIKey: Bool = false
         ) {
             self.id = id
             self.name = name
@@ -57,6 +65,7 @@ public final class SettingsViewModel {
             self.baseURL = baseURL
             self.modelId = modelId
             self.supportsThinking = supportsThinking
+            self.hasAPIKey = hasAPIKey
         }
     }
 
@@ -232,6 +241,7 @@ public final class SettingsViewModel {
         var rows: [ModelRow] = []
         for record in records {
             let stored = await store.isModelEnabled(id: record.id)
+            let keyExists = ((try? await modelRepository.loadAPIKey(ref: record.apiKeyRef)) ?? nil) != nil
             rows.append(ModelRow(
                 id: record.id,
                 name: record.name,
@@ -241,7 +251,8 @@ public final class SettingsViewModel {
                 isEnabled: stored ?? true,
                 baseURL: record.baseURL,
                 modelId: record.modelId,
-                supportsThinking: record.supportsThinking
+                supportsThinking: record.supportsThinking,
+                hasAPIKey: keyExists
             ))
         }
         models = rows
