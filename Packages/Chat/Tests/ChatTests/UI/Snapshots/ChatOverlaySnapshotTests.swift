@@ -257,6 +257,9 @@ private struct OverlayNoopDriver: ChatSessionDriver {
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
         AsyncStream { continuation in continuation.finish() }
     }
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        AsyncStream { continuation in continuation.finish() }
+    }
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         let stream = AsyncStream<ChatEvent> { continuation in continuation.finish() }
         return (nil, stream)
@@ -271,6 +274,9 @@ private actor OverlayMessageRepository: MessageRepository {
         rows.filter { $0.conversationId == conversationId }
     }
     func fetch(id: String) async throws -> MessageRecord? { rows.first { $0.id == id } }
+    func hasUserMessage(conversationId: String) async throws -> Bool {
+        rows.contains { $0.conversationId == conversationId && $0.role == .user }
+    }
     func save(_ record: MessageRecord) async throws { rows.append(record) }
     func deleteAll(conversationId: String) async throws {
         rows.removeAll { $0.conversationId == conversationId }

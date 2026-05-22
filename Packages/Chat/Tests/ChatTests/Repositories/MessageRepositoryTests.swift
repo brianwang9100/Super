@@ -91,6 +91,36 @@ struct MessageRepositoryTests {
         #expect(row?.toolCallId == "tc-1")
     }
 
+    @Test func hasUserMessageIsTrueOnlyWhenConversationHasAUserRow() async throws {
+        let (_, repo, conversations) = try await makeRepo()
+        try await conversations.save(ConversationRecord(
+            id: "c2", title: "Other", createdAt: now, updatedAt: now
+        ))
+
+        // Empty conversation: false.
+        #expect(try await repo.hasUserMessage(conversationId: "c1") == false)
+
+        // Only an assistant row: false.
+        try await repo.save(MessageRecord(
+            id: "m1", conversationId: "c1", role: .assistant, content: "hi", createdAt: now
+        ))
+        #expect(try await repo.hasUserMessage(conversationId: "c1") == false)
+
+        // User row added: true.
+        try await repo.save(MessageRecord(
+            id: "m2", conversationId: "c1", role: .user, content: "ping", createdAt: now.addingTimeInterval(1)
+        ))
+        #expect(try await repo.hasUserMessage(conversationId: "c1") == true)
+
+        // Scoped to conversationId — a user row in `c2` doesn't leak into `c1`'s
+        // answer and vice versa.
+        try await repo.save(MessageRecord(
+            id: "m3", conversationId: "c2", role: .user, content: "elsewhere", createdAt: now
+        ))
+        #expect(try await repo.hasUserMessage(conversationId: "c2") == true)
+        #expect(try await repo.hasUserMessage(conversationId: "missing") == false)
+    }
+
     @Test func deleteAllRemovesEveryMessageInConversation() async throws {
         let (_, repo, conversations) = try await makeRepo()
         try await conversations.save(ConversationRecord(
