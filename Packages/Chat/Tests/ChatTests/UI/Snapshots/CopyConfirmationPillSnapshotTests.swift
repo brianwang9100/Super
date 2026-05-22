@@ -17,7 +17,14 @@ import Testing
 /// `.animation(...)` — not in this view. Same documented gap as
 /// `MemoryUpdatedPillSnapshotTests`: steady-state frames are
 /// pixel-identical regardless of `accessibilityReduceMotion`.
-@Suite("CopyConfirmationPill snapshots")
+/// `.serialized` — snapshot baselines are read/written per-test against
+/// the same on-disk `__Snapshots__/CopyConfirmationPillSnapshotTests/`
+/// directory. Parallel execution races on the PNG files (TOCTOU on file
+/// writes), not on any async behavior in the code under test —
+/// serialization is the right tool here. Matches every other snapshot
+/// suite in this directory; see `MemoryUpdatedPillSnapshotTests` for the
+/// canonical justification.
+@Suite("CopyConfirmationPill snapshots", .serialized)
 @MainActor
 struct CopyConfirmationPillSnapshotTests {
     private func host<V: View>(_ view: V, theme: SuperTheme.Identifier) -> some View {

@@ -555,13 +555,26 @@ public final class ChatScreenViewModel {
             // whose `uptoMessageId` anchor lands in the trim range. If
             // they survived, `ContextAssembler` would prepend a summary
             // covering messages that no longer exist.
+            //
+            // Delete order: checkpoints *first*, then messages. The two
+            // writes can't be a single transaction without coupling the
+            // two repos through a shared `DatabaseQueue` handle, so a
+            // throw between them leaves the DB partially trimmed. With
+            // this order, the failure mode of a thrown second delete is
+            // "messages survived their anchored checkpoint" — `Context-
+            // Assembler.messagesAfterCheckpoint`'s missing-anchor branch
+            // doesn't apply (no checkpoint to apply it to) and the prior
+            // turns get re-sent as normal history. The reverse order
+            // would leave a checkpoint whose `uptoMessageId` points at a
+            // deleted message, which is exactly the bug this cleanup is
+            // meant to prevent.
             let trimmedIDSet = Set(trimmedIDs)
             let staleCheckpointIDs = try await checkpointRepository
                 .all(for: conversationId)
                 .filter { trimmedIDSet.contains($0.uptoMessageId) }
                 .map(\.id)
-            try await messageRepository.delete(ids: trimmedIDs)
             try await checkpointRepository.delete(ids: staleCheckpointIDs)
+            try await messageRepository.delete(ids: trimmedIDs)
             await refreshTranscript()
             // `retry()` runs its own guards (no model, no user bubble,
             // already streaming) and is the canonical entry into the

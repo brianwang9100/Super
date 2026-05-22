@@ -9,8 +9,10 @@ import Testing
 /// ``AssistantMessage``. The interesting visual state added by this PR is
 /// the `isStreaming: true` form where Regenerate dims to 40% opacity
 /// while Copy stays at full opacity. Pins both states (idle, streaming)
-/// in both color schemes (light, dark) so a future tweak to the disabled
-/// appearance can't drift silently.
+/// across all three themes (light, dark, sepia) plus one Dynamic Type
+/// XXL variant on the new disabled state — the cell most likely to
+/// regress on a future tweak. Matches the codebase coverage matrix
+/// (`light/dark/sepia × default + at-least-one XXL`).
 ///
 /// Wider `MessageList` baselines already cover thinking / tool-call /
 /// markdown surfaces, so this suite focuses narrowly on the action row.
@@ -69,9 +71,38 @@ struct AssistantMessageSnapshotTests {
         )
     }
 
+    @Test("action row idle — Regenerate enabled (sepia)")
+    func actionRowIdleSepia() {
+        verify(
+            isStreaming: false,
+            theme: .sepia,
+            name: "assistant_actions_idle_sepia"
+        )
+    }
+
+    @Test("action row streaming — Regenerate greyed (sepia)")
+    func actionRowStreamingSepia() {
+        verify(
+            isStreaming: true,
+            theme: .sepia,
+            name: "assistant_actions_streaming_sepia"
+        )
+    }
+
+    @Test("action row streaming — Regenerate greyed at Dynamic Type XXL")
+    func actionRowStreamingXXL() {
+        verify(
+            isStreaming: true,
+            theme: .light,
+            dynamicType: .xxLarge,
+            name: "assistant_actions_streaming_light_xxl"
+        )
+    }
+
     private func verify(
         isStreaming: Bool,
         theme: SuperTheme.Identifier,
+        dynamicType: DynamicTypeSize = .large,
         name: String,
         function: String = #function
     ) {
@@ -84,6 +115,7 @@ struct AssistantMessageSnapshotTests {
             isStreaming: isStreaming
         )
         .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(width: 402)
