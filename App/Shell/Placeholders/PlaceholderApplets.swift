@@ -21,6 +21,11 @@ struct RecipesPlaceholderApplet: MiniApplet {
     var appletID: String { Self.appletID }
     var displayName: String { "Recipes" }
     var accentColor: Color { Color(red: 0.74, green: 0.55, blue: 0.28) }   // warm ochre
+    /// Placeholder — no behavioral guidance authored yet. The registry
+    /// skips empty bodies, so the leading system message gets no Recipes
+    /// block until this stub is replaced by a real package with a
+    /// `Resources/SystemPrompt.md`.
+    var systemPrompt: String { "" }
 
     @MainActor
     func iconView(size: CGFloat) -> AnyView {
@@ -44,6 +49,8 @@ struct FinancePlaceholderApplet: MiniApplet {
     var appletID: String { Self.appletID }
     var displayName: String { "Finance" }
     var accentColor: Color { Color(red: 0.20, green: 0.50, blue: 0.52) }   // deep teal
+    /// Placeholder — no behavioral guidance authored yet (see Recipes).
+    var systemPrompt: String { "" }
 
     @MainActor
     func iconView(size: CGFloat) -> AnyView {

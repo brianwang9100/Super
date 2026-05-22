@@ -44,4 +44,13 @@ public protocol MiniApplet: Sendable {
     /// applet is active. Returned as `AnyView` so conformances can lazily
     /// construct view models without parameterizing the protocol.
     func rootView() -> AnyView
+
+    /// Markdown text the Chat Large Language Model (LLM) sees as one block
+    /// in the leading system message. Loaded from the applet's own
+    /// Swift Package Manager (SPM) bundle — conventionally a one-liner
+    /// returning `AppletSystemPrompt.load(from: .module)`, which reads
+    /// `Resources/SystemPrompt.md`. Return `""` (or omit the file) for an
+    /// applet that has no behavioral guidance yet — the registry drops
+    /// empty bodies, so no block is injected in that case.
+    var systemPrompt: String { get }
 }

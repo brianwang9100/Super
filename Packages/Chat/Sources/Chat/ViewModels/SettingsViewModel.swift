@@ -136,21 +136,21 @@ public final class SettingsViewModel {
     private let memoryRepository: (any MemoryRepository)?
     private let llmProviderRegistry: LLMProviderRegistry?
     private let httpClient: (any HTTPClient)?
-    /// Receiver that runtime-pushes system-prompt edits into orchestration
-    /// (production: `ChatSessionStore`). Protocol-typed per AGENTS.md
-    /// §Testing §1 so tests can verify the fan-out hop without the full
-    /// orchestration graph. Required, not optional — a `nil` default
-    /// would make a wiring regression in the composition root invisible
-    /// (the persisted prompt would diverge from running sessions with no
-    /// compile error or runtime signal). Tests substitute a no-op
-    /// receiver.
-    private let systemPromptReceiver: any SystemPromptReceiver
+    /// Receiver that runtime-pushes user-personalization edits into
+    /// orchestration (production: `ChatSessionStore`). Protocol-typed
+    /// per AGENTS.md §Testing §1 so tests can verify the fan-out hop
+    /// without the full orchestration graph. Required, not optional — a
+    /// `nil` default would make a wiring regression in the composition
+    /// root invisible (the persisted value would diverge from running
+    /// sessions with no compile error or runtime signal). Tests
+    /// substitute a no-op receiver.
+    private let userPersonalizationReceiver: any UserPersonalizationReceiver
 
     /// Receiver that runtime-pushes auto-compaction toggle/threshold
     /// edits into orchestration (production: `ChatSessionStore`). Same
-    /// required-non-optional rationale as `systemPromptReceiver` — a
-    /// silently-dropped slider would leave the persisted value diverged
-    /// from running sessions until the next app launch.
+    /// required-non-optional rationale as `userPersonalizationReceiver`
+    /// — a silently-dropped slider would leave the persisted value
+    /// diverged from running sessions until the next app launch.
     private let autoCompactPolicyReceiver: any AutoCompactPolicyReceiver
 
     /// Optional notification fired after the models list changes via
@@ -166,7 +166,7 @@ public final class SettingsViewModel {
         modelRepository: any ModelConfigurationRepository,
         conversationRepository: any ConversationRepository,
         toolRegistry: ToolRegistry,
-        systemPromptReceiver: any SystemPromptReceiver,
+        userPersonalizationReceiver: any UserPersonalizationReceiver,
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
@@ -180,7 +180,7 @@ public final class SettingsViewModel {
         self.toolRegistry = toolRegistry
         self.memoryRepository = memoryRepository
         self.llmProviderRegistry = llmProviderRegistry
-        self.systemPromptReceiver = systemPromptReceiver
+        self.userPersonalizationReceiver = userPersonalizationReceiver
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
         self.httpClient = httpClient
     }
@@ -285,15 +285,15 @@ public final class SettingsViewModel {
         try? await store.setTheme(id)
     }
 
-    public func setSystemPrompt(_ value: String) async {
-        settings.systemPrompt = value
-        try? await store.setSystemPrompt(value)
+    public func setUserPersonalization(_ value: String) async {
+        settings.userPersonalization = value
+        try? await store.setUserPersonalization(value)
         // Fan out to every active `ChatSession` (via the receiver, which
         // is `ChatSessionStore` in production) so long-running
-        // conversations pick up the new prompt on their next turn — the
-        // Prompt pane's "save on focus loss" hand-off would otherwise
-        // need the user to restart the app to take effect.
-        await systemPromptReceiver.setSystemPrompt(value)
+        // conversations pick up the new value on their next turn — the
+        // Personalization pane's "save on focus loss" hand-off would
+        // otherwise need the user to restart the app to take effect.
+        await userPersonalizationReceiver.setUserPersonalization(value)
     }
 
     public func setDefaultVerbosity(_ value: ChatVerbosity) async {

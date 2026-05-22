@@ -82,13 +82,29 @@ public actor ChatSession {
     /// `ChatSettings.defaultManualCompactMinThreshold` (0.30).
     private let manualCompactMinThreshold: Double
 
-    /// User's configured system prompt, sourced from
-    /// `ChatSettings.systemPrompt`. Injected as the leading `.system`
-    /// LLMMessage on every turn by `ContextAssembler`. Mutated at runtime
-    /// via `setSystemPrompt(_:)` so a Settings UI edit takes effect on
-    /// the very next turn — including for long-running sessions the user
-    /// returns to after editing.
-    private var currentSystemPrompt: String
+    /// Chat-assistant base prompt, loaded once at app launch from
+    /// `Resources/DefaultSystemPrompt.md`. Hidden from the user; owned by
+    /// the Chat applet author. Rendered under a `## Chat assistant`
+    /// header inside the leading `.system` block. Constructor-time
+    /// state — never changes during a session's lifetime.
+    private let chatBriefing: String
+
+    /// Per-applet briefings contributed by the registered `MiniApplet`s.
+    /// Trimmed and ordered by `AppletRegistry.resolvedBriefings()` at
+    /// app launch and threaded through `ChatSessionStore`. Rendered as
+    /// labeled `## <Name> applet` sections inside the leading `.system`
+    /// block. Constructor-time state — applets are static at launch.
+    private let appletBriefings: [AppletBriefing]
+
+    /// User-authored personalization text (formerly the user-editable
+    /// "system prompt"). Free-form preferences about themselves the
+    /// assistant should keep in mind. Rendered under a
+    /// `## User personalization` header at the *end* of the leading
+    /// system block so it follows — never overrides — the authoritative
+    /// chat and applet sections. Mutated at runtime via
+    /// `setUserPersonalization(_:)` so a Settings UI edit takes effect on
+    /// the very next turn.
+    private var currentUserPersonalization: String
 
     /// The in-flight turn's task, or `nil` between turns. Cleared from
     /// inside `run`'s `defer` so `isStreaming` flips back to `false` as
@@ -161,10 +177,15 @@ public actor ChatSession {
     ///     Default `ChatSettings.defaultManualCompactMinThreshold`. Tests
     ///     can pass `0.0` to bypass the gate when exercising the
     ///     happy-path body.
-    ///   - systemPrompt: User's configured system prompt; injected by
-    ///     `ContextAssembler` as the leading `.system` row on every turn.
-    ///     Default `""` (no injection) so test fixtures and call sites
-    ///     that don't carry settings keep working.
+    ///   - chatBriefing: Chat-assistant base prompt, loaded once at app
+    ///     launch from `Resources/DefaultSystemPrompt.md`. Default `""`
+    ///     so fixtures that don't carry the Chat bundle keep working.
+    ///   - appletBriefings: Per-applet prompts from
+    ///     `AppletRegistry.resolvedBriefings()`. Default `[]` for
+    ///     fixtures that don't construct a registry.
+    ///   - userPersonalization: User-authored "about me" text — the
+    ///     renamed `ChatSettings.systemPrompt` field. Default `""`
+    ///     (no injection) for fixtures that don't carry settings.
     public init(
         conversationId: String,
         messageRepository: any MessageRepository,
@@ -179,7 +200,9 @@ public actor ChatSession {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
-        systemPrompt: String = "",
+        chatBriefing: String = "",
+        appletBriefings: [AppletBriefing] = [],
+        userPersonalization: String = "",
         memoryRepository: (any MemoryRepository)? = nil
     ) {
         self.conversationId = conversationId
@@ -195,7 +218,9 @@ public actor ChatSession {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
-        self.currentSystemPrompt = systemPrompt
+        self.chatBriefing = chatBriefing
+        self.appletBriefings = appletBriefings
+        self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
     }
 
@@ -208,13 +233,13 @@ public actor ChatSession {
         self.autoCompactThreshold = threshold
     }
 
-    /// Update the system prompt at runtime. The Settings UI calls this
-    /// (via `ChatSessionStore.setSystemPrompt`) when the user edits the
-    /// prompt so a long-running session picks up the new value on its
-    /// next turn — current setting always wins over what the session was
-    /// constructed with.
-    public func setSystemPrompt(_ value: String) {
-        self.currentSystemPrompt = value
+    /// Update the user personalization text at runtime. The Settings UI
+    /// calls this (via `ChatSessionStore.setUserPersonalization`) when
+    /// the user edits the field so a long-running session picks up the
+    /// new value on its next turn — current setting always wins over
+    /// what the session was constructed with.
+    public func setUserPersonalization(_ value: String) {
+        self.currentUserPersonalization = value
     }
 
     /// `true` while a turn is mid-flight. Sidebar drives the per-row
@@ -543,7 +568,9 @@ public actor ChatSession {
             toolCalls: toolCalls,
             checkpoint: checkpoint,
             model: model,
-            systemPrompt: currentSystemPrompt,
+            chatBriefing: chatBriefing,
+            appletBriefings: appletBriefings,
+            userPersonalization: currentUserPersonalization,
             memories: memories
         )
     }

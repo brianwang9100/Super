@@ -38,8 +38,8 @@ struct SettingsRootPane: View {
             SettingsGroup {
                 SettingsRow(
                     icon: AnyView(PromptIcon()),
-                    label: "System Prompt",
-                    action: { viewModel.openPane(.prompt) }
+                    label: "Personalization",
+                    action: { viewModel.openPane(.personalization) }
                 )
                 SettingsRow(
                     icon: AnyView(VerbosityIcon()),
