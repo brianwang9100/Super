@@ -2,13 +2,16 @@ import Testing
 @testable import Bible
 
 /// Tests for `BibleBookSheetViewModel` — search filtering, traditional vs
-/// alphabetical ordering and grouping, the no-results case, and which book
-/// is expanded.
+/// alphabetical ordering and grouping, the no-results case, which book is
+/// auto-expanded from the reader's current position, and which scroll
+/// anchor that position resolves to.
 @Suite("BibleBookSheetViewModel")
 @MainActor
 struct BibleBookSheetViewModelTests {
-    private func makeViewModel(expandedBookId: String? = "1PE") -> BibleBookSheetViewModel {
-        BibleBookSheetViewModel(expandedBookId: expandedBookId)
+    private func makeViewModel(
+        currentPosition: BiblePosition? = BiblePosition(bookId: "1PE", chapterNumber: 1)
+    ) -> BibleBookSheetViewModel {
+        BibleBookSheetViewModel(currentPosition: currentPosition)
     }
 
     @Test("traditional order splits the canon into Old and New Testament")
@@ -84,9 +87,64 @@ struct BibleBookSheetViewModelTests {
         #expect(viewModel.groups[0].books.map(\.id) == ["1SA", "2SA"])
     }
 
+    @Test("the current position auto-expands its book on open")
+    func currentPositionAutoExpands() {
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "ROM", chapterNumber: 8)
+        )
+        #expect(viewModel.expandedBookId == "ROM")
+    }
+
+    @Test("a nil current position opens with every book collapsed")
+    func nilCurrentPositionLeavesAllCollapsed() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        #expect(viewModel.expandedBookId == nil)
+        #expect(viewModel.initialScrollAnchor == nil)
+    }
+
+    @Test("a short-book position anchors on the book name row")
+    func shortBookAnchorsOnBookRow() {
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "ROM", chapterNumber: 8)
+        )
+        #expect(viewModel.initialScrollAnchor == .bookRow(bookId: "ROM"))
+    }
+
+    @Test("a long-book late-chapter position anchors on the chapter cell")
+    func longBookLateChapterAnchorsOnChapterCell() {
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "PSA", chapterNumber: 119)
+        )
+        #expect(
+            viewModel.initialScrollAnchor
+                == .chapterCell(bookId: "PSA", chapterNumber: 119)
+        )
+    }
+
+    @Test("chapter 48 still anchors on the book name row")
+    func boundaryChapter48AnchorsOnBookRow() {
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "PSA", chapterNumber: 48)
+        )
+        #expect(viewModel.initialScrollAnchor == .bookRow(bookId: "PSA"))
+    }
+
+    @Test("chapter 49 crosses into chapter-cell anchoring")
+    func boundaryChapter49AnchorsOnChapterCell() {
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "PSA", chapterNumber: 49)
+        )
+        #expect(
+            viewModel.initialScrollAnchor
+                == .chapterCell(bookId: "PSA", chapterNumber: 49)
+        )
+    }
+
     @Test("toggling expansion opens one book and closes it on a repeat tap")
     func expansionToggles() {
-        let viewModel = makeViewModel(expandedBookId: "1PE")
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "1PE", chapterNumber: 1)
+        )
         #expect(viewModel.expandedBookId == "1PE")
 
         viewModel.toggleExpansion(bookId: "ROM")
@@ -98,7 +156,9 @@ struct BibleBookSheetViewModelTests {
 
     @Test("the expanded book survives a search that filters it out")
     func expansionPersistsAcrossSearch() {
-        let viewModel = makeViewModel(expandedBookId: "1PE")
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "1PE", chapterNumber: 1)
+        )
         viewModel.query = "genesis"                     // 1 Peter no longer in the list
         #expect(viewModel.expandedBookId == "1PE")
 

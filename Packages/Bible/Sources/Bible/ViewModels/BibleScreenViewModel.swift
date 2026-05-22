@@ -121,10 +121,11 @@ public final class BibleScreenViewModel {
         persist()
     }
 
-    /// Open the book picker. It starts with every book collapsed; the
-    /// reader taps a book to reveal its chapter grid.
+    /// Open the book picker. It opens with the current book expanded and
+    /// scrolled to so the highlighted chapter is on screen — passed in via
+    /// `currentPosition` so the sheet doesn't have to reach back for it.
     public func presentBookSheet() {
-        bookSheet = BibleBookSheetViewModel(expandedBookId: nil, catalog: catalog)
+        bookSheet = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
     }
 
     /// Close the book picker without changing the reading position.
