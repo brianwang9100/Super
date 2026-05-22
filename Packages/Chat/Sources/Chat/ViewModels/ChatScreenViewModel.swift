@@ -499,7 +499,17 @@ public final class ChatScreenViewModel {
     /// the current items.
     public func requestRegeneration(fromAssistantMessageID id: String) {
         guard !isStreaming else { return }
-        guard let targetIndex = items.firstIndex(where: { $0.id == id }) else { return }
+        // Hard-pin the target to an assistant row. The production caller
+        // (the Regenerate button under each assistant bubble) already
+        // satisfies this, but the guard keeps the contract enforceable
+        // against future callers — passing a user-bubble id would trim
+        // a user turn off the persisted transcript and break the LLM
+        // history contract that `MessageRepository.delete(ids:)` warns
+        // about ("contiguous tail of rows ending at the conversation's
+        // latest message"), since the immediate predecessor would no
+        // longer be a user message.
+        guard let targetIndex = items.firstIndex(where: { $0.id == id }),
+              case .assistantText = items[targetIndex] else { return }
         let deletableCount = items[targetIndex...].reduce(into: 0) { acc, item in
             switch item {
             case .userBubble, .assistantText:
@@ -542,9 +552,9 @@ public final class ChatScreenViewModel {
     /// Trim → refresh → retry. Pulled into its own method so
     /// `confirmRegeneration()` can stay synchronous (clearing the dialog
     /// state in the same tick the button is tapped) while the async work
-    /// runs in the spawned `Task`. Errors swallow silently for now —
-    /// surfacing repo failures here would need a new banner state and
-    /// the path is rare enough that crashing on it gives no signal.
+    /// runs in the spawned `Task`. A throw on either delete or on the
+    /// fetch sets the standard error banner with a Retry pill, matching
+    /// the post-LLM-error path the user is already familiar with.
     private func performRegeneration(targetID: String) async {
         do {
             let all = try await messageRepository.fetchAll(conversationId: conversationId)

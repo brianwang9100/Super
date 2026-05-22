@@ -1538,6 +1538,25 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.pendingRegenerationDeleteCount == 0)
     }
 
+    @Test("requestRegeneration: a user-bubble id is a silent no-op")
+    func requestRegenerationRejectsUserBubbleID() {
+        // Defensive guard against a future caller passing the wrong id.
+        // The production caller (the Regenerate button under each
+        // assistant bubble) is correct today; this test pins the
+        // assistant-only contract so a regression in the call site can't
+        // trim a user turn and break the LLM history.
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "u1")
+
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        #expect(viewModel.pendingRegenerationDeleteCount == 0)
+    }
+
     @Test("cancelRegeneration: clears the pending dialog state without writes")
     func cancelRegenerationClearsStateOnly() async {
         let driver = RecordingDriver()
