@@ -30,9 +30,13 @@ struct MarkdownTextTests {
         #expect(view._resolvedText.hasSuffix("```"))
     }
 
-    @Test("partial path routes through autocloser for dangling emphasis")
-    func partialPathTrimsEmphasis() {
-        let view = MarkdownText("this is **", treatAsPartial: true)
+    @Test("partial path routes through autocloser for trailing emphasis with whitespace")
+    func partialPathTrimsTrailingEmphasis() {
+        // EOF markers are preserved (see MarkdownAutocloserTests for
+        // the rationale); only when whitespace follows the marker do
+        // we trim. Picking the whitespace-followed shape gives the
+        // best signal that the wiring routes through the autocloser.
+        let view = MarkdownText("this is ** ", treatAsPartial: true)
         #expect(view._resolvedText == "this is")
     }
 }

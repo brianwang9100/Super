@@ -502,6 +502,75 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_markdown_light_xxl", function: function)
     }
 
+    // MARK: - Live-thinking partial markdown
+    //
+    // ``ThinkingBlock`` passes `treatAsPartial: true` to ``MarkdownText``
+    // when its `durationSource` is `.live` (mid-stream). The variants
+    // below exercise that path with a non-empty thinking buffer that
+    // carries a dangling fence — the autocloser must close it so the
+    // thinking body doesn't flip into a code block while the closer is
+    // still in flight.
+
+    @Test("streaming tail with mid-fence thinking trace (light)")
+    func streamingTailThinkingMidFenceLight() {
+        verifyStreamingThinking(
+            thinking: """
+            Considering the snippet:
+
+            ```swift
+            let total = items.reduce(
+            """,
+            theme: .light,
+            name: "list_streaming_thinking_midfence_light"
+        )
+    }
+
+    @Test("streaming tail with mid-fence thinking trace (dark)")
+    func streamingTailThinkingMidFenceDark() {
+        verifyStreamingThinking(
+            thinking: """
+            Considering the snippet:
+
+            ```swift
+            let total = items.reduce(
+            """,
+            theme: .dark,
+            name: "list_streaming_thinking_midfence_dark"
+        )
+    }
+
+    /// Renders a streaming-overlay snapshot whose live thinking trace
+    /// is non-empty (`thinkingStartedAt` set → ``ThinkingBlock`` flags
+    /// the duration source as `.live` → ``MarkdownText`` enters the
+    /// partial-input mode). `verbosity: .verbose` opens the trace so
+    /// the body is visible to the snapshot.
+    ///
+    /// `thinkingStartedAt` is intentionally placed in the future so
+    /// the `TimelineView`'s `max(0, elapsed)` clamps the displayed
+    /// counter to "0s" across runs — otherwise the snapshot would
+    /// drift with wall-clock time.
+    private func verifyStreamingThinking(
+        thinking: String,
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        let tail = MessageList.StreamingState(
+            thinking: thinking,
+            thinkingStartedAt: Date().addingTimeInterval(86400),
+            text: "",
+            isCompacting: false
+        )
+        let view = MessageList(
+            items: [.userBubble(id: "u1", text: "Walk me through it", references: [])],
+            streamingTail: tail,
+            verbosity: .verbose
+        )
+        .superTheme(.make(theme))
+        .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view
     // with animation. SwiftUI's `\.accessibilityReduceMotion` env value
     // is read-only, so we can't flip it from a test wrapper. The

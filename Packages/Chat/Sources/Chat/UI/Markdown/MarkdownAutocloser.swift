@@ -30,8 +30,19 @@ enum MarkdownAutocloser {
         if !signal.hasFence && !signal.hasInlineMarker && !signal.hasBracket {
             return text
         }
-        if signal.hasFence, let fenceClosed = autocloseFenceIfOpen(text) {
-            return fenceClosed
+        if signal.hasFence {
+            if let fenceClosed = autocloseFenceIfOpen(text) {
+                return fenceClosed
+            }
+            // Fence-present but balanced — skip the inline passes.
+            // They walk the raw string without fence awareness, so a
+            // balanced `\`\`\`…\`\`\`` block would count as three
+            // unmatched backticks and `\[` / `\]` inside a code body
+            // would look like an unclosed link, both corrupting the
+            // code. Letting MarkdownUI handle the balanced fence is the
+            // safe default; partial-input cleanup is best-effort and
+            // skips fenced prose intentionally.
+            return text
         }
         var working = text
         if signal.hasBracket {
@@ -46,22 +57,43 @@ enum MarkdownAutocloser {
     /// One-byte UTF-8 scan that tells `close` which expensive passes
     /// are actually needed. Each marker is ASCII so the byte comparison
     /// is sufficient — no `Character` materialization, no Unicode
-    /// normalization.
+    /// normalization. `hasFence` requires a run of 3+ consecutive
+    /// `\`` or `~` bytes (CommonMark §4.5) so a single inline backtick
+    /// doesn't suppress the inline pass.
     private static func scanForMarkers(_ text: String) -> MarkerSignal {
         var signal = MarkerSignal()
+        var currentRun: UInt8 = 0
+        var currentRunChar: UInt8 = 0
         for byte in text.utf8 {
             switch byte {
             case 0x60: // `
-                signal.hasFence = true
                 signal.hasInlineMarker = true
+                if currentRunChar == 0x60 {
+                    currentRun &+= 1
+                } else {
+                    currentRun = 1
+                    currentRunChar = 0x60
+                }
+                if currentRun >= 3 { signal.hasFence = true }
             case 0x7E: // ~
-                signal.hasFence = true
+                if currentRunChar == 0x7E {
+                    currentRun &+= 1
+                } else {
+                    currentRun = 1
+                    currentRunChar = 0x7E
+                }
+                if currentRun >= 3 { signal.hasFence = true }
             case 0x2A, 0x5F: // *, _
                 signal.hasInlineMarker = true
+                currentRun = 0
+                currentRunChar = 0
             case 0x5B, 0x21: // [, !
                 signal.hasBracket = true
+                currentRun = 0
+                currentRunChar = 0
             default:
-                continue
+                currentRun = 0
+                currentRunChar = 0
             }
         }
         return signal
@@ -101,7 +133,14 @@ enum MarkdownAutocloser {
                 fenceChar = firstChar!
                 openerLength = runLength
             } else if firstChar == fenceChar && runLength >= openerLength {
-                inside = false
+                // CommonMark §4.5: a closer carries only whitespace
+                // after the marker run. Lines like ```swift inside a
+                // markdown-about-markdown body must stay treated as
+                // code content, not as a premature closer.
+                let afterRun = body.dropFirst(runLength)
+                if afterRun.allSatisfy(\.isWhitespace) {
+                    inside = false
+                }
             }
         }
         if inside {
@@ -172,9 +211,16 @@ enum MarkdownAutocloser {
             let matching = tokens.filter { $0.marker == marker }
             guard matching.count % 2 == 1, let last = matching.last else { continue }
             let tailEnd = last.start + last.length
-            // Conservative: only the dangling-at-tail shape gets trimmed.
+            // Conservative: only trim when the user has explicitly
+            // typed whitespace after the marker (signalling "I'm done
+            // with this run"). A marker at the literal end of the
+            // buffer is ambiguous mid-stream — it could be an emphasis
+            // opener or the head of an intraword character that hasn't
+            // arrived yet (e.g., `Hello snake_` before `_case`). Leave
+            // it as a literal so MarkdownUI renders the raw character
+            // until more input disambiguates.
             let tail = chars[tailEnd..<chars.count]
-            guard tail.allSatisfy(\.isWhitespace) else { continue }
+            guard !tail.isEmpty, tail.allSatisfy(\.isWhitespace) else { continue }
             toRemove.append((last.start, last.length))
         }
         // Descending by start so each removal leaves earlier ranges valid.

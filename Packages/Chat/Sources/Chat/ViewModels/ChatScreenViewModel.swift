@@ -700,7 +700,13 @@ public final class ChatScreenViewModel {
     }
 
     private func appendStreamingThinking(_ chunk: String) {
-        let current = streamingTail ?? .init(thinking: "", text: "", isCompacting: false)
+        // Discard rather than revive — symmetric with
+        // `publishStreamingChunk`. A `.thinkingDelta` that arrives
+        // after the overlay was torn down (a late event surfaced as
+        // `consume` exited) must not re-create a streaming state, or
+        // the empty-state guard in `ChatScreen` would silently re-show
+        // the overlay against the now-persisted assistant row.
+        guard let current = streamingTail else { return }
         streamingTail = MessageList.StreamingState(
             thinking: current.thinking + chunk,
             thinkingStartedAt: current.thinkingStartedAt ?? Date(),
