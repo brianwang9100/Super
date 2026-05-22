@@ -12,6 +12,12 @@ public protocol CompactionCheckpointRepository: Sendable {
     /// any) for the same conversation to `isLive == false` in the same
     /// write transaction.
     func save(_ record: CompactionCheckpointRecord) async throws
+    /// Delete the checkpoints with the given ids in a single statement.
+    /// Used by Regenerate to drop checkpoints whose `uptoMessageId`
+    /// anchor was trimmed away (otherwise `ContextAssembler` would
+    /// prepend a stale summary covering deleted messages). Empty `ids`
+    /// is a no-op.
+    func delete(ids: [String]) async throws
 }
 
 /// GRDB-backed `CompactionCheckpointRepository`. The "one live checkpoint
@@ -53,6 +59,15 @@ public struct GRDBCompactionCheckpointRepository: CompactionCheckpointRepository
                     .updateAll(db, Column("isLive").set(to: false))
             }
             try record.save(db)
+        }
+    }
+
+    public func delete(ids: [String]) async throws {
+        guard !ids.isEmpty else { return }
+        _ = try await queue.write { db in
+            try CompactionCheckpointRecord
+                .filter(ids.contains(Column("id")))
+                .deleteAll(db)
         }
     }
 }

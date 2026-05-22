@@ -91,6 +91,20 @@ public struct MessageList: View {
     /// keyboard immediately before the child action runs is the intended
     /// behavior.
     public let onContentTap: () -> Void
+    /// Forwarded to every ``AssistantMessage`` so the Regenerate button
+    /// dims and ignores taps during a turn. Kept at `MessageList`'s
+    /// level (rather than reading the view model from each row) so the
+    /// view tree stays parameter-driven and snapshot tests can pin
+    /// either state without a live view model.
+    public let isStreaming: Bool
+    /// Fired with the tapped assistant message's text when the user
+    /// taps Copy. ``ChatScreen`` writes to the pasteboard and flips the
+    /// "Copied!" pill.
+    public let onCopyTapped: (String) -> Void
+    /// Fired with the tapped assistant message's id when the user taps
+    /// Regenerate. ``ChatScreen`` stages a confirmation dialog before
+    /// trimming the transcript.
+    public let onRegenerateTapped: (String) -> Void
 
     /// State for the live streaming overlay rendered as ``StreamingTail``.
     public struct StreamingState: Sendable, Equatable {
@@ -191,7 +205,10 @@ public struct MessageList: View {
         error: ErrorState? = nil,
         verbosity: ChatVerbosity = .simple,
         onRetry: @escaping () -> Void = {},
-        onContentTap: @escaping () -> Void = {}
+        onContentTap: @escaping () -> Void = {},
+        isStreaming: Bool = false,
+        onCopyTapped: @escaping (String) -> Void = { _ in },
+        onRegenerateTapped: @escaping (String) -> Void = { _ in }
     ) {
         self.items = items
         self.streamingTail = streamingTail
@@ -199,6 +216,9 @@ public struct MessageList: View {
         self.verbosity = verbosity
         self.onRetry = onRetry
         self.onContentTap = onContentTap
+        self.isStreaming = isStreaming
+        self.onCopyTapped = onCopyTapped
+        self.onRegenerateTapped = onRegenerateTapped
     }
 
     @Environment(\.superTheme) private var theme
@@ -338,13 +358,16 @@ public struct MessageList: View {
         switch item {
         case .userBubble(_, let text, let references):
             UserBubble(text: text, references: references)
-        case .assistantText(_, let thinking, let thinkingDurationMs, let text, let toolCalls):
+        case .assistantText(let id, let thinking, let thinkingDurationMs, let text, let toolCalls):
             AssistantMessage(
                 thinking: thinking,
                 thinkingDurationMs: thinkingDurationMs,
                 text: text,
                 toolCalls: toolCalls,
-                verbosity: verbosity
+                verbosity: verbosity,
+                isStreaming: isStreaming,
+                onCopyTapped: { onCopyTapped(text) },
+                onRegenerateRequested: { onRegenerateTapped(id) }
             )
         case .compactionBanner(_, let summary):
             CompactionBanner(summary: summary)

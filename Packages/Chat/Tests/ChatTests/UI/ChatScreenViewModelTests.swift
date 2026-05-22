@@ -1402,7 +1402,495 @@ struct ChatScreenViewModelTests {
         #expect(await driver.sentText.isEmpty)
         #expect(viewModel.isStreaming == false)
     }
+
+    // MARK: - Copy confirmation pill
+
+    @Test("confirmCopy flips the pill on immediately and clears after the dismissal task drains")
+    func confirmCopyFlipsThenAutoDismisses() async {
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: RecordingDriver(),
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        viewModel.confirmCopy()
+        #expect(viewModel.showCopyConfirmation == true)
+
+        await viewModel._waitForPendingCopyDismissalTask()
+        #expect(viewModel.showCopyConfirmation == false)
+    }
+
+    @Test("confirmCopy: rapid second tap cancels the prior dismissal task so the pill rides the new timer")
+    func confirmCopyRapidSecondTapRestartsTimer() async {
+        // Without the explicit `copyDismissalTask?.cancel()`, the first
+        // tap's dwell timer would fire halfway through the second tap's
+        // dwell and clip the pill early. This pins the cancel-and-replace
+        // shape so a future refactor can't drop it.
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: RecordingDriver(),
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+
+        viewModel.confirmCopy()
+        viewModel.confirmCopy()
+        #expect(viewModel.showCopyConfirmation == true)
+
+        await viewModel._waitForPendingCopyDismissalTask()
+        // Only the second task's dwell window resets the flag; the
+        // first task was cancelled before it could touch state.
+        #expect(viewModel.showCopyConfirmation == false)
+    }
+
+    // MARK: - Regenerate
+
+    @Test("requestRegeneration: target = last assistant gives count == 1")
+    func requestRegenerationOnLastAssistantCountsOne() {
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+
+        #expect(viewModel.pendingRegenerationTargetID == "a1")
+        #expect(viewModel.pendingRegenerationDeleteCount == 1)
+    }
+
+    @Test("requestRegeneration: target = earlier assistant counts target + every following row")
+    func requestRegenerationOnEarlierAssistantCountsTailLength() {
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q1", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: []),
+            .userBubble(id: "u2", text: "q2", references: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+
+        #expect(viewModel.pendingRegenerationTargetID == "a1")
+        // a1, u2, a2 — three rows from the target to the end.
+        #expect(viewModel.pendingRegenerationDeleteCount == 3)
+    }
+
+    @Test("requestRegeneration: compaction banners between target and tail are excluded from the count")
+    func requestRegenerationExcludesCompactionBanners() {
+        // Compaction banners project from `CompactionCheckpointRecord`,
+        // not `MessageRecord`, so they aren't actually deleted by the
+        // trim. Excluding them from the dialog count keeps the wording
+        // honest about how many *messages* the user is losing.
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q1", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+            .compactionBanner(id: "cb1", summary: "checkpoint"),
+            .userBubble(id: "u2", text: "q2", references: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+
+        // a1, u2, a2 count; cb1 does not.
+        #expect(viewModel.pendingRegenerationDeleteCount == 3)
+    }
+
+    @Test("requestRegeneration: while streaming, dialog state is not staged")
+    func requestRegenerationDuringStreamingIsANoOp() {
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(
+            items: [
+                .userBubble(id: "u1", text: "hi", references: []),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+            ],
+            streamingTail: MessageList.StreamingState(
+                thinking: "", thinkingStartedAt: nil, text: "", isCompacting: false
+            ),
+            isStreaming: true
+        )
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        #expect(viewModel.pendingRegenerationDeleteCount == 0)
+    }
+
+    @Test("requestRegeneration: unknown id is a silent no-op")
+    func requestRegenerationOnUnknownIdIsANoOp() {
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "does-not-exist")
+
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        #expect(viewModel.pendingRegenerationDeleteCount == 0)
+    }
+
+    @Test("requestRegeneration: a user-bubble id is a silent no-op")
+    func requestRegenerationRejectsUserBubbleID() {
+        // Defensive guard against a future caller passing the wrong id.
+        // The production caller (the Regenerate button under each
+        // assistant bubble) is correct today; this test pins the
+        // assistant-only contract so a regression in the call site can't
+        // trim a user turn and break the LLM history.
+        let viewModel = makeViewModelForRegen()
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "u1")
+
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        #expect(viewModel.pendingRegenerationDeleteCount == 0)
+    }
+
+    @Test("cancelRegeneration: clears the pending dialog state without writes")
+    func cancelRegenerationClearsStateOnly() async {
+        let driver = RecordingDriver()
+        let viewModel = makeViewModelForRegen(driver: driver)
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+
+        viewModel.cancelRegeneration()
+
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        #expect(viewModel.pendingRegenerationDeleteCount == 0)
+        #expect(await driver.retryInvocations == 0)
+        #expect(await driver.sendInvocationCount == 0)
+    }
+
+    @Test("confirmRegeneration: trims the persisted tail and drives driver.retry")
+    func confirmRegenerationTrimsAndRetries() async {
+        let driver = RecordingDriver()
+        let userRow = MessageRecord(
+            id: "u1", conversationId: conversationId, role: .user, content: "q1", createdAt: Date()
+        )
+        let firstAssistant = MessageRecord(
+            id: "a1", conversationId: conversationId, role: .assistant, content: "first",
+            createdAt: Date().addingTimeInterval(1)
+        )
+        let secondUser = MessageRecord(
+            id: "u2", conversationId: conversationId, role: .user, content: "q2",
+            createdAt: Date().addingTimeInterval(2)
+        )
+        let secondAssistant = MessageRecord(
+            id: "a2", conversationId: conversationId, role: .assistant, content: "second",
+            createdAt: Date().addingTimeInterval(3)
+        )
+        let messages = StubMessageRepository(initial: [])
+        await messages.set([userRow, firstAssistant, secondUser, secondAssistant])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        // Project the persisted rows into items so the synchronous guard
+        // in `retry()` sees a user bubble.
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q1", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: []),
+            .userBubble(id: "u2", text: "q2", references: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+        await viewModel._waitForPendingStreamTask()
+
+        // The persisted transcript was trimmed to just the first user row.
+        let remaining = try? await messages.fetchAll(conversationId: conversationId).map(\.id)
+        #expect(remaining == ["u1"])
+        // Pending dialog state cleared synchronously on confirm.
+        #expect(viewModel.pendingRegenerationTargetID == nil)
+        // Drove the retry path — not a second `send`, which would
+        // duplicate the user message.
+        #expect(await driver.retryInvocations == 1)
+        #expect(await driver.sendInvocationCount == 0)
+    }
+
+    @Test("confirmRegeneration: while streaming is a silent no-op")
+    func confirmRegenerationDuringStreamingIsANoOp() async {
+        let driver = RecordingDriver()
+        let messages = StubMessageRepository()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        // Stage a pending target, then push the view model into a
+        // streaming state via the snapshot seam. The streaming guard
+        // must drop the confirm without trimming.
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "hi", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+        ])
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel._setSnapshotState(
+            items: [
+                .userBubble(id: "u1", text: "hi", references: []),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: []),
+            ],
+            streamingTail: MessageList.StreamingState(
+                thinking: "", thinkingStartedAt: nil, text: "", isCompacting: false
+            ),
+            isStreaming: true
+        )
+
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        #expect(await driver.retryInvocations == 0)
+        #expect(await driver.sendInvocationCount == 0)
+    }
+
+    @Test("confirmRegeneration: with no pending target is a silent no-op")
+    func confirmRegenerationWithoutPendingTargetIsANoOp() async {
+        let driver = RecordingDriver()
+        let viewModel = makeViewModelForRegen(driver: driver)
+
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        #expect(await driver.retryInvocations == 0)
+    }
+
+    @Test("confirmRegeneration: surfaces an error banner when the trim throws")
+    func confirmRegenerationSurfacesError() async {
+        // The catch block in `performRegeneration` previously swallowed
+        // every error path silently; the dialog dismissed and the user
+        // saw nothing change. Now a thrown delete must reach the error
+        // banner so the user has a Retry affordance.
+        let driver = RecordingDriver()
+        let userRow = MessageRecord(
+            id: "u1", conversationId: conversationId, role: .user, content: "q", createdAt: Date()
+        )
+        let assistantRow = MessageRecord(
+            id: "a1", conversationId: conversationId, role: .assistant, content: "ans",
+            createdAt: Date().addingTimeInterval(1)
+        )
+        let messages = StubMessageRepository(initial: [userRow, assistantRow])
+        await messages.setDeleteError(StubError.boom)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        #expect(viewModel.error?.message == "Could not regenerate. Try again.")
+        // The trim never landed and retry was never invoked.
+        #expect(await driver.retryInvocations == 0)
+    }
+
+    @Test("confirmRegeneration: when checkpoint delete throws, no messages are trimmed")
+    func confirmRegenerationCheckpointDeleteThrowsLeavesMessagesIntact() async {
+        // The regen path deletes checkpoints *before* messages so a
+        // throw on the first write leaves both stores untouched — never
+        // the half-trimmed state where messages are gone but stale
+        // checkpoints survive. Pins that ordering invariant.
+        let driver = RecordingDriver()
+        let userRow = MessageRecord(
+            id: "u1", conversationId: conversationId, role: .user, content: "q", createdAt: Date()
+        )
+        let assistantRow = MessageRecord(
+            id: "a1", conversationId: conversationId, role: .assistant, content: "ans",
+            createdAt: Date().addingTimeInterval(1)
+        )
+        let messages = StubMessageRepository(initial: [userRow, assistantRow])
+        let checkpoints = StubCheckpointRepository()
+        await checkpoints.seed([
+            CompactionCheckpointRecord(
+                id: "cp1", conversationId: conversationId, uptoMessageId: "a1",
+                summary: "...", tokensBefore: 0, tokensAfter: 0,
+                createdAt: Date(), isLive: true
+            )
+        ])
+        await checkpoints.setDeleteError(StubError.boom)
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: checkpoints,
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        // Error banner surfaced; messages untouched; no retry kicked off.
+        #expect(viewModel.error?.message == "Could not regenerate. Try again.")
+        let remainingMessages = try? await messages.fetchAll(conversationId: conversationId).map(\.id)
+        #expect(remainingMessages == ["u1", "a1"])
+        #expect(await driver.retryInvocations == 0)
+    }
+
+    @Test("confirmRegeneration: deletes checkpoints whose anchor is in the trim range")
+    func confirmRegenerationDeletesStaleCheckpoint() async {
+        // A `CompactionCheckpointRecord` whose `uptoMessageId` is among
+        // the deleted rows leaves `ContextAssembler` prepending a stale
+        // summary that covers messages no longer in the DB. The regen
+        // path must drop those checkpoints so the next retry sees a
+        // consistent prompt.
+        let driver = RecordingDriver()
+        let messages = StubMessageRepository(initial: [
+            MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "q1", createdAt: Date()),
+            MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "first",
+                          createdAt: Date().addingTimeInterval(1)),
+            MessageRecord(id: "u2", conversationId: conversationId, role: .user, content: "q2",
+                          createdAt: Date().addingTimeInterval(2)),
+            MessageRecord(id: "a2", conversationId: conversationId, role: .assistant, content: "second",
+                          createdAt: Date().addingTimeInterval(3)),
+        ])
+        // Anchored at `a1` (inclusive). Regenerating from `a1` deletes
+        // the anchor; the checkpoint must go with it.
+        let stale = CompactionCheckpointRecord(
+            id: "cp-stale", conversationId: conversationId, uptoMessageId: "a1",
+            summary: "...", tokensBefore: 0, tokensAfter: 0,
+            createdAt: Date(), isLive: true
+        )
+        let checkpoints = StubCheckpointRepository()
+        await checkpoints.seed([stale])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: checkpoints,
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q1", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: []),
+            .userBubble(id: "u2", text: "q2", references: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a1")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        let remainingCheckpoints = await checkpoints.snapshotRows().map(\.id)
+        #expect(remainingCheckpoints.isEmpty)
+    }
+
+    @Test("confirmRegeneration: keeps checkpoints whose anchor survives the trim")
+    func confirmRegenerationKeepsSurvivingCheckpoint() async {
+        // Mirror of the stale-checkpoint test but with the anchor before
+        // the trim range. The checkpoint should stay — its summary still
+        // describes pre-anchor messages that haven't been touched.
+        let driver = RecordingDriver()
+        let messages = StubMessageRepository(initial: [
+            MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "q1", createdAt: Date()),
+            MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "first",
+                          createdAt: Date().addingTimeInterval(1)),
+            MessageRecord(id: "u2", conversationId: conversationId, role: .user, content: "q2",
+                          createdAt: Date().addingTimeInterval(2)),
+            MessageRecord(id: "a2", conversationId: conversationId, role: .assistant, content: "second",
+                          createdAt: Date().addingTimeInterval(3)),
+        ])
+        // Anchored at `a1`. Regenerating from `a2` leaves `a1` in place,
+        // so the checkpoint must stay.
+        let surviving = CompactionCheckpointRecord(
+            id: "cp-keep", conversationId: conversationId, uptoMessageId: "a1",
+            summary: "...", tokensBefore: 0, tokensAfter: 0,
+            createdAt: Date(), isLive: true
+        )
+        let checkpoints = StubCheckpointRepository()
+        await checkpoints.seed([surviving])
+
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: checkpoints,
+            availableModels: [model]
+        )
+        viewModel._setSnapshotState(items: [
+            .userBubble(id: "u1", text: "q1", references: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: []),
+            .userBubble(id: "u2", text: "q2", references: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: []),
+        ])
+
+        viewModel.requestRegeneration(fromAssistantMessageID: "a2")
+        viewModel.confirmRegeneration()
+        await viewModel._waitForPendingRegenerationTask()
+
+        let remainingCheckpoints = await checkpoints.snapshotRows().map(\.id)
+        #expect(remainingCheckpoints == ["cp-keep"])
+    }
+
+    /// Shared scaffold for the Regenerate tests. Wires a recording
+    /// driver and noop repos so the test can focus on the trim/retry
+    /// orchestration without a live LLM or DB.
+    private func makeViewModelForRegen(
+        driver: RecordingDriver = RecordingDriver(),
+        messages: StubMessageRepository = StubMessageRepository()
+    ) -> ChatScreenViewModel {
+        ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+    }
 }
+
+/// Sentinel error for fakes that need to drive a throw path.
+private enum StubError: Error { case boom }
 
 // MARK: - Test doubles
 
@@ -1611,6 +2099,10 @@ private actor RecordingDriver: ChatSessionDriver {
 
 private actor StubMessageRepository: MessageRepository {
     private var rows: [MessageRecord]
+    /// When set, the next `delete(ids:)` call throws this. Used by the
+    /// regenerate error-surfacing test to drive the catch branch in
+    /// `performRegeneration` without a real DB failure.
+    private var deleteError: Error?
 
     init(initial: [MessageRecord] = []) {
         self.rows = initial
@@ -1618,6 +2110,10 @@ private actor StubMessageRepository: MessageRepository {
 
     func set(_ rows: [MessageRecord]) {
         self.rows = rows
+    }
+
+    func setDeleteError(_ error: Error?) {
+        self.deleteError = error
     }
 
     func fetchAll(conversationId: String) async throws -> [MessageRecord] {
@@ -1635,6 +2131,13 @@ private actor StubMessageRepository: MessageRepository {
     func save(_ record: MessageRecord) async throws {
         rows.removeAll { $0.id == record.id }
         rows.append(record)
+    }
+
+    func delete(ids: [String]) async throws {
+        if let deleteError {
+            throw deleteError
+        }
+        rows.removeAll { ids.contains($0.id) }
     }
 
     func deleteAll(conversationId: String) async throws {
@@ -1739,6 +2242,10 @@ private final class MainActorCounter {
 
 private actor StubCheckpointRepository: CompactionCheckpointRepository {
     private var rows: [CompactionCheckpointRecord] = []
+    /// When set, the next `delete(ids:)` call throws this. Mirrors the
+    /// `StubMessageRepository.setDeleteError` seam — covers the
+    /// regenerate path's first-write-failure branch.
+    private var deleteError: Error?
 
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? {
         rows.first(where: { $0.conversationId == conversationId && $0.isLive })
@@ -1757,4 +2264,21 @@ private actor StubCheckpointRepository: CompactionCheckpointRepository {
         }
         rows.append(record)
     }
+
+    func delete(ids: [String]) async throws {
+        if let deleteError {
+            throw deleteError
+        }
+        rows.removeAll { ids.contains($0.id) }
+    }
+
+    func setDeleteError(_ error: Error?) {
+        self.deleteError = error
+    }
+
+    /// Test helper: inspect persisted checkpoint rows.
+    func snapshotRows() -> [CompactionCheckpointRecord] { rows }
+
+    /// Test helper: seed rows so a fixture can pin pre-existing checkpoints.
+    func seed(_ records: [CompactionCheckpointRecord]) { rows = records }
 }

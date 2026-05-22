@@ -137,6 +137,7 @@ private actor NoopMessageRepository: MessageRepository {
     func fetch(id: String) async throws -> MessageRecord? { nil }
     func hasUserMessage(conversationId: String) async throws -> Bool { false }
     func save(_ record: MessageRecord) async throws {}
+    func delete(ids: [String]) async throws {}
     func deleteAll(conversationId: String) async throws {}
 }
 
@@ -153,6 +154,7 @@ private actor NoopCheckpointRepository: CompactionCheckpointRepository {
     func liveCheckpoint(for conversationId: String) async throws -> CompactionCheckpointRecord? { nil }
     func all(for conversationId: String) async throws -> [CompactionCheckpointRecord] { [] }
     func save(_ record: CompactionCheckpointRecord) async throws {}
+    func delete(ids: [String]) async throws {}
 }
 
 private actor NoopEnablementRepository: ToolEnablementRepository {
