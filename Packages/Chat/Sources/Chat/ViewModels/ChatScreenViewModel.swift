@@ -481,9 +481,12 @@ public final class ChatScreenViewModel {
         showCopyConfirmation = true
         copyDismissalTask?.cancel()
         copyDismissalTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled else { return }
-            self?.showCopyConfirmation = false
+            do {
+                try await Task.sleep(for: .seconds(1.2))
+                self?.showCopyConfirmation = false
+            } catch {
+                // Cancelled by a subsequent confirmCopy() — leave state unchanged.
+            }
         }
     }
 

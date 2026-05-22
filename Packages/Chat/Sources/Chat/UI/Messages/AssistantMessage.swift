@@ -67,8 +67,8 @@ struct AssistantMessage: View {
                     MessageActionButton(
                         systemName: "arrow.clockwise",
                         label: "Regenerate",
-                        disabled: isStreaming,
-                        action: onRegenerateRequested
+                        action: onRegenerateRequested,
+                        disabled: isStreaming
                     )
                 }
             }

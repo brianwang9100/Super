@@ -14,7 +14,7 @@ struct CopyConfirmationPill: View {
                 .fill(theme.ink.opacity(0.92))
             Text("Copied!")
                 .font(.system(.footnote, weight: .medium))
-                .foregroundColor(theme.background)
+                .foregroundStyle(theme.background)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
         }
