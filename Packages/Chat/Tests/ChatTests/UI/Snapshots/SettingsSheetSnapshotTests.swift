@@ -76,6 +76,16 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
+    // Dark companion for the edit-flow pane. The opus row carries
+    // `hasAPIKey: true`, so the SecureField renders the placeholder
+    // bullets — this exists to lock in that contrast separately from
+    // the light variant, per root AGENTS.md §Testing.3 (any new or
+    // changed view ships with light + dark baselines).
+    @Test("model detail seeded form (edit flow) in dark")
+    func modelDetailEditDark() async {
+        await verify(theme: .dark, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_dark")
+    }
+
     @Test("personalization pane")
     func personalizationPane() async {
         await verify(theme: .light, pane: .personalization, name: "settings_personalization_light")
