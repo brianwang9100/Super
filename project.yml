@@ -2,7 +2,7 @@ name: Super
 options:
   bundleIdPrefix: com.brianwang
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   developmentLanguage: en
   createIntermediateGroups: true
   generateEmptyDirectories: true
@@ -40,7 +40,7 @@ targets:
   Super:
     type: application
     platform: iOS
-    deploymentTarget: "18.0"
+    deploymentTarget: "26.0"
     # configFiles wires Config/Base.xcconfig as the target's
     # baseConfigurationReference for both build configs. Base.xcconfig
     # does `#include? "Local.xcconfig"` so per-developer signing values
