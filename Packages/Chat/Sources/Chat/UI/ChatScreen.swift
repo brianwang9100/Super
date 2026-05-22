@@ -62,10 +62,21 @@ public struct ChatScreen: View {
     /// `ChatOverlay` to snap to the nearest presentation state on release.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
 
+    /// Composer focus binding owned by the shell. When non-nil, the
+    /// composer's `TextField` binds to this — letting the shell clear
+    /// focus on any "user moved away from the composer" transition
+    /// (hamburger open, applet switch, conversation pick, backdrop tap,
+    /// drag-collapse past the editor-interactive threshold). When `nil`,
+    /// `ChatScreen` falls back to its own `@FocusState` so tests and
+    /// previews that don't care about cross-view focus management can
+    /// construct it without threading a binding through.
+    private let externalComposerIsFocused: FocusState<Bool>.Binding?
+
     @MainActor
     public init(
         viewModel: ChatScreenViewModel,
         progress: Double = 1,
+        composerIsFocused: FocusState<Bool>.Binding? = nil,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
         onSurfaceTapped: (() -> Void)? = nil,
@@ -76,6 +87,7 @@ public struct ChatScreen: View {
     ) {
         self.viewModel = viewModel
         self.progress = progress
+        self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onSurfaceTapped = onSurfaceTapped
         self.onDragChanged = onDragChanged
@@ -86,10 +98,17 @@ public struct ChatScreen: View {
     }
 
     @Environment(\.superTheme) private var theme
-    /// Focus state for the composer's `TextField`. Lifted out of
-    /// `ChatComposer` so taps on the transcript and scroll drags can
-    /// dismiss the keyboard by clearing this value.
-    @FocusState private var composerIsFocused: Bool
+    /// Fallback focus state used only when no external binding is passed in
+    /// (snapshot tests, previews). The composer reads
+    /// ``composerIsFocused`` which prefers the external binding when
+    /// present so shell-driven dismissals stay durable across re-expand.
+    @FocusState private var internalComposerIsFocused: Bool
+
+    /// Effective composer focus binding — external when the shell wired
+    /// one in, otherwise the internal `@FocusState` fallback above.
+    private var composerIsFocused: FocusState<Bool>.Binding {
+        externalComposerIsFocused ?? $internalComposerIsFocused
+    }
 
     // MARK: - Progress-driven interpolations
 
@@ -275,7 +294,7 @@ public struct ChatScreen: View {
     private var composer: some View {
         ChatComposer(
             text: composerBinding,
-            isFocused: $composerIsFocused,
+            isFocused: composerIsFocused,
             isStreaming: viewModel.isStreaming,
             modelOptions: viewModel.modelOptions,
             selectedModelId: viewModel.selectedModelId,
@@ -360,15 +379,18 @@ public struct ChatScreen: View {
     }
 
     /// Dismiss the on-screen keyboard *and* clear the SwiftUI `@FocusState`
-    /// so the composer's focused-border styling unsets. The UIKit
-    /// `resignFirstResponder` dispatch is the load-bearing piece — on
-    /// iOS 26.x, setting `@FocusState` from a sibling view doesn't always
-    /// tear down the keyboard, so the UIKit call is what reliably hides
-    /// it. The `#if canImport(UIKit)` branch compiles out on macOS where
-    /// there's no on-screen keyboard; the `@FocusState` clear still runs
-    /// so the border styling stays consistent across platforms.
+    /// so the composer's focused-border styling unsets. Writes through
+    /// ``composerIsFocused`` so the clear lands on whichever binding owns
+    /// focus — the shell's when wired in (production), the internal
+    /// fallback otherwise (tests). The UIKit `resignFirstResponder`
+    /// dispatch is the load-bearing piece — on iOS 26.x, flipping
+    /// `@FocusState` alone doesn't always tear down the keyboard, so the
+    /// UIKit call is what reliably hides it. The `#if canImport(UIKit)`
+    /// branch compiles out on macOS where there's no on-screen keyboard;
+    /// the focus clear still runs so the border styling stays consistent
+    /// across platforms.
     private func dismissKeyboard() {
-        composerIsFocused = false
+        composerIsFocused.wrappedValue = false
         #if canImport(UIKit)
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
