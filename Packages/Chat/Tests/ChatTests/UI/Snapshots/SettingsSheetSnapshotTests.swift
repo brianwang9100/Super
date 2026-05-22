@@ -76,14 +76,31 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
-    // Dark companion for the edit-flow pane. The opus row carries
-    // `hasAPIKey: true`, so the SecureField renders the placeholder
-    // bullets — this exists to lock in that contrast separately from
-    // the light variant, per root AGENTS.md §Testing.3 (any new or
-    // changed view ships with light + dark baselines).
+    // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.
     @Test("model detail seeded form (edit flow) in dark")
     func modelDetailEditDark() async {
         await verify(theme: .dark, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_dark")
+    }
+
+    // Dynamic Type XXL companion for modelDetailEdit; covers the "at minimum one larger Dynamic Type size" half of AGENTS.md §Testing.3.
+    @Test("dynamic type XXL on model detail edit pane")
+    func modelDetailEditXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "opus")
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_model_detail_edit_light_xxl", function: function)
     }
 
     @Test("personalization pane")
