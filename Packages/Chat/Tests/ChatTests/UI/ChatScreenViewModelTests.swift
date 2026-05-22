@@ -186,6 +186,47 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
+    @Test("retry while a stream is in flight is a silent no-op")
+    func retryWhileStreamingIsANoOp() async {
+        // Defensive: a double-tap on the Retry pill (or a tap during the
+        // brief window where the prior failed turn is still draining
+        // events) must not spawn a second `consume` task — that race
+        // would let two streams mutate `streamingTail`, `error`, and the
+        // transcript concurrently. The guard mirrors `send`'s
+        // `guard !isStreaming else { return }`.
+        let driver = RecordingDriver()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        // Pin the VM into a mid-stream state: error set, user bubble in
+        // items, isStreaming true. The view model holds the precondition
+        // `streamingTail != nil ⇔ isStreaming`, so we set both.
+        viewModel._setSnapshotState(
+            items: [.userBubble(id: "u1", text: "test", references: [])],
+            streamingTail: MessageList.StreamingState(
+                thinking: "", thinkingStartedAt: nil, text: "", isCompacting: false
+            ),
+            error: MessageList.ErrorState(message: "Authentication failed."),
+            isStreaming: true
+        )
+
+        viewModel.retry()
+
+        // The guard runs synchronously; no driver call, no observable
+        // state change, no Task spawned. The error banner stays so the
+        // user keeps the signal that the prior turn failed.
+        #expect(await driver.retryInvocations == 0)
+        #expect(await driver.sendInvocationCount == 0)
+        #expect(viewModel.isStreaming == true)
+        #expect(viewModel.error?.message.contains("Authentication failed") == true)
+    }
+
     @Test("retry after an LLM error does not duplicate the user bubble in the transcript")
     func retryDoesNotDuplicateUserBubble() async throws {
         // End-to-end regression for the duplicate-message bug: send fails,
@@ -1585,6 +1626,10 @@ private actor StubMessageRepository: MessageRepository {
 
     func fetch(id: String) async throws -> MessageRecord? {
         rows.first(where: { $0.id == id })
+    }
+
+    func hasUserMessage(conversationId: String) async throws -> Bool {
+        rows.contains { $0.conversationId == conversationId && $0.role == .user }
     }
 
     func save(_ record: MessageRecord) async throws {

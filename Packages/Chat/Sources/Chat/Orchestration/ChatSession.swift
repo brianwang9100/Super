@@ -428,8 +428,13 @@ public actor ChatSession {
     /// flash a bogus error.
     private func runRetry(model: LLMModel, temperature: Double) async {
         await runGuardedTurn {
-            let persisted = try await self.messageRepository.fetchAll(conversationId: self.conversationId)
-            guard persisted.contains(where: { $0.role == .user }) else { return }
+            // O(1) predicate rather than `fetchAll` — `runTurnLoop` will
+            // load the full history via `assembleHistory` moments later,
+            // so a second materialization here would double the work for
+            // every retry on a long conversation.
+            guard try await self.messageRepository.hasUserMessage(conversationId: self.conversationId) else {
+                return
+            }
 
             let provider = try await self.llmProviderRegistry.requireActive()
             try await self.runTurnLoop(model: model, temperature: temperature, provider: provider)

@@ -21,6 +21,12 @@ public protocol MessageRepository: Sendable {
     func fetchAll(conversationId: String) async throws -> [MessageRecord]
     /// One message by id.
     func fetch(id: String) async throws -> MessageRecord?
+    /// Cheap "does this conversation have at least one user-role message"
+    /// predicate. Used by the retry path to decide whether re-running the
+    /// LLM loop is meaningful before paying for a full `fetchAll` +
+    /// history projection. Implementations should be O(1) — a SELECT 1
+    /// with LIMIT, not a full materialization.
+    func hasUserMessage(conversationId: String) async throws -> Bool
     /// Insert or update.
     func save(_ record: MessageRecord) async throws
     /// Drop every message for the conversation. Tool calls cascade with
@@ -48,6 +54,15 @@ public struct GRDBMessageRepository: MessageRepository {
     public func fetch(id: String) async throws -> MessageRecord? {
         try await queue.read { db in
             try MessageRecord.fetchOne(db, key: id)
+        }
+    }
+
+    public func hasUserMessage(conversationId: String) async throws -> Bool {
+        try await queue.read { db in
+            try MessageRecord
+                .filter(Column("conversationId") == conversationId)
+                .filter(Column("role") == MessageRole.user.rawValue)
+                .fetchCount(db) > 0
         }
     }
 
