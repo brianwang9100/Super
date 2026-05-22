@@ -760,5 +760,79 @@ struct ChatSessionTests {
         #expect(assistant != nil, "assistant turn must persist even when no consumer is listening")
         #expect(assistant?.content == "complete")
     }
+
+    @Test func retryRunsLLMLoopWithoutWritingANewUserMessage() async throws {
+        // Regression: tapping Retry after an LLM failure used to call
+        // `send(text:)` again, which always creates a second user
+        // `MessageRecord`. The dedicated `retry(model:)` path re-runs the
+        // LLM loop against the already-persisted transcript without
+        // touching the user row.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "retry ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 5, outputTokens: 2)),
+            ],
+        ])
+        // Mirror the post-failure state: the failed turn already persisted
+        // the user row before the LLM errored.
+        try await setup.messageRepo.save(MessageRecord(
+            id: "u-seed",
+            conversationId: setup.conversation.id,
+            role: .user,
+            content: "test",
+            createdAt: setup.clock.now()
+        ))
+
+        let stream = await setup.session.retry(model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        // No new user row was written.
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let userRows = stored.filter { $0.role == .user }
+        #expect(userRows.count == 1)
+        #expect(userRows.first?.id == "u-seed")
+        // No `.userMessageSaved` event fired during retry.
+        let userSavedCount = events.filter {
+            if case .userMessageSaved = $0 { return true }
+            return false
+        }.count
+        #expect(userSavedCount == 0)
+        // The provider was invoked once, with the seeded user message in
+        // its history.
+        let captured = await setup.provider.capturedRequests()
+        #expect(captured.count == 1)
+        let messages = captured.first?.messages ?? []
+        let userTexts = messages.filter { $0.role == .user }.compactMap { msg -> String? in
+            if case .text(let body) = msg.content.first { return body }
+            return nil
+        }
+        #expect(userTexts == ["test"])
+        // The assistant message landed on `.messageComplete`.
+        let assistantSavedCount = events.filter {
+            if case .assistantMessageSaved = $0 { return true }
+            return false
+        }.count
+        #expect(assistantSavedCount == 1)
+        #expect(stored.contains(where: { $0.role == .assistant && $0.content == "retry ok" }))
+    }
+
+    @Test func retryWithNoPriorUserMessageIsASilentNoOp() async throws {
+        // Edge case: a stale Retry tap on a brand-new conversation must
+        // not invoke the LLM or surface an error banner — the stream just
+        // finishes with no events.
+        let setup = try await makeSetup(scripts: [])
+
+        let stream = await setup.session.retry(model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        #expect(events.isEmpty)
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        #expect(stored.isEmpty)
+        let captured = await setup.provider.capturedRequests()
+        #expect(captured.isEmpty)
+    }
 }
 

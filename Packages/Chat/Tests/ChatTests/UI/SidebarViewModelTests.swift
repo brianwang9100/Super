@@ -135,6 +135,7 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
 private actor NoopMessageRepository: MessageRepository {
     func fetchAll(conversationId: String) async throws -> [MessageRecord] { [] }
     func fetch(id: String) async throws -> MessageRecord? { nil }
+    func hasUserMessage(conversationId: String) async throws -> Bool { false }
     func save(_ record: MessageRecord) async throws {}
     func deleteAll(conversationId: String) async throws {}
 }

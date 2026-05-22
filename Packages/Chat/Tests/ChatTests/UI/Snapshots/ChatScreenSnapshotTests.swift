@@ -341,6 +341,12 @@ private struct NoopDriver: ChatSessionDriver {
         }
     }
 
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         let stream = AsyncStream<ChatEvent> { continuation in
             continuation.finish()
@@ -358,6 +364,9 @@ private actor SnapshotMessageRepository: MessageRepository {
         rows.filter { $0.conversationId == conversationId }
     }
     func fetch(id: String) async throws -> MessageRecord? { rows.first { $0.id == id } }
+    func hasUserMessage(conversationId: String) async throws -> Bool {
+        rows.contains { $0.conversationId == conversationId && $0.role == .user }
+    }
     func save(_ record: MessageRecord) async throws { rows.append(record) }
     func deleteAll(conversationId: String) async throws {
         rows.removeAll { $0.conversationId == conversationId }

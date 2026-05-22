@@ -560,23 +560,51 @@ public final class ChatScreenViewModel {
         verbosity = newValue
     }
 
-    /// Retry after an error: re-send the most recent user message. If we
-    /// can't find one, just clear the error.
+    /// Retry after an error: re-run the LLM loop against the
+    /// already-persisted transcript. The failed user `MessageRecord` is
+    /// still on disk from the failed turn, so retry must not write a
+    /// second one — that's why this calls `driver.retry(...)` instead of
+    /// the normal `send(...)` path. If no model is active, just clear
+    /// the error. Mirrors `send`'s `!isStreaming` guard so a double-tap
+    /// while a turn is already in flight cannot spawn a second `consume`
+    /// task racing the first over the same observable state.
+    ///
+    /// Synchronously checks `items` for a user bubble before touching
+    /// any streaming flags — if there's nothing to retry (brand-new
+    /// conversation, transcript wiped) we want to no-op without flashing
+    /// the streaming UI on and back off. `ChatSession.runRetry` has the
+    /// same guard against the persisted transcript as defense-in-depth.
     public func retry() {
-        guard let lastUser = items.reversed().first(where: {
+        guard !isStreaming else { return }
+        guard let model = activeModel else {
+            error = nil
+            return
+        }
+        let hasUserBubble = items.contains(where: {
             if case .userBubble = $0 { return true }
             return false
-        }), case .userBubble(_, let text, _) = lastUser, let model = activeModel else {
+        })
+        guard hasUserBubble else {
             error = nil
             return
         }
         error = nil
-        // Retry re-sends the message text only — the prior message's verse
-        // pills stay on its already-persisted row, untouched.
-        startStreaming(text: text, references: [], model: model)
+        beginStream { [driver] in
+            await driver.retry(model: model)
+        }
     }
 
     private func startStreaming(text: String, references: [RecordReference], model: LLMModel) {
+        beginStream { [driver] in
+            await driver.send(text: text, model: model, references: references)
+        }
+    }
+
+    /// Shared scaffold for kicking off a streaming turn: flip the
+    /// observable streaming flags, install a fresh `streamingTail`, and
+    /// spawn the `consume(stream:)` task on `streamTask`. Callers supply
+    /// the closure that produces the event stream (`send` vs `retry`).
+    private func beginStream(_ make: @escaping @Sendable () async -> AsyncStream<ChatEvent>) {
         // Defensive: a prior turn that finished cleanly already drained
         // its buffer via the `consume` end-of-stream flush, but a turn
         // that was cancelled mid-burst could leave the timer scheduled.
@@ -591,13 +619,9 @@ public final class ChatScreenViewModel {
         )
         streamTask = Task { [weak self] in
             guard let self else { return }
-            await self.run(text: text, references: references, model: model)
+            let stream = await make()
+            await self.consume(stream: stream)
         }
-    }
-
-    private func run(text: String, references: [RecordReference], model: LLMModel) async {
-        let stream = await driver.send(text: text, model: model, references: references)
-        await consume(stream: stream)
     }
 
     /// Iterate a session event stream — used by both the initial `send`
@@ -986,6 +1010,12 @@ public protocol ChatSessionDriver: Sendable {
     /// the user `MessageRecord` and `ContextAssembler` expands them into
     /// the prompt.
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent>
+
+    /// Re-run the LLM turn loop against the already-persisted transcript.
+    /// Used by the error banner's Retry pill: the failed user message is
+    /// already on disk, so retry must not write a second one. No
+    /// `references` parameter — retry never carries new pills.
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent>
 
     /// Attach to the underlying session's in-flight turn (if any). The
     /// view model calls this on `load()` so a re-mounted screen for a

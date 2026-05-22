@@ -265,6 +265,32 @@ public actor ChatSession {
         return subscription.stream
     }
 
+    /// Re-run the LLM loop for this conversation against the
+    /// already-persisted transcript. Used by the Chat UI's Retry pill
+    /// after an LLM error: the failed user `MessageRecord` is still on
+    /// disk from the failed turn, so retry must **not** create a second
+    /// one. Same prior-turn fence + `liveTurn`/subscribe wiring as
+    /// `send(...)`. If no user message exists yet for this conversation,
+    /// the stream finishes with no events (silent no-op).
+    public func retry(
+        model: LLMModel,
+        temperature: Double = 1.0
+    ) async -> AsyncStream<ChatEvent> {
+        if let prior = currentTask {
+            prior.cancel()
+            await prior.value
+        }
+
+        liveTurn = LiveTurn()
+        let subscription = subscribe()
+        let task = Task {
+            await self.runRetry(model: model, temperature: temperature)
+            await self.finishLiveTurn()
+        }
+        currentTask = task
+        return subscription.stream
+    }
+
     /// Manually invoke a compaction pass. Returns an `AsyncStream` so the
     /// composer can render the same `.compactionStarted` /
     /// `.compactionCompleted` UI it shows for auto-compaction. If a turn
@@ -390,45 +416,77 @@ public actor ChatSession {
         model: LLMModel,
         temperature: Double
     ) async {
-        defer { currentTask = nil }
-
-        do {
+        await runGuardedTurn {
             let userMessage = MessageRecord(
-                id: idGenerator.nextID(),
-                conversationId: conversationId,
+                id: self.idGenerator.nextID(),
+                conversationId: self.conversationId,
                 role: .user,
                 content: userText,
                 toolCallId: nil,
-                createdAt: clock.now(),
+                createdAt: self.clock.now(),
                 tokenCount: nil,
                 // `encode` returns nil for an empty set, so a message
                 // without verse pills leaves the column NULL.
                 attachmentsJSON: MessageRecord.encode(MessageAttachments(references: references))
             )
-            try await messageRepository.save(userMessage)
-            broadcast(.userMessageSaved(userMessage))
+            try await self.messageRepository.save(userMessage)
+            self.broadcast(.userMessageSaved(userMessage))
 
-            let provider = try await llmProviderRegistry.requireActive()
+            let provider = try await self.llmProviderRegistry.requireActive()
+            try await self.runTurnLoop(model: model, temperature: temperature, provider: provider)
+        }
+    }
 
-            while true {
-                try Task.checkCancellation()
-                try await maybeAutoCompact(model: model)
-                let history = try await assembleHistory(model: model)
-                let enabledTools = await toolRegistry.enabledTools(for: provider)
-                let toolCalls = try await streamOneTurn(
-                    provider: provider,
-                    messages: history,
-                    model: model,
-                    tools: enabledTools,
-                    temperature: temperature
-                )
-                if toolCalls.isEmpty { return }
-                try await executeToolCalls(toolCalls)
+    /// Body of `retry(model:temperature:)` — resolves the provider and
+    /// re-enters the turn loop against the persisted transcript. Silently
+    /// no-ops (no broadcast, no rows written) when the conversation has
+    /// no user message yet, so a stray tap on a stale Retry pill can't
+    /// flash a bogus error.
+    private func runRetry(model: LLMModel, temperature: Double) async {
+        await runGuardedTurn {
+            // O(1) predicate rather than `fetchAll` — `runTurnLoop` will
+            // load the full history via `assembleHistory` moments later,
+            // so a second materialization here would double the work for
+            // every retry on a long conversation.
+            guard try await self.messageRepository.hasUserMessage(conversationId: self.conversationId) else {
+                return
             }
+
+            let provider = try await self.llmProviderRegistry.requireActive()
+            try await self.runTurnLoop(model: model, temperature: temperature, provider: provider)
+        }
+    }
+
+    /// Run a turn-shaped body inside the shared error→event mapping that
+    /// every entry point into the turn loop needs: `CancellationError`
+    /// becomes `.error(.cancelled)`, `LLMError` and `LLMProviderRegistryError`
+    /// get user-facing copy, and any other throw is reported as
+    /// `.requestFailed(...)`. Also clears `currentTask` on the way out so
+    /// `isStreaming` flips back to `false` as soon as the work finishes —
+    /// previously each call site duplicated this with its own `defer` and
+    /// its own 14-line `catch` ladder, which would silently drift if a new
+    /// error type were added on one side and not the other.
+    private func runGuardedTurn(_ body: () async throws -> Void) async {
+        defer { currentTask = nil }
+        do {
+            try await body()
         } catch is CancellationError {
             broadcast(.error(.cancelled))
         } catch let err as LLMError {
             broadcast(.error(err))
+        } catch let err as CompactorError {
+            // Auto-compaction (triggered inside `runTurnLoop` via
+            // `maybeAutoCompact`) can fail with its own typed error. Map
+            // it with curated copy here so a send/retry that hits the
+            // auto-compact path before reaching the LLM doesn't fall
+            // through to the generic `localizedDescription`. Matches the
+            // mapping in `runCompaction` (manual `/compact`).
+            switch err {
+            case .emptySummary:
+                broadcast(.error(.requestFailed("compaction returned empty summary")))
+            case .llmError(let underlying):
+                broadcast(.error(underlying))
+            }
         } catch let err as LLMProviderRegistryError {
             switch err {
             case .noActiveProvider:
@@ -438,6 +496,32 @@ public actor ChatSession {
             }
         } catch {
             broadcast(.error(.requestFailed(error.localizedDescription)))
+        }
+    }
+
+    /// The provider-streaming loop shared by `run(userText:...)` and
+    /// `runRetry(...)`. Assembles history, streams a turn, executes any
+    /// requested tool calls, and repeats until the model emits a turn
+    /// with no tool calls.
+    private func runTurnLoop(
+        model: LLMModel,
+        temperature: Double,
+        provider: LLMProvider
+    ) async throws {
+        while true {
+            try Task.checkCancellation()
+            try await maybeAutoCompact(model: model)
+            let history = try await assembleHistory(model: model)
+            let enabledTools = await toolRegistry.enabledTools(for: provider)
+            let toolCalls = try await streamOneTurn(
+                provider: provider,
+                messages: history,
+                model: model,
+                tools: enabledTools,
+                temperature: temperature
+            )
+            if toolCalls.isEmpty { return }
+            try await executeToolCalls(toolCalls)
         }
     }
 
@@ -509,17 +593,16 @@ public actor ChatSession {
     }
 
     /// Body of `compact(model:)` — handles the manual `/compact` ratio
-    /// gate and owns the cancellation/error mapping so the public entry
-    /// point can stay focused on stream wiring. Below the minimum context
+    /// gate, then runs the compaction pass under `runGuardedTurn`'s
+    /// shared cancellation/error mapping. Below the minimum context
     /// ratio the only event broadcast is `.error(.requestFailed(...))`;
     /// no LLM call, no checkpoint write.
     private func runCompaction(model: LLMModel) async {
-        defer { currentTask = nil }
-        do {
-            let assembly = try await assemble(model: model)
-            guard assembly.ratio >= manualCompactMinThreshold else {
-                let pct = Int((manualCompactMinThreshold * 100).rounded())
-                broadcast(.error(.requestFailed(
+        await runGuardedTurn {
+            let assembly = try await self.assemble(model: model)
+            guard assembly.ratio >= self.manualCompactMinThreshold else {
+                let pct = Int((self.manualCompactMinThreshold * 100).rounded())
+                self.broadcast(.error(.requestFailed(
                     "Conversation is too short to compact yet — try again once context usage reaches \(pct)%."
                 )))
                 return
@@ -529,27 +612,7 @@ public actor ChatSession {
             // `uptoMessageId` becomes the last message on disk, so the
             // banner anchors at the bottom of the transcript and matches
             // the user's "I compacted everything" mental model.
-            try await runCompactionPass(model: model, keepMostRecent: 0)
-        } catch is CancellationError {
-            broadcast(.error(.cancelled))
-        } catch let err as LLMError {
-            broadcast(.error(err))
-        } catch let err as CompactorError {
-            switch err {
-            case .emptySummary:
-                broadcast(.error(.requestFailed("compaction returned empty summary")))
-            case .llmError(let underlying):
-                broadcast(.error(underlying))
-            }
-        } catch let err as LLMProviderRegistryError {
-            switch err {
-            case .noActiveProvider:
-                broadcast(.error(.requestFailed("no active LLM provider configured")))
-            case .unknownProvider(let id):
-                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
-            }
-        } catch {
-            broadcast(.error(.requestFailed(error.localizedDescription)))
+            try await self.runCompactionPass(model: model, keepMostRecent: 0)
         }
     }
 

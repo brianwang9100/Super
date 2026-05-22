@@ -191,6 +191,51 @@ struct ChatSessionCompactionTests {
         #expect(captured.count == 2)
     }
 
+    @Test func autoCompactionEmptySummaryDuringSendBroadcastsCuratedError() async throws {
+        // Regression for the PR #73 round-2 fix: `runGuardedTurn` adds a
+        // `CompactorError` arm so an auto-compaction failure during the
+        // send/retry path uses the same curated copy as manual /compact,
+        // instead of falling through to `.requestFailed(localizedDescription)`
+        // which would surface "The operation couldn't be completed" style
+        // raw Swift errors. Script the summarization turn to emit no text
+        // → empty summary → `CompactorError.emptySummary` → assert the
+        // session broadcasts the curated string.
+        let setup = try await makeSetup(
+            scripts: [
+                // Summarization turn — completes with zero text, so the
+                // Compactor throws `.emptySummary`.
+                [
+                    .messageStart(id: "sum", model: "tiny-model"),
+                    .messageComplete(usage: TokenUsage(inputTokens: 80, outputTokens: 0)),
+                ],
+            ],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.5
+        )
+        try await seedSummarizableHistory(setup: setup)
+
+        let stream = await setup.session.send(text: "next prompt", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        // The terminal event is the curated CompactorError mapping, not
+        // a generic `.requestFailed(localizedDescription)`.
+        guard case .error(let llmError) = events.last else {
+            Issue.record("expected trailing .error, got \(String(describing: events.last))")
+            return
+        }
+        guard case .requestFailed(let message) = llmError else {
+            Issue.record("expected .requestFailed mapping, got \(llmError)")
+            return
+        }
+        #expect(message == "compaction returned empty summary")
+
+        // No assistant row was persisted — the failure happened before
+        // the LLM turn could run.
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        #expect(stored.allSatisfy { $0.role != .assistant || $0.id.hasPrefix("h-a") })
+    }
+
     @Test func disablingAutoCompactionSuppressesItEvenAboveThreshold() async throws {
         let setup = try await makeSetup(
             scripts: [

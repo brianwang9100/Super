@@ -29,6 +29,10 @@ public struct LiveChatSessionDriver: ChatSessionDriver {
         await session.send(text: text, model: model, references: references, temperature: temperature)
     }
 
+    public func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        await session.retry(model: model, temperature: temperature)
+    }
+
     public func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
         await session.subscribe()
     }

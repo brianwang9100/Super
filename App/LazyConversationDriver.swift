@@ -31,15 +31,32 @@ actor LazyConversationDriver: ChatSessionDriver {
     }
 
     func send(text: String, model: LLMModel, references: [RecordReference]) async -> AsyncStream<ChatEvent> {
-        if let pending = ensureSaved {
-            ensureSaved = nil
-            await pending()
-            if let notify = onPersisted {
-                onPersisted = nil
-                await notify()
-            }
-        }
+        await flushEnsureSavedIfPending()
         return await inner.send(text: text, model: model, references: references)
+    }
+
+    /// In practice retry is only reachable after an error from a prior
+    /// send, so `ensureSaved` is already `nil`. Flush defensively anyway
+    /// so a future UI path that surfaces Retry without a preceding
+    /// `send` (restored session, deeplink, etc.) doesn't operate against
+    /// an orphaned `conversationId`. The flush is idempotent — once
+    /// `ensureSaved` is consumed, subsequent calls short-circuit.
+    func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
+        await flushEnsureSavedIfPending()
+        return await inner.retry(model: model)
+    }
+
+    /// Run the one-shot `ensureSaved` + `onPersisted` flush if it hasn't
+    /// fired yet. Idempotent — the second call short-circuits because
+    /// both closures have been niled out.
+    private func flushEnsureSavedIfPending() async {
+        guard let pending = ensureSaved else { return }
+        ensureSaved = nil
+        await pending()
+        if let notify = onPersisted {
+            onPersisted = nil
+            await notify()
+        }
     }
 
     func subscribe() async -> (snapshot: ChatSession.LiveTurnSnapshot?, stream: AsyncStream<ChatEvent>) {
