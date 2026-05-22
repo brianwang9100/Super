@@ -127,6 +127,16 @@ struct AppShell: View {
     @State private var sidebarOpen: Bool = false
     @State private var settingsOpen: Bool = false
     @State private var activeConversationId: String?
+    /// Composer focus state, owned by the shell so every "user moved away
+    /// from the composer" transition (drag-collapse, hamburger open,
+    /// applet switch, conversation pick, backdrop tap) can clear it via
+    /// `dismissKeyboard()`. The binding is plumbed into `ChatOverlay →
+    /// ChatScreen → ChatComposer` so the same `@FocusState` is the
+    /// single source of truth across the whole stack — without that,
+    /// the shell could only fire UIKit `resignFirstResponder` (hides
+    /// the keyboard visually) while the SwiftUI focus state stayed set
+    /// and the keyboard reappeared on the next re-expand.
+    @FocusState private var composerIsFocused: Bool
     /// Set the moment `ensureViewModel` enters its critical section so a
     /// re-fired `.task` (scene refresh, identity change) can't race a
     /// second bootstrap before the first finishes. Safe to read/write
@@ -242,6 +252,7 @@ struct AppShell: View {
                             Color.clear
                                 .contentShape(Rectangle())
                                 .onTapGesture {
+                                    dismissKeyboard()
                                     withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                                         chatState = .minimized
                                     }
@@ -261,6 +272,7 @@ struct AppShell: View {
                 ChatOverlay(
                     state: $chatState,
                     viewModel: viewModel,
+                    composerIsFocused: $composerIsFocused,
                     onManageModels: { openSettings(initialPane: .models) },
                     onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
                 )
@@ -311,6 +323,7 @@ struct AppShell: View {
                         openSettings()
                     },
                     onSelectApplet: { appletID in
+                        dismissKeyboard()
                         registry.activeID = appletID
                         UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
                         // Selecting any backdrop applet from the sidebar
@@ -376,6 +389,35 @@ struct AppShell: View {
             guard wants, referenceInbox.consumeNewConversationRequest() else { return }
             Task { await startNewChat() }
         }
+        // Owner-side keyboard dismissal: every minimize-like transition
+        // clears the shell's `@FocusState` *directly*, rather than
+        // relying on `ChatScreen`'s in-screen `.onChange(of: progress)`
+        // observer (which writes through a cross-module
+        // `FocusState<Bool>.Binding` onto a `TextField` that flips
+        // `.disabled(true)` in the same render — on iOS 26 that write
+        // doesn't reliably propagate, so the keyboard would dismiss
+        // visually via the UIKit `resignFirstResponder` dispatch but the
+        // focus state stayed `true` and the keyboard re-appeared the
+        // moment the field became enabled again on drag-up).
+        //
+        // `chatState` covers every settled minimize (drag-snap, backdrop
+        // tap, applet switch); `chatProgress` covers mid-drag so the
+        // keyboard starts tearing down before the snap completes. The
+        // shell's `chatProgress` observer fires one preference-propagation
+        // tick after `ChatScreen`'s in-screen observer, so the two are
+        // not redundant in *time* — `ChatScreen`'s fires first and may
+        // silently no-op on iOS 26; this one fires a frame later and
+        // lands reliably. Both dismiss calls are idempotent.
+        .onChange(of: chatState) { _, newState in
+            if newState == .minimized {
+                dismissKeyboard()
+            }
+        }
+        .onChange(of: chatProgress) { oldValue, newValue in
+            if ChatPresentationState.crossedBelowEditorThreshold(from: oldValue, to: newValue) {
+                dismissKeyboard()
+            }
+        }
         // One bus instance shared by every applet — the Bible backdrop
         // publishes verse references, the Chat overlay's inbox consumes.
         .environment(\.superEventBus, dependencies.eventBus)
@@ -391,12 +433,19 @@ struct AppShell: View {
         Task { await sidebarViewModel.refresh() }
     }
 
-    /// Resign first responder so the on-screen keyboard tears down
-    /// before a chrome transition. Mirrors `ChatScreen.dismissKeyboard()`
-    /// — the UIKit dispatch is the load-bearing piece on iOS 26.x where
-    /// flipping `@FocusState` from a sibling isn't always enough to
-    /// hide the keyboard.
+    /// Dismiss the composer's keyboard before a chrome transition.
+    /// Clears the shell-owned ``composerIsFocused`` so SwiftUI doesn't
+    /// re-focus the composer on the next render (which would re-show the
+    /// keyboard the moment the composer becomes interactive again), and
+    /// then dispatches UIKit's `resignFirstResponder` — the load-bearing
+    /// piece on iOS 26.x where flipping `@FocusState` alone doesn't
+    /// always tear the keyboard down. Both halves are needed: the
+    /// `@FocusState` clear is what makes the dismissal durable across a
+    /// re-expand; the UIKit dispatch is what reliably hides the keyboard
+    /// right now. `#if canImport(UIKit)` compiles the dispatch out on
+    /// macOS where there's no on-screen keyboard.
     private func dismissKeyboard() {
+        composerIsFocused = false
         #if canImport(UIKit)
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
@@ -599,6 +648,10 @@ struct AppShell: View {
 
     private func selectConversation(id: String) async {
         sidebarOpen = false
+        // Picking a different conversation is a context shift — resign
+        // the prior composer's focus so the keyboard doesn't slide back
+        // up over the newly-loaded transcript on the next render.
+        dismissKeyboard()
         // Selecting a chat is an intent to focus on chat — snap the
         // overlay to expanded if the user came from minimized/semi over
         // an applet backdrop.
@@ -619,6 +672,10 @@ struct AppShell: View {
 
     private func startNewChat() async {
         sidebarOpen = false
+        // Starting a fresh chat is a context shift — drop the prior
+        // composer's focus so the keyboard doesn't carry into the empty
+        // draft when the new view model mounts.
+        dismissKeyboard()
         // New Chat is an intent to focus on chat — snap to expanded.
         withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
             chatState = .expanded

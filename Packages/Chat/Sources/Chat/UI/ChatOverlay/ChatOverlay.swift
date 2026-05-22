@@ -29,15 +29,27 @@ public struct ChatOverlay: View {
     /// fires from the no-model error banner's CTA.
     public let onAddModelRequested: @MainActor @Sendable () -> Void
 
+    /// External composer focus binding owned by the shell. Forwarded into
+    /// `ChatScreen` so shell-driven dismissals (hamburger open, applet
+    /// switch, conversation pick, backdrop tap) flip the same focus state
+    /// the composer's `TextField` reads — without this, the UIKit
+    /// `resignFirstResponder` dispatch hides the keyboard visually but
+    /// leaves the SwiftUI focus state set, and the keyboard re-appears
+    /// the next time the composer becomes interactive. `nil` falls back
+    /// to `ChatScreen`'s internal `@FocusState` (snapshot tests + previews).
+    private let externalComposerIsFocused: FocusState<Bool>.Binding?
+
     @MainActor
     public init(
         state: Binding<ChatPresentationState>,
         viewModel: ChatScreenViewModel,
+        composerIsFocused: FocusState<Bool>.Binding? = nil,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {}
     ) {
         self._settledState = state
         self.viewModel = viewModel
+        self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onAddModelRequested = onAddModelRequested
         self.frozenDragHeight = nil
@@ -56,6 +68,7 @@ public struct ChatOverlay: View {
     ) {
         self._settledState = state
         self.viewModel = viewModel
+        self.externalComposerIsFocused = nil
         self.onManageModels = {}
         self.onAddModelRequested = {}
         self.frozenDragHeight = _injectedDragHeight
@@ -75,6 +88,7 @@ public struct ChatOverlay: View {
     ) {
         self._settledState = state
         self.viewModel = viewModel
+        self.externalComposerIsFocused = nil
         self.onManageModels = {}
         self.onAddModelRequested = {}
         self.frozenDragHeight = nil
@@ -206,6 +220,7 @@ public struct ChatOverlay: View {
         ChatScreen(
             viewModel: viewModel,
             progress: metrics.progress,
+            composerIsFocused: externalComposerIsFocused,
             onManageModels: onManageModels,
             onSurfaceTapped: { surfaceTapped() },
             onDragChanged: { translation in
