@@ -66,12 +66,25 @@ public final class SettingsViewModel {
         public let name: String
         public let summary: String
         public var isEnabled: Bool
+        /// Settings pane reached by tapping the gear affordance on this
+        /// row, or `nil` when the tool has no configuration UI. The row
+        /// renders the gear only when both this is non-nil *and*
+        /// `isEnabled` is true — there's no point configuring an off
+        /// tool.
+        public let configPane: SettingsSheet.Pane?
 
-        public init(id: String, name: String, summary: String, isEnabled: Bool) {
+        public init(
+            id: String,
+            name: String,
+            summary: String,
+            isEnabled: Bool,
+            configPane: SettingsSheet.Pane? = nil
+        ) {
             self.id = id
             self.name = name
             self.summary = summary
             self.isEnabled = isEnabled
+            self.configPane = configPane
         }
     }
 
@@ -116,6 +129,11 @@ public final class SettingsViewModel {
     private let modelRepository: any ModelConfigurationRepository
     private let conversationRepository: any ConversationRepository
     private let toolRegistry: ToolRegistry
+    /// Persistence boundary for the memory pane's mutations. Optional so
+    /// snapshot tests and previews can construct the VM without standing
+    /// up a memory store; the production composition root wires the
+    /// real `GRDBMemoryRepository`.
+    private let memoryRepository: (any MemoryRepository)?
     private let llmProviderRegistry: LLMProviderRegistry?
     private let httpClient: (any HTTPClient)?
     /// Receiver that runtime-pushes system-prompt edits into orchestration
@@ -150,6 +168,7 @@ public final class SettingsViewModel {
         toolRegistry: ToolRegistry,
         systemPromptReceiver: any SystemPromptReceiver,
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
+        memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil
     ) {
@@ -159,6 +178,7 @@ public final class SettingsViewModel {
         self.modelRepository = modelRepository
         self.conversationRepository = conversationRepository
         self.toolRegistry = toolRegistry
+        self.memoryRepository = memoryRepository
         self.llmProviderRegistry = llmProviderRegistry
         self.systemPromptReceiver = systemPromptReceiver
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
@@ -234,8 +254,22 @@ public final class SettingsViewModel {
                 id: reg.tool.id,
                 name: reg.tool.name,
                 summary: reg.tool.description,
-                isEnabled: reg.isEnabled
+                isEnabled: reg.isEnabled,
+                configPane: Self.configPane(forToolID: reg.tool.id)
             )
+        }
+    }
+
+    /// Tool-id → settings pane mapping for the "gear" affordance on
+    /// `SettingsToolsPane`. New configurable tools register their pane
+    /// here; everything else returns nil (no gear shown). Kept as a
+    /// table inside the view model rather than data on `ToolRegistration`
+    /// because pane identity is a UI concern, not a Core protocol
+    /// concern.
+    private static func configPane(forToolID id: String) -> SettingsSheet.Pane? {
+        switch id {
+        case MemoryTool.toolID: return .memory
+        default: return nil
         }
     }
 
@@ -521,6 +555,38 @@ public final class SettingsViewModel {
             tools[idx].isEnabled = enabled
         }
         try? await toolRegistry.setEnabled(toolID: id, enabled: enabled)
+    }
+
+    // MARK: - Memory mutations
+
+    /// Rewrite a memory's text. The reactive `@Query` in
+    /// `SettingsMemoryPane` picks up the change automatically; the
+    /// orchestrator's next `assemble(...)` sees the new value.
+    /// Empty / whitespace-only text is silently ignored — the pane
+    /// commits on focus loss, so a momentarily-cleared editor would
+    /// otherwise wipe the row.
+    ///
+    /// `now` is an injection seam (matching `clearChatHistory(now:)`)
+    /// so tests can assert the exact `updatedAt` written without
+    /// reaching for the wall clock — per AGENTS.md §Testing rule 1.
+    public func updateMemory(id: String, text: String, now: Date = Date()) async {
+        guard let memoryRepository else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try? await memoryRepository.update(id: id, text: trimmed, updatedAt: now)
+    }
+
+    /// Drop one memory.
+    public func deleteMemory(id: String) async {
+        guard let memoryRepository else { return }
+        try? await memoryRepository.delete(id: id)
+    }
+
+    /// Wipe every memory. Called by the pane's "Clear All" affordance
+    /// after the user confirms.
+    public func clearAllMemories() async {
+        guard let memoryRepository else { return }
+        try? await memoryRepository.clearAll()
     }
 
     /// Soft-delete every active conversation. Cascades through the schema

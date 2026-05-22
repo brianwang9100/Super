@@ -19,6 +19,7 @@ struct AppDependencies: Sendable {
     let checkpointRepository: any CompactionCheckpointRepository
     let modelConfigurationRepository: any ModelConfigurationRepository
     let settingRepository: any SettingRepository
+    let memoryRepository: any MemoryRepository
     /// Sorted ids of tools registered at boot. Surfaced so the Shell can
     /// show "Tools: time.now" until the real Settings UI lands.
     let registeredToolIDs: [String]
@@ -67,9 +68,11 @@ enum AppBootstrap {
         let modelConfigRepo = GRDBModelConfigurationRepository(database: database, keychain: keychain)
         let settingRepo = GRDBSettingRepository(database: database)
         let toolEnablementRepository = GRDBToolEnablementRepository(database: database)
+        let memoryRepository = GRDBMemoryRepository(database: database)
 
         let toolRegistry = ToolRegistry(enablementRepository: toolEnablementRepository)
         await toolRegistry.register(TimeNowTool.registration())
+        await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
         let llmProviderRegistry = LLMProviderRegistry()
         try await hydrateProviders(
@@ -106,7 +109,8 @@ enum AppBootstrap {
             compactor: compactor,
             autoCompactEnabled: initialSettings.autoCompactEnabled,
             autoCompactThreshold: initialSettings.autoCompactThreshold,
-            systemPrompt: initialSettings.systemPrompt
+            systemPrompt: initialSettings.systemPrompt,
+            memoryRepository: memoryRepository
         )
 
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)
@@ -122,6 +126,7 @@ enum AppBootstrap {
             checkpointRepository: checkpointRepo,
             modelConfigurationRepository: modelConfigRepo,
             settingRepository: settingRepo,
+            memoryRepository: memoryRepository,
             registeredToolIDs: registeredToolIDs,
             todoDependencies: todoDependencies,
             eventBus: SuperEventBus()

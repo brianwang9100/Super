@@ -1,5 +1,12 @@
 import Core
 import Foundation
+import os
+
+/// Production diagnostics for `ChatSession`. Lives at file scope so
+/// the actor's methods share one Logger instance. Category
+/// `chat-session` so future orchestration-layer telemetry can join
+/// under the same filter.
+private let chatSessionLog = Logger(subsystem: "com.brianwang.Super", category: "chat-session")
 
 /// Owns the turn loop for a single conversation. One `ChatSession` per
 /// conversation; multiple sessions run concurrently under a
@@ -48,6 +55,13 @@ public actor ChatSession {
     private let compactor: Compactor
     private let clock: any Clock
     private let idGenerator: any IDGenerator
+
+    /// User-preference memory store. Read once per `assemble(...)` so
+    /// the very next turn sees an edit made from the Settings memory
+    /// pane or via the LLM's own `memory` tool call. `nil` when the host
+    /// is built without memory support (test fixtures, the live-LLM
+    /// script, anything pre-M-memory).
+    private let memoryRepository: (any MemoryRepository)?
 
     /// Auto-compaction toggle. M9 wires this to `SettingRecord(key:
     /// "autoCompactEnabled")`. When false the session never invokes
@@ -165,7 +179,8 @@ public actor ChatSession {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
-        systemPrompt: String = ""
+        systemPrompt: String = "",
+        memoryRepository: (any MemoryRepository)? = nil
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
@@ -181,6 +196,7 @@ public actor ChatSession {
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
         self.currentSystemPrompt = systemPrompt
+        self.memoryRepository = memoryRepository
     }
 
     /// Update the auto-compaction policy at runtime. M9's settings pane
@@ -521,13 +537,45 @@ public actor ChatSession {
         async let messages = messageRepository.fetchAll(conversationId: conversationId)
         async let toolCalls = toolCallRepository.fetchByConversation(conversationId)
         async let checkpoint = checkpointRepository.liveCheckpoint(for: conversationId)
+        async let memories = currentMemories()
         return try await contextAssembler.assemble(
             messages: messages,
             toolCalls: toolCalls,
             checkpoint: checkpoint,
             model: model,
-            systemPrompt: currentSystemPrompt
+            systemPrompt: currentSystemPrompt,
+            memories: memories
         )
+    }
+
+    /// Fetch stored memories when the `memory` tool is enabled, otherwise
+    /// `[]`. Disabled-tool branch returns immediately without touching
+    /// the repository so an off toggle has zero query cost.
+    ///
+    /// Returns full `MemoryEntry` values (not just text) so the
+    /// downstream block renderer can surface each id to the LLM —
+    /// required for `memory(op:'update'|'forget', id:...)` to work in
+    /// conversations where the model didn't perform the original
+    /// `save` and therefore has no other id source.
+    ///
+    /// A repository read failure (transient GRDB error, WAL lock,
+    /// schema migration in progress) falls back to `[]` rather than
+    /// throwing — losing the memories block for one turn is preferable
+    /// to failing the entire turn. The failure is logged so a recurring
+    /// fault surfaces in `os_log` instead of silently wiping the user's
+    /// stored preferences from every prompt.
+    private func currentMemories() async -> [MemoryEntry] {
+        guard let memoryRepository else { return [] }
+        guard let registration = await toolRegistry.registration(toolID: MemoryTool.toolID),
+              registration.isEnabled else { return [] }
+        do {
+            return try await memoryRepository.all()
+        } catch {
+            chatSessionLog.error(
+                "memoryRepository.all() failed; injecting empty memories block this turn: \(String(describing: error), privacy: .public)"
+            )
+            return []
+        }
     }
 
     /// Auto-compaction gate. Called before every turn within the run loop.
