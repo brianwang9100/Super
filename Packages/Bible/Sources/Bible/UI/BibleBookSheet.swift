@@ -14,6 +14,12 @@ struct BibleBookSheet: View {
     /// and mark the matching chapter cell.
     let currentBookId: String
     let currentChapterNumber: Int
+
+    /// Single-fire latch so the picker anchors to the current position
+    /// exactly once per appearance. Without it, subsequent layout passes
+    /// triggered by search/order toggles would yank the scroll back to the
+    /// current position after the reader has moved it.
+    @State private var didAutoScroll = false
     /// Extra bottom padding so the order toggle clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
@@ -107,24 +113,56 @@ struct BibleBookSheet: View {
 
     private var bookList: some View {
         let groups = viewModel.groups
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if groups.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(groups) { group in
-                        if let title = group.title {
-                            sectionHeader(title)
-                        }
-                        ForEach(group.books) { book in
-                            bookRow(book)
+        // Non-lazy on purpose: the picker scroll-anchors to either a book
+        // row or a specific chapter cell when it first appears, and
+        // `ScrollViewProxy.scrollTo` only resolves ids that are already
+        // laid out. The fan-out is bounded — 66 books + at most one
+        // expanded book's chapter grid (150 in Psalms is the worst case)
+        // — so eager layout is cheap. Lazy variants made `scrollTo`
+        // silently fail for any target below the initial viewport.
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if groups.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(groups) { group in
+                            if let title = group.title {
+                                sectionHeader(title)
+                            }
+                            ForEach(group.books) { book in
+                                bookRow(book)
+                            }
                         }
                     }
                 }
+                .padding(.bottom, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.bottom, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .onAppear {
+                guard !didAutoScroll, let anchor = viewModel.initialScrollAnchor else { return }
+                didAutoScroll = true
+                switch anchor {
+                case .bookRow(let bookId):
+                    proxy.scrollTo(Self.bookRowID(bookId), anchor: .top)
+                case .chapterCell(let bookId, let chapterNumber):
+                    proxy.scrollTo(
+                        Self.chapterCellID(bookId: bookId, chapterNumber: chapterNumber),
+                        anchor: .center
+                    )
+                }
+            }
         }
+    }
+
+    /// Stable identifier the book name row registers with `ScrollViewReader`,
+    /// used to scroll a book to the top of the picker viewport.
+    static func bookRowID(_ bookId: String) -> String { "book-\(bookId)" }
+
+    /// Stable identifier each chapter cell registers with `ScrollViewReader`,
+    /// used to anchor the current chapter cell into view for long books.
+    static func chapterCellID(bookId: String, chapterNumber: Int) -> String {
+        "chapter-\(bookId)-\(chapterNumber)"
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -173,39 +211,64 @@ struct BibleBookSheet: View {
                 chapterGrid(for: book)
             }
         }
+        .id(Self.bookRowID(book.id))
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 6)
-        return LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(1...book.chapterCount, id: \.self) { number in
-                let isCurrent = book.id == currentBookId && number == currentChapterNumber
-                Button {
-                    onSelectChapter(book.id, number)
-                } label: {
-                    Text("\(number)")
-                        .font(.system(size: mediumSize, weight: isCurrent ? .semibold : .medium))
-                        .foregroundStyle(isCurrent ? theme.backgroundRaised : theme.ink)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: chapterCellHeight)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(isCurrent ? theme.ink : theme.backgroundRaised)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(theme.borderFaint, lineWidth: isCurrent ? 0 : 0.5)
-                        )
+        // Non-lazy on purpose: a `LazyVGrid` only materializes the cells in
+        // its viewport, which makes `ScrollViewProxy.scrollTo` for an
+        // off-screen chapter cell (e.g. Psalms 119) silently no-op. With a
+        // bounded fan-out — Psalms's 150 chapters is the worst case —
+        // eager layout is cheap and lets the picker scroll-anchor to any
+        // chapter cell as soon as the book's row is laid out.
+        let columns = BibleBookSheetViewModel.chapterGridColumns
+        let rowCount = (book.chapterCount + columns - 1) / columns
+        return VStack(spacing: 6) {
+            ForEach(0..<rowCount, id: \.self) { rowIndex in
+                HStack(spacing: 6) {
+                    ForEach(0..<columns, id: \.self) { column in
+                        let number = rowIndex * columns + column + 1
+                        if number <= book.chapterCount {
+                            chapterCell(for: book, number: number)
+                        } else {
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                                .frame(height: chapterCellHeight)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(book.name) chapter \(number)")
             }
         }
         .padding(.horizontal, 18)
         .padding(.top, 4)
         .padding(.bottom, 14)
+    }
+
+    @ViewBuilder
+    private func chapterCell(for book: BibleBookSummary, number: Int) -> some View {
+        let isCurrent = book.id == currentBookId && number == currentChapterNumber
+        Button {
+            onSelectChapter(book.id, number)
+        } label: {
+            Text("\(number)")
+                .font(.system(size: mediumSize, weight: isCurrent ? .semibold : .medium))
+                .foregroundStyle(isCurrent ? theme.backgroundRaised : theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+                .frame(height: chapterCellHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isCurrent ? theme.ink : theme.backgroundRaised)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(theme.borderFaint, lineWidth: isCurrent ? 0 : 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(book.name) chapter \(number)")
+        .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
     }
 
     private var orderToggle: some View {
@@ -237,7 +300,9 @@ struct BibleBookSheet: View {
 
 #Preview {
     BibleBookSheet(
-        viewModel: BibleBookSheetViewModel(expandedBookId: "1PE"),
+        viewModel: BibleBookSheetViewModel(
+            currentPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        ),
         currentBookId: "1PE",
         currentChapterNumber: 2,
         bottomInset: 0,

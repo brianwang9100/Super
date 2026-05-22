@@ -150,15 +150,16 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.chapter == nil)
     }
 
-    @Test("presenting the book sheet opens it with every book collapsed")
-    func presentingBookSheetStartsCollapsed() async {
+    @Test("presenting the book sheet opens it with the current book expanded")
+    func presentingBookSheetExpandsCurrentBook() async {
         let viewModel = makeViewModel()
         await viewModel.load()                          // 1 Peter 2
         #expect(viewModel.bookSheet == nil)
 
         viewModel.presentBookSheet()
         #expect(viewModel.bookSheet != nil)
-        #expect(viewModel.bookSheet?.expandedBookId == nil)
+        #expect(viewModel.bookSheet?.expandedBookId == "1PE")
+        #expect(viewModel.bookSheet?.currentPosition == viewModel.position)
     }
 
     @Test("dismissing the book sheet clears it")
@@ -168,6 +169,31 @@ struct BibleScreenViewModelTests {
         viewModel.presentBookSheet()
         viewModel.dismissBookSheet()
         #expect(viewModel.bookSheet == nil)
+    }
+
+    @Test("reopening the book sheet hands a fresh view model anchored on the current chapter")
+    func reopeningBookSheetReanchorsOnCurrentPosition() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2
+
+        viewModel.presentBookSheet()
+        let firstSheet = viewModel.bookSheet
+        // Simulate the reader touching the picker — searching, switching
+        // order — before dismissing without picking a chapter.
+        firstSheet?.query = "psalms"
+        firstSheet?.order = .alphabetical
+        viewModel.dismissBookSheet()
+
+        viewModel.presentBookSheet()
+        let secondSheet = viewModel.bookSheet
+
+        // The reopened sheet is a fresh instance with a clean query and
+        // ordering, and its anchor still resolves to the current position.
+        #expect(secondSheet !== firstSheet)
+        #expect(secondSheet?.query.isEmpty == true)
+        #expect(secondSheet?.order == .traditional)
+        #expect(secondSheet?.expandedBookId == "1PE")
+        #expect(secondSheet?.initialScrollAnchor == .bookRow(bookId: "1PE"))
     }
 
     @Test("selecting a chapter navigates there and closes the sheet")
