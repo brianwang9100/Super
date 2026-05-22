@@ -24,8 +24,17 @@ public protocol MessageRepository: Sendable {
     /// Cheap "does this conversation have at least one user-role message"
     /// predicate. Used by the retry path to decide whether re-running the
     /// LLM loop is meaningful before paying for a full `fetchAll` +
-    /// history projection. Implementations should be O(1) — a SELECT 1
-    /// with LIMIT, not a full materialization.
+    /// history projection. Implementations should avoid materializing the
+    /// full conversation: a `SELECT 1 ... LIMIT 1` is the intended shape.
+    ///
+    /// Cost with the current `message_on_conversationId_createdAt` index:
+    /// O(1) for the user-present case (the user row is always the earliest
+    /// message in a conversation, so the planner stops after the first
+    /// match). Degrades to an O(n) scan of the conversation for the
+    /// no-match case — reachable only on a stale Retry of a brand-new or
+    /// all-tool-rows conversation, which is uncommon. A `(conversationId,
+    /// role)` covering index would make both paths O(1) but isn't worth
+    /// the migration today.
     func hasUserMessage(conversationId: String) async throws -> Bool
     /// Insert or update.
     func save(_ record: MessageRecord) async throws
@@ -59,14 +68,16 @@ public struct GRDBMessageRepository: MessageRepository {
 
     public func hasUserMessage(conversationId: String) async throws -> Bool {
         try await queue.read { db in
-            // `.limit(1).fetchOne` translates to `SELECT * ... LIMIT 1`,
-            // which the SQLite planner satisfies with an index seek into
-            // `message_on_conversationId_createdAt` and stops after the
-            // first match — effectively O(1) because the user row is
-            // always the earliest message in a conversation. Avoids the
-            // `fetchCount` → `SELECT COUNT(*)` full scan that would
-            // violate the protocol's O(1) contract on a long
-            // conversation.
+            // `.limit(1).fetchOne` translates to `SELECT * ... LIMIT 1`.
+            // The SQLite planner uses `message_on_conversationId_createdAt`
+            // to seek to the conversation's first row and walks by
+            // `createdAt`, stopping at the first `role == .user` match.
+            // The user row is always the earliest message in a conversation,
+            // so the present-case is O(1); the absent-case (used only on
+            // stale Retry against an all-tool-rows or empty conversation)
+            // scans every row in the conversation. See the protocol doc
+            // for why the migration to a `(conversationId, role)` covering
+            // index isn't worth it today.
             try MessageRecord
                 .filter(Column("conversationId") == conversationId)
                 .filter(Column("role") == MessageRole.user.rawValue)

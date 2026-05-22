@@ -545,17 +545,16 @@ public actor ChatSession {
     }
 
     /// Body of `compact(model:)` — handles the manual `/compact` ratio
-    /// gate and owns the cancellation/error mapping so the public entry
-    /// point can stay focused on stream wiring. Below the minimum context
+    /// gate, then runs the compaction pass under `runGuardedTurn`'s
+    /// shared cancellation/error mapping. Below the minimum context
     /// ratio the only event broadcast is `.error(.requestFailed(...))`;
     /// no LLM call, no checkpoint write.
     private func runCompaction(model: LLMModel) async {
-        defer { currentTask = nil }
-        do {
-            let assembly = try await assemble(model: model)
-            guard assembly.ratio >= manualCompactMinThreshold else {
-                let pct = Int((manualCompactMinThreshold * 100).rounded())
-                broadcast(.error(.requestFailed(
+        await runGuardedTurn {
+            let assembly = try await self.assemble(model: model)
+            guard assembly.ratio >= self.manualCompactMinThreshold else {
+                let pct = Int((self.manualCompactMinThreshold * 100).rounded())
+                self.broadcast(.error(.requestFailed(
                     "Conversation is too short to compact yet — try again once context usage reaches \(pct)%."
                 )))
                 return
@@ -565,27 +564,7 @@ public actor ChatSession {
             // `uptoMessageId` becomes the last message on disk, so the
             // banner anchors at the bottom of the transcript and matches
             // the user's "I compacted everything" mental model.
-            try await runCompactionPass(model: model, keepMostRecent: 0)
-        } catch is CancellationError {
-            broadcast(.error(.cancelled))
-        } catch let err as LLMError {
-            broadcast(.error(err))
-        } catch let err as CompactorError {
-            switch err {
-            case .emptySummary:
-                broadcast(.error(.requestFailed("compaction returned empty summary")))
-            case .llmError(let underlying):
-                broadcast(.error(underlying))
-            }
-        } catch let err as LLMProviderRegistryError {
-            switch err {
-            case .noActiveProvider:
-                broadcast(.error(.requestFailed("no active LLM provider configured")))
-            case .unknownProvider(let id):
-                broadcast(.error(.requestFailed("unknown LLM provider: \(id)")))
-            }
-        } catch {
-            broadcast(.error(.requestFailed(error.localizedDescription)))
+            try await self.runCompactionPass(model: model, keepMostRecent: 0)
         }
     }
 
