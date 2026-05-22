@@ -26,7 +26,7 @@ struct SettingsViewModelTests {
     func loadPersistedValues() async {
         let settingRepo = InMemorySettingRepository()
         try? await settingRepo.set(ChatSettingsStore.Keys.themeId, value: "dark")
-        try? await settingRepo.set(ChatSettingsStore.Keys.systemPrompt, value: "Hello")
+        try? await settingRepo.set(ChatSettingsStore.Keys.userPersonalization, value: "Hello")
         try? await settingRepo.set(ChatSettingsStore.Keys.defaultVerbosity, value: "thinking")
         try? await settingRepo.set(ChatSettingsStore.Keys.fontScale, value: "1.1")
         try? await settingRepo.set(ChatSettingsStore.Keys.autoCompactEnabled, value: "false")
@@ -36,7 +36,7 @@ struct SettingsViewModelTests {
         let vm = makeViewModel(settingRepository: settingRepo)
         await vm.load()
         #expect(vm.settings.themeId == .dark)
-        #expect(vm.settings.systemPrompt == "Hello")
+        #expect(vm.settings.userPersonalization == "Hello")
         #expect(vm.settings.defaultVerbosity == .thinking)
         #expect(vm.settings.fontScale == 1.1)
         #expect(vm.settings.autoCompactEnabled == false)
@@ -63,26 +63,27 @@ struct SettingsViewModelTests {
         #expect(vm.settings.fontScale == 0.80)
     }
 
-    @Test("setSystemPrompt persists immediately")
-    func setSystemPromptPersists() async {
+    @Test("setUserPersonalization persists immediately")
+    func setUserPersonalizationPersists() async {
         let settingRepo = InMemorySettingRepository()
         let vm = makeViewModel(settingRepository: settingRepo)
-        await vm.setSystemPrompt("New prompt body.")
-        let raw = try? await settingRepo.get(ChatSettingsStore.Keys.systemPrompt)
-        #expect(raw == "New prompt body.")
+        await vm.setUserPersonalization("New personalization body.")
+        let raw = try? await settingRepo.get(ChatSettingsStore.Keys.userPersonalization)
+        #expect(raw == "New personalization body.")
     }
 
-    @Test("setSystemPrompt forwards to the systemPromptReceiver")
-    func setSystemPromptForwardsToReceiver() async {
-        // The fan-out hop (`systemPromptReceiver?.setSystemPrompt(value)`)
+    @Test("setUserPersonalization forwards to the receiver")
+    func setUserPersonalizationForwardsToReceiver() async {
+        // The fan-out hop
+        // (`userPersonalizationReceiver.setUserPersonalization(value)`)
         // is what propagates a Settings edit to active `ChatSession`s in
-        // production. Without this assertion, a future refactor that drops
-        // the forwarding line would compile, persist correctly, and leave
-        // every running conversation stuck on the old prompt until app
-        // restart — exactly the gap this PR exists to close.
-        let receiver = FakeSystemPromptReceiver()
-        let vm = makeViewModel(systemPromptReceiver: receiver)
-        await vm.setSystemPrompt("Always reply in haiku.")
+        // production. Without this assertion, a future refactor that
+        // drops the forwarding line would compile, persist correctly,
+        // and leave every running conversation stuck on the old value
+        // until app restart.
+        let receiver = FakeUserPersonalizationReceiver()
+        let vm = makeViewModel(userPersonalizationReceiver: receiver)
+        await vm.setUserPersonalization("Always reply in haiku.")
         let received = await receiver.received()
         #expect(received == ["Always reply in haiku."])
     }
@@ -543,7 +544,7 @@ struct SettingsViewModelTests {
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
         conversationRepository: any ConversationRepository = StubConversationRepository(rows: []),
         toolRegistry: ToolRegistry = ToolRegistry(),
-        systemPromptReceiver: any SystemPromptReceiver = FakeSystemPromptReceiver(),
+        userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
         memoryRepository: (any MemoryRepository)? = nil
     ) -> SettingsViewModel {
@@ -554,7 +555,7 @@ struct SettingsViewModelTests {
             modelRepository: modelRepository,
             conversationRepository: conversationRepository,
             toolRegistry: toolRegistry,
-            systemPromptReceiver: systemPromptReceiver,
+            userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
             memoryRepository: memoryRepository
         )

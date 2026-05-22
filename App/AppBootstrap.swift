@@ -1,6 +1,8 @@
+import Bible
 import Chat
 import Core
 import Foundation
+import SwiftUI
 import Todo
 
 /// Wired-up dependency graph the Shell hands to its views.
@@ -8,7 +10,8 @@ import Todo
 /// Constructed exactly once on app launch by `AppBootstrap.bootstrap()`. The
 /// Shell stores it in app state and injects the pieces individual views need
 /// via `@Environment` (UI wiring lands in M7).
-struct AppDependencies: Sendable {
+@MainActor
+struct AppDependencies {
     let chatDatabase: ChatDatabase
     let chatSessionStore: ChatSessionStore
     let toolRegistry: ToolRegistry
@@ -29,6 +32,12 @@ struct AppDependencies: Sendable {
     /// App-wide cross-applet event bus. The Shell injects it into every
     /// applet's environment so Bible can hand verse references to Chat.
     let eventBus: SuperEventBus
+    /// Composition-root-built registry of every `MiniApplet` installed in
+    /// this build. Owned here (rather than rebuilt by `AppShell.init`) so
+    /// the same registry is the source of truth for both the sidebar
+    /// rail's backdrop list and the briefings handed to
+    /// `ChatSessionStore` — keeping the two in lock-step.
+    let appletRegistry: AppletRegistry
 }
 
 /// One-shot composition root. Bootstraps the on-disk database, every
@@ -48,6 +57,13 @@ enum AppBootstrap {
     ///     the user's real Keychain.
     /// - Throws: Any GRDB or filesystem error from opening the database, or
     ///   any Keychain error encountered while hydrating saved providers.
+    /// `UserDefaults` key for the persisted backdrop applet ID. Owned here
+    /// (rather than in `AppShell`) now that the registry is built during
+    /// bootstrap — the read and the write must agree on the key or
+    /// persistence silently breaks.
+    static let activeAppletStorageKey: String = "shell.activeAppletID"
+
+    @MainActor
     static func bootstrap(
         directory: URL? = nil,
         keychain: (any KeychainClient)? = nil
@@ -86,7 +102,7 @@ enum AppBootstrap {
         )
 
         // Pre-load Chat settings so the session store starts with the
-        // user's persisted auto-compact policy and system prompt — newly
+        // user's persisted auto-compact policy and personalization — newly
         // created sessions would otherwise pick up the orchestration-layer
         // fallbacks until the user re-saved each value from Settings.
         //
@@ -100,6 +116,42 @@ enum AppBootstrap {
         // both `ChatSessionStore` (seed) and `SettingsViewModel` (live).
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
+        // Build the applet list here (rather than in `AppShell.init`) so
+        // the same applets feed both the sidebar rail and the leading
+        // system block sent to the Large Language Model (LLM) on every
+        // chat turn — those two surfaces would otherwise drift if a
+        // future PR registered an applet in only one place.
+        let applets: [any MiniApplet] = [
+            TodoApplet(dependencies: todoDependencies),
+            RecipesPlaceholderApplet(),
+            BibleApplet(),
+            FinancePlaceholderApplet(),
+        ]
+        // Resolve the persisted active backdrop here (was in
+        // `AppShell.init`). Fallback chain keeps the invariant that
+        // some backdrop is always selected: persisted id if it still
+        // matches a registered applet, else the first applet.
+        let storedID = UserDefaults.standard.string(forKey: activeAppletStorageKey)
+        let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
+            ?? applets.first?.appletID
+        let appletRegistry = AppletRegistry(
+            applets: applets,
+            initialActiveID: resolvedID
+        )
+
+        // Per-applet briefings — already trimmed and sorted by
+        // `appletID`. Empty bodies are skipped at the registry level so
+        // placeholder applets don't contribute stray `## <Name> applet`
+        // headers to the leading system block.
+        let appletBriefings = appletRegistry.resolvedBriefings()
+        // The Chat-assistant base prompt is the renamed
+        // `DefaultSystemPrompt.md` resource. Loaded through
+        // `ChatApplet().systemPrompt` so the lookup runs against
+        // *Chat's* bundle — calling `AppletSystemPrompt.load(from:
+        // .module, ...)` directly from `App/` would resolve to the App
+        // target's bundle, which doesn't ship the markdown.
+        let chatBriefing = ChatApplet().systemPrompt
+
         let chatSessionStore = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
@@ -109,7 +161,9 @@ enum AppBootstrap {
             compactor: compactor,
             autoCompactEnabled: initialSettings.autoCompactEnabled,
             autoCompactThreshold: initialSettings.autoCompactThreshold,
-            systemPrompt: initialSettings.systemPrompt,
+            chatBriefing: chatBriefing,
+            appletBriefings: appletBriefings,
+            userPersonalization: initialSettings.userPersonalization,
             memoryRepository: memoryRepository
         )
 
@@ -129,7 +183,8 @@ enum AppBootstrap {
             memoryRepository: memoryRepository,
             registeredToolIDs: registeredToolIDs,
             todoDependencies: todoDependencies,
-            eventBus: SuperEventBus()
+            eventBus: SuperEventBus(),
+            appletRegistry: appletRegistry
         )
     }
 

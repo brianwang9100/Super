@@ -5,9 +5,10 @@ import Testing
 @testable import Chat
 
 /// Tests for `ContextAssembler` — projects rows + checkpoint into the
-/// `[LLMMessage]` shipped to the provider, and reports whether the
-/// resulting prompt is over a configurable threshold of the model's
-/// context window.
+/// `[LLMMessage]` shipped to the provider, builds the leading
+/// concatenated `.system` block (Chat briefing + applet briefings +
+/// user personalization), and reports whether the resulting prompt is
+/// over a configurable threshold of the model's context window.
 @Suite("ContextAssembler")
 struct ContextAssemblerTests {
 
@@ -180,10 +181,11 @@ struct ContextAssemblerTests {
     }
 
     @Test func leadingSystemRowsArePreservedAcrossCheckpoint() throws {
-        // M9 will write the user's system prompt as a `.system`
-        // `MessageRecord` at conversation start. Compaction must not
-        // erase it — the assembler re-emits any leading `.system` rows
-        // covered by the checkpoint in front of the synthetic summary.
+        // Conversations may carry a `.system` `MessageRecord` at the
+        // start (e.g. an explicit per-conversation system row). Compaction
+        // must not erase it — the assembler re-emits any leading
+        // `.system` rows covered by the checkpoint in front of the
+        // synthetic summary.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "sys-1", role: .system, content: "You are concise.", offset: 0),
@@ -243,11 +245,12 @@ struct ContextAssemblerTests {
         // threshold (≥ a tiny epsilon) won't see this corner.
     }
 
-    @Test func systemPromptInjectedAtTopWhenNonEmpty() throws {
+    // MARK: - Leading system block (chat briefing + applets + personalization)
+
+    @Test func userPersonalizationOnlyRendersUnderHeader() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
-            makeMessage(id: "m2", role: .assistant, content: "Hello", offset: 1),
         ]
 
         let assembly = try assembler.assemble(
@@ -255,58 +258,136 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            systemPrompt: "You are concise."
+            userPersonalization: "Be concise."
         )
 
-        #expect(assembly.messages.count == 3)
+        #expect(assembly.messages.count == 2)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
-            #expect(body == "You are concise.")
+            #expect(body.contains("## User personalization"))
+            #expect(body.contains("Be concise."))
         } else {
-            Issue.record("expected settings prompt at [0], got \(assembly.messages[0].content)")
+            Issue.record("expected leading .system block, got \(assembly.messages[0].content)")
         }
         #expect(assembly.messages[1].role == .user)
-        #expect(assembly.messages[2].role == .assistant)
     }
 
-    @Test func systemPromptIsTrimmedAndSkippedWhenWhitespaceOnly() throws {
+    @Test func emptyOrWhitespaceLeadingInputsInjectNoBlock() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
         ]
 
-        for prompt in ["", "   ", "\n\t\n"] {
-            let assembly = try assembler.assemble(
-                messages: messages,
-                toolCalls: [],
-                checkpoint: nil,
-                model: makeModel(),
-                systemPrompt: prompt
-            )
-            #expect(
-                assembly.messages.count == 1,
-                "expected no system injection for whitespace prompt \(prompt.debugDescription)"
-            )
-            #expect(assembly.messages[0].role == .user)
+        for chat in ["", "  "] {
+            for personalization in ["", "\n\t\n", "   "] {
+                let assembly = try assembler.assemble(
+                    messages: messages,
+                    toolCalls: [],
+                    checkpoint: nil,
+                    model: makeModel(),
+                    chatBriefing: chat,
+                    appletBriefings: [],
+                    userPersonalization: personalization
+                )
+                #expect(
+                    assembly.messages.count == 1,
+                    "expected no leading block for chat=\(chat.debugDescription) personalization=\(personalization.debugDescription)"
+                )
+                #expect(assembly.messages[0].role == .user)
+            }
         }
+    }
 
-        // Trimming: leading/trailing whitespace stripped, interior preserved.
+    @Test func leadingBlockTrimsEachSection() throws {
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
         let assembly = try assembler.assemble(
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            systemPrompt: "  haiku\nplease  "
+            chatBriefing: "  trimmed chat  ",
+            userPersonalization: "  trimmed me  "
         )
-        #expect(assembly.messages.count == 2)
-        if case .text(let body) = assembly.messages[0].content.first {
-            #expect(body == "haiku\nplease")
-        } else {
-            Issue.record("expected trimmed prompt, got \(assembly.messages[0].content)")
+        guard case .text(let body) = assembly.messages[0].content.first else {
+            Issue.record("missing leading block")
+            return
         }
+        #expect(body.contains("## Chat assistant\n\ntrimmed chat"))
+        #expect(body.contains("## User personalization\n\ntrimmed me"))
     }
 
-    @Test func systemPromptPrecedesCheckpointSummary() throws {
+    @Test func chatBriefingThenAppletsThenPersonalization() throws {
+        // The three label classes appear in fixed order with their
+        // headers, and applet briefings render in the order supplied.
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+        let briefings = [
+            AppletBriefing(label: "Bible applet", body: "Quote verbatim."),
+            AppletBriefing(label: "Todo applet", body: "Parse natural-language dates."),
+        ]
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            chatBriefing: "Be concise.",
+            appletBriefings: briefings,
+            userPersonalization: "I prefer haiku."
+        )
+
+        guard case .text(let body) = assembly.messages[0].content.first else {
+            Issue.record("missing leading block")
+            return
+        }
+        let chatIdx = body.range(of: "## Chat assistant")!.lowerBound
+        let bibleIdx = body.range(of: "## Bible applet")!.lowerBound
+        let todoIdx = body.range(of: "## Todo applet")!.lowerBound
+        let personalizationIdx = body.range(of: "## User personalization")!.lowerBound
+        #expect(chatIdx < bibleIdx)
+        #expect(bibleIdx < todoIdx)
+        #expect(todoIdx < personalizationIdx)
+        #expect(body.contains("Be concise."))
+        #expect(body.contains("Quote verbatim."))
+        #expect(body.contains("Parse natural-language dates."))
+        #expect(body.contains("I prefer haiku."))
+    }
+
+    @Test func emptyAppletBriefingBodiesAreDropped() throws {
+        // The registry already skips empties before constructing the
+        // briefing list, but the assembler defends in depth — a fixture
+        // that hand-rolls a briefing with an empty body shouldn't render
+        // a header with nothing under it.
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
+        ]
+        let briefings = [
+            AppletBriefing(label: "Bible applet", body: "Quote verbatim."),
+            AppletBriefing(label: "Empty applet", body: "   \n  "),
+        ]
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(),
+            chatBriefing: "Be concise.",
+            appletBriefings: briefings
+        )
+
+        guard case .text(let body) = assembly.messages[0].content.first else {
+            Issue.record("missing leading block")
+            return
+        }
+        #expect(body.contains("## Bible applet"))
+        #expect(!body.contains("## Empty applet"))
+    }
+
+    @Test func leadingBlockPrecedesCheckpointSummary() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "old 1", offset: 0),
@@ -329,16 +410,17 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: checkpoint,
             model: makeModel(),
-            systemPrompt: "Always answer in haiku."
+            userPersonalization: "Always answer in haiku."
         )
 
-        // [0] settings prompt, [1] checkpoint summary, [2] m3
+        // [0] leading block, [1] checkpoint summary, [2] m3
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
-            #expect(body == "Always answer in haiku.")
+            #expect(body.contains("## User personalization"))
+            #expect(body.contains("Always answer in haiku."))
         } else {
-            Issue.record("expected settings prompt at [0], got \(assembly.messages[0].content)")
+            Issue.record("expected leading block at [0], got \(assembly.messages[0].content)")
         }
         #expect(assembly.messages[1].role == .system)
         if case .text(let body) = assembly.messages[1].content.first {
@@ -349,7 +431,7 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[2].role == .user)
     }
 
-    @Test func systemPromptPrecedesHistoricalSystemRowAndCheckpoint() throws {
+    @Test func leadingBlockPrecedesHistoricalSystemRowAndCheckpoint() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "sys-1", role: .system, content: "You are concise.", offset: 0),
@@ -373,14 +455,14 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: checkpoint,
             model: makeModel(),
-            systemPrompt: "Always answer in haiku."
+            userPersonalization: "Always answer in haiku."
         )
 
-        // [0] settings, [1] historical .system, [2] checkpoint, [3] m3
+        // [0] leading block, [1] historical .system, [2] checkpoint, [3] m3
         #expect(assembly.messages.count == 4)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
-            #expect(body == "Always answer in haiku.")
+            #expect(body.contains("Always answer in haiku."))
         }
         #expect(assembly.messages[1].role == .system)
         if case .text(let body) = assembly.messages[1].content.first {
@@ -390,7 +472,7 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[3].role == .user)
     }
 
-    @Test func systemPromptTokenCountIncludedInTotal() throws {
+    @Test func leadingBlockTokenCountIncludedInTotal() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -399,20 +481,26 @@ struct ContextAssemblerTests {
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
-            model: makeModel(),
-            systemPrompt: ""
+            model: makeModel()
         )
-        let withPrompt = try assembler.assemble(
+        let withBlock = try assembler.assemble(
             messages: messages,
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            systemPrompt: "You are a verbose assistant who loves long answers."
+            chatBriefing: "You are a verbose assistant who loves long answers."
         )
-        #expect(withPrompt.totalTokens > bare.totalTokens)
+        #expect(withBlock.totalTokens > bare.totalTokens)
     }
 
-    @Test func memoriesBlockInjectedAheadOfSystemPrompt() throws {
+    // MARK: - Memories block
+
+    @Test func memoriesBlockInjectedAfterLeadingSystemBlock() throws {
+        // Order rationale: the leading block (chat + applets +
+        // personalization) is the most stable across turns, so it sits
+        // at the head of the system run for the Anthropic prompt cache
+        // prefix. Memories change every time the `memory` tool runs and
+        // live in their own block immediately after.
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: "Hi", offset: 0),
@@ -423,26 +511,27 @@ struct ContextAssemblerTests {
             toolCalls: [],
             checkpoint: nil,
             model: makeModel(),
-            systemPrompt: "Always answer in haiku.",
+            userPersonalization: "Always answer in haiku.",
             memories: [
                 makeMemoryEntry(id: "mem-1", text: "Prefers metric units."),
                 makeMemoryEntry(id: "mem-2", text: "Vegetarian."),
             ]
         )
 
-        // [0] memories block, [1] settings prompt, [2] user
+        // [0] leading block (with personalization), [1] memories block, [2] user
         #expect(assembly.messages.count == 3)
         #expect(assembly.messages[0].role == .system)
         if case .text(let body) = assembly.messages[0].content.first {
+            #expect(body.contains("## User personalization"))
+            #expect(body.contains("Always answer in haiku."))
+        }
+        #expect(assembly.messages[1].role == .system)
+        if case .text(let body) = assembly.messages[1].content.first {
             #expect(body.contains("What I remember about you"))
             #expect(body.contains("- [mem-1] Prefers metric units."))
             #expect(body.contains("- [mem-2] Vegetarian."))
         } else {
-            Issue.record("expected memories block at [0], got \(assembly.messages[0].content)")
-        }
-        #expect(assembly.messages[1].role == .system)
-        if case .text(let body) = assembly.messages[1].content.first {
-            #expect(body == "Always answer in haiku.")
+            Issue.record("expected memories block at [1], got \(assembly.messages[1].content)")
         }
         #expect(assembly.messages[2].role == .user)
     }

@@ -516,10 +516,12 @@ struct ChatSessionTests {
         #expect(stored.contains { $0.id == saved.id })
     }
 
-    @Test func setSystemPromptPropagatesToNextProviderRequest() async throws {
-        // Two scripted turns so we can verify the prompt change is picked
-        // up *between* turns — the first turn carries the empty/default
-        // prompt, the second carries the value pushed via setSystemPrompt.
+    @Test func setUserPersonalizationPropagatesToNextProviderRequest() async throws {
+        // Two scripted turns so we can verify the value change is picked
+        // up *between* turns — the first turn carries no personalization
+        // (no `.system` row), the second carries the value pushed via
+        // `setUserPersonalization(...)` under the
+        // `## User personalization` section header.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
@@ -533,7 +535,7 @@ struct ChatSessionTests {
             ],
         ])
 
-        // Turn 1: no system prompt configured, no .system row in request.
+        // Turn 1: no personalization configured, no .system row in request.
         let stream1 = await setup.session.send(text: "hi", model: setup.model)
         _ = await collect(stream1)
         await setup.session.waitUntilFinished()
@@ -545,9 +547,9 @@ struct ChatSessionTests {
         let firstRequest = await setup.provider.capturedRequests().first
         #expect(firstRequest?.messages.contains(where: { $0.role == .system }) == false)
 
-        // Turn 2: push a system prompt, send another message, observe it
-        // injected as the leading .system row.
-        await setup.session.setSystemPrompt("Always answer in haiku.")
+        // Turn 2: push personalization, send another message, observe it
+        // injected as the leading .system row's personalization section.
+        await setup.session.setUserPersonalization("Always answer in haiku.")
         let stream2 = await setup.session.send(text: "again", model: setup.model)
         _ = await collect(stream2)
         await setup.session.waitUntilFinished()
@@ -555,7 +557,8 @@ struct ChatSessionTests {
         let secondRequest = await setup.provider.capturedRequests().last
         #expect(secondRequest?.messages.first?.role == .system)
         if case .text(let body) = secondRequest?.messages.first?.content.first {
-            #expect(body == "Always answer in haiku.")
+            #expect(body.contains("## User personalization"))
+            #expect(body.contains("Always answer in haiku."))
         } else {
             Issue.record("expected leading .system text, got \(String(describing: secondRequest?.messages.first?.content))")
         }

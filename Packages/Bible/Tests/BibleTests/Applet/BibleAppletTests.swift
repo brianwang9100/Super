@@ -48,4 +48,13 @@ struct BibleAppletTests {
         let applet: any MiniApplet = makeApplet()
         #expect(applet.appletID == "bible")
     }
+
+    @Test("systemPrompt loads the bundled SystemPrompt.md")
+    func systemPromptLoaded() {
+        let body = makeApplet().systemPrompt
+        // We assert structural shape, not literal wording, so the test
+        // doesn't churn every time the prompt is edited.
+        #expect(!body.isEmpty)
+        #expect(body.contains("Bible applet"))
+    }
 }

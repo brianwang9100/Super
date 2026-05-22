@@ -26,7 +26,16 @@ public actor ChatSessionStore {
     /// Same mutability rationale as `autoCompactEnabled`.
     private var autoCompactThreshold: Double
     private let manualCompactMinThreshold: Double
-    private var currentSystemPrompt: String
+    /// Chat-assistant base prompt. Constructor-time state — the Chat
+    /// applet author owns its content; no runtime setter.
+    private let chatBriefing: String
+    /// Per-applet briefings (already trimmed and sorted by `appletID`).
+    /// Constructor-time state — applets are static at app launch.
+    private let appletBriefings: [AppletBriefing]
+    /// Current user-personalization text (was `currentSystemPrompt`).
+    /// Mutated via `setUserPersonalization(_:)` and fanned out to every
+    /// active session.
+    private var currentUserPersonalization: String
     /// Stored memories source handed to each session it constructs.
     /// `nil` when the host wires the store without memory support
     /// (test fixtures, the live-LLM script). See ``ChatSession``'s
@@ -48,7 +57,9 @@ public actor ChatSessionStore {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
-        systemPrompt: String = "",
+        chatBriefing: String = "",
+        appletBriefings: [AppletBriefing] = [],
+        userPersonalization: String = "",
         memoryRepository: (any MemoryRepository)? = nil
     ) {
         self.messageRepository = messageRepository
@@ -63,7 +74,9 @@ public actor ChatSessionStore {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
-        self.currentSystemPrompt = systemPrompt
+        self.chatBriefing = chatBriefing
+        self.appletBriefings = appletBriefings
+        self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
     }
 
@@ -86,34 +99,38 @@ public actor ChatSessionStore {
             autoCompactEnabled: autoCompactEnabled,
             autoCompactThreshold: autoCompactThreshold,
             manualCompactMinThreshold: manualCompactMinThreshold,
-            systemPrompt: currentSystemPrompt,
+            chatBriefing: chatBriefing,
+            appletBriefings: appletBriefings,
+            userPersonalization: currentUserPersonalization,
             memoryRepository: memoryRepository
         )
         sessions[conversationId] = session
         return session
     }
 
-    /// Push a new system prompt value to every active session and remember
-    /// it as the default for sessions created later. The Settings UI calls
-    /// this whenever the user edits the prompt so long-running sessions
-    /// pick up the new value on their next turn — including ones the user
-    /// returns to after the edit. No-ops if the value is unchanged.
+    /// Push a new user-personalization value to every active session and
+    /// remember it as the default for sessions created later. The
+    /// Settings UI calls this whenever the user edits the field so
+    /// long-running sessions pick up the new value on their next turn —
+    /// including ones the user returns to after the edit. No-ops if the
+    /// value is unchanged.
     ///
     /// The per-session `await` inside the fan-out loop suspends this actor,
-    /// which means a concurrent `setSystemPrompt("B")` arriving mid-loop
-    /// can interleave: it correctly updates `currentSystemPrompt` and fans
-    /// "B" out to every session, then this loop's continuation resumes and
-    /// would silently overwrite the trailing sessions with the stale
-    /// `value`. The intra-loop `guard currentSystemPrompt == value` bails
-    /// early once the value has been superseded — last write wins, all
-    /// sessions agree with `currentSystemPrompt` once both calls return.
-    public func setSystemPrompt(_ value: String) async {
-        guard value != currentSystemPrompt else { return }
-        currentSystemPrompt = value
+    /// which means a concurrent `setUserPersonalization("B")` arriving
+    /// mid-loop can interleave: it correctly updates
+    /// `currentUserPersonalization` and fans "B" out to every session,
+    /// then this loop's continuation resumes and would silently overwrite
+    /// the trailing sessions with the stale `value`. The intra-loop
+    /// `guard currentUserPersonalization == value` bails early once the
+    /// value has been superseded — last write wins, all sessions agree
+    /// with `currentUserPersonalization` once both calls return.
+    public func setUserPersonalization(_ value: String) async {
+        guard value != currentUserPersonalization else { return }
+        currentUserPersonalization = value
         let snapshot = sessions
         for (_, session) in snapshot {
-            guard currentSystemPrompt == value else { return }
-            await session.setSystemPrompt(value)
+            guard currentUserPersonalization == value else { return }
+            await session.setUserPersonalization(value)
         }
     }
 

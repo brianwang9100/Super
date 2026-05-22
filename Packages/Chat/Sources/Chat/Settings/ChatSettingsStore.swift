@@ -1,3 +1,4 @@
+import Core
 import Foundation
 
 /// Reads and writes `ChatSettings` against a `SettingRepository`. Each field
@@ -17,12 +18,23 @@ public struct ChatSettingsStore: Sendable {
     /// Read every persisted key, falling back to `ChatSettings.default` for
     /// missing or unrecognized values. Never throws — a corrupted row reads
     /// as the default.
+    ///
+    /// Runs the one-shot legacy-`systemPrompt` migration when needed: if
+    /// the new `userPersonalization` key is absent but the old
+    /// `systemPrompt` key exists, compare the stored value against the
+    /// `LegacyDefaultSystemPromptV1.md` snapshot — when they match (the
+    /// common case, user never edited the default) the legacy row is
+    /// deleted silently; otherwise the user's custom text carries forward
+    /// as their personalization and the legacy row is cleared. The
+    /// migration only fires once per device because subsequent loads see
+    /// the new key populated (or explicitly empty after a clean migrate).
     public func load() async -> ChatSettings {
         let raw = (try? await repository.all()) ?? [:]
+        let personalization = await resolveUserPersonalization(raw: raw)
         return ChatSettings(
             themeId: raw[Keys.themeId].flatMap(ChatSettings.ThemeID.init(rawValue:))
                 ?? ChatSettings.default.themeId,
-            systemPrompt: raw[Keys.systemPrompt] ?? ChatSettings.default.systemPrompt,
+            userPersonalization: personalization,
             defaultVerbosity: raw[Keys.defaultVerbosity].flatMap(ChatVerbosity.init(rawValue:))
                 ?? ChatSettings.default.defaultVerbosity,
             fontScale: raw[Keys.fontScale].flatMap(Double.init)
@@ -35,12 +47,59 @@ public struct ChatSettingsStore: Sendable {
         )
     }
 
+    /// Pick the right `userPersonalization` value out of a row dictionary,
+    /// running the legacy migration when the new key is absent. Side-effects
+    /// (deleting the legacy row, writing the new key) are best-effort — a
+    /// transient repository failure leaves the legacy row in place and the
+    /// migration will retry on the next load.
+    private func resolveUserPersonalization(raw: [String: String]) async -> String {
+        if let value = raw[Keys.userPersonalization] {
+            return value
+        }
+        guard let legacy = raw[Keys.legacySystemPrompt] else {
+            return ChatSettings.default.userPersonalization
+        }
+        let trimmedLegacy = legacy.trimmingCharacters(in: .whitespacesAndNewlines)
+        let legacyDefault = Self.legacyDefaultSystemPrompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedLegacy == legacyDefault || trimmedLegacy.isEmpty {
+            // The stored value is the previous bundled default (or empty)
+            // — the user never customized. Clear the legacy row and
+            // surface the empty personalization.
+            try? await repository.delete(Keys.legacySystemPrompt)
+            return ChatSettings.default.userPersonalization
+        }
+        // User edited the previous system prompt. Carry the custom text
+        // forward as their personalization — they can clear or edit it
+        // from the new Personalization pane.
+        try? await repository.set(Keys.userPersonalization, value: legacy)
+        try? await repository.delete(Keys.legacySystemPrompt)
+        return legacy
+    }
+
+    /// Snapshot of the previous build's `DefaultSystemPrompt.md`. Used by
+    /// the migration to detect users who never edited it. Loaded once at
+    /// type init; a missing snapshot resolves to empty (which then makes
+    /// the migration carry every legacy value forward — safe-but-noisy
+    /// fallback that lets the user prune unwanted text rather than
+    /// silently losing customizations).
+    ///
+    /// Package-internal (rather than `private`) so the migration tests
+    /// can read the same source-of-truth the production code reads —
+    /// the test target's `Bundle.module` is a different bundle from the
+    /// Chat target's, so a test must reach in through this seam to get
+    /// the bundled-into-Chat snapshot.
+    static let legacyDefaultSystemPrompt: String = AppletSystemPrompt.load(
+        from: .module,
+        resource: "LegacyDefaultSystemPromptV1"
+    )
+
     public func setTheme(_ themeId: ChatSettings.ThemeID) async throws {
         try await repository.set(Keys.themeId, value: themeId.rawValue)
     }
 
-    public func setSystemPrompt(_ value: String) async throws {
-        try await repository.set(Keys.systemPrompt, value: value)
+    public func setUserPersonalization(_ value: String) async throws {
+        try await repository.set(Keys.userPersonalization, value: value)
     }
 
     public func setDefaultVerbosity(_ value: ChatVerbosity) async throws {
@@ -94,8 +153,14 @@ public struct ChatSettingsStore: Sendable {
     public enum Keys {
         /// `ChatSettings.ThemeID` rawValue. Active theme.
         public static let themeId = "theme.id"
-        /// Plain-text system prompt prepended to new chats.
-        public static let systemPrompt = "systemPrompt"
+        /// User-authored personalization / "about me" text (was
+        /// `systemPrompt` in the previous release; see
+        /// `legacySystemPrompt` for the migration path).
+        public static let userPersonalization = "userPersonalization"
+        /// Legacy key from before the personalization reframe. Kept here
+        /// so `load()` can run the one-shot migration; never written by
+        /// production code after the reframe shipped.
+        public static let legacySystemPrompt = "systemPrompt"
         /// `ChatVerbosity` rawValue used when creating a fresh chat.
         public static let defaultVerbosity = "defaultVerbosity"
         /// String-encoded Double in `[0.80, 1.20]`.

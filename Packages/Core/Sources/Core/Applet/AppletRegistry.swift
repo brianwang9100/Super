@@ -42,4 +42,22 @@ public final class AppletRegistry {
         return applets.first { $0.appletID == activeID }
     }
 
+    /// Returns one `AppletBriefing` per registered applet whose
+    /// `systemPrompt` is non-empty (after trimming), sorted by `appletID`
+    /// so the Anthropic prompt-cache prefix is stable across turns even
+    /// if the shell ever re-orders the applet list at launch. The label
+    /// is `"\(displayName) applet"`; the body is the trimmed prompt text.
+    public func resolvedBriefings() -> [AppletBriefing] {
+        applets
+            .sorted { $0.appletID < $1.appletID }
+            .compactMap { applet -> AppletBriefing? in
+                let trimmed = applet.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                return AppletBriefing(
+                    label: "\(applet.displayName) applet",
+                    body: trimmed
+                )
+            }
+    }
+
 }

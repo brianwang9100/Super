@@ -132,34 +132,21 @@ struct AppShell: View {
     /// second bootstrap before the first finishes. Safe to read/write
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
-    /// `UserDefaults` key for the persisted backdrop applet ID. Referenced
-    /// from both the bootstrap read in `init` and the write-back in
-    /// `onSelectApplet` — the two must agree or persistence silently breaks.
-    private static let activeAppletStorageKey = "shell.activeAppletID"
+    /// `UserDefaults` key for the persisted backdrop applet ID. The
+    /// read at launch lives in `AppBootstrap` now (since the registry is
+    /// built there); this key is referenced here for the write-back in
+    /// `onSelectApplet`. The two must agree or persistence silently
+    /// breaks, so the constant is exposed by `AppBootstrap`.
+    private static var activeAppletStorageKey: String { AppBootstrap.activeAppletStorageKey }
 
-    /// Resolves the initial backdrop applet from persisted state and builds
-    /// the registry. Reads `UserDefaults` directly because `@State` is not
-    /// yet wired up at `init` time; falls back to the first registered
-    /// applet when no persisted ID exists or the ID no longer matches.
+    /// Adopts the registry the composition root built. Pre-existing
+    /// `applets` array + `UserDefaults` read used to live here; both
+    /// moved to `AppBootstrap.bootstrap()` so the same registry is the
+    /// source of truth for both the sidebar rail and the briefings
+    /// handed to `ChatSessionStore`.
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
-        let applets: [any MiniApplet] = [
-            TodoApplet(dependencies: dependencies.todoDependencies),
-            RecipesPlaceholderApplet(),
-            BibleApplet(),
-            FinancePlaceholderApplet(),
-        ]
-        // Read UserDefaults directly because `@State` initializers run
-        // before `@AppStorage` is wired up. The fallback chain keeps the
-        // invariant that some backdrop is always selected: persisted ID
-        // if it still matches a registered applet, else the first applet.
-        let storedID = UserDefaults.standard.string(forKey: Self.activeAppletStorageKey)
-        let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
-            ?? applets.first?.appletID
-        _registry = State(initialValue: AppletRegistry(
-            applets: applets,
-            initialActiveID: resolvedID
-        ))
+        _registry = State(initialValue: dependencies.appletRegistry)
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
@@ -465,7 +452,7 @@ struct AppShell: View {
                 modelRepository: dependencies.modelConfigurationRepository,
                 conversationRepository: dependencies.conversationRepository,
                 toolRegistry: dependencies.toolRegistry,
-                systemPromptReceiver: dependencies.chatSessionStore,
+                userPersonalizationReceiver: dependencies.chatSessionStore,
                 autoCompactPolicyReceiver: dependencies.chatSessionStore,
                 // Required for SettingsMemoryPane edit/delete/clear-all
                 // to reach the GRDB store. Optional in the type so test

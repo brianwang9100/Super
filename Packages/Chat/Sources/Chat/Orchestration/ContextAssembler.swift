@@ -58,31 +58,39 @@ public struct ContextAssembler: Sendable {
     ///     `isError: true` on tool-result rows whose call failed.
     ///   - checkpoint: Latest live compaction checkpoint, or nil.
     ///   - model: Active model — its `maxContextTokens` drives the budget.
-    ///   - systemPrompt: The user's configured system prompt from
-    ///     `ChatSettings.systemPrompt`. Trimmed; if non-empty, prepended
-    ///     as the very first `.system` LLMMessage (before any historical
-    ///     `.system` rows and before the checkpoint summary) so it always
-    ///     reflects current settings rather than a snapshot baked into
-    ///     the conversation. Defaults to empty (no injection) to keep
-    ///     callers that don't carry settings — fixtures, snapshots —
-    ///     working unchanged.
+    ///   - chatBriefing: The Chat-assistant base prompt, loaded once at
+    ///     app launch from `Resources/DefaultSystemPrompt.md`. Rendered
+    ///     under a `## Chat assistant` header inside the leading
+    ///     concatenated `.system` block. Defaults to empty so fixtures
+    ///     and tests that don't carry the Chat bundle continue to work.
+    ///   - appletBriefings: Per-applet prompts contributed by registered
+    ///     `MiniApplet`s, already trimmed and ordered (see
+    ///     `AppletRegistry.resolvedBriefings()`). Each renders under its
+    ///     own `## <Name> applet` header inside the leading block.
+    ///   - userPersonalization: Free-form user text (was
+    ///     `ChatSettings.systemPrompt`). Rendered under a
+    ///     `## User personalization` header at the end of the leading
+    ///     block so it follows — never overrides — the authoritative
+    ///     chat and applet sections. Empty/whitespace skips injection.
     ///   - memories: Stored user-preference memories surfaced by the
     ///     `memory` tool. Rendered as a bulleted "What I remember about
-    ///     you" block ahead of `systemPrompt` so the model sees them
-    ///     before any persona instructions. Each bullet carries the
-    ///     entry's id (`- [<id>] <text>`) so the LLM can call
-    ///     `memory(op:'update'|'forget', id:...)` in conversations
+    ///     you" block in its own `.system` message immediately after the
+    ///     leading block (memories change far more frequently than the
+    ///     chat/applet/personalization stack; keeping them in their own
+    ///     block isolates the prompt-cache-busting churn). Each bullet
+    ///     carries the entry's id (`- [<id>] <text>`) so the LLM can
+    ///     call `memory(op:'update'|'forget', id:...)` in conversations
     ///     where it didn't perform the original `save` and therefore
     ///     has no other source for the id. Empty array = no block
-    ///     injected. The orchestrator passes `[]` when the memory tool
-    ///     is disabled, so this same code path serves the "off" case
-    ///     without a separate flag.
+    ///     injected.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
         checkpoint: CompactionCheckpointRecord?,
         model: LLMModel,
-        systemPrompt: String = "",
+        chatBriefing: String = "",
+        appletBriefings: [AppletBriefing] = [],
+        userPersonalization: String = "",
         memories: [MemoryEntry] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
@@ -99,29 +107,74 @@ public struct ContextAssembler: Sendable {
             prompt.insert(checkpointMessage(for: checkpoint), at: 0)
             prompt.insert(contentsOf: systemPrefix, at: 0)
         }
-        let trimmedSystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedSystemPrompt.isEmpty {
-            prompt.insert(LLMMessage(role: .system, text: trimmedSystemPrompt), at: 0)
-        }
-        // Each insert above can produce a `.system` row (memories block,
-        // settings prompt, historical leading `.system` rows, checkpoint
-        // summary), so the projected prompt can carry up to four
-        // consecutive `.system` entries. The Anthropic Messages API
-        // accepts that natively and `OpenAICompatibleLLMProvider`
-        // forwards each one as its own message — which the OpenAI Chat
-        // Completions API also accepts (it concatenates internally).
-        // If a future provider with a stricter single-system contract
-        // is added, merge these blocks into a single newline-joined
-        // `.system` entry at this insertion point.
+        // Insert order is bottom-up — each `insert(at: 0)` puts the new
+        // block ahead of everything inserted so far. The final on-the-wire
+        // order is therefore:
+        //   [leading block, memories, historical .system rows, checkpoint
+        //    summary, user/assistant/tool history].
+        // The leading block (chat assistant + applets + personalization)
+        // sits first because it is the most stable across turns — the
+        // Anthropic prompt cache rewards a stable prefix. Memories change
+        // every time the `memory` tool runs, so they live in their own
+        // block immediately after the leading one, isolating the cache
+        // bust to just that block.
         if let memoriesBlock = Self.formatMemoriesBlock(memories) {
             prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
         }
+        if let leadingBlock = Self.formatLeadingSystemBlock(
+            chatBriefing: chatBriefing,
+            appletBriefings: appletBriefings,
+            userPersonalization: userPersonalization
+        ) {
+            prompt.insert(LLMMessage(role: .system, text: leadingBlock), at: 0)
+        }
+        // The projected prompt can carry several consecutive `.system`
+        // entries (leading block, memories, historical leading `.system`
+        // rows, checkpoint summary). The Anthropic Messages API accepts
+        // that natively and `OpenAICompatibleLLMProvider` forwards each
+        // one as its own message — which the OpenAI Chat Completions API
+        // also accepts (it concatenates internally). If a future
+        // provider with a stricter single-system contract is added,
+        // merge these blocks into a single newline-joined `.system`
+        // entry at this insertion point.
         let total = estimator.estimate(messages: prompt)
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,
             maxTokens: model.maxContextTokens
         )
+    }
+
+    /// Concatenates the chat-assistant briefing, per-applet briefings, and
+    /// user-personalization text into a single labeled markdown body, or
+    /// returns `nil` when every section is empty. Each section is
+    /// preceded by a `## <heading>` so the Large Language Model (LLM)
+    /// can scope rules to the right applet and so user personalization is
+    /// visibly distinct from authoritative orchestration text.
+    static func formatLeadingSystemBlock(
+        chatBriefing: String,
+        appletBriefings: [AppletBriefing],
+        userPersonalization: String
+    ) -> String? {
+        var sections: [String] = []
+        let trimmedChat = chatBriefing.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedChat.isEmpty {
+            sections.append("## Chat assistant\n\n\(trimmedChat)")
+        }
+        for briefing in appletBriefings {
+            // Bodies are already trimmed by `AppletRegistry.resolvedBriefings()`,
+            // but trim again defensively for callers that build briefings
+            // by hand (tests, fixtures).
+            let trimmedBody = briefing.body.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedBody.isEmpty else { continue }
+            sections.append("## \(briefing.label)\n\n\(trimmedBody)")
+        }
+        let trimmedPersonalization = userPersonalization.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPersonalization.isEmpty {
+            sections.append("## User personalization\n\n\(trimmedPersonalization)")
+        }
+        guard !sections.isEmpty else { return nil }
+        return sections.joined(separator: "\n\n")
     }
 
     /// Format the bulleted "What I remember about you" block, or `nil`

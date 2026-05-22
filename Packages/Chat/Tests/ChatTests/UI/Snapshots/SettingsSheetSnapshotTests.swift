@@ -73,9 +73,9 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
-    @Test("system prompt pane")
-    func promptPane() async {
-        await verify(theme: .light, pane: .prompt, name: "settings_prompt_light")
+    @Test("personalization pane")
+    func personalizationPane() async {
+        await verify(theme: .light, pane: .personalization, name: "settings_personalization_light")
     }
 
     @Test("default verbosity pane")
@@ -233,7 +233,7 @@ struct SettingsSheetSnapshotTests {
             modelRepository: NoopModelRepository(),
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
-            systemPromptReceiver: FakeSystemPromptReceiver(),
+            userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver()
         )
     }

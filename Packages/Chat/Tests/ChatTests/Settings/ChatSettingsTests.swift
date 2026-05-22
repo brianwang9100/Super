@@ -3,28 +3,16 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `ChatSettings.default` and `ChatSettingsStore`'s missing-key
-/// fallback. The non-overriding-of-user-customization guarantee is
-/// covered by `loadWithStoredPromptReturnsStoredValueNotDefault` below
-/// (direct store test) plus `SettingsViewModelTests.loadPersistedValues`
-/// (indirect, through the view model).
+/// Tests for `ChatSettings.default` and `ChatSettingsStore`'s
+/// missing-key fallback / legacy-`systemPrompt` migration. The
+/// authoritative chat-assistant prompt is no longer a user-facing
+/// setting; `ChatSettings.userPersonalization` is a free-form "about
+/// me" field that defaults to empty.
 @Suite("ChatSettings")
 struct ChatSettingsTests {
-    @Test("default systemPrompt matches an independent read of the bundled file")
-    func defaultSystemPromptMatchesBundledFile() {
-        let onDisk = ChatSettings._loadBundledDefaultSystemPrompt()
-        // The cached default must equal a fresh read of the bundled
-        // markdown. Silent revert to a hardcoded literal would diverge
-        // these two strings; an empty / missing bundle would fatalError
-        // before the test ran.
-        #expect(ChatSettings.default.systemPrompt == onDisk)
-        #expect(!onDisk.isEmpty)
-    }
-
-    @Test("default systemPrompt is trimmed of surrounding whitespace")
-    func defaultSystemPromptIsTrimmed() {
-        let prompt = ChatSettings.default.systemPrompt
-        #expect(prompt == prompt.trimmingCharacters(in: .whitespacesAndNewlines))
+    @Test("default userPersonalization is empty")
+    func defaultUserPersonalizationIsEmpty() {
+        #expect(ChatSettings.default.userPersonalization.isEmpty)
     }
 
     @Test("compaction threshold constants are the single source of truth")
@@ -41,30 +29,89 @@ struct ChatSettingsTests {
 }
 
 /// Direct tests for `ChatSettingsStore.load()` covering the
-/// missing-key-fallback contract — the architectural guarantee that
-/// changing `ChatSettings.default.systemPrompt` (e.g. by editing the
-/// bundled markdown) cannot override a value the user has already saved.
+/// missing-key-fallback contract plus the one-shot legacy-`systemPrompt`
+/// migration.
 @Suite("ChatSettingsStore")
 struct ChatSettingsStoreTests {
-    @Test("load returns the bundled default when no systemPrompt row is stored")
-    func loadFallsBackToDefaultWhenUnset() async {
+    @Test("load returns an empty userPersonalization when no row is stored")
+    func loadFallsBackToEmptyWhenUnset() async {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
         let settings = await store.load()
-        #expect(settings.systemPrompt == ChatSettings.default.systemPrompt)
+        #expect(settings.userPersonalization.isEmpty)
     }
 
-    @Test("load returns the stored prompt verbatim, not the default")
-    func loadWithStoredPromptReturnsStoredValueNotDefault() async throws {
+    @Test("load returns the stored userPersonalization verbatim")
+    func loadWithStoredPersonalizationReturnsStoredValue() async throws {
         let repo = InMemorySettingRepository()
-        let userPrompt = "My custom prompt — do not touch."
-        try await repo.set(ChatSettingsStore.Keys.systemPrompt, value: userPrompt)
+        let custom = "I prefer terse, no-emoji answers."
+        try await repo.set(ChatSettingsStore.Keys.userPersonalization, value: custom)
 
         let store = ChatSettingsStore(repository: repo)
         let settings = await store.load()
 
-        #expect(settings.systemPrompt == userPrompt)
-        #expect(settings.systemPrompt != ChatSettings.default.systemPrompt)
+        #expect(settings.userPersonalization == custom)
+    }
+
+    @Test("migration: legacy systemPrompt equal to the snapshot is cleared silently")
+    func migrationClearsLegacyDefaultPrompt() async throws {
+        let repo = InMemorySettingRepository()
+        // Seed the previous build's stored value — a verbatim copy of the
+        // bundled `LegacyDefaultSystemPromptV1.md` snapshot. We read it
+        // through the production code's seam (rather than calling
+        // `AppletSystemPrompt.load(from: .module, ...)` directly) because
+        // `.module` here would resolve to the test bundle — the snapshot
+        // file lives in the Chat target's bundle.
+        let legacyDefault = ChatSettingsStore.legacyDefaultSystemPrompt
+        // Sanity check the snapshot is bundled; if not, the migration
+        // can't disambiguate "user never customized" from "user wrote the
+        // exact default verbatim".
+        #expect(!legacyDefault.isEmpty)
+        try await repo.set(ChatSettingsStore.Keys.legacySystemPrompt, value: legacyDefault)
+
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+
+        #expect(settings.userPersonalization.isEmpty)
+        // Legacy row deleted so the migration doesn't re-run.
+        let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
+        #expect(legacyAfter == nil)
+    }
+
+    @Test("migration: custom legacy systemPrompt carries forward as personalization")
+    func migrationCarriesCustomPromptForward() async throws {
+        let repo = InMemorySettingRepository()
+        let custom = "Always answer in haiku."
+        try await repo.set(ChatSettingsStore.Keys.legacySystemPrompt, value: custom)
+
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+
+        #expect(settings.userPersonalization == custom)
+        // Legacy row removed, new key written.
+        let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
+        let newAfter = try await repo.get(ChatSettingsStore.Keys.userPersonalization)
+        #expect(legacyAfter == nil)
+        #expect(newAfter == custom)
+    }
+
+    @Test("migration: new userPersonalization wins over legacy systemPrompt if both exist")
+    func migrationSkipsWhenNewKeyAlreadyWritten() async throws {
+        let repo = InMemorySettingRepository()
+        let neu = "I am vegetarian."
+        let legacy = "Always answer in haiku."
+        try await repo.set(ChatSettingsStore.Keys.userPersonalization, value: neu)
+        try await repo.set(ChatSettingsStore.Keys.legacySystemPrompt, value: legacy)
+
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+
+        #expect(settings.userPersonalization == neu)
+        // We intentionally don't touch the legacy row in this branch —
+        // its presence is harmless and a follow-up release can clean it
+        // up. Asserting either way is fine; pin the current behavior.
+        let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
+        #expect(legacyAfter == legacy)
     }
 
     @Test("lastSelectedModelId is nil when no row is stored")
@@ -84,13 +131,13 @@ struct ChatSettingsStoreTests {
         #expect(settings.lastSelectedModelId == "claude-opus-4-7")
     }
 
-    @Test("setLastSelectedModelId does not disturb other persisted fields")
-    func lastSelectedModelIdIndependentOfOtherKeys() async throws {
+    @Test("set* round-trips do not disturb other persisted fields")
+    func roundTripIndependence() async throws {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
 
         try await store.setTheme(.dark)
-        try await store.setSystemPrompt("custom")
+        try await store.setUserPersonalization("custom")
         try await store.setDefaultVerbosity(.verbose)
         try await store.setFontScale(1.10)
         try await store.setAutoCompactEnabled(false)
@@ -99,7 +146,7 @@ struct ChatSettingsStoreTests {
 
         let settings = await store.load()
         #expect(settings.themeId == .dark)
-        #expect(settings.systemPrompt == "custom")
+        #expect(settings.userPersonalization == "custom")
         #expect(settings.defaultVerbosity == .verbose)
         #expect(settings.fontScale == 1.10)
         #expect(settings.autoCompactEnabled == false)
