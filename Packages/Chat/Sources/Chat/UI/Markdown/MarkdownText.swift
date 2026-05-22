@@ -20,14 +20,38 @@ struct MarkdownText: View {
     /// uses this to italicize and re-color the body without forking the
     /// whole theme builder.
     let bodyStyleOverride: BodyStyle?
+    /// When true, the input is routed through ``MarkdownAutocloser``
+    /// before MarkdownUI parses it — closes dangling fences, strips
+    /// half-written links, trims unmatched emphasis. Set by the live
+    /// streaming overlay; the persisted assistant row leaves this at
+    /// its default so its rendering is byte-for-byte unchanged.
+    let treatAsPartial: Bool
 
     @Environment(\.superTheme) private var theme
     @Environment(\.chatAppearance) private var appearance
     @State private var cachedTheme: MarkdownUI.Theme?
 
-    init(_ text: String, bodyStyleOverride: BodyStyle? = nil) {
+    init(_ text: String, bodyStyleOverride: BodyStyle? = nil, treatAsPartial: Bool = false) {
         self.text = text
         self.bodyStyleOverride = bodyStyleOverride
+        self.treatAsPartial = treatAsPartial
+    }
+
+    /// Test-only seam exposing the string that will be handed to
+    /// MarkdownUI — i.e. the autocloser-processed text when
+    /// `treatAsPartial` is set, otherwise the raw input. Underscore
+    /// prefix marks it as not part of the stable API, per the codebase
+    /// convention for test seams (e.g. `_waitForPendingTitleTask`).
+    ///
+    /// Recomputes ``MarkdownAutocloser/close(_:)`` on every body
+    /// invocation rather than memoizing via `@State`. Streaming text
+    /// changes every coalescer flush, so a cache keyed on the input
+    /// would always miss; the prose-only fast path (one UTF-8 byte
+    /// walk) is the dominant case and is essentially free. Marker-rich
+    /// inputs pay the per-render cost — known and accepted in exchange
+    /// for the simpler view shape.
+    var _resolvedText: String {
+        treatAsPartial ? MarkdownAutocloser.close(text) : text
     }
 
     /// Per-call-site overrides for the default `Theme.text` style.
@@ -44,7 +68,7 @@ struct MarkdownText: View {
     var body: some View {
         // First render before `.task` fires uses an inline build; the
         // task primes the cache so subsequent renders skip the rebuild.
-        Markdown(text)
+        Markdown(_resolvedText)
             .markdownTheme(cachedTheme ?? theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance))
             // Selection lets the user copy a partial run from a code
             // block or a sentence from prose without invoking the

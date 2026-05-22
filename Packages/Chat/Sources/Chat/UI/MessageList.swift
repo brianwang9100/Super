@@ -6,11 +6,15 @@ import SwiftUI
 /// overlay tail showing the in-flight assistant text/thinking, and an
 /// optional error banner above the composer.
 ///
-/// Persisted assistant text, thinking traces, and the compaction-banner
-/// summary all run through ``MarkdownText`` (MarkdownUI + Splash). The
-/// streaming tail intentionally stays plain `Text` so we don't re-parse
-/// partial markdown on every delta — the cutover happens in
-/// `ChatScreenViewModel.handle(.assistantMessageSaved)`.
+/// Persisted assistant text, thinking traces, the compaction-banner
+/// summary, *and* the live streaming tail all run through
+/// ``MarkdownText`` (MarkdownUI + Splash). The streaming tail opts into
+/// the partial-input mode (`treatAsPartial: true`) so an unterminated
+/// fence/link/emphasis run renders cleanly while the closer is still in
+/// flight. To keep the markdown reparse cost bounded under per-SSE-delta
+/// arrival rates, `ChatScreenViewModel`'s coalescer flushes
+/// `streamingTail.text` on whitespace boundaries (and at a 100ms ceiling
+/// otherwise) — see `appendStreamingText(_:)`.
 public struct MessageList: View {
     /// One projected row to display. `MessageRecord`s are projected into
     /// this shape upstream so the view stays free of Core/Chat imports

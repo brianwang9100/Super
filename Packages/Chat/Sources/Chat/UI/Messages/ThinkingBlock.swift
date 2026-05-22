@@ -36,11 +36,22 @@ struct ThinkingBlock: View {
         verbosity.atLeast(.thinking)
     }
 
+    /// Live thinking traces stream the same way assistant text does, so
+    /// they need the same partial-input autoclose pass — otherwise an
+    /// unclosed fence/link in the reasoning buffer would visually break
+    /// while the closer is still in flight. Persisted thinking
+    /// (`.finished`) renders verbatim because the row is committed once
+    /// the turn is over.
+    private var isLive: Bool {
+        if case .live = durationSource { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             if isExpanded, !text.isEmpty {
-                MarkdownText(text, bodyStyleOverride: .thinking)
+                MarkdownText(text, bodyStyleOverride: .thinking, treatAsPartial: isLive)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 12)

@@ -103,34 +103,5 @@ struct CodeBlockCopyControllerTests {
     }
 }
 
-/// Test helper: a one-shot gate that sleeps the awaiter until `release()`
-/// is called, then immediately resumes every awaiter (current and future).
-/// Lets the controller's injected `sleep` closure block until the test
-/// explicitly opens the gate, removing real-clock dependency.
-private final class SleepGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuations: [CheckedContinuation<Void, Never>] = []
-    private var released = false
-
-    func wait() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if released {
-                lock.unlock()
-                continuation.resume()
-            } else {
-                continuations.append(continuation)
-                lock.unlock()
-            }
-        }
-    }
-
-    func release() {
-        lock.lock()
-        let pending = continuations
-        continuations.removeAll()
-        released = true
-        lock.unlock()
-        for continuation in pending { continuation.resume() }
-    }
-}
+// SleepGate is shared with other test suites — see
+// `Tests/ChatTests/UI/Support/SleepGate.swift`.
