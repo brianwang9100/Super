@@ -136,6 +136,7 @@ struct BibleNavBar: View {
         .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
+        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
     }
 
     /// The selection-mode centre group: the verse citation with a clear
@@ -163,6 +164,7 @@ struct BibleNavBar: View {
         .frame(height: 36)
         .background(Capsule().fill(theme.backgroundRaised))
         .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
+        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
     }
 
     private var plusButton: some View {
@@ -172,6 +174,7 @@ struct BibleNavBar: View {
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.accent))
+                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
                 .overlay(alignment: .topTrailing) {
                     // A dot marks that the selected verses, not the whole
                     // chapter, are what the `+` would hand to a chat.
@@ -203,6 +206,7 @@ struct BibleNavBar: View {
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.backgroundRaised))
                 .overlay(Circle().strokeBorder(theme.borderFaint, lineWidth: 0.5))
+                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
         }
         .buttonStyle(.plain)
     }
