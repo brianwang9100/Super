@@ -502,6 +502,37 @@ struct MessageListSnapshotTests {
         recordOrCompare(view: view, name: "list_markdown_light_xxl", function: function)
     }
 
+    /// Dynamic Type XXL coverage for the streaming overlay's partial
+    /// markdown path. AGENTS.md §Testing.3 requires "at minimum one
+    /// larger Dynamic Type size" for new SwiftUI views; the mid-list
+    /// shape reflows non-trivially under accessibility-large type
+    /// (per-row line wrapping, marker indentation) so it's the most
+    /// likely surface to surface a regression.
+    @Test("dynamic type XXL streaming tail mid-list (light)")
+    func streamingTailMidListLightXXL() {
+        let function = #function
+        let tail = MessageList.StreamingState(
+            thinking: "",
+            text: """
+            Three things to remember:
+
+            - first item complete
+            - second item complete
+            - third item
+            """,
+            isCompacting: false
+        )
+        let view = MessageList(
+            items: [.userBubble(id: "u1", text: "Show me", references: [])],
+            streamingTail: tail,
+            verbosity: .verbose
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: 402, height: 900)
+        recordOrCompare(view: view, name: "list_streaming_midlist_light_xxl", function: function)
+    }
+
     // MARK: - Live-thinking partial markdown
     //
     // ``ThinkingBlock`` passes `treatAsPartial: true` to ``MarkdownText``
