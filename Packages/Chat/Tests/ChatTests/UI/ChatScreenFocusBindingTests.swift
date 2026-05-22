@@ -43,8 +43,16 @@ struct ChatScreenFocusBindingTests {
         let controller = UIHostingController(rootView: host)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
         window.rootViewController = controller
-        window.isHidden = false
+        // `makeKeyAndVisible()` (not just `isHidden = false`) is load-bearing:
+        // SwiftUI's `@FocusState`-driven `becomeFirstResponder` requires a key
+        // window. Without it UIKit refuses focus and SwiftUI auto-reverts
+        // `isFocused` to `false` via a delayed `onChange` — which would let
+        // the `waitFor(false)` assertion below resolve from the revert rather
+        // than from the threshold-cross dismissal we're trying to verify
+        // (false positive that survives even reverting the fix).
+        window.makeKeyAndVisible()
         defer {
+            window.resignKey()
             window.isHidden = true
             window.rootViewController = nil
         }
