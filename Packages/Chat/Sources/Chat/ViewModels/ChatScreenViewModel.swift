@@ -549,13 +549,25 @@ public final class ChatScreenViewModel {
     /// second one — that's why this calls `driver.retry(...)` instead of
     /// the normal `send(...)` path. If no model is active, just clear
     /// the error. Mirrors `send`'s `!isStreaming` guard so a double-tap
-    /// while a turn is already in flight (in practice rare, since the
-    /// banner the pill lives on is only shown between turns) cannot spawn
-    /// a second `consume` task racing the first over the same observable
-    /// state.
+    /// while a turn is already in flight cannot spawn a second `consume`
+    /// task racing the first over the same observable state.
+    ///
+    /// Synchronously checks `items` for a user bubble before touching
+    /// any streaming flags — if there's nothing to retry (brand-new
+    /// conversation, transcript wiped) we want to no-op without flashing
+    /// the streaming UI on and back off. `ChatSession.runRetry` has the
+    /// same guard against the persisted transcript as defense-in-depth.
     public func retry() {
         guard !isStreaming else { return }
         guard let model = activeModel else {
+            error = nil
+            return
+        }
+        let hasUserBubble = items.contains(where: {
+            if case .userBubble = $0 { return true }
+            return false
+        })
+        guard hasUserBubble else {
             error = nil
             return
         }

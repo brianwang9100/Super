@@ -165,9 +165,15 @@ struct ChatScreenViewModelTests {
             availableModels: [model]
         )
         // Prime an error state without going through send — equivalent to
-        // the post-failure state the user taps Retry from.
+        // the post-failure state the user taps Retry from. Must include a
+        // user bubble in `items` because `retry()` now guards
+        // synchronously against an empty transcript before invoking the
+        // driver (so a stale tap on a brand-new conversation no-ops
+        // without flashing the streaming UI).
         viewModel._setSnapshotState(
-            items: [],
+            items: [
+                .userBubble(id: "u1", text: "test", references: [])
+            ],
             error: MessageList.ErrorState(message: "Authentication failed.")
         )
 
@@ -1458,17 +1464,17 @@ private actor ScriptedDriver: ChatSessionDriver {
     func retry(model: LLMModel) async -> AsyncStream<ChatEvent> {
         retryInvocations += 1
         finished = false
-        let scripted = retryScripted
+        // Drive synchronously — yield the full scripted sequence and
+        // finish the continuation before returning, matching the pattern
+        // `subscribe()` uses. Avoids the `Task { ... await Task.yield() }`
+        // "race amplifier" pattern that AGENTS.md §Testing.2 flags. The
+        // consumer drains the pre-filled buffer on its own schedule.
         let (stream, continuation) = AsyncStream<ChatEvent>.makeStream()
-        let actorRef = self
-        Task {
-            for event in scripted {
-                continuation.yield(event)
-                await Task.yield()
-            }
-            continuation.finish()
-            await actorRef.markFinished()
+        for event in retryScripted {
+            continuation.yield(event)
         }
+        continuation.finish()
+        markFinished()
         return stream
     }
 
