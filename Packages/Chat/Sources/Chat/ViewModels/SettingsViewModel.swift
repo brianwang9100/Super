@@ -241,7 +241,7 @@ public final class SettingsViewModel {
         var rows: [ModelRow] = []
         for record in records {
             let stored = await store.isModelEnabled(id: record.id)
-            let keyExists = ((try? await modelRepository.loadAPIKey(ref: record.apiKeyRef)) ?? nil) != nil
+            let keyExists = (try? await modelRepository.loadAPIKey(ref: record.apiKeyRef)).flatMap { $0 } != nil
             rows.append(ModelRow(
                 id: record.id,
                 name: record.name,
