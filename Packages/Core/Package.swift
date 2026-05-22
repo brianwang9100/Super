@@ -20,6 +20,9 @@ let package = Package(
         .testTarget(
             name: "CoreTests",
             dependencies: ["Core"],
+            resources: [
+                .process("Resources"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]

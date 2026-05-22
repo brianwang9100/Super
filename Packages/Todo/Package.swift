@@ -25,6 +25,12 @@ let package = Package(
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
             ],
+            // Holds `SystemPrompt.md` — the applet's contribution to the
+            // Chat leading system message. `.process` (not `.copy`) keeps
+            // the bundle codesign-valid on the iOS simulator.
+            resources: [
+                .process("Resources"),
+            ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]

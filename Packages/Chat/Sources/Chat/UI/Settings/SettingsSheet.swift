@@ -24,7 +24,7 @@ public struct SettingsSheet: View {
         /// Model create/edit form. `nil` id ⇒ new model. The id parameter
         /// is the existing record id for edit mode.
         case modelDetail(id: String?)
-        case prompt
+        case personalization
         case verbosity
         case appearance
         case tools
@@ -41,7 +41,7 @@ public struct SettingsSheet: View {
             case .root: return "Settings"
             case .models: return "Models"
             case .modelDetail(let id): return id == nil ? "Add Model" : "Edit Model"
-            case .prompt: return "System Prompt"
+            case .personalization: return "Personalization"
             case .verbosity: return "Default Verbosity"
             case .appearance: return "Appearance"
             case .tools: return "Tools"
@@ -193,8 +193,8 @@ public struct SettingsSheet: View {
             SettingsModelsPane(viewModel: viewModel)
         case .modelDetail(let id):
             SettingsModelDetailPane(viewModel: viewModel, editingId: id)
-        case .prompt:
-            SettingsPromptPane(viewModel: viewModel)
+        case .personalization:
+            SettingsPersonalizationPane(viewModel: viewModel)
         case .verbosity:
             SettingsVerbosityPane(viewModel: viewModel)
         case .appearance:

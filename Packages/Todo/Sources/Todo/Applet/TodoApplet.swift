@@ -11,6 +11,7 @@ public struct TodoApplet: MiniApplet {
     public var appletID: String { Self.appletID }
     public var displayName: String { "Todo" }
     public var accentColor: Color { Color(red: 0.30, green: 0.45, blue: 0.78) }
+    public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
 
     private let dependencies: TodoDependencies
 

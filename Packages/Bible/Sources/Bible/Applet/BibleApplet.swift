@@ -22,6 +22,7 @@ public struct BibleApplet: MiniApplet {
     /// chat-card accent strips don't shift visually on upgrade.
     public static let accentColor: Color = Color(red: 0.52, green: 0.32, blue: 0.55)
     public var accentColor: Color { Self.accentColor }
+    public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
 
     /// The single view model backing the reading surface. Held here (not
     /// rebuilt per `rootView()` call) so navigation state persists while the

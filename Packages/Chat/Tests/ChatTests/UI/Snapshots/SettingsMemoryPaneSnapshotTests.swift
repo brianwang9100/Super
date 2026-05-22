@@ -146,7 +146,7 @@ struct SettingsMemoryPaneSnapshotTests {
             modelRepository: NoopModelRepository(),
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
-            systemPromptReceiver: FakeSystemPromptReceiver(),
+            userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
             memoryRepository: memoryRepository
         )

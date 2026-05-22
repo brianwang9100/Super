@@ -48,4 +48,12 @@ public struct ChatApplet: MiniApplet {
     public func rootView() -> AnyView {
         AnyView(Color.clear)
     }
+
+    /// Reads `Resources/DefaultSystemPrompt.md` for parity with the
+    /// production load path (`AppBootstrap` reaches into the same bundle).
+    /// Empty when the file is missing — `AppletRegistry.resolvedBriefings()`
+    /// will then skip the block.
+    public var systemPrompt: String {
+        AppletSystemPrompt.load(from: .module, resource: "DefaultSystemPrompt")
+    }
 }
