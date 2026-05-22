@@ -46,6 +46,12 @@ struct AppDependencies {
 /// Lives in `App/` (not in any package) because it pulls together pieces
 /// from both Core and Chat — i.e. it is the place those modules first meet.
 enum AppBootstrap {
+    /// `UserDefaults` key for the persisted backdrop applet ID. Owned here
+    /// (rather than in `AppShell`) now that the registry is built during
+    /// bootstrap — the read and the write must agree on the key or
+    /// persistence silently breaks.
+    static let activeAppletStorageKey: String = "shell.activeAppletID"
+
     /// Build the full dependency graph.
     ///
     /// - Parameters:
@@ -57,12 +63,6 @@ enum AppBootstrap {
     ///     the user's real Keychain.
     /// - Throws: Any GRDB or filesystem error from opening the database, or
     ///   any Keychain error encountered while hydrating saved providers.
-    /// `UserDefaults` key for the persisted backdrop applet ID. Owned here
-    /// (rather than in `AppShell`) now that the registry is built during
-    /// bootstrap — the read and the write must agree on the key or
-    /// persistence silently breaks.
-    static let activeAppletStorageKey: String = "shell.activeAppletID"
-
     @MainActor
     static func bootstrap(
         directory: URL? = nil,

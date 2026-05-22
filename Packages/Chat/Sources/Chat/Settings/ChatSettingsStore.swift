@@ -54,6 +54,12 @@ public struct ChatSettingsStore: Sendable {
     /// migration will retry on the next load.
     private func resolveUserPersonalization(raw: [String: String]) async -> String {
         if let value = raw[Keys.userPersonalization] {
+            // Best-effort cleanup of the legacy key now that the new
+            // key has been written — covers the rare race where both
+            // were stored simultaneously. Without this the orphan row
+            // would live indefinitely; deleting it here makes the
+            // migration fully idempotent.
+            try? await repository.delete(Keys.legacySystemPrompt)
             return value
         }
         guard let legacy = raw[Keys.legacySystemPrompt] else {

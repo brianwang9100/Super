@@ -95,8 +95,8 @@ struct ChatSettingsStoreTests {
         #expect(newAfter == custom)
     }
 
-    @Test("migration: new userPersonalization wins over legacy systemPrompt if both exist")
-    func migrationSkipsWhenNewKeyAlreadyWritten() async throws {
+    @Test("migration: new userPersonalization wins and clears any straggler legacy row")
+    func migrationCleansLegacyKeyWhenNewKeyAlreadyWritten() async throws {
         let repo = InMemorySettingRepository()
         let neu = "I am vegetarian."
         let legacy = "Always answer in haiku."
@@ -107,11 +107,10 @@ struct ChatSettingsStoreTests {
         let settings = await store.load()
 
         #expect(settings.userPersonalization == neu)
-        // We intentionally don't touch the legacy row in this branch —
-        // its presence is harmless and a follow-up release can clean it
-        // up. Asserting either way is fine; pin the current behavior.
+        // Idempotency: the early-return path also deletes the legacy
+        // row so it can't linger across launches.
         let legacyAfter = try await repo.get(ChatSettingsStore.Keys.legacySystemPrompt)
-        #expect(legacyAfter == legacy)
+        #expect(legacyAfter == nil)
     }
 
     @Test("lastSelectedModelId is nil when no row is stored")
