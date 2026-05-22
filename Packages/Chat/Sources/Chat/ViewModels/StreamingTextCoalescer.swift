@@ -84,7 +84,12 @@ final class StreamingTextCoalescer {
     var _pendingText: String { pendingText }
 
     /// Test seam: await the in-flight flush task so tests synchronize
-    /// on "the deferred flush ran" without polling.
+    /// on "the deferred flush ran" without polling. Returns immediately
+    /// (no suspension point) when the timer has already fired or was
+    /// cancelled via ``flush()`` / ``reset()`` — correct in practice
+    /// because every state mutation is `@MainActor`-serialized, so a
+    /// cancelled task cannot interleave with the caller's next
+    /// assertion.
     func _waitForPendingFlushTask() async {
         await flushTask?.value
     }

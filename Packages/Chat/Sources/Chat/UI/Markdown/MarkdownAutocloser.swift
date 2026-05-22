@@ -153,6 +153,13 @@ enum MarkdownAutocloser {
     /// or `![…]` was opened but never completed (no matching `]`, or
     /// `]` followed by an unterminated `(`), strips the markup and
     /// re-emits the label content as literal text.
+    ///
+    /// Tracks only the most-recently opened bracket; a second `[`
+    /// overwrites the prior tracking state so only the innermost
+    /// dangling fragment is stripped. Sufficient for streaming partial
+    /// markdown — LLMs rarely emit nested bracket syntax, and the
+    /// trade-off is a brief literal-bracket flicker until more input
+    /// arrives.
     private static func stripDanglingLinkOrImage(_ text: String) -> String {
         let chars = Array(text)
         var openBracket: Int?

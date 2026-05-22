@@ -42,6 +42,14 @@ struct MarkdownText: View {
     /// `treatAsPartial` is set, otherwise the raw input. Underscore
     /// prefix marks it as not part of the stable API, per the codebase
     /// convention for test seams (e.g. `_waitForPendingTitleTask`).
+    ///
+    /// Recomputes ``MarkdownAutocloser/close(_:)`` on every body
+    /// invocation rather than memoizing via `@State`. Streaming text
+    /// changes every coalescer flush, so a cache keyed on the input
+    /// would always miss; the prose-only fast path (one UTF-8 byte
+    /// walk) is the dominant case and is essentially free. Marker-rich
+    /// inputs pay the per-render cost — known and accepted in exchange
+    /// for the simpler view shape.
     var _resolvedText: String {
         treatAsPartial ? MarkdownAutocloser.close(text) : text
     }
