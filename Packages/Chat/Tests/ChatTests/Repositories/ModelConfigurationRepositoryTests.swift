@@ -162,7 +162,8 @@ struct ModelConfigurationRepositoryTests {
         queue: DatabaseQueue,
         id: String,
         kind: String = "future-unknown-kind",
-        apiKeyRef: String? = nil
+        apiKeyRef: String? = nil,
+        isSelected: Bool = false
     ) async throws {
         try await queue.write { db in
             try db.execute(
@@ -170,10 +171,23 @@ struct ModelConfigurationRepositoryTests {
                 INSERT INTO modelConfiguration
                 (id, kind, name, baseURL, apiKeyRef, modelId, supportsThinking, maxContextTokens, isSelected, createdAt)
                 VALUES
-                (?, ?, 'Unknown', NULL, ?, 'm', 0, 8192, 0, ?)
+                (?, ?, 'Unknown', NULL, ?, 'm', 0, 8192, ?, ?)
                 """,
-                arguments: [id, kind, apiKeyRef, self.now.timeIntervalSince1970]
+                arguments: [id, kind, apiKeyRef, isSelected, self.now.timeIntervalSince1970]
             )
+        }
+    }
+
+    /// Read `isSelected` for `id` via raw SQL so the assertion works
+    /// even when the row's `kind` would be filtered out by reads.
+    private func rawIsSelected(queue: DatabaseQueue, id: String) async throws -> Bool? {
+        try await queue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: "SELECT isSelected FROM modelConfiguration WHERE id = ?",
+                arguments: [id]
+            )
+            return row.map { ($0["isSelected"] as Int? ?? 0) != 0 }
         }
     }
 
@@ -246,6 +260,78 @@ struct ModelConfigurationRepositoryTests {
         #expect(rawAfter == nil)
         #expect(try await keychain.getString(ref: "ko") == nil)
     }
+
+    /// `insertIfEmpty` must not UNIQUE-violate when a downgraded binary
+    /// finds an unknown-kind row already holding the `isSelected = 1`
+    /// slot (the schema's partial unique index covers every row
+    /// regardless of kind). Bug #3293450824 on PR #92.
+    @Test func insertIfEmptyDemotesUnknownKindSelectedRowBeforeSeeding() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        try await insertUnknownKindRow(queue: queue, id: "future-selected", isSelected: true)
+
+        let seeded = try await repo.insertIfEmpty {
+            self.makeRecord(id: "seeded", apiKeyRef: "ks", isSelected: true)
+        }
+
+        // The seed lands without UNIQUE-violating.
+        #expect(seeded?.id == "seeded")
+        #expect(try await repo.all().map(\.id) == ["seeded"])
+        // The previously-selected unknown row is demoted so the new
+        // seed can hold the selection slot.
+        #expect(try await rawIsSelected(queue: queue, id: "future-selected") == false)
+        #expect(try await rawIsSelected(queue: queue, id: "seeded") == true)
+        // `selected()` reports the seed as the active model.
+        #expect(try await repo.selected()?.id == "seeded")
+    }
+
+    #if DEBUG
+    /// `insertDebugIfMissing` must use the filtered selection check so
+    /// the debug row claims the selection slot when no recognised row
+    /// is selected — even when an unknown-kind row holds the partial
+    /// unique slot. Bug #3293450647 on PR #92.
+    @Test func insertDebugIfMissingTakesSelectionWhenOnlyUnknownKindRowIsSelected() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        try await insertUnknownKindRow(queue: queue, id: "future-selected", isSelected: true)
+
+        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+            self.makeRecord(
+                id: "debug-canned",
+                kind: .debug,
+                baseURL: nil,
+                apiKeyRef: nil,
+                isSelected: shouldSelect
+            )
+        }
+
+        #expect(inserted?.id == "debug-canned")
+        // The unknown-kind row is demoted; the debug row holds selection.
+        #expect(try await rawIsSelected(queue: queue, id: "future-selected") == false)
+        #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == true)
+        // `selected()` now reports the debug row.
+        #expect(try await repo.selected()?.id == "debug-canned")
+    }
+
+    @Test func insertDebugIfMissingLeavesKnownSelectionAlone() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        try await repo.save(makeRecord(id: "afm", kind: .appleFoundation, baseURL: nil, apiKeyRef: nil, isSelected: true))
+
+        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+            self.makeRecord(
+                id: "debug-canned",
+                kind: .debug,
+                baseURL: nil,
+                apiKeyRef: nil,
+                isSelected: shouldSelect
+            )
+        }
+
+        #expect(inserted?.id == "debug-canned")
+        // AFM keeps the slot; debug is inserted unselected.
+        #expect(try await rawIsSelected(queue: queue, id: "afm") == true)
+        #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == false)
+        #expect(try await repo.selected()?.id == "afm")
+    }
+    #endif
 
     @Test func deleteOnUnknownIDDoesNotDeleteAnythingOrThrow() async throws {
         let (repo, _) = try makeRepo()

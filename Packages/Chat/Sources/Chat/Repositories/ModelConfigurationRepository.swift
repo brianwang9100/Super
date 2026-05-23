@@ -130,9 +130,35 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             let count = try Self.knownKindRequest.fetchCount(db)
             guard count == 0 else { return nil }
             let record = make()
+            // Before inserting a row with `isSelected = 1`, demote any
+            // unknown-kind row holding the selection slot. The schema's
+            // partial unique index (`WHERE isSelected = 1`) doesn't know
+            // about `kind`, so without the demote the insert would
+            // UNIQUE-violate when an older binary downgrades into a DB
+            // where a newer binary's row sits selected. Demoting is
+            // safe — `selected()` filters unknown-kind rows out, so the
+            // user can't reach that row anyway.
+            if record.isSelected {
+                try Self.demoteUnknownKindSelections(db: db)
+            }
             try record.insert(db)
             return record
         }
+    }
+
+    /// Clear `isSelected` on any row whose `kind` value isn't a known
+    /// case in the running binary. The partial unique index on
+    /// `isSelected = 1` ignores `kind`, so before inserting a new
+    /// selected row we have to free up the slot or risk a UNIQUE
+    /// violation. Demoting an unknown-kind row is benign because
+    /// `selected()` filters those rows out anyway — the user has no
+    /// path to interact with them from this binary.
+    private static func demoteUnknownKindSelections(db: Database) throws {
+        let kinds = LLMProviderKind.allCases.map(\.rawValue)
+        try ModelConfigurationRecord
+            .filter(!kinds.contains(Column("kind")))
+            .filter(Column("isSelected") == true)
+            .updateAll(db, Column("isSelected").set(to: false))
     }
 
     public func delete(id: String) async throws {
@@ -207,10 +233,25 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
                 .filter(Column("kind") == LLMProviderKind.debug.rawValue)
                 .fetchCount(db) > 0
             guard !alreadyHasDebug else { return nil }
-            let hasSelected = try ModelConfigurationRecord
+            // `shouldSelect` matches what `selected()` would report —
+            // only a row whose `kind` the binary recognises counts as
+            // "the active model" from the user's perspective. An
+            // unknown-kind row holding the slot is unusable to this
+            // binary and shouldn't keep the seed from claiming
+            // selection.
+            let hasKnownSelected = try Self.knownKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchCount(db) > 0
-            let record = make(!hasSelected)
+            let shouldSelect = !hasKnownSelected
+            // Demote any unknown-kind selected row before inserting our
+            // own — the schema's partial unique index spans every row
+            // regardless of `kind`, so without this an unknown-kind
+            // selected row from a newer binary would UNIQUE-violate the
+            // debug row's insert.
+            if shouldSelect {
+                try Self.demoteUnknownKindSelections(db: db)
+            }
+            let record = make(shouldSelect)
             try record.insert(db)
             return record
         }
