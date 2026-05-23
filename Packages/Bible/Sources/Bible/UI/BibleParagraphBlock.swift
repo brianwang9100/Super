@@ -22,6 +22,10 @@ struct BibleParagraphBlock: View {
     /// a verse straddling a paragraph break is numbered once, at its first
     /// fragment, so this block leaves those numbers off.
     let numberedEarlier: Set<Int>
+    /// Verse currently being spoken by the narrator — its words render
+    /// with an underline so the reader can follow along. `nil` when
+    /// narration is idle.
+    let currentNarratingVerse: Int?
     /// Invoked with a verse number when any of its words is tapped.
     let onTapVerse: (Int) -> Void
     @Environment(\.superTheme) private var theme
@@ -60,6 +64,7 @@ struct BibleParagraphBlock: View {
                     token: token,
                     isSelected: selectedVerses.contains(token.verseNumber),
                     highlightColor: highlightedVerses[token.verseNumber],
+                    isNarrating: currentNarratingVerse == token.verseNumber,
                     isPoetry: isPoetry,
                     theme: theme,
                     onTap: onTapVerse
@@ -79,6 +84,10 @@ private struct VerseWord: View {
     let isSelected: Bool
     /// The verse's persisted highlight colour, or `nil` when not highlighted.
     let highlightColor: BibleHighlightColor?
+    /// Whether the narrator is currently speaking this verse — true on
+    /// every word of the verse so the underline runs through the whole
+    /// span, even when the verse straddles a paragraph break.
+    let isNarrating: Bool
     let isPoetry: Bool
     let theme: SuperTheme
     let onTap: (Int) -> Void
@@ -89,10 +98,16 @@ private struct VerseWord: View {
             .background(wordBackground)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
+        let identified = token.isVerseStart
+            // Tag every verse's first word with its anchor so
+            // `BibleChapterReader.body`'s `ScrollViewReader` proxy can
+            // scroll directly to it as narration advances.
+            ? AnyView(word.id(VerseAnchor(verseNumber: token.verseNumber)))
+            : AnyView(word)
         if token.isVerseStart {
             // The verse's first word stands in for the whole verse as a
             // single VoiceOver element reading the full text.
-            word
+            identified
                 .accessibilityElement()
                 .accessibilityLabel(BibleVerseAnnouncement.label(
                     verseNumber: token.verseNumber,
@@ -105,7 +120,7 @@ private struct VerseWord: View {
         } else {
             // Every later word folds into the verse's first — hidden so the
             // verse isn't re-announced word by word.
-            word.accessibilityHidden(true)
+            identified.accessibilityHidden(true)
         }
     }
 
@@ -137,14 +152,22 @@ private struct VerseWord: View {
     /// carries the verse number — a verse straddling a paragraph break draws it
     /// once. A trailing space is baked in so the selection background bridges
     /// the gap to the next word.
+    ///
+    /// The narrator underline is applied here (not as a `.underline(...)`
+    /// modifier on the outer view) so the line runs through the verse
+    /// number ornament as well as the word — making it visually clear
+    /// the whole verse is the unit being read.
     private var styledText: Text {
-        let word = Text(token.word + " ")
+        var word = Text(token.word + " ")
             .font(isPoetry ? .body.italic() : .body)
             .foregroundStyle(theme.ink)
+        if isNarrating {
+            word = word.underline(true, color: theme.accent.opacity(0.65))
+        }
         guard token.showsVerseNumber else { return word }
-        return BibleVerseNumber(number: token.verseNumber).text(color: theme.inkFaint)
-            + Text(" ")
-            + word
+        let number = BibleVerseNumber(number: token.verseNumber)
+            .text(color: theme.inkFaint)
+        return number + Text(" ") + word
     }
 
     /// Pale-warm wash behind a selected verse — lightened text in light and

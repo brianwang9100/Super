@@ -42,6 +42,17 @@ public final class BibleScreenViewModel {
     /// lands; the toast is dismissed by a tap, never on a timer.
     public private(set) var toast: String?
 
+    /// The narration session driver — held here so its playback survives
+    /// `BibleScreen` rebuilds and so the nav bar, reader, and transport
+    /// sheet all observe the same `currentVerseNumber`.
+    public let narration: NarrationController
+
+    /// Whether the ``NarrationTransportSheet`` is on screen. The sheet
+    /// can be dismissed without stopping narration — the nav-bar
+    /// "Narrating" pill replaces the spark button so the user can
+    /// re-present it.
+    public var isNarrationSheetPresented = false
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
@@ -72,7 +83,8 @@ public final class BibleScreenViewModel {
         clock: any Clock = SystemClock(),
         clipboard: any ClipboardWriter = SystemClipboard(),
         idGenerator: any IDGenerator = UUIDGenerator(),
-        initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition
+        initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition,
+        narration: NarrationController? = nil
     ) {
         self.textLoader = textLoader
         self.catalog = catalog
@@ -83,6 +95,12 @@ public final class BibleScreenViewModel {
         self.idGenerator = idGenerator
         self.position = initialPosition
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
+        // Default to the production synth-backed controller so tests that
+        // don't exercise narration don't need to construct one. Tests
+        // that *do* exercise narration inject a FakeNarrationService.
+        self.narration = narration ?? NarrationController(
+            service: AVSpeechSynthesizerNarrationService()
+        )
     }
 
     /// Whether a previous / next chapter exists — `false` only at Genesis 1
@@ -112,9 +130,11 @@ public final class BibleScreenViewModel {
 
     /// Step one chapter in `direction`, crossing book boundaries. A no-op at
     /// the canon's ends. The screen updates synchronously; the new position
-    /// is persisted in the background.
+    /// is persisted in the background. Stops any active narration —
+    /// the queue is keyed to the chapter we're leaving.
     public func stepChapter(_ direction: BibleChapterDirection) {
         guard let next = catalog.step(from: position, direction: direction) else { return }
+        narration.stop()
         position = next
         clearSelection()
         applyCurrentChapter()
@@ -146,9 +166,11 @@ public final class BibleScreenViewModel {
     /// Switch the reading translation and close the picker. The chapter text
     /// reloads synchronously in the new translation; the choice is persisted
     /// like a chapter step. Selecting the current translation just closes.
+    /// Stops any active narration — the queue is keyed to the old text.
     public func selectTranslation(_ selected: BibleTranslation) {
         isTranslationSheetPresented = false
         guard selected != translation else { return }
+        narration.stop()
         translation = selected
         clearSelection()
         applyCurrentChapter()
@@ -159,9 +181,12 @@ public final class BibleScreenViewModel {
     /// the sheet. Persists the new position like a step does. An unknown
     /// book or an out-of-range chapter is a no-op — the picker only offers
     /// valid pairs, but this guards future callers (deep links, hand-off).
+    /// Stops any active narration — the queue is keyed to the chapter
+    /// we're leaving.
     public func selectChapter(bookId: String, chapterNumber: Int) {
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
+        narration.stop()
         position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         clearSelection()
         applyCurrentChapter()
@@ -325,6 +350,92 @@ public final class BibleScreenViewModel {
     public func presentChatComingSoon() {
         toast = "Chat integration ships in a later update."
         clearSelection()
+    }
+
+    /// Build a `RecordReference` covering the entire current chapter — the
+    /// payload the spark menu's `Add to chat` / `Start a new chat`
+    /// actions publish when no verses are selected. Reuses the
+    /// `verseRange` kind so the Chat receiver needs no change: the
+    /// `sourceID` lists every verse 1..N, the citation drops the verse
+    /// clause (e.g. `"1 Peter 2 (WEB)"`), and the snapshot carries the
+    /// full chapter text.
+    public func makeChapterReference() -> RecordReference? {
+        guard let chapter, !chapter.paragraphs.isEmpty else { return nil }
+        let texts = verseTextsByNumber()
+        let verses = texts.keys.sorted()
+        guard !verses.isEmpty else { return nil }
+        let snapshot = verses.compactMap { texts[$0] }.joined(separator: " ")
+        guard !snapshot.isEmpty else { return nil }
+        let citation = "\(bookName) \(chapter.number) (\(translation.rawValue))"
+        return RecordReference(
+            appletID: BibleApplet.appletID,
+            kind: "verseRange",
+            sourceID: "\(translation.rawValue)/\(position.bookId)/\(chapter.number)/"
+                + verses.map(String.init).joined(separator: ","),
+            displayLabel: citation,
+            citation: citation,
+            snapshot: snapshot,
+            id: idGenerator.nextID()
+        )
+    }
+
+    // MARK: - Narration
+
+    /// Begin a Narrate session for the current selection if any, else
+    /// the whole chapter. Pops the transport sheet so the user lands on
+    /// the controls; a no-op when the chapter text failed to load.
+    ///
+    /// On the *first* Narrate of a session, picks the highest-quality
+    /// installed voice for the user's locale (Premium > Enhanced) so
+    /// new users don't land on the robotic Compact default. Subsequent
+    /// calls keep whatever voice the user picked. If the user has only
+    /// Compact voices installed, narration still proceeds with the
+    /// system default — the transport sheet's voice picker surfaces the
+    /// path to install better voices.
+    public func startNarration() {
+        let utterances = narrationUtterances()
+        guard !utterances.isEmpty else { return }
+        if narration.voice == nil {
+            narration.voice = NarrationController.bestAvailableVoice()
+        }
+        narration.start(utterances: utterances)
+        isNarrationSheetPresented = true
+    }
+
+    /// Re-present the transport sheet — wired to the nav-bar pill the
+    /// user taps after dismissing the sheet without stopping narration.
+    public func presentNarrationSheet() {
+        isNarrationSheetPresented = true
+    }
+
+    /// Dismiss the transport sheet without stopping narration — the
+    /// nav-bar pill remains visible so the user can re-open it.
+    public func dismissNarrationSheet() {
+        isNarrationSheetPresented = false
+    }
+
+    /// Short human label for the verse currently being narrated, e.g.
+    /// `"1 Peter 2:9"`. `nil` when narration is idle.
+    public var narrationCitation: String? {
+        guard let verse = narration.currentVerseNumber else { return nil }
+        return "\(bookName) \(position.chapterNumber):\(verse)"
+    }
+
+    /// The utterances to feed the synthesizer for the active "Narrate"
+    /// action — the selection if any, else every verse in reading order.
+    private func narrationUtterances() -> [NarrationVerseUtterance] {
+        let texts = verseTextsByNumber()
+        guard !texts.isEmpty else { return [] }
+        let verses: [Int]
+        if selectedVerses.isEmpty {
+            verses = texts.keys.sorted()
+        } else {
+            verses = selectedVerses.sorted()
+        }
+        return verses.compactMap { number in
+            guard let text = texts[number] else { return nil }
+            return NarrationVerseUtterance(verseNumber: number, text: text)
+        }
     }
 
     /// Dismiss the chat-attach toast.
