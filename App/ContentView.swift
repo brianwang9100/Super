@@ -17,34 +17,43 @@ import UIKit
 struct ContentView: View {
     let state: BootstrapState
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        // Switch branches in a `Group` change view *identity* between
+        // states, so a bare `.animation(value:)` would jump-cut. Each
+        // branch carries an explicit `.transition(.opacity)` and the
+        // wrapping `.animation(...)` runs them as a cross-fade. Reduce
+        // Motion swaps to `nil` so vestibular-sensitive users get an
+        // instant cut instead of the 200ms fade.
         Group {
             switch state {
             case .loading:
-                LoadingScreen()
+                // Pin the Light palette while bootstrap is still loading
+                // settings — the splash background is the canonical
+                // `theme.background` for Light and matches the Info.plist
+                // `UILaunchScreen.UIColorName` colorset, so the system
+                // launch screen and the SwiftUI splash render the same
+                // hue across the handoff.
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
             case .failed(let message):
                 FailureScreen(message: message)
+                    .transition(.opacity)
             case .ready(let dependencies):
                 AppShell(dependencies: dependencies)
+                    .transition(.opacity)
             }
         }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: state.discriminant
+        )
     }
 }
 
-// MARK: - Loading / failure
-
-private struct LoadingScreen: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Super")
-                .font(.system(size: 36, weight: .regular, design: .serif))
-                .italic()
-            ProgressView("Starting Super…")
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+// MARK: - Failure
 
 private struct FailureScreen: View {
     let message: String
@@ -287,7 +296,12 @@ struct AppShell: View {
             } else if let bootstrapError {
                 FailureScreen(message: bootstrapError)
             } else {
-                LoadingScreen()
+                // Settings haven't loaded yet during the brief window
+                // between AppShell construction and `ensureViewModel`'s
+                // first await — pin Light so this matches the parent
+                // ContentView's splash before AppShell takes over.
+                SplashView()
+                    .superTheme(.make(.light))
             }
 
             // Shell chrome: hamburger at top-left, outside the chat surface.
