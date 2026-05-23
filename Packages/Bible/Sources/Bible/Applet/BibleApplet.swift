@@ -49,6 +49,14 @@ public struct BibleApplet: MiniApplet {
         self.databaseContext = database.map { db in
             DatabaseContext.readOnly { db.queue }
         }
+        // TODO(narration-arbitration): Wire a shell-side
+        // `NarrationAudioCoordinator` adapter that reads from Chat's
+        // `VoiceInputController`. The default `BibleScreenViewModel`
+        // init constructs an `AVSpeechSynthesizerNarrationService`
+        // with `coordinator: nil`, so the preempt-on-active-mic check
+        // is a no-op in production today. The adapter needs to live
+        // at the composition root (`AppBootstrap`) to bridge Bible →
+        // Chat without violating the no-cross-applet-imports rule.
         self.viewModel = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
             positionRepository: database.map { GRDBBibleReadingPositionRepository(database: $0) },

@@ -9,15 +9,19 @@ import SwiftUI
 /// repaints at once — only the persisted reading position is written
 /// asynchronously. Tapping verses drives the action sheet, whose chat
 /// actions publish the selection to the `SuperEventBus` for the Chat
-/// composer; the `+` whole-chapter button is still a deferred stub.
+/// composer. The green sparkles menu in the top-right routes the same
+/// hand-off paths — selection-aware when verses are selected, whole-chapter
+/// otherwise — plus a Narrate (text-to-speech) entry that drives
+/// ``NarrationController`` through ``NarrationTransportSheet``.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     /// Cross-applet event bus, injected by the shell. `nil` in previews
     /// and isolated tests — the chat hand-off then falls back to the
     /// "coming soon" toast.
     @Environment(\.superEventBus) private var eventBus
-    private let viewModel: BibleScreenViewModel
+    @Bindable private var viewModel: BibleScreenViewModel
 
     /// How sheets, the action sheet, and the toast animate in and out — a
     /// bottom slide by default, a cross-fade when Reduce Motion is on.
@@ -56,6 +60,18 @@ public struct BibleScreen: View {
             }
         }
         .task { await viewModel.load() }
+        // Foreground-only narration per spec: leaving the app stops
+        // playback cleanly so the controller's state matches what the
+        // OS would silence anyway.
+        .onChange(of: scenePhase) { _, new in
+            if new != .active { viewModel.narration.stop() }
+        }
+        // No `.onChange(narration.state) { dismissCard }` here on
+        // purpose: per spec, Stop halts playback but keeps the card up
+        // so the user can re-trigger Narrate from the play button. The
+        // card hides only via an explicit drag-down on the handle or
+        // by tapping the nav-bar speaker again, both wrapped in
+        // `withAnimation` so the slide-out is animated.
     }
 
     /// Hand the current verse selection to the Chat composer over the
@@ -63,6 +79,21 @@ public struct BibleScreen: View {
     /// Falls back to the "coming soon" toast when no bus is wired.
     private func addSelectionToChat(startNew: Bool) {
         guard let reference = viewModel.makeVerseReference() else { return }
+        publishReferenceToChat(reference, startNew: startNew)
+    }
+
+    /// Hand the whole current chapter to the Chat composer — the spark
+    /// menu's `Add to chat` / `Start a new chat` rows route through here
+    /// when no verses are selected.
+    private func addCurrentChapterToChat(startNew: Bool) {
+        guard let reference = viewModel.makeChapterReference() else { return }
+        publishReferenceToChat(reference, startNew: startNew)
+    }
+
+    /// Shared publish path used by both selection and whole-chapter
+    /// hand-offs. Falls back to the "coming soon" toast when no bus is
+    /// wired (previews and isolated tests).
+    private func publishReferenceToChat(_ reference: RecordReference, startNew: Bool) {
         guard let eventBus else {
             withAnimation(motion.animation) { viewModel.presentChatComingSoon() }
             return
@@ -77,6 +108,27 @@ public struct BibleScreen: View {
         }
     }
 
+    /// Dispatch a spark-menu action: selection-aware chat hand-off for
+    /// the two chat rows, and a Narrate session for the third.
+    private func handleSparkAction(_ action: BibleNavBar.SparkMenuAction) {
+        switch action {
+        case .addToChat:
+            if viewModel.selectedVerses.isEmpty {
+                addCurrentChapterToChat(startNew: false)
+            } else {
+                addSelectionToChat(startNew: false)
+            }
+        case .newChat:
+            if viewModel.selectedVerses.isEmpty {
+                addCurrentChapterToChat(startNew: true)
+            } else {
+                addSelectionToChat(startNew: true)
+            }
+        case .narrate:
+            withAnimation(motion.animation) { viewModel.startNarration() }
+        }
+    }
+
     private var navBar: some View {
         BibleNavBar(
             bookName: viewModel.bookName,
@@ -85,20 +137,54 @@ public struct BibleScreen: View {
             selectionCitation: viewModel.selectionCitation,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
+            narrationState: viewModel.narration.state,
+            narrationCitation: viewModel.narrationCitation,
             onPrevious: { viewModel.stepChapter(.previous) },
             onNext: { viewModel.stepChapter(.next) },
             onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
             onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
-            onPlus: { withAnimation(motion.animation) { viewModel.presentChatComingSoon() } }
+            onSparkMenuAction: handleSparkAction,
+            onTapNarrationPill: {
+                withAnimation(motion.animation) {
+                    if viewModel.isNarrationSheetPresented {
+                        viewModel.dismissNarrationSheet()
+                    } else {
+                        viewModel.presentNarrationSheet()
+                    }
+                }
+            }
         )
     }
 
-    /// The selection action sheet, anchored above the shell's chat pill while
-    /// verses are selected.
+    /// Bottom-anchored overlay. The narration transport card takes
+    /// precedence over the selection action sheet — they're both
+    /// bottom-pinned and showing both would visually stack, so while
+    /// the card is up the action sheet steps out (selection is still
+    /// preserved; it returns once the card is dismissed).
     @ViewBuilder
     private var bottomOverlay: some View {
-        if !viewModel.selectedVerses.isEmpty {
+        if viewModel.isNarrationSheetPresented {
+            NarrationTransportSheet(
+                controller: viewModel.narration,
+                citation: viewModel.narrationCitation
+                    ?? "\(viewModel.bookName) \(viewModel.position.chapterNumber) (\(viewModel.translation.rawValue))",
+                onStop: { viewModel.narration.stop() },
+                // Post-Stop the card stays open; tapping the big play
+                // button re-runs the same selection-aware Narrate flow
+                // the spark menu's `Narrate` entry triggers.
+                onRestart: { viewModel.startNarration() },
+                onDismiss: {
+                    withAnimation(motion.animation) {
+                        viewModel.dismissNarrationSheet()
+                    }
+                }
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, bottomReserve)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .transition(motion.transition)
+        } else if !viewModel.selectedVerses.isEmpty {
             BibleActionSheet(
                 citation: viewModel.selectionCitation ?? "",
                 shareText: viewModel.selectionShareText ?? "",
@@ -178,6 +264,10 @@ public struct BibleScreen: View {
                 selectedVerses: viewModel.selectedVerses,
                 previousLabel: viewModel.previousChapterLabel,
                 nextLabel: viewModel.nextChapterLabel,
+                currentNarratingVerse: viewModel.narration.currentVerseNumber,
+                // Per spec: auto-scroll only when the user hasn't picked
+                // a selection of their own.
+                suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },

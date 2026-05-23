@@ -57,12 +57,45 @@ struct BibleNavBarSnapshotTests {
                name: "selection_sepia", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
+    // MARK: - Narration trailing-control states
+
+    @Test("the narration speaker button renders in the light theme while speaking")
+    func narratingSpeakerButtonSpeakingLight() {
+        verify(theme: .light, canStepBackward: true, canStepForward: true,
+               name: "narrating_speaker_button_speaking_light",
+               narrationState: .speaking, narrationCitation: "1 Peter 2:9")
+    }
+
+    @Test("the narration speaker button renders in the dark theme while speaking")
+    func narratingSpeakerButtonSpeakingDark() {
+        verify(theme: .dark, canStepBackward: true, canStepForward: true,
+               name: "narrating_speaker_button_speaking_dark",
+               narrationState: .speaking, narrationCitation: "1 Peter 2:9")
+    }
+
+    @Test("the narration speaker button renders in the sepia theme while paused")
+    func narratingSpeakerButtonPausedSepia() {
+        verify(theme: .sepia, canStepBackward: true, canStepForward: true,
+               name: "narrating_speaker_button_paused_sepia",
+               narrationState: .paused, narrationCitation: "1 Peter 2:9")
+    }
+
+    @Test("the narration speaker button keeps the red selection dot when verses are selected")
+    func narratingSpeakerButtonWithSelectionDotLight() {
+        verify(theme: .light, canStepBackward: true, canStepForward: true,
+               name: "narrating_speaker_button_with_selection_light",
+               selectionCitation: "1 Peter 2:4-6, 9",
+               narrationState: .speaking, narrationCitation: "1 Peter 2:4")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         canStepBackward: Bool,
         canStepForward: Bool,
         name: String,
         selectionCitation: String? = nil,
+        narrationState: NarrationController.State = .idle,
+        narrationCitation: String? = nil,
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
@@ -75,12 +108,15 @@ struct BibleNavBarSnapshotTests {
                 selectionCitation: selectionCitation,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
+                narrationState: narrationState,
+                narrationCitation: narrationCitation,
                 onPrevious: {},
                 onNext: {},
                 onPill: {},
                 onTranslation: {},
                 onClearSelection: {},
-                onPlus: {}
+                onSparkMenuAction: { _ in },
+                onTapNarrationPill: {}
             )
         }
         .frame(width: 402, height: 96)

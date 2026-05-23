@@ -6,14 +6,27 @@ import SwiftUI
 ///
 /// The prev / next arrows step chapters and the pill's two segments open the
 /// book and translation pickers. The arrows are pinned to the adjacent edge
-/// controls (the leading hamburger placeholder and the trailing `+`), so the
-/// pill's content can grow or shrink without shifting them. When verses are
-/// selected (`selectionCitation` is non-`nil`) the arrows step out and the
-/// centre slot becomes a citation pill with a clear control. The `+` button
-/// renders per the design but is inert until chat hand-off lands. The
-/// sidebar entry point is the shell's own floating hamburger, so this bar
-/// deliberately has none.
+/// controls (the leading hamburger placeholder and the trailing action), so
+/// the pill's content can grow or shrink without shifting them. When verses
+/// are selected (`selectionCitation` is non-`nil`) the arrows step out and
+/// the centre slot becomes a citation pill with a clear control. The
+/// trailing slot is a green sparkles `Menu` while narration is idle (Add to
+/// chat / Start a new chat / Narrate); while narration is speaking or paused
+/// the same 36pt green circle stays, the sparkles glyph swaps for a speaker
+/// glyph, and tapping it toggles the transport card. The live verse citation
+/// is intentionally not shown here — it lives in the transport card's header
+/// so the nav bar stays a stable, fixed-width row of three circles.
+/// The sidebar entry point is the shell's own floating hamburger, so this
+/// bar deliberately has none.
 struct BibleNavBar: View {
+    /// Action chosen from the green sparkles dropdown menu — the screen
+    /// dispatches each to its corresponding view-model / event-bus path.
+    enum SparkMenuAction: Sendable, Equatable {
+        case addToChat
+        case newChat
+        case narrate
+    }
+
     @Environment(\.superTheme) private var theme
 
     let bookName: String
@@ -24,12 +37,20 @@ struct BibleNavBar: View {
     let selectionCitation: String?
     let canStepBackward: Bool
     let canStepForward: Bool
+    /// `.idle` shows the sparkles menu; `.speaking` / `.paused` swap it
+    /// for the live "Narrating" pill so the user keeps a one-tap path
+    /// back to the transport sheet.
+    let narrationState: NarrationController.State
+    /// Short citation for the verse currently being narrated, e.g.
+    /// `"1 Peter 2:9"`. Only read while `narrationState != .idle`.
+    let narrationCitation: String?
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onPill: () -> Void
     let onTranslation: () -> Void
     let onClearSelection: () -> Void
-    let onPlus: () -> Void
+    let onSparkMenuAction: (SparkMenuAction) -> Void
+    let onTapNarrationPill: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -68,7 +89,7 @@ struct BibleNavBar: View {
                     .accessibilityLabel("Next chapter")
             }
 
-            plusButton
+            trailingControl
         }
         .padding(.horizontal, 12)
         .padding(.top, 4)
@@ -167,32 +188,88 @@ struct BibleNavBar: View {
         .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
     }
 
-    private var plusButton: some View {
-        Button(action: onPlus) {
-            Image(systemName: "plus")
+    /// The trailing-edge control. Switches between the idle sparkles
+    /// menu (Add to chat / Start a new chat / Narrate) and the speaker
+    /// button that toggles the transport card while narration runs. Same
+    /// 36pt green circle in both cases — only the glyph and the tap
+    /// handler change, so the bar's geometry stays put. The red
+    /// selection dot appears on both forms; the menu's chat actions
+    /// remain selection-aware while narration runs.
+    @ViewBuilder
+    private var trailingControl: some View {
+        switch narrationState {
+        case .idle:
+            sparkMenu
+        case .speaking, .paused:
+            narrationButton
+        }
+    }
+
+    private var sparkMenu: some View {
+        Menu {
+            Button { onSparkMenuAction(.addToChat) } label: {
+                Label("Add to chat", systemImage: "paperplane")
+            }
+            Button { onSparkMenuAction(.newChat) } label: {
+                Label("Start a new chat", systemImage: "bubble.left.and.bubble.right")
+            }
+            Button { onSparkMenuAction(.narrate) } label: {
+                Label("Narrate", systemImage: "speaker.wave.2")
+            }
+        } label: {
+            Image(systemName: "sparkles")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.accent))
+                // Soft lift shadow matches the other 36pt nav-bar
+                // circles added in PR #76.
                 .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
-                .overlay(alignment: .topTrailing) {
-                    // A dot marks that the selected verses, not the whole
-                    // chapter, are what the `+` would hand to a chat.
-                    if selectionCitation != nil {
-                        Circle()
-                            .fill(theme.errorAccent)
-                            .frame(width: 11, height: 11)
-                            .overlay(Circle().strokeBorder(theme.background, lineWidth: 2))
-                            .offset(x: 2, y: -2)
-                    }
-                }
+                .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuOrder(.fixed)
         .accessibilityLabel(
             selectionCitation == nil
-                ? "Start chat with this chapter"
-                : "Start chat with the selected verses"
+                ? "Chapter actions"
+                : "Selection actions"
         )
+    }
+
+    private var narrationButton: some View {
+        Button(action: onTapNarrationPill) {
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.accentInk)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(theme.accent))
+                // Same soft lift as the sparkles button so the trailing
+                // slot's silhouette doesn't change when narration starts.
+                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+                .overlay(alignment: .topTrailing) { selectionDotOverlay }
+        }
+        .buttonStyle(.plain)
+        // Citation is intentionally not on the visual button — VoiceOver
+        // still announces what's playing so the screen reader experience
+        // doesn't lose context that the sighted user gets from the card.
+        .accessibilityLabel(
+            narrationCitation.map { "Narrating \($0). Open transport controls." }
+                ?? "Open narration transport controls."
+        )
+    }
+
+    /// Red dot marking that the user has verses selected — drawn over
+    /// both the sparkles menu trigger and the narrating pill so the
+    /// signal persists when narration starts on a selection.
+    @ViewBuilder
+    private var selectionDotOverlay: some View {
+        if selectionCitation != nil {
+            Circle()
+                .fill(theme.errorAccent)
+                .frame(width: 11, height: 11)
+                .overlay(Circle().strokeBorder(theme.background, lineWidth: 2))
+                .offset(x: 2, y: -2)
+        }
     }
 
     private func circleButton(
