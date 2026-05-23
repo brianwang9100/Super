@@ -661,7 +661,7 @@ public final class SettingsViewModel {
             await registry.register(provider)
         #if DEBUG
         case .debug:
-            await registry.register(DebugLLMProvider())
+            await registry.register(DebugLLMProvider(id: record.id))
         #endif
         }
     }

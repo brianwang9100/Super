@@ -11,7 +11,13 @@ import Foundation
 /// row is auto-seeded on first launch in DEBUG builds and never in
 /// Release (the entire file is gated on `#if DEBUG`).
 public struct DebugLLMProvider: LLMProvider {
-    public let id: String = "debug"
+    /// Matches the registering `ModelConfigurationRecord.id` so
+    /// `LLMProviderRegistry.setActive(id:)` finds this provider when the
+    /// debug row is the selected one. Injected at construction (rather
+    /// than hardcoded) so the seeded record id and the registry key are
+    /// the same string — the same pattern `AppleFoundationLLMProvider`
+    /// follows.
+    public let id: String
     public let displayName: String = "Debug (canned responses)"
 
     /// Stable model id used by the seeded `ModelConfigurationRecord`.
@@ -29,7 +35,9 @@ public struct DebugLLMProvider: LLMProvider {
         )]
     }
 
-    public init() {}
+    public init(id: String) {
+        self.id = id
+    }
 
     public func stream(
         messages: [LLMMessage],
@@ -48,23 +56,30 @@ public struct DebugLLMProvider: LLMProvider {
                     // briefly visible before any delta arrives.
                     try await Self.sleep(milliseconds: Int.random(in: 150...500))
 
+                    // Track block index dynamically so the text block
+                    // lands at index 0 when there's no thinking trace —
+                    // mirrors the event shape `OpenAICompatibleLLMProvider`
+                    // emits and keeps any future index-aware consumer
+                    // (multi-block renderers, ordering assertions) happy.
+                    var blockIndex = 0
                     if !canned.thinking.isEmpty {
-                        continuation.yield(.contentBlockStart(index: 0, type: .thinking))
+                        continuation.yield(.contentBlockStart(index: blockIndex, type: .thinking))
                         for chunk in Self.tokenChunks(of: canned.thinking) {
                             try Task.checkCancellation()
-                            continuation.yield(.thinkingDelta(index: 0, text: chunk))
+                            continuation.yield(.thinkingDelta(index: blockIndex, text: chunk))
                             try await Self.sleep(milliseconds: Int.random(in: 20...80))
                         }
-                        continuation.yield(.contentBlockStop(index: 0))
+                        continuation.yield(.contentBlockStop(index: blockIndex))
+                        blockIndex += 1
                     }
 
-                    continuation.yield(.contentBlockStart(index: 1, type: .text))
+                    continuation.yield(.contentBlockStart(index: blockIndex, type: .text))
                     for chunk in Self.tokenChunks(of: canned.text) {
                         try Task.checkCancellation()
-                        continuation.yield(.textDelta(index: 1, text: chunk))
+                        continuation.yield(.textDelta(index: blockIndex, text: chunk))
                         try await Self.sleep(milliseconds: Int.random(in: 15...60))
                     }
-                    continuation.yield(.contentBlockStop(index: 1))
+                    continuation.yield(.contentBlockStop(index: blockIndex))
 
                     continuation.yield(.messageComplete(usage: TokenUsage(
                         inputTokens: messages.reduce(0) { $0 + Self.approxTokens(of: $1) },
@@ -91,7 +106,14 @@ public struct DebugLLMProvider: LLMProvider {
     }
 
     private static func pickResponse() -> CannedResponse {
-        responseBank.randomElement() ?? responseBank[0]
+        // `randomElement()` only returns `nil` when the bank is empty; the
+        // previous `?? responseBank[0]` traded one crash for another. If a
+        // developer empties the bank while iterating, surface that
+        // explicitly as a debug-visible chat response instead of a trap.
+        guard let response = responseBank.randomElement() else {
+            return CannedResponse(thinking: "", text: "Debug provider: responseBank is empty.")
+        }
+        return response
     }
 
     private static let responseBank: [CannedResponse] = [

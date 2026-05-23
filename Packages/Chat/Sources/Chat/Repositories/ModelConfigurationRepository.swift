@@ -73,7 +73,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func all() async throws -> [ModelConfigurationRecord] {
         try await queue.read { db in
-            try ModelConfigurationRecord
+            try Self.knownKindRequest
                 .order(Column("createdAt").asc)
                 .fetchAll(db)
         }
@@ -81,16 +81,33 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func fetch(id: String) async throws -> ModelConfigurationRecord? {
         try await queue.read { db in
-            try ModelConfigurationRecord.fetchOne(db, key: id)
+            try Self.knownKindRequest
+                .filter(Column("id") == id)
+                .fetchOne(db)
         }
     }
 
     public func selected() async throws -> ModelConfigurationRecord? {
         try await queue.read { db in
-            try ModelConfigurationRecord
+            try Self.knownKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchOne(db)
         }
+    }
+
+    /// Base request that filters to rows whose `kind` matches a case the
+    /// running binary actually has. In DEBUG builds that includes
+    /// `LLMProviderKind.debug`; in Release it doesn't. The filter exists
+    /// so a `kind = "debug"` row seeded by a DEBUG build doesn't crash a
+    /// Release launch — GRDB would otherwise call
+    /// `LLMProviderKind(rawValue: "debug")` during decode, get `nil`, and
+    /// throw `DecodingError.dataCorrupted`, propagating up through
+    /// `AppBootstrap`. Rows with an unknown `kind` value are silently
+    /// excluded from every read; the unreferenced row stays on disk
+    /// unless a future migration cleans it up.
+    private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
+        let kinds = LLMProviderKind.allCases.map(\.rawValue)
+        return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
     }
 
     public func save(_ record: ModelConfigurationRecord) async throws {
@@ -146,4 +163,35 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     public func loadAPIKey(ref: String) async throws -> String? {
         try await keychain.getString(ref: ref)
     }
+
+    #if DEBUG
+    /// DEBUG-only first-launch seed for `DebugLLMProvider`. Inserts a
+    /// `kind = .debug` row atomically iff no `.debug` row already exists.
+    /// `make` is invoked *inside* the write transaction and receives
+    /// `shouldSelect = true` only when the table currently has no
+    /// selected row — so a fresh install lands on the debug model by
+    /// default, but a developer who has already wired a real provider
+    /// keeps that one as active. Returns the inserted record on success,
+    /// nil when a debug row was already present.
+    ///
+    /// Lives on the concrete type (not the protocol) so the in-tree
+    /// `Stub`/`NoopModelRepository` test doubles don't have to grow a
+    /// DEBUG-only stub.
+    public func insertDebugIfMissing(
+        make: @Sendable (_ shouldSelect: Bool) -> ModelConfigurationRecord
+    ) async throws -> ModelConfigurationRecord? {
+        try await queue.write { db in
+            let alreadyHasDebug = try ModelConfigurationRecord
+                .filter(Column("kind") == LLMProviderKind.debug.rawValue)
+                .fetchCount(db) > 0
+            guard !alreadyHasDebug else { return nil }
+            let hasSelected = try ModelConfigurationRecord
+                .filter(Column("isSelected") == true)
+                .fetchCount(db) > 0
+            let record = make(!hasSelected)
+            try record.insert(db)
+            return record
+        }
+    }
+    #endif
 }

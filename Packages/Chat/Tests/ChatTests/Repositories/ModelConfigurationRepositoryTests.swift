@@ -1,5 +1,6 @@
 import Core
 import Foundation
+import GRDB
 import Testing
 @testable import Chat
 
@@ -13,6 +14,12 @@ struct ModelConfigurationRepositoryTests {
         let db = try ChatDatabase.makeInMemory()
         let keychain = InMemoryKeychainClient()
         return (GRDBModelConfigurationRepository(database: db, keychain: keychain), keychain)
+    }
+
+    private func makeRepoExposingQueue() throws -> (GRDBModelConfigurationRepository, DatabaseQueue) {
+        let db = try ChatDatabase.makeInMemory()
+        let keychain = InMemoryKeychainClient()
+        return (GRDBModelConfigurationRepository(database: db, keychain: keychain), db.queue)
     }
 
     private func makeRecord(
@@ -147,6 +154,41 @@ struct ModelConfigurationRepositoryTests {
         #expect(fetched?.configuration.kind == .appleFoundation)
         #expect(fetched?.configuration.baseURL == nil)
         #expect(fetched?.configuration.apiKeyRef == nil)
+    }
+
+    /// Rows whose `kind` column holds a string the running binary
+    /// doesn't recognise must be skipped by every read, not surfaced as
+    /// decode errors. The Release-build crash this guards against
+    /// (DEBUG seeds `kind = "debug"`; same simulator installs a Release
+    /// build that has no `.debug` case → decode trap on every read) is
+    /// the exact shape simulated here by inserting an arbitrary unknown
+    /// `kind` value via raw SQL.
+    @Test func readsFilterOutRowsWithUnrecognisedKindValue() async throws {
+        let (repo, queue) = try makeRepoExposingQueue()
+        try await repo.save(makeRecord(id: "known", apiKeyRef: "ka", isSelected: true))
+
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO modelConfiguration
+                (id, kind, name, baseURL, apiKeyRef, modelId, supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                ('future', 'future-unknown-kind', 'Future', NULL, NULL, 'm', 0, 8192, 0, ?)
+                """,
+                arguments: [now.timeIntervalSince1970]
+            )
+        }
+
+        // `all()` returns only the recognised row.
+        #expect(try await repo.all().map(\.id) == ["known"])
+        // `fetch(id:)` returns nil for the unrecognised row even though
+        // it's physically present in the table.
+        #expect(try await repo.fetch(id: "future") == nil)
+        #expect(try await repo.fetch(id: "known")?.id == "known")
+        // `selected()` projects through the same filter (defensive — in
+        // practice an unknown-kind row with isSelected=1 would only
+        // surface if a future binary downgrade happened).
+        #expect(try await repo.selected()?.id == "known")
     }
 
     @Test func deletingAppleFoundationRowDoesNotTouchKeychain() async throws {

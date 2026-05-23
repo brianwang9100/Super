@@ -272,7 +272,7 @@ enum AppBootstrap {
                 await registry.register(provider)
             #if DEBUG
             case .debug:
-                await registry.register(DebugLLMProvider())
+                await registry.register(DebugLLMProvider(id: record.id))
             #endif
             }
         }
@@ -290,30 +290,33 @@ enum AppBootstrap {
     #if DEBUG
     /// DEBUG-only first-launch seed: insert a `ModelConfigurationRecord`
     /// with `kind = .debug` so `DebugLLMProvider` shows up in the model
-    /// picker without the user having to add a model manually. Idempotent
-    /// — does nothing if a debug row already exists. The row is marked
-    /// selected only if no other row is selected, so a developer who has
-    /// already wired a real OpenAI-compatible model keeps it as the
-    /// active model and just sees the debug entry as an alternative.
+    /// picker without the user having to add a model manually. The
+    /// existence check and the insert run in a single GRDB write
+    /// transaction (via `insertDebugIfMissing`), so two concurrent
+    /// `bootstrap()` calls — vanishingly rare in practice but trivial to
+    /// close — can't both pass the empty check and then double-insert.
+    /// `shouldSelect` is computed inside the same transaction, so the
+    /// row is marked selected only when no other selection exists at the
+    /// moment of insert; a developer who has already wired a real
+    /// provider keeps that as active and just sees the debug entry as an
+    /// alternative.
     private static func seedDebugModelIfNeeded(
-        repository: any ModelConfigurationRepository
+        repository: GRDBModelConfigurationRepository
     ) async throws {
-        let existing = try await repository.all()
-        if existing.contains(where: { $0.kind == .debug }) { return }
-        let shouldSelect = try await repository.selected() == nil
-        let record = ModelConfigurationRecord(
-            id: "debug-canned",
-            name: "Debug (canned)",
-            baseURL: nil,
-            apiKeyRef: nil,
-            modelId: DebugLLMProvider.modelID,
-            createdAt: Date(),
-            kind: .debug,
-            supportsThinking: true,
-            maxContextTokens: DebugLLMProvider.maxContextTokens,
-            isSelected: shouldSelect
-        )
-        try await repository.save(record)
+        _ = try await repository.insertDebugIfMissing { shouldSelect in
+            ModelConfigurationRecord(
+                id: "debug-canned",
+                name: "Debug (canned)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: true,
+                maxContextTokens: DebugLLMProvider.maxContextTokens,
+                isSelected: shouldSelect
+            )
+        }
     }
     #endif
 
