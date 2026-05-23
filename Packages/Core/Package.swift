@@ -40,7 +40,7 @@ let package = Package(
             // lookups SwiftPM doesn't model — excluding them silences the
             // "unhandled files" warning without changing test behavior.
             exclude: [
-                "Theme/__Snapshots__",
+                "UI/Snapshots/__Snapshots__",
             ],
             resources: [
                 .process("Resources"),
