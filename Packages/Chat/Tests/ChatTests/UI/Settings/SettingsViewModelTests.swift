@@ -414,6 +414,85 @@ struct SettingsViewModelTests {
         #expect(updated?.name == "GPT renamed")
     }
 
+    @Test("hasAppleFoundationModel reflects the in-memory models list")
+    func hasAppleFoundationModelTracksRows() async {
+        // The preset picker uses this to disable the Apple Intelligence
+        // option once an AFM row exists. The flag must agree with the
+        // current in-memory snapshot — not a re-fetch — so a successful
+        // `createAppleFoundationModel` immediately flips the bit.
+        let modelRepo = StubModelRepository(rows: [])
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            appleFoundationAvailability: .available
+        )
+        await vm.load()
+        #expect(vm.hasAppleFoundationModel == false)
+
+        await vm.createAppleFoundationModel(
+            name: "Apple Intelligence",
+            supportsThinking: false,
+            maxContextTokens: 4_096
+        )
+
+        #expect(vm.hasAppleFoundationModel == true)
+    }
+
+    @Test("createAppleFoundationModel writes AFM-shaped row and skips keychain")
+    func createAppleFoundationModelPersists() async {
+        let modelRepo = StubModelRepository(rows: [])
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            appleFoundationAvailability: .available
+        )
+        await vm.load()
+
+        await vm.createAppleFoundationModel(
+            name: "Apple Intelligence",
+            supportsThinking: false,
+            maxContextTokens: 4_096,
+            idGenerator: { "afm-id" },
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        #expect(vm.models.count == 1)
+        let saved = modelRepo.rows.first
+        #expect(saved?.id == "afm-id")
+        #expect(saved?.name == "Apple Intelligence")
+        #expect(saved?.kind == .appleFoundation)
+        #expect(saved?.baseURL == nil)
+        #expect(saved?.apiKeyRef == nil)
+        #expect(saved?.modelId == "system-default")
+        #expect(saved?.maxContextTokens == 4_096)
+        // No keychain entry should have been written — AFM rows have no
+        // ref.  The stub stores nothing under nil/empty refs, so the dict
+        // remains empty.
+        #expect(modelRepo.storedKeys.isEmpty)
+        #expect(vm.modelEditError == nil)
+    }
+
+    @Test("createAppleFoundationModel surfaces repository failures via modelEditError")
+    func createAppleFoundationModelSurfacesFailures() async {
+        struct StubSaveError: Error, Sendable {}
+        let modelRepo = StubModelRepository(rows: [])
+        modelRepo.saveError = StubSaveError()
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            appleFoundationAvailability: .available
+        )
+        await vm.load()
+
+        await vm.createAppleFoundationModel(
+            name: "Apple Intelligence",
+            supportsThinking: false,
+            maxContextTokens: 4_096
+        )
+
+        #expect(vm.modelEditError != nil)
+        #expect(vm.modelEditError?.contains("Could not save model") == true)
+        #expect(vm.models.isEmpty)
+        #expect(modelRepo.rows.isEmpty)
+    }
+
     @Test("createModel writes to repository and refreshes models list")
     func createModelPersists() async {
         let modelRepo = StubModelRepository(rows: [])
@@ -755,6 +834,11 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// the regression seam for the silent-catch bug fixed by surfacing
     /// `SettingsViewModel.modelEditError`.
     var storeAPIKeyError: Error?
+    /// When non-nil, `save` throws this. Lets a test drive
+    /// `createAppleFoundationModel` through the persistence-failure
+    /// path; AFM rows never call `storeAPIKey`, so the existing
+    /// `storeAPIKeyError` seam can't trip the error branch.
+    var saveError: Error?
 
     init(rows: [ModelConfigurationRecord]) {
         self.rows = rows
@@ -764,6 +848,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     func fetch(id: String) async throws -> ModelConfigurationRecord? { rows.first { $0.id == id } }
     func selected() async throws -> ModelConfigurationRecord? { rows.first(where: \.isSelected) }
     func save(_ record: ModelConfigurationRecord) async throws {
+        if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }
         rows.append(record)
     }
