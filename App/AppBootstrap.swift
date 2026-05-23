@@ -225,7 +225,9 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                // Provider lands in Phase 3 of the default-model work.
+                // Wired up in Phase 5 of the default-model work, when the
+                // AppleFoundationLLMProvider class (added in Phase 3)
+                // gets registered here alongside the bootstrap seed.
                 break
             }
         }

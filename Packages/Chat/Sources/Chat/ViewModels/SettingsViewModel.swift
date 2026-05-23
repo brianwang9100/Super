@@ -50,12 +50,12 @@ public final class SettingsViewModel {
 
         public init(
             id: String,
-            kind: LLMProviderKind = .openAICompatible,
             name: String,
             monogram: String,
             endpoint: String,
             maxContextTokens: Int,
             isEnabled: Bool,
+            kind: LLMProviderKind = .openAICompatible,
             baseURL: URL? = URL(string: "https://api.openai.com/v1")!,
             modelId: String = "",
             supportsThinking: Bool = false,
@@ -255,12 +255,12 @@ public final class SettingsViewModel {
             }
             rows.append(ModelRow(
                 id: record.id,
-                kind: record.kind,
                 name: record.name,
                 monogram: Self.monogram(for: record.name),
                 endpoint: record.baseURL.map(Self.shortEndpoint) ?? "",
                 maxContextTokens: record.maxContextTokens,
                 isEnabled: stored ?? true,
+                kind: record.kind,
                 baseURL: record.baseURL,
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
@@ -459,15 +459,15 @@ public final class SettingsViewModel {
             try await modelRepository.storeAPIKey(apiKey, ref: ref)
             let record = ModelConfigurationRecord(
                 id: recordId,
-                kind: .openAICompatible,
                 name: name,
                 baseURL: baseURL,
                 apiKeyRef: ref,
                 modelId: modelId,
+                createdAt: now,
+                kind: .openAICompatible,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: false,
-                createdAt: now
+                isSelected: false
             )
             try await modelRepository.save(record)
             await registerProvider(for: record, apiKey: apiKey)
@@ -516,15 +516,15 @@ public final class SettingsViewModel {
             }
             let updated = ModelConfigurationRecord(
                 id: existing.id,
-                kind: existing.kind,
                 name: name,
                 baseURL: baseURL,
                 apiKeyRef: existing.apiKeyRef,
                 modelId: modelId,
+                createdAt: existing.createdAt,
+                kind: existing.kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: existing.isSelected,
-                createdAt: existing.createdAt
+                isSelected: existing.isSelected
             )
             try await modelRepository.save(updated)
             let resolvedKey: String?
@@ -568,10 +568,12 @@ public final class SettingsViewModel {
     /// registry. Kind-dispatches: `.openAICompatible` rows use the
     /// existing `OpenAICompatibleLLMProvider`; `.appleFoundation` rows
     /// are no-ops here today because the AFM provider is seeded by
-    /// `AppBootstrap` rather than through the settings UI (Phase 3 of
-    /// the default-model work will replace this no-op with the real
-    /// provider registration). No-op also when no registry/HTTP client
-    /// was injected (tests and previews don't wire them).
+    /// `AppBootstrap` rather than through the settings UI. The
+    /// `.appleFoundation` case becomes reachable from createModel /
+    /// updateModel in Phase 6 of the default-model work, when the Add
+    /// Model preset picker exposes AFM as a selectable preset. No-op
+    /// also when no registry/HTTP client was injected (tests and
+    /// previews don't wire them).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
         switch record.kind {
@@ -585,7 +587,9 @@ public final class SettingsViewModel {
             await registry.register(provider)
         case .appleFoundation:
             // Not reachable via createModel/updateModel today — those
-            // paths only construct `.openAICompatible` rows. Left
+            // paths only construct `.openAICompatible` rows. Becomes
+            // reachable in Phase 6 of the default-model work when the
+            // Add Model preset picker exposes AFM as a preset. Left
             // explicit so a future preset that flips the kind doesn't
             // silently fall through the switch.
             break

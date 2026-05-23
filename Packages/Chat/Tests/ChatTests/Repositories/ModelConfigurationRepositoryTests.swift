@@ -27,15 +27,15 @@ struct ModelConfigurationRepositoryTests {
     ) -> ModelConfigurationRecord {
         ModelConfigurationRecord(
             id: id,
-            kind: kind,
             name: name,
             baseURL: baseURL,
             apiKeyRef: apiKeyRef,
             modelId: modelId,
+            createdAt: now.addingTimeInterval(createdOffset),
+            kind: kind,
             supportsThinking: false,
             maxContextTokens: 16_000,
-            isSelected: isSelected,
-            createdAt: now.addingTimeInterval(createdOffset)
+            isSelected: isSelected
         )
     }
 

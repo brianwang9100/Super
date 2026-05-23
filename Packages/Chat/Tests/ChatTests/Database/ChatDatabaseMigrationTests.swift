@@ -90,7 +90,7 @@ struct ChatDatabaseMigrationTests {
         try await db.queue.write { db in
             try ModelConfigurationRecord(
                 id: "a", name: "A", baseURL: url, apiKeyRef: "ka",
-                modelId: "m", isSelected: true, createdAt: now
+                modelId: "m", createdAt: now, isSelected: true
             ).insert(db)
         }
 
@@ -98,7 +98,7 @@ struct ChatDatabaseMigrationTests {
             try await db.queue.write { db in
                 try ModelConfigurationRecord(
                     id: "b", name: "B", baseURL: url, apiKeyRef: "kb",
-                    modelId: "m", isSelected: true, createdAt: now
+                    modelId: "m", createdAt: now, isSelected: true
                 ).insert(db)
             }
         }
@@ -108,7 +108,7 @@ struct ChatDatabaseMigrationTests {
         try await db.queue.write { db in
             try ModelConfigurationRecord(
                 id: "c", name: "C", baseURL: url, apiKeyRef: "kc",
-                modelId: "m", isSelected: false, createdAt: now
+                modelId: "m", createdAt: now, isSelected: false
             ).insert(db)
         }
     }

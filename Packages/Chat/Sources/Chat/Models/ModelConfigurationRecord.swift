@@ -30,15 +30,15 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
 
     public init(
         id: String,
-        kind: LLMProviderKind = .openAICompatible,
         name: String,
         baseURL: URL?,
         apiKeyRef: String?,
         modelId: String,
+        createdAt: Date,
+        kind: LLMProviderKind = .openAICompatible,
         supportsThinking: Bool = false,
         maxContextTokens: Int = 8_192,
-        isSelected: Bool = false,
-        createdAt: Date
+        isSelected: Bool = false
     ) {
         self.id = id
         self.kind = kind

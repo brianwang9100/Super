@@ -166,10 +166,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref",
                 modelId: "test",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8000,
-                isSelected: true,
-                createdAt: Date()
+                isSelected: true
             ),
         ])
         let vm = makeViewModel(
@@ -264,10 +264,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref-with",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
             .init(
                 id: "no-key",
@@ -275,10 +275,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref-without",
                 modelId: "gpt",
+                createdAt: Date().addingTimeInterval(1),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date().addingTimeInterval(1)
+                isSelected: false
             ),
         ])
         modelRepo.storedKeys["ref-with"] = "sk-real"
@@ -309,10 +309,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         modelRepo.storedKeys["ref-1"] = "sk-original"
@@ -439,10 +439,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://old.example.com/v1")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt-5",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 64_000,
-                isSelected: true,
-                createdAt: Date()
+                isSelected: true
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
@@ -475,10 +475,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
@@ -505,10 +505,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
