@@ -67,6 +67,12 @@ public final class BibleScreenViewModel {
     /// In-flight highlight write, retained so tests can await it.
     private var highlightTask: Task<Void, Never>?
 
+    /// In-flight first-Narrate voice pick + start, retained so tests
+    /// can await its completion. Production has no need to observe it
+    /// — the user sees the card slide in immediately and the first
+    /// verse plays once the off-main voice scan returns.
+    private var narrationStartTask: Task<Void, Never>?
+
     /// - Parameters:
     ///   - positionRepository: persists the reading position; `nil` disables
     ///     persistence (the applet passes `nil` only if its database fails
@@ -395,11 +401,28 @@ public final class BibleScreenViewModel {
     public func startNarration() {
         let utterances = narrationUtterances()
         guard !utterances.isEmpty else { return }
-        if narration.voice == nil {
-            narration.voice = NarrationController.bestAvailableVoice()
-        }
-        narration.start(utterances: utterances)
         isNarrationSheetPresented = true
+        // Fast path: voice already picked, start synchronously so the
+        // first verse begins as the card slides in.
+        if narration.voice != nil {
+            narration.start(utterances: utterances)
+            return
+        }
+        // First Narrate of the launch: `bestAvailableVoice()` calls
+        // `AVSpeechSynthesisVoice.speechVoices()` — the same ~100-300 ms
+        // synchronous file scan the transport card's voice loader
+        // dispatches off main. Hop to a detached task so the menu →
+        // card animation doesn't freeze; `start(...)` waits for the
+        // voice to be set so the first verse plays with the user's
+        // best installed voice rather than the Compact default.
+        narrationStartTask = Task { [weak self] in
+            let voice = await Task.detached(priority: .userInitiated) {
+                NarrationController.bestAvailableVoice()
+            }.value
+            guard let self else { return }
+            self.narration.voice = voice
+            self.narration.start(utterances: utterances)
+        }
     }
 
     /// Re-present the transport sheet — wired to the nav-bar pill the
@@ -475,6 +498,14 @@ public final class BibleScreenViewModel {
     /// the same chained-drain behaviour as `_waitForPendingPersist()`.
     public func _waitForPendingHighlightWrite() async {
         await highlightTask?.value
+    }
+
+    /// Awaits the in-flight first-Narrate voice-pick + start task spawned
+    /// when `startNarration()` finds `narration.voice == nil`. Production
+    /// never observes this — the user just sees the card slide in and the
+    /// first verse begins once the off-main scan returns.
+    public func _waitForPendingNarrationStart() async {
+        await narrationStartTask?.value
     }
 
     private func applyCurrentChapter() {

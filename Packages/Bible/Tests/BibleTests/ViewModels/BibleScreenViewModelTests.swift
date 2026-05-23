@@ -611,6 +611,12 @@ struct BibleScreenViewModelTests {
         await viewModel.load()                          // 1 Peter 2 has 25 verses
 
         viewModel.startNarration()
+        // First-Narrate of the test: the voice-pick + start runs on
+        // a background task spawned by `startNarration`. The card
+        // already shows (`isNarrationSheetPresented` flips synchronously);
+        // we just need to drain the spawned task before asserting on
+        // the queue the service received.
+        await viewModel._waitForPendingNarrationStart()
         #expect(service.startCallCount == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == Array(1...25))
@@ -625,6 +631,7 @@ struct BibleScreenViewModelTests {
         for verse in [9, 3, 5] { viewModel.toggleVerse(verse) }
 
         viewModel.startNarration()
+        await viewModel._waitForPendingNarrationStart()
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == [3, 5, 9])
         #expect(viewModel.isNarrationSheetPresented)

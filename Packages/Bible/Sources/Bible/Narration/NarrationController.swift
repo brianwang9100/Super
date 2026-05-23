@@ -124,7 +124,12 @@ public final class NarrationController {
     /// pick the robotic option, but if none of the better tiers are
     /// installed we still let narration fall through to the system
     /// default rather than refusing to speak.
-    public static func bestAvailableVoice(
+    /// Marked `nonisolated` so callers can dispatch it to a detached
+    /// background task — `AVSpeechSynthesisVoice.speechVoices()` is a
+    /// ~100-300 ms synchronous file scan, and the first-Narrate path
+    /// (`BibleScreenViewModel.startNarration`) hops off main to avoid
+    /// freezing the menu → card animation.
+    nonisolated public static func bestAvailableVoice(
         locale: Locale = .current
     ) -> AVSpeechSynthesisVoice? {
         let prefix = locale.language.languageCode?.identifier ?? "en"
