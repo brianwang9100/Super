@@ -62,6 +62,14 @@ private enum FontRegistration {
             let ok = CTFontManagerRegisterFontsForURL(url as CFURL, .process, &cfError)
             if !ok {
                 let err = cfError?.takeRetainedValue()
+                let code = err.map { CFErrorGetCode($0) }
+                // `kCTFontManagerErrorAlreadyRegistered` is benign — the
+                // host (or a prior call in the same process) already
+                // registered the face, and `Font.custom` will resolve it.
+                // Treat as success rather than tripping `assertionFailure`.
+                if code == CTFontManagerError.alreadyRegistered.rawValue {
+                    continue
+                }
                 let description = err.map { CFErrorCopyDescription($0) as String? ?? "<unknown>" }
                     ?? "<no error>"
                 log.fault("CTFontManagerRegisterFontsForURL failed for \(face.fileName, privacy: .public).ttf: \(description, privacy: .public)")

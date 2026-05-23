@@ -40,8 +40,7 @@ public struct SplashView: View {
         ZStack {
             theme.background.ignoresSafeArea()
 
-            // Lockup: VStack ignores the safe area so its Spacers split the
-            // full screen height (not the safe area) — yields screen-centered.
+            // Spacers split screen height → lockup centers on screen, not safe area.
             VStack(spacing: 0) {
                 Spacer()
                 lockup
@@ -49,8 +48,7 @@ public struct SplashView: View {
             }
             .ignoresSafeArea()
 
-            // Footer: VStack respects the safe area, so .padding(.bottom, 58)
-            // lifts the footer 58pt above the safe-area bottom (SPEC).
+            // Footer VStack respects safe area; bottom padding lifts it 58pt above.
             VStack(spacing: 0) {
                 Spacer()
                 footer
