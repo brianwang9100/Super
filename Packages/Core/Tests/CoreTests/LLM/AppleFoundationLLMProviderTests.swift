@@ -12,7 +12,16 @@ import os
 @Suite
 struct AppleFoundationLLMProviderTests {
 
-    private static let model = AppleFoundationLLMProvider.defaultModel
+    /// Model used by every test that streams. Matches the provider's
+    /// `supportedModels` by `id`; `supportsTools` is irrelevant on the
+    /// way *in* (the provider only checks ids) so we hard-code false.
+    private static let model = LLMModel(
+        id: AppleFoundationLLMProvider.defaultModelID,
+        displayName: AppleFoundationLLMProvider.defaultModelDisplayName,
+        supportsThinking: false,
+        supportsTools: false,
+        maxContextTokens: AppleFoundationLLMProvider.defaultMaxContextTokens
+    )
 
     @Test
     func happyPathStreamYieldsMonotonicTextDeltas() async throws {
@@ -403,6 +412,29 @@ struct AppleFoundationLLMProviderTests {
         #expect(captured.count == 1)
         let toolNames = captured[0].map(\.name).sorted()
         #expect(toolNames == ["alpha", "beta"])
+    }
+
+    @Test
+    func supportedModelsAdvertisesToolsBasedOnRegistryPresence() async {
+        let registry = ToolRegistry()
+        let withRegistry = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) },
+            toolRegistry: registry
+        )
+        let withoutRegistry = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) }
+        )
+        #expect(withRegistry.supportedModels.first?.supportsTools == true)
+        #expect(withoutRegistry.supportedModels.first?.supportsTools == false)
+        // Both still expose the same model id, so the orchestrator's
+        // id-based `supportedModels.contains` lookup keeps working
+        // whichever path the bootstrap takes.
+        #expect(withRegistry.supportedModels.first?.id
+                == AppleFoundationLLMProvider.defaultModelID)
+        #expect(withoutRegistry.supportedModels.first?.id
+                == AppleFoundationLLMProvider.defaultModelID)
     }
 
     @Test

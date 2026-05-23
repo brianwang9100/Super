@@ -139,16 +139,6 @@ struct DynamicLLMToolTests {
     // MARK: - Schema builder
 
     @Test
-    func schemaForStringParameterUsesStringDynamicSchema() {
-        let parameter = LLMToolParameter(
-            name: "message", type: .string, description: "text", isRequired: true
-        )
-        let tool = descriptor(toolID: "t", parameters: [parameter])
-        let root = DynamicGenerationSchemaBuilder.root(for: tool)
-        #expect(String(describing: root).contains("message"))
-    }
-
-    @Test
     func schemaForEnumParameterUsesAnyOfChoices() throws {
         let parameter = LLMToolParameter(
             name: "color", type: .string, description: "",

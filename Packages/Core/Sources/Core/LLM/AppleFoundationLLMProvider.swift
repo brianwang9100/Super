@@ -30,7 +30,6 @@ import Foundation
 public struct AppleFoundationLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
-    public let supportedModels: [LLMModel]
 
     private let availability: AppleFoundationAvailability
     private let sessionFactory: LanguageSessionFactory
@@ -42,27 +41,39 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     /// zero-config startup path working until Phase 5 wires that up.
     private let toolRegistry: ToolRegistry?
 
-    /// The single model surface exposed by the provider. Context window
-    /// is the iOS 26.0–26.3 hard cap of 4096 tokens; iOS 26.4 lifts the
-    /// limit via `SystemLanguageModel.contextSize` but the lower number
-    /// is the safe default until we read the runtime value.
-    public static let defaultModel = LLMModel(
-        id: "system-default",
-        displayName: "Apple Intelligence",
-        supportsThinking: false,
-        supportsTools: true,
-        maxContextTokens: 4_096
-    )
+    /// Stable identifier for the single model surface AFM exposes.
+    public static let defaultModelID = "system-default"
+    /// User-facing display name.
+    public static let defaultModelDisplayName = "Apple Intelligence"
+    /// Context-window cap on iOS 26.0–26.3 (the hard 4096-token limit).
+    /// iOS 26.4 lifts this via `SystemLanguageModel.contextSize`; we
+    /// keep the conservative value until that runtime read lands.
+    public static let defaultMaxContextTokens = 4_096
+
+    /// The model surface exposed to the orchestrator. `supportsTools`
+    /// reflects whether a `ToolRegistry` was wired into this provider
+    /// instance — without one, AFM has no callable tools, so the
+    /// orchestrator should not advertise any. Computed per-instance so
+    /// the registry-less startup path is honest about its capabilities.
+    public var supportedModels: [LLMModel] {
+        [LLMModel(
+            id: Self.defaultModelID,
+            displayName: Self.defaultModelDisplayName,
+            supportsThinking: false,
+            supportsTools: toolRegistry != nil,
+            maxContextTokens: Self.defaultMaxContextTokens
+        )]
+    }
 
     /// Designated initializer. Tests pass an explicit
     /// `AppleFoundationAvailability`, a scripted `sessionFactory`, and
     /// a `DeterministicIDGenerator` so message IDs are stable; the
     /// `init()` convenience below resolves all three from real APIs.
     init(
-        id: String = "apple-foundation",
-        displayName: String = "Apple Intelligence",
         availability: AppleFoundationAvailability,
         sessionFactory: @escaping LanguageSessionFactory,
+        id: String = "apple-foundation",
+        displayName: String = "Apple Intelligence",
         idGenerator: any IDGenerator = UUIDGenerator(),
         toolRegistry: ToolRegistry? = nil
     ) {
@@ -72,7 +83,6 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.sessionFactory = sessionFactory
         self.idGenerator = idGenerator
         self.toolRegistry = toolRegistry
-        self.supportedModels = [Self.defaultModel]
     }
 
     /// Production convenience. Snapshots availability from
@@ -128,7 +138,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                     }
 
                     let (transcript, prompt) = try translate(messages: messages)
-                    let dynamicTools = try buildDynamicTools(from: tools)
+                    let dynamicTools = buildDynamicTools(from: tools)
                     let session = sessionFactory(transcript, dynamicTools)
                     let options = GenerationOptions(temperature: temperature)
 
@@ -170,7 +180,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     /// OpenAI path's behavior, which serializes each tool independently.
     /// Returns an empty array when no `ToolRegistry` was injected — AFM
     /// streams text without any callable tools in that mode.
-    private func buildDynamicTools(from tools: [LLMTool]) throws -> [any FoundationModels.Tool] {
+    private func buildDynamicTools(from tools: [LLMTool]) -> [any FoundationModels.Tool] {
         guard let registry = toolRegistry else { return [] }
         return tools.compactMap { tool in
             try? DynamicLLMTool(llmTool: tool, registry: registry)
