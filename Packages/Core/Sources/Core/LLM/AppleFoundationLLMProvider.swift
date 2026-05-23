@@ -36,9 +36,10 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     private let idGenerator: any IDGenerator
     /// Shared dispatcher AFM tool calls fan out through. `nil` means
     /// "no tools" — the model still streams text but never sees any
-    /// callable tools. The composition root injects the real registry
-    /// via `init(toolRegistry:)`; the no-arg `init()` keeps the
-    /// zero-config startup path working until Phase 5 wires that up.
+    /// callable tools. The composition root passes the real registry
+    /// via `init(id:availability:toolRegistry:)`; tests can construct
+    /// the provider via the internal designated init with whatever
+    /// registry (or nil) they need.
     private let toolRegistry: ToolRegistry?
 
     /// Stable identifier for the single model surface AFM exposes.

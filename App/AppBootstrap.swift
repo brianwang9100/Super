@@ -92,19 +92,47 @@ enum AppBootstrap {
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
         // Fresh-install convenience: if the user has no configured
-        // models yet, seed a default Apple-Foundation-Model row so
-        // Chat opens onto a usable provider instead of the
-        // `noModelConfigured` empty state. Already-populated DBs are
-        // left alone; a user who manually deleted AFM gets it back
-        // only if they wipe the whole table (deliberate — see
-        // `ModelConfigurationSeeding`).
-        try await ModelConfigurationSeeding.seedDefaultIfEmpty(repository: modelConfigRepo)
+        // models AND the device can actually run AFM, seed a default
+        // Apple-Foundation-Model row so Chat opens onto a usable
+        // provider instead of the `noModelConfigured` empty state.
+        // Already-populated DBs are left alone; a user who manually
+        // deleted AFM gets it back only if they wipe the whole table
+        // (deliberate — see `ModelConfigurationSeeding`).
+        //
+        // Gating on availability avoids showing an unusable AFM card on
+        // ineligible devices. Phase 6 will render the availability
+        // reason in the Settings subtitle so the row can re-appear with
+        // a proper "Apple Intelligence isn't available" explanation;
+        // until then, ineligible devices stay on the empty-state path
+        // they already had.
+        //
+        // The seed is best-effort: a transient SQLite error here must
+        // not lock the user out of the entire app, so the call is
+        // isolated in its own `do/catch`. Worst case is the user lands
+        // on `noModelConfigured` and adds a model manually, which is
+        // the pre-AFM behavior anyway.
+        let bootAvailability = AppleFoundationAvailability(
+            SystemLanguageModel.default.availability
+        )
+        if bootAvailability.isAvailable {
+            do {
+                try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+                    repository: modelConfigRepo
+                )
+            } catch {
+                // Intentional swallow: the seed is decorative. Other
+                // bootstrap steps remain throwing so a genuine
+                // database-open failure still surfaces.
+                _ = error
+            }
+        }
 
         let llmProviderRegistry = LLMProviderRegistry()
         try await hydrateProviders(
             into: llmProviderRegistry,
             from: modelConfigRepo,
-            toolRegistry: toolRegistry
+            toolRegistry: toolRegistry,
+            appleFoundationAvailability: bootAvailability
         )
 
         let compactor = Compactor(
@@ -213,20 +241,13 @@ enum AppBootstrap {
     private static func hydrateProviders(
         into registry: LLMProviderRegistry,
         from repository: any ModelConfigurationRepository,
-        toolRegistry: ToolRegistry
+        toolRegistry: ToolRegistry,
+        appleFoundationAvailability: AppleFoundationAvailability
     ) async throws {
         let configurations = try await repository.all()
         guard !configurations.isEmpty else { return }
 
         let http = URLSessionHTTPClient()
-        // Read AFM availability once per boot rather than once per
-        // record — the value is process-stable (an OS-level toggle in
-        // Settings requires an app relaunch) so re-reading inside the
-        // loop is wasted work and would also re-snapshot inconsistently
-        // if Apple ever made the property live-observable.
-        let appleFoundationAvailability = AppleFoundationAvailability(
-            SystemLanguageModel.default.availability
-        )
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
             switch record.kind {

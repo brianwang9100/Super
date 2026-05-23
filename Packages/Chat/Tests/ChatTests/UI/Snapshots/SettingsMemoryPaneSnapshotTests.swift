@@ -191,7 +191,7 @@ private struct NoopModelRepository: ModelConfigurationRepository {
     func fetch(id: String) async throws -> ModelConfigurationRecord? { nil }
     func selected() async throws -> ModelConfigurationRecord? { nil }
     func save(_ record: ModelConfigurationRecord) async throws {}
-    func insertIfEmpty(_ record: ModelConfigurationRecord) async throws -> ModelConfigurationRecord? { nil }
+    func insertIfEmpty(make: @Sendable () -> ModelConfigurationRecord) async throws -> ModelConfigurationRecord? { nil }
     func delete(id: String) async throws {}
     func setSelected(id: String) async throws {}
     func storeAPIKey(_ key: String, ref: String) async throws {}

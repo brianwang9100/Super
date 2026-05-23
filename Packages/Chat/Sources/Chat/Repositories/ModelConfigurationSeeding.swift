@@ -29,22 +29,24 @@ public enum ModelConfigurationSeeding {
         idGenerator: any IDGenerator = UUIDGenerator(),
         clock: any Clock = SystemClock()
     ) async throws -> ModelConfigurationRecord? {
-        let record = ModelConfigurationRecord(
-            id: idGenerator.nextID(),
-            name: AppleFoundationLLMProvider.defaultModelDisplayName,
-            baseURL: nil,
-            apiKeyRef: nil,
-            modelId: AppleFoundationLLMProvider.defaultModelID,
-            createdAt: clock.now(),
-            kind: .appleFoundation,
-            supportsThinking: false,
-            maxContextTokens: AppleFoundationLLMProvider.defaultMaxContextTokens,
-            isSelected: true
-        )
-        // Atomic check-then-insert in one write transaction so the
-        // empty-check and the insert can't race against another writer
-        // that lands a row between them. Returns nil when the table
-        // already had any row at the moment of the write.
-        return try await repository.insertIfEmpty(record)
+        // The record is built lazily *inside* `insertIfEmpty`'s write
+        // transaction so `idGenerator.nextID()` is only consumed when
+        // the table is actually empty. Production UUID generators are
+        // unbounded, but `DeterministicIDGenerator` in tests would
+        // otherwise silently advance its counter on every no-op call.
+        try await repository.insertIfEmpty {
+            ModelConfigurationRecord(
+                id: idGenerator.nextID(),
+                name: AppleFoundationLLMProvider.defaultModelDisplayName,
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: AppleFoundationLLMProvider.defaultModelID,
+                createdAt: clock.now(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: AppleFoundationLLMProvider.defaultMaxContextTokens,
+                isSelected: true
+            )
+        }
     }
 }

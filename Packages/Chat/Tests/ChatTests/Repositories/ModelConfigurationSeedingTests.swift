@@ -80,6 +80,39 @@ struct ModelConfigurationSeedingTests {
     }
 
     @Test
+    func noOpSeedDoesNotConsumeAnIDFromTheGenerator() async throws {
+        // DeterministicIDGenerator is a counter — if the seed builds
+        // the record before checking emptiness, every no-op call would
+        // burn an id. Pin the contract: a no-op call leaves the
+        // counter at 0, so a *subsequent* seed against an emptied
+        // table starts at id-1.
+        let database = try ChatDatabase.makeInMemory()
+        let repository = GRDBModelConfigurationRepository(
+            database: database,
+            keychain: InMemoryKeychainClient()
+        )
+        let idGenerator = DeterministicIDGenerator(prefix: "afm-")
+        // Pre-populated so the first seed is a no-op.
+        try await repository.save(ModelConfigurationRecord(
+            id: "user-row",
+            name: "Gemini",
+            baseURL: URL(string: "https://example.com/v1"),
+            apiKeyRef: "kc:gemini",
+            modelId: "gemini-2.5-flash",
+            createdAt: Date(timeIntervalSinceReferenceDate: 0),
+            kind: .openAICompatible
+        ))
+        _ = try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            idGenerator: idGenerator,
+            clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
+        )
+        // Counter should still be at 0 (no id consumed). Verify by
+        // taking an id and asserting it's the first in the sequence.
+        #expect(idGenerator.nextID() == "afm-1")
+    }
+
+    @Test
     func seedRunsAtomicallyInOneWriteTransaction() async throws {
         // When two callers race on first launch, only one row lands.
         // The repository's `insertIfEmpty` runs the empty-check and the
