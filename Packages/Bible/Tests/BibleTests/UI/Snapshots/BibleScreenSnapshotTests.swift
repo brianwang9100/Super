@@ -217,6 +217,20 @@ struct BibleScreenSnapshotTests {
                name: "narrating_light_xxl")
     }
 
+    @Test("the narration card renders at Dynamic Type XXL in the dark theme")
+    func narratingDarkXXL() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .dark, dynamicType: .xxLarge,
+               name: "narrating_dark_xxl")
+    }
+
+    @Test("the narration card renders at Dynamic Type XXL in the sepia theme")
+    func narratingSepiaXXL() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .sepia, dynamicType: .xxLarge,
+               name: "narrating_sepia_xxl")
+    }
+
     @Test("the narration card takes precedence over the selection action sheet")
     func narratingWithSelectionLight() async {
         // When the user starts Narrate over a selection, the card and
