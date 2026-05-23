@@ -350,9 +350,18 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         // `.began` → pause and emit .paused. `.ended` is ignored — per
         // Apple's HIG we don't auto-resume; the user re-taps the pill.
         guard type == .began else { return }
-        synth.pauseSpeaking(at: .word)
-        let continuation = lock.withLock { $0.continuation }
-        continuation?.yield(.paused)
+        // `NotificationCenter` delivers `interruptionNotification` on
+        // an arbitrary thread (commonly the audio I/O thread). Every
+        // other `synth.*` call in this class reaches the synthesizer
+        // from a main-actor context — `AVSpeechSynthesizer` isn't
+        // documented thread-safe, so funnel this one through the main
+        // actor too.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.synth.pauseSpeaking(at: .word)
+            let continuation = self.lock.withLock { $0.continuation }
+            continuation?.yield(.paused)
+        }
     }
     #endif
 }
