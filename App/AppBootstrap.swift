@@ -91,6 +91,9 @@ enum AppBootstrap {
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
         let llmProviderRegistry = LLMProviderRegistry()
+        #if DEBUG
+        try await seedDebugModelIfNeeded(repository: modelConfigRepo)
+        #endif
         try await hydrateProviders(
             into: llmProviderRegistry,
             from: modelConfigRepo
@@ -222,6 +225,10 @@ enum AppBootstrap {
                 await registry.register(provider)
             case .appleFoundation:
                 break // `AppleFoundationLLMProvider` will register here once that class lands.
+            #if DEBUG
+            case .debug:
+                await registry.register(DebugLLMProvider())
+            #endif
             }
         }
 
@@ -233,6 +240,36 @@ enum AppBootstrap {
             try? await registry.setActive(id: selectedId)
         }
     }
+
+    #if DEBUG
+    /// DEBUG-only first-launch seed: insert a `ModelConfigurationRecord`
+    /// with `kind = .debug` so `DebugLLMProvider` shows up in the model
+    /// picker without the user having to add a model manually. Idempotent
+    /// — does nothing if a debug row already exists. The row is marked
+    /// selected only if no other row is selected, so a developer who has
+    /// already wired a real OpenAI-compatible model keeps it as the
+    /// active model and just sees the debug entry as an alternative.
+    private static func seedDebugModelIfNeeded(
+        repository: any ModelConfigurationRepository
+    ) async throws {
+        let existing = try await repository.all()
+        if existing.contains(where: { $0.kind == .debug }) { return }
+        let shouldSelect = try await repository.selected() == nil
+        let record = ModelConfigurationRecord(
+            id: "debug-canned",
+            name: "Debug (canned)",
+            baseURL: nil,
+            apiKeyRef: nil,
+            modelId: DebugLLMProvider.modelID,
+            createdAt: Date(),
+            kind: .debug,
+            supportsThinking: true,
+            maxContextTokens: DebugLLMProvider.maxContextTokens,
+            isSelected: shouldSelect
+        )
+        try await repository.save(record)
+    }
+    #endif
 
     private static func defaultDataDirectory() throws -> URL {
         let base = try FileManager.default.url(

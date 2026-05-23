@@ -582,6 +582,10 @@ public final class SettingsViewModel {
         case .appleFoundation:
             // Reachable from updateModel on an AFM row; no-op until the AFM provider class lands.
             break
+        #if DEBUG
+        case .debug:
+            await registry.register(DebugLLMProvider())
+        #endif
         }
     }
 
