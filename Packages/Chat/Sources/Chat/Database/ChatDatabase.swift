@@ -223,20 +223,11 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
     // and re-create the partial unique index on `isSelected` against the
     // renamed table.
     migrator.registerMigration("v4_modelConfigurationKind") { db in
-        try db.execute(sql: """
-            CREATE TABLE modelConfiguration_new (
-                id TEXT PRIMARY KEY NOT NULL,
-                kind TEXT NOT NULL DEFAULT 'openAICompatible',
-                name TEXT NOT NULL,
-                baseURL TEXT,
-                apiKeyRef TEXT,
-                modelId TEXT NOT NULL,
-                supportsThinking BOOLEAN NOT NULL DEFAULT 0,
-                maxContextTokens INTEGER NOT NULL,
-                isSelected BOOLEAN NOT NULL DEFAULT 0,
-                createdAt DATETIME NOT NULL
-            )
-        """)
+        // CREATE TABLE on a single line so sqlite_master stores it
+        // identically to the surrounding tables (v1 uses the GRDB
+        // DSL, which emits single-line SQL). Keeps the schema
+        // snapshot in `__Snapshots__/` visually consistent.
+        try db.execute(sql: "CREATE TABLE modelConfiguration_new (id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL DEFAULT 'openAICompatible', name TEXT NOT NULL, baseURL TEXT, apiKeyRef TEXT, modelId TEXT NOT NULL, supportsThinking BOOLEAN NOT NULL DEFAULT 0, maxContextTokens INTEGER NOT NULL, isSelected BOOLEAN NOT NULL DEFAULT 0, createdAt DATETIME NOT NULL)")
         try db.execute(sql: """
             INSERT INTO modelConfiguration_new
                 (id, kind, name, baseURL, apiKeyRef, modelId,

@@ -32,6 +32,25 @@ struct SettingsSheetSnapshotTests {
         .init(id: "gemma", name: "Gemma 4", monogram: "G", endpoint: "api.example.com/v1", maxContextTokens: 64_000, isEnabled: true),
     ]
 
+    /// `sampleModels` plus an Apple Foundation row — kept separate so
+    /// it doesn't ripple into the populated-models / root / Dynamic
+    /// Type XXL snapshots that consume `sampleModels` directly.
+    private static let sampleModelsWithAppleFoundation: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "afm",
+            name: "Apple Intelligence",
+            monogram: "AI",
+            endpoint: "",
+            maxContextTokens: 4_096,
+            isEnabled: true,
+            kind: .appleFoundation,
+            baseURL: nil,
+            modelId: "system-default",
+            supportsThinking: false,
+            hasAPIKey: false
+        ),
+    ]
+
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "time.now", name: "Current time", summary: "Returns the current local time in ISO-8601.", isEnabled: true),
         // Memory is enabled in the snapshot so the gear affordance
@@ -74,6 +93,28 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail seeded form (edit flow)")
     func modelDetailEdit() async {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
+    }
+
+    // Locks in the `baseURL == nil` init path introduced by the
+    // provider-kind discriminator work: `_baseURLText` falls back
+    // to the placeholder default when the row's URL is nil.
+    @Test("model detail seeded form for Apple Foundation row")
+    func modelDetailAppleFoundation() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "afm")
+        )
+        .superTheme(.make(.light))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_model_detail_afm_light", function: function)
     }
 
     // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.
