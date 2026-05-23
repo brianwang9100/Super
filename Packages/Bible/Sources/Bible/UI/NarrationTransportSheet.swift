@@ -54,10 +54,15 @@ struct NarrationTransportSheet: View {
     /// snapping off.
     let onDismiss: () -> Void
 
-    /// Cached, locale-filtered voice list so the picker doesn't re-call
-    /// `AVSpeechSynthesisVoice.speechVoices()` on every body re-evaluation
-    /// — it's a ~100-300 ms synchronous file scan.
-    @State private var voices: [VoiceOption] = []
+    /// Locale-filtered voice list backed by the process-wide
+    /// ``cachedVoices`` so the 100-300 ms
+    /// `AVSpeechSynthesisVoice.speechVoices()` scan runs at most once
+    /// per process. `@State` would survive a single presentation but
+    /// resets when the card is removed from the hierarchy; under the
+    /// Stop-keeps-the-card flow the user dismisses + re-presents the
+    /// card freely, and a per-presentation rescan would jank each
+    /// re-open.
+    @State private var voices: [VoiceOption] = NarrationTransportSheet.cachedVoices
     /// Live drag offset for the handle gesture. Reset to zero on a
     /// short drag (spring-back); on a drag past the dismiss threshold
     /// the offset is left at its end position so the card's slide-out
@@ -94,16 +99,18 @@ struct NarrationTransportSheet: View {
         // animation interpolator fights the gesture's discrete writes.
         .animation(nil, value: dragOffset)
         .task {
-            // `loadLocaleVoices` calls
-            // `AVSpeechSynthesisVoice.speechVoices()` — a ~100-300 ms
-            // synchronous file scan. Running it on `@MainActor` inside
-            // `.task` would freeze the thread the instant the card
-            // slides in, so do the scan on a detached background task
-            // and only hop back to the main actor to assign the result.
+            // First-open path only: `cachedVoices` was empty at view
+            // construction, so do the 100-300 ms
+            // `AVSpeechSynthesisVoice.speechVoices()` scan on a
+            // detached background task (running it on `@MainActor`
+            // here would freeze the main thread the instant the card
+            // slides in) and persist the result to the process-wide
+            // cache so subsequent presentations skip the scan.
             if voices.isEmpty {
                 let loaded = await Task.detached(priority: .userInitiated) {
                     Self.loadLocaleVoices()
                 }.value
+                Self.cachedVoices = loaded
                 voices = loaded
             }
         }
@@ -483,6 +490,16 @@ struct NarrationTransportSheet: View {
             ? "\(voice.name) (\(voice.language))"
             : "\(voice.name) — \(tier)"
     }
+
+    /// Process-wide cache of locale-filtered voices, populated the
+    /// first time the card opens. Subsequent presentations seed their
+    /// `@State` from this so the scan doesn't run on every card open.
+    /// `@MainActor` (implicit from the view) so the assignment in
+    /// `.task` is safe. The cache is per-process — voices installed
+    /// while the app is running won't appear until next launch, which
+    /// matches the OS's own voice-install behaviour anyway.
+    @MainActor
+    private static var cachedVoices: [VoiceOption] = []
 
     /// Discrete speed multiples the dropdown offers. 0.5× was dropped
     /// from the prior slider design — the spec wants the round-number

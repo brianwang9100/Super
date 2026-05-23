@@ -668,7 +668,11 @@ struct BibleScreenViewModelTests {
         controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.stepChapter(.next)
-        #expect(service.stopCallCount >= 1)
+        // Strict `== 1`, not `>= 1`: `NarrationController.stop()`
+        // guards on `state != .idle`, so the one navigation action
+        // here forwards to `service.stop()` exactly once. A loose
+        // bound would let a double-stop regression slip through.
+        #expect(service.stopCallCount == 1)
     }
 
     @Test("selecting a translation stops the active narration")
@@ -682,7 +686,7 @@ struct BibleScreenViewModelTests {
         controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.selectTranslation(.kjv)
-        #expect(service.stopCallCount >= 1)
+        #expect(service.stopCallCount == 1)
     }
 
     @Test("jumping to a chapter from the picker stops the active narration")
@@ -696,7 +700,7 @@ struct BibleScreenViewModelTests {
         controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
-        #expect(service.stopCallCount >= 1)
+        #expect(service.stopCallCount == 1)
     }
 
     @Test("presentNarrationSheet sets the presentation flag without starting narration")
