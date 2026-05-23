@@ -2,6 +2,7 @@ import Bible
 import Chat
 import Core
 import Foundation
+import FoundationModels
 import SwiftUI
 import Todo
 
@@ -90,10 +91,20 @@ enum AppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
+        // Fresh-install convenience: if the user has no configured
+        // models yet, seed a default Apple-Foundation-Model row so
+        // Chat opens onto a usable provider instead of the
+        // `noModelConfigured` empty state. Already-populated DBs are
+        // left alone; a user who manually deleted AFM gets it back
+        // only if they wipe the whole table (deliberate — see
+        // `ModelConfigurationSeeding`).
+        try await ModelConfigurationSeeding.seedDefaultIfEmpty(repository: modelConfigRepo)
+
         let llmProviderRegistry = LLMProviderRegistry()
         try await hydrateProviders(
             into: llmProviderRegistry,
-            from: modelConfigRepo
+            from: modelConfigRepo,
+            toolRegistry: toolRegistry
         )
 
         let compactor = Compactor(
@@ -189,15 +200,20 @@ enum AppBootstrap {
     }
 
     /// Read every persisted `ModelConfigurationRecord`, resolve its API key
-    /// from the Keychain, and register an `OpenAICompatibleLLMProvider` for
-    /// each. Registration order is creation-stable; the selected row is then
-    /// promoted via `setActive(id:)` so the bootstrap doesn't depend on
-    /// `LLMProviderRegistry`'s implementation detail of "first registered =
-    /// active". A row whose Keychain entry has been wiped registers anyway
-    /// with a nil key — local servers (MLX, Ollama) don't require auth.
+    /// from the Keychain, and register the right `LLMProvider` for each
+    /// row's `kind`. Registration order is creation-stable; the selected
+    /// row is then promoted via `setActive(id:)` so the bootstrap doesn't
+    /// depend on `LLMProviderRegistry`'s implementation detail of "first
+    /// registered = active". An `.openAICompatible` row whose Keychain
+    /// entry has been wiped registers anyway with a nil key — local
+    /// servers (MLX, Ollama) don't require auth. An `.appleFoundation`
+    /// row is only registered when the OS reports AFM as available; an
+    /// unavailable device leaves the registry empty and the orchestrator
+    /// falls back to its `noModelConfigured` banner.
     private static func hydrateProviders(
         into registry: LLMProviderRegistry,
-        from repository: any ModelConfigurationRepository
+        from repository: any ModelConfigurationRepository,
+        toolRegistry: ToolRegistry
     ) async throws {
         let configurations = try await repository.all()
         guard !configurations.isEmpty else { return }
@@ -205,7 +221,6 @@ enum AppBootstrap {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            // Unrouted kinds surface as `noModelConfigured` — deliberate no-op, not fallthrough.
             switch record.kind {
             case .openAICompatible:
                 let apiKey: String?
@@ -221,15 +236,28 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                break // `AppleFoundationLLMProvider` will register here once that class lands.
+                // Snapshot availability at boot. If the device can't run
+                // AFM right now we skip registration — the row stays in
+                // the model list (Settings will show the reason in the
+                // subtitle once Phase 6 lands), but the orchestrator
+                // can't activate it and surfaces the
+                // `noModelConfigured` empty state until the user adds
+                // another provider.
+                let availability = AppleFoundationAvailability(
+                    SystemLanguageModel.default.availability
+                )
+                guard availability.isAvailable else { continue }
+                let provider = AppleFoundationLLMProvider(toolRegistry: toolRegistry)
+                await registry.register(provider)
             }
         }
 
         if let selectedId = try await repository.selected()?.id {
             // The only failure mode is `unknownProvider`, which can only
-            // happen if the row was deleted between `selected()` and the
-            // loop above — at which point the first-registered fallback is
-            // the right behavior anyway.
+            // happen if the selected row's kind was unavailable (AFM on
+            // an ineligible device) and skipped above. The
+            // first-registered fallback (or "no provider" empty state)
+            // is the right behavior in that case.
             try? await registry.setActive(id: selectedId)
         }
     }
