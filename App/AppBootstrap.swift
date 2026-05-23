@@ -242,12 +242,17 @@ enum AppBootstrap {
                 // subtitle once Phase 6 lands), but the orchestrator
                 // can't activate it and surfaces the
                 // `noModelConfigured` empty state until the user adds
-                // another provider.
+                // another provider. The snapshot is handed straight to
+                // `init(availability:toolRegistry:)` so the provider
+                // doesn't re-read `SystemLanguageModel.default`.
                 let availability = AppleFoundationAvailability(
                     SystemLanguageModel.default.availability
                 )
                 guard availability.isAvailable else { continue }
-                let provider = AppleFoundationLLMProvider(toolRegistry: toolRegistry)
+                let provider = AppleFoundationLLMProvider(
+                    availability: availability,
+                    toolRegistry: toolRegistry
+                )
                 await registry.register(provider)
             }
         }

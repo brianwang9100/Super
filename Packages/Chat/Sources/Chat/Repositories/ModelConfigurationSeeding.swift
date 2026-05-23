@@ -34,19 +34,14 @@ public enum ModelConfigurationSeeding {
 
         let record = ModelConfigurationRecord(
             id: idGenerator.nextID(),
-            name: "Apple Intelligence",
+            name: AppleFoundationLLMProvider.defaultModelDisplayName,
             baseURL: nil,
             apiKeyRef: nil,
-            modelId: "system-default",
+            modelId: AppleFoundationLLMProvider.defaultModelID,
             createdAt: clock.now(),
             kind: .appleFoundation,
             supportsThinking: false,
-            // AFM context window is 4096 tokens on iOS 26.0–26.3 (the
-            // value `AppleFoundationLLMProvider.defaultMaxContextTokens`
-            // exposes). Hard-coding here rather than importing Core's
-            // constant keeps the seed independent of which provider
-            // class lands first.
-            maxContextTokens: 4_096,
+            maxContextTokens: AppleFoundationLLMProvider.defaultMaxContextTokens,
             isSelected: true
         )
         try await repository.save(record)

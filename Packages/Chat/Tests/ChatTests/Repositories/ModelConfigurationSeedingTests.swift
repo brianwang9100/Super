@@ -31,8 +31,9 @@ struct ModelConfigurationSeedingTests {
         #expect(record.baseURL == nil)
         #expect(record.apiKeyRef == nil)
         #expect(record.isSelected)
-        #expect(record.modelId == "system-default")
-        #expect(record.maxContextTokens == 4_096)
+        #expect(record.modelId == AppleFoundationLLMProvider.defaultModelID)
+        #expect(record.maxContextTokens == AppleFoundationLLMProvider.defaultMaxContextTokens)
+        #expect(record.name == AppleFoundationLLMProvider.defaultModelDisplayName)
         #expect(record.createdAt == clock.now())
 
         // The row persists and becomes the registry's active model via
@@ -79,14 +80,16 @@ struct ModelConfigurationSeedingTests {
     }
 
     @Test
-    func seedDoesNothingWhenOnlyDeletedRowsRemain() async throws {
-        // A user who manually deleted AFM (via Settings) should not have
-        // it silently re-seeded on next launch. The empty check covers
-        // this naturally because `delete(id:)` removes the row; after
-        // that the table is genuinely empty and seed *would* re-create.
-        //
-        // The current contract IS to re-seed in that case — but verify
-        // the call is a no-op once we re-call after a seed has run.
+    func seedIsIdempotentAcrossBackToBackCalls() async throws {
+        // Two consecutive calls within the same launch must produce
+        // exactly one seeded row — the second call sees the first
+        // call's row and exits via the `existing.isEmpty` guard. This
+        // is the in-process idempotency guarantee; deliberate
+        // re-seeding after a user-driven `delete` is a separate
+        // policy that is *not* covered here because, per the type doc,
+        // deleting AFM and getting an empty table back *does* trigger
+        // a fresh seed on next launch (a property the user can
+        // disable by adding any other model first).
         let database = try ChatDatabase.makeInMemory()
         let repository = GRDBModelConfigurationRepository(
             database: database,
@@ -107,7 +110,6 @@ struct ModelConfigurationSeedingTests {
             idGenerator: idGenerator,
             clock: clock
         )
-        // Idempotent on the second call within the same launch.
         #expect(second == nil)
         let all = try await repository.all()
         #expect(all.count == 1)
