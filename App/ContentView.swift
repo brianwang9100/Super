@@ -509,7 +509,13 @@ struct AppShell: View {
                 // always wires it.
                 memoryRepository: dependencies.memoryRepository,
                 llmProviderRegistry: dependencies.llmProviderRegistry,
-                httpClient: URLSessionHTTPClient()
+                httpClient: URLSessionHTTPClient(),
+                // Thread the boot-time availability snapshot through so the
+                // Settings UI agrees with the seeder/provider hydrator on
+                // whether AFM is usable. Re-querying `SystemLanguageModel
+                // .default.availability` here would let a mid-session toggle
+                // of Apple Intelligence split that answer across surfaces.
+                appleFoundationAvailability: dependencies.appleFoundationAvailability
             )
             await settings.load()
             settingsViewModel = settings

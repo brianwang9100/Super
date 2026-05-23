@@ -710,8 +710,15 @@ struct SettingsViewModelTests {
         toolRegistry: ToolRegistry = ToolRegistry(),
         userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
-        memoryRepository: (any MemoryRepository)? = nil
+        memoryRepository: (any MemoryRepository)? = nil,
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
     ) -> SettingsViewModel {
+        // The availability default is *deliberately* a fixed unavailable
+        // case rather than the SDK's `SystemLanguageModel.default
+        // .availability` so unit tests don't pick up whatever AFM state
+        // happens to be on the host running them. Tests that need to
+        // exercise the AFM-available code path should pass
+        // `appleFoundationAvailability: .available` explicitly.
         SettingsViewModel(
             accountEmail: "test@example.com",
             appInfo: Self.appInfo,
@@ -721,7 +728,8 @@ struct SettingsViewModelTests {
             toolRegistry: toolRegistry,
             userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
-            memoryRepository: memoryRepository
+            memoryRepository: memoryRepository,
+            appleFoundationAvailability: appleFoundationAvailability
         )
     }
 }

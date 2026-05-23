@@ -65,6 +65,12 @@ struct SettingsModelsPane: View {
                 isOn: Binding(
                     get: { model.isEnabled && isAvailable },
                     set: { newValue in
+                        // Defense-in-depth: the outer `.disabled(!isAvailable)`
+                        // already gates the button tap, but a no-op set here
+                        // means even an accessibility-side write to this
+                        // Binding cannot flip the row to a state the user
+                        // can't toggle back from once AFM becomes available.
+                        guard isAvailable else { return }
                         Task { await viewModel.setModelEnabled(id: model.id, enabled: newValue) }
                     }
                 ),

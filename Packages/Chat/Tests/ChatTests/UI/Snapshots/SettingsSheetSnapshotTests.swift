@@ -130,6 +130,15 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    @Test("models pane with AFM row when AFM is unavailable (appleIntelligenceNotEnabled)")
+    func modelsPaneWithAFMAppleIntelligenceNotEnabled() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            name: "settings_models_afm_apple_intelligence_off_light"
+        )
+    }
+
     private func verifyModelsPaneWithAFM(
         theme: SuperTheme.Identifier,
         availability: AppleFoundationAvailability,
