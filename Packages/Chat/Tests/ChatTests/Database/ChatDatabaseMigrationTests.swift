@@ -225,36 +225,39 @@ struct ChatDatabaseMigrationTests {
         #expect(indexNames.contains("modelConfiguration_unique_selected"))
     }
 
-    /// Pre-existing rows are migrated to `kind = 'openAICompatible'` so
-    /// the discriminator backfill is deterministic.
+    /// Pre-existing rows are migrated to `kind = 'openAICompatible'` by
+    /// the actual v4 backfill INSERT — `DatabaseMigrator.migrate(_:upTo:)`
+    /// lets the test stop at v3, seed a pre-v4 row whose schema has no
+    /// `kind` column, then apply v4 and assert on the migrated value.
+    /// This exercises the literal SELECT clause inside the migration, not
+    /// just the recreated column's DEFAULT.
     @Test func v4BackfillsExistingRowsAsOpenAICompatible() async throws {
-        // Apply the full migrator (v1 → v4) against a fresh queue, then
-        // simulate a pre-v4 row by *deleting* the kind column we just
-        // built — that's not actually possible with SQLite ALTER, so
-        // instead we insert via the same shape the v4 backfill would
-        // see: a row whose kind column is `'openAICompatible'` because
-        // that's what the migration set as the DEFAULT for all
-        // pre-existing rows. The behavioral assertion is the same — a
-        // freshly-inserted row in production prior to v4 surfaces as
-        // `.openAICompatible` post-migration.
-        let db = try ChatDatabase.makeInMemory()
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        try await db.queue.write { db in
-            // Insert via the post-v4 record but with the kind column
-            // omitted at the SQL level so the DEFAULT fires — proves
-            // the DEFAULT is exactly what the backfill INSERT used.
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+
+        // Stop at v3 — `modelConfiguration` still has the original v1
+        // shape (NOT NULL baseURL/apiKeyRef, no `kind` column).
+        try migrator.migrate(queue, upTo: "v3_memory")
+
+        try await queue.write { db in
             try db.execute(sql: """
                 INSERT INTO modelConfiguration
                     (id, name, baseURL, apiKeyRef, modelId, supportsThinking,
                      maxContextTokens, isSelected, createdAt)
                 VALUES
-                    ('a', 'Old', 'https://api.example.com/v1', 'ref-1',
-                     'gpt', 0, 16000, 0, ?)
-            """, arguments: [now])
+                    ('legacy', 'Pre-v4', 'https://api.example.com/v1',
+                     'ref-1', 'gpt', 0, 16000, 0, '2026-01-01 00:00:00')
+            """)
         }
 
-        let kinds = try await db.queue.read { db in
-            try String.fetchAll(db, sql: "SELECT kind FROM modelConfiguration")
+        // Now apply v4 — the backfill INSERT runs against the seeded row.
+        try migrator.migrate(queue)
+
+        let kinds = try await queue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT kind FROM modelConfiguration ORDER BY id
+            """)
         }
         #expect(kinds == ["openAICompatible"])
     }

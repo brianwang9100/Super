@@ -514,10 +514,17 @@ public final class SettingsViewModel {
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
+            // Only `.openAICompatible` rows have a meaningful `baseURL`.
+            // The detail pane always seeds its URL field with an HTTPS
+            // default — if a future flow reuses this entry point for a
+            // kind whose record-level invariant is `baseURL == nil`,
+            // forwarding the form value would silently corrupt the row.
+            // Preserve the existing value for those kinds.
+            let nextBaseURL: URL? = existing.kind == .openAICompatible ? baseURL : existing.baseURL
             let updated = ModelConfigurationRecord(
                 id: existing.id,
                 name: name,
-                baseURL: baseURL,
+                baseURL: nextBaseURL,
                 apiKeyRef: existing.apiKeyRef,
                 modelId: modelId,
                 createdAt: existing.createdAt,
@@ -567,13 +574,9 @@ public final class SettingsViewModel {
     /// Build a fresh provider for `record` and register it with the live
     /// registry. Kind-dispatches: `.openAICompatible` rows use the
     /// existing `OpenAICompatibleLLMProvider`; `.appleFoundation` rows
-    /// are no-ops here today because the AFM provider is seeded by
-    /// `AppBootstrap` rather than through the settings UI. The
-    /// `.appleFoundation` case becomes reachable from createModel /
-    /// updateModel in Phase 6 of the default-model work, when the Add
-    /// Model preset picker exposes AFM as a selectable preset. No-op
-    /// also when no registry/HTTP client was injected (tests and
-    /// previews don't wire them).
+    /// are no-ops because AFM is registered by the boot path rather
+    /// than through the settings UI. No-op also when no registry/HTTP
+    /// client was injected (tests and previews don't wire them).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
         switch record.kind {
@@ -587,9 +590,7 @@ public final class SettingsViewModel {
             await registry.register(provider)
         case .appleFoundation:
             // Not reachable via createModel/updateModel today — those
-            // paths only construct `.openAICompatible` rows. Becomes
-            // reachable in Phase 6 of the default-model work when the
-            // Add Model preset picker exposes AFM as a preset. Left
+            // paths only construct `.openAICompatible` rows. Left
             // explicit so a future preset that flips the kind doesn't
             // silently fall through the switch.
             break
