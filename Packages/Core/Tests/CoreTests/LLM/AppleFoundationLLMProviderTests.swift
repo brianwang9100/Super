@@ -19,7 +19,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots(["Hello", "Hello world"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -51,7 +51,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots([]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -83,7 +83,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots(["Hello world", "completely different"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
         let events = try await collect(provider.stream(
             messages: [.init(role: .user, text: "hi")],
@@ -104,7 +104,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots(["Hi", "Hi", "Hi there"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -120,18 +120,14 @@ struct AppleFoundationLLMProviderTests {
         #expect(deltas == ["Hi", " there"])
     }
 
-    @Test(arguments: [
-        AppleFoundationAvailability.deviceNotEligible,
-        .appleIntelligenceNotEnabled,
-        .modelNotReady,
-    ])
+    @Test(arguments: AppleFoundationAvailability.Reason.allCases)
     func unavailableProviderRejectsStreamWithStableErrorCode(
-        unavailability: AppleFoundationAvailability
+        reason: AppleFoundationAvailability.Reason
     ) async throws {
         let session = MockLanguageSession(outcome: .snapshots(["unreachable"]))
         let provider = AppleFoundationLLMProvider(
-            availability: unavailability,
-            sessionFactory: { _ in session }
+            availability: .unavailable(reason),
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -149,7 +145,7 @@ struct AppleFoundationLLMProviderTests {
             Issue.record("expected providerError, got \(errors)")
             return
         }
-        #expect(code == unavailability.errorCode)
+        #expect(code == reason.errorCode)
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
         #expect(!events.contains { if case .textDelta = $0 { return true }; return false })
     }
@@ -159,7 +155,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots(["x"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
         let bogus = LLMModel(id: "not-the-system-default", displayName: "Bogus")
 
@@ -188,7 +184,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .snapshots(["x"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -221,7 +217,7 @@ struct AppleFoundationLLMProviderTests {
         ))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -258,7 +254,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .error(testCase.makeError()))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -277,7 +273,7 @@ struct AppleFoundationLLMProviderTests {
         let session = MockLanguageSession(outcome: .error(CancellationError()))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { _ in session }
+            sessionFactory: { _, _ in session }
         )
 
         let events = try await collect(provider.stream(
@@ -296,7 +292,7 @@ struct AppleFoundationLLMProviderTests {
         let recorder = TranscriptRecorder()
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { transcript in
+            sessionFactory: { transcript, _ in
                 recorder.record(transcript)
                 return MockLanguageSession(outcome: .snapshots(["ok"]))
             }
@@ -343,7 +339,7 @@ struct AppleFoundationLLMProviderTests {
         let recorder = TranscriptRecorder()
         let provider = AppleFoundationLLMProvider(
             availability: .available,
-            sessionFactory: { transcript in
+            sessionFactory: { transcript, _ in
                 recorder.record(transcript)
                 return MockLanguageSession(outcome: .snapshots(["ok"]))
             }
@@ -371,11 +367,113 @@ struct AppleFoundationLLMProviderTests {
     }
 
     @Test
-    func availabilityInitializerCollapsesAppleEnum() {
+    func providerWithRegistryBuildsOneDynamicLLMToolPerAdvertisedTool() async throws {
+        let registry = ToolRegistry()
+        await registry.register(ToolRegistration(
+            tool: testToolDescriptor(id: "alpha"),
+            execution: .local(ScriptedToolExecutor(toolID: "alpha", content: "")),
+            isEnabled: true
+        ))
+        await registry.register(ToolRegistration(
+            tool: testToolDescriptor(id: "beta"),
+            execution: .local(ScriptedToolExecutor(toolID: "beta", content: "")),
+            isEnabled: true
+        ))
+        let recorder = ToolsRecorder()
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, tools in
+                recorder.record(tools)
+                return MockLanguageSession(outcome: .snapshots(["ok"]))
+            },
+            toolRegistry: registry
+        )
+
+        _ = try await collect(provider.stream(
+            messages: [.init(role: .user, text: "hi")],
+            model: Self.model,
+            tools: [testToolDescriptor(id: "alpha"), testToolDescriptor(id: "beta")],
+            temperature: 0.5
+        ))
+
+        // Factory receives exactly the two wrapped tools the orchestrator
+        // advertised — registry-built `DynamicLLMTool` instances exposing
+        // `name` from each `LLMTool`.
+        let captured = recorder.allCalls
+        #expect(captured.count == 1)
+        let toolNames = captured[0].map(\.name).sorted()
+        #expect(toolNames == ["alpha", "beta"])
+    }
+
+    @Test
+    func providerWithoutRegistryYieldsEmptyToolsToFactory() async throws {
+        let recorder = ToolsRecorder()
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, tools in
+                recorder.record(tools)
+                return MockLanguageSession(outcome: .snapshots(["ok"]))
+            }
+            // toolRegistry omitted — defaults to nil
+        )
+
+        _ = try await collect(provider.stream(
+            messages: [.init(role: .user, text: "hi")],
+            model: Self.model,
+            tools: [testToolDescriptor(id: "alpha")],
+            temperature: 0.5
+        ))
+
+        // No registry → no dynamic tools, even though the orchestrator
+        // advertised one.
+        #expect(recorder.allCalls[0].isEmpty)
+    }
+
+    @Test
+    func messageIDUsesInjectedGenerator() async throws {
+        let idGenerator = DeterministicIDGenerator(prefix: "afm-")
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots(["x"])) },
+            idGenerator: idGenerator
+        )
+        let events = try await collect(provider.stream(
+            messages: [.init(role: .user, text: "hi")],
+            model: Self.model,
+            tools: [],
+            temperature: 0.5
+        ))
+        guard case .messageStart(let id, _) = events.first else {
+            Issue.record("expected messageStart first")
+            return
+        }
+        #expect(id == "afm-1")
+    }
+
+    private func testToolDescriptor(id: String) -> LLMTool {
+        LLMTool(
+            id: id, name: id, description: "tool \(id)",
+            category: .query, parameters: [], appletId: "test"
+        )
+    }
+
+    @Test
+    func availabilityInitializerWrapsAppleEnum() {
         #expect(AppleFoundationAvailability(.available) == .available)
-        #expect(AppleFoundationAvailability(.unavailable(.deviceNotEligible)) == .deviceNotEligible)
-        #expect(AppleFoundationAvailability(.unavailable(.appleIntelligenceNotEnabled)) == .appleIntelligenceNotEnabled)
-        #expect(AppleFoundationAvailability(.unavailable(.modelNotReady)) == .modelNotReady)
+        #expect(AppleFoundationAvailability(.unavailable(.deviceNotEligible))
+                == .unavailable(.deviceNotEligible))
+        #expect(AppleFoundationAvailability(.unavailable(.appleIntelligenceNotEnabled))
+                == .unavailable(.appleIntelligenceNotEnabled))
+        #expect(AppleFoundationAvailability(.unavailable(.modelNotReady))
+                == .unavailable(.modelNotReady))
+    }
+
+    @Test
+    func availabilityIsAvailableHelperOnlyTrueOnAvailableCase() {
+        #expect(AppleFoundationAvailability.available.isAvailable)
+        #expect(!AppleFoundationAvailability.unavailable(.deviceNotEligible).isAvailable)
+        #expect(!AppleFoundationAvailability.unavailable(.appleIntelligenceNotEnabled).isAvailable)
+        #expect(!AppleFoundationAvailability.unavailable(.modelNotReady).isAvailable)
     }
 
     // MARK: - Helpers
@@ -437,6 +535,21 @@ final class TranscriptRecorder: Sendable {
     }
 
     var all: [Transcript] {
+        storage.withLock { $0 }
+    }
+}
+
+/// Records every `[any FoundationModels.Tool]` array handed to the test
+/// factory so assertions can verify the provider built the right
+/// `DynamicLLMTool` wrappers from the advertised `LLMTool` list.
+final class ToolsRecorder: Sendable {
+    private let storage = OSAllocatedUnfairLock<[[any FoundationModels.Tool]]>(initialState: [])
+
+    func record(_ tools: [any FoundationModels.Tool]) {
+        storage.withLock { $0.append(tools) }
+    }
+
+    var allCalls: [[any FoundationModels.Tool]] {
         storage.withLock { $0 }
     }
 }
