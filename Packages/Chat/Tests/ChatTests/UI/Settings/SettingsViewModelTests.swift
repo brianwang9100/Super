@@ -293,6 +293,39 @@ struct SettingsViewModelTests {
         #expect(noKey?.hasAPIKey == false)
     }
 
+    @Test("loadModels projects .appleFoundation rows with nil baseURL and empty endpoint")
+    func loadModelsProjectsAppleFoundationRow() async {
+        // The Settings UI consumes `ModelRow.kind` to render an AFM-aware
+        // subtitle, `ModelRow.baseURL == nil` to suppress the endpoint
+        // pill, and `ModelRow.hasAPIKey == false` since there is no
+        // keychain entry to check. This exercises the three new
+        // nil-aware branches in `loadModels()` against an AFM record.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "afm",
+                name: "Apple Intelligence",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: Date(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: 4_096,
+                isSelected: true
+            ),
+        ])
+
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        let row = vm.models.first { $0.id == "afm" }
+        #expect(row?.kind == .appleFoundation)
+        #expect(row?.baseURL == nil)
+        #expect(row?.endpoint == "")
+        #expect(row?.hasAPIKey == false)
+        #expect(row?.modelId == "system-default")
+    }
+
     @Test("updateModel with blank key preserves both ref and stored key")
     func updateModelPlaceholderSavePreservesKey() async {
         // Pairs with the model-detail pane's "user opened the edit form

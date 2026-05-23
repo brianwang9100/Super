@@ -56,7 +56,7 @@ public final class SettingsViewModel {
             maxContextTokens: Int,
             isEnabled: Bool,
             kind: LLMProviderKind = .openAICompatible,
-            baseURL: URL? = URL(string: "https://api.openai.com/v1")!,
+            baseURL: URL? = nil,
             modelId: String = "",
             supportsThinking: Bool = false,
             hasAPIKey: Bool = false
