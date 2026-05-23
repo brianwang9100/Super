@@ -79,4 +79,15 @@ extension AppleFoundationAvailability.Reason {
             return "Apple Intelligence is preparing the on-device model. Try again shortly."
         }
     }
+
+    /// Compact one-line variant of `errorMessage` for places that need a
+    /// short subtitle (Settings model-row cards), not the full
+    /// banner-friendly sentence.
+    public var subtitle: String {
+        switch self {
+        case .deviceNotEligible: return "Device not eligible"
+        case .appleIntelligenceNotEnabled: return "Apple Intelligence off"
+        case .modelNotReady: return "Model not ready"
+        }
+    }
 }

@@ -1,5 +1,6 @@
 import Core
 import Foundation
+import FoundationModels
 import os
 import SwiftUI
 
@@ -174,6 +175,18 @@ public final class SettingsViewModel {
     /// restart (e.g. refreshing `ChatScreenViewModel.availableModels`).
     public var onModelsChanged: (@MainActor () -> Void)?
 
+    /// Live AFM availability surfaced to the panes so an
+    /// `.appleFoundation` row can render its subtitle and toggle state
+    /// from the OS rather than from the persisted record alone.
+    ///
+    /// Snapshotted once at init from `SystemLanguageModel.default.availability`
+    /// (or the injected override in tests). The Apple SDK marks the
+    /// underlying property as `Observable`, so a future revision could
+    /// re-read on every render; for the MVP a launch-time snapshot is
+    /// fine — toggling Apple Intelligence in System Settings already
+    /// requires an app relaunch to take effect.
+    public let appleFoundationAvailability: AppleFoundationAvailability
+
     public init(
         accountEmail: String,
         appInfo: SuperAppInfo,
@@ -185,7 +198,10 @@ public final class SettingsViewModel {
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
-        httpClient: (any HTTPClient)? = nil
+        httpClient: (any HTTPClient)? = nil,
+        appleFoundationAvailability: AppleFoundationAvailability = AppleFoundationAvailability(
+            SystemLanguageModel.default.availability
+        )
     ) {
         self.accountEmail = accountEmail
         self.appInfo = appInfo
@@ -198,6 +214,7 @@ public final class SettingsViewModel {
         self.userPersonalizationReceiver = userPersonalizationReceiver
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
         self.httpClient = httpClient
+        self.appleFoundationAvailability = appleFoundationAvailability
     }
 
     /// `true` once `load()` has populated state from any source — the

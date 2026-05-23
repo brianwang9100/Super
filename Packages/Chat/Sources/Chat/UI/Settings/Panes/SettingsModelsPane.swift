@@ -28,7 +28,8 @@ struct SettingsModelsPane: View {
     }
 
     private func modelCard(_ model: SettingsViewModel.ModelRow) -> some View {
-        HStack(spacing: 10) {
+        let isAvailable = isModelAvailable(model)
+        return HStack(spacing: 10) {
             // Card body: tap pushes the edit pane. Wrapping just the body
             // (not the toggle) in a Button keeps the toggle's tap region
             // independent so flipping the switch doesn't also navigate.
@@ -47,9 +48,9 @@ struct SettingsModelsPane: View {
                         Text(model.name)
                             .font(.system(.subheadline).weight(.medium))
                             .foregroundStyle(theme.ink)
-                        Text("\(model.maxContextTokens / 1000)K ctx · \(model.endpoint)")
+                        Text(subtitle(for: model))
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(theme.inkFaint)
+                            .foregroundStyle(isAvailable ? theme.inkFaint : theme.errorInk)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -62,13 +63,20 @@ struct SettingsModelsPane: View {
 
             SettingsToggle(
                 isOn: Binding(
-                    get: { model.isEnabled },
+                    get: { model.isEnabled && isAvailable },
                     set: { newValue in
+                        // Defense-in-depth: the outer `.disabled(!isAvailable)`
+                        // already gates the button tap, but a no-op set here
+                        // means even an accessibility-side write to this
+                        // Binding cannot flip the row to a state the user
+                        // can't toggle back from once AFM becomes available.
+                        guard isAvailable else { return }
                         Task { await viewModel.setModelEnabled(id: model.id, enabled: newValue) }
                     }
                 ),
                 accessibilityLabel: model.name
             )
+            .disabled(!isAvailable)
         }
         .padding(14)
         .background(
@@ -79,6 +87,37 @@ struct SettingsModelsPane: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(theme.borderFaint, lineWidth: 1)
         )
+    }
+
+    /// Whether the row is usable right now. `.openAICompatible` rows are
+    /// always usable from the UI's perspective — wire-level errors
+    /// surface as runtime banners, not toggle gating. `.appleFoundation`
+    /// rows are usable only when the OS reports AFM as available.
+    private func isModelAvailable(_ model: SettingsViewModel.ModelRow) -> Bool {
+        switch model.kind {
+        case .openAICompatible:
+            return true
+        case .appleFoundation:
+            return viewModel.appleFoundationAvailability.isAvailable
+        }
+    }
+
+    /// `.openAICompatible` rows show context + endpoint (the existing
+    /// monospaced "4K ctx · api.openai.com" line). `.appleFoundation`
+    /// rows show the model id when available, and the unavailability
+    /// reason otherwise — the AFM equivalent of an endpoint subtitle.
+    private func subtitle(for model: SettingsViewModel.ModelRow) -> String {
+        switch model.kind {
+        case .openAICompatible:
+            return "\(model.maxContextTokens / 1000)K ctx · \(model.endpoint)"
+        case .appleFoundation:
+            switch viewModel.appleFoundationAvailability {
+            case .available:
+                return "\(model.maxContextTokens / 1000)K ctx · on-device"
+            case .unavailable(let reason):
+                return reason.subtitle
+            }
+        }
     }
 
     private var addModelButton: some View {

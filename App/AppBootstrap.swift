@@ -39,6 +39,14 @@ struct AppDependencies {
     /// rail's backdrop list and the briefings handed to
     /// `ChatSessionStore` — keeping the two in lock-step.
     let appletRegistry: AppletRegistry
+    /// AFM availability snapshot taken at boot. Threaded forward so view
+    /// models built later in the session (`SettingsViewModel`,
+    /// `ChatScreenViewModel`) read the same value the seeder/provider
+    /// hydrator already used — re-querying `SystemLanguageModel.default
+    /// .availability` could otherwise return a different state mid-session
+    /// (e.g. user just toggled Apple Intelligence in Settings) and split
+    /// the UI's "is AFM usable" answer across surfaces.
+    let appleFoundationAvailability: AppleFoundationAvailability
 }
 
 /// One-shot composition root. Bootstraps the on-disk database, every
@@ -206,7 +214,8 @@ enum AppBootstrap {
             registeredToolIDs: registeredToolIDs,
             todoDependencies: todoDependencies,
             eventBus: SuperEventBus(),
-            appletRegistry: appletRegistry
+            appletRegistry: appletRegistry,
+            appleFoundationAvailability: bootAvailability
         )
     }
 
