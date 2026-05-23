@@ -326,6 +326,48 @@ struct SettingsViewModelTests {
         #expect(row?.modelId == "system-default")
     }
 
+    @Test("updateModel on an .appleFoundation row preserves nil baseURL and skips keychain writes")
+    func updateModelOnAppleFoundationRowPreservesNilFields() async {
+        // The future AFM edit pane (Phase 6) will reuse this code path
+        // but with no URL or key field. Until that lands, the URL the
+        // pane seeds (`https://api.openai.com/v1`) must NOT overwrite
+        // the row's nil `baseURL`, and the empty `apiKey` must NOT
+        // create a phantom keychain entry under a nonexistent ref.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "afm",
+                name: "Apple Intelligence",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: Date(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: 4_096,
+                isSelected: true
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "afm",
+            name: "Apple Intelligence (renamed)",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "system-default",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 4_096
+        )
+
+        let saved = try? await modelRepo.fetch(id: "afm")
+        #expect(saved?.kind == .appleFoundation)
+        #expect(saved?.baseURL == nil)            // form URL did NOT overwrite
+        #expect(saved?.apiKeyRef == nil)
+        #expect(saved?.name == "Apple Intelligence (renamed)")
+        #expect(modelRepo.storedKeys.isEmpty)     // no phantom key written
+    }
+
     @Test("updateModel with blank key preserves both ref and stored key")
     func updateModelPlaceholderSavePreservesKey() async {
         // Pairs with the model-detail pane's "user opened the edit form
