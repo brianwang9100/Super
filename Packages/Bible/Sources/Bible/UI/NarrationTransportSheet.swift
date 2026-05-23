@@ -514,9 +514,11 @@ struct NarrationTransportSheet: View {
     /// to opening the app's own Settings page (still useful: the user
     /// can navigate from there).
     private func openSpokenContentSettings() {
-        let url = URL(string: "App-Prefs:ACCESSIBILITY&path=SETTINGS_SPOKEN_CONTENT")
-            ?? URL(string: "App-Prefs:ACCESSIBILITY")
-        guard let url else { return }
+        // `URL(string:)` always returns non-nil for a syntactically-
+        // valid string, so the `guard` is defensive against a future
+        // typo, not a fallback for parse failure. The real
+        // "scheme rejected" fallback is the `accepted` callback below.
+        guard let url = URL(string: "App-Prefs:ACCESSIBILITY&path=SETTINGS_SPOKEN_CONTENT") else { return }
         #if canImport(UIKit)
         openURL(url) { accepted in
             // Fallback: if the system refused the deep link, drop the

@@ -409,6 +409,14 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
             guard entry.sessionVersion == state.sessionVersion else {
                 return (nil, nil, false)
             }
+            // Completion depends on the synth delivering `didFinish`
+            // for utterances in the order they were `speak()`d.
+            // AVSpeechSynthesizer doesn't formally document strict
+            // FIFO ordering, but its implementation reads one
+            // utterance at a time from a serial queue, so an
+            // out-of-order delivery would require the synth to
+            // restructure how it dispatches — load-bearing for the
+            // `.completed` event but not at risk in practice.
             let isLast = state.utteranceVerse.isEmpty
                 && (entry.verseNumber == state.pendingUtterances.last?.verseNumber)
             return (entry.verseNumber, state.continuation, isLast)
