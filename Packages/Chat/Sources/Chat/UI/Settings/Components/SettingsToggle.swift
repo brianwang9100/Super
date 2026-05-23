@@ -27,7 +27,7 @@ struct SettingsToggle: View {
     }
 
     var body: some View {
-        Button(action: toggle) {
+        Button(action: handleTap) {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Capsule(style: .continuous)
                     .fill(isOn ? theme.accent : theme.border)
@@ -45,11 +45,20 @@ struct SettingsToggle: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { toggle() }
+        .accessibilityAction { handleTap() }
     }
 
-    private func toggle() {
+    private func handleTap() {
+        Self.commit(isOn: $isOn, isEnabled: isEnabled)
+    }
+
+    /// Pure helper extracted so the disabled-guard can be unit-tested
+    /// without rendering the view through `UIHostingController`. The
+    /// view body funnels both the button action *and* the explicit
+    /// `.accessibilityAction { … }` through here so VoiceOver can't
+    /// bypass the guard (the bug round 1 fixed).
+    static func commit(isOn: Binding<Bool>, isEnabled: Bool) {
         guard isEnabled else { return }
-        isOn.toggle()
+        isOn.wrappedValue.toggle()
     }
 }

@@ -139,10 +139,25 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    // Dynamic Type XXL companion per AGENTS.md §Testing.3 ("at minimum
+    // one larger Dynamic Type size"). Models pane card layout — monogram
+    // tile + two-line text stack + trailing toggle — is the most likely
+    // surface to regress at XXL, so this is the variant we anchor.
+    @Test("dynamic type XXL on models pane with AFM row")
+    func modelsPaneWithAFMXXL() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .available,
+            name: "settings_models_afm_available_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
     private func verifyModelsPaneWithAFM(
         theme: SuperTheme.Identifier,
         availability: AppleFoundationAvailability,
         name: String,
+        dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) async {
         let viewModel = makeViewModel(appleFoundationAvailability: availability)
@@ -157,6 +172,7 @@ struct SettingsSheetSnapshotTests {
             initialPane: .models
         )
         .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }
