@@ -4,69 +4,103 @@ import Foundation
 /// `LLMProvider` conformer for the on-device Apple Foundation Model (AFM)
 /// exposed by the `FoundationModels` framework.
 ///
-/// **Phase 3 scope:** text-only. The exposed `LLMModel` advertises
-/// `supportsTools: false` and the provider drops any `tools` argument it
-/// receives. Phase 4 lifts that flag and wires the `DynamicLLMTool`
-/// adapter through `LanguageSession`.
+/// **Tooling model:** AFM invokes registered tools in-band during
+/// `LanguageModelSession.streamResponse`, splicing the result back into
+/// the model's context invisibly to the caller. The provider therefore
+/// emits only `.textDelta` events to the outer stream — never
+/// `.toolUse`. Tool execution is exercised end-to-end (model →
+/// `DynamicLLMTool.call` → `ToolRegistry.execute` → registry's
+/// executor) but action-card UI for AFM-driven tool calls is a later
+/// phase. Other providers (`OpenAICompatibleLLMProvider`) keep yielding
+/// `.toolUse` and rely on the orchestrator's executeToolCalls loop.
 ///
 /// **Stream contract** matches `OpenAICompatibleLLMProvider`: every
-/// stream ends with `.messageComplete(usage:)` and never throws. Failures
-/// (unavailable AFM, unsupported model, mid-stream `GenerationError`,
-/// cancellation) arrive as `.error(...)` immediately before the terminal
-/// `.messageComplete`, so consumers always get a clean stream-done signal
-/// and can persist whatever did make it through.
+/// stream ends with `.messageComplete(usage:)` and never throws.
+/// Failures arrive as `.error(...)` immediately before the terminal
+/// `.messageComplete`. `.contentBlockStart` is emitted lazily on the
+/// first non-empty delta and `.contentBlockStop` pairs with it on
+/// every exit path.
 ///
 /// **Availability is snapshot at init.** A provider built when AFM is
-/// unavailable will reject every `stream(...)` call with the captured
-/// reason — toggling Apple Intelligence in Settings requires a relaunch.
-/// The Settings pane reads `SystemLanguageModel.default.availability`
-/// directly so the row subtitle stays live.
+/// unavailable rejects every `stream(...)` call with the captured
+/// reason — toggling Apple Intelligence in Settings requires a
+/// relaunch. The Settings pane reads
+/// `SystemLanguageModel.default.availability` directly so the row
+/// subtitle stays live.
 public struct AppleFoundationLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
-    public let supportedModels: [LLMModel]
 
     private let availability: AppleFoundationAvailability
     private let sessionFactory: LanguageSessionFactory
+    private let idGenerator: any IDGenerator
+    /// Shared dispatcher AFM tool calls fan out through. `nil` means
+    /// "no tools" — the model still streams text but never sees any
+    /// callable tools. The composition root injects the real registry
+    /// via `init(toolRegistry:)`; the no-arg `init()` keeps the
+    /// zero-config startup path working until Phase 5 wires that up.
+    private let toolRegistry: ToolRegistry?
 
-    /// The single model surface exposed by the provider. Context window
-    /// is the iOS 26.0–26.3 hard cap of 4096 tokens; iOS 26.4 lifts the
-    /// limit via `SystemLanguageModel.contextSize` but the lower number
-    /// is the safe default until we read the runtime value.
-    public static let defaultModel = LLMModel(
-        id: "system-default",
-        displayName: "Apple Intelligence",
-        supportsThinking: false,
-        supportsTools: false,
-        maxContextTokens: 4_096
-    )
+    /// Stable identifier for the single model surface AFM exposes.
+    public static let defaultModelID = "system-default"
+    /// User-facing display name.
+    public static let defaultModelDisplayName = "Apple Intelligence"
+    /// Context-window cap on iOS 26.0–26.3 (the hard 4096-token limit).
+    /// iOS 26.4 lifts this via `SystemLanguageModel.contextSize`; we
+    /// keep the conservative value until that runtime read lands.
+    public static let defaultMaxContextTokens = 4_096
+
+    /// The model surface exposed to the orchestrator. `supportsTools`
+    /// reflects whether a `ToolRegistry` was wired into this provider
+    /// instance — without one, AFM has no callable tools, so the
+    /// orchestrator should not advertise any. Computed per-instance so
+    /// the registry-less startup path is honest about its capabilities.
+    public var supportedModels: [LLMModel] {
+        [LLMModel(
+            id: Self.defaultModelID,
+            displayName: Self.defaultModelDisplayName,
+            supportsThinking: false,
+            supportsTools: toolRegistry != nil,
+            maxContextTokens: Self.defaultMaxContextTokens
+        )]
+    }
 
     /// Designated initializer. Tests pass an explicit
-    /// `AppleFoundationAvailability` and a scripted `sessionFactory`; the
-    /// `init()` convenience below resolves both from real APIs.
+    /// `AppleFoundationAvailability`, a scripted `sessionFactory`, and
+    /// a `DeterministicIDGenerator` so message IDs are stable; the
+    /// `init()` convenience below resolves all three from real APIs.
     init(
+        availability: AppleFoundationAvailability,
+        sessionFactory: @escaping LanguageSessionFactory,
         id: String = "apple-foundation",
         displayName: String = "Apple Intelligence",
-        availability: AppleFoundationAvailability,
-        sessionFactory: @escaping LanguageSessionFactory
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        toolRegistry: ToolRegistry? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.availability = availability
         self.sessionFactory = sessionFactory
-        self.supportedModels = [Self.defaultModel]
+        self.idGenerator = idGenerator
+        self.toolRegistry = toolRegistry
     }
 
     /// Production convenience. Snapshots availability from
-    /// `SystemLanguageModel.default` and uses `LiveLanguageSession` for
-    /// every turn. Call this from the composition root after deciding to
-    /// register an AFM-backed `ModelConfiguration` row.
-    public init() {
+    /// `SystemLanguageModel.default`, uses `LiveLanguageSession` for
+    /// every turn, a real `UUIDGenerator` for message IDs, and the
+    /// passed-in `ToolRegistry` (optional — pass nil for the text-only
+    /// startup path). Call this from the composition root after
+    /// deciding to register an AFM-backed `ModelConfiguration` row.
+    public init(toolRegistry: ToolRegistry? = nil) {
         self.init(
             availability: AppleFoundationAvailability(SystemLanguageModel.default.availability),
-            sessionFactory: { transcript in
-                LiveLanguageSession(session: LanguageModelSession(transcript: transcript))
-            }
+            sessionFactory: { transcript, tools in
+                LiveLanguageSession(session: LanguageModelSession(
+                    tools: tools,
+                    transcript: transcript
+                ))
+            },
+            toolRegistry: toolRegistry
         )
     }
 
@@ -78,20 +112,13 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                let messageID = UUID().uuidString
+                let messageID = idGenerator.nextID()
                 // Always emit `.messageStart` so the contract holds even
-                // for pre-stream failures (unsupported model, AFM
-                // unavailable, no trailing user message). Matches
-                // `OpenAIStreamReducer.finish()`'s guarantee that
-                // `messageStart` precedes `messageComplete` on every
-                // terminated stream.
+                // for pre-stream failures.
                 continuation.yield(.messageStart(id: messageID, model: model.id))
                 // Lazy text-block bookkeeping: `.contentBlockStart` only
-                // fires on the first non-empty delta, and `.contentBlockStop`
-                // pairs with it on every exit path (success, error,
-                // cancellation). Pre-stream failures yield neither, which
-                // is the same shape `OpenAIStreamReducer` produces when no
-                // content arrives.
+                // fires on the first non-empty delta, and
+                // `.contentBlockStop` pairs with it on every exit path.
                 var openedBlock = false
                 func closeBlockIfNeeded() {
                     if openedBlock {
@@ -103,15 +130,16 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
                     }
-                    if availability != .available {
+                    if case .unavailable(let reason) = availability {
                         throw LLMError.providerError(
-                            code: availability.errorCode,
-                            message: availability.errorMessage
+                            code: reason.errorCode,
+                            message: reason.errorMessage
                         )
                     }
 
                     let (transcript, prompt) = try translate(messages: messages)
-                    let session = sessionFactory(transcript)
+                    let dynamicTools = buildDynamicTools(from: tools)
+                    let session = sessionFactory(transcript, dynamicTools)
                     let options = GenerationOptions(temperature: temperature)
 
                     var lastSnapshot = ""
@@ -145,12 +173,30 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         }
     }
 
+    /// Build one `DynamicLLMTool` per advertised `LLMTool`. A tool whose
+    /// schema fails to construct (malformed parameter set) is dropped
+    /// silently rather than failing the whole turn — the model loses
+    /// access to that tool but other tools still work. This matches the
+    /// OpenAI path's behavior, which serializes each tool independently.
+    /// Returns an empty array when no `ToolRegistry` was injected — AFM
+    /// streams text without any callable tools in that mode.
+    private func buildDynamicTools(from tools: [LLMTool]) -> [any FoundationModels.Tool] {
+        guard let registry = toolRegistry else { return [] }
+        return tools.compactMap { tool in
+            try? DynamicLLMTool(llmTool: tool, registry: registry)
+        }
+    }
+
     /// Pull the latest `.user` message out as the live prompt and
     /// translate everything before it into a `Transcript`. The first
     /// `.system` message becomes an `Instructions` entry; remaining
-    /// `.user` and `.assistant` text becomes `Prompt`/`Response` entries.
-    /// Tool-result and tool-use blocks are dropped in Phase 3 — Phase 4
-    /// expands this once the dynamic-tool adapter lands.
+    /// `.user` and `.assistant` text becomes `Prompt`/`Response`
+    /// entries. Tool-result and tool-use blocks are still dropped:
+    /// AFM tool calls happen in-band and never make it onto the
+    /// orchestrator's history, so a `.tool` message in `messages`
+    /// would only show up if a non-AFM turn ran earlier in the same
+    /// session and we're now resuming on AFM — that case is rare and
+    /// the safe default is to drop it.
     private func translate(messages: [LLMMessage]) throws -> (Transcript, String) {
         guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else {
             throw LLMError.requestFailed("AppleFoundationLLMProvider requires a trailing user message")
@@ -262,32 +308,6 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                 code: "unknown_generation_error",
                 message: error.localizedDescription
             )
-        }
-    }
-}
-
-extension AppleFoundationAvailability {
-    /// Stable identifier used in `LLMError.providerError(code:...)` so
-    /// the Chat UI can render a specific banner per reason without
-    /// pattern-matching localized strings.
-    var errorCode: String {
-        switch self {
-        case .available: return ""
-        case .deviceNotEligible: return "afm_device_not_eligible"
-        case .appleIntelligenceNotEnabled: return "afm_apple_intelligence_not_enabled"
-        case .modelNotReady: return "afm_model_not_ready"
-        }
-    }
-
-    var errorMessage: String {
-        switch self {
-        case .available: return ""
-        case .deviceNotEligible:
-            return "This device is not eligible for Apple Intelligence."
-        case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is not enabled in System Settings."
-        case .modelNotReady:
-            return "Apple Intelligence is preparing the on-device model. Try again shortly."
         }
     }
 }

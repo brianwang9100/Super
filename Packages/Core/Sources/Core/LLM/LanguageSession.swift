@@ -8,22 +8,26 @@ import Foundation
 /// to be enabled on the host. The protocol below exposes the minimum
 /// surface the provider uses; `LiveLanguageSession` wraps the real
 /// session for production, and the suite injects a scripted fake.
-///
-/// Phase 3 surface is text-only. Phase 4 will expand the factory closure
-/// to accept the tool list once the dynamic-tool adapter lands.
 protocol LanguageSession: Sendable {
     /// Yield the model's cumulative text snapshot every time it emits.
     /// Each snapshot starts with the previous one's content; the provider
     /// diffs successive snapshots into `LLMStreamEvent.textDelta` events.
+    /// Tools handed to the session via the factory are invoked in-band
+    /// by Apple Foundation Models (AFM) during this stream and never
+    /// surface as separate stream events.
     func streamResponse(
         to prompt: String,
         options: GenerationOptions
     ) -> AsyncThrowingStream<String, any Error>
 }
 
-/// Factory the provider uses to spawn one session per turn. Captures the
-/// translated transcript built from the orchestrator's `[LLMMessage]`.
-typealias LanguageSessionFactory = @Sendable (_ transcript: Transcript) -> any LanguageSession
+/// Factory the provider uses to spawn one session per turn. The
+/// `transcript` carries the conversation history; `tools` carries the
+/// `DynamicLLMTool` wrappers AFM may invoke during the stream.
+typealias LanguageSessionFactory = @Sendable (
+    _ transcript: Transcript,
+    _ tools: [any FoundationModels.Tool]
+) -> any LanguageSession
 
 /// Production conformer that wraps a real `LanguageModelSession`. Bridges
 /// its `ResponseStream<String>` (cumulative `Snapshot.content`) into an
