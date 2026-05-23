@@ -120,7 +120,14 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
         try await queue.write { db in
-            let count = try ModelConfigurationRecord.fetchCount(db)
+            // Empty-check must match the read filter — otherwise a row
+            // with a `kind` value the binary doesn't recognise (e.g. a
+            // leftover DEBUG `kind = "debug"` row) makes the table look
+            // non-empty to a Release build, the AFM seed silently
+            // no-ops, and `hydrateProviders` ends up with an empty
+            // registry. Counting through `knownKindRequest` keeps the
+            // empty-check and the subsequent `all()` reads consistent.
+            let count = try Self.knownKindRequest.fetchCount(db)
             guard count == 0 else { return nil }
             let record = make()
             try record.insert(db)
@@ -129,12 +136,27 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     }
 
     public func delete(id: String) async throws {
-        guard let existing = try await fetch(id: id) else { return }
+        // Probe via raw SQL — *not* `fetch(id:)` — so the delete path
+        // works for rows whose `kind` value the binary doesn't recognise
+        // (e.g. a leftover DEBUG `kind = "debug"` row in a Release
+        // build). `fetch(id:)` runs through `knownKindRequest` and would
+        // return nil for such a row, leaving it permanently orphaned.
+        // Inner optional: `apiKeyRef` column value (NULL for AFM-style
+        // rows). Outer optional: row existence.
+        let probe: (exists: Bool, apiKeyRef: String?) = try await queue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: "SELECT apiKeyRef FROM modelConfiguration WHERE id = ?",
+                arguments: [id]
+            )
+            return row.map { (true, $0["apiKeyRef"] as String?) } ?? (false, nil)
+        }
+        guard probe.exists else { return }
         // Keychain first: if it throws, the DB row remains and the user
         // can retry instead of orphaning the secret. Skip when the row
         // has no `apiKeyRef` (on-device kinds like `.appleFoundation`
         // never write to the Keychain).
-        if let ref = existing.apiKeyRef {
+        if let ref = probe.apiKeyRef {
             try await keychain.delete(ref: ref)
         }
         _ = try await queue.write { db in

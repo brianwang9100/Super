@@ -120,7 +120,18 @@ enum AppBootstrap {
 
         let llmProviderRegistry = LLMProviderRegistry()
         #if DEBUG
-        try await seedDebugModelIfNeeded(repository: modelConfigRepo)
+        // Swallow seed failures: a transient GRDB error here (WAL
+        // contention, full disk) should *not* crash bootstrap on a
+        // simulator — the debug provider just doesn't show up in the
+        // picker until the next launch. Mirrors the do/catch the
+        // production AFM seed above uses, but with `print` instead of
+        // `assertionFailure` so dev-loop annoyance is bounded to a log
+        // line rather than a hard trap.
+        do {
+            try await seedDebugModelIfNeeded(repository: modelConfigRepo)
+        } catch {
+            print("[DebugLLMProvider] seed failed: \(error)")
+        }
         #endif
         try await hydrateProviders(
             into: llmProviderRegistry,

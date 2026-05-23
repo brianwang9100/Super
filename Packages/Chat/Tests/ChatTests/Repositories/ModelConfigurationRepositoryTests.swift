@@ -16,10 +16,10 @@ struct ModelConfigurationRepositoryTests {
         return (GRDBModelConfigurationRepository(database: db, keychain: keychain), keychain)
     }
 
-    private func makeRepoExposingQueue() throws -> (GRDBModelConfigurationRepository, DatabaseQueue) {
+    private func makeRepoExposingQueue() throws -> (GRDBModelConfigurationRepository, DatabaseQueue, InMemoryKeychainClient) {
         let db = try ChatDatabase.makeInMemory()
         let keychain = InMemoryKeychainClient()
-        return (GRDBModelConfigurationRepository(database: db, keychain: keychain), db.queue)
+        return (GRDBModelConfigurationRepository(database: db, keychain: keychain), db.queue, keychain)
     }
 
     private func makeRecord(
@@ -156,6 +156,27 @@ struct ModelConfigurationRepositoryTests {
         #expect(fetched?.configuration.apiKeyRef == nil)
     }
 
+    /// Insert a row with an arbitrary unknown `kind` value via raw SQL.
+    /// Returned closure runs synchronously from a `queue.write` block.
+    private func insertUnknownKindRow(
+        queue: DatabaseQueue,
+        id: String,
+        kind: String = "future-unknown-kind",
+        apiKeyRef: String? = nil
+    ) async throws {
+        try await queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO modelConfiguration
+                (id, kind, name, baseURL, apiKeyRef, modelId, supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                (?, ?, 'Unknown', NULL, ?, 'm', 0, 8192, 0, ?)
+                """,
+                arguments: [id, kind, apiKeyRef, self.now.timeIntervalSince1970]
+            )
+        }
+    }
+
     /// Rows whose `kind` column holds a string the running binary
     /// doesn't recognise must be skipped by every read, not surfaced as
     /// decode errors. The Release-build crash this guards against
@@ -164,20 +185,9 @@ struct ModelConfigurationRepositoryTests {
     /// the exact shape simulated here by inserting an arbitrary unknown
     /// `kind` value via raw SQL.
     @Test func readsFilterOutRowsWithUnrecognisedKindValue() async throws {
-        let (repo, queue) = try makeRepoExposingQueue()
+        let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(makeRecord(id: "known", apiKeyRef: "ka", isSelected: true))
-
-        try await queue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO modelConfiguration
-                (id, kind, name, baseURL, apiKeyRef, modelId, supportsThinking, maxContextTokens, isSelected, createdAt)
-                VALUES
-                ('future', 'future-unknown-kind', 'Future', NULL, NULL, 'm', 0, 8192, 0, ?)
-                """,
-                arguments: [now.timeIntervalSince1970]
-            )
-        }
+        try await insertUnknownKindRow(queue: queue, id: "future")
 
         // `all()` returns only the recognised row.
         #expect(try await repo.all().map(\.id) == ["known"])
@@ -189,6 +199,62 @@ struct ModelConfigurationRepositoryTests {
         // practice an unknown-kind row with isSelected=1 would only
         // surface if a future binary downgrade happened).
         #expect(try await repo.selected()?.id == "known")
+    }
+
+    /// `insertIfEmpty` must apply the same known-kind filter as the
+    /// read paths. Otherwise a leftover `kind = "debug"` row in a
+    /// Release build makes the table look non-empty, the AFM seed
+    /// no-ops, and the provider registry ends up empty — bug
+    /// #3293413130 on PR #92.
+    @Test func insertIfEmptyTreatsUnknownKindRowsAsAbsent() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        // Seed the DB with only an unknown-kind row.
+        try await insertUnknownKindRow(queue: queue, id: "orphan")
+
+        let seeded = try await repo.insertIfEmpty {
+            self.makeRecord(id: "seeded", kind: .openAICompatible, apiKeyRef: "ks")
+        }
+
+        // The seed runs because the unknown-kind row doesn't count
+        // toward emptiness from the binary's perspective.
+        #expect(seeded?.id == "seeded")
+        #expect(try await repo.all().map(\.id) == ["seeded"])
+    }
+
+    /// `delete(id:)` must work for rows whose `kind` the binary doesn't
+    /// recognise — otherwise a leftover DEBUG `kind = "debug"` row is
+    /// permanently orphaned because `fetch(id:)` filters it out. Bug
+    /// #3293413328 on PR #92.
+    @Test func deleteWorksForRowsWithUnrecognisedKindValue() async throws {
+        let (repo, queue, keychain) = try makeRepoExposingQueue()
+        try await repo.storeAPIKey("sk-orphan", ref: "ko")
+        try await insertUnknownKindRow(queue: queue, id: "orphan", apiKeyRef: "ko")
+
+        // Sanity: the row is physically present even though it doesn't
+        // show through the filtered read paths.
+        let raw: Int? = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT 1 FROM modelConfiguration WHERE id = 'orphan'")
+        }
+        #expect(raw == 1)
+
+        try await repo.delete(id: "orphan")
+
+        // Both the row and its keychain entry are gone.
+        let rawAfter: Int? = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT 1 FROM modelConfiguration WHERE id = 'orphan'")
+        }
+        #expect(rawAfter == nil)
+        #expect(try await keychain.getString(ref: "ko") == nil)
+    }
+
+    @Test func deleteOnUnknownIDDoesNotDeleteAnythingOrThrow() async throws {
+        let (repo, _) = try makeRepo()
+        // No rows in the DB; delete is a no-op (matches the prior
+        // `delete(id: "ghost")` test that already covers the no-keychain
+        // branch — this complements it by exercising the new raw-probe
+        // path on an absent row).
+        try await repo.delete(id: "ghost")
+        #expect(try await repo.all().isEmpty)
     }
 
     @Test func deletingAppleFoundationRowDoesNotTouchKeychain() async throws {
