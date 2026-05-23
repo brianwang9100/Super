@@ -100,6 +100,18 @@ struct SettingsSheetSnapshotTests {
     // to the placeholder default when the row's URL is nil.
     @Test("model detail seeded form for Apple Foundation row")
     func modelDetailAppleFoundation() async {
+        await verifyAppleFoundation(theme: .light, name: "settings_model_detail_afm_light")
+    }
+
+    // Dark companion per AGENTS.md §Testing.3.
+    @Test("model detail seeded form for Apple Foundation row (dark)")
+    func modelDetailAppleFoundationDark() async {
+        await verifyAppleFoundation(theme: .dark, name: "settings_model_detail_afm_dark")
+    }
+
+    // Dynamic Type XXL companion per AGENTS.md §Testing.3.
+    @Test("dynamic type XXL on Apple Foundation model detail pane")
+    func modelDetailAppleFoundationXXL() async {
         let function = #function
         let viewModel = makeViewModel()
         viewModel._setSnapshotState(
@@ -113,8 +125,30 @@ struct SettingsSheetSnapshotTests {
             initialPane: .modelDetail(id: "afm")
         )
         .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
-        recordOrCompare(view: view, name: "settings_model_detail_afm_light", function: function)
+        recordOrCompare(view: view, name: "settings_model_detail_afm_light_xxl", function: function)
+    }
+
+    private func verifyAppleFoundation(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "afm")
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.
