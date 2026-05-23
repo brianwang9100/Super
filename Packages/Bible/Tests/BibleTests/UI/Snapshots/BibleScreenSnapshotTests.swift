@@ -216,6 +216,11 @@ struct BibleScreenSnapshotTests {
     /// non-empty, those verses are toggled into the selection before
     /// `startNarration` runs — exercises the selection-aware narration
     /// path and the card-over-action-sheet precedence.
+    ///
+    /// Drives the `.started` event via `NarrationController
+    /// ._simulateEvent(_:)` rather than the fake's `AsyncStream` so the
+    /// state transition is deterministic, per root AGENTS.md §
+    /// Testing.2.
     private func narratingScreen(
         currentVerse: Int,
         selecting verses: [Int] = []
@@ -230,11 +235,7 @@ struct BibleScreenSnapshotTests {
         await viewModel.load()
         for verse in verses { viewModel.toggleVerse(verse) }
         viewModel.startNarration()
-        service.emit(.started(verseNumber: currentVerse))
-        for _ in 0..<400 {
-            if narration.state == .speaking { break }
-            await Task.yield()
-        }
+        narration._simulateEvent(.started(verseNumber: currentVerse))
         return BibleScreen(viewModel: viewModel)
     }
 

@@ -187,13 +187,15 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     }
 
     public func setRate(_ rate: Float) {
-        let restartIndex: Int = lock.withLock { state in
+        // Read `currentIndex` and `continuation != nil` in the same
+        // lock pass that writes the new rate. The prior two-pass form
+        // had a narrow window where a concurrent `startSpeaking` or
+        // `stop` could slip between acquisitions and either flip
+        // `live`'s meaning or shift `currentIndex` out from under us.
+        let (restartIndex, live): (Int, Bool) = lock.withLock { state in
             state.currentRate = rate
-            return state.currentIndex
+            return (state.currentIndex, state.continuation != nil)
         }
-        // Only requeue if a session is live — when idle, the new rate
-        // is captured for the next start.
-        let live = lock.withLock { $0.continuation != nil }
         if live {
             synth.stopSpeaking(at: .immediate)
             requeue(from: restartIndex)
@@ -201,16 +203,15 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     }
 
     public func setVoice(_ voice: AVSpeechSynthesisVoice?) {
-        let restartIndex: Int = lock.withLock { state in
+        // Single lock pass — same atomicity rationale as `setRate`. The
+        // current verse restarts under the new voice; without the
+        // requeue, the change would only take effect at the *next*
+        // verse boundary, which the user perceives as the picker doing
+        // nothing.
+        let (restartIndex, live): (Int, Bool) = lock.withLock { state in
             state.currentVoice = voice
-            return state.currentIndex
+            return (state.currentIndex, state.continuation != nil)
         }
-        // Only requeue if a session is live — when idle, the new voice
-        // is captured for the next start. The current verse restarts
-        // under the new voice; without the requeue, the change would
-        // only take effect at the *next* verse boundary, which the user
-        // perceives as the picker doing nothing.
-        let live = lock.withLock { $0.continuation != nil }
         if live {
             synth.stopSpeaking(at: .immediate)
             requeue(from: restartIndex)

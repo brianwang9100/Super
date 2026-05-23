@@ -6,52 +6,74 @@ import Testing
 @testable import Bible
 
 /// Snapshots of ``NarrationTransportSheet`` — the inline overlay card
-/// that hosts the full Narrate transport. Covers the three themes
-/// against the three state variants the user encounters (speaking,
-/// paused, and idle-after-Stop). The idle snapshot is the only place
-/// where the play button reads as `Restart narration` and the Stop
-/// button is dimmed — both consequences of the
-/// `Stop-keeps-the-card-open` rule. A Dynamic Type XXL variant guards
+/// that hosts the full Narrate transport. Covers all three states the
+/// user encounters (speaking, paused, and idle-after-Stop) across all
+/// three themes, plus a Dynamic Type XXL variant in light that guards
 /// against squeezed labels in the header citation and dropdown chips.
+///
+/// State-bearing snapshots are driven via the controller's
+/// `_simulateEvent(_:)` test seam instead of yielding through the
+/// fake's `AsyncStream` + polling for the consumer Task to wake —
+/// per root AGENTS.md §Testing.2.
 @Suite("NarrationTransportSheet snapshots")
 @MainActor
 struct NarrationTransportSheetSnapshotTests {
     @Test("the transport card renders while speaking in the light theme")
-    func speakingLight() async {
-        await verify(theme: .light, state: .speaking, currentVerse: 9, name: "speaking_light")
+    func speakingLight() {
+        verify(theme: .light, state: .speaking, currentVerse: 9, name: "speaking_light")
     }
 
     @Test("the transport card renders while speaking in the dark theme")
-    func speakingDark() async {
-        await verify(theme: .dark, state: .speaking, currentVerse: 9, name: "speaking_dark")
+    func speakingDark() {
+        verify(theme: .dark, state: .speaking, currentVerse: 9, name: "speaking_dark")
     }
 
     @Test("the transport card renders while speaking in the sepia theme")
-    func speakingSepia() async {
-        await verify(theme: .sepia, state: .speaking, currentVerse: 9, name: "speaking_sepia")
+    func speakingSepia() {
+        verify(theme: .sepia, state: .speaking, currentVerse: 9, name: "speaking_sepia")
     }
 
     @Test("the transport card renders while paused in the light theme")
-    func pausedLight() async {
-        await verify(theme: .light, state: .paused, currentVerse: 9, name: "paused_light")
+    func pausedLight() {
+        verify(theme: .light, state: .paused, currentVerse: 9, name: "paused_light")
+    }
+
+    @Test("the transport card renders while paused in the dark theme")
+    func pausedDark() {
+        verify(theme: .dark, state: .paused, currentVerse: 9, name: "paused_dark")
+    }
+
+    @Test("the transport card renders while paused in the sepia theme")
+    func pausedSepia() {
+        verify(theme: .sepia, state: .paused, currentVerse: 9, name: "paused_sepia")
     }
 
     @Test("the transport card renders at Dynamic Type XXL in the light theme")
-    func speakingLightDTXXL() async {
-        await verify(
+    func speakingLightDTXXL() {
+        verify(
             theme: .light, state: .speaking, currentVerse: 9,
             name: "speaking_light_dt_xxl", dynamicType: .xxLarge
         )
     }
 
-    @Test("the transport card renders post-Stop with Stop dimmed and play enabled")
-    func idleLight() async {
+    @Test("the transport card renders post-Stop with Stop dimmed and play enabled in the light theme")
+    func idleLight() {
         // Verifies the Stop-keeps-the-card rule: the card stays up
         // after Stop, the stop button reads as disabled (so the user
         // can't no-op it), and the big play button is still tappable
         // — calling it triggers the `onRestart` callback the screen
         // wires to a fresh Narrate run.
-        await verify(theme: .light, state: .idle, currentVerse: 5, name: "idle_light")
+        verify(theme: .light, state: .idle, currentVerse: 5, name: "idle_light")
+    }
+
+    @Test("the post-Stop idle state renders in the dark theme")
+    func idleDark() {
+        verify(theme: .dark, state: .idle, currentVerse: 5, name: "idle_dark")
+    }
+
+    @Test("the post-Stop idle state renders in the sepia theme")
+    func idleSepia() {
+        verify(theme: .sepia, state: .idle, currentVerse: 5, name: "idle_sepia")
     }
 
     private func verify(
@@ -61,7 +83,7 @@ struct NarrationTransportSheetSnapshotTests {
         name: String,
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
-    ) async {
+    ) {
         let theme = SuperTheme.make(themeID)
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
@@ -71,11 +93,9 @@ struct NarrationTransportSheetSnapshotTests {
             controller.start(utterances: [
                 NarrationVerseUtterance(verseNumber: currentVerse, text: "scripture text"),
             ])
-            service.emit(.started(verseNumber: currentVerse))
-            await yieldUntil { controller.state == .speaking }
+            controller._simulateEvent(.started(verseNumber: currentVerse))
             if state == .paused {
-                service.emit(.paused)
-                await yieldUntil { controller.state == .paused }
+                controller._simulateEvent(.paused)
             }
         }
 
@@ -103,13 +123,6 @@ struct NarrationTransportSheetSnapshotTests {
         )
         if let failure {
             Issue.record("\(name): \(failure)")
-        }
-    }
-
-    private func yieldUntil(_ condition: () -> Bool) async {
-        for _ in 0..<400 {
-            if condition() { return }
-            await Task.yield()
         }
     }
 }

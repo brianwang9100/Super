@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import os
 @testable import Bible
 
 /// In-memory ``NarrationService`` test double. Tests drive the active
@@ -10,20 +11,30 @@ import Foundation
 /// Strict by design: each call records into a counter so a regression
 /// that double-starts a session (or stops twice) shows up as an exact
 /// assertion failure rather than a vague flake.
+///
+/// Synchronization uses ``OSAllocatedUnfairLock`` rather than `NSLock`
+/// per root AGENTS.md "Synchronization" rules — test doubles follow
+/// the same lock policy as production code.
 final class FakeNarrationService: NarrationService, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _isAvailableValue: Bool = true
-    private var _startCallCount = 0
-    private var _pauseCallCount = 0
-    private var _resumeCallCount = 0
-    private var _stopCallCount = 0
-    private var _skipForwardCallCount = 0
-    private var _skipBackwardCallCount = 0
-    private var _skipToPreviousVerseCallCount = 0
-    private var _setRateCalls: [Float] = []
-    private var _setVoiceCalls: [AVSpeechSynthesisVoice?] = []
-    private var _lastStartArgs: StartArgs?
-    private var continuation: AsyncStream<NarrationEvent>.Continuation?
+    /// Mutable state, gated by `lock`. Bundled as a struct so multi-
+    /// field mutations (e.g. record-then-rotate-continuation in
+    /// `startSpeaking`) land atomically in a single `withLock`.
+    private struct FakeState {
+        var isAvailableValue: Bool = true
+        var startCallCount = 0
+        var pauseCallCount = 0
+        var resumeCallCount = 0
+        var stopCallCount = 0
+        var skipForwardCallCount = 0
+        var skipBackwardCallCount = 0
+        var skipToPreviousVerseCallCount = 0
+        var setRateCalls: [Float] = []
+        var setVoiceCalls: [AVSpeechSynthesisVoice?] = []
+        var lastStartArgs: StartArgs?
+        var continuation: AsyncStream<NarrationEvent>.Continuation?
+    }
+
+    private let lock = OSAllocatedUnfairLock(initialState: FakeState())
 
     struct StartArgs: Equatable {
         let utterances: [NarrationVerseUtterance]
@@ -36,24 +47,22 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     // MARK: Configurable knobs
 
     var isAvailableValue: Bool {
-        get { lock.lock(); defer { lock.unlock() }; return _isAvailableValue }
-        set { lock.lock(); _isAvailableValue = newValue; lock.unlock() }
+        get { lock.withLock { $0.isAvailableValue } }
+        set { lock.withLock { $0.isAvailableValue = newValue } }
     }
 
     // MARK: Recorded calls
 
-    var startCallCount: Int { lock.lock(); defer { lock.unlock() }; return _startCallCount }
-    var pauseCallCount: Int { lock.lock(); defer { lock.unlock() }; return _pauseCallCount }
-    var resumeCallCount: Int { lock.lock(); defer { lock.unlock() }; return _resumeCallCount }
-    var stopCallCount: Int { lock.lock(); defer { lock.unlock() }; return _stopCallCount }
-    var skipForwardCallCount: Int { lock.lock(); defer { lock.unlock() }; return _skipForwardCallCount }
-    var skipBackwardCallCount: Int { lock.lock(); defer { lock.unlock() }; return _skipBackwardCallCount }
-    var skipToPreviousVerseCallCount: Int {
-        lock.lock(); defer { lock.unlock() }; return _skipToPreviousVerseCallCount
-    }
-    var setRateCalls: [Float] { lock.lock(); defer { lock.unlock() }; return _setRateCalls }
-    var setVoiceCalls: [AVSpeechSynthesisVoice?] { lock.lock(); defer { lock.unlock() }; return _setVoiceCalls }
-    var lastStartArgs: StartArgs? { lock.lock(); defer { lock.unlock() }; return _lastStartArgs }
+    var startCallCount: Int { lock.withLock { $0.startCallCount } }
+    var pauseCallCount: Int { lock.withLock { $0.pauseCallCount } }
+    var resumeCallCount: Int { lock.withLock { $0.resumeCallCount } }
+    var stopCallCount: Int { lock.withLock { $0.stopCallCount } }
+    var skipForwardCallCount: Int { lock.withLock { $0.skipForwardCallCount } }
+    var skipBackwardCallCount: Int { lock.withLock { $0.skipBackwardCallCount } }
+    var skipToPreviousVerseCallCount: Int { lock.withLock { $0.skipToPreviousVerseCallCount } }
+    var setRateCalls: [Float] { lock.withLock { $0.setRateCalls } }
+    var setVoiceCalls: [AVSpeechSynthesisVoice?] { lock.withLock { $0.setVoiceCalls } }
+    var lastStartArgs: StartArgs? { lock.withLock { $0.lastStartArgs } }
 
     // MARK: NarrationService
 
@@ -69,50 +78,48 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
             rate: rate,
             voiceIdentifier: voice?.identifier
         )
-        lock.lock()
-        _startCallCount += 1
-        _lastStartArgs = args
-        // Close any prior session's continuation so the prior stream's
-        // consumer task drops cleanly — production behaviour for a second
-        // start while already speaking.
-        let previous = continuation
-        continuation = nil
-        lock.unlock()
+        // Atomically record the start and snapshot the prior
+        // continuation so it can be finished outside the lock.
+        let previous: AsyncStream<NarrationEvent>.Continuation? = lock.withLock { state in
+            state.startCallCount += 1
+            state.lastStartArgs = args
+            let prior = state.continuation
+            state.continuation = nil
+            return prior
+        }
         previous?.finish()
 
         return AsyncStream { continuation in
-            self.lock.lock()
-            self.continuation = continuation
-            self.lock.unlock()
+            self.lock.withLock { $0.continuation = continuation }
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
-                self.lock.lock()
-                self.continuation = nil
-                self.lock.unlock()
+                self.lock.withLock { $0.continuation = nil }
             }
         }
     }
 
-    func pause() { lock.lock(); _pauseCallCount += 1; lock.unlock() }
-    func resume() { lock.lock(); _resumeCallCount += 1; lock.unlock() }
-    func stop() { lock.lock(); _stopCallCount += 1; lock.unlock() }
-    func skipForward() { lock.lock(); _skipForwardCallCount += 1; lock.unlock() }
-    func skipBackward() { lock.lock(); _skipBackwardCallCount += 1; lock.unlock() }
+    func pause() { lock.withLock { $0.pauseCallCount += 1 } }
+    func resume() { lock.withLock { $0.resumeCallCount += 1 } }
+    func stop() { lock.withLock { $0.stopCallCount += 1 } }
+    func skipForward() { lock.withLock { $0.skipForwardCallCount += 1 } }
+    func skipBackward() { lock.withLock { $0.skipBackwardCallCount += 1 } }
     func skipToPreviousVerse() {
-        lock.lock(); _skipToPreviousVerseCallCount += 1; lock.unlock()
+        lock.withLock { $0.skipToPreviousVerseCallCount += 1 }
     }
-    func setRate(_ rate: Float) { lock.lock(); _setRateCalls.append(rate); lock.unlock() }
+    func setRate(_ rate: Float) { lock.withLock { $0.setRateCalls.append(rate) } }
     func setVoice(_ voice: AVSpeechSynthesisVoice?) {
-        lock.lock(); _setVoiceCalls.append(voice); lock.unlock()
+        lock.withLock { $0.setVoiceCalls.append(voice) }
     }
 
     // MARK: Test driving helpers
 
     /// Yield `event` into the active stream. No-op if no session is open.
+    /// Stream-based tests use this then `await
+    /// controller._waitForPendingStreamTask()` for the stream's
+    /// terminal events; for mid-session events tests should prefer
+    /// `controller._simulateEvent(_:)` for deterministic timing.
     func emit(_ event: NarrationEvent) {
-        lock.lock()
-        let continuation = self.continuation
-        lock.unlock()
+        let continuation = lock.withLock { $0.continuation }
         continuation?.yield(event)
     }
 
@@ -120,10 +127,11 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     /// then close the stream — mirrors how the real service ends a
     /// session.
     func finish(with terminal: NarrationEvent) {
-        lock.lock()
-        let continuation = self.continuation
-        self.continuation = nil
-        lock.unlock()
+        let continuation: AsyncStream<NarrationEvent>.Continuation? = lock.withLock { state in
+            let c = state.continuation
+            state.continuation = nil
+            return c
+        }
         continuation?.yield(terminal)
         continuation?.finish()
     }

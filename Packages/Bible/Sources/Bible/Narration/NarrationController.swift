@@ -196,6 +196,29 @@ public final class NarrationController {
         }
     }
 
+    /// Test seam: synchronously process one event without routing
+    /// through the AsyncStream consumer Task. Production code goes
+    /// through `start(utterances:)`'s stream-consumer Task on the
+    /// service's `AsyncStream<NarrationEvent>`; this lets tests drive
+    /// state transitions without polling the scheduler for the stream
+    /// Task to wake up — see root AGENTS.md §Testing.2 on why
+    /// condition-polling on `Task.yield()` is forbidden. Underscore
+    /// prefix marks it as a non-stable surface, not part of the
+    /// production API.
+    @MainActor
+    func _simulateEvent(_ event: NarrationEvent) {
+        handle(event)
+    }
+
+    /// Test seam: await the in-flight stream-consumer `Task` so a test
+    /// can synchronize on "the controller has drained its
+    /// subscription" without polling. Returns immediately when no
+    /// session is active. Mirrors
+    /// `ChatScreenViewModel._waitForPendingStreamTask()`.
+    func _waitForPendingStreamTask() async {
+        await streamTask?.value
+    }
+
     private func handle(_ event: NarrationEvent) {
         switch event {
         case .started(let verseNumber):

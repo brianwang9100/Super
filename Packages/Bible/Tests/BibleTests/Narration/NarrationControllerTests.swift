@@ -8,6 +8,14 @@ import Testing
 /// `currentVerseNumber` / `lastError` it exposes to the Bible reader and
 /// transport sheet. The fake service drives the stream directly, so these
 /// assertions don't depend on `AVSpeechSynthesizer`.
+///
+/// Synchronization model: tests drive the controller's state machine via
+/// the controller's `_simulateEvent(_:)` test seam rather than yielding
+/// events through the `AsyncStream` and polling for the consumer Task to
+/// wake up. The seam calls `handle(_:)` directly on `@MainActor`, so a
+/// `#expect` on the following line reads the post-event state without
+/// scheduler races — per root AGENTS.md §Testing.2 ("polling loops are
+/// race amplifiers, not synchronization primitives").
 @Suite("NarrationController")
 @MainActor
 struct NarrationControllerTests {
@@ -22,7 +30,7 @@ struct NarrationControllerTests {
     }
 
     @Test("starting a session forwards utterances and lands in .speaking on the first .started event")
-    func startForwardsUtterancesAndTransitionsOnStarted() async {
+    func startForwardsUtterancesAndTransitionsOnStarted() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let queue = [
@@ -34,13 +42,13 @@ struct NarrationControllerTests {
         #expect(service.startCallCount == 1)
         #expect(service.lastStartArgs?.utterances == queue)
 
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
+        #expect(controller.state == .speaking)
         #expect(controller.currentVerseNumber == 1)
     }
 
     @Test("walking through .started + .finishedVerse for every utterance ends at .completed → idle")
-    func wholeQueueWalksToCompletedIdle() async {
+    func wholeQueueWalksToCompletedIdle() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let recorder = CompletionRecorder()
@@ -50,12 +58,11 @@ struct NarrationControllerTests {
             NarrationVerseUtterance(verseNumber: $0, text: "verse \($0)")
         })
         for verse in 1...3 {
-            service.emit(.started(verseNumber: verse))
-            await yieldUntil { controller.currentVerseNumber == verse }
-            service.emit(.finishedVerse(verseNumber: verse))
+            controller._simulateEvent(.started(verseNumber: verse))
+            #expect(controller.currentVerseNumber == verse)
+            controller._simulateEvent(.finishedVerse(verseNumber: verse))
         }
-        service.finish(with: .completed)
-        await yieldUntil { controller.state == .idle }
+        controller._simulateEvent(.completed)
 
         #expect(controller.state == .idle)
         #expect(controller.currentVerseNumber == nil)
@@ -63,45 +70,43 @@ struct NarrationControllerTests {
     }
 
     @Test("pause + resume preserves currentVerseNumber and reflects the .paused / .resumed events")
-    func pauseResumePreservesCurrentVerse() async {
+    func pauseResumePreservesCurrentVerse() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         controller.start(utterances: [
             NarrationVerseUtterance(verseNumber: 4, text: "four"),
         ])
-        service.emit(.started(verseNumber: 4))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 4))
+        #expect(controller.state == .speaking)
 
         controller.pause()
         #expect(service.pauseCallCount == 1)
-        service.emit(.paused)
-        await yieldUntil { controller.state == .paused }
+        controller._simulateEvent(.paused)
+        #expect(controller.state == .paused)
         #expect(controller.currentVerseNumber == 4)
 
         controller.resume()
         #expect(service.resumeCallCount == 1)
-        service.emit(.resumed)
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.resumed)
+        #expect(controller.state == .speaking)
         #expect(controller.currentVerseNumber == 4)
     }
 
     @Test("stop() is idempotent — calling twice yields .idle once and only one .cancelled is needed")
-    func stopIsIdempotent() async {
+    func stopIsIdempotent() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let recorder = CompletionRecorder()
         controller.onCompletion = { recorder.record() }
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         controller.stop()
         controller.stop()
         // Even if a sloppy controller forwarded both stops, only one
         // .cancelled event should ever land back from the service.
-        service.finish(with: .cancelled)
-        await yieldUntil { controller.state == .idle }
+        controller._simulateEvent(.cancelled)
 
         #expect(controller.state == .idle)
         #expect(controller.currentVerseNumber == nil)
@@ -109,49 +114,45 @@ struct NarrationControllerTests {
     }
 
     @Test("skipNext forwards to the service; the next .started event updates currentVerseNumber")
-    func skipNextForwardsAndStateFollowsEvents() async {
+    func skipNextForwardsAndStateFollowsEvents() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         controller.start(utterances: [
             NarrationVerseUtterance(verseNumber: 1, text: "one"),
             NarrationVerseUtterance(verseNumber: 2, text: "two"),
         ])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.currentVerseNumber == 1 }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         controller.skipNext()
         #expect(service.skipForwardCallCount == 1)
-        service.emit(.finishedVerse(verseNumber: 1))
-        service.emit(.started(verseNumber: 2))
-        await yieldUntil { controller.currentVerseNumber == 2 }
+        controller._simulateEvent(.finishedVerse(verseNumber: 1))
+        controller._simulateEvent(.started(verseNumber: 2))
+        #expect(controller.currentVerseNumber == 2)
     }
 
     @Test("skipNext on the last utterance completes the session through .completed")
-    func skipNextAtLastUtteranceCompletes() async {
+    func skipNextAtLastUtteranceCompletes() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let recorder = CompletionRecorder()
         controller.onCompletion = { recorder.record() }
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 9, text: "last")])
-        service.emit(.started(verseNumber: 9))
-        await yieldUntil { controller.currentVerseNumber == 9 }
+        controller._simulateEvent(.started(verseNumber: 9))
 
         controller.skipNext()
-        service.finish(with: .completed)
-        await yieldUntil { controller.state == .idle }
+        controller._simulateEvent(.completed)
 
         #expect(controller.state == .idle)
         #expect(recorder.firedCount == 1)
     }
 
     @Test("a single skipPrevious tap restarts the current verse")
-    func skipPreviousSingleTapRestartsCurrentVerse() async {
+    func skipPreviousSingleTapRestartsCurrentVerse() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 2, text: "two")])
-        service.emit(.started(verseNumber: 2))
-        await yieldUntil { controller.currentVerseNumber == 2 }
+        controller._simulateEvent(.started(verseNumber: 2))
 
         controller.skipPrevious()
         #expect(service.skipBackwardCallCount == 1)
@@ -159,7 +160,7 @@ struct NarrationControllerTests {
     }
 
     @Test("a second skipPrevious tap inside the double-tap window jumps to the previous verse")
-    func skipPreviousDoubleTapJumpsToPreviousVerse() async {
+    func skipPreviousDoubleTapJumpsToPreviousVerse() {
         let clock = TestClock()
         let service = FakeNarrationService()
         let controller = NarrationController(service: service, now: { clock.now })
@@ -167,8 +168,7 @@ struct NarrationControllerTests {
             NarrationVerseUtterance(verseNumber: 4, text: "four"),
             NarrationVerseUtterance(verseNumber: 5, text: "five"),
         ])
-        service.emit(.started(verseNumber: 5))
-        await yieldUntil { controller.currentVerseNumber == 5 }
+        controller._simulateEvent(.started(verseNumber: 5))
 
         controller.skipPrevious()
         clock.advance(by: 0.5)
@@ -179,13 +179,12 @@ struct NarrationControllerTests {
     }
 
     @Test("a second skipPrevious tap after the double-tap window still restarts the current verse")
-    func skipPreviousAfterWindowStaysAsRestart() async {
+    func skipPreviousAfterWindowStaysAsRestart() {
         let clock = TestClock()
         let service = FakeNarrationService()
         let controller = NarrationController(service: service, now: { clock.now })
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 5, text: "five")])
-        service.emit(.started(verseNumber: 5))
-        await yieldUntil { controller.currentVerseNumber == 5 }
+        controller._simulateEvent(.started(verseNumber: 5))
 
         controller.skipPrevious()
         // Pad slightly past the window so a flaky float comparison
@@ -198,7 +197,7 @@ struct NarrationControllerTests {
     }
 
     @Test("a third quick tap after a double-tap restarts again, not another jump back")
-    func skipPreviousThirdTapRestartsAgain() async {
+    func skipPreviousThirdTapRestartsAgain() {
         let clock = TestClock()
         let service = FakeNarrationService()
         let controller = NarrationController(service: service, now: { clock.now })
@@ -206,8 +205,7 @@ struct NarrationControllerTests {
             NarrationVerseUtterance(verseNumber: 4, text: "four"),
             NarrationVerseUtterance(verseNumber: 5, text: "five"),
         ])
-        service.emit(.started(verseNumber: 5))
-        await yieldUntil { controller.currentVerseNumber == 5 }
+        controller._simulateEvent(.started(verseNumber: 5))
 
         controller.skipPrevious()             // tap 1 → restart
         clock.advance(by: 0.2)
@@ -220,16 +218,14 @@ struct NarrationControllerTests {
     }
 
     @Test(".failed lands the controller in .idle with lastError populated")
-    func failedEndsInIdleWithLastError() async {
+    func failedEndsInIdleWithLastError() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
 
-        service.finish(with: .failed(.audioSessionFailed("boom")))
-        await yieldUntil { controller.state == .idle }
+        controller._simulateEvent(.failed(.audioSessionFailed("boom")))
 
         #expect(controller.state == .idle)
         #expect(controller.currentVerseNumber == nil)
@@ -237,13 +233,12 @@ struct NarrationControllerTests {
     }
 
     @Test("a second start while speaking replaces the session (startCallCount == 2)")
-    func secondStartReplacesActiveSession() async {
+    func secondStartReplacesActiveSession() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "one")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.currentVerseNumber == 1 }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         controller.start(utterances: [
             NarrationVerseUtterance(verseNumber: 10, text: "ten"),
@@ -251,24 +246,24 @@ struct NarrationControllerTests {
         ])
         #expect(service.startCallCount == 2)
 
-        service.emit(.started(verseNumber: 10))
-        await yieldUntil { controller.currentVerseNumber == 10 }
+        controller._simulateEvent(.started(verseNumber: 10))
+        #expect(controller.currentVerseNumber == 10)
         #expect(controller.state == .speaking)
     }
 
     @Test("setting `rate` propagates to the service via setRate(_:)")
-    func rateSetterPropagatesToService() async {
+    func rateSetterPropagatesToService() {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
         controller.rate = 0.8
-        await yieldUntil { service.setRateCalls == [0.8] }
+        #expect(service.setRateCalls == [0.8])
         controller.rate = 1.2
-        await yieldUntil { service.setRateCalls == [0.8, 1.2] }
+        #expect(service.setRateCalls == [0.8, 1.2])
     }
 
     @Test("re-assigning `rate` to its current value does NOT trigger setRate")
-    func rateSetterIsIdempotent() async {
+    func rateSetterIsIdempotent() {
         // Regression guard: a SwiftUI `Menu` writes the binding back
         // even when the user re-selects the already-current row. The
         // service-level setRate triggers a stopSpeaking + requeue
@@ -277,15 +272,12 @@ struct NarrationControllerTests {
         let controller = NarrationController(service: service)
 
         controller.rate = 1.25
-        await yieldUntil { service.setRateCalls == [1.25] }
         controller.rate = 1.25  // same value
-        // Yield a few times so any spurious dispatch would land.
-        for _ in 0..<5 { await Task.yield() }
         #expect(service.setRateCalls == [1.25])
     }
 
     @Test("setting `voice` propagates to the service via setVoice(_:)")
-    func voiceSetterPropagatesToService() async {
+    func voiceSetterPropagatesToService() {
         // Regression guard: prior to the v1.1 fix, the controller's
         // `voice` was a plain stored property and changes only took
         // effect on the *next* `start(...)` — the picker felt broken.
@@ -294,16 +286,16 @@ struct NarrationControllerTests {
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
         controller.voice = voice
-        await yieldUntil { service.setVoiceCalls.count == 1 }
+        #expect(service.setVoiceCalls.count == 1)
         #expect(service.setVoiceCalls.first??.identifier == voice?.identifier)
 
         controller.voice = nil  // back to default
-        await yieldUntil { service.setVoiceCalls.count == 2 }
+        #expect(service.setVoiceCalls.count == 2)
         #expect(service.setVoiceCalls.last as? AVSpeechSynthesisVoice? == .some(nil))
     }
 
     @Test("re-assigning `voice` to a voice with the same identifier does NOT trigger setVoice")
-    func voiceSetterIsIdempotent() async {
+    func voiceSetterIsIdempotent() {
         // Regression guard for the same SwiftUI Menu write-back issue
         // as `rateSetterIsIdempotent`. `AVSpeechSynthesisVoice` isn't
         // `Equatable` so the guard compares identifiers; re-creating
@@ -314,19 +306,8 @@ struct NarrationControllerTests {
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
         controller.voice = voice
-        await yieldUntil { service.setVoiceCalls.count == 1 }
         // Same identifier (re-fetched from the same locale init).
         controller.voice = AVSpeechSynthesisVoice(language: "en-US")
-        for _ in 0..<5 { await Task.yield() }
         #expect(service.setVoiceCalls.count == 1)
-    }
-
-    /// Spin the @MainActor task pool until `condition()` is true or the
-    /// poll cap trips. Mirrors `VoiceInputControllerTests.yieldUntil`.
-    private func yieldUntil(_ condition: () -> Bool) async {
-        for _ in 0..<400 {
-            if condition() { return }
-            await Task.yield()
-        }
     }
 }
