@@ -38,6 +38,11 @@ struct SettingsModelDetailPane: View {
     @State private var supportsThinking: Bool
     @State private var maxContextText: String
     @State private var showingDeleteConfirm: Bool = false
+    /// Active preset in the create flow. Edit mode pins to
+    /// ``Preset/custom`` so the picker is suppressed entirely — existing
+    /// rows already have their fields set and the user is past the
+    /// "which provider" decision.
+    @State private var preset: Preset
     /// `true` while `apiKey` holds the synthetic bullets we seeded to
     /// signal "a key is stored" — flips to `false` the first time the
     /// field gains focus (clearing the bullets) or the user mutates the
@@ -55,46 +60,98 @@ struct SettingsModelDetailPane: View {
 
     private var isEditing: Bool { editingId != nil }
 
-    init(viewModel: SettingsViewModel, editingId: String?) {
+    /// `true` when the form is in create mode and the active preset is
+    /// `.appleFoundation`. AFM rows carry no URL, key, or editable model
+    /// id, so those fields are hidden under this preset and the save
+    /// path dispatches through `createAppleFoundationModel`.
+    private var isAppleFoundationPreset: Bool {
+        !isEditing && preset == .appleFoundation
+    }
+
+    /// `true` when the Apple Intelligence preset cannot be activated.
+    /// Two disjoint reasons: (a) the OS reports AFM as unavailable on
+    /// this device (`appleIntelligenceNotEnabled`, etc.), (b) an
+    /// `.appleFoundation` row already exists (one is enough).
+    private var isAppleFoundationPresetDisabled: Bool {
+        !viewModel.appleFoundationAvailability.isAvailable
+            || viewModel.hasAppleFoundationModel
+    }
+
+    init(
+        viewModel: SettingsViewModel,
+        editingId: String?,
+        initialPreset: Preset = .custom
+    ) {
         self.viewModel = viewModel
         self.editingId = editingId
         // Seed @State at init time so the first render shows live data.
         // Doing this in `.onAppear` made the snapshot capture pre-seed
         // values for the toggle (the lifecycle hook hadn't fired yet).
         let row = editingId.flatMap { viewModel.model(id: $0) }
-        _name = State(initialValue: row?.name ?? "")
-        _baseURLText = State(initialValue: row?.baseURL?.absoluteString
-            ?? "https://api.openai.com/v1")
-        _modelId = State(initialValue: row?.modelId ?? "")
-        _supportsThinking = State(initialValue: row?.supportsThinking ?? false)
-        _maxContextText = State(initialValue: row.map { String($0.maxContextTokens) } ?? "200000")
-        let seedDots = row?.hasAPIKey == true
-        _apiKey = State(initialValue: seedDots ? Self.apiKeyPlaceholderDots : "")
-        _apiKeyIsPlaceholder = State(initialValue: seedDots)
+        if let row {
+            _name = State(initialValue: row.name)
+            _baseURLText = State(initialValue: row.baseURL?.absoluteString
+                ?? "https://api.openai.com/v1")
+            _modelId = State(initialValue: row.modelId)
+            _supportsThinking = State(initialValue: row.supportsThinking)
+            _maxContextText = State(initialValue: String(row.maxContextTokens))
+            let seedDots = row.hasAPIKey
+            _apiKey = State(initialValue: seedDots ? Self.apiKeyPlaceholderDots : "")
+            _apiKeyIsPlaceholder = State(initialValue: seedDots)
+            // Edit mode pins to .custom — picker is hidden in body anyway.
+            _preset = State(initialValue: .custom)
+        } else {
+            // Create flow: seed @State from the preset's defaults so the
+            // snapshot tests can pin an initial preset and the first
+            // render shows that preset's prefilled fields.
+            let seeds = initialPreset.defaults
+            _name = State(initialValue: seeds.name)
+            _baseURLText = State(initialValue: seeds.baseURLText)
+            _modelId = State(initialValue: seeds.modelId)
+            _supportsThinking = State(initialValue: seeds.supportsThinking)
+            _maxContextText = State(initialValue: seeds.maxContextText)
+            _apiKey = State(initialValue: "")
+            _apiKeyIsPlaceholder = State(initialValue: false)
+            _preset = State(initialValue: initialPreset)
+        }
     }
 
-    /// All four required fields legal. URL must parse and pass
-    /// `isCleartextSafeForCredentials` (HTTPS, or HTTP against
-    /// localhost / 127.0.0.1 / ::1 / *.local — i.e. local-LLM
-    /// configurations). Max-context must be a positive integer; key
-    /// required only in create mode.
+    /// Validation for the openAI-compatible flow: all four required
+    /// fields legal. URL must parse and pass `isCleartextSafeForCredentials`
+    /// (HTTPS, or HTTP against localhost / 127.0.0.1 / ::1 / *.local
+    /// — i.e. local-LLM configurations). Max-context must be a positive
+    /// integer; key required only in create mode. When the Apple
+    /// Intelligence preset is active, the URL/key/modelId requirements
+    /// drop because those fields are not part of the AFM row's shape —
+    /// only Name and Max context need to be valid.
     private var isValid: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        guard let maxCtx = Int(maxContextText), maxCtx > 0 else { return false }
+        if isAppleFoundationPreset {
+            return true
+        }
         guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)),
               isCleartextSafeForCredentials(url) else { return false }
         guard !modelId.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        guard let maxCtx = Int(maxContextText), maxCtx > 0 else { return false }
         if !isEditing, apiKey.isEmpty { return false }
         return true
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            if !isEditing {
+                presetPicker
+                    .padding(.top, 16)
+                    .padding(.horizontal, 16)
+            }
+
             SettingsGroup {
-                fieldRow(label: "Name", placeholder: "GPT 5.5", text: $name)
-                fieldRow(label: "Base URL", placeholder: "https://api.openai.com/v1", text: $baseURLText, keyboard: .url)
-                fieldRow(label: "Model ID", placeholder: "gpt-5.5", text: $modelId)
-                apiKeyFieldRow()
+                fieldRow(label: "Name", placeholder: namePlaceholder, text: $name)
+                if !isAppleFoundationPreset {
+                    fieldRow(label: "Base URL", placeholder: "https://api.openai.com/v1", text: $baseURLText, keyboard: .url)
+                    fieldRow(label: "Model ID", placeholder: "gpt-5.5", text: $modelId)
+                    apiKeyFieldRow()
+                }
                 fieldRow(label: "Max context", placeholder: "200000", text: $maxContextText, keyboard: .numberPad, monospaced: true)
                 toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: false)
             }
@@ -351,9 +408,26 @@ struct SettingsModelDetailPane: View {
 
     private func save() {
         guard isValid else { return }
-        guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)),
-              let maxCtx = Int(maxContextText) else { return }
+        guard let maxCtx = Int(maxContextText) else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        // Apple Intelligence: no URL, key, or model id — the secure-field
+        // bookkeeping below is a no-op for this branch because the field
+        // isn't rendered.
+        if isAppleFoundationPreset {
+            viewModel.beforePopCleanup = nil
+            Task {
+                await viewModel.createAppleFoundationModel(
+                    name: trimmedName,
+                    supportsThinking: supportsThinking,
+                    maxContextTokens: maxCtx
+                )
+                if viewModel.modelEditError == nil {
+                    viewModel.popPane()
+                }
+            }
+            return
+        }
+        guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)) else { return }
         let trimmedModelId = modelId.trimmingCharacters(in: .whitespaces)
         // Disarm the pop cleanup so the SecureField's content survives
         // dismissal — iOS sees a populated field on tear-down and offers
@@ -402,5 +476,147 @@ struct SettingsModelDetailPane: View {
                 installPopScrub()
             }
         }
+    }
+
+    // MARK: - Preset picker
+
+    /// Add-Model preset. Drives field prefill + which fields render in
+    /// the create flow. Edit mode pins to `.custom` and the picker is
+    /// hidden (the row's identity is locked once persisted).
+    enum Preset: String, CaseIterable, Identifiable, Sendable {
+        case appleFoundation
+        case google
+        case custom
+
+        var id: String { rawValue }
+
+        /// Pill label shown in the picker. Short by design — three
+        /// pills need to fit on a single 402pt-wide iPhone row without
+        /// truncation.
+        var label: String {
+            switch self {
+            case .appleFoundation: return "Apple"
+            case .google: return "Google"
+            case .custom: return "Custom"
+            }
+        }
+
+        /// Initial @State values to seed when this preset becomes
+        /// active. Centralized as a pure helper so both the init seam
+        /// (for snapshot tests that pin an initial preset) and the
+        /// runtime applyPreset path share one source of truth.
+        struct Defaults: Equatable, Sendable {
+            let name: String
+            let baseURLText: String
+            let modelId: String
+            let maxContextText: String
+            let supportsThinking: Bool
+        }
+
+        var defaults: Defaults {
+            switch self {
+            case .appleFoundation:
+                return Defaults(
+                    name: "Apple Intelligence",
+                    baseURLText: "",
+                    modelId: "system-default",
+                    maxContextText: "4096",
+                    supportsThinking: false
+                )
+            case .google:
+                return Defaults(
+                    name: "Gemini 2.5 Pro",
+                    baseURLText: "https://generativelanguage.googleapis.com/v1beta/openai/",
+                    modelId: "gemini-2.5-pro",
+                    maxContextText: "1000000",
+                    supportsThinking: true
+                )
+            case .custom:
+                return Defaults(
+                    name: "",
+                    baseURLText: "https://api.openai.com/v1",
+                    modelId: "",
+                    maxContextText: "200000",
+                    supportsThinking: false
+                )
+            }
+        }
+    }
+
+    /// Hint shown in the Name field's placeholder. The preset's
+    /// recommended name doubles as the placeholder so the user can
+    /// either accept (it's already typed) or override.
+    private var namePlaceholder: String {
+        switch preset {
+        case .appleFoundation: return "Apple Intelligence"
+        case .google: return "Gemini 2.5 Pro"
+        case .custom: return "GPT 5.5"
+        }
+    }
+
+    /// Three-segment pill picker styled to match the rest of the
+    /// settings sheet (rounded card, accent fill on the selected pill,
+    /// border-faint stroke on inactive pills). Hidden in edit mode so
+    /// existing rows can't be reclassified through the form.
+    @ViewBuilder
+    private var presetPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(Preset.allCases) { option in
+                presetPill(for: option)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Preset")
+    }
+
+    @ViewBuilder
+    private func presetPill(for option: Preset) -> some View {
+        let isSelected = preset == option
+        let isDisabled = option == .appleFoundation && isAppleFoundationPresetDisabled
+        let foreground: Color = isSelected ? theme.background
+            : (isDisabled ? theme.inkFaint : theme.inkSoft)
+        let background: Color = isSelected ? theme.accent : theme.backgroundRaised
+        Button(action: { applyPreset(option) }) {
+            Text(option.label)
+                .font(.system(.subheadline).weight(.medium))
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(background)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(theme.borderFaint, lineWidth: isSelected ? 0 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(option.label)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+        .accessibilityHint(isDisabled
+            ? "Unavailable on this device or already added"
+            : "Prefill the form with \(option.label) defaults")
+    }
+
+    /// Switch the active preset and reseed the form's @State to that
+    /// preset's defaults. Guarded against re-applying the same preset
+    /// so a stray tap on the already-selected pill doesn't blow away
+    /// user-typed values. AFM preset is also short-circuited when
+    /// disabled — the disabled pill should be uninteractive even if
+    /// SwiftUI's `.disabled` somehow doesn't suppress the tap.
+    private func applyPreset(_ option: Preset) {
+        if option == .appleFoundation, isAppleFoundationPresetDisabled { return }
+        guard preset != option else { return }
+        preset = option
+        let seeds = option.defaults
+        name = seeds.name
+        baseURLText = seeds.baseURLText
+        modelId = seeds.modelId
+        maxContextText = seeds.maxContextText
+        supportsThinking = seeds.supportsThinking
+        apiKey = ""
+        apiKeyIsPlaceholder = false
     }
 }

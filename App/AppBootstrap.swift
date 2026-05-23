@@ -2,6 +2,7 @@ import Bible
 import Chat
 import Core
 import Foundation
+import FoundationModels
 import SwiftUI
 import Todo
 
@@ -38,6 +39,14 @@ struct AppDependencies {
     /// rail's backdrop list and the briefings handed to
     /// `ChatSessionStore` — keeping the two in lock-step.
     let appletRegistry: AppletRegistry
+    /// AFM availability snapshot taken at boot. Threaded forward so view
+    /// models built later in the session (`SettingsViewModel`,
+    /// `ChatScreenViewModel`) read the same value the seeder/provider
+    /// hydrator already used — re-querying `SystemLanguageModel.default
+    /// .availability` could otherwise return a different state mid-session
+    /// (e.g. user just toggled Apple Intelligence in Settings) and split
+    /// the UI's "is AFM usable" answer across surfaces.
+    let appleFoundationAvailability: AppleFoundationAvailability
 }
 
 /// One-shot composition root. Bootstraps the on-disk database, every
@@ -90,13 +99,34 @@ enum AppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
+        // Best-effort: seed an AFM row for fresh installs so Chat opens
+        // onto a usable provider. Skipped on ineligible devices and
+        // pre-populated DBs; errors swallowed so a transient SQLite
+        // failure can't take down the whole bootstrap.
+        let bootAvailability = AppleFoundationAvailability(
+            SystemLanguageModel.default.availability
+        )
+        if bootAvailability.isAvailable {
+            do {
+                try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+                    repository: modelConfigRepo
+                )
+            } catch {
+                #if DEBUG
+                assertionFailure("ModelConfigurationSeeding failed: \(error)")
+                #endif
+            }
+        }
+
         let llmProviderRegistry = LLMProviderRegistry()
         #if DEBUG
         try await seedDebugModelIfNeeded(repository: modelConfigRepo)
         #endif
         try await hydrateProviders(
             into: llmProviderRegistry,
-            from: modelConfigRepo
+            from: modelConfigRepo,
+            toolRegistry: toolRegistry,
+            appleFoundationAvailability: bootAvailability
         )
 
         let compactor = Compactor(
@@ -187,20 +217,27 @@ enum AppBootstrap {
             registeredToolIDs: registeredToolIDs,
             todoDependencies: todoDependencies,
             eventBus: SuperEventBus(),
-            appletRegistry: appletRegistry
+            appletRegistry: appletRegistry,
+            appleFoundationAvailability: bootAvailability
         )
     }
 
     /// Read every persisted `ModelConfigurationRecord`, resolve its API key
-    /// from the Keychain, and register an `OpenAICompatibleLLMProvider` for
-    /// each. Registration order is creation-stable; the selected row is then
-    /// promoted via `setActive(id:)` so the bootstrap doesn't depend on
-    /// `LLMProviderRegistry`'s implementation detail of "first registered =
-    /// active". A row whose Keychain entry has been wiped registers anyway
-    /// with a nil key — local servers (MLX, Ollama) don't require auth.
+    /// from the Keychain, and register the right `LLMProvider` for each
+    /// row's `kind`. Registration order is creation-stable; the selected
+    /// row is then promoted via `setActive(id:)` so the bootstrap doesn't
+    /// depend on `LLMProviderRegistry`'s implementation detail of "first
+    /// registered = active". An `.openAICompatible` row whose Keychain
+    /// entry has been wiped registers anyway with a nil key — local
+    /// servers (MLX, Ollama) don't require auth. An `.appleFoundation`
+    /// row is only registered when the OS reports AFM as available; an
+    /// unavailable device leaves the registry empty and the orchestrator
+    /// falls back to its `noModelConfigured` banner.
     private static func hydrateProviders(
         into registry: LLMProviderRegistry,
-        from repository: any ModelConfigurationRepository
+        from repository: any ModelConfigurationRepository,
+        toolRegistry: ToolRegistry,
+        appleFoundationAvailability: AppleFoundationAvailability
     ) async throws {
         let configurations = try await repository.all()
         guard !configurations.isEmpty else { return }
@@ -208,7 +245,6 @@ enum AppBootstrap {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            // Unrouted kinds surface as `noModelConfigured` — deliberate no-op, not fallthrough.
             switch record.kind {
             case .openAICompatible:
                 let apiKey: String?
@@ -224,7 +260,16 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                break // `AppleFoundationLLMProvider` will register here once that class lands.
+                // `id` must match the record UUID — `setActive(id:)` looks providers
+                // up by this value; a static fallback would silently fail to promote
+                // the seeded `isSelected = true` row to active.
+                guard appleFoundationAvailability.isAvailable else { continue }
+                let provider = AppleFoundationLLMProvider(
+                    id: record.id,
+                    availability: appleFoundationAvailability,
+                    toolRegistry: toolRegistry
+                )
+                await registry.register(provider)
             #if DEBUG
             case .debug:
                 await registry.register(DebugLLMProvider())
@@ -234,9 +279,10 @@ enum AppBootstrap {
 
         if let selectedId = try await repository.selected()?.id {
             // The only failure mode is `unknownProvider`, which can only
-            // happen if the row was deleted between `selected()` and the
-            // loop above — at which point the first-registered fallback is
-            // the right behavior anyway.
+            // happen if the selected row's kind was unavailable (AFM on
+            // an ineligible device) and skipped above. The
+            // first-registered fallback (or "no provider" empty state)
+            // is the right behavior in that case.
             try? await registry.setActive(id: selectedId)
         }
     }

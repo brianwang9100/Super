@@ -190,6 +190,88 @@ struct BibleScreenSnapshotTests {
                name: "highlighted_sepia_xxl")
     }
 
+    // MARK: - Narration overlay
+
+    @Test("the narration card sits over the populated reader with the active verse underlined")
+    func narratingLight() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .light, name: "narrating_light")
+    }
+
+    @Test("the narration card renders over the populated reader in the dark theme")
+    func narratingDark() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .dark, name: "narrating_dark")
+    }
+
+    @Test("the narration card renders over the populated reader in the sepia theme")
+    func narratingSepia() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .sepia, name: "narrating_sepia")
+    }
+
+    @Test("the narration card renders over the populated reader at Dynamic Type XXL")
+    func narratingLightXXL() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .light, dynamicType: .xxLarge,
+               name: "narrating_light_xxl")
+    }
+
+    @Test("the narration card renders at Dynamic Type XXL in the dark theme")
+    func narratingDarkXXL() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .dark, dynamicType: .xxLarge,
+               name: "narrating_dark_xxl")
+    }
+
+    @Test("the narration card renders at Dynamic Type XXL in the sepia theme")
+    func narratingSepiaXXL() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .sepia, dynamicType: .xxLarge,
+               name: "narrating_sepia_xxl")
+    }
+
+    @Test("the narration card takes precedence over the selection action sheet")
+    func narratingWithSelectionLight() async {
+        // When the user starts Narrate over a selection, the card and
+        // the action sheet would both want to anchor at the bottom.
+        // `BibleScreen.bottomOverlay` resolves that by showing only
+        // the card while it's visible — this snapshot is the visual
+        // guard that the action sheet doesn't leak through underneath.
+        verify(await narratingScreen(currentVerse: 5, selecting: [3, 5, 7]),
+               theme: .light, name: "narrating_with_selection_light")
+    }
+
+    /// A `BibleScreen` whose narration controller is driven into
+    /// `.speaking` on `currentVerse`. The fake service lets the test
+    /// hold the controller in that state for the snapshot without
+    /// invoking the real `AVSpeechSynthesizer`. When `selecting` is
+    /// non-empty, those verses are toggled into the selection before
+    /// `startNarration` runs — exercises the selection-aware narration
+    /// path and the card-over-action-sheet precedence.
+    ///
+    /// Drives the `.started` event via `NarrationController
+    /// ._simulateEvent(_:)` rather than the fake's `AsyncStream` so the
+    /// state transition is deterministic, per root AGENTS.md §
+    /// Testing.2.
+    private func narratingScreen(
+        currentVerse: Int,
+        selecting verses: [Int] = []
+    ) async -> BibleScreen {
+        let service = FakeNarrationService()
+        let narration = NarrationController(service: service)
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2),
+            narration: narration
+        )
+        await viewModel.load()
+        for verse in verses { viewModel.toggleVerse(verse) }
+        viewModel.startNarration()
+        narration._simulateEvent(.started(verseNumber: currentVerse))
+        return BibleScreen(viewModel: viewModel)
+    }
+
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(

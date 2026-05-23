@@ -85,9 +85,206 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .models, name: "settings_models_light")
     }
 
+    @Test("models pane with AFM row when AFM is available")
+    func modelsPaneWithAFMAvailable() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .available,
+            name: "settings_models_afm_available_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is available (dark)")
+    func modelsPaneWithAFMAvailableDark() async {
+        await verifyModelsPaneWithAFM(
+            theme: .dark,
+            availability: .available,
+            name: "settings_models_afm_available_dark"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (modelNotReady)")
+    func modelsPaneWithAFMModelNotReady() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.modelNotReady),
+            name: "settings_models_afm_model_not_ready_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (deviceNotEligible)")
+    func modelsPaneWithAFMDeviceNotEligible() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.deviceNotEligible),
+            name: "settings_models_afm_device_not_eligible_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (modelNotReady, dark)")
+    func modelsPaneWithAFMModelNotReadyDark() async {
+        await verifyModelsPaneWithAFM(
+            theme: .dark,
+            availability: .unavailable(.modelNotReady),
+            name: "settings_models_afm_model_not_ready_dark"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (appleIntelligenceNotEnabled)")
+    func modelsPaneWithAFMAppleIntelligenceNotEnabled() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            name: "settings_models_afm_apple_intelligence_off_light"
+        )
+    }
+
+    // Dynamic Type XXL companion per AGENTS.md §Testing.3 ("at minimum
+    // one larger Dynamic Type size"). Models pane card layout — monogram
+    // tile + two-line text stack + trailing toggle — is the most likely
+    // surface to regress at XXL, so this is the variant we anchor.
+    @Test("dynamic type XXL on models pane with AFM row")
+    func modelsPaneWithAFMXXL() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .available,
+            name: "settings_models_afm_available_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
+    private func verifyModelsPaneWithAFM(
+        theme: SuperTheme.Identifier,
+        availability: AppleFoundationAvailability,
+        name: String,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     @Test("model detail empty form (create flow)")
     func modelDetailEmpty() async {
         await verify(theme: .light, pane: .modelDetail(id: nil), name: "settings_model_detail_new_light")
+    }
+
+    @Test("model detail create flow with Google preset prefilled")
+    func modelDetailGooglePreset() async {
+        await verifyCreateWithPreset(
+            theme: .light,
+            preset: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_google_preset_light"
+        )
+    }
+
+    @Test("model detail create flow with Google preset prefilled (dark)")
+    func modelDetailGooglePresetDark() async {
+        await verifyCreateWithPreset(
+            theme: .dark,
+            preset: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_google_preset_dark"
+        )
+    }
+
+    // Apple Intelligence preset prefilled — the pill is enabled (no
+    // existing AFM row + AFM available). Distinct from the
+    // AFM-edit-flow snapshot (`modelDetailAppleFoundation`) because
+    // that test seeds from an existing row; this one tests the create
+    // path where the preset drives the prefill.
+    @Test("model detail create flow with Apple preset prefilled")
+    func modelDetailApplePreset() async {
+        await verifyCreateWithPreset(
+            theme: .light,
+            preset: .appleFoundation,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_preset_light"
+        )
+    }
+
+    @Test("model detail create flow with Apple preset prefilled (dark)")
+    func modelDetailApplePresetDark() async {
+        await verifyCreateWithPreset(
+            theme: .dark,
+            preset: .appleFoundation,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_preset_dark"
+        )
+    }
+
+    // The disabled-Apple-pill state: AFM is unavailable so the Apple
+    // pill is non-interactive. Custom preset stays selected. Anchors
+    // the inkFaint foreground + disabled visual treatment introduced
+    // by Phase 6b.
+    @Test("model detail create flow with Apple preset disabled (AFM unavailable)")
+    func modelDetailApplePresetDisabled() async {
+        await verifyCreateWithPreset(
+            theme: .light,
+            preset: .custom,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_disabled_light"
+        )
+    }
+
+    // Dark companion for the disabled-Apple-pill state — the inkFaint
+    // foreground is the most colour-scheme-sensitive piece of the
+    // preset picker so we pin it across light + dark.
+    @Test("model detail create flow with Apple preset disabled (dark)")
+    func modelDetailApplePresetDisabledDark() async {
+        await verifyCreateWithPreset(
+            theme: .dark,
+            preset: .custom,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_disabled_dark"
+        )
+    }
+
+    private func verifyCreateWithPreset(
+        theme: SuperTheme.Identifier,
+        preset: SettingsModelDetailPane.Preset,
+        availability: AppleFoundationAvailability,
+        existingAppleFoundation: Bool,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: existingAppleFoundation
+                ? Self.sampleModelsWithAppleFoundation
+                : Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: nil),
+            initialModelDetailPreset: preset
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     @Test("model detail seeded form (edit flow)")
@@ -344,7 +541,14 @@ struct SettingsSheetSnapshotTests {
         }
     }
 
-    private func makeViewModel() -> SettingsViewModel {
+    private func makeViewModel(
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
+    ) -> SettingsViewModel {
+        // Snapshots default to `.unavailable(.deviceNotEligible)` so the
+        // host's real `SystemLanguageModel.default.availability` (which
+        // varies between local dev and CI runners) never leaks into the
+        // pixel-comparison. Tests that exercise AFM-specific rendering
+        // pass an explicit availability.
         SettingsViewModel(
             accountEmail: "brianwang9100@gmail.com",
             appInfo: Self.appInfo,
@@ -353,7 +557,8 @@ struct SettingsSheetSnapshotTests {
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
-            autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver()
+            autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
+            appleFoundationAvailability: appleFoundationAvailability
         )
     }
 }
@@ -365,6 +570,9 @@ struct SettingsSheetSnapshotTests {
 private struct SettingsSheetSnapshotHarness: View {
     let viewModel: SettingsViewModel
     let initialPane: SettingsSheet.Pane
+    /// Forwarded to `SettingsSheet`'s internal test seam — only
+    /// observed when `initialPane == .modelDetail(id: nil)`.
+    var initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom
 
     @State private var presented = true
     @Environment(\.superTheme) private var theme
@@ -376,7 +584,8 @@ private struct SettingsSheetSnapshotHarness: View {
             SettingsSheet(
                 isPresented: $presented,
                 viewModel: viewModel,
-                initialPane: initialPane
+                initialPane: initialPane,
+                initialModelDetailPreset: initialModelDetailPreset
             )
         }
     }
@@ -394,6 +603,7 @@ private struct NoopModelRepository: ModelConfigurationRepository {
     func fetch(id: String) async throws -> ModelConfigurationRecord? { nil }
     func selected() async throws -> ModelConfigurationRecord? { nil }
     func save(_ record: ModelConfigurationRecord) async throws {}
+    func insertIfEmpty(make: @Sendable () -> ModelConfigurationRecord) async throws -> ModelConfigurationRecord? { nil }
     func delete(id: String) async throws {}
     func setSelected(id: String) async throws {}
     func storeAPIKey(_ key: String, ref: String) async throws {}
