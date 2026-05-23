@@ -759,6 +759,14 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         rows.removeAll { $0.id == record.id }
         rows.append(record)
     }
+    func insertIfEmpty(
+        make: @Sendable () -> ModelConfigurationRecord
+    ) async throws -> ModelConfigurationRecord? {
+        guard rows.isEmpty else { return nil }
+        let record = make()
+        rows.append(record)
+        return record
+    }
     func delete(id: String) async throws {
         rows.removeAll { $0.id == id }
         storedKeys[id] = nil

@@ -23,6 +23,21 @@ public protocol ModelConfigurationRepository: Sendable {
     /// Insert or update. Does **not** touch the Keychain — pair with
     /// `storeAPIKey(_:ref:)` when persisting a freshly entered key.
     func save(_ record: ModelConfigurationRecord) async throws
+    /// Build and insert a record atomically, but only if the table has
+    /// no other rows at the moment of the write. The `make` closure is
+    /// called *inside* the write transaction — only when the table is
+    /// confirmed empty — so callers using a `DeterministicIDGenerator`
+    /// don't burn an id on a no-op call. Returns the inserted record,
+    /// or `nil` when the table already had rows.
+    ///
+    /// Used by first-launch seeding so the empty-check and the insert
+    /// run in the same write transaction — a concurrent insert from
+    /// another writer between them would otherwise pass the check, then
+    /// land a second row that violates the seed's "only on empty"
+    /// contract.
+    func insertIfEmpty(
+        make: @Sendable () -> ModelConfigurationRecord
+    ) async throws -> ModelConfigurationRecord?
     /// Delete the row and the matching Keychain entry referenced by its
     /// `apiKeyRef`. The Keychain delete runs first: a Keychain failure
     /// leaves the DB row in place so the caller can retry, instead of
@@ -81,6 +96,18 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     public func save(_ record: ModelConfigurationRecord) async throws {
         try await queue.write { db in
             try record.save(db)
+        }
+    }
+
+    public func insertIfEmpty(
+        make: @Sendable () -> ModelConfigurationRecord
+    ) async throws -> ModelConfigurationRecord? {
+        try await queue.write { db in
+            let count = try ModelConfigurationRecord.fetchCount(db)
+            guard count == 0 else { return nil }
+            let record = make()
+            try record.insert(db)
+            return record
         }
     }
 

@@ -36,9 +36,10 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     private let idGenerator: any IDGenerator
     /// Shared dispatcher AFM tool calls fan out through. `nil` means
     /// "no tools" — the model still streams text but never sees any
-    /// callable tools. The composition root injects the real registry
-    /// via `init(toolRegistry:)`; the no-arg `init()` keeps the
-    /// zero-config startup path working until Phase 5 wires that up.
+    /// callable tools. The composition root passes the real registry
+    /// via `init(id:availability:toolRegistry:)`; tests can construct
+    /// the provider via the internal designated init with whatever
+    /// registry (or nil) they need.
     private let toolRegistry: ToolRegistry?
 
     /// Stable identifier for the single model surface AFM exposes.
@@ -85,21 +86,28 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.toolRegistry = toolRegistry
     }
 
-    /// Production convenience. Snapshots availability from
-    /// `SystemLanguageModel.default`, uses `LiveLanguageSession` for
-    /// every turn, a real `UUIDGenerator` for message IDs, and the
-    /// passed-in `ToolRegistry` (optional — pass nil for the text-only
-    /// startup path). Call this from the composition root after
-    /// deciding to register an AFM-backed `ModelConfiguration` row.
-    public init(toolRegistry: ToolRegistry? = nil) {
+    /// Production convenience used by the composition root.
+    ///
+    /// `id` must match the `ModelConfigurationRecord.id` that drives
+    /// the registration, mirroring `OpenAICompatibleLLMProvider`'s
+    /// behavior. `LLMProviderRegistry.setActive(id:)` looks providers
+    /// up by this identifier, so registering AFM under the static
+    /// `"apple-foundation"` would leave the seeded
+    /// `isSelected = true` row unable to promote itself to active.
+    public init(
+        id: String,
+        availability: AppleFoundationAvailability,
+        toolRegistry: ToolRegistry? = nil
+    ) {
         self.init(
-            availability: AppleFoundationAvailability(SystemLanguageModel.default.availability),
+            availability: availability,
             sessionFactory: { transcript, tools in
                 LiveLanguageSession(session: LanguageModelSession(
                     tools: tools,
                     transcript: transcript
                 ))
             },
+            id: id,
             toolRegistry: toolRegistry
         )
     }
