@@ -112,7 +112,21 @@ struct SettingsSheetSnapshotTests {
     // Dynamic Type XXL companion per AGENTS.md §Testing.3.
     @Test("dynamic type XXL on Apple Foundation model detail pane")
     func modelDetailAppleFoundationXXL() async {
-        let function = #function
+        await verifyAppleFoundationXXL(theme: .light, name: "settings_model_detail_afm_light_xxl")
+    }
+
+    // Dark + XXL cell to fill the `light/dark/sepia × default/Dynamic
+    // Type XXL` matrix called out in `Packages/Chat/CLAUDE.md`.
+    @Test("dynamic type XXL on Apple Foundation model detail pane (dark)")
+    func modelDetailAppleFoundationXXLDark() async {
+        await verifyAppleFoundationXXL(theme: .dark, name: "settings_model_detail_afm_dark_xxl")
+    }
+
+    private func verifyAppleFoundationXXL(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
         let viewModel = makeViewModel()
         viewModel._setSnapshotState(
             settings: .default,
@@ -124,10 +138,10 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .modelDetail(id: "afm")
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(theme))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
-        recordOrCompare(view: view, name: "settings_model_detail_afm_light_xxl", function: function)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     private func verifyAppleFoundation(

@@ -580,10 +580,7 @@ public final class SettingsViewModel {
             )
             await registry.register(provider)
         case .appleFoundation:
-            // Not reachable via createModel/updateModel today — those
-            // paths only construct `.openAICompatible` rows. Left
-            // explicit so a future preset that flips the kind doesn't
-            // silently fall through the switch.
+            // Reachable from updateModel on an AFM row; no-op until the AFM provider class lands.
             break
         }
     }
