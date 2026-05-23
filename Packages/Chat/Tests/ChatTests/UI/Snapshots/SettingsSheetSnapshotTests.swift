@@ -85,6 +85,98 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .models, name: "settings_models_light")
     }
 
+    @Test("models pane with AFM row when AFM is available")
+    func modelsPaneWithAFMAvailable() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .available,
+            name: "settings_models_afm_available_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is available (dark)")
+    func modelsPaneWithAFMAvailableDark() async {
+        await verifyModelsPaneWithAFM(
+            theme: .dark,
+            availability: .available,
+            name: "settings_models_afm_available_dark"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (modelNotReady)")
+    func modelsPaneWithAFMModelNotReady() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.modelNotReady),
+            name: "settings_models_afm_model_not_ready_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (deviceNotEligible)")
+    func modelsPaneWithAFMDeviceNotEligible() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.deviceNotEligible),
+            name: "settings_models_afm_device_not_eligible_light"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (modelNotReady, dark)")
+    func modelsPaneWithAFMModelNotReadyDark() async {
+        await verifyModelsPaneWithAFM(
+            theme: .dark,
+            availability: .unavailable(.modelNotReady),
+            name: "settings_models_afm_model_not_ready_dark"
+        )
+    }
+
+    @Test("models pane with AFM row when AFM is unavailable (appleIntelligenceNotEnabled)")
+    func modelsPaneWithAFMAppleIntelligenceNotEnabled() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            name: "settings_models_afm_apple_intelligence_off_light"
+        )
+    }
+
+    // Dynamic Type XXL companion per AGENTS.md §Testing.3 ("at minimum
+    // one larger Dynamic Type size"). Models pane card layout — monogram
+    // tile + two-line text stack + trailing toggle — is the most likely
+    // surface to regress at XXL, so this is the variant we anchor.
+    @Test("dynamic type XXL on models pane with AFM row")
+    func modelsPaneWithAFMXXL() async {
+        await verifyModelsPaneWithAFM(
+            theme: .light,
+            availability: .available,
+            name: "settings_models_afm_available_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
+    private func verifyModelsPaneWithAFM(
+        theme: SuperTheme.Identifier,
+        availability: AppleFoundationAvailability,
+        name: String,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     @Test("model detail empty form (create flow)")
     func modelDetailEmpty() async {
         await verify(theme: .light, pane: .modelDetail(id: nil), name: "settings_model_detail_new_light")
@@ -344,7 +436,14 @@ struct SettingsSheetSnapshotTests {
         }
     }
 
-    private func makeViewModel() -> SettingsViewModel {
+    private func makeViewModel(
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
+    ) -> SettingsViewModel {
+        // Snapshots default to `.unavailable(.deviceNotEligible)` so the
+        // host's real `SystemLanguageModel.default.availability` (which
+        // varies between local dev and CI runners) never leaks into the
+        // pixel-comparison. Tests that exercise AFM-specific rendering
+        // pass an explicit availability.
         SettingsViewModel(
             accountEmail: "brianwang9100@gmail.com",
             appInfo: Self.appInfo,
@@ -353,7 +452,8 @@ struct SettingsSheetSnapshotTests {
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
-            autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver()
+            autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
+            appleFoundationAvailability: appleFoundationAvailability
         )
     }
 }

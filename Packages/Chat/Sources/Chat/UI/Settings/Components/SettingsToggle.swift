@@ -14,6 +14,12 @@ struct SettingsToggle: View {
     let accessibilityLabel: String
 
     @Environment(\.superTheme) private var theme
+    /// Mirrors the outer `.disabled(_:)` state so both the button tap *and*
+    /// the explicit `.accessibilityAction { ... }` short-circuit when the
+    /// row is disabled. Without this, VoiceOver users could fire the
+    /// accessibility action (which `.disabled` does not suppress on its
+    /// own) and silently flip the binding on a non-interactive row.
+    @Environment(\.isEnabled) private var isEnabled
 
     init(isOn: Binding<Bool>, accessibilityLabel: String) {
         self._isOn = isOn
@@ -21,7 +27,7 @@ struct SettingsToggle: View {
     }
 
     var body: some View {
-        Button(action: { isOn.toggle() }) {
+        Button(action: handleTap) {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Capsule(style: .continuous)
                     .fill(isOn ? theme.accent : theme.border)
@@ -39,6 +45,20 @@ struct SettingsToggle: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction { isOn.toggle() }
+        .accessibilityAction { handleTap() }
+    }
+
+    private func handleTap() {
+        Self.commit(isOn: $isOn, isEnabled: isEnabled)
+    }
+
+    /// Pure helper extracted so the disabled-guard can be unit-tested
+    /// without rendering the view through `UIHostingController`. The
+    /// view body funnels both the button action *and* the explicit
+    /// `.accessibilityAction { … }` through here so VoiceOver can't
+    /// bypass the guard (the bug round 1 fixed).
+    static func commit(isOn: Binding<Bool>, isEnabled: Bool) {
+        guard isEnabled else { return }
+        isOn.wrappedValue.toggle()
     }
 }
