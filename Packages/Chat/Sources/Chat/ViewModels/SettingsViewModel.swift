@@ -459,6 +459,61 @@ public final class SettingsViewModel {
     /// whether to pop the pane (nil → success, pop; non-nil → keep the
     /// pane up so the user sees the error). Re-trying clears the error
     /// at the start of the next attempt.
+    /// `true` when an `.appleFoundation` row already exists. The Add-Model
+    /// preset picker uses this to disable the Apple Intelligence preset
+    /// (one AFM row is enough — adding a second would only confuse the
+    /// model list and `registerProvider` already gates on
+    /// availability).
+    public var hasAppleFoundationModel: Bool {
+        models.contains { $0.kind == .appleFoundation }
+    }
+
+    /// Persist a new `.appleFoundation` row, register the live AFM
+    /// provider (when the launch-time availability snapshot says AFM is
+    /// usable), and refresh the in-memory list. Mirrors
+    /// ``createModel(name:baseURL:modelId:apiKey:supportsThinking:maxContextTokens:idGenerator:now:)``
+    /// for the openAI-compatible kind, but skips the Keychain write (AFM
+    /// rows have no API key) and force-sets the shape Apple's on-device
+    /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
+    /// "system-default"`). The `idGenerator` and `now` parameters are
+    /// injectable so tests can pin the id and timestamp.
+    ///
+    /// Error contract matches `createModel`: on failure sets
+    /// ``modelEditError`` and refreshes the list so the pane can show
+    /// the message and the row count agrees with what actually persisted.
+    public func createAppleFoundationModel(
+        name: String,
+        supportsThinking: Bool,
+        maxContextTokens: Int,
+        idGenerator: () -> String = { UUID().uuidString },
+        now: Date = Date()
+    ) async {
+        modelEditError = nil
+        let recordId = idGenerator()
+        do {
+            let record = ModelConfigurationRecord(
+                id: recordId,
+                name: name,
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: now,
+                kind: .appleFoundation,
+                supportsThinking: supportsThinking,
+                maxContextTokens: maxContextTokens,
+                isSelected: false
+            )
+            try await modelRepository.save(record)
+            await registerProvider(for: record, apiKey: nil)
+            await loadModels()
+            onModelsChanged?()
+        } catch {
+            chatSettingsLog.error("createAppleFoundationModel failed: \(String(describing: error), privacy: .public)")
+            modelEditError = "Could not save model: \(error.localizedDescription)"
+            await loadModels()
+        }
+    }
+
     public func createModel(
         name: String,
         baseURL: URL,
@@ -580,11 +635,11 @@ public final class SettingsViewModel {
     }
 
     /// Build a fresh provider for `record` and register it with the live
-    /// registry. Kind-dispatches: `.openAICompatible` rows use the
-    /// existing `OpenAICompatibleLLMProvider`; `.appleFoundation` rows
-    /// are no-ops because AFM is registered by the boot path rather
-    /// than through the settings UI. No-op also when no registry/HTTP
-    /// client was injected (tests and previews don't wire them).
+    /// registry. Kind-dispatches: `.openAICompatible` rows go through
+    /// `OpenAICompatibleLLMProvider`; `.appleFoundation` rows go through
+    /// `AppleFoundationLLMProvider` (skipped when AFM is unavailable, so
+    /// the launch-path and Settings-path agree on the gate). No-op when
+    /// no registry was injected (tests and previews don't wire it).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
         switch record.kind {
@@ -597,8 +652,13 @@ public final class SettingsViewModel {
             )
             await registry.register(provider)
         case .appleFoundation:
-            // Reachable from updateModel on an AFM row; no-op until the AFM provider class lands.
-            break
+            guard appleFoundationAvailability.isAvailable else { return }
+            let provider = AppleFoundationLLMProvider(
+                id: record.id,
+                availability: appleFoundationAvailability,
+                toolRegistry: toolRegistry
+            )
+            await registry.register(provider)
         }
     }
 

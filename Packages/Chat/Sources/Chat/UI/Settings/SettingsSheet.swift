@@ -86,20 +86,29 @@ public struct SettingsSheet: View {
     /// programmatically driving the navigation stack. Internal so the SDK
     /// surface still presents a single public `init`. Seeds the view
     /// model's path so the first render lands on `initialPane` without
-    /// animation.
+    /// animation. `initialModelDetailPreset` lets a modelDetail snapshot
+    /// pin a preset other than `.custom` so the Google/Apple-prefilled
+    /// states can be captured.
     init(
         isPresented: Binding<Bool>,
         viewModel: SettingsViewModel,
         initialPane: Pane,
+        initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom,
         databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
         self.databaseContext = databaseContext
+        self.initialModelDetailPreset = initialModelDetailPreset
         if initialPane != .root {
             viewModel.navigationPath = [initialPane]
         }
     }
+
+    /// Backing value for the internal `initialModelDetailPreset` test
+    /// seam. `paneContent` forwards it to the modelDetail case so a
+    /// pinned preset is honored even after a navigation push.
+    private var initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom
 
     public var body: some View {
         ZStack(alignment: .bottom) {
@@ -192,7 +201,11 @@ public struct SettingsSheet: View {
         case .models:
             SettingsModelsPane(viewModel: viewModel)
         case .modelDetail(let id):
-            SettingsModelDetailPane(viewModel: viewModel, editingId: id)
+            SettingsModelDetailPane(
+                viewModel: viewModel,
+                editingId: id,
+                initialPreset: initialModelDetailPreset
+            )
         case .personalization:
             SettingsPersonalizationPane(viewModel: viewModel)
         case .verbosity:
