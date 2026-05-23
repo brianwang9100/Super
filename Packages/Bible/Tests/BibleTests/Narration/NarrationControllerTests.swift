@@ -251,6 +251,52 @@ struct NarrationControllerTests {
         #expect(controller.state == .speaking)
     }
 
+    @Test("a session replacement cancels the prior streamTask before it can process the buffered .cancelled")
+    func secondStartCancelsPriorStreamTaskBeforeIdleOverwrite() async {
+        // Regression guard for the race the production service
+        // creates: `service.startSpeaking(...)` internally yields
+        // `.cancelled` into the *old* stream before closing it
+        // (`AVSpeechSynthesizerNarrationService.teardownActiveSession`),
+        // so the prior stream-consumer Task has a buffered terminal
+        // event queued. Without the `!Task.isCancelled` guard in the
+        // for-await loop, that processing runs *after* the new
+        // session is set up and overwrites
+        // `state = .speaking` / `currentVerseNumber = 10` with
+        // `.idle` / `nil` — the user-visible glitch is the nav-bar
+        // speaker flickering back to sparkles on every Narrate re-tap.
+        //
+        // The fake's `startSpeaking` mirrors the production teardown's
+        // yield-`.cancelled`-then-finish sequence, so this test
+        // exercises the same race. Without the fix the bottom
+        // assertions see `.idle`.
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "one")])
+        // Use the synchronous seam to advance to `.speaking` — we
+        // need the controller in a non-idle state before triggering
+        // the replacement.
+        controller._simulateEvent(.started(verseNumber: 1))
+
+        // Capture the prior streamTask before `start(_:)` replaces it
+        // — once replaced, the controller no longer references it and
+        // there's no other handle to await.
+        let priorTask = controller._currentStreamTask
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 10, text: "ten")])
+        controller._simulateEvent(.started(verseNumber: 10))
+
+        // Deterministically wait for the prior task to exit. With the
+        // fix, the for-await guard sees `Task.isCancelled` on the next
+        // iteration and bails *before* `handle(.cancelled)`; without
+        // it, the task processes the buffered `.cancelled` and
+        // mutates state.
+        await priorTask?.value
+
+        #expect(controller.state == .speaking)
+        #expect(controller.currentVerseNumber == 10)
+    }
+
     @Test("setting `rate` propagates to the service via setRate(_:)")
     func rateSetterPropagatesToService() {
         let service = FakeNarrationService()

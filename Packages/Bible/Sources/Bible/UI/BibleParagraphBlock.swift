@@ -93,21 +93,10 @@ private struct VerseWord: View {
     let onTap: (Int) -> Void
 
     var body: some View {
-        let word = styledText
-            .padding(.vertical, 1.5)
-            .background(wordBackground)
-            .contentShape(Rectangle())
-            .onTapGesture { onTap(token.verseNumber) }
-        let identified = token.isVerseStart
-            // Tag every verse's first word with its anchor so
-            // `BibleChapterReader.body`'s `ScrollViewReader` proxy can
-            // scroll directly to it as narration advances.
-            ? AnyView(word.id(VerseAnchor(verseNumber: token.verseNumber)))
-            : AnyView(word)
         if token.isVerseStart {
             // The verse's first word stands in for the whole verse as a
             // single VoiceOver element reading the full text.
-            identified
+            identifiedWord
                 .accessibilityElement()
                 .accessibilityLabel(BibleVerseAnnouncement.label(
                     verseNumber: token.verseNumber,
@@ -120,7 +109,30 @@ private struct VerseWord: View {
         } else {
             // Every later word folds into the verse's first — hidden so the
             // verse isn't re-announced word by word.
-            identified.accessibilityHidden(true)
+            identifiedWord.accessibilityHidden(true)
+        }
+    }
+
+    /// The tappable word, plus the verse-start `id` when this is the
+    /// first word of its verse — used by `BibleChapterReader.body`'s
+    /// `ScrollViewReader` proxy to scroll directly to the active
+    /// verse as narration advances. Built with `@ViewBuilder` rather
+    /// than `AnyView` so SwiftUI sees a concrete return type and can
+    /// diff verse words across narration ticks instead of treating
+    /// every cell as opaque (which forces a full rebuild of the
+    /// chapter's hundreds of words on every `currentNarratingVerse`
+    /// change).
+    @ViewBuilder
+    private var identifiedWord: some View {
+        let word = styledText
+            .padding(.vertical, 1.5)
+            .background(wordBackground)
+            .contentShape(Rectangle())
+            .onTapGesture { onTap(token.verseNumber) }
+        if token.isVerseStart {
+            word.id(VerseAnchor(verseNumber: token.verseNumber))
+        } else {
+            word
         }
     }
 

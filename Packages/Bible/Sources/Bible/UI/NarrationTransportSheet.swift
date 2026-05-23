@@ -33,6 +33,7 @@ import UIKit
 struct NarrationTransportSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var controller: NarrationController
     /// Short citation of what's being narrated — shown as the card's
     /// title line under the `NOW NARRATING` label (e.g.
@@ -143,7 +144,15 @@ struct NarrationTransportSheet: View {
                             // snapping back to centre first.
                             onDismiss()
                         } else {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                            // Match the rest of the Bible screen's
+                            // Reduce Motion handling (see
+                            // `BibleChapterReader`'s narration auto-
+                            // scroll, which also opts out of animation
+                            // when the user has reduced motion on).
+                            let springBack: Animation? = reduceMotion
+                                ? nil
+                                : .spring(response: 0.32, dampingFraction: 0.85)
+                            withAnimation(springBack) {
                                 dragOffset = 0
                             }
                         }

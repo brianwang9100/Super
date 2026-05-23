@@ -87,6 +87,14 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
             state.continuation = nil
             return prior
         }
+        // Mirror production (`AVSpeechSynthesizerNarrationService
+        // .teardownActiveSession(emit: .cancelled)`): yield `.cancelled`
+        // into the *prior* stream before closing it, so the controller's
+        // old stream-consumer Task sees a buffered terminal event the
+        // same way it would in production. Tests that don't want this
+        // behaviour can use `_simulateEvent(_:)` and bypass the stream
+        // path entirely.
+        previous?.yield(.cancelled)
         previous?.finish()
 
         return AsyncStream { continuation in

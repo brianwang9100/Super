@@ -137,9 +137,15 @@ public final class NarrationController {
     /// Begin a new session. Cancels any in-flight session first so the
     /// underlying service only ever has one queue in flight.
     public func start(utterances: [NarrationVerseUtterance]) {
-        // Tear down any prior session synchronously — the prior stream
-        // task may still be running, but we replace its `streamTask`
-        // reference so future events from it can't write to `state`.
+        // Tear down any prior session synchronously. The prior stream
+        // task is cancelled cooperatively (Swift Concurrency doesn't
+        // preempt), and its for-await loop checks `Task.isCancelled`
+        // on every iteration so it exits *before* processing any
+        // `.cancelled` event the service will yield as part of its own
+        // teardown — without that guard the old task would overwrite
+        // the new session's freshly-set `state = .speaking` with
+        // `state = .idle` and the nav-bar speaker would flicker back to
+        // sparkles on every Narrate retap.
         streamTask?.cancel()
         streamTask = nil
         lastError = nil
@@ -147,7 +153,7 @@ public final class NarrationController {
         let stream = service.startSpeaking(utterances, rate: rate, voice: voice)
         streamTask = Task { [weak self] in
             for await event in stream {
-                guard let self else { return }
+                guard let self, !Task.isCancelled else { return }
                 self.handle(event)
             }
         }
@@ -218,6 +224,15 @@ public final class NarrationController {
     func _waitForPendingStreamTask() async {
         await streamTask?.value
     }
+
+    /// Test seam: the current stream-consumer `Task`, or `nil` when no
+    /// session is in flight. Lets a test capture the *prior* task
+    /// before `start(_:)` replaces it, then `await task?.value` to
+    /// deterministically synchronize on the prior task's exit (used
+    /// to verify it bails out via `Task.isCancelled` before
+    /// processing a buffered `.cancelled` event left behind by the
+    /// service's teardown).
+    var _currentStreamTask: Task<Void, Never>? { streamTask }
 
     private func handle(_ event: NarrationEvent) {
         switch event {
