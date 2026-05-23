@@ -94,8 +94,17 @@ struct NarrationTransportSheet: View {
         // animation interpolator fights the gesture's discrete writes.
         .animation(nil, value: dragOffset)
         .task {
+            // `loadLocaleVoices` calls
+            // `AVSpeechSynthesisVoice.speechVoices()` — a ~100-300 ms
+            // synchronous file scan. Running it on `@MainActor` inside
+            // `.task` would freeze the thread the instant the card
+            // slides in, so do the scan on a detached background task
+            // and only hop back to the main actor to assign the result.
             if voices.isEmpty {
-                voices = Self.loadLocaleVoices()
+                let loaded = await Task.detached(priority: .userInitiated) {
+                    Self.loadLocaleVoices()
+                }.value
+                voices = loaded
             }
         }
     }
@@ -444,7 +453,10 @@ struct NarrationTransportSheet: View {
         Locale.current.language.languageCode?.identifier ?? "en"
     }
 
-    private static func loadLocaleVoices() -> [VoiceOption] {
+    /// Marked `nonisolated` so the detached background `Task` in
+    /// `body.task` can invoke it without re-entering `@MainActor` and
+    /// blocking the main thread on the ~100-300 ms voice scan.
+    nonisolated private static func loadLocaleVoices() -> [VoiceOption] {
         let prefix = localeLanguagePrefix
         return AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix(prefix) }

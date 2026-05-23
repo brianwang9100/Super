@@ -653,8 +653,7 @@ struct BibleScreenViewModelTests {
 
         #expect(viewModel.narrationCitation == nil)
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 9, text: "x")])
-        service.emit(.started(verseNumber: 9))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 9))
         #expect(viewModel.narrationCitation == "1 Peter 2:9")
     }
 
@@ -666,8 +665,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.stepChapter(.next)
         #expect(service.stopCallCount >= 1)
@@ -681,8 +679,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()                          // WEB
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.selectTranslation(.kjv)
         #expect(service.stopCallCount >= 1)
@@ -696,8 +693,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
 
         viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
         #expect(service.stopCallCount >= 1)
@@ -723,20 +719,11 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
-        service.emit(.started(verseNumber: 1))
-        await yieldUntil { controller.state == .speaking }
+        controller._simulateEvent(.started(verseNumber: 1))
         viewModel.presentNarrationSheet()
 
         viewModel.dismissNarrationSheet()
         #expect(viewModel.isNarrationSheetPresented == false)
         #expect(service.stopCallCount == 0, "dismissing the sheet must keep narration playing")
-    }
-
-    /// @MainActor-bound spin helper, mirroring NarrationControllerTests.
-    private func yieldUntil(_ condition: () -> Bool) async {
-        for _ in 0..<400 {
-            if condition() { return }
-            await Task.yield()
-        }
     }
 }
