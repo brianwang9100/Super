@@ -415,6 +415,20 @@ struct AppleFoundationLLMProviderTests {
     }
 
     @Test
+    func publicInitForwardsCallerSuppliedID() async {
+        // Provider id must match the `ModelConfigurationRecord.id` it
+        // was built from — `LLMProviderRegistry.setActive(id:)` looks
+        // providers up by that identifier, so a static fallback id
+        // would silently fail to promote the seeded row to active.
+        let provider = AppleFoundationLLMProvider(
+            id: "row-uuid-abc",
+            availability: .available,
+            toolRegistry: nil
+        )
+        #expect(provider.id == "row-uuid-abc")
+    }
+
+    @Test
     func supportedModelsAdvertisesToolsBasedOnRegistryPresence() async {
         let registry = ToolRegistry()
         let withRegistry = AppleFoundationLLMProvider(

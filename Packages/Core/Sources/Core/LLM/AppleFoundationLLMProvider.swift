@@ -85,11 +85,16 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.toolRegistry = toolRegistry
     }
 
-    /// Production convenience that lets the composition root pass in
-    /// a pre-snapshotted `AppleFoundationAvailability` — useful when
-    /// the boot path has already read `SystemLanguageModel.default.availability`
-    /// to gate registration and we want to avoid a second read.
+    /// Production convenience used by the composition root.
+    ///
+    /// `id` must match the `ModelConfigurationRecord.id` that drives
+    /// the registration, mirroring `OpenAICompatibleLLMProvider`'s
+    /// behavior. `LLMProviderRegistry.setActive(id:)` looks providers
+    /// up by this identifier, so registering AFM under the static
+    /// `"apple-foundation"` would leave the seeded
+    /// `isSelected = true` row unable to promote itself to active.
     public init(
+        id: String,
         availability: AppleFoundationAvailability,
         toolRegistry: ToolRegistry? = nil
     ) {
@@ -101,19 +106,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                     transcript: transcript
                 ))
             },
-            toolRegistry: toolRegistry
-        )
-    }
-
-    /// Production convenience. Snapshots availability from
-    /// `SystemLanguageModel.default`, uses `LiveLanguageSession` for
-    /// every turn, a real `UUIDGenerator` for message IDs, and the
-    /// passed-in `ToolRegistry` (optional — pass nil for the text-only
-    /// startup path). Prefer `init(availability:toolRegistry:)` when
-    /// the caller has already computed availability.
-    public init(toolRegistry: ToolRegistry? = nil) {
-        self.init(
-            availability: AppleFoundationAvailability(SystemLanguageModel.default.availability),
+            id: id,
             toolRegistry: toolRegistry
         )
     }

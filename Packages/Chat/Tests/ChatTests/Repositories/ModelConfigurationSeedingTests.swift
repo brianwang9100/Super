@@ -80,6 +80,40 @@ struct ModelConfigurationSeedingTests {
     }
 
     @Test
+    func seedRunsAtomicallyInOneWriteTransaction() async throws {
+        // When two callers race on first launch, only one row lands.
+        // The repository's `insertIfEmpty` runs the empty-check and the
+        // insert in a single `queue.write`, so the partial unique index
+        // on `isSelected` AND the empty-table precondition both hold
+        // atomically.
+        let database = try ChatDatabase.makeInMemory()
+        let repository = GRDBModelConfigurationRepository(
+            database: database,
+            keychain: InMemoryKeychainClient()
+        )
+
+        async let firstSeed = ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            idGenerator: DeterministicIDGenerator(prefix: "a-"),
+            clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
+        )
+        async let secondSeed = ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            idGenerator: DeterministicIDGenerator(prefix: "b-"),
+            clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
+        )
+        let (a, b) = try await (firstSeed, secondSeed)
+
+        // Exactly one of the two calls landed a record; the other saw
+        // a non-empty table and bailed.
+        let landed = [a, b].compactMap { $0 }
+        #expect(landed.count == 1)
+        let all = try await repository.all()
+        #expect(all.count == 1)
+        #expect(all[0].id == landed[0].id)
+    }
+
+    @Test
     func seedIsIdempotentAcrossBackToBackCalls() async throws {
         // Two consecutive calls within the same launch must produce
         // exactly one seeded row — the second call sees the first

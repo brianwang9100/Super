@@ -219,6 +219,14 @@ enum AppBootstrap {
         guard !configurations.isEmpty else { return }
 
         let http = URLSessionHTTPClient()
+        // Read AFM availability once per boot rather than once per
+        // record — the value is process-stable (an OS-level toggle in
+        // Settings requires an app relaunch) so re-reading inside the
+        // loop is wasted work and would also re-snapshot inconsistently
+        // if Apple ever made the property live-observable.
+        let appleFoundationAvailability = AppleFoundationAvailability(
+            SystemLanguageModel.default.availability
+        )
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
             switch record.kind {
@@ -236,21 +244,21 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                // Snapshot availability at boot. If the device can't run
-                // AFM right now we skip registration — the row stays in
-                // the model list (Settings will show the reason in the
-                // subtitle once Phase 6 lands), but the orchestrator
-                // can't activate it and surfaces the
-                // `noModelConfigured` empty state until the user adds
-                // another provider. The snapshot is handed straight to
-                // `init(availability:toolRegistry:)` so the provider
-                // doesn't re-read `SystemLanguageModel.default`.
-                let availability = AppleFoundationAvailability(
-                    SystemLanguageModel.default.availability
-                )
-                guard availability.isAvailable else { continue }
+                // If AFM is unavailable right now the row stays in the
+                // model list (Settings surfaces the reason once Phase
+                // 6 lands), but no provider is registered for it; the
+                // orchestrator surfaces `noModelConfigured` until the
+                // user adds another model.
+                //
+                // `id` must match the row's UUID — `setActive(id:)`
+                // below looks providers up by that identifier, so
+                // registering AFM under the static `"apple-foundation"`
+                // would silently fail to promote the seeded
+                // `isSelected = true` row.
+                guard appleFoundationAvailability.isAvailable else { continue }
                 let provider = AppleFoundationLLMProvider(
-                    availability: availability,
+                    id: record.id,
+                    availability: appleFoundationAvailability,
                     toolRegistry: toolRegistry
                 )
                 await registry.register(provider)
