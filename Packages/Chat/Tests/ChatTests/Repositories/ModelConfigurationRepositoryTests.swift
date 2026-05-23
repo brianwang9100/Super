@@ -17,15 +17,17 @@ struct ModelConfigurationRepositoryTests {
 
     private func makeRecord(
         id: String,
+        kind: LLMProviderKind = .openAICompatible,
         name: String = "Model",
-        baseURL: URL = URL(string: "https://api.example.com/v1")!,
-        apiKeyRef: String = "ref-1",
+        baseURL: URL? = URL(string: "https://api.example.com/v1")!,
+        apiKeyRef: String? = "ref-1",
         modelId: String = "model-x",
         isSelected: Bool = false,
         createdOffset: TimeInterval = 0
     ) -> ModelConfigurationRecord {
         ModelConfigurationRecord(
             id: id,
+            kind: kind,
             name: name,
             baseURL: baseURL,
             apiKeyRef: apiKeyRef,
@@ -122,5 +124,46 @@ struct ModelConfigurationRepositoryTests {
         // The first row remains the unique selection.
         let selectedIDs = try await repo.all().filter(\.isSelected).map(\.id)
         #expect(selectedIDs == ["a"])
+    }
+
+    @Test func appleFoundationRowRoundTripsWithNilURLAndKey() async throws {
+        let (repo, _) = try makeRepo()
+        let record = makeRecord(
+            id: "afm",
+            kind: .appleFoundation,
+            name: "Apple Intelligence",
+            baseURL: nil,
+            apiKeyRef: nil,
+            modelId: "system-default"
+        )
+        try await repo.save(record)
+
+        let fetched = try await repo.fetch(id: "afm")
+        #expect(fetched?.kind == .appleFoundation)
+        #expect(fetched?.baseURL == nil)
+        #expect(fetched?.apiKeyRef == nil)
+        #expect(fetched?.modelId == "system-default")
+        // Projection carries the kind through to the Core value.
+        #expect(fetched?.configuration.kind == .appleFoundation)
+        #expect(fetched?.configuration.baseURL == nil)
+        #expect(fetched?.configuration.apiKeyRef == nil)
+    }
+
+    @Test func deletingAppleFoundationRowDoesNotTouchKeychain() async throws {
+        let (repo, keychain) = try makeRepo()
+        // A pre-existing unrelated key — it must survive the delete since
+        // the AFM row references no keychain entry.
+        try await keychain.setString("unrelated-secret", ref: "ka")
+        try await repo.save(makeRecord(
+            id: "afm",
+            kind: .appleFoundation,
+            baseURL: nil,
+            apiKeyRef: nil
+        ))
+
+        try await repo.delete(id: "afm")
+
+        #expect(try await repo.fetch(id: "afm") == nil)
+        #expect(try await keychain.getString(ref: "ka") == "unrelated-secret")
     }
 }

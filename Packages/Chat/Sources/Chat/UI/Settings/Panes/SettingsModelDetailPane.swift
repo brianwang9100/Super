@@ -63,7 +63,7 @@ struct SettingsModelDetailPane: View {
         // values for the toggle (the lifecycle hook hadn't fired yet).
         let row = editingId.flatMap { viewModel.model(id: $0) }
         _name = State(initialValue: row?.name ?? "")
-        _baseURLText = State(initialValue: row?.baseURL.absoluteString
+        _baseURLText = State(initialValue: row?.baseURL?.absoluteString
             ?? "https://api.openai.com/v1")
         _modelId = State(initialValue: row?.modelId ?? "")
         _supportsThinking = State(initialValue: row?.supportsThinking ?? false)

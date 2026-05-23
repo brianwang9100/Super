@@ -205,13 +205,29 @@ enum AppBootstrap {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            let apiKey = try? await repository.loadAPIKey(ref: record.apiKeyRef)
-            let provider = OpenAICompatibleLLMProvider(
-                configuration: record.configuration,
-                apiKey: apiKey,
-                http: http
-            )
-            await registry.register(provider)
+            // Kind-dispatch lives here. Today only `.openAICompatible` has
+            // a real provider class — the AFM path is wired up in the
+            // default-model Phase 5 PR. Any future row with a kind that
+            // isn't routed yet is left unregistered and surfaces via the
+            // existing `noModelConfigured` empty state.
+            switch record.kind {
+            case .openAICompatible:
+                let apiKey: String?
+                if let ref = record.apiKeyRef {
+                    apiKey = try? await repository.loadAPIKey(ref: ref)
+                } else {
+                    apiKey = nil
+                }
+                let provider = OpenAICompatibleLLMProvider(
+                    configuration: record.configuration,
+                    apiKey: apiKey,
+                    http: http
+                )
+                await registry.register(provider)
+            case .appleFoundation:
+                // Provider lands in Phase 3 of the default-model work.
+                break
+            }
         }
 
         if let selectedId = try await repository.selected()?.id {

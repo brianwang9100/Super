@@ -66,7 +66,22 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     /// from a stored `ModelConfiguration`. The Keychain-backed key must be
     /// resolved by the caller (the registry layer) before construction
     /// because Core has no Keychain dependency on this path.
+    ///
+    /// Precondition: `configuration.kind == .openAICompatible` and
+    /// `configuration.baseURL != nil`. The boot path is responsible for
+    /// kind-dispatching before reaching this init — passing an
+    /// `.appleFoundation` row would be a programmer error and is caught
+    /// at boot rather than first-stream.
     public init(configuration: ModelConfiguration, apiKey: String?, http: HTTPClient) {
+        precondition(
+            configuration.kind == .openAICompatible,
+            "OpenAICompatibleLLMProvider requires .openAICompatible kind, got \(configuration.kind)"
+        )
+        guard let baseURL = configuration.baseURL else {
+            preconditionFailure(
+                "OpenAICompatibleLLMProvider requires a non-nil baseURL on the configuration"
+            )
+        }
         let model = LLMModel(
             id: configuration.modelID,
             displayName: configuration.name,
@@ -78,7 +93,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
             id: configuration.id,
             displayName: configuration.name,
             model: model,
-            baseURL: configuration.baseURL,
+            baseURL: baseURL,
             apiKey: apiKey,
             http: http
         )

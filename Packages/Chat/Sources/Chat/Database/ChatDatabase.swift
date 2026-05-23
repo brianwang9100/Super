@@ -210,4 +210,48 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["createdAt"]
         )
     }
+
+    // Adds the `kind` discriminator column to `modelConfiguration` and
+    // makes `baseURL` / `apiKeyRef` nullable so on-device wire kinds
+    // (today: `.appleFoundation`) can persist a row without either.
+    //
+    // SQLite cannot drop a column's NOT NULL constraint with ALTER TABLE,
+    // so we use the canonical recreate-and-copy pattern: build a new
+    // table with the relaxed shape, copy every existing row over with a
+    // backfilled `kind = 'openAICompatible'` (the only kind that existed
+    // before this migration), drop the old table, rename the new one,
+    // and re-create the partial unique index on `isSelected` against the
+    // renamed table.
+    migrator.registerMigration("v4_modelConfigurationKind") { db in
+        try db.execute(sql: """
+            CREATE TABLE modelConfiguration_new (
+                id TEXT PRIMARY KEY NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'openAICompatible',
+                name TEXT NOT NULL,
+                baseURL TEXT,
+                apiKeyRef TEXT,
+                modelId TEXT NOT NULL,
+                supportsThinking BOOLEAN NOT NULL DEFAULT 0,
+                maxContextTokens INTEGER NOT NULL,
+                isSelected BOOLEAN NOT NULL DEFAULT 0,
+                createdAt DATETIME NOT NULL
+            )
+        """)
+        try db.execute(sql: """
+            INSERT INTO modelConfiguration_new
+                (id, kind, name, baseURL, apiKeyRef, modelId,
+                 supportsThinking, maxContextTokens, isSelected, createdAt)
+            SELECT
+                id, 'openAICompatible', name, baseURL, apiKeyRef, modelId,
+                supportsThinking, maxContextTokens, isSelected, createdAt
+            FROM modelConfiguration
+        """)
+        try db.execute(sql: "DROP TABLE modelConfiguration")
+        try db.execute(sql: "ALTER TABLE modelConfiguration_new RENAME TO modelConfiguration")
+        // Re-create the partial unique index. Dropped with the old table.
+        try db.execute(sql: """
+            CREATE UNIQUE INDEX modelConfiguration_unique_selected
+            ON modelConfiguration(isSelected) WHERE isSelected = 1
+        """)
+    }
 }
