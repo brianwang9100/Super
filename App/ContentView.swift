@@ -20,21 +20,11 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // Switch branches in a `Group` change view *identity* between
-        // states, so a bare `.animation(value:)` would jump-cut. Each
-        // branch carries an explicit `.transition(.opacity)` and the
-        // wrapping `.animation(...)` runs them as a cross-fade. Reduce
-        // Motion swaps to `nil` so vestibular-sensitive users get an
-        // instant cut instead of the 200ms fade.
+        // Per-branch .transition + parent .animation = real cross-fade.
         Group {
             switch state {
             case .loading:
-                // Pin the Light palette while bootstrap is still loading
-                // settings — the splash background is the canonical
-                // `theme.background` for Light and matches the Info.plist
-                // `UILaunchScreen.UIColorName` colorset, so the system
-                // launch screen and the SwiftUI splash render the same
-                // hue across the handoff.
+                // Pin Light: matches the Info.plist SplashBackground colorset.
                 SplashView()
                     .superTheme(.make(.light))
                     .transition(.opacity)
