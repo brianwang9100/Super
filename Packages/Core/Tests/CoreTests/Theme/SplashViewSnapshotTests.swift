@@ -7,7 +7,7 @@ import UIKit
 
 /// Snapshots for `SplashView` across the three themes plus a Dynamic Type
 /// XXL variant on Light. The view is constructed with
-/// `animatedFromStart: true` so the captured frame is the resting pose
+/// `skipEntranceAnimation: true` so the captured frame is the resting pose
 /// (full opacity, pulse at peak) — animation timing isn't a thing we can
 /// hold steady in a snapshot.
 ///
@@ -16,7 +16,7 @@ import UIKit
 /// NOT scale the wordmark or version line. The XXL test is therefore a
 /// layout-stability regression check, not an accessibility-text-scaling
 /// check — the splash deliberately ignores Dynamic Type per design.
-@Suite("SplashView snapshots", .serialized)
+@Suite("SplashView snapshots")
 @MainActor
 struct SplashViewSnapshotTests {
     init() {
@@ -58,7 +58,7 @@ struct SplashViewSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXLLight() {
         let function = #function
-        let view = SplashView(version: "1.0", animatedFromStart: true)
+        let view = SplashView(version: "1.0", skipEntranceAnimation: true)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -80,7 +80,7 @@ struct SplashViewSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = SplashView(version: "1.0", animatedFromStart: true)
+        let view = SplashView(version: "1.0", skipEntranceAnimation: true)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 

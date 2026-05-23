@@ -24,20 +24,21 @@ public struct SplashView: View {
     @State private var revealed: Bool
 
     public init() {
-        self.init(version: SuperAppInfo.fromBundle().version, animatedFromStart: false)
+        self.init(version: SuperAppInfo.fromBundle().version, skipEntranceAnimation: false)
     }
 
     /// Test-only initializer. `version` lets snapshot tests pin the version
     /// string without depending on the host bundle's Info.plist;
-    /// `animatedFromStart` seeds the lockup + pulse states at their resting
-    /// poses so the captured frame isn't mid-flight. The resting pose is
-    /// encoded entirely in the initial `@State` values — `.onAppear` only
-    /// transitions from the start pose, so a state seeded to resting renders
-    /// rest immediately.
-    init(version: String, animatedFromStart: Bool) {
+    /// `skipEntranceAnimation: true` seeds the lockup + pulse states at
+    /// their resting poses so the captured frame is already revealed and
+    /// at the pulse peak. The resting pose is encoded entirely in the
+    /// initial `@State` values — `.onAppear` only transitions from the
+    /// start pose, so a state seeded to resting renders rest immediately
+    /// and the snapshot doesn't depend on `onAppear` ordering.
+    init(version: String, skipEntranceAnimation: Bool) {
         self.version = version
-        _pulse = State(initialValue: animatedFromStart)
-        _revealed = State(initialValue: animatedFromStart)
+        _pulse = State(initialValue: skipEntranceAnimation)
+        _revealed = State(initialValue: skipEntranceAnimation)
     }
 
     public var body: some View {
