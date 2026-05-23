@@ -220,6 +220,17 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    @Test("model detail create flow with Apple preset prefilled (dark)")
+    func modelDetailApplePresetDark() async {
+        await verifyCreateWithPreset(
+            theme: .dark,
+            preset: .appleFoundation,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_preset_dark"
+        )
+    }
+
     // The disabled-Apple-pill state: AFM is unavailable so the Apple
     // pill is non-interactive. Custom preset stays selected. Anchors
     // the inkFaint foreground + disabled visual treatment introduced
@@ -232,6 +243,20 @@ struct SettingsSheetSnapshotTests {
             availability: .unavailable(.appleIntelligenceNotEnabled),
             existingAppleFoundation: false,
             name: "settings_model_detail_apple_disabled_light"
+        )
+    }
+
+    // Dark companion for the disabled-Apple-pill state — the inkFaint
+    // foreground is the most colour-scheme-sensitive piece of the
+    // preset picker so we pin it across light + dark.
+    @Test("model detail create flow with Apple preset disabled (dark)")
+    func modelDetailApplePresetDisabledDark() async {
+        await verifyCreateWithPreset(
+            theme: .dark,
+            preset: .custom,
+            availability: .unavailable(.appleIntelligenceNotEnabled),
+            existingAppleFoundation: false,
+            name: "settings_model_detail_apple_disabled_dark"
         )
     }
 
