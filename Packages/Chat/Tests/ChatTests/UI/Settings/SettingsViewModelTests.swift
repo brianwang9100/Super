@@ -166,10 +166,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref",
                 modelId: "test",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8000,
-                isSelected: true,
-                createdAt: Date()
+                isSelected: true
             ),
         ])
         let vm = makeViewModel(
@@ -264,10 +264,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref-with",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
             .init(
                 id: "no-key",
@@ -275,10 +275,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://api.example.com/v1")!,
                 apiKeyRef: "ref-without",
                 modelId: "gpt",
+                createdAt: Date().addingTimeInterval(1),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date().addingTimeInterval(1)
+                isSelected: false
             ),
         ])
         modelRepo.storedKeys["ref-with"] = "sk-real"
@@ -291,6 +291,81 @@ struct SettingsViewModelTests {
         let noKey = vm.models.first { $0.id == "no-key" }
         #expect(withKey?.hasAPIKey == true)
         #expect(noKey?.hasAPIKey == false)
+    }
+
+    @Test("loadModels projects .appleFoundation rows with nil baseURL and empty endpoint")
+    func loadModelsProjectsAppleFoundationRow() async {
+        // The Settings UI consumes `ModelRow.kind` to render an AFM-aware
+        // subtitle, `ModelRow.baseURL == nil` to suppress the endpoint
+        // pill, and `ModelRow.hasAPIKey == false` since there is no
+        // keychain entry to check. This exercises the three new
+        // nil-aware branches in `loadModels()` against an AFM record.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "afm",
+                name: "Apple Intelligence",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: Date(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: 4_096,
+                isSelected: true
+            ),
+        ])
+
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        let row = vm.models.first { $0.id == "afm" }
+        #expect(row?.kind == .appleFoundation)
+        #expect(row?.baseURL == nil)
+        #expect(row?.endpoint == "")
+        #expect(row?.hasAPIKey == false)
+        #expect(row?.modelId == "system-default")
+    }
+
+    @Test("updateModel on an .appleFoundation row preserves nil baseURL and skips keychain writes")
+    func updateModelOnAppleFoundationRowPreservesNilFields() async {
+        // The future AFM edit pane (Phase 6) will reuse this code path
+        // but with no URL or key field. Until that lands, the URL the
+        // pane seeds (`https://api.openai.com/v1`) must NOT overwrite
+        // the row's nil `baseURL`, and the empty `apiKey` must NOT
+        // create a phantom keychain entry under a nonexistent ref.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "afm",
+                name: "Apple Intelligence",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: Date(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: 4_096,
+                isSelected: true
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "afm",
+            name: "Apple Intelligence (renamed)",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "system-default",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 4_096
+        )
+
+        let saved = try? await modelRepo.fetch(id: "afm")
+        #expect(saved?.kind == .appleFoundation)
+        #expect(saved?.baseURL == nil)            // form URL did NOT overwrite
+        #expect(saved?.apiKeyRef == nil)
+        #expect(saved?.name == "Apple Intelligence (renamed)")
+        #expect(modelRepo.storedKeys.isEmpty)     // no phantom key written
     }
 
     @Test("updateModel with blank key preserves both ref and stored key")
@@ -309,10 +384,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         modelRepo.storedKeys["ref-1"] = "sk-original"
@@ -439,10 +514,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://old.example.com/v1")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt-5",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 64_000,
-                isSelected: true,
-                createdAt: Date()
+                isSelected: true
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
@@ -475,10 +550,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)
@@ -505,10 +580,10 @@ struct SettingsViewModelTests {
                 baseURL: URL(string: "https://x.example.com")!,
                 apiKeyRef: "ref-1",
                 modelId: "gpt",
+                createdAt: Date(),
                 supportsThinking: false,
                 maxContextTokens: 8_000,
-                isSelected: false,
-                createdAt: Date()
+                isSelected: false
             ),
         ])
         let vm = makeViewModel(modelRepository: modelRepo)

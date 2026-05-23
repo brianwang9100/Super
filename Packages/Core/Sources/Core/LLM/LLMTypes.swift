@@ -64,28 +64,58 @@ public struct LLMModel: Sendable, Equatable, Hashable {
     }
 }
 
+/// Wire-protocol family of an LLM provider. Discriminates which provider
+/// class (and which fields on `ModelConfiguration`) a configuration row
+/// projects through. Persisted as the row's `kind` column.
+///
+/// This is *not* a brand identifier — Gemini, OpenAI, DeepSeek, Groq, MLX,
+/// and Ollama all speak the OpenAI Chat Completions wire format and thus
+/// share `.openAICompatible`. New cases are added when a genuinely new wire
+/// format needs its own provider class (e.g. a native Anthropic Messages
+/// API provider, or a native Gemini provider).
+public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable {
+    /// On-device model via Apple's `FoundationModels` framework. No
+    /// `baseURL` or `apiKeyRef`; the row's `modelID` selects which
+    /// system model variant to use.
+    case appleFoundation
+    /// Any HTTP endpoint speaking the OpenAI Chat Completions wire format
+    /// (hosted OpenAI, Gemini's `v1beta/openai/` shim, DeepSeek, Together,
+    /// Groq, Ollama, MLX, LM Studio, llama.cpp). Requires `baseURL` and
+    /// optionally `apiKeyRef`.
+    case openAICompatible
+}
+
 /// Persisted user-facing configuration for a model + endpoint + key triple.
 /// `apiKeyRef` is a Keychain reference, never the API (Application
 /// Programming Interface) key itself.
+///
+/// `baseURL` and `apiKeyRef` are optional because on-device kinds like
+/// `.appleFoundation` have neither — they're invariantly nil for those
+/// rows. For `.openAICompatible` rows `baseURL` is required (callers
+/// preconditionFailure on nil); `apiKeyRef` may be nil for local
+/// servers that don't require auth.
 public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     public let id: String
+    public let kind: LLMProviderKind
     public let name: String
-    public let baseURL: URL
-    public let apiKeyRef: String
+    public let baseURL: URL?
+    public let apiKeyRef: String?
     public let modelID: String
     public let supportsThinking: Bool
     public let maxContextTokens: Int
 
     public init(
         id: String,
+        kind: LLMProviderKind,
         name: String,
-        baseURL: URL,
-        apiKeyRef: String,
+        baseURL: URL?,
+        apiKeyRef: String?,
         modelID: String,
         supportsThinking: Bool = false,
         maxContextTokens: Int = 8_192
     ) {
         self.id = id
+        self.kind = kind
         self.name = name
         self.baseURL = baseURL
         self.apiKeyRef = apiKeyRef
