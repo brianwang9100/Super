@@ -116,9 +116,9 @@ struct ModelConfigurationSeedingTests {
     func seedRunsAtomicallyInOneWriteTransaction() async throws {
         // When two callers race on first launch, only one row lands.
         // The repository's `insertIfEmpty` runs the empty-check and the
-        // insert in a single `queue.write`, so the partial unique index
-        // on `isSelected` AND the empty-table precondition both hold
-        // atomically.
+        // insert in a single `queue.write`, so the empty-table
+        // precondition can't be invalidated between the read and the
+        // write.
         let database = try ChatDatabase.makeInMemory()
         let repository = GRDBModelConfigurationRepository(
             database: database,

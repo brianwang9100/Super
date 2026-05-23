@@ -103,7 +103,11 @@ enum AppBootstrap {
                 try await ModelConfigurationSeeding.seedDefaultIfEmpty(
                     repository: modelConfigRepo
                 )
-            } catch {}
+            } catch {
+                #if DEBUG
+                assertionFailure("ModelConfigurationSeeding failed: \(error)")
+                #endif
+            }
         }
 
         let llmProviderRegistry = LLMProviderRegistry()
