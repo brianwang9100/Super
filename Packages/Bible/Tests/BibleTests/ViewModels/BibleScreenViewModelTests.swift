@@ -17,7 +17,8 @@ struct BibleScreenViewModelTests {
         repository: (any BibleReadingPositionRepository)? = nil,
         highlightRepository: (any BibleHighlightRepository)? = nil,
         clipboard: any ClipboardWriter = FakeClipboard(),
-        at position: BiblePosition = BibleScreenViewModel.defaultPosition
+        at position: BiblePosition = BibleScreenViewModel.defaultPosition,
+        narration: NarrationController? = nil
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
@@ -25,7 +26,8 @@ struct BibleScreenViewModelTests {
             highlightRepository: highlightRepository,
             clock: FixedClock(now),
             clipboard: clipboard,
-            initialPosition: position
+            initialPosition: position,
+            narration: narration ?? NarrationController(service: FakeNarrationService())
         )
     }
 
@@ -563,5 +565,176 @@ struct BibleScreenViewModelTests {
 
         #expect(viewModel.toast == "Added 1 Peter 2:9 (WEB) to chat.")
         #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    // MARK: - Whole-chapter chat hand-off
+
+    @Test("makeChapterReference returns the whole chapter's text + a colon-less citation")
+    func makeChapterReferenceShape() async throws {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // 1 Peter 2, WEB
+
+        let reference = try #require(viewModel.makeChapterReference())
+        #expect(reference.appletID == "bible")
+        #expect(reference.kind == "verseRange")
+        // No verse component — the chapter citation drops the ":N" clause.
+        #expect(reference.citation == "1 Peter 2 (WEB)")
+        #expect(reference.displayLabel == "1 Peter 2 (WEB)")
+        // Snapshot carries the whole chapter — at minimum the famous v9.
+        #expect(reference.snapshot.contains("chosen race") || reference.snapshot.contains("chosen generation"))
+        // sourceID encodes every verse in the chapter so a round-trip can
+        // unambiguously rebuild the range. 1 Peter 2 has 25 verses (WEB).
+        #expect(reference.sourceID.hasPrefix("WEB/1PE/2/"))
+        let verses = reference.sourceID
+            .split(separator: "/").last
+            .map { String($0).split(separator: ",").compactMap { Int($0) } } ?? []
+        #expect(verses == Array(1...25))
+    }
+
+    @Test("makeChapterReference reflects the active translation")
+    func makeChapterReferenceUsesActiveTranslation() async throws {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.selectTranslation(.kjv)
+
+        let reference = try #require(viewModel.makeChapterReference())
+        #expect(reference.citation == "1 Peter 2 (KJV)")
+        #expect(reference.sourceID.hasPrefix("KJV/1PE/2/"))
+    }
+
+    // MARK: - Narration
+
+    @Test("startNarration with no selection queues every verse in reading order")
+    func startNarrationWithoutSelectionQueuesAllVerses() async {
+        let service = FakeNarrationService()
+        let viewModel = makeViewModel(narration: NarrationController(service: service))
+        await viewModel.load()                          // 1 Peter 2 has 25 verses
+
+        viewModel.startNarration()
+        // First-Narrate of the test: the voice-pick + start runs on
+        // a background task spawned by `startNarration`. The card
+        // already shows (`isNarrationSheetPresented` flips synchronously);
+        // we just need to drain the spawned task before asserting on
+        // the queue the service received.
+        await viewModel._waitForPendingNarrationStart()
+        #expect(service.startCallCount == 1)
+        let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
+        #expect(scheduled == Array(1...25))
+        #expect(viewModel.isNarrationSheetPresented)
+    }
+
+    @Test("startNarration with an unsorted selection queues only those verses in sorted order")
+    func startNarrationWithSelectionRestrictsToSortedVerses() async {
+        let service = FakeNarrationService()
+        let viewModel = makeViewModel(narration: NarrationController(service: service))
+        await viewModel.load()
+        for verse in [9, 3, 5] { viewModel.toggleVerse(verse) }
+
+        viewModel.startNarration()
+        await viewModel._waitForPendingNarrationStart()
+        let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
+        #expect(scheduled == [3, 5, 9])
+        #expect(viewModel.isNarrationSheetPresented)
+    }
+
+    @Test("startNarration is a no-op when the chapter text failed to load")
+    func startNarrationWithoutChapterIsNoOp() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = BibleScreenViewModel(
+            textLoader: ThrowingBibleTextLoader(),
+            narration: controller
+        )
+        await viewModel.load()                          // chapter == nil
+        viewModel.startNarration()
+        #expect(service.startCallCount == 0)
+        #expect(viewModel.isNarrationSheetPresented == false)
+    }
+
+    @Test("narrationCitation reflects the controller's current verse")
+    func narrationCitationReflectsControllerVerse() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()                          // 1 Peter 2
+
+        #expect(viewModel.narrationCitation == nil)
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 9, text: "x")])
+        controller._simulateEvent(.started(verseNumber: 9))
+        #expect(viewModel.narrationCitation == "1 Peter 2:9")
+    }
+
+    @Test("stepping a chapter stops the active narration")
+    func steppingStopsNarration() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
+        controller._simulateEvent(.started(verseNumber: 1))
+
+        viewModel.stepChapter(.next)
+        // Strict `== 1`, not `>= 1`: `NarrationController.stop()`
+        // guards on `state != .idle`, so the one navigation action
+        // here forwards to `service.stop()` exactly once. A loose
+        // bound would let a double-stop regression slip through.
+        #expect(service.stopCallCount == 1)
+    }
+
+    @Test("selecting a translation stops the active narration")
+    func selectingTranslationStopsNarration() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()                          // WEB
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
+        controller._simulateEvent(.started(verseNumber: 1))
+
+        viewModel.selectTranslation(.kjv)
+        #expect(service.stopCallCount == 1)
+    }
+
+    @Test("jumping to a chapter from the picker stops the active narration")
+    func selectingChapterStopsNarration() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
+        controller._simulateEvent(.started(verseNumber: 1))
+
+        viewModel.selectChapter(bookId: "ROM", chapterNumber: 8)
+        #expect(service.stopCallCount == 1)
+    }
+
+    @Test("presentNarrationSheet sets the presentation flag without starting narration")
+    func presentingNarrationSheetSetsFlag() async {
+        let service = FakeNarrationService()
+        let viewModel = makeViewModel(narration: NarrationController(service: service))
+        await viewModel.load()
+        #expect(viewModel.isNarrationSheetPresented == false)
+
+        viewModel.presentNarrationSheet()
+        #expect(viewModel.isNarrationSheetPresented)
+        #expect(service.startCallCount == 0)
+    }
+
+    @Test("dismissNarrationSheet flips the flag without stopping narration")
+    func dismissNarrationSheetDoesNotStop() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
+        controller._simulateEvent(.started(verseNumber: 1))
+        viewModel.presentNarrationSheet()
+
+        viewModel.dismissNarrationSheet()
+        #expect(viewModel.isNarrationSheetPresented == false)
+        #expect(service.stopCallCount == 0, "dismissing the sheet must keep narration playing")
     }
 }
