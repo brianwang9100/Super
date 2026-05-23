@@ -91,26 +91,10 @@ enum AppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
-        // Fresh-install convenience: if the user has no configured
-        // models AND the device can actually run AFM, seed a default
-        // Apple-Foundation-Model row so Chat opens onto a usable
-        // provider instead of the `noModelConfigured` empty state.
-        // Already-populated DBs are left alone; a user who manually
-        // deleted AFM gets it back only if they wipe the whole table
-        // (deliberate — see `ModelConfigurationSeeding`).
-        //
-        // Gating on availability avoids showing an unusable AFM card on
-        // ineligible devices. Phase 6 will render the availability
-        // reason in the Settings subtitle so the row can re-appear with
-        // a proper "Apple Intelligence isn't available" explanation;
-        // until then, ineligible devices stay on the empty-state path
-        // they already had.
-        //
-        // The seed is best-effort: a transient SQLite error here must
-        // not lock the user out of the entire app, so the call is
-        // isolated in its own `do/catch`. Worst case is the user lands
-        // on `noModelConfigured` and adds a model manually, which is
-        // the pre-AFM behavior anyway.
+        // Best-effort: seed an AFM row for fresh installs so Chat opens
+        // onto a usable provider. Skipped on ineligible devices and
+        // pre-populated DBs; errors swallowed so a transient SQLite
+        // failure can't take down the whole bootstrap.
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
@@ -119,12 +103,7 @@ enum AppBootstrap {
                 try await ModelConfigurationSeeding.seedDefaultIfEmpty(
                     repository: modelConfigRepo
                 )
-            } catch {
-                // Intentional swallow: the seed is decorative. Other
-                // bootstrap steps remain throwing so a genuine
-                // database-open failure still surfaces.
-                _ = error
-            }
+            } catch {}
         }
 
         let llmProviderRegistry = LLMProviderRegistry()
@@ -265,17 +244,9 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                // If AFM is unavailable right now the row stays in the
-                // model list (Settings surfaces the reason once Phase
-                // 6 lands), but no provider is registered for it; the
-                // orchestrator surfaces `noModelConfigured` until the
-                // user adds another model.
-                //
-                // `id` must match the row's UUID — `setActive(id:)`
-                // below looks providers up by that identifier, so
-                // registering AFM under the static `"apple-foundation"`
-                // would silently fail to promote the seeded
-                // `isSelected = true` row.
+                // `id` must match the record UUID — `setActive(id:)` looks providers
+                // up by this value; a static fallback would silently fail to promote
+                // the seeded `isSelected = true` row to active.
                 guard appleFoundationAvailability.isAvailable else { continue }
                 let provider = AppleFoundationLLMProvider(
                     id: record.id,
