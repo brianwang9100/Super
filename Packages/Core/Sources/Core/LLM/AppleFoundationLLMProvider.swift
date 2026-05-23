@@ -79,6 +79,26 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 let messageID = UUID().uuidString
+                // Always emit `.messageStart` so the contract holds even
+                // for pre-stream failures (unsupported model, AFM
+                // unavailable, no trailing user message). Matches
+                // `OpenAIStreamReducer.finish()`'s guarantee that
+                // `messageStart` precedes `messageComplete` on every
+                // terminated stream.
+                continuation.yield(.messageStart(id: messageID, model: model.id))
+                // Lazy text-block bookkeeping: `.contentBlockStart` only
+                // fires on the first non-empty delta, and `.contentBlockStop`
+                // pairs with it on every exit path (success, error,
+                // cancellation). Pre-stream failures yield neither, which
+                // is the same shape `OpenAIStreamReducer` produces when no
+                // content arrives.
+                var openedBlock = false
+                func closeBlockIfNeeded() {
+                    if openedBlock {
+                        continuation.yield(.contentBlockStop(index: 0))
+                        openedBlock = false
+                    }
+                }
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -94,25 +114,28 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                     let session = sessionFactory(transcript)
                     let options = GenerationOptions(temperature: temperature)
 
-                    continuation.yield(.messageStart(id: messageID, model: model.id))
-                    continuation.yield(.contentBlockStart(index: 0, type: .text))
-
                     var lastSnapshot = ""
                     for try await snapshot in session.streamResponse(to: prompt, options: options) {
                         try Task.checkCancellation()
                         let delta = diff(previous: lastSnapshot, current: snapshot)
                         if !delta.isEmpty {
+                            if !openedBlock {
+                                continuation.yield(.contentBlockStart(index: 0, type: .text))
+                                openedBlock = true
+                            }
                             continuation.yield(.textDelta(index: 0, text: delta))
                         }
                         lastSnapshot = snapshot
                     }
 
-                    continuation.yield(.contentBlockStop(index: 0))
+                    closeBlockIfNeeded()
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
                 } catch is CancellationError {
+                    closeBlockIfNeeded()
                     continuation.yield(.error(.cancelled))
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
                 } catch {
+                    closeBlockIfNeeded()
                     continuation.yield(.error(mapError(error)))
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
                 }
@@ -169,15 +192,15 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     }
 
     /// Diff Apple's cumulative snapshots into a delta. The framework's
-    /// stream is monotonic by contract; the fallback yields the whole
-    /// snapshot in the (currently unobserved) non-prefix case so the
-    /// consumer still sees the latest text rather than silently losing
-    /// content.
+    /// stream is monotonic by contract — every snapshot starts with the
+    /// previous one's content. On the (currently unobserved) non-prefix
+    /// case we drop the delta entirely rather than yielding the full
+    /// `current` snapshot: downstream consumers concatenate `textDelta`
+    /// events additively, so re-emitting the full text would double-render
+    /// everything that came before.
     private func diff(previous: String, current: String) -> String {
-        if current.hasPrefix(previous) {
-            return String(current.dropFirst(previous.count))
-        }
-        return current
+        guard current.hasPrefix(previous) else { return "" }
+        return String(current.dropFirst(previous.count))
     }
 
     private func mapError(_ error: any Error) -> LLMError {

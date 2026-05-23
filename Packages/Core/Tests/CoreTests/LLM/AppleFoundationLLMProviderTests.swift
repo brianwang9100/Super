@@ -1,6 +1,7 @@
 import FoundationModels
 import Foundation
 import Testing
+import os
 @testable import Core
 
 /// Tests for `AppleFoundationLLMProvider` streaming, error mapping, and
@@ -46,7 +47,7 @@ struct AppleFoundationLLMProviderTests {
     }
 
     @Test
-    func emptySnapshotStreamYieldsNoDeltasAndStillCompletes() async throws {
+    func emptySnapshotStreamYieldsNoContentBlockAndStillCompletes() async throws {
         let session = MockLanguageSession(outcome: .snapshots([]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
@@ -61,7 +62,41 @@ struct AppleFoundationLLMProviderTests {
         ))
 
         #expect(!events.contains { if case .textDelta = $0 { return true }; return false })
+        // No content arrived, so contentBlockStart never fired and
+        // contentBlockStop never pairs with it.
+        #expect(!events.contains { if case .contentBlockStart = $0 { return true }; return false })
+        #expect(!events.contains { if case .contentBlockStop = $0 { return true }; return false })
+        // messageStart still bookends the stream — contract holds.
+        guard case .messageStart = events.first else {
+            Issue.record("expected messageStart first, got \(events.first as Any)")
+            return
+        }
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+    }
+
+    @Test
+    func nonPrefixSnapshotIsDroppedToAvoidDoubleRender() async throws {
+        // If Apple's stream ever violates monotonicity, the diff fallback
+        // drops the new snapshot rather than yielding it whole — additive
+        // consumers (the Chat UI streaming overlay, persistence) would
+        // otherwise render the prior text twice.
+        let session = MockLanguageSession(outcome: .snapshots(["Hello world", "completely different"]))
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _ in session }
+        )
+        let events = try await collect(provider.stream(
+            messages: [.init(role: .user, text: "hi")],
+            model: Self.model,
+            tools: [],
+            temperature: 0.5
+        ))
+        let deltas = events.compactMap { event -> String? in
+            if case .textDelta(_, let text) = event { return text }
+            return nil
+        }
+        // Only the first (monotonic) snapshot survives as a delta.
+        #expect(deltas == ["Hello world"])
     }
 
     @Test
@@ -120,7 +155,7 @@ struct AppleFoundationLLMProviderTests {
     }
 
     @Test
-    func unsupportedModelYieldsErrorBeforeComplete() async throws {
+    func unsupportedModelYieldsMessageStartThenErrorThenComplete() async throws {
         let session = MockLanguageSession(outcome: .snapshots(["x"]))
         let provider = AppleFoundationLLMProvider(
             availability: .available,
@@ -135,6 +170,15 @@ struct AppleFoundationLLMProviderTests {
             temperature: 0.5
         ))
 
+        // Pre-stream failure produces the minimum 3-event shape:
+        // messageStart → error → messageComplete. No content block.
+        guard case .messageStart(_, let modelId) = events.first else {
+            Issue.record("expected messageStart first, got \(events.first as Any)")
+            return
+        }
+        #expect(modelId == "not-the-system-default")
+        #expect(!events.contains { if case .contentBlockStart = $0 { return true }; return false })
+        #expect(!events.contains { if case .contentBlockStop = $0 { return true }; return false })
         #expect(events.contains(.error(.unsupportedModel("not-the-system-default"))))
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
@@ -169,7 +213,7 @@ struct AppleFoundationLLMProviderTests {
     }
 
     @Test
-    func midStreamGenerationErrorYieldsMappedErrorThenComplete() async throws {
+    func midStreamGenerationErrorClosesContentBlockBeforeErrorAndComplete() async throws {
         let context = LanguageModelSession.GenerationError.Context(debugDescription: "test")
         let session = MockLanguageSession(outcome: .snapshotsThenError(
             ["partial"],
@@ -192,6 +236,16 @@ struct AppleFoundationLLMProviderTests {
             return nil
         }
         #expect(deltas == ["partial"])
+        // Every contentBlockStart must pair with contentBlockStop, even
+        // when the stream ends in error. The stop precedes the error so
+        // additive consumers see a clean block-close before the failure.
+        let startCount = events.filter { if case .contentBlockStart = $0 { return true }; return false }.count
+        let stopCount = events.filter { if case .contentBlockStop = $0 { return true }; return false }.count
+        #expect(startCount == 1)
+        #expect(stopCount == 1)
+        let stopIndex = events.firstIndex { if case .contentBlockStop = $0 { return true }; return false }
+        let errorIndex = events.firstIndex { if case .error = $0 { return true }; return false }
+        #expect(stopIndex != nil && errorIndex != nil && stopIndex! < errorIndex!)
         #expect(events.contains(.error(.providerError(
             code: "context_window_exceeded",
             message: "Conversation exceeds the on-device model's context window."
@@ -354,7 +408,7 @@ struct MockLanguageSession: LanguageSession {
     ) -> AsyncThrowingStream<String, any Error> {
         let outcome = self.outcome
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 switch outcome {
                 case .snapshots(let snaps):
                     for snap in snaps { continuation.yield(snap) }
@@ -366,27 +420,24 @@ struct MockLanguageSession: LanguageSession {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }
 
 /// Records every `Transcript` handed to the test factory so assertions
-/// can verify the provider's history translation. Lock-backed because
-/// the factory closure is `@Sendable` and may run on any executor.
-final class TranscriptRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var transcripts: [Transcript] = []
+/// can verify the provider's history translation. `OSAllocatedUnfairLock`
+/// gives us synchronous atomic mutation without an actor hop — required
+/// because the factory closure is `@Sendable` and synchronous.
+final class TranscriptRecorder: Sendable {
+    private let storage = OSAllocatedUnfairLock<[Transcript]>(initialState: [])
 
     func record(_ transcript: Transcript) {
-        lock.lock()
-        defer { lock.unlock() }
-        transcripts.append(transcript)
+        storage.withLock { $0.append(transcript) }
     }
 
     var all: [Transcript] {
-        lock.lock()
-        defer { lock.unlock() }
-        return transcripts
+        storage.withLock { $0 }
     }
 }
 
