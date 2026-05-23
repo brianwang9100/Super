@@ -205,11 +205,7 @@ enum AppBootstrap {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            // Kind-dispatch lives here. Any row with a kind whose provider
-            // class hasn't been wired into this switch yet is left
-            // unregistered and surfaces via the existing
-            // `noModelConfigured` empty state — a deliberate no-op rather
-            // than a silent fallthrough.
+            // Unrouted kinds surface as `noModelConfigured` — deliberate no-op, not fallthrough.
             switch record.kind {
             case .openAICompatible:
                 let apiKey: String?
@@ -225,10 +221,7 @@ enum AppBootstrap {
                 )
                 await registry.register(provider)
             case .appleFoundation:
-                // `AppleFoundationLLMProvider` registers here once that
-                // provider class lands. Left as an explicit no-op so
-                // newly-added kinds don't silently fall through.
-                break
+                break // `AppleFoundationLLMProvider` will register here once that class lands.
             }
         }
 

@@ -506,20 +506,11 @@ public final class SettingsViewModel {
                 modelEditError = "Could not save model: row no longer exists."
                 return
             }
-            // Only `.openAICompatible` rows carry a Keychain-backed key. An
-            // `.appleFoundation` row reaches updateModel only if a future
-            // edit pane exposes it — and that pane will have no key field,
-            // so `apiKey` will always be empty here for those rows. Guard
-            // explicitly so the nil `apiKeyRef` doesn't surface as a crash.
+            // `.appleFoundation` rows have no `apiKeyRef`; guard avoids nil crash.
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
-            // Only `.openAICompatible` rows have a meaningful `baseURL`.
-            // The detail pane always seeds its URL field with an HTTPS
-            // default — if a future flow reuses this entry point for a
-            // kind whose record-level invariant is `baseURL == nil`,
-            // forwarding the form value would silently corrupt the row.
-            // Preserve the existing value for those kinds.
+            // Preserve existing `baseURL` for non-openAICompatible kinds; form always seeds a URL value.
             let nextBaseURL: URL? = existing.kind == .openAICompatible ? baseURL : existing.baseURL
             let updated = ModelConfigurationRecord(
                 id: existing.id,
