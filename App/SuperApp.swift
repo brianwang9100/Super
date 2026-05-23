@@ -10,6 +10,13 @@ import SwiftUI
 struct SuperApp: App {
     @State private var state: BootstrapState = .loading
 
+    init() {
+        // Register Instrument Serif Italic + JetBrains Mono Regular before
+        // SwiftUI's first render — `SplashView` and the chat chrome both
+        // ask for them via `Font.custom(...)`. The call is idempotent.
+        Core.registerBundledFonts()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(state: state)
@@ -38,4 +45,15 @@ enum BootstrapState {
     case loading
     case ready(AppDependencies)
     case failed(String)
+
+    /// Stable identity for the case (ignoring the associated value) so
+    /// `.animation(value:)` can observe state transitions without forcing
+    /// `AppDependencies` to be `Equatable`.
+    var discriminant: Int {
+        switch self {
+        case .loading: 0
+        case .ready: 1
+        case .failed: 2
+        }
+    }
 }

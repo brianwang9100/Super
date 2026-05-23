@@ -45,7 +45,10 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>SuperOS uses speech recognition to dictate your chat messages on-device.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>SplashBackground</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

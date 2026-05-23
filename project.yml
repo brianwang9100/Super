@@ -14,7 +14,7 @@ options:
   # generation so `xcodebuild test -scheme <Package>` runs the iOS-runtime
   # snapshot tests in CI. Re-run via Scripts/generate-project.sh
   # (or in CI: `xcodegen generate && cp ...`).
-  postGenCommand: cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme && cp Scripts/xcodegen-extras/Bible.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Bible.xcscheme && cp Scripts/xcodegen-extras/Todo.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Todo.xcscheme
+  postGenCommand: cp Scripts/xcodegen-extras/Core.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Core.xcscheme && cp Scripts/xcodegen-extras/Chat.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Chat.xcscheme && cp Scripts/xcodegen-extras/Bible.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Bible.xcscheme && cp Scripts/xcodegen-extras/Todo.xcscheme Super.xcodeproj/xcshareddata/xcschemes/Todo.xcscheme
 
 settings:
   base:
@@ -55,7 +55,12 @@ targets:
     info:
       path: App/Info.plist
       properties:
-        UILaunchScreen: {}
+        # System launch screen rendered before SwiftUI mounts. Setting
+        # UIColorName to `SplashBackground` (an asset colorset matching
+        # `SuperTheme.light.background = #E8EDE4`) avoids a white flash
+        # between Springboard and `SplashView`'s first frame.
+        UILaunchScreen:
+          UIColorName: SplashBackground
         # CFBundleDisplayName is the user-facing name on the home screen
         # and in iOS Settings. It diverges from the codebase identifier
         # (PRODUCT_NAME = "Super") because the App Store name "Super" is

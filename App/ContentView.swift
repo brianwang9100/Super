@@ -17,34 +17,33 @@ import UIKit
 struct ContentView: View {
     let state: BootstrapState
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        // Per-branch .transition + parent .animation = real cross-fade.
         Group {
             switch state {
             case .loading:
-                LoadingScreen()
+                // Pin Light: matches the Info.plist SplashBackground colorset.
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
             case .failed(let message):
                 FailureScreen(message: message)
+                    .transition(.opacity)
             case .ready(let dependencies):
                 AppShell(dependencies: dependencies)
+                    .transition(.opacity)
             }
         }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: state.discriminant
+        )
     }
 }
 
-// MARK: - Loading / failure
-
-private struct LoadingScreen: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Super")
-                .font(.system(size: 36, weight: .regular, design: .serif))
-                .italic()
-            ProgressView("Starting Super…")
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+// MARK: - Failure
 
 private struct FailureScreen: View {
     let message: String
@@ -211,6 +210,15 @@ struct AppShell: View {
         chatProgress < 0.95
     }
 
+    /// Discriminant for the chat-overlay vs error vs splash fallback so
+    /// `.animation(value:)` can cross-fade the inner swap without forcing
+    /// either branch's value type to be `Equatable`.
+    private var appShellInnerDiscriminant: Int {
+        if viewModel != nil { 0 }
+        else if bootstrapError != nil { 1 }
+        else { 2 }
+    }
+
     var body: some View {
         ZStack {
             // Backdrop: the active applet's rootView. Dimmed to 0.65 in
@@ -268,27 +276,41 @@ struct AppShell: View {
             // snapping to the nearest anchor on release. The
             // `ChatProgressPreferenceKey` below surfaces the live
             // progress so the backdrop opacity stays in lockstep.
-            if let viewModel {
-                ChatOverlay(
-                    state: $chatState,
-                    viewModel: viewModel,
-                    composerIsFocused: $composerIsFocused,
-                    onManageModels: { openSettings(initialPane: .models) },
-                    onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
-                )
-                .superTheme(theme)
-                .chatAppearance(appearance)
-                .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
-                    chatProgress = newValue
+            // Per-branch .transition + outer .animation = real cross-fade.
+            Group {
+                if let viewModel {
+                    ChatOverlay(
+                        state: $chatState,
+                        viewModel: viewModel,
+                        composerIsFocused: $composerIsFocused,
+                        onManageModels: { openSettings(initialPane: .models) },
+                        onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
+                    )
+                    .superTheme(theme)
+                    .chatAppearance(appearance)
+                    .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
+                        chatProgress = newValue
+                    }
+                    .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
+                        chatSemiProgress = newValue
+                    }
+                    .transition(.opacity)
+                } else if let bootstrapError {
+                    FailureScreen(message: bootstrapError)
+                        .transition(.opacity)
+                } else {
+                    // Pin Light: matches the outer ContentView splash before
+                    // user settings load, so the fallback during the brief
+                    // pre-ensureViewModel window doesn't flash a wrong theme.
+                    SplashView()
+                        .superTheme(.make(.light))
+                        .transition(.opacity)
                 }
-                .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
-                    chatSemiProgress = newValue
-                }
-            } else if let bootstrapError {
-                FailureScreen(message: bootstrapError)
-            } else {
-                LoadingScreen()
             }
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.2),
+                value: appShellInnerDiscriminant
+            )
 
             // Shell chrome: hamburger at top-left, outside the chat surface.
             // Aligned to topLeading inside the safe area so the status bar

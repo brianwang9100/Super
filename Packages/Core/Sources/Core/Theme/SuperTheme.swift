@@ -42,6 +42,11 @@ public struct SuperTheme: Sendable, Equatable {
     public let accent: Color
     public let accentInk: Color
     public let accentSoft: Color
+    /// A deep, saturated accent for high-contrast marks (e.g. the splash
+    /// spark glyph on the warm-light field). Tracks `accentHue` so the
+    /// Settings hue slider carries it; per theme it picks a lightness that
+    /// stays legible against `background`.
+    public let accentDark: Color
 
     // Borders
     public let border: Color
@@ -91,6 +96,7 @@ public struct SuperTheme: Sendable, Equatable {
             accent:            OKLCH(0.52,  0.090, h).color,
             accentInk:         .white,
             accentSoft:        OKLCH(0.90,  0.035, h).color,
+            accentDark:        OKLCH(0.32,  0.100, h).color,
             border:            OKLCH(0.88,  0.012, 180).color,
             borderFaint:       OKLCH(0.92,  0.010, 180).color,
             codeBackground:    OKLCH(0.32,  0.015, 200).color,
@@ -122,6 +128,7 @@ public struct SuperTheme: Sendable, Equatable {
             accent:            OKLCH(0.75, 0.10,  h).color,
             accentInk:         OKLCH(0.18, 0.02,  155).color,
             accentSoft:        OKLCH(0.34, 0.05,  h).color,
+            accentDark:        OKLCH(0.62, 0.10,  h).color,
             border:            OKLCH(0.32, 0.025, 155).color,
             borderFaint:       OKLCH(0.27, 0.022, 155).color,
             codeBackground:    OKLCH(0.14, 0.018, 155).color,
@@ -153,6 +160,7 @@ public struct SuperTheme: Sendable, Equatable {
             accent:            OKLCH(0.55, 0.13,  h).color,
             accentInk:         .white,
             accentSoft:        OKLCH(0.88, 0.05,  h).color,
+            accentDark:        OKLCH(0.40, 0.13,  h).color,
             border:            OKLCH(0.85, 0.025, 70).color,
             borderFaint:       OKLCH(0.90, 0.020, 70).color,
             codeBackground:    OKLCH(0.30, 0.025, 60).color,
