@@ -87,8 +87,12 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     public func delete(id: String) async throws {
         guard let existing = try await fetch(id: id) else { return }
         // Keychain first: if it throws, the DB row remains and the user
-        // can retry instead of orphaning the secret.
-        try await keychain.delete(ref: existing.apiKeyRef)
+        // can retry instead of orphaning the secret. Skip when the row
+        // has no `apiKeyRef` (on-device kinds like `.appleFoundation`
+        // never write to the Keychain).
+        if let ref = existing.apiKeyRef {
+            try await keychain.delete(ref: ref)
+        }
         _ = try await queue.write { db in
             try ModelConfigurationRecord.deleteOne(db, key: id)
         }

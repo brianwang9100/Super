@@ -90,7 +90,7 @@ struct ChatDatabaseMigrationTests {
         try await db.queue.write { db in
             try ModelConfigurationRecord(
                 id: "a", name: "A", baseURL: url, apiKeyRef: "ka",
-                modelId: "m", isSelected: true, createdAt: now
+                modelId: "m", createdAt: now, isSelected: true
             ).insert(db)
         }
 
@@ -98,7 +98,7 @@ struct ChatDatabaseMigrationTests {
             try await db.queue.write { db in
                 try ModelConfigurationRecord(
                     id: "b", name: "B", baseURL: url, apiKeyRef: "kb",
-                    modelId: "m", isSelected: true, createdAt: now
+                    modelId: "m", createdAt: now, isSelected: true
                 ).insert(db)
             }
         }
@@ -108,7 +108,7 @@ struct ChatDatabaseMigrationTests {
         try await db.queue.write { db in
             try ModelConfigurationRecord(
                 id: "c", name: "C", baseURL: url, apiKeyRef: "kc",
-                modelId: "m", isSelected: false, createdAt: now
+                modelId: "m", createdAt: now, isSelected: false
             ).insert(db)
         }
     }
@@ -188,12 +188,77 @@ struct ChatDatabaseMigrationTests {
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v2_messageAttachments`) via `GRDBSnapshotTesting`.
-    /// Catches column-type drift, FK clauses, and DEFAULT expressions
-    /// that the targeted PRAGMA assertions don't cover. Snapshot files
-    /// land under `Tests/ChatTests/Database/__Snapshots__/`.
+    /// (currently through `v4_modelConfigurationKind`) via
+    /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
+    /// DEFAULT expressions that the targeted PRAGMA assertions don't
+    /// cover. Snapshot files land under
+    /// `Tests/ChatTests/Database/__Snapshots__/`.
     @Test func migratedSchemaSnapshot() async throws {
         let db = try ChatDatabase.makeInMemory()
         assertSnapshot(of: db.queue, as: .dumpContent())
+    }
+
+    /// `v4_modelConfigurationKind` adds the `kind` discriminator and
+    /// relaxes the NOT NULL constraints on `baseURL` and `apiKeyRef`.
+    @Test func v4AddsKindColumnAndNullableURLAndKeyRef() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(modelConfiguration)")
+                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
+
+        #expect(lookup["kind"]?.0 == "TEXT")
+        #expect(lookup["kind"]?.1 == 1)   // NOT NULL
+        #expect(lookup["baseURL"]?.0 == "TEXT")
+        #expect(lookup["baseURL"]?.1 == 0)   // nullable
+        #expect(lookup["apiKeyRef"]?.0 == "TEXT")
+        #expect(lookup["apiKeyRef"]?.1 == 0)   // nullable
+        // The "at most one selected row" partial unique index is preserved
+        // across the recreate-and-copy migration.
+        let indexNames = try await db.queue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name FROM sqlite_master
+                WHERE type='index' AND tbl_name='modelConfiguration'
+            """)
+        }
+        #expect(indexNames.contains("modelConfiguration_unique_selected"))
+    }
+
+    /// Pre-existing rows are migrated to `kind = 'openAICompatible'` by
+    /// the actual v4 backfill INSERT — `DatabaseMigrator.migrate(_:upTo:)`
+    /// lets the test stop at v3, seed a pre-v4 row whose schema has no
+    /// `kind` column, then apply v4 and assert on the migrated value.
+    /// This exercises the literal SELECT clause inside the migration, not
+    /// just the recreated column's DEFAULT.
+    @Test func v4BackfillsExistingRowsAsOpenAICompatible() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+
+        // Stop at v3 — `modelConfiguration` still has the original v1
+        // shape (NOT NULL baseURL/apiKeyRef, no `kind` column).
+        try migrator.migrate(queue, upTo: "v3_memory")
+
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, name, baseURL, apiKeyRef, modelId, supportsThinking,
+                     maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('legacy', 'Pre-v4', 'https://api.example.com/v1',
+                     'ref-1', 'gpt', 0, 16000, 0, '2026-01-01 00:00:00')
+            """)
+        }
+
+        // Now apply v4 — the backfill INSERT runs against the seeded row.
+        try migrator.migrate(queue)
+
+        let kinds = try await queue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT kind FROM modelConfiguration ORDER BY id
+            """)
+        }
+        #expect(kinds == ["openAICompatible"])
     }
 }

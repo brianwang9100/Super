@@ -60,3 +60,4 @@ coverage/
 *.crt
 *.mobileprovision
 *.provisionprofile
+.claude/scheduled_tasks.lock

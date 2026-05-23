@@ -205,13 +205,24 @@ enum AppBootstrap {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            let apiKey = try? await repository.loadAPIKey(ref: record.apiKeyRef)
-            let provider = OpenAICompatibleLLMProvider(
-                configuration: record.configuration,
-                apiKey: apiKey,
-                http: http
-            )
-            await registry.register(provider)
+            // Unrouted kinds surface as `noModelConfigured` — deliberate no-op, not fallthrough.
+            switch record.kind {
+            case .openAICompatible:
+                let apiKey: String?
+                if let ref = record.apiKeyRef {
+                    apiKey = try? await repository.loadAPIKey(ref: ref)
+                } else {
+                    apiKey = nil
+                }
+                let provider = OpenAICompatibleLLMProvider(
+                    configuration: record.configuration,
+                    apiKey: apiKey,
+                    http: http
+                )
+                await registry.register(provider)
+            case .appleFoundation:
+                break // `AppleFoundationLLMProvider` will register here once that class lands.
+            }
         }
 
         if let selectedId = try await repository.selected()?.id {

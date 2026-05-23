@@ -28,12 +28,15 @@ public final class SettingsViewModel {
     /// compile.
     public struct ModelRow: Sendable, Equatable, Identifiable {
         public let id: String
+        public let kind: LLMProviderKind
         public let name: String
         public let monogram: String
         public let endpoint: String
         public let maxContextTokens: Int
         public var isEnabled: Bool
-        public let baseURL: URL
+        /// Nil for on-device kinds (`.appleFoundation`). Present for any
+        /// `.openAICompatible` row that reached this view model.
+        public let baseURL: URL?
         public let modelId: String
         public let supportsThinking: Bool
         /// `true` when a Keychain entry exists for this row's `apiKeyRef`.
@@ -41,7 +44,8 @@ public final class SettingsViewModel {
         /// can pre-fill the API-key `SecureField` with placeholder bullets
         /// synchronously at init time (the alternative — an async check
         /// in `.task` — would flicker an empty field on first frame and
-        /// leave snapshot tests racing the load).
+        /// leave snapshot tests racing the load). Always `false` for
+        /// `.appleFoundation` rows since they carry no key.
         public let hasAPIKey: Bool
 
         public init(
@@ -51,12 +55,14 @@ public final class SettingsViewModel {
             endpoint: String,
             maxContextTokens: Int,
             isEnabled: Bool,
-            baseURL: URL = URL(string: "https://api.openai.com/v1")!,
+            kind: LLMProviderKind = .openAICompatible,
+            baseURL: URL? = nil,
             modelId: String = "",
             supportsThinking: Bool = false,
             hasAPIKey: Bool = false
         ) {
             self.id = id
+            self.kind = kind
             self.name = name
             self.monogram = monogram
             self.endpoint = endpoint
@@ -241,14 +247,20 @@ public final class SettingsViewModel {
         var rows: [ModelRow] = []
         for record in records {
             let stored = await store.isModelEnabled(id: record.id)
-            let keyExists = (try? await modelRepository.loadAPIKey(ref: record.apiKeyRef)).flatMap { $0 } != nil
+            let keyExists: Bool
+            if let ref = record.apiKeyRef {
+                keyExists = (try? await modelRepository.loadAPIKey(ref: ref)).flatMap { $0 } != nil
+            } else {
+                keyExists = false
+            }
             rows.append(ModelRow(
                 id: record.id,
                 name: record.name,
                 monogram: Self.monogram(for: record.name),
-                endpoint: Self.shortEndpoint(record.baseURL),
+                endpoint: record.baseURL.map(Self.shortEndpoint) ?? "",
                 maxContextTokens: record.maxContextTokens,
                 isEnabled: stored ?? true,
+                kind: record.kind,
                 baseURL: record.baseURL,
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
@@ -451,10 +463,11 @@ public final class SettingsViewModel {
                 baseURL: baseURL,
                 apiKeyRef: ref,
                 modelId: modelId,
+                createdAt: now,
+                kind: .openAICompatible,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: false,
-                createdAt: now
+                isSelected: false
             )
             try await modelRepository.save(record)
             await registerProvider(for: record, apiKey: apiKey)
@@ -493,24 +506,33 @@ public final class SettingsViewModel {
                 modelEditError = "Could not save model: row no longer exists."
                 return
             }
-            if !apiKey.isEmpty {
-                try await modelRepository.storeAPIKey(apiKey, ref: existing.apiKeyRef)
+            // `.appleFoundation` rows have no `apiKeyRef`; guard avoids nil crash.
+            if !apiKey.isEmpty, let ref = existing.apiKeyRef {
+                try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
+            // Preserve existing `baseURL` for non-openAICompatible kinds; form always seeds a URL value.
+            let nextBaseURL: URL? = existing.kind == .openAICompatible ? baseURL : existing.baseURL
             let updated = ModelConfigurationRecord(
                 id: existing.id,
                 name: name,
-                baseURL: baseURL,
+                baseURL: nextBaseURL,
                 apiKeyRef: existing.apiKeyRef,
                 modelId: modelId,
+                createdAt: existing.createdAt,
+                kind: existing.kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: existing.isSelected,
-                createdAt: existing.createdAt
+                isSelected: existing.isSelected
             )
             try await modelRepository.save(updated)
-            let resolvedKey = apiKey.isEmpty
-                ? (try? await modelRepository.loadAPIKey(ref: existing.apiKeyRef))
-                : apiKey
+            let resolvedKey: String?
+            if !apiKey.isEmpty {
+                resolvedKey = apiKey
+            } else if let ref = existing.apiKeyRef {
+                resolvedKey = try? await modelRepository.loadAPIKey(ref: ref)
+            } else {
+                resolvedKey = nil
+            }
             await llmProviderRegistry?.unregister(id: id)
             await registerProvider(for: updated, apiKey: resolvedKey)
             await loadModels()
@@ -540,17 +562,27 @@ public final class SettingsViewModel {
         onModelsChanged?()
     }
 
-    /// Build a fresh `OpenAICompatibleLLMProvider` for `record` and
-    /// register it with the live registry. No-op when no registry/HTTP
+    /// Build a fresh provider for `record` and register it with the live
+    /// registry. Kind-dispatches: `.openAICompatible` rows use the
+    /// existing `OpenAICompatibleLLMProvider`; `.appleFoundation` rows
+    /// are no-ops because AFM is registered by the boot path rather
+    /// than through the settings UI. No-op also when no registry/HTTP
     /// client was injected (tests and previews don't wire them).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
-        guard let registry = llmProviderRegistry, let http = httpClient else { return }
-        let provider = OpenAICompatibleLLMProvider(
-            configuration: record.configuration,
-            apiKey: apiKey,
-            http: http
-        )
-        await registry.register(provider)
+        guard let registry = llmProviderRegistry else { return }
+        switch record.kind {
+        case .openAICompatible:
+            guard let http = httpClient else { return }
+            let provider = OpenAICompatibleLLMProvider(
+                configuration: record.configuration,
+                apiKey: apiKey,
+                http: http
+            )
+            await registry.register(provider)
+        case .appleFoundation:
+            // Reachable from updateModel on an AFM row; no-op until the AFM provider class lands.
+            break
+        }
     }
 
     /// Look up a row by id without re-fetching. The detail pane uses this

@@ -32,6 +32,25 @@ struct SettingsSheetSnapshotTests {
         .init(id: "gemma", name: "Gemma 4", monogram: "G", endpoint: "api.example.com/v1", maxContextTokens: 64_000, isEnabled: true),
     ]
 
+    /// `sampleModels` plus an Apple Foundation row — kept separate so
+    /// it doesn't ripple into the populated-models / root / Dynamic
+    /// Type XXL snapshots that consume `sampleModels` directly.
+    private static let sampleModelsWithAppleFoundation: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "afm",
+            name: "Apple Intelligence",
+            monogram: "AI",
+            endpoint: "",
+            maxContextTokens: 4_096,
+            isEnabled: true,
+            kind: .appleFoundation,
+            baseURL: nil,
+            modelId: "system-default",
+            supportsThinking: false,
+            hasAPIKey: false
+        ),
+    ]
+
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "time.now", name: "Current time", summary: "Returns the current local time in ISO-8601.", isEnabled: true),
         // Memory is enabled in the snapshot so the gear affordance
@@ -74,6 +93,76 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail seeded form (edit flow)")
     func modelDetailEdit() async {
         await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
+    }
+
+    // Locks in the `baseURL == nil` init path introduced by the
+    // provider-kind discriminator work: `_baseURLText` falls back
+    // to the placeholder default when the row's URL is nil.
+    @Test("model detail seeded form for Apple Foundation row")
+    func modelDetailAppleFoundation() async {
+        await verifyAppleFoundation(theme: .light, name: "settings_model_detail_afm_light")
+    }
+
+    // Dark companion per AGENTS.md §Testing.3.
+    @Test("model detail seeded form for Apple Foundation row (dark)")
+    func modelDetailAppleFoundationDark() async {
+        await verifyAppleFoundation(theme: .dark, name: "settings_model_detail_afm_dark")
+    }
+
+    // Dynamic Type XXL companion per AGENTS.md §Testing.3.
+    @Test("dynamic type XXL on Apple Foundation model detail pane")
+    func modelDetailAppleFoundationXXL() async {
+        await verifyAppleFoundationXXL(theme: .light, name: "settings_model_detail_afm_light_xxl")
+    }
+
+    // Dark + XXL cell to fill the `light/dark/sepia × default/Dynamic
+    // Type XXL` matrix called out in `Packages/Chat/CLAUDE.md`.
+    @Test("dynamic type XXL on Apple Foundation model detail pane (dark)")
+    func modelDetailAppleFoundationXXLDark() async {
+        await verifyAppleFoundationXXL(theme: .dark, name: "settings_model_detail_afm_dark_xxl")
+    }
+
+    private func verifyAppleFoundationXXL(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "afm")
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
+    private func verifyAppleFoundation(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "afm")
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.

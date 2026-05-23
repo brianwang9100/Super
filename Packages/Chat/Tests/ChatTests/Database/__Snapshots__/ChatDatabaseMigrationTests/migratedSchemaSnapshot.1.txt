@@ -7,7 +7,7 @@ CREATE TABLE "memory" ("id" TEXT PRIMARY KEY NOT NULL, "text" TEXT NOT NULL, "cr
 CREATE INDEX "memory_on_createdAt" ON "memory"("createdAt");
 CREATE TABLE "message" ("id" TEXT PRIMARY KEY NOT NULL, "conversationId" TEXT NOT NULL REFERENCES "conversation"("id") ON DELETE CASCADE, "role" TEXT NOT NULL, "content" TEXT NOT NULL, "thinkingContent" TEXT, "thinkingDurationMs" INTEGER, "toolCallId" TEXT, "createdAt" DATETIME NOT NULL, "tokenCount" INTEGER, "attachmentsJSON" TEXT);
 CREATE INDEX "message_on_conversationId_createdAt" ON "message"("conversationId", "createdAt");
-CREATE TABLE "modelConfiguration" ("id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, "baseURL" TEXT NOT NULL, "apiKeyRef" TEXT NOT NULL, "modelId" TEXT NOT NULL, "supportsThinking" BOOLEAN NOT NULL DEFAULT 0, "maxContextTokens" INTEGER NOT NULL, "isSelected" BOOLEAN NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL);
+CREATE TABLE "modelConfiguration" ("id" TEXT PRIMARY KEY NOT NULL, "kind" TEXT NOT NULL DEFAULT 'openAICompatible', "name" TEXT NOT NULL, "baseURL" TEXT, "apiKeyRef" TEXT, "modelId" TEXT NOT NULL, "supportsThinking" BOOLEAN NOT NULL DEFAULT 0, "maxContextTokens" INTEGER NOT NULL, "isSelected" BOOLEAN NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL);
 CREATE UNIQUE INDEX modelConfiguration_unique_selected
     ON modelConfiguration(isSelected) WHERE isSelected = 1;
 CREATE TABLE "setting" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL);
