@@ -142,15 +142,15 @@ struct AppShell: View {
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
     /// `UserDefaults` key for the persisted backdrop applet ID. The
-    /// read at launch lives in `AppBootstrap` now (since the registry is
+    /// read at launch lives in `SuperOSAppBootstrap` now (since the registry is
     /// built there); this key is referenced here for the write-back in
     /// `onSelectApplet`. The two must agree or persistence silently
-    /// breaks, so the constant is exposed by `AppBootstrap`.
-    private static var activeAppletStorageKey: String { AppBootstrap.activeAppletStorageKey }
+    /// breaks, so the constant is exposed by `SuperOSAppBootstrap`.
+    private static var activeAppletStorageKey: String { SuperOSAppBootstrap.activeAppletStorageKey }
 
     /// Adopts the registry the composition root built. Pre-existing
     /// `applets` array + `UserDefaults` read used to live here; both
-    /// moved to `AppBootstrap.bootstrap()` so the same registry is the
+    /// moved to `SuperOSAppBootstrap.bootstrap()` so the same registry is the
     /// source of truth for both the sidebar rail and the briefings
     /// handed to `ChatSessionStore`.
     init(dependencies: AppDependencies) {

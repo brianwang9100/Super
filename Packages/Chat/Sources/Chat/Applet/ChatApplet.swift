@@ -50,7 +50,7 @@ public struct ChatApplet: MiniApplet {
     }
 
     /// Reads `Resources/DefaultSystemPrompt.md` for parity with the
-    /// production load path (`AppBootstrap` reaches into the same bundle).
+    /// production load path (the host bootstrap reaches into the same bundle).
     /// Empty when the file is missing — `AppletRegistry.resolvedBriefings()`
     /// will then skip the block.
     public var systemPrompt: String {
