@@ -1,946 +1,393 @@
 # Super: Observability
 
-> Full-stack observability strategy covering usage analytics, crash reporting, performance metrics, and logging for iOS/macOS clients and the TypeScript backend.
+> Full-stack observability strategy for the Super monorepo (SuperOS + SuperBible apps, plus the future SuperOS server). **Apple-built-in only on the client. Platform-native logs only on the server. No third-party observability SDKs anywhere in the project.**
 
-**Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for client-side architecture, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for backend topology, [PRODUCT_VISION.md](./PRODUCT_VISION.md) for applet descriptions.
+**Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for client-side architecture, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for backend topology, [PRODUCT_VISION.md](./PRODUCT_VISION.md) for applet descriptions, [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md) §4 for the rationale behind the no-third-party-SDKs commitment.
 
-> **Status (2026-05-03):** Not wired yet. No analytics SDK, no crash reporter, no metrics pipeline in the binary. Tracked in [`TODO.md`](../TODO.md) § Observability.
+> **Status (2026-05-23):** Strategy revised. Earlier drafts of this document recommended Sentry + PostHog + Datadog as the launch posture; that recommendation is **withdrawn** project-wide. The new posture is below. Nothing is wired in the binary yet — see [`TODO.md`](../TODO.md) § Observability for the open work.
 
 ---
 
-## 1. Goals
+## 1. Why no third-party SDKs
 
-Observability in Super is not just "add logging for debugging." It serves four distinct purposes:
+Both apps in this repo (SuperOS and SuperBible) commit to the same posture: **no third-party observability SDKs**. The reasoning:
+
+- **Open source.** Every third-party SDK is a thing users can see in the public repo and will (rightly) question — "why is this free Bible app sending data to Sentry?" Even with privacy controls, the optics work against trust.
+- **Privacy nutrition label.** Each SDK adds rows to the App Store privacy disclosure. The shorter that list, the easier it is to be both truthful and reassuring.
+- **Cost.** SuperBible is free with no monetization beyond optional donations. A recurring third-party SaaS bill — even on a free tier with a paid upgrade path — is hard to justify and harder to budget around.
+- **Binary weight.** A typical observability SDK adds 1–3 MB to the binary. For a free app where the alternative is "use Apple's built-in tools that ship with iOS," it's a poor tradeoff.
+- **Lock-in.** Once an SDK is integrated and breadcrumbs / events / dashboards depend on it, ripping it out becomes a project of its own. Better to never depend on it.
+
+The bar to revisit: a concrete operational pain that Apple's built-ins demonstrably can't address, raised as an issue with a written rationale. Not "this would be nicer" — "this is causing a specific harm we cannot otherwise mitigate."
+
+---
+
+## 2. Goals
+
+Observability serves four distinct purposes:
 
 | Goal | What it answers |
 |------|----------------|
-| **Product analytics** | Which applets are people using? Which features are ignored? Where do users drop off? |
 | **Crash visibility** | When the app crashes, what happened? How many users are affected? Is it getting worse? |
-| **Performance monitoring** | Is the app fast? Are API calls slow? Which queries are bottlenecks? Is the AI proxy adding latency? |
-| **Operational awareness** | Is the server healthy? Are database connections exhausted? Is Redis evicting keys? |
-| **Actionable insights** | Every piece of data collected should lead to a decision — fix a bug, cut a feature, optimize a query, or scale a resource. If data doesn't inform action, don't collect it. |
+| **Performance awareness** | Is the app fast? Are launches slow? Are there hangs? Is animation hitching? |
+| **Product signal** | How many people installed? Are they returning? Which versions are in the field? |
+| **Operational awareness** *(server, when it exists)* | Is the server up? Are errors rising? Is the database under pressure? |
 
 **Non-goals:**
-- Surveillance. No tracking of message content, task titles, or personal data.
-- Vanity metrics. DAU/MAU is useful; "total API calls" in isolation is not.
-- Over-instrumentation that degrades performance or bloats the binary.
+- Surveillance. No tracking of message content, verse text, task titles, plan progress, or any user-generated text.
+- Per-user behavioral analytics. We don't need (and don't want) "user X opened the app 14 times this week."
+- Custom dashboards on third-party services. App Store Connect + Xcode Organizer are the dashboards.
+- Real-time paging / on-call rotations. This is a solo-dev project; alerts are async by design.
 
 ---
 
-## 2. Observability Pillars
+## 3. Pillars
 
-### 2.1 Metrics
+The four classic observability pillars, scoped to what Apple's built-ins actually deliver:
 
-Quantitative measurements sampled or aggregated over time.
+### 3.1 Crash reports
 
-**Client-side examples:**
-- App launch time (cold and warm)
-- Animation frame rate (drops below 60fps)
-- GRDB query latency per applet
-- Network request latency (p50, p95)
-- Memory usage per applet
+Symbolicated stack traces for every crash on a TestFlight or App Store build. Source: **App Store Connect → Trends → Crashes** (also called the Xcode Organizer crashes tab). Free, no SDK, no in-app code, no user-identifiable data. Users opt in via the device-level "Share with App Developers" toggle (iOS Settings → Privacy & Security → Analytics & Improvements; macOS System Settings → Privacy & Security → Analytics & Improvements).
 
-**Server-side examples:**
-- Request latency per endpoint (p50, p95, p99)
-- AI proxy latency (time to first token, total stream duration)
-- Database query latency
-- Error rate per endpoint
-- Redis hit/miss ratio
+**Symbolication requires dSYM upload to App Store Connect.** This is *not* automatic — it depends on the archive-time configuration:
 
-### 2.2 Logs
+- Xcode's *Archive → Distribute App* flow uploads dSYMs by default. Confirm the "Upload Symbols to App Store Connect" checkbox stays ticked in the distribution dialog.
+- For our `testflight.yml` CI pipeline (per [`CI_PIPELINE.md`](./CI_PIPELINE.md) §9.2): `xcodebuild -exportArchive` with an `ExportOptions.plist` containing `<key>uploadSymbols</key><true/>` is what wires the upload. If this key is missing or false, crashes ship as raw hex addresses and the >99.5% crash-free target becomes unactionable because nobody can read the traces.
+- Bitcode is deprecated since Xcode 14, so the historical "App Store re-compiles + re-symbolicates" path no longer applies. dSYMs must be uploaded; that's the only mechanism.
 
-Structured event records for debugging, auditing, and post-incident analysis.
+Verify after each release: Xcode Organizer → Crashes → Open in Project. If a build's crashes show as `0x100abcdef` instead of function names, dSYMs didn't make it — re-upload via Xcode Organizer's "Upload Debug Symbols" action.
 
-- Must be structured (JSON or key-value), not free-form strings.
-- Must include correlation IDs to tie client actions to server requests.
-- Must never contain PII (see [Section 8](#8-privacy-considerations)).
-- Must have consistent severity levels: `debug`, `info`, `warning`, `error`, `critical`.
+### 3.2 System metrics
 
-### 2.3 Traces
+Daily aggregated payloads delivered via **MetricKit** (`MXMetricManager`):
 
-End-to-end request flow tracking across system boundaries.
+| Payload | What it measures |
+|---|---|
+| `MXAppLaunchMetric` | Histogram of cold launch time, time to first frame. |
+| `MXAppResponsivenessMetric` | Histogram of main-thread hang durations. |
+| `MXAppExitMetric` | Why the app last exited (crash, watchdog, OOM, normal). |
+| `MXCPUMetric` | CPU time cumulative + per-second. |
+| `MXMemoryMetric` | Peak memory footprint. |
+| `MXDiskIOMetric` | Bytes written. |
+| `MXAnimationMetric` | Frame hitch rate. |
+| `MXDisplayMetric` | Average luminance of pixels the app rendered (useful for OLED power analysis, *not* a measurement of device brightness or ambient light). |
 
-A single user action can span multiple components:
+### 3.3 Diagnostics
 
-```
-User types in Chat chat
-  → Client sends request to server (correlation ID: abc-123)
-    → Server receives, authenticates, routes
-      → Server calls LLM API (OpenAI/Anthropic)
-        → LLM returns tool call
-      → Server executes tool (e.g., create_task in ToDo)
-      → Server streams response back
-  → Client renders streamed response
-  → Client updates ToDo via event bus
-```
+On-demand per-incident reports via `MXMetricManager` `didReceive(_ payloads: [MXDiagnosticPayload])`:
 
-Traces let you see this entire flow as a single timeline, identifying where time is spent and where failures occur.
+- `MXCrashDiagnostic` — crash stack trace + thread state.
+- `MXHangDiagnostic` — main-thread hang stack trace.
+- `MXCPUExceptionDiagnostic` — CPU runaway.
+- `MXDiskWriteExceptionDiagnostic` — runaway disk write.
 
-### 2.4 Crash Reporting
+Diagnostics get persisted to an on-device debug log the user can manually export via Settings → About → "Export recent diagnostic log" when filing an issue. They are **not** automatically transmitted anywhere.
 
-Capture, symbolicate, group, and alert on application crashes.
+### 3.4 Structured logs
 
-- **Capture:** Record the crash with full stack trace, device state, and breadcrumbs of recent user actions.
-- **Symbolicate:** Convert memory addresses to human-readable function names (requires dSYM upload).
-- **Group:** Cluster identical crashes so you see "1 crash affecting 200 users" not "200 individual crashes."
-- **Alert:** Notify when a new crash appears or an existing crash spikes.
+`os_log` for everything. Apple-native, performant, free, with built-in `%{public}s` vs `%{private}s` redaction. On-device only by default — readable in Console.app when a device is connected to a Mac, exportable via `OSLogStore` for user-initiated bug reports.
 
 ---
 
-## 3. Platform Evaluation
+## 4. Client implementation
 
-### 3.1 Comparison Table
+### 4.1 MetricKit subscriber
 
-| Capability | Datadog | Sentry | Firebase + Crashlytics | PostHog | Apple Built-in (MetricKit + os_log) |
-|---|---|---|---|---|---|
-| **iOS crash reporting** | Yes (dd-sdk-ios, RUM) | Yes (excellent) | Yes (Crashlytics, excellent) | Limited | MetricKit crash diagnostics (Xcode only) |
-| **macOS crash reporting** | Yes (same SDK) | Yes | **No Crashlytics on macOS** | Limited | MetricKit (macOS 13+) |
-| **Node.js/TS APM** | Yes (excellent) | Yes (good) | No | No | No |
-| **Product analytics** | Yes (RUM + custom events) | No (not its purpose) | Yes (Google Analytics) | Yes (core strength) | No |
-| **Structured logging** | Yes (log management) | Yes (breadcrumbs, limited) | Yes (limited) | No | os_log (on-device only) |
-| **Distributed tracing** | Yes (excellent, full APM) | Yes (transactions + spans) | No | No | No |
-| **Session replay** | Yes | Yes (beta) | No | Yes | No |
-| **Feature flags** | Yes | No | Yes (Remote Config) | Yes | No |
-| **Self-hostable** | No | Yes (open source) | No | Yes | N/A |
-| **Free tier** | 14-day trial only | 5K errors/mo, 10M transactions/mo | Free (generous) | 1M events/mo (free) | Free |
-| **Unified client + server dashboard** | Yes (key differentiator) | Yes (reasonable) | No | No | No |
-| **Pricing concern** | Expensive at scale ($23+/host/mo for APM) | Reasonable, scales well | Free | Free self-hosted, paid cloud | Free |
-| **Integration effort** | Moderate (comprehensive SDK) | Low (focused SDK) | Low (iOS), N/A (macOS/server) | Low | Minimal (built-in APIs) |
+`MXMetricManagerSubscriber` refines `NSObjectProtocol`, so the conformer must be a class (an actor can't inherit from `NSObject`). Make it a `final class` and inject a separate `DiagnosticLogStore` actor that serializes JSONL appends — writes hop into the actor off the MetricKit delivery thread and don't block it.
 
-### 3.2 Detailed Platform Notes
-
-**Datadog:**
-Datadog's `dd-sdk-ios` provides Real User Monitoring (RUM), crash reporting, logs, and traces for both iOS and macOS from the same SDK. Server-side, Datadog's Node.js APM (`dd-trace`) is mature and well-documented. The unified dashboard — seeing a client crash alongside the server error that caused it — is genuinely valuable. However, Datadog is priced for teams and enterprises. For a solo developer pre-revenue, the cost is hard to justify. It becomes the right choice when Super has paying users and operational complexity demands a single pane of glass.
-
-**Sentry:**
-Sentry's crash reporting is best-in-class. The iOS and macOS SDKs are well-maintained (`sentry-cocoa`), and the Node.js SDK integrates cleanly with Hono. Performance monitoring (transactions and spans) provides basic distributed tracing. The free tier (5,000 errors/month, 10 million transactions/month) is more than sufficient for launch. Sentry does not do product analytics — it's an error and performance tool, not a "which features are popular" tool.
-
-**Firebase + Crashlytics:**
-Crashlytics is excellent on iOS but **does not support macOS**. Since Super is a universal app targeting both platforms, this is a dealbreaker for unified crash reporting. Google Analytics for Firebase provides basic product analytics but has no server-side equivalent. Not recommended as a primary solution.
-
-**PostHog:**
-PostHog excels at product analytics: funnels, retention, feature flags, session replay. The iOS SDK is functional. It can be self-hosted (important for privacy) or used as a cloud service. Crash reporting is not its strength. Best used alongside a dedicated crash reporting tool.
-
-**Apple Built-in (MetricKit + os_log):**
-MetricKit (iOS 13+, macOS 13+) provides system-level metrics — hang rate, launch time, battery impact, crash diagnostics — delivered once per day via `MXMetricManager`. `os_log` is Apple's structured logging framework, highly performant, with support for log levels and privacy redaction. Both are free and require no third-party dependencies. The limitation: data is only accessible in Xcode Organizer or App Store Connect. No custom dashboards, no real-time alerting, no server-side equivalent. Essential as a supplement, insufficient alone.
-
-### 3.3 Recommendation
-
-| Layer | Tool | Rationale |
-|-------|------|-----------|
-| Crash reporting (client + server) | **Sentry** | Best-in-class crash reporting, supports iOS + macOS + Node.js, generous free tier |
-| Product analytics | **PostHog** (or custom) | Open-source, self-hostable, iOS SDK, feature flags included |
-| System-level performance | **Apple MetricKit** | Free, zero-overhead, provides metrics not available elsewhere (battery, thermals) |
-| Structured logging (client) | **os_log** | Apple-native, performant, built-in privacy redaction |
-| Structured logging (server) | **Pino** | Fast JSON logger for Node.js, pairs well with any log aggregator |
-| Full APM / unified tracing | **Datadog** (future) | Evaluate when scale justifies cost; not needed at launch |
-
----
-
-## 4. Client-Side Observability (iOS/macOS)
-
-### 4.1 Crash Reporting (Sentry)
-
-**SDK Initialization:**
-
-```swift
-import Sentry
-
-// In App.init() or AppDelegate
-SentrySDK.start { options in
-    options.dsn = "https://examplePublicKey@o0.ingest.sentry.io/0"
-    options.tracesSampleRate = 0.2  // 20% of transactions for performance monitoring
-    options.profilesSampleRate = 0.1  // 10% for profiling
-    options.attachScreenshot = true
-    options.enableMetricKit = true  // Forward MetricKit data to Sentry
-    options.enablePreWarmedAppStartTracing = true
-
-    #if DEBUG
-    options.enabled = false  // Disable in debug builds
-    #endif
-}
-```
-
-**dSYM Upload in CI:**
-
-Symbolication requires uploading debug symbols on every release build. Add to the Xcode Cloud or CI workflow:
-
-```bash
-# Using sentry-cli in the post-build step
-export SENTRY_ORG="super"
-export SENTRY_PROJECT="super-ios"
-
-sentry-cli debug-files upload --include-sources \
-  "$DWARF_DSYM_FOLDER_PATH"
-```
-
-Alternatively, add the Sentry build phase script to the Xcode project for automatic upload.
-
-**Breadcrumbs:**
-
-Sentry automatically captures breadcrumbs for UI events, network requests, and system events. Add custom breadcrumbs for key user actions:
-
-```swift
-import Sentry
-
-// When a user opens an applet
-func trackAppletActivation(_ applet: AppletIdentifier) {
-    let crumb = Breadcrumb(level: .info, category: "navigation")
-    crumb.message = "Activated applet"
-    crumb.data = ["applet_id": applet.rawValue]
-    SentrySDK.addBreadcrumb(crumb)
-}
-
-// When an AI tool call executes
-func trackToolExecution(_ toolName: String, appletId: String) {
-    let crumb = Breadcrumb(level: .info, category: "ai.tool")
-    crumb.message = "Tool executed"
-    crumb.data = [
-        "tool_name": toolName,
-        "applet_id": appletId
-    ]
-    SentrySDK.addBreadcrumb(crumb)
-}
-```
-
-**User Context:**
-
-Set anonymized user context so crashes can be grouped per user (without PII):
-
-```swift
-let user = Sentry.User()
-user.userId = hashedAnonymousId  // SHA-256 of device ID or similar
-user.data = [
-    "active_applets": activeAppletIds,
-    "device_family": deviceFamily,  // "iPhone", "iPad", "Mac"
-    "app_version": appVersion
-]
-SentrySDK.setUser(user)
-```
-
-### 4.2 Performance Metrics
-
-**App Launch Time:**
-
-```swift
-// MetricKit provides this automatically via MXAppLaunchMetric
-// For manual measurement:
-
-class LaunchTimeTracker {
-    static let processStart = CFAbsoluteTimeGetCurrent()
-
-    static func markFirstFrameRendered() {
-        let launchDuration = CFAbsoluteTimeGetCurrent() - processStart
-        let span = SentrySDK.span  // Attach to Sentry transaction if active
-
-        os_log(
-            .info,
-            log: .performance,
-            "App launch completed in %.2f seconds (type: %{public}s)",
-            launchDuration,
-            launchDuration > 2.0 ? "cold_slow" : "cold_normal"
-        )
-    }
-}
-```
-
-**Animation Frame Rate Monitoring:**
-
-```swift
-class FrameRateMonitor {
-    private var displayLink: CADisplayLink?
-    private var lastTimestamp: CFTimeInterval = 0
-    private var droppedFrameCount = 0
-
-    func start() {
-        displayLink = CADisplayLink(target: self, selector: #selector(tick))
-        displayLink?.add(to: .main, forMode: .common)
-    }
-
-    @objc private func tick(_ link: CADisplayLink) {
-        if lastTimestamp > 0 {
-            let frameDuration = link.timestamp - lastTimestamp
-            let fps = 1.0 / frameDuration
-            if fps < 55 {  // Below threshold
-                droppedFrameCount += 1
-            }
-        }
-        lastTimestamp = link.timestamp
-    }
-
-    func reportAndReset() -> Int {
-        let count = droppedFrameCount
-        droppedFrameCount = 0
-        return count
-    }
-}
-```
-
-> **Note:** Only enable frame rate monitoring during specific interactions (scrolling, animations), not permanently. Permanent monitoring itself impacts performance.
-
-**GRDB Query Latency:**
-
-```swift
-// Wrap GRDB reads/writes with timing
-extension DatabaseContainer {
-    func timedRead<T>(
-        appletId: String,
-        label: String,
-        _ block: (Database) throws -> T
-    ) throws -> T {
-        let start = CFAbsoluteTimeGetCurrent()
-        let result = try read(block)
-        let duration = CFAbsoluteTimeGetCurrent() - start
-
-        if duration > 0.05 {  // Log queries slower than 50ms
-            os_log(
-                .warning,
-                log: .performance,
-                "Slow query: %{public}s (applet: %{public}s, duration: %.3fs)",
-                label, appletId, duration
-            )
-        }
-        return result
-    }
-}
-```
-
-**Memory Usage Per Applet:**
-
-Track memory before and after applet activation to identify applets with excessive memory footprints:
-
-```swift
-func measureAppletMemory(_ appletId: String, during block: () -> Void) {
-    let before = reportMemory()
-    block()
-    let after = reportMemory()
-    let delta = after - before
-
-    os_log(
-        .info,
-        log: .performance,
-        "Applet %{public}s memory delta: %{public}d MB",
-        appletId, delta / (1024 * 1024)
-    )
-}
-
-private func reportMemory() -> Int {
-    var info = mach_task_basic_info()
-    var count = mach_msg_type_number_t(
-        MemoryLayout<mach_task_basic_info>.size
-    ) / 4
-    let result = withUnsafeMutablePointer(to: &info) {
-        $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-        }
-    }
-    return result == KERN_SUCCESS ? Int(info.resident_size) : 0
-}
-```
-
-### 4.3 Product Analytics / Usage Tracking
-
-All analytics are **opt-in** and **anonymized**. No PII is ever collected.
-
-**What to track:**
-
-| Event | Properties | Purpose |
-|-------|-----------|---------|
-| `applet_activated` | `applet_id`, `source` (tab bar, sidebar, deeplink) | Which applets are popular |
-| `applet_session_ended` | `applet_id`, `duration_seconds` | How long users spend per applet |
-| `ai_chat_message_sent` | `applet_context` (which applet chat was opened from), `message_length_bucket` | AI usage patterns |
-| `ai_tool_called` | `tool_name`, `applet_id`, `success` | Which tools are most used |
-| `feature_used` | `applet_id`, `feature_name` (e.g., "kanban_view", "list_view") | Feature adoption |
-| `applet_installed` | `applet_id` | Applet adoption rate |
-| `applet_uninstalled` | `applet_id` | Applet churn |
-
-**Implementation approach (PostHog):**
-
-```swift
-import PostHog
-
-// Initialize
-let config = PostHogConfig(apiKey: "phc_...", host: "https://app.posthog.com")
-PostHogSDK.shared.setup(config)
-
-// Set anonymous ID (no PII)
-PostHogSDK.shared.identify(hashedAnonymousId)
-
-// Track events
-PostHogSDK.shared.capture(
-    "applet_activated",
-    properties: [
-        "applet_id": "todo",
-        "source": "tab_bar"
-    ]
-)
-```
-
-**Privacy controls:**
-
-```swift
-// Respect user opt-in preference
-if UserDefaults.standard.bool(forKey: "analyticsOptIn") {
-    PostHogSDK.shared.optIn()
-} else {
-    PostHogSDK.shared.optOut()
-}
-```
-
-### 4.4 Structured Logging
-
-Use Apple's `os_log` as the foundation for all client-side logging.
-
-**Log categories:**
-
-```swift
-import os.log
-
-extension OSLog {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.super"
-
-    static let general    = OSLog(subsystem: subsystem, category: "general")
-    static let network    = OSLog(subsystem: subsystem, category: "network")
-    static let database   = OSLog(subsystem: subsystem, category: "database")
-    static let ai         = OSLog(subsystem: subsystem, category: "ai")
-    static let eventBus   = OSLog(subsystem: subsystem, category: "event_bus")
-    static let performance = OSLog(subsystem: subsystem, category: "performance")
-    static let sync       = OSLog(subsystem: subsystem, category: "sync")
-}
-```
-
-**Usage patterns:**
-
-```swift
-// Network request logging
-os_log(
-    .info,
-    log: .network,
-    "API request: %{public}s %{public}s (correlation: %{public}s)",
-    method, path, correlationId
-)
-
-// Error logging (with private data redacted)
-os_log(
-    .error,
-    log: .database,
-    "Query failed: %{public}s (applet: %{public}s, query: %{private}s)",
-    error.localizedDescription, appletId, queryDescription
-)
-
-// Debug logging (stripped from release builds by the system)
-os_log(
-    .debug,
-    log: .eventBus,
-    "Event dispatched: %{public}s → %d subscribers",
-    eventType, subscriberCount
-)
-```
-
-> **Key detail:** `%{private}s` redacts data in release logs. `%{public}s` makes it visible. Default is private. Always use `%{public}s` only for non-sensitive identifiers.
-
-**On-Device Log Export (for bug reports):**
-
-```swift
-// Collect recent os_log entries for user-initiated bug reports
-func exportRecentLogs() -> String {
-    let store = try? OSLogStore(scope: .currentProcessIdentifier)
-    let position = store?.position(
-        date: Date().addingTimeInterval(-300)  // Last 5 minutes
-    )
-    let entries = try? store?
-        .getEntries(at: position)
-        .compactMap { $0 as? OSLogEntryLog }
-        .filter { $0.subsystem == Bundle.main.bundleIdentifier }
-        .map { "[\($0.date)] [\($0.category)] \($0.composedMessage)" }
-        .joined(separator: "\n")
-    return entries ?? "Unable to retrieve logs"
-}
-```
-
-### 4.5 MetricKit Integration
+Per [`AGENTS.md`](../AGENTS.md) § Architecture Rules — **no static singletons**: instantiate `MetricKitManager` once in the composition root (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`), hold it on the dependency container, and pass it into views via SwiftUI's `@Environment`:
 
 ```swift
 import MetricKit
 
-class MetricKitManager: NSObject, MXMetricManagerSubscriber {
-    static let shared = MetricKitManager()
+final class MetricKitManager: NSObject, MXMetricManagerSubscriber {
+    private let store: DiagnosticLogStore
+
+    init(store: DiagnosticLogStore) {
+        self.store = store
+        super.init()
+    }
 
     func start() {
         MXMetricManager.shared.add(self)
     }
 
-    // Called once per day with aggregated metrics
-    func didReceive(_ payloads: [MXMetricPayload]) {
+    // MetricKit invokes these callbacks on a background queue. `nonisolated`
+    // keeps Swift 6 from defaulting them to MainActor (which would deadlock
+    // with the actor hop into DiagnosticLogStore on a UI-thread-blocked app).
+    nonisolated func didReceive(_ payloads: [MXMetricPayload]) {
         for payload in payloads {
-            // Forward key metrics to Sentry or PostHog
-            if let launchTime = payload.applicationLaunchMetrics {
-                // launchTime.histogrammedTimeToFirstDraw
-            }
-            if let hangMetrics = payload.applicationResponsivenessMetrics {
-                // hangMetrics.histogrammedApplicationHangTime
-            }
+            Task { await store.append(payload.jsonRepresentation(), kind: "metric") }
         }
     }
 
-    // Called when a crash or hang diagnostic is available
-    func didReceive(_ payloads: [MXDiagnosticPayload]) {
+    nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
         for payload in payloads {
-            if let crashDiagnostics = payload.crashDiagnostics {
-                // Forward to Sentry as attachments
-                for diagnostic in crashDiagnostics {
-                    let attachment = Attachment(
-                        data: diagnostic.jsonRepresentation(),
-                        filename: "metrickit_crash.json",
-                        contentType: "application/json"
-                    )
-                    SentrySDK.capture(message: "MetricKit crash diagnostic") { scope in
-                        scope.addAttachment(attachment)
-                    }
-                }
-            }
+            Task { await store.append(payload.jsonRepresentation(), kind: "diagnostic") }
         }
     }
 }
+
+/// Serializes appends to the diagnostics JSONL. Rotates at ~5 MB.
+actor DiagnosticLogStore {
+    func append(_ data: Data, kind: String) async {
+        // Append a JSONL row under the app's Application Support directory.
+        // Users can export the file via Settings (see §4.3).
+    }
+}
+
+// In SuperOSAppBootstrap / SuperBibleAppBootstrap:
+//     let metricKit = MetricKitManager(store: DiagnosticLogStore())
+//     metricKit.start()
+//     dependencies.metricKit = metricKit   // ← MUST be held for the app's lifetime
 ```
+
+`MXMetricManager` retains its subscribers **weakly** — if `metricKit` falls out of scope (e.g. the bootstrap returns without stashing it on the dependency container), the subscription is silently dropped and no payloads ever arrive. The composition root MUST hold a strong reference for the app's lifetime; the easiest way is to put it on the same `AppDependencies` container that survives until app termination.
+
+`MXMetricManager.shared` is Apple's API and stays — the project's no-static-singletons rule applies to *our* types, not to the system framework.
+
+The rotated JSONL lives at `~/Library/Application Support/SuperOS/diagnostics.jsonl` (and the SuperBible-bundle equivalent). Never transmitted. Only the user can read it.
+
+### 4.2 os_log categories
+
+```swift
+import os.log
+
+extension Logger {
+    // Fallback is app-agnostic so both SuperOS (`com.brianwang.Super`) and
+    // SuperBible (`com.brianwang.SuperBible`) bundles get a sensible
+    // subsystem when Bundle.main.bundleIdentifier is unexpectedly nil
+    // (test hosts, command-line targets).
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.brianwang"
+
+    static let general    = Logger(subsystem: subsystem, category: "general")
+    static let chat       = Logger(subsystem: subsystem, category: "chat")
+    static let bible      = Logger(subsystem: subsystem, category: "bible")
+    static let database   = Logger(subsystem: subsystem, category: "database")
+    static let network    = Logger(subsystem: subsystem, category: "network")
+    static let llm        = Logger(subsystem: subsystem, category: "llm")
+    static let eventBus   = Logger(subsystem: subsystem, category: "event_bus")
+    static let perf       = Logger(subsystem: subsystem, category: "perf")
+}
+```
+
+**Discipline:**
+- Identifiers, opcodes, tool names, durations → `%{public}`.
+- Anything user-authored (message content, verse text, task titles, notes, file paths inside user data) → `%{private}` *or omitted entirely* — when in doubt, omit.
+- Error descriptions: use `%{public}` only when you're sure the error message doesn't echo user input (e.g. `error.localizedDescription` for a network failure is fine; for a JSON-decoding failure of a user message, it might leak content — omit).
+
+### 4.3 Log export for bug reports
+
+Settings → About → "Export recent diagnostic log" packages two complementary sources into a single `.txt` and presents the system share sheet. The user decides where the file goes (email to the maintainer, paste into a GitHub issue, etc.) — nothing leaves the device automatically.
+
+**The two sources together cover the two failure modes:**
+
+| Source | Scope | What it captures | What it MISSES |
+|---|---|---|---|
+| `OSLogStore(scope: .currentProcessIdentifier)` | The currently-running process's in-memory log buffer | Pre-incident actions in the same session: "I tapped Send, then the spinner spun forever, then I filed this bug." | Anything from a **previous** process — i.e., the session that *crashed*. On iOS, app processes don't persist `os_log` across launches via `OSLogStore`. After a crash and relaunch, the crashed session's `os_log` lines are gone. |
+| MetricKit JSONL on disk (per §4.1) | Cross-launch, persisted | Crash / hang / CPU / disk diagnostics from previous sessions, including the symbolicated stack of the crash itself. | The user-action breadcrumbs that led up to the crash (those would be `os_log` entries from a dead process). |
+
+So a **cold-crash** report contains: the MetricKit diagnostic for the crash (stack trace, thread state, exit reason) + the post-crash session's `os_log` lines (the user's "I just had it crash" reproduction attempt). The pre-crash breadcrumb history is unavailable on iOS without entitlements we don't have. This is a known platform limitation; the doc says so explicitly so a reader doesn't expect what `OSLogStore` cannot deliver.
+
+**Privacy posture on the export flow:**
+
+- **Short default window.** 15 minutes from "now" — long enough to capture a reproducing crash + the surrounding actions, short enough that the file rarely picks up unrelated history. A "Last hour" toggle is the only longer option offered; longer windows are deliberately not exposed.
+- **Pre-share preview.** Before the share sheet appears, show the user the exact text being shared (`UITextView` over a sheet, "Cancel" or "Continue"). They see what's leaving the device.
+- **Subsystem filter is mandatory.** Only entries whose `subsystem == Bundle.main.bundleIdentifier` are included — never the user's other apps.
+- **MetricKit JSONL is included verbatim.** Crash and hang stack traces may contain symbolicated function names from third-party Swift libraries (GRDB, swift-markdown-ui, etc.) but no user-authored content unless §4.2's `%{private}` discipline was violated upstream. The pre-share preview is the user's last line of defense.
+
+```swift
+func exportRecentLogs(windowMinutes: Int = 15) throws -> URL {
+    // `.currentProcessIdentifier` scope reads only the live in-memory log
+    // buffer of the running process. Crashed-session breadcrumbs are NOT
+    // recoverable from OSLogStore on iOS; rely on the MetricKit JSONL
+    // (persisted to disk per §4.1) for crashed-session diagnostics.
+    let store = try OSLogStore(scope: .currentProcessIdentifier)
+    let position = store.position(date: Date().addingTimeInterval(-Double(windowMinutes) * 60))
+    let entries = try store.getEntries(at: position)
+        .compactMap { $0 as? OSLogEntryLog }
+        .filter { $0.subsystem == Bundle.main.bundleIdentifier }
+        .map { "[\($0.date)] [\($0.category)] \($0.composedMessage)" }
+        .joined(separator: "\n")
+
+    // Combine in-process os_log with the on-disk MetricKit JSONL so cold-crash
+    // diagnostics survive process restart. DiagnosticLogStore.recent() reads
+    // and merges the rotated JSONL file from Application Support.
+    // (Caller composes the final .txt; see the in-tree implementation.)
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("super-logs-\(Date().timeIntervalSince1970).txt")
+    try entries.write(to: url, atomically: true, encoding: .utf8)
+    return url
+}
+```
+
+### 4.4 App Store Connect Analytics
+
+Aggregated, anonymous, free, configured via App Store Connect:
+
+- **Trends → Crashes** for crash rate per release.
+- **Analytics → Metrics** for installs, sessions, retention, country / device / OS breakdowns.
+
+No SDK or in-app code is required. The data lives in App Store Connect; check it weekly during early SuperBible releases (per [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md) §4.4).
 
 ---
 
-## 5. Server-Side Observability
+## 5. Server implementation (future)
 
-### 5.1 APM (Application Performance Monitoring)
+The SuperOS backend (TypeScript + Hono + Drizzle + Postgres + Redis, per [`SERVER_ARCHITECTURE.md`](./SERVER_ARCHITECTURE.md)) doesn't exist yet. When it does, observability follows the same posture: **platform-native, no third-party aggregators.**
 
-**Request latency tracking with Hono middleware:**
-
-```typescript
-import { Hono } from "hono";
-import * as Sentry from "@sentry/node";
-import pino from "pino";
-
-const logger = pino({ level: "info" });
-
-// Middleware: request timing + correlation ID
-app.use("*", async (c, next) => {
-  const correlationId =
-    c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
-  const start = performance.now();
-
-  c.set("correlationId", correlationId);
-  c.header("X-Correlation-ID", correlationId);
-
-  // Start Sentry transaction
-  const transaction = Sentry.startTransaction({
-    op: "http.server",
-    name: `${c.req.method} ${c.req.routePath}`,
-  });
-  Sentry.getCurrentHub().configureScope((scope) =>
-    scope.setSpan(transaction)
-  );
-
-  await next();
-
-  const duration = performance.now() - start;
-  transaction.finish();
-
-  logger.info({
-    msg: "request_completed",
-    method: c.req.method,
-    path: c.req.routePath,
-    status: c.res.status,
-    duration_ms: Math.round(duration),
-    correlation_id: correlationId,
-  });
-});
-```
-
-**AI proxy latency (time to first token and total duration):**
-
-```typescript
-async function streamFromLLM(
-  request: LLMRequest,
-  correlationId: string
-): AsyncIterable<string> {
-  const span = Sentry.startSpan({ op: "ai.llm_call", description: request.model });
-  const startTime = performance.now();
-  let firstTokenTime: number | null = null;
-  let tokenCount = 0;
-
-  try {
-    const stream = await llmClient.stream(request);
-
-    for await (const chunk of stream) {
-      if (firstTokenTime === null) {
-        firstTokenTime = performance.now();
-        logger.info({
-          msg: "ai_first_token",
-          ttft_ms: Math.round(firstTokenTime - startTime),
-          model: request.model,
-          correlation_id: correlationId,
-        });
-      }
-      tokenCount++;
-      yield chunk;
-    }
-  } finally {
-    const totalDuration = performance.now() - startTime;
-    logger.info({
-      msg: "ai_stream_completed",
-      total_ms: Math.round(totalDuration),
-      token_count: tokenCount,
-      model: request.model,
-      correlation_id: correlationId,
-    });
-    span?.end();
-  }
-}
-```
-
-**Key metrics to track:**
-
-| Metric | Measurement | Alert threshold |
-|--------|------------|-----------------|
-| Request latency (p50) | Histogram per route | > 200ms |
-| Request latency (p95) | Histogram per route | > 1s |
-| Request latency (p99) | Histogram per route | > 3s |
-| Error rate | Counter per route | > 5% of requests |
-| AI time to first token | Histogram per model | > 3s |
-| AI total stream duration | Histogram per model | > 30s |
-| Database query latency | Histogram | > 100ms |
-| Active connections | Gauge | > 80% of pool |
-
-### 5.2 Structured Logging
-
-**Pino configuration:**
+### 5.1 Structured stdout via Pino
 
 ```typescript
 import pino from "pino";
 
 const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
-  formatters: {
-    level(label) {
-      return { level: label };
-    },
-  },
-  serializers: {
-    err: pino.stdSerializers.err,
-  },
-  // In production, logs go to stdout for collection by infrastructure
-  // In development, pretty-print
-  transport:
-    process.env.NODE_ENV === "development"
-      ? { target: "pino-pretty", options: { colorize: true } }
-      : undefined,
+  formatters: { level: (label) => ({ level: label }) },
+  serializers: { err: pino.stdSerializers.err },
+  transport: process.env.NODE_ENV === "development"
+    ? { target: "pino-pretty", options: { colorize: true } }
+    : undefined,
 });
 
 export default logger;
 ```
 
-**Logging conventions:**
+In production, logs go to stdout where the hosting platform (Fly.io / Railway / whatever we pick) tails and rotates them. No Datadog, no Logtail, no Better Stack, no Loki, no OpenTelemetry collector.
+
+### 5.2 Correlation IDs in logs
+
+Every request gets an `X-Correlation-ID` (generated client-side, defaulted server-side if absent). Every log line in the request's scope includes it. End-to-end tracing comes from `grep correlation_id=abc-123` across the platform's log tail, not from a distributed-trace UI.
 
 ```typescript
-// Always include correlation_id in request-scoped logs
-logger.info({ correlation_id, user_id: anonymizedUserId }, "request_received");
+app.use("*", async (c, next) => {
+  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
+  const start = performance.now();
 
-// Log AI tool calls with parameter keys only (not values — privacy)
-logger.info(
-  {
-    correlation_id,
-    tool_name: "create_task",
-    param_keys: ["title", "due_date", "applet_id"],  // Keys only, no values
-    applet_id: "todo",
-  },
-  "ai_tool_call_executed"
-);
+  c.set("correlationId", correlationId);
+  c.header("X-Correlation-ID", correlationId);
 
-// Log errors with context
-logger.error(
-  {
-    correlation_id,
-    err: error,
-    endpoint: "/api/chat",
-    model: "claude-sonnet",
-  },
-  "llm_api_call_failed"
-);
-```
-
-### 5.3 Infrastructure Metrics
-
-**Postgres connection pool monitoring:**
-
-```typescript
-import { Pool } from "pg";
-
-const pool = new Pool({ max: 20 });
-
-// Periodically log pool stats
-setInterval(() => {
-  logger.info({
-    msg: "pg_pool_stats",
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount,
-  });
-}, 30_000);  // Every 30 seconds
-```
-
-**Redis monitoring:**
-
-```typescript
-import { Redis } from "ioredis";
-
-const redis = new Redis();
-
-// Periodic Redis stats
-setInterval(async () => {
-  const info = await redis.info("memory");
-  const memoryUsed = parseRedisInfo(info, "used_memory_human");
-
-  const stats = await redis.info("stats");
-  const hits = parseRedisInfo(stats, "keyspace_hits");
-  const misses = parseRedisInfo(stats, "keyspace_misses");
+  await next();
 
   logger.info({
-    msg: "redis_stats",
-    memory_used: memoryUsed,
-    hit_rate: hits / (hits + misses),
+    msg: "request_completed",
+    method: c.req.method,
+    path: c.req.routePath,
+    status: c.res.status,
+    duration_ms: Math.round(performance.now() - start),
+    correlation_id: correlationId,
   });
-}, 60_000);  // Every 60 seconds
+});
 ```
+
+### 5.3 Logging conventions
+
+- Always include `correlation_id` in request-scoped logs.
+- Log AI tool calls with **parameter keys only**, never values (`param_keys: ["title", "due_date"]` — not `{title: "Buy milk"}`).
+- Log errors with structured context: endpoint, model, correlation_id, err.
+- Never log message text, verse text, task titles, user identifiers, or anything else that could constitute PII or user content.
+
+### 5.4 Platform-native dashboards
+
+Whichever host we pick (Fly.io / Railway / Render / etc.), use its built-in dashboards for:
+
+- Request count + p50/p95 latency.
+- Memory + CPU per instance.
+- Process restarts.
+- Log tail with `grep`-style filtering.
+
+If those dashboards prove inadequate over time, the right move is usually to write a small custom `/metrics` JSON endpoint and a `Trends.md` weekly-review checklist, **not** to bring in Datadog.
+
+### 5.5 Server thresholds — to be set when the server lands
+
+The earlier draft of this document carried a fully-populated alert-threshold table (request latency p50/p95/p99, error rate, AI time-to-first-token, AI stream duration, DB query latency, connection pool utilization). That table was load-bearing precisely because it set the line between "normal" and "something to look at."
+
+The server doesn't exist yet, so a frozen-in-doc threshold table would be a guess. The TODO at server-build time:
+
+1. Run the new server under realistic load for 1–2 weeks to learn baselines.
+2. Add a `docs/SERVER_THRESHOLDS.md` (or a §6 here) capturing concrete numbers: p50 / p95 / p99 per route, error rate per route, AI-call latency by model, DB query latency.
+3. Set the weekly-review trigger numbers at p95 + a margin, not at "industry rule-of-thumb" defaults.
+4. Until then: the *only* threshold this project commits to is the client crash-free target (`>99.5%`, per [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §12).
 
 ---
 
-## 6. Unified Tracing
+## 6. Privacy
 
-### 6.1 Correlation ID Flow
+### 6.1 Hard rules (project-wide)
 
-Every user action that crosses system boundaries carries a correlation ID, generated on the client and passed through all layers.
+These rules apply identically to both apps:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Client (iOS/macOS)                                              │
-│                                                                 │
-│  1. User sends chat message                                     │
-│  2. Generate correlationId = UUID()                             │
-│  3. POST /api/chat                                              │
-│     Header: X-Correlation-ID: abc-123-def                       │
-│     Sentry breadcrumb: "chat_message_sent"                      │
-│                                                                 │
-└─────────────────┬───────────────────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────────────────┐
-│ Server (Hono)                                                   │
-│                                                                 │
-│  4. Middleware extracts X-Correlation-ID: abc-123-def            │
-│  5. Sentry transaction started, correlationId set on scope       │
-│  6. Log: { correlation_id: "abc-123-def", msg: "chat_request" } │
-│  7. Call LLM API                                                │
-│     → Sentry span: "ai.llm_call"                               │
-│     → Log: { correlation_id, msg: "ai_first_token", ttft: 450 }│
-│  8. LLM returns tool call: create_task                          │
-│     → Sentry span: "ai.tool_execution"                         │
-│     → Log: { correlation_id, tool: "create_task" }              │
-│  9. Execute tool → Postgres INSERT                              │
-│     → Sentry span: "db.query"                                  │
-│ 10. Stream response back to client                              │
-│     → Log: { correlation_id, msg: "stream_completed" }          │
-│                                                                 │
-└─────────────────┬───────────────────────────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────────────────────────┐
-│ Client (iOS/macOS)                                              │
-│                                                                 │
-│ 11. Receive streamed response, render in chat UI                │
-│ 12. Event bus fires: .taskCreated(id: "task-456")               │
-│ 13. ToDo applet refreshes, shows new task                      │
-│ 14. Sentry breadcrumb: "tool_result_rendered"                   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+1. **Analytics share toggle is the user's.** We never override it, never gate features on it, never ask for it. App Store Connect respects the device-level toggle automatically.
+2. **No PII in any telemetry.** Never logged, never persisted to disk, never transmitted: usernames, email addresses, message content, verse text, task titles, note content, calendar event names, contact info, location, browsing history, plan progress trajectories.
+3. **Anonymized identifiers only.** Hashed device IDs at most. We don't even need that.
+4. **Parameter keys, not values.** Tool calls log key names; never values.
+5. **On-device by default.** Logs stay on the device unless the user explicitly exports them.
 
-### 6.2 Client-Side Trace Initiation
+### 6.2 App Store privacy nutrition label
 
-```swift
-func sendChatMessage(_ message: String) async throws {
-    let correlationId = UUID().uuidString
-
-    // Start Sentry transaction
-    let transaction = SentrySDK.startTransaction(
-        name: "ai_chat_message",
-        operation: "user_action"
-    )
-    transaction.setData(value: correlationId, key: "correlation_id")
-
-    // Add breadcrumb
-    let crumb = Breadcrumb(level: .info, category: "ai.chat")
-    crumb.message = "Chat message sent"
-    crumb.data = ["correlation_id": correlationId]
-    SentrySDK.addBreadcrumb(crumb)
-
-    // Make API call with correlation ID
-    var request = URLRequest(url: chatEndpoint)
-    request.setValue(correlationId, forHTTPHeaderField: "X-Correlation-ID")
-
-    // ... send request, handle response ...
-
-    transaction.finish()
-}
-```
-
-### 6.3 Trace Visualization
-
-With Sentry Performance, traces appear as waterfall timelines showing each span (HTTP request, LLM call, database query, tool execution) with its duration. This makes it immediately visible where time is spent.
-
-When/if migrating to Datadog APM, the same correlation IDs allow Datadog to stitch client and server traces into a single flame graph.
-
----
-
-## 7. Alerting
-
-### 7.1 What to Alert On
-
-| Condition | Severity | Action |
-|-----------|----------|--------|
-| New crash type affecting > 1% of sessions | **Critical** | Investigate and hotfix |
-| Crash rate increase > 2x from previous day | **Critical** | Check recent deploy, consider rollback |
-| API error rate > 5% for 5 minutes | **High** | Investigate server logs |
-| API p95 latency > 3s for 10 minutes | **High** | Check database, AI provider |
-| AI provider returning 5xx for 2 minutes | **High** | Check provider status page, consider failover |
-| Database connection pool > 80% utilized | **Medium** | Monitor, increase pool if persistent |
-| Redis memory > 80% of limit | **Medium** | Review eviction policy, check for key leaks |
-| Background job failure rate > 10% | **Medium** | Review dead letter queue |
-
-### 7.2 Where Alerts Go
-
-For a solo developer, keep it simple:
-
-| Channel | Use case |
-|---------|----------|
-| **Email** | All medium and high alerts, daily digest summaries |
-| **Slack** (webhook to a `#super-alerts` channel) | Critical and high alerts only, for real-time visibility |
-| **Sentry built-in alerts** | Crash spikes, new issue notifications, regression alerts |
-
-Avoid PagerDuty or on-call rotations until there's a team. A solo developer doesn't need to page themselves.
-
-### 7.3 Alert Fatigue Prevention
-
-- **Only alert on actionable conditions.** "CPU at 60%" is not actionable. "CPU at 95% for 10 minutes" is.
-- **Group related alerts.** If the AI provider is down, one alert is enough — not one per failed request.
-- **Set appropriate thresholds.** Start with generous thresholds and tighten over time as you learn normal baselines.
-- **Mute during deploys.** Brief error spikes during deploys are expected; don't alert on them.
-- **Weekly review.** If an alert fires regularly but never leads to action, delete it.
-
----
-
-## 8. Privacy Considerations
-
-### 8.1 Core Principles
-
-1. **Analytics are opt-in.** Users explicitly choose to share usage data. The app works identically with analytics disabled.
-2. **No PII in telemetry.** Never log, track, or transmit: usernames, email addresses, message content, task titles, calendar event names, note content, or any user-generated text.
-3. **Anonymized identifiers only.** User IDs are hashed. Device IDs are hashed. No way to reverse the hash to identify a person.
-4. **Parameter keys, not values.** When logging AI tool calls, log `param_keys: ["title", "due_date"]` — never the actual parameter values.
-5. **On-device by default.** `os_log` stays on-device unless the user explicitly exports logs for a bug report.
-
-### 8.2 What IS Collected (When Opted In)
-
-- Crash stack traces (code paths, no user data)
-- Performance metrics (timing data, no content)
-- Feature usage counts (which applet opened, not what's inside it)
-- Device metadata (OS version, device model, app version)
-- Anonymized session data (duration, applet switches)
-
-### 8.3 What is NEVER Collected
-
-- Message content (Chat chat messages)
-- Task titles or descriptions (ToDo)
-- Calendar event names or details (Calendar)
-- Note content (Notes)
-- Contact names or information
-- Location data
-- Browsing history or URLs
-- Screenshots of user content (Sentry screenshot capture is of the crash moment only and is opt-in)
-
-### 8.4 App Store Privacy Nutrition Labels
-
-Based on the above, Super's App Store privacy label will declare:
+Based on the rules above, the declaration for SuperBible (and SuperOS, if it ever ships) is:
 
 | Data type | Collected | Linked to identity | Used for tracking |
-|-----------|-----------|-------------------|-------------------|
-| Crash data | Yes | No | No |
-| Performance data | Yes | No | No |
-| Product interaction | Yes (opt-in) | No | No |
-| Diagnostics | Yes | No | No |
-| Identifiers | No | No | No |
-| Usage data | Yes (opt-in) | No | No |
+|---|---|---|---|
+| Crash data | Yes *(via App Store Connect opt-in)* | No | No |
+| Performance data | Yes *(via App Store Connect opt-in)* | No | No |
+| Diagnostics | Yes *(via App Store Connect opt-in)* | No | No |
+| Identifiers | No | — | — |
+| Product interaction | No | — | — |
+| User content | No | — | — |
+| Location | No | — | — |
+| Contacts | No | — | — |
+
+SuperBible's `App-SuperBible/PRIVACY.md` restates these in user-facing language.
 
 ---
 
-## 9. Implementation Phases
+## 7. "Alerting"
 
-### Phase 1: Ship with v1
+There is no real-time alerting. This is a deliberate choice for a solo project:
 
-**Goal:** Know when things break. Minimum viable observability.
+- App Store Connect emails the maintainer when a new crash signature appears or a crash rate spikes. Async, no SDK, no paging.
+- A weekly check-in: App Store Connect Trends + the platform's server-log tail. If something's wrong, it shows up there.
+- The crash-free-sessions threshold is `>99.5%` (per [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §12). Two consecutive weeks below that on a release is the trigger to reconsider whether the Apple-built-in posture is enough.
 
-| Component | Tool | Effort |
-|-----------|------|--------|
-| Crash reporting (iOS + macOS) | Sentry (`sentry-cocoa`) | 1 day |
-| Crash reporting (server) | Sentry (`@sentry/node`) | 0.5 day |
-| dSYM upload in CI | `sentry-cli` | 0.5 day |
-| Structured logging (client) | `os_log` with categories | 1 day |
-| Structured logging (server) | Pino | 0.5 day |
-| Correlation ID middleware | Custom (Hono middleware) | 0.5 day |
-| MetricKit integration | `MXMetricManagerSubscriber` | 0.5 day |
-| **Total** | | **~4 days** |
-
-### Phase 2: Product Analytics (v1.1–v1.2)
-
-**Goal:** Know what's being used and what's not.
-
-| Component | Tool | Effort |
-|-----------|------|--------|
-| Product analytics SDK integration | PostHog iOS SDK | 1 day |
-| Define and instrument key events | Custom | 2 days |
-| Analytics opt-in UI | Custom (Settings screen) | 0.5 day |
-| Dashboard setup | PostHog cloud | 1 day |
-| **Total** | | **~4.5 days** |
-
-### Phase 3: Full APM (when scale warrants)
-
-**Goal:** End-to-end tracing, unified dashboards, proactive monitoring.
-
-| Component | Tool | Effort |
-|-----------|------|--------|
-| Evaluate Datadog vs. staying with Sentry Performance | Research | 1 day |
-| Server APM integration | Datadog or Sentry Performance | 2 days |
-| Client RUM (if Datadog) | `dd-sdk-ios` | 2 days |
-| Unified dashboard setup | Datadog or Grafana | 2 days |
-| Alerting rules | Platform-specific | 1 day |
-| **Total** | | **~8 days** |
-
-**Trigger for Phase 3:** Any of the following:
-- Paid users whose experience depends on reliability
-- Multiple server instances requiring coordinated monitoring
-- AI costs high enough that tracing per-request cost matters
-- Debugging production issues takes more than 30 minutes regularly
+If the project ever has paying users, on-call rotation, or a team — the conversation changes. Until then, async is fine.
 
 ---
 
-## 10. Open Questions
+## 8. Implementation phases
 
-1. **PostHog vs. custom analytics:** PostHog's iOS SDK adds ~2 MB to the binary. Is it worth it, or should we build a lightweight custom event collector that posts to a simple `/analytics` endpoint on our own server?
+### Phase 1 — Ship with SuperBible v1 (SB-M0 through SB-M4)
 
-2. **Log aggregation in Phase 1:** Pino logs to stdout. In production, where do they go? If deploying to Fly.io or Railway, both provide built-in log tailing — but no search or retention. Do we need a log aggregator (Logtail, Better Stack, Datadog Logs) even in Phase 1?
+| Component | Effort |
+|---|---|
+| `MetricKitManager` final class + `DiagnosticLogStore` actor for JSONL persistence | 0.5 day |
+| `os_log` Logger categories + audit existing call sites for `%{public}` discipline | 1 day |
+| Settings → About → "Export recent diagnostic log" row + share sheet | 0.5 day |
+| App Store Connect: confirm Trends + Analytics opt-ins are enabled for both targets | trivial |
+| `App-SuperBible/PRIVACY.md` content | 0.5 day |
+| **Total** | **~2.5 days** |
 
-3. **Sentry Performance vs. standalone traces:** Sentry's free tier includes 10M transactions/month. Is the Sentry Performance UI good enough for trace visualization, or will we outgrow it quickly?
+### Phase 2 — Server observability (when the server exists)
 
-4. **MetricKit crash diagnostics vs. Sentry:** Both capture crashes. MetricKit diagnostics arrive with a delay (up to 24 hours). Should we forward MetricKit diagnostics to Sentry (as shown in Section 4.5) or treat them as separate data sources?
+| Component | Effort |
+|---|---|
+| Pino + correlation-ID middleware | 0.5 day |
+| Logging convention audit on every route | 1 day |
+| Hosting platform dashboard bookmarks + weekly-review checklist | 0.5 day |
+| **Total** | **~2 days** |
 
-5. **Analytics during TestFlight:** Should analytics be enabled during TestFlight beta testing? Pro: real usage data before launch. Con: beta testers are not representative users.
+### Phase 3 — None planned
 
-6. **Server-side product analytics:** The server sees all API calls. Should we derive product analytics from server logs (e.g., counting `/api/chat` calls per user) instead of instrumenting the client? Simpler, but misses offline-only features.
+There is no Phase 3. If at any point a concrete operational pain arises that Apple's built-ins or platform-native logs cannot address, raise a GitHub issue describing the specific harm and the smallest-possible mitigation. Most "we should add Sentry" reflexes are better solved by writing better logs, or by sitting with the data App Store Connect already provides.
 
-7. **Cost projections:** At what user count does Sentry's free tier run out? At what point does Datadog's cost become justifiable? Need to model this based on expected events-per-user-per-day.
+---
 
-8. **GDPR / data residency:** If Super has EU users, do analytics and crash reports need to be stored in the EU? Sentry and PostHog both offer EU data residency — but it needs to be configured from the start.
+## 9. SuperBible-specific notes
+
+SuperBible inherits everything above. The only extras:
+
+- `App-SuperBible/PRIVACY.md` is the user-facing summary (one-pager — fewer architectural details, more reassurance).
+- App Store Connect analytics will be the *only* product-signal channel for SuperBible. There is no analytics SDK. Cohort analysis means "look at retention curves in App Store Connect Analytics."
+- The same MetricKit subscriber code runs in both apps; the persistence path differs (per-bundle Application Support directory).
+
+A short SuperBible-only restatement lives at [`SuperBible/OBSERVABILITY.md`](./SuperBible/OBSERVABILITY.md).
