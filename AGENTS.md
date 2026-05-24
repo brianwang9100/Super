@@ -13,12 +13,14 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 - `SYNC.md` — platform-agnostic sync engine
 - `AUTH.md` — username/password, JWT tokens, admin account setup
 - `CI_PIPELINE.md` — CI/CD, AI agent workflow, automated PR review
-- `OBSERVABILITY.md` — metrics, crash reporting, analytics, logging
+- `OBSERVABILITY.md` — **Apple-built-in only** posture for crashes, metrics, diagnostics, logs. No third-party SDKs (no Sentry / PostHog / Datadog / Crashlytics). The "no third-party SDKs" rule is project-wide — do NOT add observability SDKs to any applet.
 - `SECURITY.md` — threat model, encryption, auth, home automation safety
 - `AI_TOOLS.md` — approved AI development tools and security rules
 - `CHAT_INTERACTIONS.md` — cross-applet interaction catalog
 - `DEVELOPMENT_SETUP.md` — clone, build, deploy, first-run wizard
 - `Chat/` — Chat (AI chatbot) applet-specific design and architecture
+- `SuperBible/` — SuperBible app target — `OVERVIEW.md` (one-pager intro) and `OBSERVABILITY.md` (Apple-only restatement scoped to SuperBible). SuperBible is the public App Store target; SuperOS is the founder's personal app. Both share Core + Chat + Bible.
+- `superpowers/specs/2026-05-23-superbible-fork-design.md` — full design for the SuperBible fork: architecture, milestones SB-M0–M5, monetization, CI, cloud roadmap. Read before touching `App-SuperBible/`, the SuperBible target in `project.yml`, or any of `Packages/{Plans,Memorize,Quiz,Learn}/` when they land.
 
 ## Terminology
 
