@@ -240,14 +240,17 @@ struct AppShell: View {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
-                // Lazy factory — the read-only context is only built
-                // when `SettingsLayer.body` actually mounts the sheet,
-                // not on every `AppShell.body` re-run (which fires per
-                // drag frame). The context grants `SettingsMemoryPane`'s
-                // `@Query` read access to the same `chat.sqlite` the
-                // LLM writes through MemoryTool — without it the pane
-                // falls back to its empty defaultValue and the user
-                // sees "No memories yet" even when memories exist.
+                // Factory closure: skips the `.readOnly { ... }`
+                // allocation during the bootstrap window when
+                // `settingsViewModel` is still nil. Once the view
+                // model is wired the factory fires per
+                // `SettingsLayer.body` re-run — same per-frame churn
+                // the pre-extraction inline call had. The context
+                // grants `SettingsMemoryPane`'s `@Query` read access
+                // to the same `chat.sqlite` the LLM writes through
+                // MemoryTool — without it the pane falls back to its
+                // empty defaultValue and the user sees "No memories
+                // yet" even when memories exist.
                 makeDatabaseContext: { .readOnly { dependencies.chatDatabase.queue } },
                 theme: theme,
                 appearance: appearance
@@ -807,9 +810,9 @@ private struct HamburgerLayer: View {
     }
 }
 
-/// Sidebar drawer layer. Body only renders content when
-/// `sidebarViewModel` is wired and the drawer is being opened —
-/// `SidebarDrawer` itself early-returns on `isPresented == false`.
+/// Sidebar drawer layer. Renders `SidebarDrawer` whenever
+/// `sidebarViewModel` is non-nil; `SidebarDrawer` itself handles
+/// the `isPresented == false` case internally.
 private struct SidebarLayer: View {
     @Binding var sidebarOpen: Bool
     let sidebarViewModel: SidebarViewModel?
