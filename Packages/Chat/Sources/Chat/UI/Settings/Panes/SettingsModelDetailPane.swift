@@ -305,6 +305,8 @@ struct SettingsModelDetailPane: View {
             // either fail at send-time or leak a key over cleartext.
             guard let url = currentProvider.defaultBaseURL,
                   isCleartextSafeForCredentials(url) else { return false }
+            // Refuse Save if no catalog model is selected.
+            guard !modelCatalogID.isEmpty else { return false }
             return true
         }
         // Custom: URL + modelId are user-typed.
@@ -830,14 +832,22 @@ struct SettingsModelDetailPane: View {
                 supportsThinking: true
             )
         }
+        // Non-Custom providers must have ≥1 model — `nonCustomProvidersHaveModels`
+        // pins this at the catalog layer, and this precondition is the
+        // matching runtime guard so a future catalog drift fires loudly
+        // here rather than silently disabling Save through the empty
+        // `modelCatalogID` path in `isValid`.
+        guard let firstModel else {
+            preconditionFailure("LLMProviderCatalog entry '\(entry.id)' has no models")
+        }
         return CreateSeeds(
             providerID: entry.id,
-            modelCatalogID: firstModel?.id ?? "",
-            name: firstModel?.displayName ?? "",
+            modelCatalogID: firstModel.id,
+            name: firstModel.displayName,
             baseURLText: entry.defaultBaseURL?.absoluteString ?? "",
-            modelId: firstModel?.id ?? "",
-            maxContextText: String(firstModel?.maxContextTokens ?? 200_000),
-            supportsThinking: firstModel?.supportsThinking ?? false
+            modelId: firstModel.id,
+            maxContextText: String(firstModel.maxContextTokens),
+            supportsThinking: firstModel.supportsThinking
         )
     }
 
