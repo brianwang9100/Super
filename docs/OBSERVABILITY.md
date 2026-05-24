@@ -93,15 +93,20 @@ Diagnostics get persisted to an on-device debug log the user can manually export
 
 ### 4.1 MetricKit subscriber
 
-`MXMetricManagerSubscriber` refines `NSObjectProtocol`, so the conformer must be a class (an actor can't inherit from `NSObject`). Make it a `final class` and route the actual file I/O through an internal `actor` so writes are serialized without blocking the MetricKit delivery thread:
+`MXMetricManagerSubscriber` refines `NSObjectProtocol`, so the conformer must be a class (an actor can't inherit from `NSObject`). Make it a `final class` and route the actual file I/O through an internal `actor` so writes are serialized without blocking the MetricKit delivery thread.
+
+Per [`AGENTS.md`](../AGENTS.md) § Architecture Rules — **no static singletons**: instantiate `MetricKitManager` once in the composition root (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`), hold it on the dependency container, and pass it into views via SwiftUI's `@Environment`:
 
 ```swift
 import MetricKit
 
 final class MetricKitManager: NSObject, MXMetricManagerSubscriber {
-    static let shared = MetricKitManager()
+    private let store: DiagnosticLogStore
 
-    private let store = DiagnosticLogStore()
+    init(store: DiagnosticLogStore) {
+        self.store = store
+        super.init()
+    }
 
     func start() {
         MXMetricManager.shared.add(self)
@@ -127,7 +132,14 @@ actor DiagnosticLogStore {
         // Users can export the file via Settings (see §4.3).
     }
 }
+
+// In SuperOSAppBootstrap / SuperBibleAppBootstrap:
+//     let metricKit = MetricKitManager(store: DiagnosticLogStore())
+//     metricKit.start()
+//     dependencies.metricKit = metricKit
 ```
+
+`MXMetricManager.shared` is Apple's API and stays — the project's no-static-singletons rule applies to *our* types, not to the system framework.
 
 The rotated JSONL lives at `~/Library/Application Support/SuperOS/diagnostics.jsonl` (and the SuperBible-bundle equivalent). Never transmitted. Only the user can read it.
 
@@ -137,7 +149,11 @@ The rotated JSONL lives at `~/Library/Application Support/SuperOS/diagnostics.js
 import os.log
 
 extension Logger {
-    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.brianwang.Super"
+    // Fallback is app-agnostic so both SuperOS (`com.brianwang.Super`) and
+    // SuperBible (`com.brianwang.SuperBible`) bundles get a sensible
+    // subsystem when Bundle.main.bundleIdentifier is unexpectedly nil
+    // (test hosts, command-line targets).
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.brianwang"
 
     static let general    = Logger(subsystem: subsystem, category: "general")
     static let chat       = Logger(subsystem: subsystem, category: "chat")

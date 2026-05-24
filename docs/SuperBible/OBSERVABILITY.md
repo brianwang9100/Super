@@ -31,7 +31,7 @@
 A single Settings → About pane in SuperBible exposes:
 
 - **App version + build number** — for bug reports.
-- **Export recent diagnostic log** — wraps the last hour of `os_log` entries + recent MetricKit JSONL into a `.txt` and presents the share sheet.
+- **Export recent diagnostic log** — wraps a short, user-controlled window of `os_log` entries (15-minute default, "Last hour" toggle) + recent MetricKit JSONL into a `.txt`, shows a pre-share preview, then presents the share sheet. Full posture in [`../OBSERVABILITY.md`](../OBSERVABILITY.md) §4.3.
 - **Privacy** — links to `App-SuperBible/PRIVACY.md` (rendered in-app via a simple Markdown view).
 - **Support development** — opens GitHub Sponsors in `SFSafariViewController`. Only shown once the Sponsors signup is live (per [`../superpowers/specs/2026-05-23-superbible-fork-design.md`](../superpowers/specs/2026-05-23-superbible-fork-design.md) §6.2).
 
