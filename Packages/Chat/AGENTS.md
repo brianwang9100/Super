@@ -7,7 +7,7 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **Domain models** (`Models/`): `ConversationRecord`, `MessageRecord`, `ToolCallRecord`, `ModelConfigurationRecord`, `ToolEnablementRecord`, `SettingRecord`, `CompactionCheckpointRecord`. All `Codable, FetchableRecord, PersistableRecord, Sendable`.
 - **Database** (`Database/`): `ChatDatabase` (wraps `DatabaseQueue` on `chat.sqlite`), `Migrations`.
 - **Repositories** (`Repositories/`): one per record, protocol-typed.
-- **LLM provider** (`LLM/`): `OpenAICompatibleLLMProvider` conforming to `Core.LLMProvider`.
+- **LLM provider** (`LLM/`): `OpenAICompatibleLLMProvider` conforming to `Core.LLMProvider`; `DebugLLMProvider` (DEBUG builds only — see "Manual testing in the simulator" below).
 - **Orchestration** (`Orchestration/`): `ChatSession` actor (one per conversation), `ChatSessionStore` actor (holds concurrent sessions), `ContextAssembler`, `Compactor`, `TokenEstimator`, `TitleGenerator`, `SlashCommand`, `ChatEvent`. `ChatSessionDriver` protocol (view-model seam) + `LiveChatSessionDriver` adapter live alongside the consuming view model.
 - **Tools** (`Tools/`): `TimeNowTool` (built-in local).
 - **Voice** (`Voice/`): `VoiceInputService` protocol + `SpeechRecognizerVoiceInputService` (on-device `SFSpeechRecognizer`).
@@ -27,3 +27,12 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 ## Tests
 
 `swift test` from `Packages/Chat/` must be green before any PR opens. Snapshot fixtures live in `Tests/ChatTests/UI/__Snapshots__/`. SSE/LLM fixtures in `Tests/ChatTests/Fixtures/`.
+
+## Manual testing in the simulator
+
+When you need to exercise the Chat streaming UI in the simulator — scroll behavior on send/keyboard, code-block render, thinking pill, error banner, anything that depends on a real streaming response — drive it through **`DebugLLMProvider`** (`Sources/Chat/LLM/DebugLLMProvider.swift`), not a real model. Do **not** wire an OpenAI/Gemini/Ollama key into the simulator just to test UI changes — that's slow, costs tokens, and adds a network-flake variable to bugs you're trying to reproduce.
+
+- The provider is gated under `#if DEBUG` end-to-end (`LLMProviderKind.debug`, the provider class, the `AppBootstrap` register/seed call sites, the `SettingsViewModel` switch arm). It compiles out of Release entirely.
+- `AppBootstrap.seedDebugModelIfNeeded` inserts a single `kind = .debug` `ModelConfigurationRecord` on first launch and marks it selected iff no other row is selected. So a fresh `xcrun simctl install` lands on the debug model by default; if you already have a real model wired, the debug entry just shows up as an alternative in the model picker.
+- The response bank (short ack, headings + bullets, code block with `swift` fence, long-form streaming-stress, optional thinking trace) is picked randomly per turn. Delays are randomized 15–80ms between chunks, with a 150–500ms pre-stream pause so the "Waiting" spark is visible.
+- When you add a new response shape you want to test against (a wider markdown table, an unterminated code fence, a long emoji run), extend the `responseBank` array in `DebugLLMProvider.swift` rather than reaching for a real model.

@@ -659,6 +659,10 @@ public final class SettingsViewModel {
                 toolRegistry: toolRegistry
             )
             await registry.register(provider)
+        #if DEBUG
+        case .debug:
+            await registry.register(DebugLLMProvider(id: record.id))
+        #endif
         }
     }
 

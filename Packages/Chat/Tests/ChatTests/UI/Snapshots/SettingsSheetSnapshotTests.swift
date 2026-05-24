@@ -51,6 +51,28 @@ struct SettingsSheetSnapshotTests {
         ),
     ]
 
+    #if DEBUG
+    /// `sampleModels` plus the debug provider row. Exists only in DEBUG
+    /// builds because `LLMProviderKind.debug` is itself DEBUG-only —
+    /// outside DEBUG the case doesn't compile, so neither does this
+    /// fixture or the snapshot tests that reach for it.
+    private static let sampleModelsWithDebug: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "debug-canned",
+            name: "Debug (canned)",
+            monogram: "DB",
+            endpoint: "",
+            maxContextTokens: DebugLLMProvider.maxContextTokens,
+            isEnabled: true,
+            kind: .debug,
+            baseURL: nil,
+            modelId: DebugLLMProvider.modelID,
+            supportsThinking: true,
+            hasAPIKey: false
+        ),
+    ]
+    #endif
+
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
         .init(id: "time.now", name: "Current time", summary: "Returns the current local time in ISO-8601.", isEnabled: true),
         // Memory is enabled in the snapshot so the gear affordance
@@ -152,6 +174,54 @@ struct SettingsSheetSnapshotTests {
             dynamicType: .xxLarge
         )
     }
+
+    #if DEBUG
+    // Coverage for the DEBUG-only `case .debug:` arms in
+    // `SettingsModelsPane.isModelAvailable(for:)` and `subtitle(for:)`
+    // (PR #92 review). The row renders with monogram `DB`, name "Debug
+    // (canned)", and subtitle `8K ctx · canned responses` from the
+    // debug-arm code path; `isAvailable == true` keeps the toggle on
+    // and the row enabled. Light + dark covers the theme branches; the
+    // monogram/label/subtitle layout itself is already pinned at
+    // Dynamic Type XXL by `modelsPaneWithAFMXXL`, so we don't duplicate
+    // that variant for the debug row.
+    @Test("models pane with debug provider row")
+    func modelsPaneWithDebug() async {
+        await verifyModelsPaneWithDebug(
+            theme: .light,
+            name: "settings_models_debug_light"
+        )
+    }
+
+    @Test("models pane with debug provider row (dark)")
+    func modelsPaneWithDebugDark() async {
+        await verifyModelsPaneWithDebug(
+            theme: .dark,
+            name: "settings_models_debug_dark"
+        )
+    }
+
+    private func verifyModelsPaneWithDebug(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithDebug,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+    #endif
 
     private func verifyModelsPaneWithAFM(
         theme: SuperTheme.Identifier,

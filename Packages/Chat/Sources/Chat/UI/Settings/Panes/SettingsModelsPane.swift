@@ -99,6 +99,10 @@ struct SettingsModelsPane: View {
             return true
         case .appleFoundation:
             return viewModel.appleFoundationAvailability.isAvailable
+        #if DEBUG
+        case .debug:
+            return true
+        #endif
         }
     }
 
@@ -117,6 +121,10 @@ struct SettingsModelsPane: View {
             case .unavailable(let reason):
                 return reason.subtitle
             }
+        #if DEBUG
+        case .debug:
+            return "\(model.maxContextTokens / 1000)K ctx · canned responses"
+        #endif
         }
     }
 

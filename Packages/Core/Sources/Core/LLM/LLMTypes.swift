@@ -83,6 +83,15 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// Groq, Ollama, MLX, LM Studio, llama.cpp). Requires `baseURL` and
     /// optionally `apiKeyRef`.
     case openAICompatible
+    #if DEBUG
+    /// Development-only fake provider that streams canned markdown
+    /// responses with randomized delays. Used to exercise the streaming
+    /// UI path (scroll behavior, thinking blocks, code-block rendering)
+    /// without depending on a real LLM endpoint. Gated entirely under
+    /// `#if DEBUG` — neither the enum case, the provider class, nor the
+    /// seed/registration call sites compile into Release builds.
+    case debug
+    #endif
 }
 
 /// Persisted user-facing configuration for a model + endpoint + key triple.
