@@ -27,6 +27,17 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(Set(ids).count == ids.count, "duplicate provider ids: \(ids)")
     }
 
+    @Test("Model ids are unique across all providers")
+    func modelIdsAreUniqueAcrossProviders() {
+        // First-match semantics in `LLMProviderCatalog.model(forModelId:)`
+        // mean a collision would silently misattribute a row to the
+        // first-listed provider — then trailing-slash URL matching
+        // would likely fail and the row would silently reclassify
+        // as Custom on edit. Hold the invariant explicitly.
+        let ids = LLMProviderCatalog.all.flatMap { $0.models.map(\.id) }
+        #expect(Set(ids).count == ids.count, "duplicate model ids across providers: \(ids)")
+    }
+
     @Test("Every non-Custom provider has at least one model")
     func nonCustomProvidersHaveModels() {
         for entry in LLMProviderCatalog.all where entry.id != LLMProviderCatalog.customProviderID {

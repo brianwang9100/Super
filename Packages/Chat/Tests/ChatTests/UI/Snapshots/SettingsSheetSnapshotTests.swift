@@ -343,12 +343,59 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    // Sepia anchor for the picker UI per Chat AGENTS.md
+    // (light/dark/sepia × default × Dynamic Type XXL matrix). Picks
+    // Custom because it exercises the widest set of form rows the
+    // theme's `inkFaint`/`borderFaint`/`ink` tokens render across; a
+    // sepia regression on the picker chevron or field caps would
+    // show up here.
+    @Test("model detail create flow — Custom selected (sepia)")
+    func modelDetailProviderCustomSepia() async {
+        await verifyCreateWithProvider(
+            theme: .sepia,
+            selection: .custom,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_custom_sepia"
+        )
+    }
+
+    // Inline-error state for the Max Context field after the user
+    // typed an over-cap value and tapped Save. Uses the test seam
+    // `initialModelDetailContextWindowError` to pre-set the error
+    // without simulating a Save tap. Per AGENTS.md §Testing.3 —
+    // SwiftUI views ship snapshots for their error state.
+    @Test("model detail create flow — context-window over-cap error (light)")
+    func modelDetailProviderContextWindowError() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_context_error_light",
+            contextWindowError: "Maximum context for this model is 1,000,000 tokens."
+        )
+    }
+
+    @Test("model detail create flow — context-window over-cap error (dark)")
+    func modelDetailProviderContextWindowErrorDark() async {
+        await verifyCreateWithProvider(
+            theme: .dark,
+            selection: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_context_error_dark",
+            contextWindowError: "Maximum context for this model is 1,000,000 tokens."
+        )
+    }
+
     private func verifyCreateWithProvider(
         theme: SuperTheme.Identifier,
         selection: SettingsModelDetailPane.InitialSelection,
         availability: AppleFoundationAvailability,
         existingAppleFoundation: Bool,
         name: String,
+        contextWindowError: String? = nil,
         function: String = #function
     ) async {
         let viewModel = makeViewModel(appleFoundationAvailability: availability)
@@ -363,7 +410,8 @@ struct SettingsSheetSnapshotTests {
         let view = SettingsSheetSnapshotHarness(
             viewModel: viewModel,
             initialPane: .modelDetail(id: nil),
-            initialModelDetailSelection: selection
+            initialModelDetailSelection: selection,
+            initialModelDetailContextWindowError: contextWindowError
         )
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
@@ -656,6 +704,9 @@ private struct SettingsSheetSnapshotHarness: View {
     /// Forwarded to `SettingsSheet`'s internal test seam — only
     /// observed when `initialPane == .modelDetail(id: nil)`.
     var initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom
+    /// Forwarded to `SettingsSheet`'s test seam for snapshotting the
+    /// Max-Context inline-error state without driving a Save tap.
+    var initialModelDetailContextWindowError: String?
 
     @State private var presented = true
     @Environment(\.superTheme) private var theme
@@ -668,7 +719,8 @@ private struct SettingsSheetSnapshotHarness: View {
                 isPresented: $presented,
                 viewModel: viewModel,
                 initialPane: initialPane,
-                initialModelDetailSelection: initialModelDetailSelection
+                initialModelDetailSelection: initialModelDetailSelection,
+                initialModelDetailContextWindowError: initialModelDetailContextWindowError
             )
         }
     }

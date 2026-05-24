@@ -94,12 +94,14 @@ public struct SettingsSheet: View {
         viewModel: SettingsViewModel,
         initialPane: Pane,
         initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom,
+        initialModelDetailContextWindowError: String? = nil,
         databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
         self.databaseContext = databaseContext
         self.initialModelDetailSelection = initialModelDetailSelection
+        self.initialModelDetailContextWindowError = initialModelDetailContextWindowError
         if initialPane != .root {
             viewModel.navigationPath = [initialPane]
         }
@@ -109,6 +111,10 @@ public struct SettingsSheet: View {
     /// test seam. `paneContent` forwards it to the modelDetail case so
     /// a pinned selection is honored even after a navigation push.
     private var initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom
+    /// Backing value for the internal `initialModelDetailContextWindowError`
+    /// test seam — lets a snapshot capture the inline-error state
+    /// without simulating a Save tap.
+    private var initialModelDetailContextWindowError: String?
 
     public var body: some View {
         ZStack(alignment: .bottom) {
@@ -204,7 +210,8 @@ public struct SettingsSheet: View {
             SettingsModelDetailPane(
                 viewModel: viewModel,
                 editingId: id,
-                initialSelection: initialModelDetailSelection
+                initialSelection: initialModelDetailSelection,
+                initialContextWindowError: initialModelDetailContextWindowError
             )
         case .personalization:
             SettingsPersonalizationPane(viewModel: viewModel)

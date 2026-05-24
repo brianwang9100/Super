@@ -89,7 +89,8 @@ struct SettingsModelDetailPane: View {
     init(
         viewModel: SettingsViewModel,
         editingId: String?,
-        initialSelection: InitialSelection = .custom
+        initialSelection: InitialSelection = .custom,
+        initialContextWindowError: String? = nil
     ) {
         self.viewModel = viewModel
         self.editingId = editingId
@@ -170,6 +171,11 @@ struct SettingsModelDetailPane: View {
             _apiKey = State(initialValue: "")
             _apiKeyIsPlaceholder = State(initialValue: false)
         }
+        // Test seam: lets snapshot tests render the inline-error
+        // visible state without driving a Save tap. Production
+        // callers always pass nil and the error is set in `save()`
+        // on an over-cap value.
+        _contextWindowError = State(initialValue: initialContextWindowError)
     }
 
     // MARK: - Selection helpers
@@ -776,12 +782,15 @@ struct SettingsModelDetailPane: View {
         }
     }
 
-    /// Helper for ``urlsMatchIgnoringTrailingSlash`` — drops a single
-    /// trailing `/` from the URL's absolute string. Kept tiny so the
-    /// equality semantics stay obvious.
+    /// Helper for ``urlsMatchIgnoringTrailingSlash`` — drops every
+    /// trailing `/` from the URL's absolute string. The loop (rather
+    /// than a single drop) handles values that arrive with multiple
+    /// trailing slashes (`…/v1//`) without falling through to the
+    /// Custom branch.
     static func urlNormalized(_ url: URL) -> String {
-        let s = url.absoluteString
-        return s.hasSuffix("/") ? String(s.dropLast()) : s
+        var s = url.absoluteString
+        while s.hasSuffix("/") { s = String(s.dropLast()) }
+        return s
     }
 
     /// Pure helper that produces the initial @State seed values for a
