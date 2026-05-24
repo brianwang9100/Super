@@ -620,10 +620,13 @@ struct AppShell: View {
 /// semi-expanded tap-target that collapses the chat back to minimized.
 ///
 /// Observes `registry`, `theme`, `appearance`, `chatState`, `chatProgress`,
-/// `chatSemiProgress` — *not* `composerIsFocused`. A composer focus flip
-/// therefore doesn't re-call `activeApplet.rootView()` here, which is what
-/// closes the focus-flip → backdrop-rebuild cascade that prompted the
-/// extraction.
+/// `chatSemiProgress`. Closure-typed inputs (`onBackdropTap`) are
+/// freshly allocated each `AppShell.body` render, so SwiftUI cannot prove
+/// input equality and *will* re-run this body on a composer focus flip
+/// — but it's a small body, far cheaper than the pre-extraction unified
+/// shell body. Stage 2 (typed-dispatch removal of
+/// `MiniApplet.rootView() -> AnyView`) will close the residual
+/// `activeApplet.rootView()` re-wrap cost that remains here.
 private struct BackdropLayer: View {
     let registry: AppletRegistry
     let theme: SuperTheme
@@ -716,8 +719,12 @@ private struct BackdropLayer: View {
 /// progress back to the shell (via the `onProgressChange` /
 /// `onSemiProgressChange` closures).
 ///
-/// Owns the binding to the shell's `@FocusState composerIsFocused` —
-/// when the composer flips focus, only this layer's body re-evaluates.
+/// Owns the binding to the shell's `@FocusState composerIsFocused`
+/// — this is the layer that genuinely needs to re-render on focus
+/// flip (the `TextField` itself lives further down in `ChatOverlay
+/// → ChatScreen → ChatComposer`). The other layers also re-render
+/// on each `AppShell.body` re-eval because their closure inputs
+/// aren't equatable, but their bodies are small.
 private struct ChatLayer: View {
     let viewModel: ChatScreenViewModel?
     let bootstrapError: String?
@@ -841,12 +848,14 @@ private struct SidebarLayer: View {
 /// `settingsViewModel` is wired; `SettingsSheet` itself early-returns
 /// on `isPresented == false`.
 ///
-/// `makeDatabaseContext` is taken as a factory closure (not a value)
-/// so the `DatabaseContext` is only constructed when the sheet
-/// actually mounts — avoiding a fresh `DatabaseContext` allocation on
-/// every `AppShell.body` re-run (which fires per drag frame). Matches
-/// the lazy-construction semantics of the pre-extraction inline
-/// `SettingsSheet(...)` call.
+/// `makeDatabaseContext` is a factory closure (not a stored value) so
+/// the `.readOnly { ... }` allocation is skipped during the bootstrap
+/// window where `settingsViewModel` is still nil. Once the view model
+/// is wired, this body re-runs on each `AppShell.body` re-eval (closure
+/// inputs aren't equatable, so SwiftUI can't skip it) and a fresh
+/// `DatabaseContext` is constructed per render — same per-frame churn
+/// the pre-extraction inline `SettingsSheet(...)` call already had, so
+/// no behavior regression vs. before the extraction.
 private struct SettingsLayer: View {
     @Binding var settingsOpen: Bool
     let settingsViewModel: SettingsViewModel?
