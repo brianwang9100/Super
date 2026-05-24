@@ -371,15 +371,7 @@ struct SettingsViewModelTests {
 
     @Test("updateModel on an .appleFoundation row with baseURL: nil preserves nil baseURL")
     func updateModelOnAppleFoundationRowWithNilBaseURL() async {
-        // The active AFM edit path: the pane passes `baseURL: nil`
-        // to `updateModel` (now that the signature widened to
-        // `URL?`). The `existing.kind == .appleFoundation` switch
-        // arm must preserve the row's nil URL — if someone deletes
-        // the `.appleFoundation` arm the row would fall through to
-        // the `.openAICompatible` branch, evaluate `nil ?? nil`,
-        // and silently zero out a non-AFM row's URL the next time
-        // an AFM edit happens to share that code path. Per AGENTS.md
-        // §Testing rule 3 — bug fix ships a regression test.
+        // Regression test for the AFM edit path through `updateModel(baseURL: nil)`.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "afm",
@@ -397,20 +389,24 @@ struct SettingsViewModelTests {
         let vm = makeViewModel(modelRepository: modelRepo)
         await vm.load()
 
+        // Distinguishable name + thinking flip prove the write path ran.
         await vm.updateModel(
             id: "afm",
-            name: "Apple Intelligence",
+            name: "Apple Intelligence (renamed via nil-URL edit)",
             baseURL: nil,
             modelId: "system-default",
             apiKey: "",
-            supportsThinking: false,
-            maxContextTokens: 4_096
+            supportsThinking: true,
+            maxContextTokens: 8_192
         )
 
         let saved = try? await modelRepo.fetch(id: "afm")
         #expect(saved?.kind == .appleFoundation)
         #expect(saved?.baseURL == nil)
         #expect(saved?.apiKeyRef == nil)
+        #expect(saved?.name == "Apple Intelligence (renamed via nil-URL edit)")
+        #expect(saved?.supportsThinking == true)
+        #expect(saved?.maxContextTokens == 8_192)
         #expect(modelRepo.storedKeys.isEmpty)
     }
 
