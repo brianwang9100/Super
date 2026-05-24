@@ -68,6 +68,7 @@ Public App Store ship: free, BYOK, open source, local-first AI Bible app. Siblin
 - [ ] **P1** Reading streak surfacing in the Plans home view + chat cards.
 
 ### SB-M4 — App Store polish
+- [ ] **P2** Add `com.apple.developer.default-data-protection = NSFileProtectionComplete` to both targets' entitlements so the SQLite WAL/SHM sidecars (and any other ad-hoc files created in the sandbox) get the strictest "encrypted while locked" class. iOS already defaults to `.completeUntilFirstUserAuthentication` for files without explicit protection; this entitlement upgrades the default app-wide. See `BibleApplet.dataDirectory()` doc comment for context.
 - [ ] **P1** Final app icon + accent color.
 - [ ] **P1** App Store Connect listing: app name, subtitle, screenshots (iPhone 17 form factor), preview video, description, keywords, support URL.
 - [ ] **P1** App Privacy nutrition label per the no-third-party-SDKs commitment.

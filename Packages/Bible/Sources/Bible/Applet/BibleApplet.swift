@@ -95,15 +95,18 @@ public struct BibleApplet: MiniApplet {
 
     /// `Application Support/Super/`, created if missing — the same directory
     /// the shell uses for `chat.sqlite`. The `.complete` protection class is
-    /// applied here (best-effort, iOS-enforced) so the directory and any
-    /// SQLite files inheriting from it stay encrypted while the device is
-    /// locked — SuperOS's `SuperOSAppBootstrap.ensureDirectoryExists` sets
-    /// the same attribute when it opens `chat.sqlite`, but SuperBible has no
-    /// equivalent shell-side hook at SB-M0, so applet-owned databases need
-    /// to pin the attribute themselves. The bible.sqlite file itself is
-    /// independently pinned to `.complete` inside `BibleDatabase.open(in:)`
-    /// (the belt to this directory-level suspenders); the WAL/SHM siblings
-    /// SQLite creates at runtime inherit the directory's class at creation.
+    /// applied here (best-effort, iOS-enforced) so the directory itself is
+    /// pinned. The on-disk `bible.sqlite` is independently pinned to
+    /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the SuperOS
+    /// `SuperOSAppBootstrap.ensureDirectoryExists` + `ChatDatabase.open`
+    /// pattern. The `-wal` / `-shm` sidecars SQLite creates at runtime fall
+    /// back to the app's default protection class (iOS defaults to
+    /// `.completeUntilFirstUserAuthentication`, not `.none` — see Apple's
+    /// File-System Data Protection guide). If stricter "encrypted while
+    /// locked" semantics are needed for the sidecars too, the bulletproof
+    /// fix is adding `com.apple.developer.default-data-protection =
+    /// NSFileProtectionComplete` to the target entitlements — tracked as
+    /// an SB-M4 hardening item in `TODO.md`.
     private static func dataDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
