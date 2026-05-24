@@ -305,6 +305,13 @@ struct SettingsModelDetailPane: View {
             // either fail at send-time or leak a key over cleartext.
             guard let url = currentProvider.defaultBaseURL,
                   isCleartextSafeForCredentials(url) else { return false }
+            // A catalog misconfiguration leaving `models` empty (or a
+            // partial reseed that clears `modelCatalogID`) must not
+            // let Save persist a row with `modelId == ""`. The
+            // catalog invariant test `nonCustomProvidersHaveModels`
+            // covers this for the shipped catalog; this guard
+            // anchors the invariant at the validation site.
+            guard !modelCatalogID.isEmpty else { return false }
             return true
         }
         // Custom: URL + modelId are user-typed.
