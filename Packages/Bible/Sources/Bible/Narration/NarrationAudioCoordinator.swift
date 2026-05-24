@@ -10,7 +10,7 @@ import Foundation
 /// state into this protocol is **not yet wired** — `BibleApplet` currently
 /// constructs `AVSpeechSynthesizerNarrationService(coordinator: nil)`, so
 /// the preemption check is a no-op in production. The arbitration ships in
-/// a follow-up PR that lands the adapter in `AppBootstrap`; until then,
+/// a follow-up PR that lands the adapter in `SuperOSAppBootstrap`; until then,
 /// users who tap Narrate while dictating in Chat will see the two audio
 /// sessions race for the category. The follow-up requires touching Chat +
 /// Shell + Core surfaces and is out of scope for this PR.

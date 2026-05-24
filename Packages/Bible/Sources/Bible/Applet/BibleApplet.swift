@@ -41,7 +41,7 @@ public struct BibleApplet: MiniApplet {
     /// The database opens synchronously here: it is two small tables behind
     /// two tiny migrations, and the applet is built in `ContentView`'s
     /// initializer where no `async` context exists. Should the Bible schema
-    /// ever grow heavy, move this open to `AppBootstrap` alongside
+    /// ever grow heavy, move this open to `SuperOSAppBootstrap` alongside
     /// `ChatDatabase` rather than blocking the launch path.
     @MainActor
     public init() {
@@ -55,7 +55,7 @@ public struct BibleApplet: MiniApplet {
         // init constructs an `AVSpeechSynthesizerNarrationService`
         // with `coordinator: nil`, so the preempt-on-active-mic check
         // is a no-op in production today. The adapter needs to live
-        // at the composition root (`AppBootstrap`) to bridge Bible →
+        // at the composition root (`SuperOSAppBootstrap`) to bridge Bible →
         // Chat without violating the no-cross-applet-imports rule.
         self.viewModel = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
@@ -94,7 +94,19 @@ public struct BibleApplet: MiniApplet {
     }
 
     /// `Application Support/Super/`, created if missing — the same directory
-    /// the shell uses for `chat.sqlite`.
+    /// the shell uses for `chat.sqlite`. The `.complete` protection class is
+    /// applied here (best-effort, iOS-enforced) so the directory itself is
+    /// pinned. The on-disk `bible.sqlite` is independently pinned to
+    /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the SuperOS
+    /// `SuperOSAppBootstrap.ensureDirectoryExists` + `ChatDatabase.open`
+    /// pattern. The `-wal` / `-shm` sidecars SQLite creates at runtime fall
+    /// back to the app's default protection class (iOS defaults to
+    /// `.completeUntilFirstUserAuthentication`, not `.none` — see Apple's
+    /// File-System Data Protection guide). If stricter "encrypted while
+    /// locked" semantics are needed for the sidecars too, the bulletproof
+    /// fix is adding `com.apple.developer.default-data-protection =
+    /// NSFileProtectionComplete` to the target entitlements — tracked as
+    /// an SB-M4 hardening item in `TODO.md`.
     private static func dataDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -104,6 +116,10 @@ public struct BibleApplet: MiniApplet {
         )
         let directory = base.appending(path: "Super", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.complete],
+            ofItemAtPath: directory.path
+        )
         return directory
     }
 }

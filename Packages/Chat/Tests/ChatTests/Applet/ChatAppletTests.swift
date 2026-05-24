@@ -5,7 +5,7 @@ import Testing
 
 /// Smoke checks for `ChatApplet`. The conformance exists primarily as a
 /// reference / fixture (Chat is not registered as a backdrop applet in
-/// production — `AppShell` omits it deliberately) but `AppBootstrap`
+/// production — `AppShell` omits it deliberately) but the host bootstrap
 /// reads `ChatApplet().systemPrompt` to load the bundled chat-assistant
 /// briefing fed to `ContextAssembler` on every turn. A regression that
 /// silently drops `Resources/DefaultSystemPrompt.md` from the Chat

@@ -102,7 +102,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// Release launch — GRDB would otherwise call
     /// `LLMProviderKind(rawValue: "debug")` during decode, get `nil`, and
     /// throw `DecodingError.dataCorrupted`, propagating up through
-    /// `AppBootstrap`. Rows with an unknown `kind` value are silently
+    /// the host bootstrap. Rows with an unknown `kind` value are silently
     /// excluded from every read; the unreferenced row stays on disk
     /// unless a future migration cleans it up.
     private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {

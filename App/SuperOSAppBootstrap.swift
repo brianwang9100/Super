@@ -8,7 +8,7 @@ import Todo
 
 /// Wired-up dependency graph the Shell hands to its views.
 ///
-/// Constructed exactly once on app launch by `AppBootstrap.bootstrap()`. The
+/// Constructed exactly once on app launch by `SuperOSAppBootstrap.bootstrap()`. The
 /// Shell stores it in app state and injects the pieces individual views need
 /// via `@Environment` (UI wiring lands in M7).
 @MainActor
@@ -54,7 +54,7 @@ struct AppDependencies {
 ///
 /// Lives in `App/` (not in any package) because it pulls together pieces
 /// from both Core and Chat — i.e. it is the place those modules first meet.
-enum AppBootstrap {
+enum SuperOSAppBootstrap {
     /// `UserDefaults` key for the persisted backdrop applet ID. Owned here
     /// (rather than in `AppShell`) now that the registry is built during
     /// bootstrap — the read and the write must agree on the key or

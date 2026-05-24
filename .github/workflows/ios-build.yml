@@ -14,8 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-app:
+    # One leg per app target. Both build in parallel on their own runners;
+    # the shared SPM cache (key includes project.yml so target-shape changes
+    # invalidate) means the second leg mostly hits cached checkouts for
+    # Core / Chat / Bible. fail-fast: false so a Super-only break doesn't
+    # cancel the SuperBible leg (and vice versa). Full rationale:
+    # docs/superpowers/specs/2026-05-23-superbible-fork-design.md §5.
+    #
+    # Job is intentionally NOT named `build` — the matrix publishes
+    # per-leg checks (`build-app (Super)`, `build-app (SuperBible)`), and
+    # the aggregation gate below is named `build` so it takes over the
+    # pre-existing required-check name without a branch-protection edit.
     runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [Super, SuperBible]
     steps:
       - uses: actions/checkout@v6
 
@@ -39,25 +54,52 @@ jobs:
         run: xcodegen generate
 
       - name: Cache SwiftPM checkouts
+        # Cache key includes project.yml so adding / renaming / removing a
+        # target invalidates the SPM cache — a stale cache hiding a real
+        # build issue is documented in the SB-M0 fork spec §5.4 as the
+        # primary risk of this matrix layout.
         uses: actions/cache@v5
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
             ~/Library/Caches/org.swift.swiftpm
-          key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
             ios-spm-${{ runner.os }}-
 
       - name: Build (iOS Simulator)
+        env:
+          SCHEME: ${{ matrix.scheme }}
         run: |
           set -o pipefail
           xcodebuild build \
             -project Super.xcodeproj \
-            -scheme Super \
+            -scheme "$SCHEME" \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
+
+  build:
+    # Aggregation gate. Branch protection requires a status check named
+    # literally `build`; the `build-app` matrix above publishes per-scheme
+    # checks (`build-app (Super)`, `build-app (SuperBible)`), so this job
+    # re-exports a single stable `build` status that depends on every leg.
+    # Same pattern as the `ios-test` gate below. A required check that
+    # never reports blocks merge forever — see the note at the top of file.
+    needs: build-app
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify all app-build matrix legs passed
+        env:
+          RESULT: ${{ needs.build-app.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::One or more build-app matrix legs failed."
+            exit 1
+          fi
+          echo "All build-app matrix legs passed."
 
   discover:
     # Emits the snapshot-test matrix by globbing for packages that own a
