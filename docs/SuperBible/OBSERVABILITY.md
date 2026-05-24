@@ -19,7 +19,7 @@
 
 ## SuperBible-specific notes
 
-- **One MetricKit subscriber is enough.** The `MetricKitManager` actor (per [`../OBSERVABILITY.md`](../OBSERVABILITY.md) §4.1) registers from `SuperBibleAppBootstrap`. Payloads persist to `~/Library/Application Support/SuperBible/diagnostics.jsonl` (note: SuperOS persists to its own directory under `SuperOS/`; the two apps don't share state).
+- **One MetricKit subscriber is enough.** The `MetricKitManager` final class (per [`../OBSERVABILITY.md`](../OBSERVABILITY.md) §4.1) registers from `SuperBibleAppBootstrap` and is held on the dependency container for the app's lifetime. Payloads persist via the injected `DiagnosticLogStore` actor to `~/Library/Application Support/SuperBible/diagnostics.jsonl` (note: SuperOS persists to its own directory under `SuperOS/`; the two apps don't share state).
 - **No analytics on personal study patterns.** Verse-reads, highlight color choices, plan-day completions, memorize streaks, quiz answers, chat messages: **never collected, never logged, never transmitted.** The closest thing to "product analytics" is App Store Connect's aggregate install + retention curves.
 - **Settings → About → "Export recent diagnostic log"** is the one path by which any log data leaves the device, and the user is the one who chooses the destination (email, Files, AirDrop, GitHub issue). Nothing is sent anywhere automatically.
 - **App Store privacy nutrition label** (per [`../OBSERVABILITY.md`](../OBSERVABILITY.md) §6.2) declares only crash / performance / diagnostic data, all via App Store Connect opt-in. Identifiers, product interaction, user content, location, contacts — none collected.

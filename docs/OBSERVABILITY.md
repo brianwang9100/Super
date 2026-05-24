@@ -93,7 +93,7 @@ Diagnostics get persisted to an on-device debug log the user can manually export
 
 ### 4.1 MetricKit subscriber
 
-`MXMetricManagerSubscriber` refines `NSObjectProtocol`, so the conformer must be a class (an actor can't inherit from `NSObject`). Make it a `final class` and route the actual file I/O through an internal `actor` so writes are serialized without blocking the MetricKit delivery thread.
+`MXMetricManagerSubscriber` refines `NSObjectProtocol`, so the conformer must be a class (an actor can't inherit from `NSObject`). Make it a `final class` and inject a separate `DiagnosticLogStore` actor that serializes JSONL appends — writes hop into the actor off the MetricKit delivery thread and don't block it.
 
 Per [`AGENTS.md`](../AGENTS.md) § Architecture Rules — **no static singletons**: instantiate `MetricKitManager` once in the composition root (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`), hold it on the dependency container, and pass it into views via SwiftUI's `@Environment`:
 
