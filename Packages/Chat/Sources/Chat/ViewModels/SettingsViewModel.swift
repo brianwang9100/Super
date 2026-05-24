@@ -596,6 +596,12 @@ public final class SettingsViewModel {
                 nextBaseURL = baseURL ?? existing.baseURL
             case .appleFoundation:
                 nextBaseURL = existing.baseURL
+            #if DEBUG
+            case .debug:
+                // Debug provider has no URL — preserve whatever was
+                // persisted (always nil for canned-response rows).
+                nextBaseURL = existing.baseURL
+            #endif
             }
             let updated = ModelConfigurationRecord(
                 id: existing.id,
