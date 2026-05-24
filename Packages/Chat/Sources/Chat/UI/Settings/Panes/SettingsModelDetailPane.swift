@@ -446,8 +446,12 @@ struct SettingsModelDetailPane: View {
 
     @ViewBuilder
     private func modelPickerRow(borderBottom: Bool) -> some View {
-        let label = currentCatalogModel?.displayName
-            ?? (currentProvider.models.first?.displayName ?? "")
+        // Placeholder for the unresolved state (modelCatalogID empty
+        // or absent from the provider's catalog) — distinguishes
+        // "nothing selected yet" from "the first option is selected,"
+        // which would otherwise look identical and let Save commit
+        // a value the user didn't choose.
+        let label = currentCatalogModel?.displayName ?? "Select model…"
         pickerRow(label: "Model", value: label, borderBottom: borderBottom) {
             ForEach(currentProvider.models) { model in
                 Button(action: { applyModelSelection(model.id) }) {

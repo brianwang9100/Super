@@ -132,9 +132,16 @@ public enum LLMProviderCatalog {
                 // Opus 4.7 (released 2026-04-16) ships a 1M-token
                 // context window at standard pricing — no long-context
                 // premium tier.
+                // Anthropic wire ids accept both dateless aliases and
+                // fully-qualified dated forms. Haiku 4.5 ships only
+                // under its dated id per the current model card
+                // (`-20251001`); Opus 4.7 and Sonnet 4.6 accept the
+                // dateless aliases — using them keeps the catalog
+                // readable and the alias resolves to the current
+                // dated build server-side.
                 LLMCatalogModel(id: "claude-opus-4-7", displayName: "Opus 4.7", maxContextTokens: 1_000_000, supportsThinking: true),
                 LLMCatalogModel(id: "claude-sonnet-4-6", displayName: "Sonnet 4.6", maxContextTokens: 200_000, supportsThinking: true),
-                LLMCatalogModel(id: "claude-haiku-4-5", displayName: "Haiku 4.5", maxContextTokens: 200_000, supportsThinking: false),
+                LLMCatalogModel(id: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", maxContextTokens: 200_000, supportsThinking: false),
             ]
         ),
         LLMProviderCatalogEntry(
