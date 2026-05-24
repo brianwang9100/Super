@@ -17,34 +17,33 @@ import UIKit
 struct ContentView: View {
     let state: BootstrapState
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        // Per-branch .transition + parent .animation = real cross-fade.
         Group {
             switch state {
             case .loading:
-                LoadingScreen()
+                // Pin Light: matches the Info.plist SplashBackground colorset.
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
             case .failed(let message):
                 FailureScreen(message: message)
+                    .transition(.opacity)
             case .ready(let dependencies):
                 AppShell(dependencies: dependencies)
+                    .transition(.opacity)
             }
         }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: state.discriminant
+        )
     }
 }
 
-// MARK: - Loading / failure
-
-private struct LoadingScreen: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("Super")
-                .font(.system(size: 36, weight: .regular, design: .serif))
-                .italic()
-            ProgressView("Starting Super…")
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+// MARK: - Failure
 
 private struct FailureScreen: View {
     let message: String
@@ -729,28 +728,53 @@ private struct ChatLayer: View {
     let onProgressChange: (Double) -> Void
     let onSemiProgressChange: (Double) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Discriminant for the chat-overlay vs error vs splash fallback so
+    /// `.animation(value:)` can cross-fade the inner swap without forcing
+    /// either branch's value type to be `Equatable`.
+    private var innerDiscriminant: Int {
+        if viewModel != nil { 0 }
+        else if bootstrapError != nil { 1 }
+        else { 2 }
+    }
+
     var body: some View {
-        if let viewModel {
-            ChatOverlay(
-                state: $chatState,
-                viewModel: viewModel,
-                composerIsFocused: composerIsFocused,
-                onManageModels: onManageModels,
-                onAddModelRequested: onAddModelRequested
-            )
-            .superTheme(theme)
-            .chatAppearance(appearance)
-            .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
-                onProgressChange(newValue)
+        // Per-branch .transition + outer .animation = real cross-fade.
+        Group {
+            if let viewModel {
+                ChatOverlay(
+                    state: $chatState,
+                    viewModel: viewModel,
+                    composerIsFocused: composerIsFocused,
+                    onManageModels: onManageModels,
+                    onAddModelRequested: onAddModelRequested
+                )
+                .superTheme(theme)
+                .chatAppearance(appearance)
+                .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
+                    onProgressChange(newValue)
+                }
+                .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
+                    onSemiProgressChange(newValue)
+                }
+                .transition(.opacity)
+            } else if let bootstrapError {
+                FailureScreen(message: bootstrapError)
+                    .transition(.opacity)
+            } else {
+                // Pin Light: matches the outer ContentView splash before
+                // user settings load, so the fallback during the brief
+                // pre-ensureViewModel window doesn't flash a wrong theme.
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
             }
-            .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
-                onSemiProgressChange(newValue)
-            }
-        } else if let bootstrapError {
-            FailureScreen(message: bootstrapError)
-        } else {
-            LoadingScreen()
         }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: innerDiscriminant
+        )
     }
 }
 
