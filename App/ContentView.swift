@@ -240,13 +240,15 @@ struct AppShell: View {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
-                // Read-only context so SettingsMemoryPane's `@Query`
-                // observes the same `chat.sqlite` the LLM writes
-                // through MemoryTool. Without it the pane's @Query
-                // falls back to its empty defaultValue and the
-                // user sees "No memories yet" even when memories
-                // exist.
-                databaseContext: .readOnly { dependencies.chatDatabase.queue },
+                // Lazy factory — the read-only context is only built
+                // when `SettingsLayer.body` actually mounts the sheet,
+                // not on every `AppShell.body` re-run (which fires per
+                // drag frame). The context grants `SettingsMemoryPane`'s
+                // `@Query` read access to the same `chat.sqlite` the
+                // LLM writes through MemoryTool — without it the pane
+                // falls back to its empty defaultValue and the user
+                // sees "No memories yet" even when memories exist.
+                makeDatabaseContext: { .readOnly { dependencies.chatDatabase.queue } },
                 theme: theme,
                 appearance: appearance
             )
@@ -838,10 +840,17 @@ private struct SidebarLayer: View {
 /// Settings sheet layer. Body only renders content when
 /// `settingsViewModel` is wired; `SettingsSheet` itself early-returns
 /// on `isPresented == false`.
+///
+/// `makeDatabaseContext` is taken as a factory closure (not a value)
+/// so the `DatabaseContext` is only constructed when the sheet
+/// actually mounts — avoiding a fresh `DatabaseContext` allocation on
+/// every `AppShell.body` re-run (which fires per drag frame). Matches
+/// the lazy-construction semantics of the pre-extraction inline
+/// `SettingsSheet(...)` call.
 private struct SettingsLayer: View {
     @Binding var settingsOpen: Bool
     let settingsViewModel: SettingsViewModel?
-    let databaseContext: DatabaseContext
+    let makeDatabaseContext: () -> DatabaseContext
     let theme: SuperTheme
     let appearance: ChatAppearance
 
@@ -850,7 +859,7 @@ private struct SettingsLayer: View {
             SettingsSheet(
                 isPresented: $settingsOpen,
                 viewModel: settingsViewModel,
-                databaseContext: databaseContext
+                databaseContext: makeDatabaseContext()
             )
             .superTheme(theme)
             .chatAppearance(appearance)
