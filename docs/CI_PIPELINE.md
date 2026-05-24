@@ -9,7 +9,26 @@
 > - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-26` runner pinned to Xcode 26.4.1, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`. The `ios-test` job runs Chat snapshot + unit tests on an iPhone simulator at iOS 26.4.
 > - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-26` runner pinned to Xcode 26.4.1 (iOS 26.4 SDK), archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
 >
-> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD for the open items.
+> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
+
+### Two-target app build matrix (planned, SB-M0)
+
+When the SuperBible app target lands (see [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §13 and [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md)), `ios-build.yml` adds a second matrix entry so **both targets build on every PR, in parallel**:
+
+```yaml
+strategy:
+  matrix:
+    scheme: [Super, SuperBible]
+```
+
+Rationale (full details in the fork spec §5):
+
+- **No path-filter on app builds.** False negatives are worse than the duplicate-cached-build cost.
+- **Shared derived-data cache.** `actions/cache` keyed on `hashFiles('**/Package.resolved', 'project.yml')` over `~/Library/Developer/Xcode/DerivedData`. Both jobs share the cache, so the second build mostly hits cache for the shared Core / Chat / Bible packages.
+- **Tests stay in packages**, not in `ios-build`. The `swift-test.yml` matrix auto-discovers packages so Plans / Memorize / Quiz / Learn join the test suite automatically as they land.
+- **`testflight.yml` parameterized by scheme.** Tag conventions: `release/super-v*` ships SuperOS; `release/superbible-v*` ships SuperBible. Each tag triggers a single-target archive.
+- **Branch protection:** requires both `ios-build (Super)` and `ios-build (SuperBible)` as separate checks.
+- **Wall-clock target:** ~8 min cold, ~3–4 min cached — no meaningful regression vs today's single-target build, because parallel runners + shared cache absorb the duplicate target-specific work. Runner-minutes are free on public GitHub Actions for open-source repos.
 
 ---
 

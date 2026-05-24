@@ -188,6 +188,8 @@ finance.spendByCategory(range)
 
 **Purpose:** Reading, searching, highlighting, and conversing with scripture.
 
+> **Shared between SuperOS and SuperBible.** The Bible package is the centerpiece of the SuperBible app (the public App Store target — see §13) and a member of SuperOS's broader applet set. Same code, same data model, same bi-directional contract.
+
 **Core Capabilities:**
 - Multiple translations (user-selectable, BYO if not bundled)
 - Reading view with chapter navigation, daily reading plans
@@ -628,7 +630,7 @@ Super/
 ## 11. Open Questions & Future Considerations
 
 ### Open Questions
-1. **Monetization model?** Free with limits? Subscription for AI usage? One-time purchase?
+1. ~~**Monetization model?** Free with limits? Subscription for AI usage? One-time purchase?~~ **Resolved (2026-05-23):** SuperBible (App Store target) ships free, BYOK, no ads, no IAP, no premium tier, with an optional GitHub Sponsors link in Settings → About. SuperOS is the founder's personal app and has no monetization surface. See [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md) §6.
 2. **Collaboration features?** Shared todo lists, shared bible study notes — adds significant complexity (real-time sync, conflict resolution, permissions)
 3. **Widget support?** iOS widgets for quick glance at todos and finance summaries
 4. **Siri integration?** Register Siri Shortcuts / App Intents for system-level voice control
@@ -665,7 +667,28 @@ These mini-apps are not in scope for v1 but are *expected* additions. The archit
 
 ---
 
-## 13. Document Index
+## 13. App targets: SuperOS vs SuperBible
+
+The Super monorepo ships **two distinct iOS apps** from a shared codebase:
+
+| | **SuperOS** | **SuperBible** |
+|---|---|---|
+| **Audience** | Founder's personal use | Public, free, App Store |
+| **Bundle ID** | `com.brianwang.Super` | `com.brianwang.SuperBible` |
+| **App Store** | Not heading to the App Store | Public release |
+| **Applet set** | Chat + Bible + Todo (+ future Recipes, Calendar, Finance, Home, …) | Chat + Bible + Plans (+ future Memorize, Quiz, Learn) |
+| **Backend** | TypeScript + Hono + Drizzle + Postgres + Redis (per `SERVER_ARCHITECTURE.md`) | None. Local-only. CloudKit + Sign in with Apple as the v2 upgrade if traction warrants. |
+| **Monetization** | None | Free, BYOK, no ads, no IAP. Optional GitHub Sponsors link. |
+
+Both apps share the same `Core`, `Chat`, and `Bible` packages. Each has its own composition root (`App/SuperOSApp.swift` and `App-SuperBible/SuperBibleApp.swift`) that registers a different applet set. Every architectural decision in this document — `MiniApplet` protocol, event bus, GRDB-per-applet, BYOK + AFM default, bi-directional AI contract — applies to both apps unchanged.
+
+**Why two apps:** SuperOS is too diffuse to launch publicly; SuperBible is sharp, focused, and free. Splitting the targets keeps the founder's personal app evolving on its own roadmap while the public product gets shipped, reviewed, and improved against real user feedback.
+
+Full rationale and milestone plan in [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md).
+
+---
+
+## 14. Document Index
 
 This product vision will be decomposed into the following detailed specification documents:
 
@@ -692,3 +715,6 @@ This product vision will be decomposed into the following detailed specification
 | `AI_TOOLS.md` | AI development tools evaluation (Axiom, GSD, Context7) with security | Draft |
 | `DEVELOPMENT_SETUP.md` | Clone, build, deploy, server first-run wizard, iOS setup, troubleshooting | Draft |
 | `API_DESIGN.md` | Backend API contracts & AI tool definitions | Planned |
+| `SuperBible/OVERVIEW.md` | SuperBible app target — one-pager intro for contributors | Draft |
+| `SuperBible/OBSERVABILITY.md` | SuperBible observability — Apple-built-in only, no third-party SDKs | Draft |
+| `superpowers/specs/2026-05-23-superbible-fork-design.md` | SuperBible fork design — architecture, monetization, CI, cloud roadmap | Draft |

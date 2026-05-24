@@ -99,6 +99,35 @@ open Super.xcodeproj
 
 Swift packages (GRDB, GRDBQuery, GRDBSnapshotTesting, swift-markdown-ui, Splash, swift-snapshot-testing) resolve automatically via SPM on first open.
 
+### 5.1 Picking an app target
+
+This monorepo ships two app targets (see [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §13):
+
+| Scheme | App | Composition root | Applet set |
+|---|---|---|---|
+| `Super` | SuperOS (personal) | `App/SuperOSApp.swift` | Chat + Bible + Todo |
+| `SuperBible` *(planned, SB-M0)* | SuperBible (App Store target) | `App-SuperBible/SuperBibleApp.swift` | Chat + Bible + Plans |
+
+In Xcode: pick the scheme from the toolbar dropdown next to the run button, then ⌘R. From the command line:
+
+```bash
+# SuperOS
+xcodebuild build \
+  -project Super.xcodeproj \
+  -scheme Super \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  CODE_SIGNING_ALLOWED=NO
+
+# SuperBible (once the target is wired up at SB-M0)
+xcodebuild build \
+  -project Super.xcodeproj \
+  -scheme SuperBible \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Both apps share `Core`, `Chat`, and `Bible`. SPM resolves and shared-package compile happen once per `DerivedData`, so the second build after switching schemes is fast.
+
 ### Signing config (device builds and Release archives)
 
 Super is open source — personal Apple Developer team IDs and signing settings live in `Config/Local.xcconfig`, which is gitignored. `project.yml` wires `Config/Base.xcconfig` (committed) as the `baseConfigurationReference` for both Debug and Release; `Base.xcconfig` does `#include? "Local.xcconfig"` (the `?` makes the include optional, so Simulator/CI builds work without it).

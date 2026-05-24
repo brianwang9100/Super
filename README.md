@@ -5,9 +5,14 @@
 [![SwiftLint](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml)
 [![Secrets Scan](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml)
 
-A chat-first, AI-native productivity app for iOS and macOS. Chat is the host surface; mini-apps (ToDo, Recipes, Bible, Finance, …) plug into the conversation in both directions — the AI can drive them via tool calls, and any record can be piped back into chat.
+A monorepo containing **two apps** built from one shared codebase:
 
-> **Status:** early development. Chat applet only; mini-apps are designed but not yet built.
+- **SuperOS** — a chat-first, AI-native personal productivity app (Chat host + ToDo + Recipes + Finance + …). Founder's personal app, not heading to the App Store.
+- **SuperBible** — a chat-first AI Bible app: read scripture, follow plans, and converse with an AI about what you're reading. Free, BYOK, open source, local-first. **Public App Store target.**
+
+Both apps share `Core`, `Chat`, and `Bible` packages; each ships its own composition root and applet set. See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md) for the fork rationale.
+
+> **Status:** Super MVP M0–M12 complete (2026-05-10) — Chat is shipped, Bible and Todo packages exist in the repo, the SuperOS app target is buildable. SuperBible target is **not yet wired up** — see [`TODO.md`](TODO.md) § SuperBible for the SB-M0 through SB-M5 plan.
 
 See [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) for the long version.
 
@@ -34,14 +39,27 @@ xcodegen generate          # produces Super.xcodeproj from project.yml
 open Super.xcodeproj
 ```
 
-Pick an iPhone simulator and ⌘R. On first launch the app drops you into a fresh chat. Open Settings → Models to add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, etc.) and an API key. The keys live in the iOS Keychain — they never leave the device.
+Two app schemes are generated:
+
+- **`Super`** — the SuperOS app target (Chat + Bible + Todo).
+- **`SuperBible`** — the SuperBible app target (Chat + Bible + Plans). *Planned. Wired up at milestone SB-M0 — see [`TODO.md`](TODO.md) § SuperBible.*
+
+Pick a scheme + an iPhone simulator and ⌘R. On first launch the app seeds Apple Foundation Models as the default chat model (free, on-device, no key). To use a stronger model: Settings → Models to add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, Anthropic, etc.) and an API key. Keys live in the iOS Keychain — they never leave the device.
 
 To run from the command line instead:
 
 ```bash
+# SuperOS (current default)
 xcodebuild build \
   -project Super.xcodeproj \
   -scheme Super \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  CODE_SIGNING_ALLOWED=NO
+
+# SuperBible (once SB-M0 lands)
+xcodebuild build \
+  -project Super.xcodeproj \
+  -scheme SuperBible \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   CODE_SIGNING_ALLOWED=NO
 ```
@@ -63,17 +81,24 @@ CI runs both on every push. Coverage thresholds (per [`AGENTS.md`](AGENTS.md)): 
 
 ```
 Super/
-├── App/                       # iOS app target — composition root only
+├── App/                       # SuperOS app target — composition root only
+├── App-SuperBible/            # SuperBible app target — composition root only (planned, SB-M0)
 ├── Packages/
-│   ├── Core/                  # Shared primitives: HTTP, SSE, JSON, LLM, Tools, Ambient
-│   └── Chat/                  # Chat applet (models, repos, orchestration, UI, voice, settings)
+│   ├── Core/                  # Shared primitives: HTTP, SSE, JSON, LLM, Tools, Ambient (shared by both apps)
+│   ├── Chat/                  # Chat applet — host surface (shared by both apps)
+│   ├── Bible/                 # Bible applet (shared by both apps)
+│   ├── Todo/                  # Todo applet (SuperOS only)
+│   └── Plans/, Memorize/, …   # SuperBible-only applets (planned)
 ├── Scripts/
-│   └── ChatLiveLLM/           # Standalone smoke runner against a real local LLM
+│   ├── ChatLiveLLM/           # Standalone smoke runner against a real local LLM
+│   └── xcodegen-extras/       # Per-package test schemes (xcodegen can't model these from project.yml)
 ├── docs/                      # Design + architecture docs (one source of truth per area)
 │   ├── PRODUCT_VISION.md
 │   ├── DESIGN.md
 │   ├── MOBILE_ARCHITECTURE.md
+│   ├── OBSERVABILITY.md       # Apple-built-in posture (no third-party SDKs)
 │   ├── Chat/                  # Chat-specific architecture + design notes
+│   ├── SuperBible/            # SuperBible-specific overview + observability
 │   └── superpowers/specs/     # Per-milestone implementation specs
 ├── project.yml                # XcodeGen project definition
 ├── AGENTS.md                  # Project-wide rules (CLAUDE.md is a symlink to this)
