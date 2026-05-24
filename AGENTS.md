@@ -221,7 +221,7 @@ Every PR description includes a **Test Coverage** section naming the new/updated
 
 - TypeScript + Hono + Drizzle + PostgreSQL + Redis
 - Single backend with domain-separated code modules
-- Backend proxies all LLM API calls (API keys never on client)
+- Backend proxies all LLM API calls (API keys never on client) — **applies to SuperOS only.** SuperBible is deliberately serverless (local-only v1, CloudKit-private as the planned v2 cloud path); SuperBible's Chat issues BYOK LLM calls **directly** from device to provider, with keys held in the iOS Keychain. See [`docs/SuperBible/OVERVIEW.md`](./docs/SuperBible/OVERVIEW.md) and [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](./docs/superpowers/specs/2026-05-23-superbible-fork-design.md) §7. Agents working on SuperBible Chat must NOT introduce a backend proxy.
 
 ## AGENTS.md Policy
 

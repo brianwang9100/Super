@@ -112,13 +112,16 @@ final class MetricKitManager: NSObject, MXMetricManagerSubscriber {
         MXMetricManager.shared.add(self)
     }
 
-    func didReceive(_ payloads: [MXMetricPayload]) {
+    // MetricKit invokes these callbacks on a background queue. `nonisolated`
+    // keeps Swift 6 from defaulting them to MainActor (which would deadlock
+    // with the actor hop into DiagnosticLogStore on a UI-thread-blocked app).
+    nonisolated func didReceive(_ payloads: [MXMetricPayload]) {
         for payload in payloads {
             Task { await store.append(payload.jsonRepresentation(), kind: "metric") }
         }
     }
 
-    func didReceive(_ payloads: [MXDiagnosticPayload]) {
+    nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
         for payload in payloads {
             Task { await store.append(payload.jsonRepresentation(), kind: "diagnostic") }
         }
@@ -136,8 +139,10 @@ actor DiagnosticLogStore {
 // In SuperOSAppBootstrap / SuperBibleAppBootstrap:
 //     let metricKit = MetricKitManager(store: DiagnosticLogStore())
 //     metricKit.start()
-//     dependencies.metricKit = metricKit
+//     dependencies.metricKit = metricKit   // ← MUST be held for the app's lifetime
 ```
+
+`MXMetricManager` retains its subscribers **weakly** — if `metricKit` falls out of scope (e.g. the bootstrap returns without stashing it on the dependency container), the subscription is silently dropped and no payloads ever arrive. The composition root MUST hold a strong reference for the app's lifetime; the easiest way is to put it on the same `AppDependencies` container that survives until app termination.
 
 `MXMetricManager.shared` is Apple's API and stays — the project's no-static-singletons rule applies to *our* types, not to the system framework.
 
@@ -173,7 +178,16 @@ extension Logger {
 
 ### 4.3 Log export for bug reports
 
-Settings → About → "Export recent diagnostic log" reads a short, user-controlled window of entries from `OSLogStore` plus the rotated MetricKit JSONL, packages them as a single `.txt`, and presents the system share sheet. The user decides where the file goes (email to the maintainer, paste into a GitHub issue, etc.) — nothing leaves the device automatically.
+Settings → About → "Export recent diagnostic log" packages two complementary sources into a single `.txt` and presents the system share sheet. The user decides where the file goes (email to the maintainer, paste into a GitHub issue, etc.) — nothing leaves the device automatically.
+
+**The two sources together cover the two failure modes:**
+
+| Source | Scope | What it captures | What it MISSES |
+|---|---|---|---|
+| `OSLogStore(scope: .currentProcessIdentifier)` | The currently-running process's in-memory log buffer | Pre-incident actions in the same session: "I tapped Send, then the spinner spun forever, then I filed this bug." | Anything from a **previous** process — i.e., the session that *crashed*. On iOS, app processes don't persist `os_log` across launches via `OSLogStore`. After a crash and relaunch, the crashed session's `os_log` lines are gone. |
+| MetricKit JSONL on disk (per §4.1) | Cross-launch, persisted | Crash / hang / CPU / disk diagnostics from previous sessions, including the symbolicated stack of the crash itself. | The user-action breadcrumbs that led up to the crash (those would be `os_log` entries from a dead process). |
+
+So a **cold-crash** report contains: the MetricKit diagnostic for the crash (stack trace, thread state, exit reason) + the post-crash session's `os_log` lines (the user's "I just had it crash" reproduction attempt). The pre-crash breadcrumb history is unavailable on iOS without entitlements we don't have. This is a known platform limitation; the doc says so explicitly so a reader doesn't expect what `OSLogStore` cannot deliver.
 
 **Privacy posture on the export flow:**
 
@@ -184,6 +198,10 @@ Settings → About → "Export recent diagnostic log" reads a short, user-contro
 
 ```swift
 func exportRecentLogs(windowMinutes: Int = 15) throws -> URL {
+    // `.currentProcessIdentifier` scope reads only the live in-memory log
+    // buffer of the running process. Crashed-session breadcrumbs are NOT
+    // recoverable from OSLogStore on iOS; rely on the MetricKit JSONL
+    // (persisted to disk per §4.1) for crashed-session diagnostics.
     let store = try OSLogStore(scope: .currentProcessIdentifier)
     let position = store.position(date: Date().addingTimeInterval(-Double(windowMinutes) * 60))
     let entries = try store.getEntries(at: position)
@@ -191,6 +209,11 @@ func exportRecentLogs(windowMinutes: Int = 15) throws -> URL {
         .filter { $0.subsystem == Bundle.main.bundleIdentifier }
         .map { "[\($0.date)] [\($0.category)] \($0.composedMessage)" }
         .joined(separator: "\n")
+
+    // Combine in-process os_log with the on-disk MetricKit JSONL so cold-crash
+    // diagnostics survive process restart. DiagnosticLogStore.recent() reads
+    // and merges the rotated JSONL file from Application Support.
+    // (Caller composes the final .txt; see the in-tree implementation.)
 
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("super-logs-\(Date().timeIntervalSince1970).txt")
     try entries.write(to: url, atomically: true, encoding: .utf8)
@@ -337,7 +360,7 @@ If the project ever has paying users, on-call rotation, or a team — the conver
 
 | Component | Effort |
 |---|---|
-| `MetricKitManager` actor + JSONL persistence | 0.5 day |
+| `MetricKitManager` final class + `DiagnosticLogStore` actor for JSONL persistence | 0.5 day |
 | `os_log` Logger categories + audit existing call sites for `%{public}` discipline | 1 day |
 | Settings → About → "Export recent diagnostic log" row + share sheet | 0.5 day |
 | App Store Connect: confirm Trends + Analytics opt-ins are enabled for both targets | trivial |

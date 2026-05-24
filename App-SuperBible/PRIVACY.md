@@ -10,16 +10,24 @@ If you'd rather read the source: every claim below is backed by the code in this
 
 ## What SuperBible does NOT collect
 
-Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all:
+Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all by SuperBible:
 
 - **The verses you read.** Reading position, scroll position, time spent on a chapter — none of it leaves your device.
 - **Your highlights, notes, and bookmarks.** Stored locally on your device only.
-- **Your chat messages with the AI.** Neither the questions you ask nor the answers you receive are sent to SuperBible's servers (we don't have any).
 - **Your reading-plan progress.** Which plan you picked, which days you completed, your streak — all on-device only.
 - **Your identity.** No accounts. No email. No username. No sign-in. No "anonymous ID" tied to your device.
 - **Your location.** Never requested, never accessed.
 - **Your contacts, photos, calendar, or any other personal data on your device.** Not requested, not accessed.
 - **What other apps you use, when, or how often.** Not accessed.
+
+### About your chat messages — be aware of where they go
+
+Chat messages need separate treatment because **where they go depends on which AI model you're using**, and SuperBible cannot collect them but a third-party AI provider might:
+
+- **Apple Foundation Models (the default).** Runs entirely on-device. Your messages never leave your iPhone or iPad. SuperBible has no servers — even if we wanted to see your messages, there's no infrastructure for that.
+- **Optional Bring Your Own Key (BYOK) — Anthropic, OpenAI, a local Ollama server, etc.** When you configure an API key in Settings → Models and then chat, your messages are sent **directly from your device to that provider over HTTPS**. SuperBible's code (we have no servers) is not in that loop. Whatever the provider does with your message — log it, train on it, keep it for 30 days, delete it — is governed by **their** privacy policy, not ours. We strongly recommend you read it before adding their key.
+
+This is why we say "BYOK" plainly throughout the app: the key (and the data flowing through it) is yours, and the relationship is between you and the provider you chose.
 
 ---
 
@@ -35,7 +43,7 @@ SuperBible's default AI model is **Apple Foundation Models**, which runs entirel
 
 If you optionally configure a third-party AI provider (OpenAI, Anthropic, a local Ollama server, etc.) by adding their API key in Settings → Models, then your chat messages are sent **directly from your device to that provider** when you chat. SuperBible's servers (we don't have any) are not in that loop. The provider's privacy policy governs what they do with the data — that's between you and them, not us.
 
-API keys are stored in the iOS Keychain (the same place iOS stores your Wi-Fi passwords). They never leave your device.
+API keys are stored in the iOS Keychain (the same place iOS stores your Wi-Fi passwords), with the **`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`** accessibility attribute. That means: only readable while the device is unlocked, and **never** included in iCloud Keychain sync or device-to-device migration. They live on this device, this install, and nowhere else.
 
 ### Crash reports and diagnostics
 
@@ -76,7 +84,9 @@ If you'd like to support development, there's a "Support development" link in Se
 
 ## Children
 
-SuperBible doesn't collect anything from anyone, so it doesn't knowingly collect anything from children either. The app does require an active connection to a third-party AI provider (or use of Apple Foundation Models on-device) for chat to work; we have no control over what those providers do.
+SuperBible doesn't collect anything from anyone, so it doesn't knowingly collect anything from children either.
+
+The app's default AI model is **Apple Foundation Models**, which runs entirely on-device — no internet connection is required for chat to work out of the box. If a parent later configures a third-party AI provider via Settings → Models (BYOK), chat messages would then travel from the device to that provider, governed by *their* privacy policy. We have no control over what those providers do.
 
 ---
 
