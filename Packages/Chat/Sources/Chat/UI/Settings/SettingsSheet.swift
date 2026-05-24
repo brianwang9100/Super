@@ -86,29 +86,29 @@ public struct SettingsSheet: View {
     /// programmatically driving the navigation stack. Internal so the SDK
     /// surface still presents a single public `init`. Seeds the view
     /// model's path so the first render lands on `initialPane` without
-    /// animation. `initialModelDetailPreset` lets a modelDetail snapshot
-    /// pin a preset other than `.custom` so the Google/Apple-prefilled
-    /// states can be captured.
+    /// animation. `initialModelDetailSelection` lets a modelDetail snapshot
+    /// pin a starting provider other than `.custom` so the per-provider
+    /// prefilled create-flow states can be captured.
     init(
         isPresented: Binding<Bool>,
         viewModel: SettingsViewModel,
         initialPane: Pane,
-        initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom,
+        initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom,
         databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
         self.databaseContext = databaseContext
-        self.initialModelDetailPreset = initialModelDetailPreset
+        self.initialModelDetailSelection = initialModelDetailSelection
         if initialPane != .root {
             viewModel.navigationPath = [initialPane]
         }
     }
 
-    /// Backing value for the internal `initialModelDetailPreset` test
-    /// seam. `paneContent` forwards it to the modelDetail case so a
-    /// pinned preset is honored even after a navigation push.
-    private var initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom
+    /// Backing value for the internal `initialModelDetailSelection`
+    /// test seam. `paneContent` forwards it to the modelDetail case so
+    /// a pinned selection is honored even after a navigation push.
+    private var initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom
 
     public var body: some View {
         ZStack(alignment: .bottom) {
@@ -204,7 +204,7 @@ public struct SettingsSheet: View {
             SettingsModelDetailPane(
                 viewModel: viewModel,
                 editingId: id,
-                initialPreset: initialModelDetailPreset
+                initialSelection: initialModelDetailSelection
             )
         case .personalization:
             SettingsPersonalizationPane(viewModel: viewModel)

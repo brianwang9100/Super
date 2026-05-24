@@ -566,7 +566,7 @@ public final class SettingsViewModel {
     public func updateModel(
         id: String,
         name: String,
-        baseURL: URL,
+        baseURL: URL?,
         modelId: String,
         apiKey: String,
         supportsThinking: Bool,
@@ -582,8 +582,16 @@ public final class SettingsViewModel {
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
-            // Preserve existing `baseURL` for non-openAICompatible kinds; form always seeds a URL value.
-            let nextBaseURL: URL? = existing.kind == .openAICompatible ? baseURL : existing.baseURL
+            // Preserve existing `baseURL` for non-openAICompatible kinds.
+            // For openAICompatible the caller passes the new URL (or
+            // nil if it wasn't a field-driven change — in which case
+            // we keep what we had).
+            let nextBaseURL: URL?
+            if existing.kind == .openAICompatible {
+                nextBaseURL = baseURL ?? existing.baseURL
+            } else {
+                nextBaseURL = existing.baseURL
+            }
             let updated = ModelConfigurationRecord(
                 id: existing.id,
                 name: name,

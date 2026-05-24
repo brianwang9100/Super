@@ -177,92 +177,175 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    @Test("model detail empty form (create flow)")
-    func modelDetailEmpty() async {
-        await verify(theme: .light, pane: .modelDetail(id: nil), name: "settings_model_detail_new_light")
-    }
+    // Per-provider create-flow snapshots — one row per entry in
+    // `LLMProviderCatalog.all`, light + dark each. Each one captures
+    // the visible-field set the provider's catalog entry dictates:
+    // Apple hides URL/Name/Key/Thinking; OpenAI/Anthropic/Google/xAI
+    // hide URL+Name and show Key + (Thinking iff the default model
+    // supports it); Custom shows every field.
 
-    @Test("model detail create flow with Google preset prefilled")
-    func modelDetailGooglePreset() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — Apple Intelligence selected")
+    func modelDetailProviderApple() async {
+        await verifyCreateWithProvider(
             theme: .light,
-            preset: .google,
+            selection: .apple,
             availability: .available,
             existingAppleFoundation: false,
-            name: "settings_model_detail_google_preset_light"
+            name: "settings_model_detail_provider_apple_light"
         )
     }
 
-    @Test("model detail create flow with Google preset prefilled (dark)")
-    func modelDetailGooglePresetDark() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — Apple Intelligence selected (dark)")
+    func modelDetailProviderAppleDark() async {
+        await verifyCreateWithProvider(
             theme: .dark,
-            preset: .google,
+            selection: .apple,
             availability: .available,
             existingAppleFoundation: false,
-            name: "settings_model_detail_google_preset_dark"
+            name: "settings_model_detail_provider_apple_dark"
         )
     }
 
-    // Apple Intelligence preset prefilled — the pill is enabled (no
-    // existing AFM row + AFM available). Distinct from the
-    // AFM-edit-flow snapshot (`modelDetailAppleFoundation`) because
-    // that test seeds from an existing row; this one tests the create
-    // path where the preset drives the prefill.
-    @Test("model detail create flow with Apple preset prefilled")
-    func modelDetailApplePreset() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — OpenAI selected")
+    func modelDetailProviderOpenAI() async {
+        await verifyCreateWithProvider(
             theme: .light,
-            preset: .appleFoundation,
+            selection: .openAI,
             availability: .available,
             existingAppleFoundation: false,
-            name: "settings_model_detail_apple_preset_light"
+            name: "settings_model_detail_provider_openai_light"
         )
     }
 
-    @Test("model detail create flow with Apple preset prefilled (dark)")
-    func modelDetailApplePresetDark() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — OpenAI selected (dark)")
+    func modelDetailProviderOpenAIDark() async {
+        await verifyCreateWithProvider(
             theme: .dark,
-            preset: .appleFoundation,
+            selection: .openAI,
             availability: .available,
             existingAppleFoundation: false,
-            name: "settings_model_detail_apple_preset_dark"
+            name: "settings_model_detail_provider_openai_dark"
         )
     }
 
-    // The disabled-Apple-pill state: AFM is unavailable so the Apple
-    // pill is non-interactive. Custom preset stays selected. Anchors
-    // the inkFaint foreground + disabled visual treatment introduced
-    // by Phase 6b.
-    @Test("model detail create flow with Apple preset disabled (AFM unavailable)")
-    func modelDetailApplePresetDisabled() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — Anthropic selected")
+    func modelDetailProviderAnthropic() async {
+        await verifyCreateWithProvider(
             theme: .light,
-            preset: .custom,
+            selection: .anthropic,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_anthropic_light"
+        )
+    }
+
+    @Test("model detail create flow — Anthropic selected (dark)")
+    func modelDetailProviderAnthropicDark() async {
+        await verifyCreateWithProvider(
+            theme: .dark,
+            selection: .anthropic,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_anthropic_dark"
+        )
+    }
+
+    @Test("model detail create flow — Google selected")
+    func modelDetailProviderGoogle() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_google_light"
+        )
+    }
+
+    @Test("model detail create flow — Google selected (dark)")
+    func modelDetailProviderGoogleDark() async {
+        await verifyCreateWithProvider(
+            theme: .dark,
+            selection: .google,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_google_dark"
+        )
+    }
+
+    @Test("model detail create flow — xAI selected")
+    func modelDetailProviderXAI() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .xai,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_xai_light"
+        )
+    }
+
+    @Test("model detail create flow — xAI selected (dark)")
+    func modelDetailProviderXAIDark() async {
+        await verifyCreateWithProvider(
+            theme: .dark,
+            selection: .xai,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_xai_dark"
+        )
+    }
+
+    @Test("model detail create flow — Custom selected (all fields visible)")
+    func modelDetailProviderCustom() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .custom,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_custom_light"
+        )
+    }
+
+    @Test("model detail create flow — Custom selected (dark)")
+    func modelDetailProviderCustomDark() async {
+        await verifyCreateWithProvider(
+            theme: .dark,
+            selection: .custom,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_custom_dark"
+        )
+    }
+
+    // Apple-disabled state: AFM unavailable on this device, Custom
+    // is the active provider, and the Apple entry in the Provider
+    // dropdown is the locked one. We can't capture the dropdown's
+    // expanded menu in a steady-state snapshot, so this pins the
+    // collapsed row's visual state when Custom is the active pick.
+    @Test("model detail create flow — Apple provider locked (AFM unavailable)")
+    func modelDetailProviderAppleDisabled() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .custom,
             availability: .unavailable(.appleIntelligenceNotEnabled),
             existingAppleFoundation: false,
             name: "settings_model_detail_apple_disabled_light"
         )
     }
 
-    // Dark companion for the disabled-Apple-pill state — the inkFaint
-    // foreground is the most colour-scheme-sensitive piece of the
-    // preset picker so we pin it across light + dark.
-    @Test("model detail create flow with Apple preset disabled (dark)")
-    func modelDetailApplePresetDisabledDark() async {
-        await verifyCreateWithPreset(
+    @Test("model detail create flow — Apple provider locked (dark)")
+    func modelDetailProviderAppleDisabledDark() async {
+        await verifyCreateWithProvider(
             theme: .dark,
-            preset: .custom,
+            selection: .custom,
             availability: .unavailable(.appleIntelligenceNotEnabled),
             existingAppleFoundation: false,
             name: "settings_model_detail_apple_disabled_dark"
         )
     }
 
-    private func verifyCreateWithPreset(
+    private func verifyCreateWithProvider(
         theme: SuperTheme.Identifier,
-        preset: SettingsModelDetailPane.Preset,
+        selection: SettingsModelDetailPane.InitialSelection,
         availability: AppleFoundationAvailability,
         existingAppleFoundation: Bool,
         name: String,
@@ -280,7 +363,7 @@ struct SettingsSheetSnapshotTests {
         let view = SettingsSheetSnapshotHarness(
             viewModel: viewModel,
             initialPane: .modelDetail(id: nil),
-            initialModelDetailPreset: preset
+            initialModelDetailSelection: selection
         )
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
@@ -572,7 +655,7 @@ private struct SettingsSheetSnapshotHarness: View {
     let initialPane: SettingsSheet.Pane
     /// Forwarded to `SettingsSheet`'s internal test seam — only
     /// observed when `initialPane == .modelDetail(id: nil)`.
-    var initialModelDetailPreset: SettingsModelDetailPane.Preset = .custom
+    var initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom
 
     @State private var presented = true
     @Environment(\.superTheme) private var theme
@@ -585,7 +668,7 @@ private struct SettingsSheetSnapshotHarness: View {
                 isPresented: $presented,
                 viewModel: viewModel,
                 initialPane: initialPane,
-                initialModelDetailPreset: initialModelDetailPreset
+                initialModelDetailSelection: initialModelDetailSelection
             )
         }
     }
