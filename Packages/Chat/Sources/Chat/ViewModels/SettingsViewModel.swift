@@ -566,7 +566,7 @@ public final class SettingsViewModel {
     public func updateModel(
         id: String,
         name: String,
-        baseURL: URL,
+        baseURL: URL?,
         modelId: String,
         apiKey: String,
         supportsThinking: Bool,
@@ -582,8 +582,27 @@ public final class SettingsViewModel {
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
-            // Preserve existing `baseURL` for non-openAICompatible kinds; form always seeds a URL value.
-            let nextBaseURL: URL? = existing.kind == .openAICompatible ? baseURL : existing.baseURL
+            // Preserve existing `baseURL` for non-openAICompatible kinds.
+            // For openAICompatible the caller passes the new URL (or
+            // nil if it wasn't a field-driven change — in which case
+            // we keep what we had). The switch (over an if/else)
+            // forces the compiler to flag this site when a new
+            // `LLMProviderKind` case is added so the URL-update rule
+            // gets revisited rather than silently defaulting to
+            // "preserve existing."
+            let nextBaseURL: URL?
+            switch existing.kind {
+            case .openAICompatible:
+                nextBaseURL = baseURL ?? existing.baseURL
+            case .appleFoundation:
+                nextBaseURL = existing.baseURL
+            #if DEBUG
+            case .debug:
+                // Debug provider has no URL — preserve whatever was
+                // persisted (always nil for canned-response rows).
+                nextBaseURL = existing.baseURL
+            #endif
+            }
             let updated = ModelConfigurationRecord(
                 id: existing.id,
                 name: name,
