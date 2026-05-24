@@ -165,217 +165,96 @@ struct AppShell: View {
     /// programmatic state flip uses the right animation.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Opacity applied to the applet backdrop, interpolated continuously
-    /// against `chatProgress` so the dim tracks the user's drag in
-    /// lockstep with the chat surface's height.
-    ///
-    /// Anchor points (matching the 2026-05-13 design):
-    /// - progress 0 (pill): 1.0 — backdrop owns the full screen at full
-    ///   opacity.
-    /// - progress = `chatSemiProgress` (semi-expanded): 0.65 — backdrop
-    ///   is dimmed to read against the floating chat panel. The
-    ///   mid-knot is the live semi anchor's resolved progress (now
-    ///   geometry-dependent because the semi anchor sits at
-    ///   `containerHeight - topInset`), not the legacy 0.52 ratio.
-    /// - progress 1 (expanded): 1.0 — backdrop is hidden behind the
-    ///   opaque chat anyway, so the value doesn't really matter; we
-    ///   leave it at 1 so a flick-up from semi past expanded settles
-    ///   without an extra dim transition during the last few percent.
-    ///
-    /// The curve is piecewise-linear between these three points so the
-    /// dim feels coupled to the chat's height rather than snapping at
-    /// state boundaries.
-    private var backdropOpacity: Double {
-        let p = chatProgress
-        let mid = max(0.001, min(0.999, chatSemiProgress))
-        if p <= mid {
-            // 0 → mid: dim from 1.0 down to 0.65 as the chat grows.
-            let t = p / mid
-            return 1.0 + (0.65 - 1.0) * t
-        } else {
-            // mid → 1: dim back up to 1.0 (effectively unused — the
-            // expanded chat covers the backdrop).
-            let t = (p - mid) / (1 - mid)
-            return 0.65 + (1.0 - 0.65) * t
-        }
-    }
-
-    /// Hit-testing on the backdrop turns off the moment the expanded
-    /// chat covers (or is about to cover) it, so a drag that lands at
-    /// the very top of the screen doesn't end up dispatched to the
-    /// applet underneath. Mirrors the pre-change behavior where the
-    /// `.expanded` state disabled hit-testing wholesale; here we just
-    /// drive it from the live progress so the transition is continuous.
-    private var backdropHitTestingEnabled: Bool {
-        chatProgress < 0.95
-    }
-
-    /// Discriminant for the chat-overlay vs error vs splash fallback so
-    /// `.animation(value:)` can cross-fade the inner swap without forcing
-    /// either branch's value type to be `Equatable`.
-    private var appShellInnerDiscriminant: Int {
-        if viewModel != nil { 0 }
-        else if bootstrapError != nil { 1 }
-        else { 2 }
-    }
-
     var body: some View {
+        // Each layer below is a separate `View` struct so re-render
+        // cost is spread across small focused bodies instead of one
+        // monolithic shell body. A composer focus flip still re-runs
+        // this body (it owns `@FocusState composerIsFocused`) and each
+        // child body (closure-typed inputs like `onBackdropTap` are
+        // freshly allocated each render so SwiftUI cannot prove input
+        // equality and skip them), but each child body does far less
+        // work than the pre-extraction unified body did — no more
+        // re-running every `.onChange`/`.task` modifier setup or the
+        // entire chrome stack in one pass. Stage 2 (typed-dispatch
+        // removal of `MiniApplet.rootView() -> AnyView`) will close
+        // the residual cost of the `AnyView` re-wrap inside
+        // `BackdropLayer`.
         ZStack {
-            // Backdrop: the active applet's rootView. Dimmed to 0.65 in
-            // semi-expanded so the chat panel reads against a faded
-            // applet behind it; full opacity in minimized; effectively
-            // hidden behind the opaque expanded chat (no opacity tweak
-            // needed because the chat covers it).
-            if let activeApplet = registry.activeApplet {
-                // The rootView keeps the safe area so each applet can place
-                // its own top chrome below the status bar / Dynamic Island
-                // and clear the shell's floating hamburger. Applets fill
-                // the screen edge-to-edge themselves, extending only their
-                // background under the safe area.
-                activeApplet.rootView()
-                    .superTheme(theme)
-                    .superFontScale(appearance.fontScale)
-                    .opacity(backdropOpacity)
-                    // Backdrop interactivity follows the live progress
-                    // rather than a discrete state switch — by the time
-                    // the chat covers ~95% of the screen the applet is
-                    // visually behind it and shouldn't accept taps;
-                    // below that threshold the user is interacting with
-                    // the applet (or hovering on a semi-expanded panel
-                    // whose tap-overlay below catches dismiss taps).
-                    .allowsHitTesting(backdropHitTestingEnabled)
-                    .overlay {
-                        if chatState == .semiExpanded {
-                            // Transparent tap-target sits above the
-                            // dimmed applet only while semi-expanded.
-                            // An always-present `.onTapGesture` would
-                            // consume applet taps in `.minimized` too,
-                            // even though it would no-op there. We
-                            // attach it to the settled-state semi
-                            // anchor so it's gone the instant the
-                            // overlay snaps elsewhere — using
-                            // `chatProgress` instead would leave the
-                            // tap-target armed during the entire
-                            // drag and dismiss mid-drag.
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    dismissKeyboard()
-                                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-                                        chatState = .minimized
-                                    }
-                                }
-                        }
+            BackdropLayer(
+                registry: registry,
+                theme: theme,
+                appearance: appearance,
+                chatState: chatState,
+                chatProgress: chatProgress,
+                chatSemiProgress: chatSemiProgress,
+                onBackdropTap: {
+                    dismissKeyboard()
+                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+                        chatState = .minimized
                     }
-            }
-
-            // Chat overlay. Always rendered now (even when a placeholder
-            // applet is active) — the overlay morphs one `ChatScreen`
-            // continuously between the three settled anchors driven by
-            // `chatState`, tracking the finger during a drag and
-            // snapping to the nearest anchor on release. The
-            // `ChatProgressPreferenceKey` below surfaces the live
-            // progress so the backdrop opacity stays in lockstep.
-            // Per-branch .transition + outer .animation = real cross-fade.
-            Group {
-                if let viewModel {
-                    ChatOverlay(
-                        state: $chatState,
-                        viewModel: viewModel,
-                        composerIsFocused: $composerIsFocused,
-                        onManageModels: { openSettings(initialPane: .models) },
-                        onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) }
-                    )
-                    .superTheme(theme)
-                    .chatAppearance(appearance)
-                    .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
-                        chatProgress = newValue
-                    }
-                    .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
-                        chatSemiProgress = newValue
-                    }
-                    .transition(.opacity)
-                } else if let bootstrapError {
-                    FailureScreen(message: bootstrapError)
-                        .transition(.opacity)
-                } else {
-                    // Pin Light: matches the outer ContentView splash before
-                    // user settings load, so the fallback during the brief
-                    // pre-ensureViewModel window doesn't flash a wrong theme.
-                    SplashView()
-                        .superTheme(.make(.light))
-                        .transition(.opacity)
                 }
-            }
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.2),
-                value: appShellInnerDiscriminant
             )
-
-            // Shell chrome: hamburger at top-left, outside the chat surface.
-            // Aligned to topLeading inside the safe area so the status bar
-            // doesn't sit on top of it.
-            VStack {
-                HStack {
-                    FixedHamburgerButton(onTap: openSidebar)
-                        .superTheme(theme)
-                    Spacer(minLength: 0)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, 12)
-            .padding(.top, 4)
-
-            if let sidebarViewModel {
-                SidebarDrawer(
-                    isPresented: $sidebarOpen,
-                    viewModel: sidebarViewModel,
-                    appInfo: appInfo,
-                    userInitials: "BW",
-                    userName: "Brian Wang",
-                    applets: registry.applets,
-                    activeAppletID: registry.activeID,
-                    onSelectConversation: { id in
-                        Task { await selectConversation(id: id) }
-                    },
-                    onNewChat: {
-                        Task { await startNewChat() }
-                    },
-                    onOpenSettings: {
-                        openSettings()
-                    },
-                    onSelectApplet: { appletID in
-                        dismissKeyboard()
-                        registry.activeID = appletID
-                        UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
-                        // Selecting any backdrop applet from the sidebar
-                        // collapses the chat to minimized so the user
-                        // can interact with the applet. They can drag
-                        // the pill up to climb back to semi/expanded.
-                        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-                            chatState = .minimized
-                        }
+            ChatLayer(
+                viewModel: viewModel,
+                bootstrapError: bootstrapError,
+                chatState: $chatState,
+                composerIsFocused: $composerIsFocused,
+                theme: theme,
+                appearance: appearance,
+                onManageModels: { openSettings(initialPane: .models) },
+                onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) },
+                onProgressChange: { chatProgress = $0 },
+                onSemiProgressChange: { chatSemiProgress = $0 }
+            )
+            HamburgerLayer(theme: theme, onTap: openSidebar)
+            SidebarLayer(
+                sidebarOpen: $sidebarOpen,
+                sidebarViewModel: sidebarViewModel,
+                appInfo: appInfo,
+                applets: registry.applets,
+                activeAppletID: registry.activeID,
+                theme: theme,
+                appearance: appearance,
+                onSelectConversation: { id in
+                    Task { await selectConversation(id: id) }
+                },
+                onNewChat: {
+                    Task { await startNewChat() }
+                },
+                onOpenSettings: {
+                    openSettings()
+                },
+                onSelectApplet: { appletID in
+                    dismissKeyboard()
+                    registry.activeID = appletID
+                    UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
+                    // Selecting any backdrop applet from the sidebar
+                    // collapses the chat to minimized so the user
+                    // can interact with the applet. They can drag
+                    // the pill up to climb back to semi/expanded.
+                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+                        chatState = .minimized
                     }
-                )
-                .superTheme(theme)
-                .chatAppearance(appearance)
-            }
-
-            if let settingsViewModel {
-                SettingsSheet(
-                    isPresented: $settingsOpen,
-                    viewModel: settingsViewModel,
-                    // Read-only context so SettingsMemoryPane's `@Query`
-                    // observes the same `chat.sqlite` the LLM writes
-                    // through MemoryTool. Without it the pane's @Query
-                    // falls back to its empty defaultValue and the
-                    // user sees "No memories yet" even when memories
-                    // exist.
-                    databaseContext: .readOnly { dependencies.chatDatabase.queue }
-                )
-                .superTheme(theme)
-                .chatAppearance(appearance)
-            }
+                }
+            )
+            SettingsLayer(
+                settingsOpen: $settingsOpen,
+                settingsViewModel: settingsViewModel,
+                // Factory closure: skips the `.readOnly { ... }`
+                // allocation during the bootstrap window when
+                // `settingsViewModel` is still nil. Once the view
+                // model is wired the factory fires per
+                // `SettingsLayer.body` re-run — same per-frame churn
+                // the pre-extraction inline call had. The context
+                // grants `SettingsMemoryPane`'s `@Query` read access
+                // to the same `chat.sqlite` the LLM writes through
+                // MemoryTool — without it the pane falls back to its
+                // empty defaultValue and the user sees "No memories
+                // yet" even when memories exist.
+                makeDatabaseContext: { .readOnly { dependencies.chatDatabase.queue } },
+                theme: theme,
+                appearance: appearance
+            )
         }
         .task {
             await ensureViewModel()
@@ -735,6 +614,268 @@ struct AppShell: View {
             createdAt: now,
             updatedAt: now
         )
+    }
+}
+
+// MARK: - Shell layers
+
+/// Backdrop layer hosting the active mini-app's root view, plus the
+/// semi-expanded tap-target that collapses the chat back to minimized.
+///
+/// Observes `registry`, `theme`, `appearance`, `chatState`, `chatProgress`,
+/// `chatSemiProgress`. Closure-typed inputs (`onBackdropTap`) are
+/// freshly allocated each `AppShell.body` render, so SwiftUI cannot prove
+/// input equality and *will* re-run this body on a composer focus flip
+/// — but it's a small body, far cheaper than the pre-extraction unified
+/// shell body. Stage 2 (typed-dispatch removal of
+/// `MiniApplet.rootView() -> AnyView`) will close the residual
+/// `activeApplet.rootView()` re-wrap cost that remains here.
+private struct BackdropLayer: View {
+    let registry: AppletRegistry
+    let theme: SuperTheme
+    let appearance: ChatAppearance
+    let chatState: ChatPresentationState
+    let chatProgress: Double
+    let chatSemiProgress: Double
+    let onBackdropTap: () -> Void
+
+    /// Opacity applied to the applet backdrop, interpolated continuously
+    /// against `chatProgress` so the dim tracks the user's drag in
+    /// lockstep with the chat surface's height.
+    ///
+    /// Anchor points (matching the 2026-05-13 design):
+    /// - progress 0 (pill): 1.0 — backdrop owns the full screen at full
+    ///   opacity.
+    /// - progress = `chatSemiProgress` (semi-expanded): 0.65 — backdrop
+    ///   is dimmed to read against the floating chat panel. The
+    ///   mid-knot is the live semi anchor's resolved progress (now
+    ///   geometry-dependent because the semi anchor sits at
+    ///   `containerHeight - topInset`), not the legacy 0.52 ratio.
+    /// - progress 1 (expanded): 1.0 — backdrop is hidden behind the
+    ///   opaque chat anyway, so the value doesn't really matter; we
+    ///   leave it at 1 so a flick-up from semi past expanded settles
+    ///   without an extra dim transition during the last few percent.
+    ///
+    /// The curve is piecewise-linear between these three points so the
+    /// dim feels coupled to the chat's height rather than snapping at
+    /// state boundaries.
+    private var backdropOpacity: Double {
+        let p = chatProgress
+        let mid = max(0.001, min(0.999, chatSemiProgress))
+        if p <= mid {
+            // 0 → mid: dim from 1.0 down to 0.65 as the chat grows.
+            let t = p / mid
+            return 1.0 + (0.65 - 1.0) * t
+        } else {
+            // mid → 1: dim back up to 1.0 (effectively unused — the
+            // expanded chat covers the backdrop).
+            let t = (p - mid) / (1 - mid)
+            return 0.65 + (1.0 - 0.65) * t
+        }
+    }
+
+    /// Hit-testing on the backdrop turns off the moment the expanded
+    /// chat covers (or is about to cover) it, so a drag that lands at
+    /// the very top of the screen doesn't end up dispatched to the
+    /// applet underneath. Mirrors the pre-change behavior where the
+    /// `.expanded` state disabled hit-testing wholesale; here we just
+    /// drive it from the live progress so the transition is continuous.
+    private var backdropHitTestingEnabled: Bool {
+        chatProgress < 0.95
+    }
+
+    var body: some View {
+        if let activeApplet = registry.activeApplet {
+            // The rootView keeps the safe area so each applet can place
+            // its own top chrome below the status bar / Dynamic Island
+            // and clear the shell's floating hamburger. Applets fill
+            // the screen edge-to-edge themselves, extending only their
+            // background under the safe area.
+            activeApplet.rootView()
+                .superTheme(theme)
+                .superFontScale(appearance.fontScale)
+                .opacity(backdropOpacity)
+                .allowsHitTesting(backdropHitTestingEnabled)
+                .overlay {
+                    if chatState == .semiExpanded {
+                        // Transparent tap-target sits above the dimmed
+                        // applet only while semi-expanded. An
+                        // always-present `.onTapGesture` would consume
+                        // applet taps in `.minimized` too, even though
+                        // it would no-op there. We attach it to the
+                        // settled-state semi anchor so it's gone the
+                        // instant the overlay snaps elsewhere — using
+                        // `chatProgress` instead would leave the
+                        // tap-target armed during the entire drag and
+                        // dismiss mid-drag.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { onBackdropTap() }
+                    }
+                }
+        }
+    }
+}
+
+/// Chat overlay layer. Hosts `ChatOverlay` plus the two
+/// `ChatProgressPreferenceKey` observers that surface the live morph
+/// progress back to the shell (via the `onProgressChange` /
+/// `onSemiProgressChange` closures).
+///
+/// Owns the binding to the shell's `@FocusState composerIsFocused`
+/// — this is the layer that genuinely needs to re-render on focus
+/// flip (the `TextField` itself lives further down in `ChatOverlay
+/// → ChatScreen → ChatComposer`). The other layers also re-render
+/// on each `AppShell.body` re-eval because their closure inputs
+/// aren't equatable, but their bodies are small.
+private struct ChatLayer: View {
+    let viewModel: ChatScreenViewModel?
+    let bootstrapError: String?
+    @Binding var chatState: ChatPresentationState
+    let composerIsFocused: FocusState<Bool>.Binding
+    let theme: SuperTheme
+    let appearance: ChatAppearance
+    let onManageModels: () -> Void
+    let onAddModelRequested: @MainActor @Sendable () -> Void
+    let onProgressChange: (Double) -> Void
+    let onSemiProgressChange: (Double) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Discriminant for the chat-overlay vs error vs splash fallback so
+    /// `.animation(value:)` can cross-fade the inner swap without forcing
+    /// either branch's value type to be `Equatable`.
+    private var innerDiscriminant: Int {
+        if viewModel != nil { 0 }
+        else if bootstrapError != nil { 1 }
+        else { 2 }
+    }
+
+    var body: some View {
+        // Per-branch .transition + outer .animation = real cross-fade.
+        Group {
+            if let viewModel {
+                ChatOverlay(
+                    state: $chatState,
+                    viewModel: viewModel,
+                    composerIsFocused: composerIsFocused,
+                    onManageModels: onManageModels,
+                    onAddModelRequested: onAddModelRequested
+                )
+                .superTheme(theme)
+                .chatAppearance(appearance)
+                .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
+                    onProgressChange(newValue)
+                }
+                .onPreferenceChange(ChatSemiProgressPreferenceKey.self) { newValue in
+                    onSemiProgressChange(newValue)
+                }
+                .transition(.opacity)
+            } else if let bootstrapError {
+                FailureScreen(message: bootstrapError)
+                    .transition(.opacity)
+            } else {
+                // Pin Light: matches the outer ContentView splash before
+                // user settings load, so the fallback during the brief
+                // pre-ensureViewModel window doesn't flash a wrong theme.
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
+            }
+        }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: innerDiscriminant
+        )
+    }
+}
+
+/// Shell-chrome layer: the top-left hamburger. Aligned to topLeading
+/// inside the safe area so the status bar doesn't sit on top of it.
+private struct HamburgerLayer: View {
+    let theme: SuperTheme
+    let onTap: () -> Void
+
+    var body: some View {
+        VStack {
+            HStack {
+                FixedHamburgerButton(onTap: onTap)
+                    .superTheme(theme)
+                Spacer(minLength: 0)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 12)
+        .padding(.top, 4)
+    }
+}
+
+/// Sidebar drawer layer. Renders `SidebarDrawer` whenever
+/// `sidebarViewModel` is non-nil; `SidebarDrawer` itself handles
+/// the `isPresented == false` case internally.
+private struct SidebarLayer: View {
+    @Binding var sidebarOpen: Bool
+    let sidebarViewModel: SidebarViewModel?
+    let appInfo: SuperAppInfo
+    let applets: [any MiniApplet]
+    let activeAppletID: String?
+    let theme: SuperTheme
+    let appearance: ChatAppearance
+    let onSelectConversation: (String) -> Void
+    let onNewChat: () -> Void
+    let onOpenSettings: () -> Void
+    let onSelectApplet: (String) -> Void
+
+    var body: some View {
+        if let sidebarViewModel {
+            SidebarDrawer(
+                isPresented: $sidebarOpen,
+                viewModel: sidebarViewModel,
+                appInfo: appInfo,
+                userInitials: "BW",
+                userName: "Brian Wang",
+                applets: applets,
+                activeAppletID: activeAppletID,
+                onSelectConversation: onSelectConversation,
+                onNewChat: onNewChat,
+                onOpenSettings: onOpenSettings,
+                onSelectApplet: onSelectApplet
+            )
+            .superTheme(theme)
+            .chatAppearance(appearance)
+        }
+    }
+}
+
+/// Settings sheet layer. Body only renders content when
+/// `settingsViewModel` is wired; `SettingsSheet` itself early-returns
+/// on `isPresented == false`.
+///
+/// `makeDatabaseContext` is a factory closure (not a stored value) so
+/// the `.readOnly { ... }` allocation is skipped during the bootstrap
+/// window where `settingsViewModel` is still nil. Once the view model
+/// is wired, this body re-runs on each `AppShell.body` re-eval (closure
+/// inputs aren't equatable, so SwiftUI can't skip it) and a fresh
+/// `DatabaseContext` is constructed per render — same per-frame churn
+/// the pre-extraction inline `SettingsSheet(...)` call already had, so
+/// no behavior regression vs. before the extraction.
+private struct SettingsLayer: View {
+    @Binding var settingsOpen: Bool
+    let settingsViewModel: SettingsViewModel?
+    let makeDatabaseContext: () -> DatabaseContext
+    let theme: SuperTheme
+    let appearance: ChatAppearance
+
+    var body: some View {
+        if let settingsViewModel {
+            SettingsSheet(
+                isPresented: $settingsOpen,
+                viewModel: settingsViewModel,
+                databaseContext: makeDatabaseContext()
+            )
+            .superTheme(theme)
+            .chatAppearance(appearance)
+        }
     }
 }
 
