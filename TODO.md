@@ -41,6 +41,9 @@ Public App Store ship: free, BYOK, open source, local-first AI Bible app. Siblin
 - [x] **P1** No new required-checks-list entry needed — the renamed aggregation gate publishes `build`, matching the pre-existing required name (manual GitHub Settings step **avoided** by the rename).
 - [x] **P1** Smoke test: `SuperBible` target launches a Bible-only stub. Both `xcodebuild build -scheme Super` and `-scheme SuperBible` succeed locally.
 
+### SB-M0 follow-ups (deferred to SB-M1 or a focused PR)
+- [ ] **P2** App-target XCTest bundle for snapshot tests of both `App/Shell/*` views (today untested per `App/Shell/AGENTS.md`) and `App-SuperBible/SuperBibleContentView` (loading / ready / failed × light + dark + Dynamic Type XXL). Requires a new `SuperBibleTests` (and `SuperTests`) target in `project.yml`, hand-maintained xcschemes per the xcodegen 2.45.4 limitation, and a discover-step update in `ios-build.yml`. Logical landing point: SB-M1, when the real shell replaces the stub and one new test target covers both.
+
 ### SB-M1 — Composition root + applet registration
 - [ ] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study.
 - [ ] **P1** Sanity-check: AFM is seeded as the default model on first launch (inherits from Core's seeding logic per the default-model design memory).
