@@ -234,6 +234,13 @@ struct SettingsModelDetailPane: View {
     private var showsNameField: Bool { isCustom }
     /// API Key is needed for every provider except Apple (on-device).
     private var showsAPIKeyField: Bool { !isApple }
+    /// Model ID text field is shown for Custom in both create AND
+    /// edit modes — Custom users own their wire-level model id and
+    /// must be able to fix typos after the fact. Built-in providers
+    /// surface model selection through the Model dropdown in create
+    /// mode, and lock it via the `Provider · Model` header in edit
+    /// mode (the row's identity is fixed once persisted).
+    private var showsModelIDField: Bool { isCustom }
     /// Thinking toggle is shown when the picked catalog model
     /// supports it, or for Custom (we can't auto-detect — leave it
     /// to the user). Apple's only model is non-thinking so the toggle
@@ -319,9 +326,9 @@ struct SettingsModelDetailPane: View {
                 if showsBaseURLField {
                     fieldRow(label: "Base URL", placeholder: "https://api.openai.com/v1", text: $baseURLText, keyboard: .url)
                 }
-                // Model ID for Custom is rendered inside `pickerSection`
-                // (replacing the Model dropdown), so it does not repeat
-                // here — that's the spot for it visually.
+                if showsModelIDField {
+                    fieldRow(label: "Model ID", placeholder: "gpt-5.5", text: $modelId)
+                }
                 if showsAPIKeyField {
                     apiKeyFieldRow()
                 }
@@ -407,23 +414,16 @@ struct SettingsModelDetailPane: View {
     @ViewBuilder
     private var pickerSection: some View {
         SettingsGroup {
-            providerPickerRow
+            providerPickerRow(borderBottom: showsModelDropdown)
             if showsModelDropdown {
                 modelPickerRow(borderBottom: false)
-            } else {
-                fieldRow(
-                    label: "Model ID",
-                    placeholder: "gpt-5.5",
-                    text: $modelId,
-                    borderBottom: false
-                )
             }
         }
     }
 
     @ViewBuilder
-    private var providerPickerRow: some View {
-        pickerRow(label: "Provider", value: currentProvider.displayName, borderBottom: true) {
+    private func providerPickerRow(borderBottom: Bool) -> some View {
+        pickerRow(label: "Provider", value: currentProvider.displayName, borderBottom: borderBottom) {
             ForEach(LLMProviderCatalog.all) { entry in
                 let disabled = entry.id == LLMProviderCatalog.appleProviderID && isAppleProviderDisabled
                 Button(action: { applyProviderSelection(entry.id) }) {
