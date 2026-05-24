@@ -48,6 +48,7 @@ Public App Store ship: free, BYOK, open source, local-first AI Bible app. Siblin
 - [ ] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study.
 - [ ] **P1** Sanity-check: AFM is seeded as the default model on first launch (inherits from Core's seeding logic per the default-model design memory).
 - [ ] **P1** Settings → About row pointing at the (placeholder) GitHub Sponsors URL.
+- [ ] **P1** Audit `App-SuperBible/Info.plist` permission strings (`NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`, `NSAppTransportSecurity` localhost) against the SB-M1 binary's actual API usage. SB-M0 carried these forward from the SuperOS Info.plist as pre-staging; SB-M1 is the first build that actually exercises Chat's mic/speech/localhost code paths, so strip any that remain unused before then.
 
 ### SB-M2 — Plans applet core
 - [ ] **P1** Brainstorm → spec → plan cycle for the Plans applet (its own future spec, not designed in the fork spec).
