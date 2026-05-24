@@ -119,6 +119,20 @@ enum AppBootstrap {
         }
 
         let llmProviderRegistry = LLMProviderRegistry()
+        #if DEBUG
+        // Swallow seed failures: a transient GRDB error here (WAL
+        // contention, full disk) should *not* crash bootstrap on a
+        // simulator — the debug provider just doesn't show up in the
+        // picker until the next launch. Mirrors the do/catch the
+        // production AFM seed above uses, but with `print` instead of
+        // `assertionFailure` so dev-loop annoyance is bounded to a log
+        // line rather than a hard trap.
+        do {
+            try await seedDebugModelIfNeeded(repository: modelConfigRepo)
+        } catch {
+            print("[DebugLLMProvider] seed failed: \(error)")
+        }
+        #endif
         try await hydrateProviders(
             into: llmProviderRegistry,
             from: modelConfigRepo,
@@ -267,6 +281,10 @@ enum AppBootstrap {
                     toolRegistry: toolRegistry
                 )
                 await registry.register(provider)
+            #if DEBUG
+            case .debug:
+                await registry.register(DebugLLMProvider(id: record.id))
+            #endif
             }
         }
 
@@ -279,6 +297,39 @@ enum AppBootstrap {
             try? await registry.setActive(id: selectedId)
         }
     }
+
+    #if DEBUG
+    /// DEBUG-only first-launch seed: insert a `ModelConfigurationRecord`
+    /// with `kind = .debug` so `DebugLLMProvider` shows up in the model
+    /// picker without the user having to add a model manually. The
+    /// existence check and the insert run in a single GRDB write
+    /// transaction (via `insertDebugIfMissing`), so two concurrent
+    /// `bootstrap()` calls — vanishingly rare in practice but trivial to
+    /// close — can't both pass the empty check and then double-insert.
+    /// `shouldSelect` is computed inside the same transaction, so the
+    /// row is marked selected only when no other selection exists at the
+    /// moment of insert; a developer who has already wired a real
+    /// provider keeps that as active and just sees the debug entry as an
+    /// alternative.
+    private static func seedDebugModelIfNeeded(
+        repository: GRDBModelConfigurationRepository
+    ) async throws {
+        _ = try await repository.insertDebugIfMissing { shouldSelect in
+            ModelConfigurationRecord(
+                id: "debug-canned",
+                name: "Debug (canned)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: true,
+                maxContextTokens: DebugLLMProvider.maxContextTokens,
+                isSelected: shouldSelect
+            )
+        }
+    }
+    #endif
 
     private static func defaultDataDirectory() throws -> URL {
         let base = try FileManager.default.url(

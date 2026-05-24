@@ -27,6 +27,66 @@ The single backlog of *what is open*. The MVP build log (M0–M12, complete 2026
 
 ---
 
+## SuperBible (App Store target)
+
+Public App Store ship: free, BYOK, open source, local-first AI Bible app. Sibling app target to SuperOS, sharing `Core` + `Chat` + `Bible` packages. Full design + rationale in [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md). One-pager intro at [`docs/SuperBible/OVERVIEW.md`](docs/SuperBible/OVERVIEW.md).
+
+### SB-M0 — Target wired up
+- [ ] **P1** Rename `App/SuperApp.swift` → `App/SuperOSApp.swift` and `App/AppBootstrap.swift` → `App/SuperOSAppBootstrap.swift`. Update `@main`, internal references.
+- [ ] **P1** Raise both targets' `deploymentTarget` to `26.0` in `project.yml` if not already (per the iOS-26 default-model design memory note).
+- [ ] **P1** Create `App-SuperBible/` with `SuperBibleApp.swift`, `SuperBibleAppBootstrap.swift`, `Info.plist`, `Assets.xcassets` (placeholder icon + accent), `ContentView.swift`, `Shell/`.
+- [ ] **P1** Add `SuperBible` target + scheme to `project.yml`: bundle ID `com.brianwang.SuperBible`, display name `SuperBible`, `dependencies: [Core, Chat, Bible]` initially.
+- [ ] **P1** Extend `ios-build.yml` to a `scheme: [Super, SuperBible]` matrix with shared `actions/cache` over `DerivedData`.
+- [ ] **P1** Add `paths-ignore` to `ios-build.yml` for docs-only PRs (`docs/**`, `*.md`, `TODO.md`, `README.md`, `**/AGENTS.md`, `**/CLAUDE.md`) — not present today; required by the fork spec §5.2 wall-clock projections.
+- [ ] **P1** Add `ios-build (SuperBible)` to the required-checks list once it's run on at least one PR.
+- [ ] **P1** Smoke test: `SuperBible` target launches the Shell with a stub. CI green on both builds.
+
+### SB-M1 — Composition root + applet registration
+- [ ] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study.
+- [ ] **P1** Sanity-check: AFM is seeded as the default model on first launch (inherits from Core's seeding logic per the default-model design memory).
+- [ ] **P1** Settings → About row pointing at the (placeholder) GitHub Sponsors URL.
+
+### SB-M2 — Plans applet core
+- [ ] **P1** Brainstorm → spec → plan cycle for the Plans applet (its own future spec, not designed in the fork spec).
+- [ ] **P1** `Packages/Plans/` Swift package: GRDB schema (`ReadingPlan`, `PlanDay`, `PlanProgress`, `PlanStreak`), reactive bindings via GRDBQuery (per the Todo-applet convention).
+- [ ] **P1** Tools registered with Chat: `plans.list`, `plans.start(planId)`, `plans.today`, `plans.markRead(planId, day)`, `plans.streak(planId)`.
+- [ ] **P1** Chat-card renderers: today's reading, plan progress, streak summary, completion confirmation.
+- [ ] **P1** Long-press actions on a plan day: Mark read / Mark unread / Open in Bible / Add to current chat / Start new chat with this.
+- [ ] **P1** Deep-link target `super://plans/<planId>/<day>`.
+- [ ] **P1** Snapshot tests ship with views (per project convention).
+- [ ] **P1** Add `Packages/Plans/` to the `SuperBible` target's dependencies.
+- [ ] **P1** Hand-maintained `Scripts/xcodegen-extras/Plans.xcscheme` for iOS-runtime snapshot tests.
+
+### SB-M3 — Plans content + onboarding
+- [ ] **P1** Bundled plan content (JSON-per-plan in `Packages/Plans/Sources/Plans/Resources/`): F260, M'Cheyne, Bible in a Year, Bible in 90 Days.
+- [ ] **P1** Onboarding flow: pick a plan, set notification time.
+- [ ] **P1** Local daily notification (default 8am local) reminding of today's reading.
+- [ ] **P1** Reading streak surfacing in the Plans home view + chat cards.
+
+### SB-M4 — App Store polish
+- [ ] **P1** Final app icon + accent color.
+- [ ] **P1** App Store Connect listing: app name, subtitle, screenshots (iPhone 17 form factor), preview video, description, keywords, support URL.
+- [ ] **P1** App Privacy nutrition label per the no-third-party-SDKs commitment.
+- [x] **P1** Draft `App-SuperBible/PRIVACY.md` content. *(Drafted 2026-05-23 in the SuperBible fork PR; revise before SB-M4 submission if the policy changes.)*
+- [ ] **P1** Wire Settings → About → Privacy row to render `App-SuperBible/PRIVACY.md` in-app.
+- [ ] **P1** Confirm donation link: GitHub Sponsors signup, resolve the URL, replace placeholder.
+- [ ] **P1** TestFlight beta cycle: dogfood SB-M1–M3 against the iOS-26 sim and a real device.
+- [ ] **P1** `release/superbible-v*` tag triggers `testflight.yml` parameterized by scheme.
+
+### SB-M5 — App Store ship
+- [ ] **P1** Final crash-free-sessions check (>99.5% on TestFlight) before submission.
+- [ ] **P1** App Store review submission.
+- [ ] **P1** Release notes + GitHub Sponsors page update.
+
+### Post-launch (SB-M6+)
+- [ ] **P2** Memorize applet (spaced-repetition verse memorization) — own future spec.
+- [ ] **P2** Quiz applet (AI-generated Bible knowledge quizzes) — own future spec.
+- [ ] **P2** Learn applet (guided theology learning paths) — own future spec.
+- [ ] **P3** SuperBible-specific theme palette (deliberate v1.x polish; inherits SuperOS palette today).
+- [ ] **P3** CloudKit + Sign in with Apple migration — only if cross-device sync demand materializes.
+
+---
+
 ## CI / CD (P0 for autonomous agent work)
 
 ### GitHub Actions — what's wired now
@@ -104,11 +164,13 @@ Per `docs/PRODUCT_VISION.md` §4 + §11 and `docs/CHAT_INTERACTIONS.md`. Every a
 
 ## Observability (designed, not wired)
 
-Per [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). No metrics, crash reporting, or analytics in the binary today.
+Per [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md). No telemetry in the binary today. **Strategy revised 2026-05-23: Apple-built-in only, no third-party SDKs.** Cost + privacy + open-source posture (full rationale in `docs/superpowers/specs/2026-05-23-superbible-fork-design.md` §4).
 
-- [ ] **P2** Crash reporting (Sentry SDK or equivalent).
-- [ ] **P2** Analytics (PostHog or equivalent).
-- [ ] **P2** Server-side metrics + structured logging per `docs/OBSERVABILITY.md`.
+- [ ] **P2** MetricKit integration (`MXMetricManagerSubscriber`) — daily payloads, crash diagnostics, hang diagnostics. Persist to on-device log for user-initiated export.
+- [ ] **P2** `os_log` category fan-out for the existing applets (Chat, Bible) with the `%{public}s` vs `%{private}s` discipline.
+- [ ] **P2** Settings → About: "Export recent diagnostic log" row for user-initiated bug reports (reads from `OSLogStore`).
+- [ ] **P2** App Store Connect: confirm crash-report and analytics opt-ins are enabled for both targets; document where the dashboards live.
+- [ ] **P3** Server-side: structured stdout via Pino + platform-native log tailing (whichever host we pick). No external log aggregator.
 
 ## AI tooling
 
