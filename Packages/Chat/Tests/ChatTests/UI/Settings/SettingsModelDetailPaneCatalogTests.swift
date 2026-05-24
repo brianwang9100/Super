@@ -106,6 +106,33 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(LLMProviderCatalog.model(forModelId: "totally-made-up-2027") == nil)
     }
 
+    // MARK: - URL standardization (slash drift)
+
+    @Test("urlsMatchIgnoringTrailingSlash treats `…/openai` and `…/openai/` as equal")
+    func urlsMatchIgnoresTrailingSlash() throws {
+        // Edit-mode disambiguation in `SettingsModelDetailPane.init`
+        // calls this helper to decide whether a row's stored URL
+        // matches a catalog entry. A row persisted under an older
+        // code path with the trailing slash dropped (e.g.
+        // `…/openai`) must still be recognised as the built-in entry
+        // — otherwise edit mode classifies it as Custom and Save
+        // re-persists the drifted URL, locking the bug in.
+        let anthropic = try #require(LLMProviderCatalog.entry(forID: "anthropic"))
+        let canonical = try #require(anthropic.defaultBaseURL)
+        let noSlash = try #require(
+            URL(string: canonical.absoluteString.hasSuffix("/")
+                ? String(canonical.absoluteString.dropLast())
+                : canonical.absoluteString + "/")
+        )
+        #expect(SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(canonical, noSlash))
+        // Different host must still NOT match.
+        let other = try #require(URL(string: "https://api.openai.com/v1/openai/"))
+        #expect(!SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(canonical, other))
+        // Two nils match; one-side-nil does not.
+        #expect(SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(nil, nil))
+        #expect(!SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(canonical, nil))
+    }
+
     // MARK: - Create-flow seeds
 
     @Test("Apple seeds the on-device AFM shape (no URL, system-default model)")

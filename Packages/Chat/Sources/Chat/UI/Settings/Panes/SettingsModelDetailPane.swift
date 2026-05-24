@@ -115,7 +115,16 @@ struct SettingsModelDetailPane: View {
                 resolvedCatalogID = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)?
                     .models.first?.id ?? row.modelId
             } else if let match = LLMProviderCatalog.model(forModelId: row.modelId),
-                      match.provider.defaultBaseURL == row.baseURL {
+                      Self.urlsMatchIgnoringTrailingSlash(match.provider.defaultBaseURL, row.baseURL) {
+                // Trailing-slash tolerant comparison: a row persisted
+                // as `https://api.anthropic.com/v1/openai` must still
+                // match the catalog's `…/openai/` entry. Without this
+                // the edit pane opens in Custom mode and Save
+                // re-persists the slash-mismatched URL — drift
+                // becomes self-perpetuating. `URL.standardized` does
+                // NOT strip trailing slashes (RFC-3986 leaves them
+                // semantically significant), so we normalise the
+                // suffix ourselves.
                 resolvedProviderID = match.provider.id
                 resolvedCatalogID = match.model.id
             } else {
@@ -124,7 +133,21 @@ struct SettingsModelDetailPane: View {
             }
             _providerID = State(initialValue: resolvedProviderID)
             _modelCatalogID = State(initialValue: resolvedCatalogID)
-            _name = State(initialValue: row.name)
+            // Auto-heal the name if the row arrives with an empty
+            // string AND the row resolves to a built-in catalog model
+            // (Name field is hidden in that case, so an empty name
+            // would otherwise permanently disable Save with no UI
+            // surface for the user to fix). Falls back to row.name
+            // for Custom rows (where the field is visible).
+            let resolvedName: String
+            if row.name.trimmingCharacters(in: .whitespaces).isEmpty,
+               let entry = LLMProviderCatalog.entry(forID: resolvedProviderID),
+               let model = entry.models.first(where: { $0.id == resolvedCatalogID }) {
+                resolvedName = model.displayName
+            } else {
+                resolvedName = row.name
+            }
+            _name = State(initialValue: resolvedName)
             _baseURLText = State(initialValue: row.baseURL?.absoluteString ?? "")
             _modelId = State(initialValue: row.modelId)
             _supportsThinking = State(initialValue: row.supportsThinking)
@@ -738,13 +761,46 @@ struct SettingsModelDetailPane: View {
         contextWindowError = nil
     }
 
+    /// Trailing-slash tolerant URL comparison. Treats `…/path` and
+    /// `…/path/` as equal so edit-mode disambiguation in `init` doesn't
+    /// misclassify a row whose persisted URL drifted by one slash.
+    /// Returns `true` when both URLs are nil; otherwise normalises
+    /// each side by stripping a single trailing `/` from
+    /// `absoluteString` and compares the results.
+    static func urlsMatchIgnoringTrailingSlash(_ lhs: URL?, _ rhs: URL?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case (nil, _), (_, nil): return false
+        case let (l?, r?):
+            return Self.urlNormalized(l) == Self.urlNormalized(r)
+        }
+    }
+
+    /// Helper for ``urlsMatchIgnoringTrailingSlash`` — drops a single
+    /// trailing `/` from the URL's absolute string. Kept tiny so the
+    /// equality semantics stay obvious.
+    static func urlNormalized(_ url: URL) -> String {
+        let s = url.absoluteString
+        return s.hasSuffix("/") ? String(s.dropLast()) : s
+    }
+
     /// Pure helper that produces the initial @State seed values for a
     /// given provider id in the create flow. Centralized so the init
     /// seam (for snapshot tests pinning an initial selection) and the
     /// runtime `applyProviderSelection` path share one source of truth.
     static func makeCreateSeeds(providerID: String) -> CreateSeeds {
+        // Same three-level fallback as `currentProvider` — never
+        // force-unwrap on a catalog lookup since the helper is called
+        // from every `applyProviderSelection` tap.
         let entry = LLMProviderCatalog.entry(forID: providerID)
-            ?? LLMProviderCatalog.entry(forID: LLMProviderCatalog.customProviderID)!
+            ?? LLMProviderCatalog.entry(forID: LLMProviderCatalog.customProviderID)
+            ?? LLMProviderCatalogEntry(
+                id: LLMProviderCatalog.customProviderID,
+                displayName: "Custom",
+                kind: .openAICompatible,
+                defaultBaseURL: nil,
+                models: []
+            )
         let firstModel = entry.models.first
         if entry.id == LLMProviderCatalog.customProviderID {
             return CreateSeeds(
