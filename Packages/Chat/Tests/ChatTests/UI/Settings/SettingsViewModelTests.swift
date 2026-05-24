@@ -328,11 +328,12 @@ struct SettingsViewModelTests {
 
     @Test("updateModel on an .appleFoundation row preserves nil baseURL and skips keychain writes")
     func updateModelOnAppleFoundationRowPreservesNilFields() async {
-        // The future AFM edit pane (Phase 6) will reuse this code path
-        // but with no URL or key field. Until that lands, the URL the
-        // pane seeds (`https://api.openai.com/v1`) must NOT overwrite
-        // the row's nil `baseURL`, and the empty `apiKey` must NOT
-        // create a phantom keychain entry under a nonexistent ref.
+        // Defense-in-depth against a non-nil URL leaking through the
+        // pane (e.g., if a future refactor accidentally routes an
+        // AFM edit through the openAI-compat save branch). The
+        // openAI-compat URL must NOT overwrite the row's nil
+        // `baseURL`, and the empty `apiKey` must NOT create a
+        // phantom keychain entry under a nonexistent ref.
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "afm",
@@ -366,6 +367,47 @@ struct SettingsViewModelTests {
         #expect(saved?.apiKeyRef == nil)
         #expect(saved?.name == "Apple Intelligence (renamed)")
         #expect(modelRepo.storedKeys.isEmpty)     // no phantom key written
+    }
+
+    @Test("updateModel on an .appleFoundation row with baseURL: nil preserves nil baseURL")
+    func updateModelOnAppleFoundationRowWithNilBaseURL() async {
+        // Regression test for the AFM edit path through `updateModel(baseURL: nil)`.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "afm",
+                name: "Apple Intelligence",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: "system-default",
+                createdAt: Date(),
+                kind: .appleFoundation,
+                supportsThinking: false,
+                maxContextTokens: 4_096,
+                isSelected: true
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        // Distinguishable name + thinking flip prove the write path ran.
+        await vm.updateModel(
+            id: "afm",
+            name: "Apple Intelligence (renamed via nil-URL edit)",
+            baseURL: nil,
+            modelId: "system-default",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 8_192
+        )
+
+        let saved = try? await modelRepo.fetch(id: "afm")
+        #expect(saved?.kind == .appleFoundation)
+        #expect(saved?.baseURL == nil)
+        #expect(saved?.apiKeyRef == nil)
+        #expect(saved?.name == "Apple Intelligence (renamed via nil-URL edit)")
+        #expect(saved?.supportsThinking == true)
+        #expect(saved?.maxContextTokens == 8_192)
+        #expect(modelRepo.storedKeys.isEmpty)
     }
 
     @Test("updateModel with blank key preserves both ref and stored key")
