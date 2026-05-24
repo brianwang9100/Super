@@ -13,7 +13,7 @@
 
 ## 1. Composition Root
 
-The app target (`App/`) is the composition root. It builds the dependency graph once at launch (`AppBootstrap`) and then renders a single host view (`ContentView` → `ChatHostView`) that stacks three Chat surfaces in a `ZStack`:
+The SuperOS app target (`App/`) is the composition root. It builds the dependency graph once at launch (`SuperOSAppBootstrap`) and then renders a single host view (`ContentView` → `ChatHostView`) that stacks three Chat surfaces in a `ZStack`:
 
 ```
 ChatHostView                                                (App/ContentView.swift)

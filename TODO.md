@@ -32,14 +32,14 @@ The single backlog of *what is open*. The MVP build log (M0–M12, complete 2026
 Public App Store ship: free, BYOK, open source, local-first AI Bible app. Sibling app target to SuperOS, sharing `Core` + `Chat` + `Bible` packages. Full design + rationale in [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md). One-pager intro at [`docs/SuperBible/OVERVIEW.md`](docs/SuperBible/OVERVIEW.md).
 
 ### SB-M0 — Target wired up
-- [ ] **P1** Rename `App/SuperApp.swift` → `App/SuperOSApp.swift` and `App/AppBootstrap.swift` → `App/SuperOSAppBootstrap.swift`. Update `@main`, internal references.
-- [ ] **P1** Raise both targets' `deploymentTarget` to `26.0` in `project.yml` if not already (per the iOS-26 default-model design memory note).
-- [ ] **P1** Create `App-SuperBible/` with `SuperBibleApp.swift`, `SuperBibleAppBootstrap.swift`, `Info.plist`, `Assets.xcassets` (placeholder icon + accent), `ContentView.swift`, `Shell/`.
-- [ ] **P1** Add `SuperBible` target + scheme to `project.yml`: bundle ID `com.brianwang.SuperBible`, display name `SuperBible`, `dependencies: [Core, Chat, Bible]` initially.
-- [ ] **P1** Extend `ios-build.yml` to a `scheme: [Super, SuperBible]` matrix with shared `actions/cache` over `DerivedData`.
-- [ ] **P1** Add `paths-ignore` to `ios-build.yml` for docs-only PRs (`docs/**`, `*.md`, `TODO.md`, `README.md`, `**/AGENTS.md`, `**/CLAUDE.md`) — not present today; required by the fork spec §5.2 wall-clock projections.
-- [ ] **P1** Add `ios-build (SuperBible)` to the required-checks list once it's run on at least one PR.
-- [ ] **P1** Smoke test: `SuperBible` target launches the Shell with a stub. CI green on both builds.
+- [x] **P1** Rename `App/SuperApp.swift` → `App/SuperOSApp.swift` and `App/AppBootstrap.swift` → `App/SuperOSAppBootstrap.swift`. Update `@main`, internal references.
+- [x] **P1** Raise both targets' `deploymentTarget` to `26.0` in `project.yml` if not already (per the iOS-26 default-model design memory note).
+- [x] **P1** Create `App-SuperBible/` with `SuperBibleApp.swift`, `SuperBibleAppBootstrap.swift`, `Info.plist`, `Assets.xcassets` (placeholder icon + accent), `SuperBibleContentView.swift`. (No `Shell/` at SB-M0 — Bible-only stub renders `BibleApplet().rootView()` directly; full shell lands at SB-M1.)
+- [x] **P1** Add `SuperBible` target + scheme to `project.yml`: bundle ID `com.brianwang.SuperBible`, display name `SuperBible`, `dependencies: [Core, Chat, Bible]`.
+- [x] **P1** Extend `ios-build.yml` to a `scheme: [Super, SuperBible]` matrix with shared `actions/cache` over `DerivedData`. Cache key includes `project.yml` so target-shape changes invalidate. Matrix job renamed `build` → `build-app` and the aggregation gate keeps the literal name `build` so the pre-existing required-check name on `main` keeps reporting without a branch-protection edit.
+- [ ] **P1** Add `paths-ignore` to `ios-build.yml` for docs-only PRs — **deferred**: conflicts with the required-check pattern documented at the top of `ios-build.yml` (path-filtered required checks never report on PRs that skip the workflow). Needs its own design pass on a workaround (e.g., aggregation gate that reports success for docs-only diffs).
+- [x] **P1** No new required-checks-list entry needed — the renamed aggregation gate publishes `build`, matching the pre-existing required name (manual GitHub Settings step **avoided** by the rename).
+- [x] **P1** Smoke test: `SuperBible` target launches a Bible-only stub. Both `xcodebuild build -scheme Super` and `-scheme SuperBible` succeed locally.
 
 ### SB-M1 — Composition root + applet registration
 - [ ] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study.
@@ -71,7 +71,7 @@ Public App Store ship: free, BYOK, open source, local-first AI Bible app. Siblin
 - [ ] **P1** Wire Settings → About → Privacy row to render `App-SuperBible/PRIVACY.md` in-app.
 - [ ] **P1** Confirm donation link: GitHub Sponsors signup, resolve the URL, replace placeholder.
 - [ ] **P1** TestFlight beta cycle: dogfood SB-M1–M3 against the iOS-26 sim and a real device.
-- [ ] **P1** `release/superbible-v*` tag triggers `testflight.yml` parameterized by scheme.
+- [ ] **P1** `release/superbible-v*` tag triggers `testflight.yml` parameterized by scheme. Today `testflight.yml` hard-codes `-scheme Super` and `com.brianwang.Super` in `ExportOptions.plist`; SB-M4 needs to parameterize on the scheme and resolve a per-target provisioning profile (today `Config/Local.xcconfig` ships a single `PROVISIONING_PROFILE_SPECIFIER` that only matches one bundle id).
 
 ### SB-M5 — App Store ship
 - [ ] **P1** Final crash-free-sessions check (>99.5% on TestFlight) before submission.

@@ -6,7 +6,7 @@ import Foundation
 /// with randomized delays. Lets the UI streaming path (scroll behavior,
 /// `MessageList` content-growth, thinking blocks, code-block rendering)
 /// be exercised end-to-end without a real LLM endpoint, an API key, or
-/// the on-device Apple Foundation Model. Picked up by `AppBootstrap`
+/// the on-device Apple Foundation Model. Picked up by the host bootstrap
 /// when a `ModelConfigurationRecord` with `kind == .debug` exists; that
 /// row is auto-seeded on first launch in DEBUG builds and never in
 /// Release (the entire file is gated on `#if DEBUG`).

@@ -163,7 +163,7 @@ The shell app is the single place where real implementations are wired together:
 
 ```swift
 @main
-struct SuperApp: App {
+struct SuperOSApp: App {
     @State private var eventBus = SuperEventBus()
     @State private var providerRegistry = ProviderRegistry()
     @State private var toolRegistry = ToolRegistry()
