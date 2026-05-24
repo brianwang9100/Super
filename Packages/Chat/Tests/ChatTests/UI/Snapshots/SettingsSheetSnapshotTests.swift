@@ -430,6 +430,25 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    // Dynamic Type XXL anchor per Chat AGENTS.md's
+    // `light/dark/sepia × default × XXL` matrix. Custom is picked
+    // because it exercises the widest set of visible rows (Provider
+    // dropdown + Name + Base URL + Model ID + API Key + Max Context
+    // + Thinking toggle), so a Dynamic Type regression in row
+    // truncation, label wrapping, or picker chevron alignment
+    // shows up here.
+    @Test("dynamic type XXL on model detail create flow — Custom")
+    func modelDetailProviderCustomXXL() async {
+        await verifyCreateWithProvider(
+            theme: .light,
+            selection: .custom,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_custom_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
     // Inline-error state for the Max Context field after the user
     // typed an over-cap value and tapped Save. Uses the test seam
     // `initialModelDetailContextWindowError` to pre-set the error
@@ -466,6 +485,7 @@ struct SettingsSheetSnapshotTests {
         existingAppleFoundation: Bool,
         name: String,
         contextWindowError: String? = nil,
+        dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) async {
         let viewModel = makeViewModel(appleFoundationAvailability: availability)
@@ -484,6 +504,7 @@ struct SettingsSheetSnapshotTests {
             initialModelDetailContextWindowError: contextWindowError
         )
         .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }
