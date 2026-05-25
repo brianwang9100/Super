@@ -273,6 +273,10 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
+                // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    composer
+                }
                 .overlay(alignment: .bottom) {
                     // Transient "Copied!" pill floats at the bottom edge
                     // of the transcript area, which puts it directly
@@ -294,7 +298,6 @@ public struct ChatScreen: View {
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
                 )
-            composer
         }
         .background(panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))

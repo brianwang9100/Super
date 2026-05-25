@@ -132,11 +132,14 @@ struct ChatOverlaySnapshotTests {
 
     /// Pins the outer keyboard-aware region to 538pt (≈ 874pt viewport
     /// minus a 336pt iPhone keyboard) so the semi-expanded surface
-    /// renders as it would with the user typing. The surface should
-    /// hold its top edge at the semi anchor's `topInset` (just below
-    /// the backdrop applet's nav-bar reserve) and shrink its interior
-    /// to keep the composer above the keyboard — the handle stays at
-    /// the same y position as the no-keyboard semi snapshot.
+    /// renders as it would with the user typing. The chat surface's
+    /// outer frame uses `keyboardAwareHeight` so the surface shrinks
+    /// to that 538pt region; the composer is parked in
+    /// `safeAreaInset(edge: .bottom)` of the content and rides the
+    /// bottom edge of the shrunken surface — flush above where the
+    /// keyboard would be. Baseline catches regressions in the
+    /// surface's keyboard-up shape (header position, transcript
+    /// clipping, composer hoist).
     @Test("semi-expanded with the keyboard up — light")
     func semiExpandedKeyboardLight() {
         verifyKeyboardSemi(theme: .light, name: "overlay_semi_expanded_keyboard_light")
