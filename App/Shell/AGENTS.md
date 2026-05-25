@@ -1,19 +1,23 @@
 # App/Shell — Agent Guidelines
 
-The shell that hosts every applet and overlays Chat on top in three presentation states. Lives inside the `Super` App target (not its own Swift Package) — these files are bundled with the app's composition root, not a reusable library.
+The shell that hosts every applet and overlays Chat on top in three presentation states. **Shared between the SuperOS and SuperBible App Store targets** — individual `*.swift` files here are included in both targets via explicit `sources:` entries in `project.yml`. They are not packaged as a Swift Package; the App targets bundle them directly.
 
 ## What lives here
 
-- **`App/ContentView.swift`** — defines `AppShell` (the renamed `ChatHostView`). Owns the `AppletRegistry`, the `ChatPresentationState`, the sidebar / settings visibility bindings, and the per-conversation view-model rebuild path.
+- **`App/Shell/AppShell.swift`** — defines `AppShell`, the chat-overlay-on-applet-backdrop shell rendered by both `ContentView` (SuperOS) and `SuperBibleContentView` (SuperBible). Owns the `AppletRegistry` (handed in by the target's bootstrap), the `ChatPresentationState`, the sidebar / settings visibility bindings, and the per-conversation view-model rebuild path. Hoists `static let activeAppletStorageKey = "shell.activeAppletID"` so both target bootstraps reference it via `AppShell.activeAppletStorageKey` — the write at `onSelectApplet` time and the read at `bootstrap()` time always agree.
+- **`App/Shell/AppShellDependencies.swift`** — `struct AppShellDependencies`, the slice of the bootstrap dependency graph `AppShell` actually consumes. Each target's full dependency struct (`AppDependencies`, `SuperBibleAppDependencies`) exposes a `var shellDependencies` slicer that materializes one of these.
+- **`App/Shell/AppBootstrapSupport.swift`** — namespaced static helpers shared by both bootstraps: `defaultDataDirectory()`, `ensureDirectoryExists(_:)`, `hydrateProviders(into:from:toolRegistry:appleFoundationAvailability:)`, and the DEBUG-only `seedDebugModelIfNeeded(repository:)`. Target-specific work (applet roster, chat briefing) stays in each bootstrap; only the generic plumbing is shared.
+- **`App/Shell/FailureScreen.swift`** — inline error pane rendered by both the outer `ContentView` / `SuperBibleContentView` (`.failed(_)`) and the inner `ChatLayer` (bootstrap-failed-after-launch path).
 - **`App/Shell/FixedHamburgerButton.swift`** — top-left 36×36pt raised pill. Survives every chat-presentation-state transition unchanged.
-- **`App/Shell/Placeholders/AppletPlaceholderScreen.swift`** — generic empty-state used by all four M2 placeholder applets (Todo, Recipes, Bible, Finance).
-- **`App/Shell/Placeholders/PlaceholderApplets.swift`** — the four `MiniApplet` conformances registered with the shell at composition root.
+- **`App/Shell/LazyConversationDriver.swift`** — `actor` wrapper around `ChatSessionDriver` that defers the conversation's first DB write until the user actually sends a message. Was at `App/LazyConversationDriver.swift` pre-SB-M1; relocated here so both targets reach it.
+- **`App/Shell/Placeholders/AppletPlaceholderScreen.swift`** — generic empty-state used by SuperOS's placeholder applets (Recipes, Finance).
+- **`App/Shell/Placeholders/PlaceholderApplets.swift`** — `RecipesPlaceholderApplet` / `FinancePlaceholderApplet` `MiniApplet` conformances. **Not included in the SuperBible target** — SuperBible's applet roster (Bible at SB-M1; +Plans at SB-M2) does not use placeholders. The `project.yml` `SuperBible.sources` block deliberately omits `App/Shell/Placeholders/`.
 
 Anything chat-overlay-specific (the three state shapes, the drag handle, the spring + reduce-motion tokens) lives in `Packages/Chat/Sources/Chat/UI/ChatOverlay/` — it's chat-related and travels with the Chat package so the chat overlay is reusable if the shell ever changes.
 
 ## Rules
 
-- **Chat-the-overlay is not a registered applet.** It's the host. Don't register a backdrop applet with `appletID: "chat"` — the searchable conversation-list backdrop is `ChatsApplet` (`appletID: "chats"`), and it's the only Chat-package applet that belongs in the registry. The sidebar always shows chat history + New Chat CTA; backdrop applets only render behind the chat overlay.
+- **Chat-the-overlay is not a registered applet.** It's the host. Don't register a backdrop applet with `appletID: "chat"` in either bootstrap — the searchable conversation-list backdrop is `ChatsApplet` (`appletID: "chats"`), and it's the only Chat-package applet that belongs in the registry. The sidebar always shows chat history + New Chat CTA; backdrop applets only render behind the chat overlay.
 - **AppletRegistry mutation is composition-root only.** The shell can flip `registry.activeID` at runtime, but the `applets` list is fixed at app init. Dynamic install / uninstall flows from `docs/DESIGN.md §3.2-3.3` are deferred.
 - **Default chat-presentation-state transitions** (`docs/DESIGN.md §4.4`):
   - Tap an applet from the sidebar → `chatState = .minimized` (chat collapses; backdrop owns the screen)
@@ -21,17 +25,18 @@ Anything chat-overlay-specific (the three state shapes, the drag handle, the spr
   - Tap dimmed backdrop in semi-expanded → `chatState = .minimized` (user reclaims the applet)
   - Drag the chat surface anywhere / tap the pill body → handled by `ChatOverlay`, not here (the overlay tracks the finger continuously and snaps to the nearest anchor on release)
 - **Reduce Motion must thread through.** Read `\.accessibilityReduceMotion` in `AppShell` and pass it to every `withAnimation(...)` block via `ChatOverlayAnimation.transition(reduceMotion:)`. The shell, the overlay container, and the backdrop's opacity all share the same animation curve so the transitions stay coherent.
+- **Adding a new `App/Shell/*.swift` file? Add it to `project.yml` `SuperBible.sources` too.** xcodegen's `App` source-folder entry picks it up for SuperOS automatically; the SuperBible target uses explicit per-file entries, so a missed entry only breaks the SuperBible build. CI's matrix leg (`build-app (SuperBible)`) catches this, but better to land it in the same diff. The `App/Shell/Placeholders/` subdirectory is the one current exception — those files are SuperOS-only by design.
 
 ## Testing
 
-- App-target Swift code does **not** currently have its own XCTest target. The closest existing coverage is `Packages/Chat/Tests/ChatTests/UI/Snapshots/ChatOverlaySnapshotTests.swift` (anchor-state heights + mid-drag intermediate × themes) — it snapshot-tests the chat-overlay surface directly, which is the load-bearing surface area.
-- **Manual sim verification is the bar for changes here** until an App-target test target exists. Snapshot anything verifiable from inside the Chat package; for shell-only layout decisions (chrome z-order, backdrop opacity timing, sidebar plumbing) verify on iPhone 17 / iOS 26.4 / Xcode 26.4.1 — CI's pinned trio.
-- An Xcode app-target test bundle is a candidate for a future PR. Until then, file paths under `App/Shell/` go through the same `xcodebuild build -scheme Super` check as the rest of the App target; compile errors will surface there.
+- App-target Swift code does **not** currently have its own XCTest target. Closest existing coverage is `Packages/Chat/Tests/ChatTests/UI/Snapshots/ChatOverlaySnapshotTests.swift` (anchor-state heights + mid-drag intermediate × themes) — it snapshot-tests the chat-overlay surface directly, which is the load-bearing surface area.
+- **Manual sim verification is the bar for changes here** until an app-target test target exists (tracked in `TODO.md` § SB-M1 follow-ups). Snapshot anything verifiable from inside the Chat package; for shell-only layout decisions (chrome z-order, backdrop opacity timing, sidebar plumbing) verify on iPhone 17 / iOS 26.4 / Xcode 26.4.1 — CI's pinned trio.
+- **Verify both targets.** `xcodebuild build -scheme Super` and `xcodebuild build -scheme SuperBible` must both succeed locally before opening a PR that touches anything under `App/Shell/`.
 
 ## Dependencies
 
-- `Core` — `MiniApplet`, `AppletRegistry`
-- `Chat` — the chat surfaces (`ChatOverlay` + `ChatScreen` + the morphing `ChatComposer`), the chat view models, the sidebar drawer, the settings sheet, the icon glyphs
-- `Bible`, `Todo` — real applet packages, imported and registered at the composition root
+- `Core` — `MiniApplet`, `AppletRegistry`, `SuperEventBus`, `SplashView`, `SuperTheme`, `URLSessionHTTPClient`, `AppleFoundationAvailability`, etc.
+- `Chat` — every Chat type the shell holds or constructs: `ChatScreenViewModel`, `SidebarViewModel`, `SettingsViewModel`, `ChatOverlay`, `SidebarDrawer`, `SettingsSheet`, `ChatSession*`, repositories, the `LLMProvider` family, `ModelConfigurationSeeding`, etc.
+- `GRDBQuery` — the `DatabaseContext` `SettingsLayer` constructs for the memory pane.
 
-The shell, as the composition root, imports each real applet package and registers its `MiniApplet`. Applets are added here as they graduate from a local placeholder stub to a full SwiftPM package; applets still backed by a stub (`Recipes`, `Finance`) live in `App/Shell/Placeholders/` until their package exists. Applets never import *each other* — cross-applet communication goes through `Core`.
+The shared shell files don't import any specific applet package (`Bible`, `Todo`, `Plans`). Per-target bootstraps import the applet packages they register; the shell only sees opaque `any MiniApplet` values through the registry.
