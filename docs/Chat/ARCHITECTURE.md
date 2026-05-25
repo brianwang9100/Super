@@ -500,7 +500,7 @@ When the applet registry changes (an applet is installed or removed), `AppletCha
 
 **Wiring.** `ChatSession` holds a `currentSystemPrompt` cache mirroring the `autoCompact*` push pattern:
 
-- **At app launch**, `AppBootstrap` loads `ChatSettings` from `ChatSettingsStore` and passes `settings.systemPrompt` into `ChatSessionStore` — new sessions are constructed with it.
+- **At app launch**, `SuperOSAppBootstrap` loads `ChatSettings` from `ChatSettingsStore` and passes `settings.systemPrompt` into `ChatSessionStore` — new sessions are constructed with it.
 - **On Settings edits**, `SettingsViewModel.setSystemPrompt(_:)` writes to `ChatSettingsStore` and fans the new value out to every active session via `ChatSessionStore.setSystemPrompt(_:)`. Long-running sessions pick up the change on their next turn — no app restart, no per-session resubscribe.
 - **Per turn**, `ChatSession.assemble(model:)` passes `currentSystemPrompt` to `ContextAssembler.assemble(...)`. The injection is a runtime decision, not a snapshot baked into the conversation, so changing the setting affects every chat immediately (matching ChatGPT custom-instruction and Claude.ai preferences semantics).
 

@@ -43,12 +43,10 @@ The shell does NOT own any mini-app's internal UI, data model, or business logic
 
 The same shell, mini-app registry, and `MiniApplet` protocol serve **both app targets** in this monorepo — SuperOS and SuperBible (see [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §13). The only thing that differs per target is the **composition root**, which decides which applets are registered at launch.
 
-**Planned shape (effective at SB-M0; see [`TODO.md`](../TODO.md) § SuperBible):**
+**Composition roots (one per target):**
 
 - `App/SuperOSApp.swift` → `SuperOSAppBootstrap` → Chat + Bible + Todo (and more, over time).
-- `App-SuperBible/SuperBibleApp.swift` → `SuperBibleAppBootstrap` → Chat + Bible + Plans (and more, post-v1).
-
-**Current state (today, pre-SB-M0):** only the SuperOS target exists, and the composition root is still `App/SuperApp.swift` + `App/AppBootstrap.swift` — they get renamed as part of SB-M0 (the same commit that adds the SuperBible target). Do not create a second `@main` file before that rename lands; Xcode rejects duplicate `@main` annotations at compile time, and a stray duplicate is a far harder mistake to back out of than the rename itself.
+- `App-SuperBible/SuperBibleApp.swift` → `SuperBibleAppBootstrap` → Bible (SB-M0 stub); Chat + Bible + Plans at SB-M1 and beyond.
 
 Every overlay state, every animation choreography, every long-press / deep-link / event-bus interaction described below applies identically to both apps. The shell knows nothing about which target it's running inside — it only knows which applets the bootstrap handed it.
 
@@ -329,7 +327,7 @@ Mini-apps are Swift Packages in the monorepo, registered once at the composition
 
 ```swift
 @main
-struct SuperApp: App {
+struct SuperOSApp: App {
     let registry = AppletRegistry(applets: [
         ChatsApplet(chatDatabase: database),  // searchable history backdrop
         ToDoApplet(),

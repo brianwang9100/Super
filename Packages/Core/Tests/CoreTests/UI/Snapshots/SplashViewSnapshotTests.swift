@@ -21,7 +21,7 @@ import UIKit
 struct SplashViewSnapshotTests {
     init() {
         // SwiftUI snapshot tests run in a fresh xctest process that never
-        // hits `SuperApp.init()`, so the bundled `.ttf`s are unregistered
+        // hits `SuperOSApp.init()`, so the bundled `.ttf`s are unregistered
         // and `Font.custom("InstrumentSerif-Italic", …)` silently falls
         // back to system sans-serif. The static-let inside is idempotent,
         // so calling per-test costs nothing after the first hit.

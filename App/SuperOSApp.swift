@@ -7,7 +7,7 @@ import SwiftUI
 /// rather than the initializer so any GRDB or Keychain failure surfaces as
 /// UI rather than a crashed launch.
 @main
-struct SuperApp: App {
+struct SuperOSApp: App {
     @State private var state: BootstrapState = .loading
 
     init() {
@@ -30,7 +30,7 @@ struct SuperApp: App {
 
     private func load() async {
         do {
-            let dependencies = try await AppBootstrap.bootstrap()
+            let dependencies = try await SuperOSAppBootstrap.bootstrap()
             state = .ready(dependencies)
         } catch {
             state = .failed(error.localizedDescription)
