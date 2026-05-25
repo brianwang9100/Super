@@ -244,6 +244,7 @@ public struct ChatOverlay: View {
             }
         )
         .frame(height: metrics.renderedHeight, alignment: .bottom)
+        // Use `keyboardAwareHeight` — not `geo.size.height` — so the chat surface shrinks above the keyboard; the inner GR's `.ignoresSafeArea(.keyboard)` (see body comment) blocks alternative safeAreaInset-based hoisting.
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
         .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
