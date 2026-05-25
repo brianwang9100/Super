@@ -63,7 +63,12 @@ enum AppBootstrapHelpers {
     /// row is only registered when the OS reports AFM as available; an
     /// unavailable device leaves the registry empty and the orchestrator
     /// falls back to its `noModelConfigured` banner.
-    @MainActor
+    ///
+    /// Deliberately *not* `@MainActor`-isolated, matching the pre-extraction
+    /// version. The body is a tight loop of actor `await`s with no UI work;
+    /// pinning it to main would make every iteration's synchronous bookkeeping
+    /// (sort, switch dispatch, provider construction) contend with first-frame
+    /// rendering during launch.
     static func hydrateProviders(
         into registry: LLMProviderRegistry,
         from repository: any ModelConfigurationRepository,

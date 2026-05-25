@@ -18,12 +18,23 @@ import Foundation
 enum SuperBibleSystemPromptLoader {
     /// Returns the biblical-study system prompt as a trimmed string.
     ///
-    /// A missing resource silently resolves to the empty string (the
-    /// behavior `AppletSystemPrompt.load` already provides). The chat
-    /// orchestrator treats an empty briefing as "no per-applet block",
-    /// so the worst case is the assistant falls back to the generic
-    /// persona — not a crash.
+    /// A missing resource resolves to the empty string in Release builds (the
+    /// behavior `AppletSystemPrompt.load` already provides) so a botched
+    /// resource bundle can't take down the running app. In DEBUG, the empty
+    /// result trips an `assertionFailure` so the regression is impossible to
+    /// miss during the dev-loop the moment the prompt drops out — without
+    /// this, a future `project.yml` edit could silently strip the
+    /// biblical-study persona without any compile or run signal.
     static func load() -> String {
-        AppletSystemPrompt.load(from: .main, resource: "SuperBibleSystemPrompt")
+        let body = AppletSystemPrompt.load(from: .main, resource: "SuperBibleSystemPrompt")
+        #if DEBUG
+        if body.isEmpty {
+            assertionFailure(
+                "SuperBibleSystemPrompt.md missing or empty in the App-SuperBible bundle. "
+                + "Check the `buildPhase: resources` entry in `project.yml` for SuperBible."
+            )
+        }
+        #endif
+        return body
     }
 }

@@ -52,6 +52,12 @@ targets:
       Release: Config/Base.xcconfig
     sources:
       - path: App
+        # Per-module AGENTS.md / CLAUDE.md files under App/ live with the
+        # source for contributor convenience but must not ship as runtime
+        # resources in the production .app. The SuperBible target has the
+        # mirror exclude on its own App-SuperBible block.
+        excludes:
+          - "**/*.md"
     info:
       path: App/Info.plist
       properties:

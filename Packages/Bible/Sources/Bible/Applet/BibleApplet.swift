@@ -97,9 +97,10 @@ public struct BibleApplet: MiniApplet {
     /// the shell uses for `chat.sqlite`. The `.complete` protection class is
     /// applied here (best-effort, iOS-enforced) so the directory itself is
     /// pinned. The on-disk `bible.sqlite` is independently pinned to
-    /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the SuperOS
-    /// `SuperOSAppBootstrap.ensureDirectoryExists` + `ChatDatabase.open`
-    /// pattern. The `-wal` / `-shm` sidecars SQLite creates at runtime fall
+    /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the host
+    /// app's `AppBootstrapHelpers.ensureDirectoryExists` + `ChatDatabase.open`
+    /// pattern (shared by both `SuperOSAppBootstrap` and
+    /// `SuperBibleAppBootstrap`). The `-wal` / `-shm` sidecars SQLite creates at runtime fall
     /// back to the app's default protection class (iOS defaults to
     /// `.completeUntilFirstUserAuthentication`, not `.none` — see Apple's
     /// File-System Data Protection guide). If stricter "encrypted while
