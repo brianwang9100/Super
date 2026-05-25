@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `RelativeTimeFormatter.format(_:now:calendar:)` — bucket
+/// Tests for `RelativeTimeFormatter.format(_:now:)` — bucket
 /// boundaries and within-bucket pluralization. Matches the strings the
 /// Chats applet design renders under each chat row.
 @Suite("RelativeTimeFormatter")

@@ -111,9 +111,12 @@ public final class SidebarViewModel {
             return
         }
         let running = Set(await runningSource())
-        let sorted = conversations.sorted { $0.updatedAt > $1.updatedAt }
-        hasMoreChats = sorted.count > Self.sidebarChatLimit
-        dbChats = sorted
+        // `listActiveRecent` already returns rows in `updatedAt DESC`
+        // order (the repository's `.order(.desc)` clause is the single
+        // source of truth). No client-side re-sort here — same order
+        // falls out either way.
+        hasMoreChats = conversations.count > Self.sidebarChatLimit
+        dbChats = conversations
             .prefix(Self.sidebarChatLimit)
             .map { record in
                 let title: String

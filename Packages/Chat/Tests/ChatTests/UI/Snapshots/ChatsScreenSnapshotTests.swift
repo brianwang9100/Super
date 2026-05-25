@@ -14,7 +14,7 @@ import Testing
 /// Conversation fixtures span the relative-time buckets the design calls
 /// out — "just now" through "3 mo ago" — so the rows exercise every
 /// branch of `RelativeTimeFormatter.format`.
-@Suite("ChatsScreen snapshots", .serialized)
+@Suite("ChatsScreen snapshots")
 @MainActor
 struct ChatsScreenSnapshotTests {
     private static let frame = CGSize(width: 402, height: 874)

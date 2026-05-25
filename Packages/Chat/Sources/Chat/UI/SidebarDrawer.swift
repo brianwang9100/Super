@@ -383,6 +383,11 @@ private struct SeeAllChatsRow: View {
     let onTap: () -> Void
 
     @Environment(\.superTheme) private var theme
+    /// Intentionally does **not** track the chat font-scale slider —
+    /// mirrors `ChatRow` above: the drawer is chrome, not reading
+    /// content, so the slider stays scoped to the message list.
+    /// `@ScaledMetric` still composes Dynamic Type on top of the 15pt
+    /// base so accessibility text-size preferences continue to apply.
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
 
     var body: some View {
