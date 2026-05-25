@@ -128,22 +128,18 @@ struct ChatOverlaySnapshotTests {
         }
     }
 
-    // MARK: - Semi-expanded with the keyboard-aware height frozen
-    //
-    // `_injectedKeyboardAwareHeight: 538` mimics the value the live
-    // `GeometryReader` produces when a 336pt iPhone keyboard is up.
-    // Under the canonical-safeAreaInset architecture this value
-    // feeds only the drag-math clamps (`updateDrag` / `endDrag`),
-    // **not** the rendered chat-surface height — that's now
-    // `geo.size.height` so the surface fills the device top-to-bottom
-    // and the composer rides SwiftUI's safe-area inset at runtime.
-    // The snapshot therefore can't show the real "keyboard up" visual
-    // (no real keyboard, no SwiftUI keyboard-avoidance fires); it
-    // captures the drag-math-frozen render: full-height surface with
-    // composer pinned at the device bottom. Useful as a regression
-    // baseline for things like header/handle positioning at the
-    // semi-expanded settled anchor when the drag math is constrained.
-    // True keyboard-up visual is covered by on-device verification.
+    // MARK: - Semi-expanded with the keyboard up (handle stays in place)
+
+    /// Pins the outer keyboard-aware region to 538pt (≈ 874pt viewport
+    /// minus a 336pt iPhone keyboard) so the semi-expanded surface
+    /// renders as it would with the user typing. The chat surface's
+    /// outer frame uses `keyboardAwareHeight` so the surface shrinks
+    /// to that 538pt region; the composer is parked in
+    /// `safeAreaInset(edge: .bottom)` of the content and rides the
+    /// bottom edge of the shrunken surface — flush above where the
+    /// keyboard would be. Baseline catches regressions in the
+    /// surface's keyboard-up shape (header position, transcript
+    /// clipping, composer hoist).
     @Test("semi-expanded with the keyboard up — light")
     func semiExpandedKeyboardLight() {
         verifyKeyboardSemi(theme: .light, name: "overlay_semi_expanded_keyboard_light")

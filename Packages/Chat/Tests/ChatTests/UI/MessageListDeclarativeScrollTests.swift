@@ -36,11 +36,11 @@ struct MessageListDeclarativeScrollTests {
 
     // MARK: - Initial position
 
-    /// Short chats (content fits viewport) keep the natural top alignment
-    /// — `.defaultScrollAnchor(.bottom, for: .initialOffset)` is a no-op
-    /// when the scroll view is not scrollable. Guards against an
-    /// accidental anchor regression that would push short chats to the
-    /// bottom of the viewport with empty space above.
+    /// Short chats (content fits viewport) keep the natural top
+    /// alignment — `.defaultScrollAnchor(.top, for: .alignment)` wins
+    /// for non-scrollable content. Guards against an accidental
+    /// anchor regression that would push short chats to the bottom of
+    /// the viewport with empty space above.
     @Test("short chat starts at top with content fitting viewport")
     func shortChatStartsAtTop() async throws {
         let driver = MessageListDriver(items: makeItems(count: 2))
@@ -60,9 +60,9 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
-    /// Long chats land bottom-anchored on first appear — replaces the
-    /// `didApplyInitialBottomAnchor` first-tick latch with the
-    /// `.initialOffset` role anchor.
+    /// Long chats land bottom-anchored on first appear — covered by
+    /// the no-role `.defaultScrollAnchor(.bottom)` modifier, which
+    /// sets the initial offset for an overflowing transcript.
     @Test("long chat opens with bottom message visible")
     func longChatStartsAtBottom() async throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
@@ -95,9 +95,10 @@ struct MessageListDeclarativeScrollTests {
     // verification on iPhone 17 simulator covers the keyboard cases
     // (see plan's Verification section).
 
-    /// Appending a message while at bottom stays at bottom — the
-    /// `.sizeChanges` anchor handles the content-grow case the same way
-    /// it handles viewport changes.
+    /// Appending a message while at bottom stays at bottom — covered
+    /// by the `.onChange(of: items.count) → scrollTo(.bottom)`
+    /// handler (the empirically-broken `.defaultScrollAnchor(.bottom,
+    /// for: .sizeChanges)` is not relied on).
     @Test("appending a message while at bottom keeps the new message in view")
     func contentGrowAtBottomStaysAtBottom() async throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
@@ -119,11 +120,11 @@ struct MessageListDeclarativeScrollTests {
     }
 
     /// Mounting the live streaming tail (nil → non-nil with empty
-    /// thinking/text — the "Waiting spark" state immediately after send)
-    /// should land at the bottom of the new content. Before the refactor
-    /// this fired `.onChange(of: streamingTail) → scrollTo(.bottom)`
-    /// against in-flux geometry; the declarative anchor handles the
-    /// size change in the layout pass.
+    /// thinking/text — the "Waiting spark" state immediately after
+    /// send) should land at the bottom of the new content. Covered by
+    /// `.onChange(of: streamingTail) → scrollTo(.bottom)` which fires
+    /// once per settled tail state (mount, every coalesced delta,
+    /// unmount).
     @Test("streaming tail mount lands at the bottom of the new content")
     func streamingTailMountLandsAtBottom() async throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
@@ -145,6 +146,47 @@ struct MessageListDeclarativeScrollTests {
         #expect(
             distance < 2,
             "expected to land at bottom after streamingTail mount, got distanceFromBottom=\(distance)"
+        )
+    }
+
+    /// Streaming-tail *thinking* growth (no visible text yet) must
+    /// keep the bubble at the bottom. The naive observer
+    /// `.onChange(of: streamingTail?.text)` would miss this entirely
+    /// because `.text` stays empty during the pure-thinking phase —
+    /// the user would see the thinking trace push the streaming
+    /// bubble silently below the viewport. Observing the whole
+    /// `streamingTail` struct catches it.
+    @Test("streaming tail thinking-only growth stays at bottom")
+    func streamingThinkingGrowthStaysAtBottom() async throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
+
+        // Mount the tail in pure-thinking state, then grow `thinking`
+        // without ever touching `.text` — the production shape when
+        // the model emits a thinking trace before any reply text.
+        driver.streamingTail = MessageList.StreamingState(
+            thinking: "Considering the question",
+            text: "",
+            isCompacting: false
+        )
+        settle(controller: controller)
+        let longerThinking = String(repeating: "More thinking. ", count: 80)
+        driver.streamingTail = MessageList.StreamingState(
+            thinking: longerThinking,
+            text: "",
+            isCompacting: false
+        )
+        settle(controller: controller)
+
+        let distance = distanceFromBottom(scrollView)
+        #expect(
+            distance < 2,
+            "expected to remain at bottom after thinking growth, got distanceFromBottom=\(distance)"
         )
     }
 

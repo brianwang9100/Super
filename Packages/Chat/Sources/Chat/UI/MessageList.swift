@@ -224,7 +224,7 @@ public struct MessageList: View {
     @Environment(\.superTheme) private var theme
     /// Programmatic scroll-position binding driven by the three
     /// pinpoint observers below: `.onChange(of: items.count)`,
-    /// `.onChange(of: streamingTail?.text)`, and
+    /// `.onChange(of: streamingTail)`, and
     /// `.onScrollGeometryChange(for: ContainerSnapshot.self)`. The
     /// first two are value-based; the third is geometry-based but
     /// reads only `containerSize.height` plus a "was at bottom"
@@ -234,12 +234,38 @@ public struct MessageList: View {
     /// `scrollTo` mutates content offset, not container height, so
     /// it can't retrigger the action through its own writes.
     @State private var scrollPosition = ScrollPosition()
-    /// Reduced snapshot of the scroll geometry — just the container
-    /// height plus whether the user was within ``bottomFollowThreshold``
-    /// of the bottom edge. Equatable so SwiftUI only fires the
-    /// `onScrollGeometryChange` action on actual transitions.
+    /// Latched "was at the bottom on the most recent settled geometry"
+    /// flag, updated from the `onScrollGeometryChange` action. Read by
+    /// `.onChange(of: streamingTail)` to gate auto-follow during
+    /// streaming so a user scrolled up to read history is not yanked
+    /// down on every text delta. `items.count` changes intentionally
+    /// bypass this gate — those changes only happen when the user just
+    /// took an action (sent a message, accepted regenerate, persisted
+    /// a completed stream), and in those cases showing the latest
+    /// message is the right default.
+    @State private var wasAtBottom = true
+    /// Reduced snapshot of the scroll geometry — container height,
+    /// content height, and whether the user was within
+    /// ``bottomFollowThreshold`` of the bottom edge. Equatable so
+    /// SwiftUI only fires the `onScrollGeometryChange` action on
+    /// actual transitions. `contentHeight` is included so the action
+    /// can distinguish a content-grow tick (which fires *after* the
+    /// `.onChange(of: streamingTail)` observer already needed to read
+    /// `wasAtBottom`) from a user-driven scroll tick — the latch only
+    /// updates from the latter.
     private struct ContainerSnapshot: Equatable {
+        /// `containerSize.height` of the `ScrollView` at the moment the
+        /// snapshot was taken. Changes when the chat-surface frame
+        /// shrinks/grows (keyboard show/dismiss).
         var height: CGFloat
+        /// `contentSize.height` of the `ScrollView`. Grows when items
+        /// are appended or the streaming tail's text/thinking grows.
+        var contentHeight: CGFloat
+        /// `true` when the snapshot's distance-from-bottom was within
+        /// ``bottomFollowThreshold``. Captured from the geometry
+        /// transform; not the live "is the user at the bottom right
+        /// now" value — the latter is only knowable inside the next
+        /// geometry tick.
         var isAtBottom: Bool
     }
     /// Distance from the bottom edge within which the user counts as
@@ -302,38 +328,60 @@ public struct MessageList: View {
         .defaultScrollAnchor(.bottom)
         .defaultScrollAnchor(.top, for: .alignment)
         // Bottom-pin on content grow (new message, lazy-mat'd row
-        // becoming visible) and on streaming-text deltas. Empirically
-        // `.defaultScrollAnchor(.bottom, for: .sizeChanges)` does not
-        // honor content-size changes in iOS 26.4 / Xcode 26.4.1 — the
-        // bottom slips by the height of newly-appended content. These
-        // two `.onChange` handlers are the smallest reliable
-        // replacement: value-based observers that fire once per
-        // settled change (not per layout pass), so they cannot form
-        // the geometry/scroll feedback loop the prior
+        // becoming visible) and on streaming-content deltas.
+        // Empirically `.defaultScrollAnchor(.bottom, for: .sizeChanges)`
+        // does not honor content-size changes in iOS 26.4 / Xcode
+        // 26.4.1 — the bottom slips by the height of newly-appended
+        // content. These two `.onChange` handlers are the smallest
+        // reliable replacement: value-based observers that fire once
+        // per settled change (not per layout pass), so they cannot
+        // form the geometry/scroll feedback loop the prior
         // `.onScrollGeometryChange` implementation did.
         .onChange(of: items.count) { _, _ in
             scrollPosition.scrollTo(edge: .bottom)
         }
-        .onChange(of: streamingTail?.text) { _, _ in
+        // `streamingTail` is the whole `StreamingState`, not just
+        // `.text` — the tail grows during the pure-thinking phase via
+        // `.thinking` *before* `.text` has any content, and observing
+        // only `.text` misses that growth (the user would see the
+        // thinking trace push the streaming bubble down out of view).
+        // Gated on `wasAtBottom` so a user reading history during a
+        // long response isn't yanked down on every coalesced delta.
+        .onChange(of: streamingTail) { _, _ in
+            guard wasAtBottom else { return }
             scrollPosition.scrollTo(edge: .bottom)
         }
         // Bottom-pin on container shrink/grow (the chat surface's
         // height changes when the keyboard rises/dismisses — see
         // `ChatOverlay`'s `keyboardAwareHeight`-capped frame). The
-        // transform reads `containerSize.height` and a boolean
-        // "isAtBottom"; the action fires `scrollTo(.bottom)` only on
-        // a height change AND only when the user was already at the
-        // bottom. Crucially, the action does **not** read live
-        // `contentOffset`, so the `scrollTo` it issues can't retrigger
-        // it via its own write — that was the feedback loop the
-        // prior implementation hit during keyboard animations.
+        // transform reads `containerSize.height`, `contentSize.height`,
+        // and a boolean "isAtBottom"; the action fires `scrollTo(.bottom)`
+        // only on a height change AND only when the user was already
+        // at the bottom. The action also latches `wasAtBottom` for
+        // the streaming observer — but **only** when the tick was a
+        // pure user scroll (no content grow), because content-grow
+        // ticks fire *after* the `.onChange(of: streamingTail)`
+        // observer needs the pre-grow bottom-status. Crucially, the
+        // action does **not** read live `contentOffset`, so the
+        // `scrollTo` it issues can't retrigger it via its own write —
+        // that was the feedback loop the prior implementation hit
+        // during keyboard animations.
         .onScrollGeometryChange(for: ContainerSnapshot.self) { geo in
             let distance = max(0, geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height)
             return ContainerSnapshot(
                 height: geo.containerSize.height,
+                contentHeight: geo.contentSize.height,
                 isAtBottom: distance < Self.bottomFollowThreshold
             )
         } action: { oldValue, newValue in
+            // Latch the bottom-status only when this tick wasn't a
+            // content-grow event. Content-grow flips `isAtBottom`
+            // false (the bottom is suddenly further away) *before*
+            // the gated `.onChange(of: streamingTail)` runs; we want
+            // that observer to see the pre-grow status.
+            if oldValue.contentHeight == newValue.contentHeight {
+                wasAtBottom = newValue.isAtBottom
+            }
             guard oldValue.height != newValue.height else { return }
             guard oldValue.isAtBottom else { return }
             scrollPosition.scrollTo(edge: .bottom)
