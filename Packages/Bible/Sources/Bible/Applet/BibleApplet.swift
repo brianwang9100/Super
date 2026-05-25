@@ -98,7 +98,7 @@ public struct BibleApplet: MiniApplet {
     /// applied here (best-effort, iOS-enforced) so the directory itself is
     /// pinned. The on-disk `bible.sqlite` is independently pinned to
     /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the host
-    /// app's `AppBootstrapHelpers.ensureDirectoryExists` + `ChatDatabase.open`
+    /// app's `AppBootstrapSupport.ensureDirectoryExists` + `ChatDatabase.open`
     /// pattern (shared by both `SuperOSAppBootstrap` and
     /// `SuperBibleAppBootstrap`). The `-wal` / `-shm` sidecars SQLite creates at runtime fall
     /// back to the app's default protection class (iOS defaults to

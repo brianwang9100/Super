@@ -63,12 +63,12 @@ struct SuperBibleAppDependencies {
 /// One-shot composition root for the SuperBible target. Stays separate
 /// from `SuperOSAppBootstrap` because the two apps register different
 /// applet sets — but the generic plumbing (directory creation, provider
-/// hydration, debug-model seed) is shared through `AppBootstrapHelpers`.
+/// hydration, debug-model seed) is shared through `AppBootstrapSupport`.
 ///
 /// Lives in `App-SuperBible/` for symmetry with
 /// `App/SuperOSAppBootstrap.swift`. Both files compile in their owner
 /// target only; `App/Shell/` content (`AppShell`, `AppShellDependencies`,
-/// `AppBootstrapHelpers`) is what crosses into the SuperBible target via
+/// `AppBootstrapSupport`) is what crosses into the SuperBible target via
 /// the explicit `sources:` entries in `project.yml`.
 enum SuperBibleAppBootstrap {
     /// Build the full dependency graph.
@@ -88,8 +88,8 @@ enum SuperBibleAppBootstrap {
         directory: URL? = nil,
         keychain: (any KeychainClient)? = nil
     ) async throws -> SuperBibleAppDependencies {
-        let dataDirectory = try directory ?? AppBootstrapHelpers.defaultDataDirectory()
-        try AppBootstrapHelpers.ensureDirectoryExists(dataDirectory)
+        let dataDirectory = try directory ?? AppBootstrapSupport.defaultDataDirectory()
+        try AppBootstrapSupport.ensureDirectoryExists(dataDirectory)
 
         let database = try ChatDatabase.open(in: dataDirectory)
         let keychain = keychain ?? AppleKeychainClient()
@@ -127,12 +127,12 @@ enum SuperBibleAppBootstrap {
         let llmProviderRegistry = LLMProviderRegistry()
         #if DEBUG
         do {
-            try await AppBootstrapHelpers.seedDebugModelIfNeeded(repository: modelConfigRepo)
+            try await AppBootstrapSupport.seedDebugModelIfNeeded(repository: modelConfigRepo)
         } catch {
             print("[DebugLLMProvider] seed failed: \(error)")
         }
         #endif
-        try await AppBootstrapHelpers.hydrateProviders(
+        try await AppBootstrapSupport.hydrateProviders(
             into: llmProviderRegistry,
             from: modelConfigRepo,
             toolRegistry: toolRegistry,

@@ -101,8 +101,8 @@ enum SuperOSAppBootstrap {
         directory: URL? = nil,
         keychain: (any KeychainClient)? = nil
     ) async throws -> AppDependencies {
-        let dataDirectory = try directory ?? AppBootstrapHelpers.defaultDataDirectory()
-        try AppBootstrapHelpers.ensureDirectoryExists(dataDirectory)
+        let dataDirectory = try directory ?? AppBootstrapSupport.defaultDataDirectory()
+        try AppBootstrapSupport.ensureDirectoryExists(dataDirectory)
 
         let database = try ChatDatabase.open(in: dataDirectory)
         let keychain = keychain ?? AppleKeychainClient()
@@ -152,12 +152,12 @@ enum SuperOSAppBootstrap {
         // `assertionFailure` so dev-loop annoyance is bounded to a log
         // line rather than a hard trap.
         do {
-            try await AppBootstrapHelpers.seedDebugModelIfNeeded(repository: modelConfigRepo)
+            try await AppBootstrapSupport.seedDebugModelIfNeeded(repository: modelConfigRepo)
         } catch {
             print("[DebugLLMProvider] seed failed: \(error)")
         }
         #endif
-        try await AppBootstrapHelpers.hydrateProviders(
+        try await AppBootstrapSupport.hydrateProviders(
             into: llmProviderRegistry,
             from: modelConfigRepo,
             toolRegistry: toolRegistry,

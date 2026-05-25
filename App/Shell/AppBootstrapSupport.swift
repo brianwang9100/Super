@@ -14,7 +14,7 @@ import Foundation
 /// target *also* compiles via the explicit project.yml file-inclusion
 /// list (see `SuperBible.sources` in `project.yml`). Both targets see
 /// the same source, so any future bootstrap change lands once.
-enum AppBootstrapHelpers {
+enum AppBootstrapSupport {
     /// `Application Support/Super/`, created on first call and pinned to
     /// `FileProtectionType.complete` so its contents are unreadable while
     /// the device is locked. iOS-enforced; macOS test runs silently no-op

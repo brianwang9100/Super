@@ -157,7 +157,7 @@ targets:
       # explicitly here.
       - path: App/Shell/AppShell.swift
       - path: App/Shell/AppShellDependencies.swift
-      - path: App/Shell/AppBootstrapHelpers.swift
+      - path: App/Shell/AppBootstrapSupport.swift
       - path: App/Shell/FailureScreen.swift
       - path: App/Shell/FixedHamburgerButton.swift
       - path: App/Shell/LazyConversationDriver.swift
