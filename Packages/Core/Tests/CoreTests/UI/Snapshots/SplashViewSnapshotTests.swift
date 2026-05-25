@@ -58,7 +58,7 @@ struct SplashViewSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXLLight() {
         let function = #function
-        let view = SplashView(version: "1.0", skipEntranceAnimation: true)
+        let view = SplashView(name: "Super", version: "1.0", skipEntranceAnimation: true)
             .superTheme(.make(.light))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -80,7 +80,7 @@ struct SplashViewSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let view = SplashView(version: "1.0", skipEntranceAnimation: true)
+        let view = SplashView(name: "Super", version: "1.0", skipEntranceAnimation: true)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 

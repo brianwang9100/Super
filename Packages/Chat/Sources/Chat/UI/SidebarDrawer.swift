@@ -79,7 +79,8 @@ public struct SidebarDrawer: View {
     /// - Parameters:
     ///   - isPresented: Two-way binding controlling visibility.
     ///   - viewModel: Shared sidebar state owner.
-    ///   - appInfo: Used for the version caption under the wordmark.
+    ///   - appInfo: Supplies the wordmark text (`bundleName`) and the
+    ///     version caption beneath it.
     ///   - userInitials: Painted into the footer initials circle.
     ///   - userName: Displayed next to the initials.
     ///   - applets: Ordered list of registered applets to render in the rail.
@@ -199,7 +200,7 @@ public struct SidebarDrawer: View {
 
     private var wordmarkHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Super")
+            Text(appInfo.bundleName)
                 .font(.system(size: 36, weight: .regular, design: .serif))
                 .italic()
                 .lineLimit(1)
