@@ -1,49 +1,35 @@
 import Core
 import SwiftUI
 
-/// SuperBible shell entry view.
-///
-/// SB-M0 stub: switches on the launch state and renders the active applet's
-/// `rootView()` directly in the ready case. SB-M1 replaces this with a
-/// proper shell (sidebar + chat overlay + settings sheet) modeled on
-/// SuperOS's `AppShell`.
+/// SuperBible shell entry view. Switches on the launch state and renders
+/// the shared `AppShell` (lifted out of `App/Shell/AppShell.swift`,
+/// compiled into both targets via the explicit project.yml file-inclusion
+/// list) once the bootstrap is `.ready`. Loading and failure cases use
+/// the same `SplashView` + `FailureScreen` SuperOS does so the two apps'
+/// launch sequences feel identical.
 struct SuperBibleContentView: View {
     let state: SuperBibleBootstrapState
 
-    var body: some View {
-        switch state {
-        case .loading:
-            ProgressView()
-                .controlSize(.large)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .ready(let dependencies):
-            if let active = dependencies.appletRegistry.activeApplet {
-                active.rootView()
-            } else {
-                emptyState
-            }
-        case .failed(let message):
-            VStack(spacing: 12) {
-                Text("SuperBible failed to launch")
-                    .font(.headline)
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Text("SuperBible")
-                .font(.largeTitle)
-            Text("No applets registered.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                SplashView()
+                    .superTheme(.make(.light))
+                    .transition(.opacity)
+            case .failed(let message):
+                FailureScreen(message: message)
+                    .transition(.opacity)
+            case .ready(let dependencies):
+                AppShell(dependencies: dependencies.shellDependencies)
+                    .transition(.opacity)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.2),
+            value: state.discriminant
+        )
     }
 }

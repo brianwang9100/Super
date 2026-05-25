@@ -2,15 +2,11 @@ import Bible
 import Core
 import SwiftUI
 
-/// Composition root + shell entry point for the SuperBible App Store target.
-/// Bootstraps the dependency graph once per process and feeds it to
-/// `SuperBibleContentView`. Mirrors `SuperOSApp` deliberately so the two
-/// `@main` files stay structurally analogous — every change to the launch
-/// pattern should land in both.
-///
-/// SB-M0 stub: registers a single `BibleApplet()` and renders its root view
-/// directly. SB-M1 widens the dependency container, adds Chat as host, and
-/// brings in the real shell.
+/// Composition root + shell entry point for the SuperBible App Store
+/// target. Bootstraps the dependency graph once per process and feeds it
+/// to `SuperBibleContentView`. Mirrors `SuperOSApp` deliberately so the
+/// two `@main` files stay structurally analogous — every change to the
+/// launch pattern should land in both.
 @main
 struct SuperBibleApp: App {
     @State private var state: SuperBibleBootstrapState = .loading
@@ -44,11 +40,23 @@ struct SuperBibleApp: App {
 }
 
 /// Three-state launch machine, parallel to SuperOS's `BootstrapState`. A
-/// SuperBible-specific copy (rather than a shared type in Core) keeps the
-/// two targets' associated-value types — `SuperBibleAppDependencies` here
-/// vs SuperOS's `AppDependencies` — from collapsing into a generic.
+/// SuperBible-specific copy (rather than a shared type in Core) keeps
+/// the two targets' associated-value types — `SuperBibleAppDependencies`
+/// here vs SuperOS's `AppDependencies` — from collapsing into a generic.
 enum SuperBibleBootstrapState {
     case loading
     case ready(SuperBibleAppDependencies)
     case failed(String)
+
+    /// Stable identity for the case (ignoring the associated value) so
+    /// `.animation(value:)` can observe state transitions in the content
+    /// view without forcing the dependency type to be `Equatable`.
+    /// Matches SuperOS's `BootstrapState.discriminant`.
+    var discriminant: Int {
+        switch self {
+        case .loading: 0
+        case .ready: 1
+        case .failed: 2
+        }
+    }
 }
