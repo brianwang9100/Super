@@ -403,6 +403,14 @@ public struct MessageList: View {
         // form the geometry/scroll feedback loop the prior
         // `.onScrollGeometryChange` implementation did.
         .onChange(of: items.count) { _, _ in
+            // A new item is the user's most-recent action (send,
+            // regenerate accept, stream-persist). Clear any
+            // in-flight verbosity scroll mode first so the
+            // content-grow tick that follows doesn't re-apply the
+            // preserve-distance intent and yank the user back from
+            // the bottom we're about to scroll them to.
+            verbosityScrollMode = nil
+            verbosityStableTickCount = 0
             scrollPosition.scrollTo(edge: .bottom)
         }
         // `streamingTail` is the whole `StreamingState`, not just

@@ -272,6 +272,45 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
+    /// Sending a new message inside the verbosity-scroll settling
+    /// window must land at the bottom of the new content, *not* be
+    /// pulled back to the pre-flip distance by a still-active
+    /// `verbosityScrollMode`. The `.onChange(of: items.count)`
+    /// handler clears the verbosity mode before scrolling to bottom
+    /// — otherwise the content-grow tick from the appended item
+    /// would re-apply the preserve-distance intent and strand the
+    /// user `savedDistance` above the latest message.
+    @Test("appending a message during verbosity settle lands at bottom")
+    func appendAfterVerbosityFlipLandsAtBottom() async throws {
+        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        // Scroll up so the verbosity flip captures a non-zero
+        // preserve-distance, then immediately flip verbosity and
+        // append an item before the settling window closes.
+        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
+        scrollView.setContentOffset(CGPoint(x: 0, y: targetOffsetY), animated: false)
+        settle(controller: controller)
+
+        driver.verbosity = .thinking
+        // Drive only one settle iteration so the verbosity mode is
+        // still active when the append happens — the bug repro
+        // requires the mode to outlive the items-count change.
+        settle(controller: controller, iterations: 1)
+        driver.items += [makeUserItem(id: "sent-during-settle", chars: 60)]
+        settle(controller: controller, iterations: 30)
+
+        let distance = distanceFromBottom(scrollView)
+        #expect(
+            distance < 4,
+            "expected to land at bottom after send-during-verbosity-settle, got distanceFromBottom=\(distance)"
+        )
+    }
+
     // MARK: - Feedback-loop regression
 
     /// **Regression test for the on-device hang.** An earlier
