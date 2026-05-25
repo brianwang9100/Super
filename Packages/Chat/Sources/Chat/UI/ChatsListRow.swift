@@ -11,15 +11,12 @@ struct ChatsListRow: View {
     let title: String
 
     /// Timestamp rendered as "12 min ago" / "Yesterday" / "3 mo ago"
-    /// via `RelativeTimeFormatter`. Caller injects the reference `now`
-    /// + `calendar` so the row stays pure for snapshot determinism.
+    /// via `RelativeTimeFormatter`. The screen injects `now` so the
+    /// row stays pure for snapshot determinism.
     let updatedAt: Date
 
     /// Reference time for the relative-time bucketing.
     let now: Date
-
-    /// Calendar passed through to `RelativeTimeFormatter`.
-    let calendar: Calendar
 
     /// Fires when the row is tapped. The screen wires this to publish
     /// `.openConversationRequested(id:)` on the shared event bus.
@@ -39,7 +36,7 @@ struct ChatsListRow: View {
                         .foregroundStyle(theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    Text(RelativeTimeFormatter.format(updatedAt, now: now, calendar: calendar))
+                    Text(RelativeTimeFormatter.format(updatedAt, now: now))
                         .font(.system(size: subtitleSize * fontScale))
                         .foregroundStyle(theme.inkFaint)
                 }

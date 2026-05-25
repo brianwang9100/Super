@@ -17,12 +17,22 @@ public struct ChatsScreen: View {
     @Query(ActiveConversationsRequest()) private var conversations: [ConversationRecord]
 
     @State private var searchText: String
-    /// Reference time for relative-time bucketing in each row.
-    /// Snapshot tests inject a fixed `now` so baselines stay stable.
-    private let now: Date
-    private let calendar: Calendar = .current
+    /// Reference time for relative-time bucketing in each row. A
+    /// `@State` so the `.task` modifier below can refresh it every
+    /// minute — a `let` captured at init time would freeze the
+    /// subtitles ("12 min ago") for the whole session even as the
+    /// `@Query` re-renders. Snapshot tests inject a fixed `now`; the
+    /// refresh task can't fire inside a sub-millisecond test render.
+    @State private var now: Date
 
-    @Environment(\.superEventBus) private var eventBus
+    @Environment(\.superEventBus) private var environmentEventBus
+    /// Test-only override of the event bus. Production callers leave
+    /// this `nil` and the screen reads `@Environment(\.superEventBus)`
+    /// from the shell; the unit-test suite injects a real
+    /// `SuperEventBus` here to assert published payloads without
+    /// constructing a SwiftUI host.
+    private let injectedEventBus: SuperEventBus?
+    private var eventBus: SuperEventBus? { injectedEventBus ?? environmentEventBus }
     @Environment(\.superTheme) private var theme
     @Environment(\.superFontScale) private var fontScale
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
@@ -39,9 +49,18 @@ public struct ChatsScreen: View {
     ///     filter-active states without simulating typing.
     ///   - now: Snapshot-only test seam — fixes the reference time
     ///     for `RelativeTimeFormatter` bucketing.
-    public init(initialSearchText: String = "", now: Date = Date()) {
+    ///   - eventBus: Unit-test-only test seam — overrides the
+    ///     `@Environment(\.superEventBus)` lookup so a test can
+    ///     observe published events without spinning up a SwiftUI
+    ///     host. Production always leaves this `nil`.
+    public init(
+        initialSearchText: String = "",
+        now: Date = Date(),
+        eventBus: SuperEventBus? = nil
+    ) {
         _searchText = State(initialValue: initialSearchText)
-        self.now = now
+        _now = State(initialValue: now)
+        self.injectedEventBus = eventBus
     }
 
     public var body: some View {
@@ -69,6 +88,17 @@ public struct ChatsScreen: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             addButton
+        }
+        .task {
+            // Keep the relative-time subtitles ("12 min ago") fresh
+            // while the screen stays mounted. A row that read "5 min
+            // ago" on open would otherwise still read "5 min ago"
+            // hours later, since the @Query only fires on DB writes.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if Task.isCancelled { return }
+                now = Date()
+            }
         }
     }
 
@@ -154,8 +184,7 @@ public struct ChatsScreen: View {
                             title: displayTitle(for: record),
                             updatedAt: record.updatedAt,
                             now: now,
-                            calendar: calendar,
-                            onTap: { openConversation(id: record.id) }
+                            onTap: { _openConversation(id: record.id) }
                         )
                     }
                 }
@@ -181,7 +210,7 @@ public struct ChatsScreen: View {
     }
 
     private var addButton: some View {
-        Button(action: startNewChat) {
+        Button(action: _startNewChat) {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
@@ -220,12 +249,19 @@ public struct ChatsScreen: View {
 
     // MARK: - Actions
 
-    private func openConversation(id: String) {
+    /// Publish an "open this conversation" request on the shared
+    /// event bus. Internal (not private) so the unit-test suite can
+    /// drive it directly; production fires it from the row's tap
+    /// closure.
+    func _openConversation(id: String) {
         guard let eventBus else { return }
         Task { await eventBus.publish(.openConversationRequested(id: id)) }
     }
 
-    private func startNewChat() {
+    /// Publish a "start a new conversation" request on the shared
+    /// event bus. Internal (not private) so the unit-test suite can
+    /// drive it directly; production fires it from the `+` button.
+    func _startNewChat() {
         guard let eventBus else { return }
         Task { await eventBus.publish(.newConversationRequested) }
     }

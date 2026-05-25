@@ -12,13 +12,11 @@ public enum RelativeTimeFormatter {
     ///
     /// Negative deltas (a future `date`) collapse into the `just now`
     /// bucket so a clock skew or test-fixture drift never renders as
-    /// "-5 min ago". The `calendar` parameter is reserved for future
-    /// month/week-boundary refinements; the current bucketing is
-    /// pure-interval math so the same string falls out on any locale.
+    /// "-5 min ago". Bucketing is pure-interval math — the same string
+    /// falls out regardless of locale or calendar.
     public static func format(
         _ date: Date,
-        now: Date,
-        calendar: Calendar = .current
+        now: Date
     ) -> String {
         let elapsed = max(0, now.timeIntervalSince(date))
         let minutes = Int(elapsed / 60)

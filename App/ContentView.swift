@@ -141,6 +141,19 @@ struct AppShell: View {
     /// second bootstrap before the first finishes. Safe to read/write
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
+    /// Queued navigation request from the cross-applet event bus. The
+    /// drain task in `ensureViewModel()` writes here; the body's
+    /// `.onChange` reads and dispatches to `selectConversation` /
+    /// `startNewChat`. Routing through `@State` (rather than calling
+    /// the methods directly from the captured-self drain task) is
+    /// load-bearing: a `[self]`-captured closure snapshots `self`
+    /// once at task spawn, and `@Environment` values on a struct copy
+    /// don't refresh when the OS setting changes — `reduceMotion`
+    /// would be frozen at boot time for every routed navigation.
+    /// `@State` storage is reference-backed and survives the copy,
+    /// and body re-eval gives the dispatcher fresh `@Environment`
+    /// values so `withAnimation` honors the live `reduceMotion`.
+    @State private var pendingNavigation: PendingNavigation?
     /// `UserDefaults` key for the persisted backdrop applet ID. The
     /// read at launch lives in `SuperOSAppBootstrap` now (since the registry is
     /// built there); this key is referenced here for the write-back in
@@ -332,6 +345,23 @@ struct AppShell: View {
                 dismissKeyboard()
             }
         }
+        // Drain queued navigation requests written by the event-bus
+        // task. This observer fires inside a body re-eval, so the
+        // `selectConversation` / `startNewChat` calls run on a fresh
+        // `self` whose `@Environment` reflects the live OS state
+        // (notably `reduceMotion` for `withAnimation`).
+        .onChange(of: pendingNavigation) { _, newValue in
+            guard let request = newValue else { return }
+            pendingNavigation = nil
+            Task {
+                switch request {
+                case .openConversation(let id):
+                    await selectConversation(id: id)
+                case .newConversation:
+                    await startNewChat()
+                }
+            }
+        }
         // One bus instance shared by every applet — the Bible backdrop
         // publishes verse references, the Chat overlay's inbox consumes.
         .environment(\.superEventBus, dependencies.eventBus)
@@ -396,14 +426,22 @@ struct AppShell: View {
             // delivered exactly once. The task is intentionally
             // long-lived — `AppShell` lives for the whole app session,
             // so cancellation isn't load-bearing.
+            //
+            // Writes land in `pendingNavigation`, a `@State` whose
+            // reference-backed storage survives the struct copy this
+            // closure captures. The body's `.onChange` then dispatches
+            // from a fresh `self` so `@Environment` reads (notably
+            // `reduceMotion`) reflect the live OS setting at the
+            // moment of navigation — not the value frozen into this
+            // captured copy at task-spawn time.
             let eventBus = dependencies.eventBus
             Task { [self] in
                 for await event in await eventBus.events() {
                     switch event {
                     case .openConversationRequested(let id):
-                        await selectConversation(id: id)
+                        pendingNavigation = .openConversation(id: id)
                     case .newConversationRequested:
-                        await startNewChat()
+                        pendingNavigation = .newConversation
                     case .recordAddedToChat:
                         // Owned by `ChatReferenceInbox` — skip here so
                         // we don't double-route the verse hand-off.
@@ -651,6 +689,18 @@ struct AppShell: View {
             updatedAt: now
         )
     }
+}
+
+// MARK: - Navigation request envelope
+
+/// In-flight navigation written by the cross-applet event-bus drain
+/// task and consumed by `AppShell.body`'s `.onChange` observer.
+/// Re-entrancy is benign: each enqueue triggers exactly one consume,
+/// and the consumer nils out the slot before dispatching so a rapid
+/// pair of taps never collapses into one routed call.
+private enum PendingNavigation: Equatable {
+    case openConversation(id: String)
+    case newConversation
 }
 
 // MARK: - Shell layers

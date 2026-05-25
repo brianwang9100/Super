@@ -166,8 +166,14 @@ enum SuperOSAppBootstrap {
         // chat turn — those two surfaces would otherwise drift if a
         // future PR registered an applet in only one place.
         let applets: [any MiniApplet] = [
-            ChatsApplet(chatDatabase: database),
+            // Order is load-bearing: the first applet is the cold-start
+            // default on a fresh install (no `activeAppletStorageKey`
+            // in `UserDefaults`). Keep `TodoApplet` first so Todo
+            // remains the default landing surface — `ChatsApplet`
+            // sits second as a recently-added rail entry that the
+            // user can pin via `onSelectApplet`.
             TodoApplet(dependencies: todoDependencies),
+            ChatsApplet(chatDatabase: database),
             RecipesPlaceholderApplet(),
             BibleApplet(),
             FinancePlaceholderApplet(),
