@@ -7,25 +7,35 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01E6DC4035B6C4C339D35376 /* FixedHamburgerButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */; };
+		03032B8C91E1D86FBE3BA911 /* AppShellDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A75787E187E51C1B84E489 /* AppShellDependencies.swift */; };
 		0884657F15758B3B5B1C0BEF /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = 8683B0FE0037B0D33755A7F4 /* Core */; };
 		098357BEEFC53ACE5815921E /* Chat in Frameworks */ = {isa = PBXBuildFile; productRef = 70882273C8BB80DC07D294F8 /* Chat */; };
+		0C8EC0C889F46CD08727C11F /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE3DEDCBAB42261E64C45E4A /* LazyConversationDriver.swift */; };
+		0CCDABB4464A39CE21E3EF10 /* AppBootstrapSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAADB8DDBF3F6C4777CDD65 /* AppBootstrapSupport.swift */; };
 		13782FABCDA9CF918CB35D9F /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = BC207E747BC5B4B5821BF1A0 /* Core */; };
 		1BEEBD5EF6A7767EE13B55C6 /* Bible in Frameworks */ = {isa = PBXBuildFile; productRef = FB8F97E45F912C4ADC4820AB /* Bible */; };
+		2A12403854675426ABB6397F /* FailureScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7B0EE431B3E74171315822 /* FailureScreen.swift */; };
 		3041CF879C489ACC742D2DCD /* SuperBibleAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2859A07716F10C47D130C7 /* SuperBibleAppBootstrap.swift */; };
 		3D957B13FD33BB20787F3F7F /* SuperBibleContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05285BC0D4A64A80798827AE /* SuperBibleContentView.swift */; };
 		3DEAA0D510B10B95793375A7 /* Chat in Frameworks */ = {isa = PBXBuildFile; productRef = EC029F57EBD2257B8FF7A6D6 /* Chat */; };
 		3EBEAF0C813CDCBE67E054BB /* PlaceholderApplets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D156170743E84E91C00F1D /* PlaceholderApplets.swift */; };
 		429B89E42E56D36786685C90 /* FixedHamburgerButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */; };
 		589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DC96AB2000823B1110167BEB /* Assets.xcassets */; };
-		7CBED293F185C6E0005ECF32 /* AGENTS.md in Resources */ = {isa = PBXBuildFile; fileRef = 5742DF79E0382021EB37C161 /* AGENTS.md */; };
+		6CF0D4F0136F608FCC1C342A /* SuperBibleSystemPromptLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B857C6AE679AC4DDB16A891B /* SuperBibleSystemPromptLoader.swift */; };
 		8255CBDD1EA1AB20B977C76F /* AppletPlaceholderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */; };
+		89833F16B5FAA545DD801D47 /* FailureScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7B0EE431B3E74171315822 /* FailureScreen.swift */; };
 		8D0D4B995C6E26F0C6EE0660 /* Bible in Frameworks */ = {isa = PBXBuildFile; productRef = B59E8F76DF12E5EB85846474 /* Bible */; };
+		A1D98D8D2831FBFE0F5CCABA /* AppShellDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A75787E187E51C1B84E489 /* AppShellDependencies.swift */; };
+		A4F219F443B47D41DA7B2944 /* SuperBibleSystemPrompt.md in Resources */ = {isa = PBXBuildFile; fileRef = B4A542D995049132FEC7D3ED /* SuperBibleSystemPrompt.md */; };
 		AD50833E303252DED6DDD093 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2E7E965D0CD4FCFA8716B82 /* Assets.xcassets */; };
 		AFC08660B3369D19A6DBBCFA /* Todo in Frameworks */ = {isa = PBXBuildFile; productRef = D584F1599CFA7090D136AA8A /* Todo */; };
-		AFFC4F2EC3F235C78CAB1453 /* CLAUDE.md in Resources */ = {isa = PBXBuildFile; fileRef = 16443018E7AD54627BC3C99A /* CLAUDE.md */; };
-		B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37040D8281510F5E0053417 /* LazyConversationDriver.swift */; };
 		B2E6F581D4291E02C5284E06 /* SuperOSAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AC30C66946ECDF1D4DB6D52 /* SuperOSAppBootstrap.swift */; };
+		B4AC4F80F660258ED2F77E4D /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055714F28FA1FB5C814D20D /* AppShell.swift */; };
 		B4E4824311251D4E1E3DD916 /* SuperBibleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09217CF93342E4164B070DCA /* SuperBibleApp.swift */; };
+		BCCFAE1C7C00E680FACF8D46 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055714F28FA1FB5C814D20D /* AppShell.swift */; };
+		CAD214D44286133A8F71D0A5 /* AppBootstrapSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAADB8DDBF3F6C4777CDD65 /* AppBootstrapSupport.swift */; };
+		CE2A0E838B9E14B0E9B0FE83 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE3DEDCBAB42261E64C45E4A /* LazyConversationDriver.swift */; };
 		D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E14DF6F5FC6EE821355D769 /* ContentView.swift */; };
 		D5256269E2B77EC0AA42882E /* SuperOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1BCCF5D8C37DAD9016275EE /* SuperOSApp.swift */; };
 /* End PBXBuildFile section */
@@ -33,11 +43,12 @@
 /* Begin PBXFileReference section */
 		05285BC0D4A64A80798827AE /* SuperBibleContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperBibleContentView.swift; sourceTree = "<group>"; };
 		09217CF93342E4164B070DCA /* SuperBibleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperBibleApp.swift; sourceTree = "<group>"; };
-		16443018E7AD54627BC3C99A /* CLAUDE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CLAUDE.md; sourceTree = "<group>"; };
 		1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixedHamburgerButton.swift; sourceTree = "<group>"; };
 		2655703F58B72885DF901253 /* Bible */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Bible; path = Packages/Bible; sourceTree = SOURCE_ROOT; };
 		2921FC8300FB3159F8B69979 /* SuperBible.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SuperBible.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5742DF79E0382021EB37C161 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
+		29A75787E187E51C1B84E489 /* AppShellDependencies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellDependencies.swift; sourceTree = "<group>"; };
+		3DAADB8DDBF3F6C4777CDD65 /* AppBootstrapSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBootstrapSupport.swift; sourceTree = "<group>"; };
+		4055714F28FA1FB5C814D20D /* AppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShell.swift; sourceTree = "<group>"; };
 		5CA65A7AE9F5686223FF1969 /* AppletPlaceholderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppletPlaceholderScreen.swift; sourceTree = "<group>"; };
 		5CD7248626B357C0C7BCE21F /* Super.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Super.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E14DF6F5FC6EE821355D769 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -50,9 +61,12 @@
 		A2E7E965D0CD4FCFA8716B82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A8BA1600038FF259AD5B228E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
+		AE3DEDCBAB42261E64C45E4A /* LazyConversationDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyConversationDriver.swift; sourceTree = "<group>"; };
+		B4A542D995049132FEC7D3ED /* SuperBibleSystemPrompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SuperBibleSystemPrompt.md; sourceTree = "<group>"; };
+		B857C6AE679AC4DDB16A891B /* SuperBibleSystemPromptLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperBibleSystemPromptLoader.swift; sourceTree = "<group>"; };
 		C41DDF00F0BF6124C2468042 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CD7B0EE431B3E74171315822 /* FailureScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailureScreen.swift; sourceTree = "<group>"; };
 		D1BCCF5D8C37DAD9016275EE /* SuperOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperOSApp.swift; sourceTree = "<group>"; };
-		D37040D8281510F5E0053417 /* LazyConversationDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyConversationDriver.swift; sourceTree = "<group>"; };
 		DC96AB2000823B1110167BEB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -111,9 +125,12 @@
 			isa = PBXGroup;
 			children = (
 				32101702AD3AF185AF1BF78D /* Placeholders */,
-				5742DF79E0382021EB37C161 /* AGENTS.md */,
-				16443018E7AD54627BC3C99A /* CLAUDE.md */,
+				3DAADB8DDBF3F6C4777CDD65 /* AppBootstrapSupport.swift */,
+				4055714F28FA1FB5C814D20D /* AppShell.swift */,
+				29A75787E187E51C1B84E489 /* AppShellDependencies.swift */,
+				CD7B0EE431B3E74171315822 /* FailureScreen.swift */,
 				1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */,
+				AE3DEDCBAB42261E64C45E4A /* LazyConversationDriver.swift */,
 			);
 			path = Shell;
 			sourceTree = "<group>";
@@ -121,11 +138,13 @@
 		417AAAA57CBD213836042AC6 /* App-SuperBible */ = {
 			isa = PBXGroup;
 			children = (
+				BA63ACC5C50B5FF338886BBB /* Resources */,
 				A2E7E965D0CD4FCFA8716B82 /* Assets.xcassets */,
 				C41DDF00F0BF6124C2468042 /* Info.plist */,
 				09217CF93342E4164B070DCA /* SuperBibleApp.swift */,
 				7B2859A07716F10C47D130C7 /* SuperBibleAppBootstrap.swift */,
 				05285BC0D4A64A80798827AE /* SuperBibleContentView.swift */,
+				B857C6AE679AC4DDB16A891B /* SuperBibleSystemPromptLoader.swift */,
 			);
 			path = "App-SuperBible";
 			sourceTree = "<group>";
@@ -137,7 +156,6 @@
 				DC96AB2000823B1110167BEB /* Assets.xcassets */,
 				5E14DF6F5FC6EE821355D769 /* ContentView.swift */,
 				A8BA1600038FF259AD5B228E /* Info.plist */,
-				D37040D8281510F5E0053417 /* LazyConversationDriver.swift */,
 				D1BCCF5D8C37DAD9016275EE /* SuperOSApp.swift */,
 				8AC30C66946ECDF1D4DB6D52 /* SuperOSAppBootstrap.swift */,
 			);
@@ -153,6 +171,14 @@
 				D18728D82C01571E5AD1589C /* Packages */,
 				1E8169B044BFE25AEEFA415C /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		BA63ACC5C50B5FF338886BBB /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B4A542D995049132FEC7D3ED /* SuperBibleSystemPrompt.md */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		D18728D82C01571E5AD1589C /* Packages */ = {
@@ -262,9 +288,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7CBED293F185C6E0005ECF32 /* AGENTS.md in Resources */,
 				589E42DA806F65E29E8DE790 /* Assets.xcassets in Resources */,
-				AFFC4F2EC3F235C78CAB1453 /* CLAUDE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +297,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD50833E303252DED6DDD093 /* Assets.xcassets in Resources */,
+				A4F219F443B47D41DA7B2944 /* SuperBibleSystemPrompt.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -283,10 +308,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0CCDABB4464A39CE21E3EF10 /* AppBootstrapSupport.swift in Sources */,
+				BCCFAE1C7C00E680FACF8D46 /* AppShell.swift in Sources */,
+				A1D98D8D2831FBFE0F5CCABA /* AppShellDependencies.swift in Sources */,
 				8255CBDD1EA1AB20B977C76F /* AppletPlaceholderScreen.swift in Sources */,
 				D004FD87438BD970D8B93AA3 /* ContentView.swift in Sources */,
+				89833F16B5FAA545DD801D47 /* FailureScreen.swift in Sources */,
 				429B89E42E56D36786685C90 /* FixedHamburgerButton.swift in Sources */,
-				B0B9AF443A2E69C7DB4C95E9 /* LazyConversationDriver.swift in Sources */,
+				CE2A0E838B9E14B0E9B0FE83 /* LazyConversationDriver.swift in Sources */,
 				3EBEAF0C813CDCBE67E054BB /* PlaceholderApplets.swift in Sources */,
 				D5256269E2B77EC0AA42882E /* SuperOSApp.swift in Sources */,
 				B2E6F581D4291E02C5284E06 /* SuperOSAppBootstrap.swift in Sources */,
@@ -297,9 +326,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAD214D44286133A8F71D0A5 /* AppBootstrapSupport.swift in Sources */,
+				B4AC4F80F660258ED2F77E4D /* AppShell.swift in Sources */,
+				03032B8C91E1D86FBE3BA911 /* AppShellDependencies.swift in Sources */,
+				2A12403854675426ABB6397F /* FailureScreen.swift in Sources */,
+				01E6DC4035B6C4C339D35376 /* FixedHamburgerButton.swift in Sources */,
+				0C8EC0C889F46CD08727C11F /* LazyConversationDriver.swift in Sources */,
 				B4E4824311251D4E1E3DD916 /* SuperBibleApp.swift in Sources */,
 				3041CF879C489ACC742D2DCD /* SuperBibleAppBootstrap.swift in Sources */,
 				3D957B13FD33BB20787F3F7F /* SuperBibleContentView.swift in Sources */,
+				6CF0D4F0136F608FCC1C342A /* SuperBibleSystemPromptLoader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

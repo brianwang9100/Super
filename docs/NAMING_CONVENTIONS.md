@@ -349,7 +349,8 @@ instrumentation) without leaking that into the inner type.
   `Packages/Chat/Sources/Chat/ViewModels/ChatSessionDriver+Adapter.swift`.
 - `LazyConversationDriver` — App-layer decorator that ensures the
   conversation row is saved before the first turn.
-  `App/LazyConversationDriver.swift`.
+  `App/Shell/LazyConversationDriver.swift` (shared across SuperOS and
+  SuperBible targets via project.yml file inclusion).
 
 **Do not use `*Driver` for:**
 - An external-resource abstraction — that's a [`*Provider`](#provider).
