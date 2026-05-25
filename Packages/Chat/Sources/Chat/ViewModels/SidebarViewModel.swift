@@ -35,6 +35,16 @@ public final class SidebarViewModel {
     /// otherwise.
     public private(set) var chats: [ChatItem] = []
 
+    /// `true` when there are more than 10 active conversations on disk.
+    /// The drawer reads this to decide whether to render the "See all
+    /// chats…" footer that switches the backdrop to the Chats applet.
+    /// Set inside `refresh()` from the repository's overage-by-one probe.
+    public private(set) var hasMoreChats: Bool = false
+
+    /// Hard cap on the number of rows the sidebar surfaces. Anything
+    /// beyond is reachable through the Chats applet's full list.
+    public static let sidebarChatLimit: Int = 10
+
     /// The conversation currently shown in the chat surface. Setting this
     /// repaints the matching row in `accentSoft + accent ink` — it does
     /// not by itself swap the chat surface; the host owns that.
@@ -83,19 +93,31 @@ public final class SidebarViewModel {
         self.activeConversationId = activeConversationId
     }
 
-    /// Re-read the conversation list and the running set, then project into
-    /// `chats`. Swallows repository errors and leaves the list in its prior
-    /// state — surfacing a sidebar-level error UI is M12 polish.
+    /// Re-read the conversation list (capped at the sidebar limit, plus
+    /// one probe row for overflow detection) and the running set, then
+    /// project into `chats`. Swallows repository errors and leaves the
+    /// list in its prior state — surfacing a sidebar-level error UI is
+    /// M12 polish.
     public func refresh() async {
         let conversations: [ConversationRecord]
         do {
-            conversations = try await conversationRepository.listActive()
+            // Ask for one more than the visible cap. A `limit + 1` row
+            // count means "there's more on disk" → the drawer renders
+            // its "See all chats…" footer routing to the Chats applet.
+            conversations = try await conversationRepository.listActiveRecent(
+                limit: Self.sidebarChatLimit + 1
+            )
         } catch {
             return
         }
         let running = Set(await runningSource())
+        // `listActiveRecent` already returns rows in `updatedAt DESC`
+        // order (the repository's `.order(.desc)` clause is the single
+        // source of truth). No client-side re-sort here — same order
+        // falls out either way.
+        hasMoreChats = conversations.count > Self.sidebarChatLimit
         dbChats = conversations
-            .sorted { $0.updatedAt > $1.updatedAt }
+            .prefix(Self.sidebarChatLimit)
             .map { record in
                 let title: String
                 if let raw = record.title, !raw.isEmpty {
@@ -152,9 +174,14 @@ public final class SidebarViewModel {
     /// the view renders without a repository round-trip. Production
     /// callers should never invoke this — `refresh()` is the canonical
     /// entry point.
-    func _setSnapshotState(chats: [ChatItem], activeId: String? = nil) {
+    func _setSnapshotState(
+        chats: [ChatItem],
+        activeId: String? = nil,
+        hasMoreChats: Bool = false
+    ) {
         self.chats = chats
         self.dbChats = chats
         self.activeConversationId = activeId
+        self.hasMoreChats = hasMoreChats
     }
 }

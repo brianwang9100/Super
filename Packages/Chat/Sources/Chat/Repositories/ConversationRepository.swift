@@ -7,6 +7,11 @@ import GRDB
 public protocol ConversationRepository: Sendable {
     /// All non-deleted conversations, newest update first.
     func listActive() async throws -> [ConversationRecord]
+    /// First `limit` non-deleted conversations, newest update first.
+    /// Callers that need to detect "there is more beyond the cap" pass
+    /// `limit + 1` and check the returned count — that pattern is what
+    /// `SidebarViewModel` uses to surface its `hasMoreChats` footer.
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord]
     /// One conversation by id, deleted or not.
     func fetch(id: String) async throws -> ConversationRecord?
     /// Insert or update.
@@ -34,6 +39,16 @@ public struct GRDBConversationRepository: ConversationRepository {
             try ConversationRecord
                 .filter(Column("deletedAt") == nil)
                 .order(Column("updatedAt").desc)
+                .fetchAll(db)
+        }
+    }
+
+    public func listActiveRecent(limit: Int) async throws -> [ConversationRecord] {
+        try await queue.read { db in
+            try ConversationRecord
+                .filter(Column("deletedAt") == nil)
+                .order(Column("updatedAt").desc)
+                .limit(limit)
                 .fetchAll(db)
         }
     }

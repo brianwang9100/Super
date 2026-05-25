@@ -23,7 +23,7 @@
 11. [LLM Service & Server Communication](#11-llm-service--server-communication)
 12. [Error Handling](#12-error-handling)
 13. [Testing Strategy](#13-testing-strategy)
-14. [ChatApplet Conformance](#14-chatapplet-conformance)
+14. [ChatsApplet & ChatBriefing](#14-chatsapplet--chatbriefing)
 15. [Decision Log](#15-decision-log)
 
 ---
@@ -50,7 +50,10 @@ Chat is always present and cannot be uninstalled. It registers no tools of its o
 Chat/
 ├── Package.swift                       # Depends only on Core
 ├── Sources/
-│   ├── ChatApplet.swift            # SuperApplet conformance (Section 14)
+│   ├── Applet/
+│   │   └── ChatsApplet.swift       # MiniApplet conformance (Section 14)
+│   ├── Orchestration/
+│   │   └── ChatBriefing.swift      # DefaultSystemPrompt.md loader
 │   │
 │   ├── Domain/
 │   │   ├── Models/
@@ -940,54 +943,52 @@ Covered in `ContextAssemblerTests` and `ChatSessionTests`:
 
 ---
 
-## 14. ChatApplet Conformance
+## 14. ChatsApplet & ChatBriefing
 
-Chat conforms to `SuperApplet` like every other applet, with two distinctions: it registers no tools of its own (it routes to others') and it cannot be uninstalled.
+The Chat package exposes two pieces that the composition root reaches into:
+
+**`ChatsApplet`** — a `MiniApplet` conformance (`appletID = "chats"`) for the *searchable history backdrop*, distinct from the floating chat overlay. Registered in `AppBootstrap.applets`. The chat overlay itself is **not** a registered applet — `AppShell` renders it directly on top of whichever backdrop is active, so there is no `chat` applet identity to conform.
 
 ```swift
-struct ChatApplet: SuperApplet, Sendable {
-    static let appletId = "chat"
+public struct ChatsApplet: MiniApplet {
+    public static let appletID: String = "chats"
 
-    var displayName: String { "Chat" }
-    var icon: Image { Image(systemName: "brain") }
-    var accentColor: Color { .purple }
-
-    // Chat registers no tools. It is the router, not a tool provider.
-    var registeredTools: [LLMTool] { [] }
-    var toolExecutor: (any ToolExecutor)? { nil }
-
-    var publishedEvents: [String] { ["aiStreamStarted", "aiToolCallRequested", "aiToolCallCompleted", "aiStreamCompleted"] }
-    var subscribedEvents: [String] { ["appletRegistryChanged"] }
-
-    var isRemovable: Bool { false } // Cannot be uninstalled
-
-    @ViewBuilder
-    var rootView: some View {
-        ChatView()
+    public init(chatDatabase: ChatDatabase) {
+        self.chatDatabase = chatDatabase
     }
 
-    func onActivate(eventBus: SuperEventBus, toolRegistry: ToolRegistry) async {
-        // Subscribe to applet registry changes to rebuild ToolRouter
-        // Start the AppletChangeHandler
+    public var displayName: String { "Chats" }
+    public var accentColor: Color { /* muted sage green */ }
+    public var systemPrompt: String { "" }   // no LLM block — the screen is a chrome view
+
+    @MainActor
+    public func iconView(size: CGFloat) -> AnyView { AnyView(ChatsIcon(size: size)) }
+
+    @MainActor
+    public func rootView() -> AnyView {
+        AnyView(
+            ChatsScreen()
+                .databaseContext(.readOnly { chatDatabase.queue })
+        )
     }
 
-    func onDeactivate() {
-        // Chat is always active -- this is a no-op
-    }
+    private let chatDatabase: ChatDatabase
+}
+```
 
-    func onInstall(database: any DatabaseWriter) async throws {
-        // Run Chat GRDB migrations
-        var migrator = DatabaseMigrator()
-        registerChatMigrations(&migrator)
-        try migrator.migrate(database)
-    }
+`ChatsScreen` reads `ConversationRecord` reactively through GRDBQuery `@Query(ActiveConversationsRequest())`, so writes from the overlay (new conversation, title generation, message bumping `updatedAt`) repaint without manual refresh. Tapping a row publishes `.openConversationRequested(id:)` on the `SuperEventBus`; `AppShell` drains and routes to its existing `selectConversation(id:)` flow. The green `+` button publishes `.newConversationRequested`.
 
-    func onUninstall() {
-        // Unreachable -- Chat cannot be uninstalled
-        fatalError("Chat cannot be uninstalled")
+**`ChatBriefing`** — a tiny helper that resolves `DefaultSystemPrompt.md` against Chat's SPM bundle:
+
+```swift
+public enum ChatBriefing {
+    public static func load() -> String {
+        AppletSystemPrompt.load(from: .module, resource: "DefaultSystemPrompt")
     }
 }
 ```
+
+`AppBootstrap` calls `ChatBriefing.load()` once at startup and hands the body to `ChatSessionStore` as the leading system message every conversation sees. Lives inside the Chat package (not `App/`) so `.module` resolves to Chat's bundle, where the markdown actually ships.
 
 ---
 

@@ -17,7 +17,7 @@ The composition root and target-specific assets for the **SuperBible** App Store
 
 - **Prompt source:** `App-SuperBible/Resources/SuperBibleSystemPrompt.md` — a markdown file bundled as a runtime resource via `project.yml`'s explicit `buildPhase: resources` entry. Edit this file to change the chat persona; no Swift recompile needed for prompt-only iteration in a future PR cycle.
 - **Loader:** `App-SuperBible/SuperBibleSystemPromptLoader.swift` exposes `static func load() -> String`. Reads from `Bundle.main` via Core's shared `AppletSystemPrompt.load(from:resource:)` helper. The bootstrap calls it once and hands the result into `ChatSessionStore.init(chatBriefing:)`.
-- **Divergence from SuperOS:** SuperOS uses `ChatApplet().systemPrompt` (loads `DefaultSystemPrompt.md` from the Chat SwiftPM bundle — generic assistant persona). SuperBible substitutes its own biblical-study persona at this seam only; every other Chat surface is identical between the two targets.
+- **Divergence from SuperOS:** SuperOS uses `ChatBriefing.load()` (reads `DefaultSystemPrompt.md` from the Chat SwiftPM bundle — generic assistant persona). SuperBible substitutes its own biblical-study persona at this seam only; every other Chat surface is identical between the two targets.
 - **Updating the persona later:** if a future revision changes what the assistant claims to be capable of (new tools, new applets, different scope), update `SuperBibleSystemPrompt.md` in the same PR — don't let the prose drift from the actual capabilities.
 
 ## SuperBible-specific rules

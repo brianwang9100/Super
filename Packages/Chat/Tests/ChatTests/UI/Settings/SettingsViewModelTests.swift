@@ -922,6 +922,12 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
     func listActive() async throws -> [ConversationRecord] {
         rows.filter { $0.deletedAt == nil }
     }
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord] {
+        let active = rows
+            .filter { $0.deletedAt == nil }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        return Array(active.prefix(limit))
+    }
     func fetch(id: String) async throws -> ConversationRecord? { rows.first { $0.id == id } }
     func save(_ record: ConversationRecord) async throws {
         rows.removeAll { $0.id == record.id }
