@@ -680,7 +680,7 @@ The Super monorepo ships **two distinct iOS apps** from a shared codebase:
 | **Backend** | TypeScript + Hono + Drizzle + Postgres + Redis (per `SERVER_ARCHITECTURE.md`) | None. Local-only. CloudKit + Sign in with Apple as the v2 upgrade if traction warrants. |
 | **Monetization** | None | Free, BYOK, no ads, no IAP. Optional GitHub Sponsors link. |
 
-Both apps share the same `Core`, `Chat`, and `Bible` packages. Each has its own composition root (`App/SuperOSApp.swift` and `App-SuperBible/SuperBibleApp.swift`) that registers a different applet set. Every architectural decision in this document — `MiniApplet` protocol, event bus, GRDB-per-applet, BYOK + AFM default, bi-directional AI contract — applies to both apps unchanged.
+Both apps share the same `Core`, `Chat`, and `Bible` packages, plus the shared shell at `App/Shell/`. Each has its own composition root (`App-SuperOS/SuperOSApp.swift` and `App-SuperBible/SuperBibleApp.swift`) that registers a different applet set. Every architectural decision in this document — `MiniApplet` protocol, event bus, GRDB-per-applet, BYOK + AFM default, bi-directional AI contract — applies to both apps unchanged.
 
 **Why two apps:** SuperOS is too diffuse to launch publicly; SuperBible is sharp, focused, and free. Splitting the targets keeps the founder's personal app evolving on its own roadmap while the public product gets shipped, reviewed, and improved against real user feedback.
 

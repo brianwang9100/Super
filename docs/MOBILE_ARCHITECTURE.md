@@ -170,7 +170,7 @@ struct SuperOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SuperOSContentView()
                 .environment(eventBus)
                 .environment(providerRegistry)
                 .environment(toolRegistry)

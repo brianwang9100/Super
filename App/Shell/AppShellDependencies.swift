@@ -42,4 +42,9 @@ struct AppShellDependencies {
     let userInitials: String
     let userName: String
     let accountEmail: String
+    /// Per-target cold-launch defaults. SuperOS passes `.standard`
+    /// (chat opens expanded over last-used applet). SuperBible passes
+    /// `AppShellLaunchBehavior(initialChatState: .minimized)` so Bible
+    /// is visible and the chat sits as a pill on every cold launch.
+    let launchBehavior: AppShellLaunchBehavior
 }
