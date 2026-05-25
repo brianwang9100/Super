@@ -52,7 +52,7 @@ struct SuperOSAppDependencies {
     /// Built on demand so callers don't have to thread every field
     /// individually; the shell lives in `App/Shell/` and is shared with
     /// SuperBible, so it can't depend on the SuperOS-only `SuperOSAppDependencies`
-    /// type directly. The matching `SuperBibleSuperOSAppDependencies` exposes
+    /// type directly. The matching `SuperBibleAppDependencies` exposes
     /// the same property.
     var shellDependencies: AppShellDependencies {
         AppShellDependencies(

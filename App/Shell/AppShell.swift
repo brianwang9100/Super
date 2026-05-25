@@ -123,6 +123,11 @@ struct AppShell: View {
         _registry = State(initialValue: dependencies.appletRegistry)
         let initialChatState = dependencies.launchBehavior.initialChatState
         _chatState = State(initialValue: initialChatState)
+        // Only `.expanded` and `.minimized` are currently wired as launch
+        // states. If `.semiExpanded` is ever added to
+        // `AppShellLaunchBehavior`, the right initial progress is the
+        // semi-anchor value (~0.52), not 0 — fall through here is
+        // intentional today but worth revisiting then.
         _chatProgress = State(initialValue: initialChatState == .expanded ? 1 : 0)
     }
 
