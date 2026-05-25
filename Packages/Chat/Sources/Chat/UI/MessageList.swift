@@ -222,47 +222,33 @@ public struct MessageList: View {
     }
 
     @Environment(\.superTheme) private var theme
+    /// Programmatic scroll-position binding driven by the three
+    /// pinpoint observers below: `.onChange(of: items.count)`,
+    /// `.onChange(of: streamingTail?.text)`, and
+    /// `.onScrollGeometryChange(for: ContainerSnapshot.self)`. The
+    /// first two are value-based; the third is geometry-based but
+    /// reads only `containerSize.height` plus a "was at bottom"
+    /// boolean — never the live `contentOffset` — and gates its
+    /// `scrollTo` call on a container-height delta. That keeps it
+    /// out of the feedback loop the prior implementation hit:
+    /// `scrollTo` mutates content offset, not container height, so
+    /// it can't retrigger the action through its own writes.
     @State private var scrollPosition = ScrollPosition()
-    @State private var contentGeometry = ContentGeometry()
-    /// Captured in `.onChange(of: verbosity)` and consumed on the next
-    /// geometry tick — i.e. once the blocks have finished expanding or
-    /// collapsing and the new content height is in. Splitting capture and
-    /// apply across two ticks lets us scroll against the post-relayout
-    /// geometry instead of the stale pre-change one.
-    @State private var pendingVerbosityScrollIntent: VerbosityScrollIntent?
-
-    /// One-shot latch for scroll-to-bottom on the first valid geometry
-    /// tick. Re-arms whenever SwiftUI rebuilds the view — `@State`
-    /// discards on view-identity changes — so every fresh mount with
-    /// overflowing content anchors at the latest message.
-    @State private var didApplyInitialBottomAnchor = false
-
-    /// What to do with the scroll position immediately after a verbosity
-    /// change settles. Expansion keeps the user anchored to the same chat
-    /// region; collapse jumps to the latest message because the
-    /// pre-collapse viewport bottom usually sat inside a now-collapsed
-    /// block, making any preserved distance visually arbitrary.
-    private enum VerbosityScrollIntent: Equatable {
-        case preserveDistance(CGFloat)
-        case scrollToBottom
+    /// Reduced snapshot of the scroll geometry — just the container
+    /// height plus whether the user was within ``bottomFollowThreshold``
+    /// of the bottom edge. Equatable so SwiftUI only fires the
+    /// `onScrollGeometryChange` action on actual transitions.
+    private struct ContainerSnapshot: Equatable {
+        var height: CGFloat
+        var isAtBottom: Bool
     }
-
-    /// Snapshot of the scroll viewport + content sizes captured every time
-    /// `onScrollGeometryChange` fires. We need all three values to compute
-    /// `distanceFromBottom` and to restore a target offset after a layout
-    /// shift triggered by a verbosity change.
-    private struct ContentGeometry: Equatable {
-        var contentHeight: CGFloat = 0
-        var viewportHeight: CGFloat = 0
-        var offsetY: CGFloat = 0
-
-        /// Points between the bottom of the visible viewport and the bottom
-        /// edge of the chat content. Zero means the user is pinned to the
-        /// latest message.
-        var distanceFromBottom: CGFloat {
-            max(0, contentHeight - offsetY - viewportHeight)
-        }
-    }
+    /// Distance from the bottom edge within which the user counts as
+    /// "still at bottom" for the auto-follow gate. 8pt absorbs the
+    /// LazyVStack lazy-materialization jitter that can leave the
+    /// offset a row-thickness short of the true bottom for a layout
+    /// pass or two, without pulling reading-history positions back
+    /// down on every keyboard transition.
+    private static let bottomFollowThreshold: CGFloat = 8
 
     public var body: some View {
         ScrollView {
@@ -277,11 +263,13 @@ public struct MessageList: View {
                     ErrorBanner(banner: banner, onRetry: onRetry)
                         .padding(.vertical, 8)
                 }
-                Color.clear.frame(height: 4).id("__bottom")
             }
             .padding(.horizontal, 14)
             .padding(.top, 8)
-            .padding(.bottom, 4)
+            // 8pt of breathing room at the bottom — preserves the
+            // visual margin the old `__bottom` clear-color marker
+            // (4pt) used to add on top of the 4pt LazyVStack padding.
+            .padding(.bottom, 8)
             .contentShape(Rectangle())
             .simultaneousGesture(
                 TapGesture().onEnded { onContentTap() }
@@ -291,64 +279,63 @@ public struct MessageList: View {
         // Drag-to-dismiss; the `simultaneousGesture` above handles
         // tap-to-dismiss. Both routes lead through `ChatScreen`'s
         // `dismissKeyboard()` via the `onContentTap` callback (taps) and
-        // SwiftUI's native scroll-view keyboard handling (drags).
+        // SwiftUI's native scroll-view keyboard handling (drags). When
+        // the keyboard rises, the composer parked in `ChatScreen`'s
+        // `safeAreaInset(edge: .bottom)` rides the safe area up;
+        // SwiftUI's automatic keyboard avoidance is the canonical
+        // mechanism the canonical iOS chat pattern relies on. Verified
+        // on-device — synthetic harness doesn't faithfully simulate
+        // the keyboard so the regression suite covers content/initial-
+        // offset cases only.
         .scrollDismissesKeyboard(.interactively)
         .scrollPosition($scrollPosition)
-        .onScrollGeometryChange(for: ContentGeometry.self) { geo in
-            ContentGeometry(
-                contentHeight: geo.contentSize.height,
-                viewportHeight: geo.containerSize.height,
-                offsetY: geo.contentOffset.y
-            )
-        } action: { _, newGeo in
-            contentGeometry = newGeo
-            // First overflow tick after a fresh mount: anchor at the
-            // bottom edge. The latch arms only after a successful scroll,
-            // so a partial first-tick `contentHeight` (e.g. a `LazyVStack`
-            // that hasn't laid out off-screen rows yet) doesn't strand
-            // the view at the top — the next tick with a larger
-            // `contentHeight` will scroll. Short chats whose content
-            // always fits never latch and stay top-anchored (default).
-            if !didApplyInitialBottomAnchor
-                && newGeo.contentHeight > newGeo.viewportHeight
-                && newGeo.viewportHeight > 0 {
-                didApplyInitialBottomAnchor = true
-                scrollPosition.scrollTo(edge: .bottom)
-            }
-            // First geometry tick after a verbosity flip: layout has now
-            // settled at the new content height, so apply whichever scroll
-            // intent the verbosity change recorded. Either anchors the
-            // viewport so the user doesn't get dropped into the middle of
-            // a re-laid-out block.
-            if let intent = pendingVerbosityScrollIntent {
-                pendingVerbosityScrollIntent = nil
-                switch intent {
-                case .preserveDistance(let saved):
-                    let targetY = max(0, newGeo.contentHeight - newGeo.viewportHeight - saved)
-                    scrollPosition.scrollTo(y: targetY)
-                case .scrollToBottom:
-                    scrollPosition.scrollTo(edge: .bottom)
-                }
-            }
-        }
-        .onChange(of: verbosity) { oldValue, newValue in
-            // Expansion: keep the user anchored to the same chat region so
-            // they don't get dropped into the middle of a newly expanded
-            // block. Collapse: snap to the latest message — the pre-collapse
-            // bottom of the viewport was usually inside an expanded block,
-            // so any preserved distance maps to a visually arbitrary spot
-            // in the now-shorter chat (and can clamp to the top entirely
-            // when the saved distance exceeds the new content height).
-            if newValue.rank > oldValue.rank {
-                pendingVerbosityScrollIntent = .preserveDistance(contentGeometry.distanceFromBottom)
-            } else {
-                pendingVerbosityScrollIntent = .scrollToBottom
-            }
-        }
+        // Declarative anchor roles:
+        //   - no-role `.defaultScrollAnchor(.bottom)` sets the initial
+        //     position for a long, overflowing transcript — lands
+        //     at the bottom on mount.
+        //   - `.alignment` pinned to `.top` keeps non-scrollable short
+        //     chats top-aligned, filling from the top with empty space
+        //     below — like a fresh page. Without this override the
+        //     `.bottom` anchor would push short content to the bottom
+        //     of the viewport, which is the wrong shape for a
+        //     fresh/empty chat.
+        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.top, for: .alignment)
+        // Bottom-pin on content grow (new message, lazy-mat'd row
+        // becoming visible) and on streaming-text deltas. Empirically
+        // `.defaultScrollAnchor(.bottom, for: .sizeChanges)` does not
+        // honor content-size changes in iOS 26.4 / Xcode 26.4.1 — the
+        // bottom slips by the height of newly-appended content. These
+        // two `.onChange` handlers are the smallest reliable
+        // replacement: value-based observers that fire once per
+        // settled change (not per layout pass), so they cannot form
+        // the geometry/scroll feedback loop the prior
+        // `.onScrollGeometryChange` implementation did.
         .onChange(of: items.count) { _, _ in
             scrollPosition.scrollTo(edge: .bottom)
         }
-        .onChange(of: streamingTail) { _, _ in
+        .onChange(of: streamingTail?.text) { _, _ in
+            scrollPosition.scrollTo(edge: .bottom)
+        }
+        // Bottom-pin on container shrink/grow (the chat surface's
+        // height changes when the keyboard rises/dismisses — see
+        // `ChatOverlay`'s `keyboardAwareHeight`-capped frame). The
+        // transform reads `containerSize.height` and a boolean
+        // "isAtBottom"; the action fires `scrollTo(.bottom)` only on
+        // a height change AND only when the user was already at the
+        // bottom. Crucially, the action does **not** read live
+        // `contentOffset`, so the `scrollTo` it issues can't retrigger
+        // it via its own write — that was the feedback loop the
+        // prior implementation hit during keyboard animations.
+        .onScrollGeometryChange(for: ContainerSnapshot.self) { geo in
+            let distance = max(0, geo.contentSize.height - geo.contentOffset.y - geo.containerSize.height)
+            return ContainerSnapshot(
+                height: geo.containerSize.height,
+                isAtBottom: distance < Self.bottomFollowThreshold
+            )
+        } action: { oldValue, newValue in
+            guard oldValue.height != newValue.height else { return }
+            guard oldValue.isAtBottom else { return }
             scrollPosition.scrollTo(edge: .bottom)
         }
     }

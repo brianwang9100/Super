@@ -273,6 +273,22 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
+                // Composer parks in the content area's bottom
+                // safe-area inset (not as a `VStack` sibling). When a
+                // `TextField` inside the composer becomes first
+                // responder, SwiftUI's automatic keyboard avoidance
+                // grows the bottom safe-area inset by the keyboard's
+                // height — `safeAreaInset` rides that change, hoisting
+                // the composer above the keyboard. Inside `content`,
+                // `MessageList`'s `ScrollView` sees its
+                // `adjustedContentInset.bottom` grow in lockstep, and
+                // `UIScrollView`'s built-in content-inset-preservation
+                // adjusts `contentOffset` to keep the previously-visible
+                // bottom row visible. No app-level scroll math, no
+                // frame shrink — the canonical iOS chat layout.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    composer
+                }
                 .overlay(alignment: .bottom) {
                     // Transient "Copied!" pill floats at the bottom edge
                     // of the transcript area, which puts it directly
@@ -294,7 +310,6 @@ public struct ChatScreen: View {
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
                 )
-            composer
         }
         .background(panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))

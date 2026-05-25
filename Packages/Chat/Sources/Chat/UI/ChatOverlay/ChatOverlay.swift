@@ -244,6 +244,20 @@ public struct ChatOverlay: View {
             }
         )
         .frame(height: metrics.renderedHeight, alignment: .bottom)
+        // Outer frame is the *keyboard-aware* height — the chat
+        // surface shrinks when the keyboard rises so its bottom edge
+        // sits at the keyboard top. The composer parked in
+        // `ChatScreen`'s `safeAreaInset(edge: .bottom)` rides that
+        // bottom edge, landing flush above the keyboard. A natural
+        // tempting alternative — make the frame `geo.size.height`
+        // (keyboard-free) and rely on SwiftUI's automatic keyboard
+        // avoidance to hoist the composer — does **not** work here
+        // because the inner `GeometryReader` carries
+        // `.ignoresSafeArea(.keyboard, edges: .bottom)` (see the body
+        // comment), which resets the bottom keyboard inset to zero
+        // for every child below it. With the inset gone,
+        // `safeAreaInset` has nothing to ride and the composer ends
+        // up behind the keyboard.
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
         .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
