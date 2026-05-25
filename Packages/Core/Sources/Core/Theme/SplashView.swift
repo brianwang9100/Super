@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Branded launch surface: pale-green field with the centered Super wordmark
-/// lockup (spark + italic-serif text) and a pulsing footer (loading dot +
-/// version mark). Shown while the app's bootstrap is in flight; replaced by
-/// the shell once dependencies are ready.
+/// Branded launch surface: pale-green field with the centered brand-wordmark
+/// lockup (spark + italic-serif text — `SuperOS` or `SuperBible` depending
+/// on the target's `CFBundleDisplayName`) and a pulsing footer (loading dot
+/// + version mark). Shown while the app's bootstrap is in flight; replaced
+/// by the shell once dependencies are ready.
 ///
 /// Reads colors from the ambient `SuperTheme`. Per SPEC: 393×852 pt
 /// reference canvas, lockup vertically centered on the *screen* (not the
@@ -13,6 +14,7 @@ import SwiftUI
 /// host must call `Core.registerBundledFonts()` before the first render or
 /// SwiftUI will fall back to system faces.
 public struct SplashView: View {
+    private let name: String
     private let version: String
 
     @Environment(\.superTheme) private var theme
@@ -22,15 +24,18 @@ public struct SplashView: View {
     @State private var revealed: Bool
 
     public init() {
-        self.init(version: SuperAppInfo.fromBundle().version, skipEntranceAnimation: false)
+        let info = SuperAppInfo.fromBundle()
+        self.init(name: info.bundleName, version: info.version, skipEntranceAnimation: false)
     }
 
-    /// Test-only initializer. `version` lets snapshot tests pin the version
-    /// string without depending on the host bundle's Info.plist;
-    /// `skipEntranceAnimation: true` seeds both `@State` flags at their
-    /// resting values so the captured frame is fully revealed at pulse peak,
-    /// independent of `onAppear` ordering under the snapshot host window.
-    init(version: String, skipEntranceAnimation: Bool) {
+    /// Test-only initializer. `name` and `version` let snapshot tests pin
+    /// the wordmark and version string without depending on the host
+    /// bundle's Info.plist; `skipEntranceAnimation: true` seeds both
+    /// `@State` flags at their resting values so the captured frame is
+    /// fully revealed at pulse peak, independent of `onAppear` ordering
+    /// under the snapshot host window.
+    init(name: String, version: String, skipEntranceAnimation: Bool) {
+        self.name = name
         self.version = version
         _pulse = State(initialValue: skipEntranceAnimation)
         _revealed = State(initialValue: skipEntranceAnimation)
@@ -62,7 +67,7 @@ public struct SplashView: View {
             SplashSpark()
                 .stroke(theme.accentDark, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
                 .frame(width: 44, height: 44)
-            Text("Super")
+            Text(name)
                 .font(.custom("InstrumentSerif-Italic", size: 38))
                 .foregroundStyle(theme.ink)
                 .tracking(-0.57)
@@ -75,7 +80,7 @@ public struct SplashView: View {
             value: revealed
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Super, loading")
+        .accessibilityLabel("\(name), loading")
         .accessibilityAddTraits(.updatesFrequently)
         .onAppear { revealed = true }
     }
