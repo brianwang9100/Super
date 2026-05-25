@@ -123,12 +123,19 @@ struct AppShell: View {
         _registry = State(initialValue: dependencies.appletRegistry)
         let initialChatState = dependencies.launchBehavior.initialChatState
         _chatState = State(initialValue: initialChatState)
-        // Only `.expanded` and `.minimized` are currently wired as launch
-        // states. If `.semiExpanded` is ever added to
-        // `AppShellLaunchBehavior`, the right initial progress is the
-        // semi-anchor value (~0.52), not 0 — fall through here is
-        // intentional today but worth revisiting then.
-        _chatProgress = State(initialValue: initialChatState == .expanded ? 1 : 0)
+        // `switch` (not a ternary) so adding a future case to
+        // `ChatPresentationState` is a compiler error here rather than a
+        // silent fall-through to 0. The 0.52 placeholder mirrors the
+        // pre-existing `chatSemiProgress` default; when `.semiExpanded`
+        // is ever wired as a launch option, replace it with the named
+        // semi-anchor constant from `ChatOverlay`.
+        _chatProgress = State(initialValue: {
+            switch initialChatState {
+            case .expanded: 1.0
+            case .minimized: 0.0
+            case .semiExpanded: 0.52
+            }
+        }())
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
