@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// About pane. Mirrors `AboutPane` from `settings.jsx`: large italic-serif
-/// "Super" wordmark, a mono `v… · build …` line, and a centered tagline.
+/// brand wordmark (`SuperOS` / `SuperBible`, from `SuperAppInfo.bundleName`),
+/// a mono `v… · build …` line, and a centered tagline.
 struct SettingsAboutPane: View {
     let viewModel: SettingsViewModel
 
@@ -9,7 +10,7 @@ struct SettingsAboutPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Super")
+            Text(viewModel.appInfo.bundleName)
                 .font(.system(size: 56, weight: .regular, design: .serif))
                 .italic()
                 .foregroundStyle(theme.ink)
