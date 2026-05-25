@@ -37,26 +37,27 @@ struct AppShell: View {
     let dependencies: AppShellDependencies
 
     @State private var registry: AppletRegistry
-    /// The current settled chat anchor. Starts in `.expanded` so the
-    /// app launches into a full-screen chat surface — the backdrop applet
-    /// (seeded from persisted state) sits behind, ready to reveal when
-    /// the user drags down. Mutates in response to (a) the user dragging
-    /// the chat surface and releasing (`ChatOverlay` snaps to the nearest
-    /// anchor), (b) tapping the minimized pill, (c) tapping the dimmed
-    /// applet backdrop in semi-expanded (→ minimized), (d) selecting an
-    /// applet from the sidebar (→ minimized), or (e) selecting an
-    /// existing chat / "New Chat" from the sidebar (→ expanded). The
-    /// live in-flight drag height lives inside `ChatOverlay`; the
-    /// continuously-changing visual progress reaches us via
-    /// `chatProgress` below.
-    @State private var chatState: ChatPresentationState = .expanded
+    /// The current settled chat anchor. Seeded from
+    /// `dependencies.launchBehavior.initialChatState` in `init` —
+    /// `.expanded` for SuperOS (chat fills the screen, backdrop hidden
+    /// behind), `.minimized` for SuperBible (Bible visible, chat as a
+    /// pill). Mutates in response to (a) the user dragging the chat
+    /// surface and releasing (`ChatOverlay` snaps to the nearest anchor),
+    /// (b) tapping the minimized pill, (c) tapping the dimmed applet
+    /// backdrop in semi-expanded (→ minimized), (d) selecting an applet
+    /// from the sidebar (→ minimized), or (e) selecting an existing chat
+    /// / "New Chat" from the sidebar (→ expanded). The live in-flight
+    /// drag height lives inside `ChatOverlay`; the continuously-changing
+    /// visual progress reaches us via `chatProgress` below.
+    @State private var chatState: ChatPresentationState
     /// Live chat-overlay progress (0 = pill, 1 = full screen). Read from
     /// `ChatOverlay`'s `ChatProgressPreferenceKey` so the backdrop applet
     /// can interpolate its opacity and hit-testing alongside the chat's
-    /// drag — no more discrete `switch chatState` opacity. Defaults to
-    /// `1` so the backdrop stays hidden behind the expanded chat that
-    /// renders on first launch before the preference reports anything.
-    @State private var chatProgress: Double = 1
+    /// drag — no more discrete `switch chatState` opacity. Seeded in
+    /// `init` to match the initial `chatState` (1 for `.expanded`, 0
+    /// otherwise) so the backdrop dim is correct on the first frame
+    /// before `ChatOverlay`'s preference key reports a value.
+    @State private var chatProgress: Double
     /// Live mid-knot of the backdrop's dim curve — the progress value
     /// at which the chat overlay is settled at semi-expanded. Read from
     /// `ChatOverlay`'s `ChatSemiProgressPreferenceKey` because the semi
@@ -112,9 +113,17 @@ struct AppShell: View {
     /// moved to each target's bootstrap so the same registry is the
     /// source of truth for both the sidebar rail and the briefings
     /// handed to `ChatSessionStore`.
+    ///
+    /// `chatState` and `chatProgress` are seeded from
+    /// `dependencies.launchBehavior.initialChatState` so the cold-launch
+    /// frame matches the per-target policy (SuperOS expanded, SuperBible
+    /// pill) without a one-frame flash through the default.
     init(dependencies: AppShellDependencies) {
         self.dependencies = dependencies
         _registry = State(initialValue: dependencies.appletRegistry)
+        let initialChatState = dependencies.launchBehavior.initialChatState
+        _chatState = State(initialValue: initialChatState)
+        _chatProgress = State(initialValue: initialChatState == .expanded ? 1 : 0)
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
@@ -815,7 +824,7 @@ private struct ChatLayer: View {
                 FailureScreen(message: bootstrapError)
                     .transition(.opacity)
             } else {
-                // Pin Light: matches the outer ContentView splash before
+                // Pin Light: matches the outer per-target content view splash before
                 // user settings load, so the fallback during the brief
                 // pre-ensureViewModel window doesn't flash a wrong theme.
                 SplashView()

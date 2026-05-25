@@ -39,10 +39,11 @@ public struct BibleApplet: MiniApplet {
     /// Application Support for the reading position and verse highlights.
     ///
     /// The database opens synchronously here: it is two small tables behind
-    /// two tiny migrations, and the applet is built in `ContentView`'s
-    /// initializer where no `async` context exists. Should the Bible schema
-    /// ever grow heavy, move this open to `SuperOSAppBootstrap` alongside
-    /// `ChatDatabase` rather than blocking the launch path.
+    /// two tiny migrations, and the applet is built in each target's
+    /// bootstrap (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`) where no
+    /// `async` context exists. Should the Bible schema ever grow heavy,
+    /// move this open into the bootstrap alongside `ChatDatabase` rather
+    /// than blocking the launch path.
     @MainActor
     public init() {
         let database = BibleApplet.openDatabase()

@@ -105,7 +105,7 @@ This monorepo ships two app targets (see [`PRODUCT_VISION.md`](./PRODUCT_VISION.
 
 | Scheme | App | Composition root | Applet set |
 |---|---|---|---|
-| `Super` | SuperOS (personal) | `App/SuperOSApp.swift` | Chat + Bible + Todo |
+| `Super` | SuperOS (personal) | `App-SuperOS/SuperOSApp.swift` | Chat + Bible + Todo |
 | `SuperBible` *(planned, SB-M0)* | SuperBible (App Store target) | `App-SuperBible/SuperBibleApp.swift` | Chat + Bible + Plans |
 
 In Xcode: pick the scheme from the toolbar dropdown next to the run button, then ⌘R. From the command line:

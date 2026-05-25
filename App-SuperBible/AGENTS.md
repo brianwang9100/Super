@@ -1,8 +1,8 @@
 # SuperBible App Target — Agent Rules
 
-The composition root and target-specific assets for the **SuperBible** App Store app. Pairs with the SuperOS root at `App/` — both apps share `Core`, `Chat`, and `Bible` packages; each lives in its own folder and registers its own applet set. Full design + rationale: [`../docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md). Contributor one-pager: [`../docs/SuperBible/OVERVIEW.md`](../docs/SuperBible/OVERVIEW.md).
+The composition root and target-specific assets for the **SuperBible** App Store app. Pairs with the SuperOS root at `App-SuperOS/` — both apps share `Core`, `Chat`, and `Bible` packages, plus the shared shell at `App/Shell/`; each target lives in its own folder and registers its own applet set. Full design + rationale: [`../docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md). Contributor one-pager: [`../docs/SuperBible/OVERVIEW.md`](../docs/SuperBible/OVERVIEW.md).
 
-**Status (2026-05-24):** SB-M0 (target wired) and SB-M1 (composition root + Chat host + Bible) have shipped. Plans (SB-M2) is the next applet; not yet present.
+**Status (2026-05-25):** SB-M0 (target wired) and SB-M1 (composition root + Chat host + Bible) have shipped. Plans (SB-M2) is the next applet; not yet present.
 
 ## Module identity
 
@@ -12,6 +12,16 @@ The composition root and target-specific assets for the **SuperBible** App Store
 - **Applet set (v1):** Chat (host) + Bible *(present)* + Plans *(SB-M2)*
 - **Applet set (post-v1, roadmap):** + Memorize, Quiz, Learn — each its own future spec
 - **Deployment target:** iOS 26.0 (matches the SuperOS target's post-raise target)
+
+### Launch behavior
+
+SuperBible diverges from SuperOS deliberately on cold launch:
+
+- **Active backdrop is always Bible.** The persisted active-applet id in `UserDefaults` is *deliberately ignored*. The bootstrap passes `BibleApplet.appletID` explicitly as `AppletRegistry.initialActiveID` on every cold launch, regardless of where the user navigated mid-session in the prior run. The applet array order (Chats, Bible) drives the sidebar rail order and is intentionally decoupled from the cold-launch backdrop. The shell's per-pick write to `UserDefaults` still fires (cheap, harmless dead weight here).
+- **Chat overlay opens minimized.** The bootstrap passes `launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized)` through `shellDependencies`. `AppShell.init` seeds both `chatState` and the matching `chatProgress` from it so the very first frame already renders the pill — no flash through `.expanded`.
+- **Scope is cold launch only.** Foreground returns from background preserve whatever state the user left in (no scene-phase forced snap). Mid-session navigation to Chats / dragging the chat up is fully honored until the next cold launch.
+
+If product later wants snap-back semantics on every foreground (`.active` scenePhase), extend `AppShellLaunchBehavior` rather than special-casing in either bootstrap.
 
 ## How the SuperBible chat persona is wired
 

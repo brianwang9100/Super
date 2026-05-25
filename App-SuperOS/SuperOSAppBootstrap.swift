@@ -12,7 +12,7 @@ import Todo
 /// Shell stores it in app state and injects the pieces individual views need
 /// via `@Environment` (UI wiring lands in M7).
 @MainActor
-struct AppDependencies {
+struct SuperOSAppDependencies {
     let chatDatabase: ChatDatabase
     let chatSessionStore: ChatSessionStore
     let toolRegistry: ToolRegistry
@@ -51,8 +51,8 @@ struct AppDependencies {
     /// Slice of this dependency graph that `AppShell` actually reads.
     /// Built on demand so callers don't have to thread every field
     /// individually; the shell lives in `App/Shell/` and is shared with
-    /// SuperBible, so it can't depend on the SuperOS-only `AppDependencies`
-    /// type directly. The matching `SuperBibleAppDependencies` exposes
+    /// SuperBible, so it can't depend on the SuperOS-only `SuperOSAppDependencies`
+    /// type directly. The matching `SuperBibleSuperOSAppDependencies` exposes
     /// the same property.
     var shellDependencies: AppShellDependencies {
         AppShellDependencies(
@@ -74,7 +74,11 @@ struct AppDependencies {
             // SuperBible supplies empty strings instead (no user identity yet).
             userInitials: "BW",
             userName: "Brian Wang",
-            accountEmail: "brianwang9100@gmail.com"
+            accountEmail: "brianwang9100@gmail.com",
+            // SuperOS keeps the standard launch policy: chat opens
+            // expanded over the user's last-used applet (restored by
+            // `UserDefaults` lookup further down in `bootstrap()`).
+            launchBehavior: .standard
         )
     }
 }
@@ -82,8 +86,10 @@ struct AppDependencies {
 /// One-shot composition root. Bootstraps the on-disk database, every
 /// repository, the tool/provider registries, and the `ChatSessionStore`.
 ///
-/// Lives in `App/` (not in any package) because it pulls together pieces
-/// from both Core and Chat — i.e. it is the place those modules first meet.
+/// Lives in `App-SuperOS/` (not in any package) because it pulls together
+/// pieces from both Core and Chat — i.e. it is the place those modules
+/// first meet. Symmetric with `App-SuperBible/SuperBibleAppBootstrap.swift`;
+/// the shared shell lives at `App/Shell/`.
 enum SuperOSAppBootstrap {
     /// Build the full dependency graph.
     ///
@@ -100,7 +106,7 @@ enum SuperOSAppBootstrap {
     static func bootstrap(
         directory: URL? = nil,
         keychain: (any KeychainClient)? = nil
-    ) async throws -> AppDependencies {
+    ) async throws -> SuperOSAppDependencies {
         let dataDirectory = try directory ?? AppBootstrapSupport.defaultDataDirectory()
         try AppBootstrapSupport.ensureDirectoryExists(dataDirectory)
 
@@ -244,7 +250,7 @@ enum SuperOSAppBootstrap {
 
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)
 
-        return AppDependencies(
+        return SuperOSAppDependencies(
             chatDatabase: database,
             chatSessionStore: chatSessionStore,
             toolRegistry: toolRegistry,

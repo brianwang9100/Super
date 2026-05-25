@@ -44,7 +44,7 @@ No architectural changes vs SuperOS — purely additive. SuperBible shares the s
 
 The only thing different per target is the composition root:
 
-- `App/SuperOSApp.swift` → `SuperOSAppBootstrap` → Chat + Bible + Todo (and more, over time).
+- `App-SuperOS/SuperOSApp.swift` → `SuperOSAppBootstrap` → Chat + Bible + Todo (and more, over time).
 - `App-SuperBible/SuperBibleApp.swift` → `SuperBibleAppBootstrap` → Chat + Bible + Plans (and more, post-v1).
 
 Bundle ID: `com.brianwang.SuperBible`. Display name: `SuperBible`.

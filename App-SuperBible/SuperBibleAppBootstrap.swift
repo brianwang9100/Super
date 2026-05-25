@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Wired-up dependency graph the SuperBible shell hands to its views.
 ///
-/// Mirrors `AppDependencies` (the SuperOS sibling) field-for-field on the
+/// Mirrors `SuperOSAppDependencies` field-for-field on the
 /// Chat-infra side and exposes the same `shellDependencies` slicer so
 /// the shared `AppShell` consumes both targets uniformly. The Todo /
 /// placeholder-applet fields are omitted because SuperBible's v1 applet
@@ -29,7 +29,7 @@ struct SuperBibleAppDependencies {
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
 
-    /// Slice handed to `AppShell`. Matches `AppDependencies.shellDependencies`
+    /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
     /// to the shell is the applet set inside `appletRegistry`.
     var shellDependencies: AppShellDependencies {
@@ -55,7 +55,13 @@ struct SuperBibleAppDependencies {
             // Apple per the fork spec §7.
             userInitials: "",
             userName: "",
-            accountEmail: ""
+            accountEmail: "",
+            // SuperBible diverges from SuperOS: every cold launch opens to
+            // Bible with the chat overlay as a pill. The applet override
+            // is enforced separately in `bootstrap()` (UserDefaults skip
+            // + `applets.first?.appletID`); this knob covers the chat
+            // anchor only. See App-SuperBible/AGENTS.md § Launch behavior.
+            launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized)
         )
     }
 }
@@ -146,22 +152,33 @@ enum SuperBibleAppBootstrap {
 
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
-        // SuperBible v1 applet set: Bible (default backdrop) + Chats
-        // (searchable history list, distinct from the chat overlay).
-        // Plans joins at SB-M2; no Todo or productivity-style
-        // placeholders ever (per `App-SuperBible/AGENTS.md` § Module
-        // identity). Order is load-bearing — `applets.first` is the
-        // cold-start default on a fresh install, so Bible stays first.
+        // SuperBible v1 applet set: Chats (searchable history list,
+        // distinct from the chat overlay) + Bible. Plans joins at SB-M2;
+        // no Todo or productivity-style placeholders ever (per
+        // `App-SuperBible/AGENTS.md` § Module identity). The array order
+        // drives the sidebar rail order — Chats first so the rail leads
+        // with the user's chats. The cold-launch active backdrop is
+        // decoupled from this order: `initialActiveID` is set explicitly
+        // to `BibleApplet.appletID` below.
         let applets: [any MiniApplet] = [
-            BibleApplet(),
             ChatsApplet(chatDatabase: database),
+            BibleApplet(),
         ]
-        let storedID = UserDefaults.standard.string(forKey: AppShell.activeAppletStorageKey)
-        let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
-            ?? applets.first?.appletID
+        // SuperBible diverges from SuperOS: the persisted active applet
+        // in `UserDefaults` is *deliberately ignored* on cold launch.
+        // Every app open lands on Bible regardless of where the user
+        // navigated mid-session in the prior run. Pair with
+        // `launchBehavior: AppShellLaunchBehavior(initialChatState:
+        // .minimized)` in `shellDependencies` so the chat overlay also
+        // opens as a pill. `BibleApplet.appletID` is passed explicitly
+        // (rather than `applets.first?.appletID`) so the sidebar rail
+        // order can change independently of the cold-launch backdrop.
+        // The shell still *writes* to `activeAppletStorageKey` when the
+        // user picks an applet — that write is harmless dead weight
+        // here. See App-SuperBible/AGENTS.md § Launch behavior.
         let appletRegistry = AppletRegistry(
             applets: applets,
-            initialActiveID: resolvedID
+            initialActiveID: BibleApplet.appletID
         )
 
         // Per-applet briefings via the same `resolvedBriefings()` helper
