@@ -109,7 +109,7 @@ struct MessageListDeclarativeScrollTests {
         let scrollView = try requireScrollView(in: controller)
         #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
 
-        driver.items = driver.items + [makeUserItem(id: "appended-tail", chars: 180)]
+        driver.items += [makeUserItem(id: "appended-tail", chars: 180)]
         settle(controller: controller)
 
         let distance = distanceFromBottom(scrollView)
@@ -187,6 +187,88 @@ struct MessageListDeclarativeScrollTests {
         #expect(
             distance < 2,
             "expected to remain at bottom after thinking growth, got distanceFromBottom=\(distance)"
+        )
+    }
+
+    // MARK: - Verbosity-driven relayout
+
+    /// Flipping verbosity from `.simple` → `.thinking` expands every
+    /// on-screen `ThinkingBlock`, growing content height by hundreds
+    /// of points. When the user was *at the bottom*, they expect to
+    /// stay at the bottom of the new content (latest message
+    /// visible). The two-phase intent capture in
+    /// `.onChange(of: verbosity)` plus the consume in
+    /// `.onScrollGeometryChange`'s action handles this.
+    @Test("verbosity expand from bottom stays at bottom")
+    func verbosityExpandAtBottomStaysAtBottom() async throws {
+        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
+        let beforeContentHeight = scrollView.contentSize.height
+
+        driver.verbosity = .thinking
+        settle(controller: controller)
+
+        #expect(
+            scrollView.contentSize.height > beforeContentHeight,
+            "preconditions: expected verbosity expand to grow content, got \(scrollView.contentSize.height) vs before \(beforeContentHeight)"
+        )
+        let distance = distanceFromBottom(scrollView)
+        #expect(
+            distance < 4,
+            "expected to stay at bottom after verbosity expand, got distanceFromBottom=\(distance)"
+        )
+    }
+
+    /// Flipping verbosity while *scrolled up reading history* must
+    /// preserve the user's chat-region position. Expansion adds
+    /// content above the visible region; the
+    /// preserve-distance-from-bottom intent compensates so the user
+    /// sees roughly the same chat region. Without the intent, the
+    /// user would be silently dropped backward in the conversation.
+    @Test("verbosity expand from mid-scroll preserves distance from bottom")
+    func verbosityExpandFromHistoryPreservesPosition() async throws {
+        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        // Scroll up to ~300pt from the bottom (mid-history).
+        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
+        scrollView.setContentOffset(CGPoint(x: 0, y: targetOffsetY), animated: false)
+        settle(controller: controller)
+        let beforeDistance = distanceFromBottom(scrollView)
+        #expect(
+            abs(beforeDistance - 300) < 10,
+            "preconditions: expected ~300pt from bottom, got \(beforeDistance)"
+        )
+
+        driver.verbosity = .thinking
+        // 30 iterations × 40ms = 1.2s, comfortably outlasting the 1s
+        // `verbosityScrollSettlingWindow` so the final
+        // `LazyVStack`-mat-driven content-height tick lands before
+        // the window closes and we get one last `scrollTo` against
+        // the settled `contentHeight`.
+        settle(controller: controller, iterations: 30)
+
+        // Tolerance of 60pt accommodates `LazyVStack`'s row-height
+        // refinement: it can overestimate `contentHeight` on the
+        // last visible scroll tick and refine downward later, after
+        // ``verbosityScrollMode`` has cleared. The realistic UX
+        // outcome is the user lands within one row of their previous
+        // position — meaningfully better than the no-handler baseline
+        // (where distance would be off by the full ~1500pt of newly-
+        // expanded content above them).
+        let afterDistance = distanceFromBottom(scrollView)
+        #expect(
+            abs(afterDistance - 300) < 60,
+            "expected distance from bottom preserved (~300pt) across verbosity expand, got \(afterDistance)"
         )
     }
 
@@ -320,6 +402,27 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
+    /// Alternates user/assistant items like `makeItems(count:)`, but
+    /// every assistant message carries a multi-line thinking trace so
+    /// flipping `verbosity` from `.simple` to `.thinking` expands a
+    /// visible block on each row and meaningfully grows content
+    /// height. Used by the verbosity-driven scroll tests.
+    private func makeItemsWithThinking(count: Int) -> [MessageList.Item] {
+        let thinking = String(repeating: "Considering the question. ", count: 16)
+        return (0..<count).map { idx in
+            if idx.isMultiple(of: 2) {
+                return makeUserItem(id: "user-\(idx)", chars: 120)
+            }
+            return .assistantText(
+                id: "assistant-\(idx)",
+                thinking: thinking,
+                thinkingDurationMs: 1_200,
+                text: String(repeating: "assistant reply ", count: 16),
+                toolCalls: []
+            )
+        }
+    }
+
     private func requireScrollView(in controller: UIViewController) throws -> UIScrollView {
         guard let scrollView = controller.view.findFirstScrollView() else {
             throw MessageListScrollTestError.scrollViewNotFound
@@ -345,10 +448,16 @@ private enum MessageListScrollTestError: Error {
 private final class MessageListDriver {
     var items: [MessageList.Item]
     var streamingTail: MessageList.StreamingState?
+    var verbosity: ChatVerbosity
 
-    init(items: [MessageList.Item], streamingTail: MessageList.StreamingState? = nil) {
+    init(
+        items: [MessageList.Item],
+        streamingTail: MessageList.StreamingState? = nil,
+        verbosity: ChatVerbosity = .simple
+    ) {
         self.items = items
         self.streamingTail = streamingTail
+        self.verbosity = verbosity
     }
 }
 
@@ -371,7 +480,8 @@ private struct MessageListHost: View {
     var body: some View {
         MessageList(
             items: driver.items,
-            streamingTail: driver.streamingTail
+            streamingTail: driver.streamingTail,
+            verbosity: driver.verbosity
         )
         .ignoresSafeArea()
     }
