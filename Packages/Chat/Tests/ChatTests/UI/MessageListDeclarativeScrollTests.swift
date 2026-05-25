@@ -250,11 +250,10 @@ struct MessageListDeclarativeScrollTests {
         )
 
         driver.verbosity = .thinking
-        // 30 iterations × 40ms = 1.2s, comfortably outlasting the 1s
-        // `verbosityScrollSettlingWindow` so the final
-        // `LazyVStack`-mat-driven content-height tick lands before
-        // the window closes and we get one last `scrollTo` against
-        // the settled `contentHeight`.
+        // 30 iterations × 40 ms = 1.2 s; `LazyVStack` typically settles
+        // within a handful of geometry ticks, and the mode auto-clears
+        // after ``verbosityStableTicksToClear`` (= 3) consecutive
+        // content-height-stable ticks, well before the settle finishes.
         settle(controller: controller, iterations: 30)
 
         // Tolerance of 60pt accommodates `LazyVStack`'s row-height

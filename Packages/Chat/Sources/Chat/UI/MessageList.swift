@@ -456,8 +456,8 @@ public struct MessageList: View {
         // observers — but **only** when the tick was a pure user
         // scroll (no content grow), because content-grow ticks fire
         // *after* those observers need the pre-grow status — and
-        // (2) consumes any `pendingVerbosityScrollIntent` once the
-        // relayout settles. Crucially, the action does **not** read
+        // (2) re-applies `verbosityScrollMode` on every content-height
+        // change while it's active. Crucially, the action does **not** read
         // live `contentOffset` for its own scroll-direction logic
         // (only latches it into the snapshot), so the `scrollTo` it
         // issues can't retrigger it through its own writes — that

@@ -273,19 +273,7 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
-                // Composer parks in the content area's bottom
-                // safe-area inset (not as a `VStack` sibling). When a
-                // `TextField` inside the composer becomes first
-                // responder, SwiftUI's automatic keyboard avoidance
-                // grows the bottom safe-area inset by the keyboard's
-                // height — `safeAreaInset` rides that change, hoisting
-                // the composer above the keyboard. Inside `content`,
-                // `MessageList`'s `ScrollView` sees its
-                // `adjustedContentInset.bottom` grow in lockstep, and
-                // `UIScrollView`'s built-in content-inset-preservation
-                // adjusts `contentOffset` to keep the previously-visible
-                // bottom row visible. No app-level scroll math, no
-                // frame shrink — the canonical iOS chat layout.
+                // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
                 }
