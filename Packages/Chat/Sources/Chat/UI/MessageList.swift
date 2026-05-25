@@ -222,59 +222,44 @@ public struct MessageList: View {
     }
 
     @Environment(\.superTheme) private var theme
-    /// Programmatic scroll-position binding driven by the four
-    /// pinpoint observers below: `.onChange(of: items.count)`,
-    /// `.onChange(of: streamingTail)`, `.onChange(of: verbosity)`, and
-    /// `.onScrollGeometryChange(for: ContainerSnapshot.self)`. The
-    /// first three are value-based; the fourth is geometry-based but
-    /// reads only `containerSize.height`, `contentSize.height`, plus
-    /// a "was at bottom" boolean and the live offset — never re-derives
-    /// scroll-relative values inside its own write — and gates its
-    /// `scrollTo` call on a container-height delta plus the live
-    /// `wasAtBottom` latch. That keeps it out of the feedback loop the
-    /// prior implementation hit: `scrollTo` mutates content offset,
-    /// not container height, so it can't retrigger the action through
-    /// its own writes.
+
+    // MARK: - Scroll state
+    //
+    // Four pinpoint observers drive `scrollPosition`:
+    //   1. `.onChange(of: items.count)` — unconditional bottom-snap
+    //      (a new item is always a user-initiated event).
+    //   2. `.onChange(of: streamingTail)` — gated on `wasAtBottom`
+    //      so reading-history isn't yanked on every coalesced delta.
+    //   3. `.onChange(of: verbosity)` — captures `verbosityScrollMode`
+    //      against `latestSnapshot`, re-applied on every content-grow
+    //      tick during the relayout.
+    //   4. `.onScrollGeometryChange` — latches `wasAtBottom` and
+    //      `latestSnapshot` from a `ContainerSnapshot` and consumes
+    //      the verbosity mode; the action **never** reads live
+    //      `contentOffset` for scroll-direction logic, so a
+    //      `scrollTo` write can't retrigger the action through itself
+    //      — that was the feedback loop the prior implementation hit
+    //      during keyboard animations.
+
+    /// Programmatic scroll-position binding; the observers below
+    /// mutate it via `scrollTo` and never via direct assignment.
     @State private var scrollPosition = ScrollPosition()
-    /// Latched "was at the bottom on the most recent settled geometry"
-    /// flag, updated from the `onScrollGeometryChange` action. Read by
-    /// `.onChange(of: streamingTail)` and `.onChange(of: verbosity)`
-    /// to gate auto-follow so a user scrolled up to read history is
-    /// not yanked down on every text delta or settings flip.
-    /// `items.count` changes intentionally bypass this gate — those
-    /// changes only happen when the user just took an action (sent a
-    /// message, accepted regenerate, persisted a completed stream),
-    /// and in those cases showing the latest message is the right
-    /// default. Initialized `false` (not `true`) so the first few
-    /// frames after a mount with an in-flight stream don't fire a
-    /// spurious auto-follow before the first geometry tick has had a
-    /// chance to settle the real value.
+    /// `true` when the most recent settled (content-stable) geometry
+    /// tick saw the user within ``bottomFollowThreshold`` of the bottom.
+    /// Initialized `false` so a mount with an in-flight stream
+    /// doesn't fire a spurious auto-follow before the first tick.
     @State private var wasAtBottom = false
-    /// Latest settled geometry snapshot, refreshed every time the
-    /// `onScrollGeometryChange` action fires. Read by
-    /// `.onChange(of: verbosity)` so an expand handler can capture
-    /// the user's pre-relayout distance-from-bottom *before* the
-    /// content-grow tick lands; the snapshot's `offsetY` is the only
-    /// place this view can read the current scroll position outside
-    /// of the geometry observer itself.
+    /// Latest `ContainerSnapshot`; read by `.onChange(of: verbosity)`
+    /// to capture pre-relayout distance-from-bottom.
     @State private var latestSnapshot: ContainerSnapshot?
-    /// Active scroll-restoration mode while a verbosity-driven
-    /// relayout is in flight. Set on `.onChange(of: verbosity)`, then
-    /// re-applied on every content-height-change geometry tick until
-    /// the relayout has measured stable for ``verbosityStableTicksToClear``
-    /// consecutive offset-only ticks. The "stable for N ticks"
-    /// criterion (rather than a wall-clock window) handles `LazyVStack`'s
-    /// occasional pattern of overestimating `contentHeight` on one
-    /// tick and refining downward on a later one — re-scrolling on
-    /// every change lets the final settled value win. Expand: preserve
-    /// distance-from-bottom so the user stays on the same chat region.
-    /// Collapse: snap to bottom — the pre-collapse viewport bottom
-    /// usually sat inside an expanded-and-now-collapsed block, so any
-    /// preserved distance maps to a visually arbitrary spot.
+    /// Active verbosity-driven scroll-restoration mode, set on a
+    /// verbosity flip and cleared after
+    /// ``verbosityStableTicksToClear`` consecutive content-stable
+    /// ticks (handles `LazyVStack`'s occasional `contentHeight`
+    /// over-then-under settling pattern).
     @State private var verbosityScrollMode: VerbosityScrollMode?
-    /// Counter of consecutive content-height-stable geometry ticks
-    /// observed while ``verbosityScrollMode`` is active. The mode
-    /// auto-clears once this reaches ``verbosityStableTicksToClear``.
+    /// Counter consumed by the geometry action; resets to 0 on every
+    /// content-height change while ``verbosityScrollMode`` is active.
     @State private var verbosityStableTickCount: Int = 0
 
     /// What to do with the scroll position while a verbosity-driven
@@ -291,17 +276,12 @@ public struct MessageList: View {
     /// holding the mode through a subsequent independent content
     /// change.
     private static let verbosityStableTicksToClear: Int = 3
-    /// Reduced snapshot of the scroll geometry — container height,
-    /// content height, scroll offset, and whether the user was within
-    /// ``bottomFollowThreshold`` of the bottom edge. Equatable so
-    /// SwiftUI only fires the `onScrollGeometryChange` action on
-    /// actual transitions. `contentHeight` is included so the action
-    /// can distinguish a content-grow tick (which fires *after* the
-    /// `.onChange(of: streamingTail)` observer already needed to read
-    /// `wasAtBottom`) from a user-driven scroll tick — the latch only
-    /// updates from the latter. `offsetY` is included so a verbosity
-    /// change can capture distance-from-bottom from the latest
-    /// snapshot before the relayout starts.
+    /// Reduced, `Equatable` snapshot of the scroll geometry — the
+    /// only shape `onScrollGeometryChange`'s transform emits.
+    /// `contentHeight` lets the action distinguish content-grow ticks
+    /// from user-scroll ticks; `offsetY` exposes the current scroll
+    /// position to `.onChange(of: verbosity)` for the
+    /// preserve-distance capture.
     private struct ContainerSnapshot: Equatable {
         /// `containerSize.height` of the `ScrollView` at the moment the
         /// snapshot was taken. Changes when the chat-surface frame
@@ -436,8 +416,15 @@ public struct MessageList: View {
         // now-collapsed block, making any preserved distance map to
         // a visually arbitrary spot.
         .onChange(of: verbosity) { oldValue, newValue in
-            if newValue.rank > oldValue.rank, let snapshot = latestSnapshot {
-                verbosityScrollMode = .preserveDistance(snapshot.distanceFromBottom)
+            if newValue.rank > oldValue.rank {
+                // Fall back to `.scrollToBottom` when `latestSnapshot`
+                // hasn't been captured yet (verbosity toggled before
+                // the first geometry tick fired). A guaranteed
+                // bottom-snap is better than the silent positional
+                // jump that would result from setting no mode.
+                verbosityScrollMode = latestSnapshot
+                    .map { .preserveDistance($0.distanceFromBottom) }
+                    ?? .scrollToBottom
             } else if newValue.rank < oldValue.rank {
                 verbosityScrollMode = .scrollToBottom
             } else {

@@ -190,6 +190,45 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
+    /// **Negative test for the `wasAtBottom` guard on the
+    /// streaming-tail observer.** A user scrolled up reading history
+    /// during a long response must not be yanked back to the bottom
+    /// when a streaming-tail delta arrives — that's the load-bearing
+    /// behavior the `guard wasAtBottom else { return }` line in the
+    /// `.onChange(of: streamingTail)` handler exists to guarantee. A
+    /// future regression that drops the guard would pass every other
+    /// streaming test; this one fails.
+    @Test("streaming tail growth does not scroll when user is reading history")
+    func streamingTailGrowthDoesNotScrollWhenScrolledUp() async throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        // Scroll up ~300pt so `wasAtBottom` latches false.
+        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
+        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
+        settle(controller: controller)
+        let positionBefore = scrollView.contentOffset.y
+
+        driver.streamingTail = MessageList.StreamingState(
+            thinking: "",
+            text: "Hello",
+            isCompacting: false
+        )
+        settle(controller: controller)
+
+        // The user's contentOffset must not move further toward the
+        // bottom than a couple of points (room for sub-pixel layout
+        // jitter from the tail's mount itself).
+        #expect(
+            scrollView.contentOffset.y <= positionBefore + 2,
+            "streaming tail must not yank a reading-history user to the bottom; moved from \(positionBefore) to \(scrollView.contentOffset.y)"
+        )
+    }
+
     // MARK: - Verbosity-driven relayout
 
     /// Flipping verbosity from `.simple` → `.thinking` expands every
