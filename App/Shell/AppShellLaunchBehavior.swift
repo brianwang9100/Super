@@ -19,6 +19,15 @@ struct AppShellLaunchBehavior: Sendable, Equatable {
     /// `.expanded` (chat fills the screen over the user's last-used
     /// applet); SuperBible uses `.minimized` (Bible visible, chat as a
     /// pill).
+    ///
+    /// Only `.expanded` and `.minimized` are supported today.
+    /// `.semiExpanded` is rejected at `AppShell.init` time with a
+    /// `preconditionFailure` — the right initial progress for that
+    /// anchor depends on container geometry (it's not a literal), so
+    /// wiring it as a launch state would need a second knob (e.g. a
+    /// resolver closure or the named semi-anchor constant from
+    /// `ChatOverlay`). Land that knob alongside any feature that needs
+    /// `.semiExpanded` cold-launch.
     let initialChatState: ChatPresentationState
 
     /// SuperOS default: chat opens expanded over the user's last-used applet.

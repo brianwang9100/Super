@@ -125,15 +125,22 @@ struct AppShell: View {
         _chatState = State(initialValue: initialChatState)
         // `switch` (not a ternary) so adding a future case to
         // `ChatPresentationState` is a compiler error here rather than a
-        // silent fall-through to 0. The 0.52 placeholder mirrors the
-        // pre-existing `chatSemiProgress` default; when `.semiExpanded`
-        // is ever wired as a launch option, replace it with the named
-        // semi-anchor constant from `ChatOverlay`.
+        // silent fall-through to 0. The `.semiExpanded` arm traps:
+        // `AppShellLaunchBehavior` doesn't currently support it as a
+        // launch state (the right initial progress depends on container
+        // geometry, not a literal), so reaching it means a caller
+        // constructed an invalid `AppShellLaunchBehavior` — a debug
+        // crash beats a wrong first frame that survives to production.
+        // When `.semiExpanded` is ever wired as a launch option, replace
+        // this with the named semi-anchor constant from `ChatOverlay`.
         _chatProgress = State(initialValue: {
             switch initialChatState {
             case .expanded: 1.0
             case .minimized: 0.0
-            case .semiExpanded: 0.52
+            case .semiExpanded:
+                preconditionFailure(
+                    "AppShellLaunchBehavior does not support .semiExpanded today — see App/Shell/AppShellLaunchBehavior.swift."
+                )
             }
         }())
     }
