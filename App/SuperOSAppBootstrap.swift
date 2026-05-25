@@ -69,7 +69,12 @@ struct AppDependencies {
             memoryRepository: memoryRepository,
             eventBus: eventBus,
             appletRegistry: appletRegistry,
-            appleFoundationAvailability: appleFoundationAvailability
+            appleFoundationAvailability: appleFoundationAvailability,
+            // SuperOS is a single-user dev MVP — hard-code the founder.
+            // SuperBible supplies empty strings instead (no user identity yet).
+            userInitials: "BW",
+            userName: "Brian Wang",
+            accountEmail: "brianwang9100@gmail.com"
         )
     }
 }

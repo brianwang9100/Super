@@ -157,6 +157,8 @@ struct AppShell: View {
                 sidebarOpen: $sidebarOpen,
                 sidebarViewModel: sidebarViewModel,
                 appInfo: appInfo,
+                userInitials: dependencies.userInitials,
+                userName: dependencies.userName,
                 applets: registry.applets,
                 activeAppletID: registry.activeID,
                 theme: theme,
@@ -342,7 +344,7 @@ struct AppShell: View {
             }
             // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
             let settings = SettingsViewModel(
-                accountEmail: "brianwang9100@gmail.com",
+                accountEmail: dependencies.accountEmail,
                 appInfo: appInfo,
                 settingRepository: dependencies.settingRepository,
                 modelRepository: dependencies.modelConfigurationRepository,
@@ -763,6 +765,8 @@ private struct SidebarLayer: View {
     @Binding var sidebarOpen: Bool
     let sidebarViewModel: SidebarViewModel?
     let appInfo: SuperAppInfo
+    let userInitials: String
+    let userName: String
     let applets: [any MiniApplet]
     let activeAppletID: String?
     let theme: SuperTheme
@@ -778,8 +782,8 @@ private struct SidebarLayer: View {
                 isPresented: $sidebarOpen,
                 viewModel: sidebarViewModel,
                 appInfo: appInfo,
-                userInitials: "BW",
-                userName: "Brian Wang",
+                userInitials: userInitials,
+                userName: userName,
                 applets: applets,
                 activeAppletID: activeAppletID,
                 onSelectConversation: onSelectConversation,
