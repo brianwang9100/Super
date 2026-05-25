@@ -142,7 +142,7 @@ actor DiagnosticLogStore {
 //     dependencies.metricKit = metricKit   // ← MUST be held for the app's lifetime
 ```
 
-`MXMetricManager` retains its subscribers **weakly** — if `metricKit` falls out of scope (e.g. the bootstrap returns without stashing it on the dependency container), the subscription is silently dropped and no payloads ever arrive. The composition root MUST hold a strong reference for the app's lifetime; the easiest way is to put it on the same `AppDependencies` container that survives until app termination.
+`MXMetricManager` retains its subscribers **weakly** — if `metricKit` falls out of scope (e.g. the bootstrap returns without stashing it on the dependency container), the subscription is silently dropped and no payloads ever arrive. The composition root MUST hold a strong reference for the app's lifetime; the easiest way is to put it on the same per-target dependency container (`SuperOSAppDependencies` / `SuperBibleAppDependencies`) that survives until app termination.
 
 `MXMetricManager.shared` is Apple's API and stays — the project's no-static-singletons rule applies to *our* types, not to the system framework.
 

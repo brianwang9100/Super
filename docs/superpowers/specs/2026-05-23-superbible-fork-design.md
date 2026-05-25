@@ -33,21 +33,22 @@ SuperBible is purely additive. No core architectural change is required — ever
 
 ```
 Super/
-├── App/                          ← SuperOS composition root
+├── App/                          ← Shared shell only (compiled into both targets)
+│   └── Shell/                    ← AppShell, AppShellDependencies, AppShellLaunchBehavior, …
+├── App-SuperOS/                  ← SuperOS composition root
 │   ├── SuperOSApp.swift          (renamed from SuperApp.swift)
 │   ├── SuperOSAppBootstrap.swift (renamed from AppBootstrap.swift)
-│   ├── ContentView.swift
+│   ├── SuperOSContentView.swift  (was ContentView.swift; renamed for symmetry)
 │   ├── Info.plist
 │   ├── Assets.xcassets
-│   └── Shell/
-├── App-SuperBible/         ← NEW. SuperBible composition root.
+│   └── Placeholders/             (SuperOS-only placeholder applets)
+├── App-SuperBible/         ← SuperBible composition root
 │   ├── SuperBibleApp.swift
 │   ├── SuperBibleAppBootstrap.swift
-│   ├── ContentView.swift
+│   ├── SuperBibleContentView.swift
 │   ├── Info.plist
 │   ├── Assets.xcassets     (own icon, accent color, launch screen)
-│   ├── PRIVACY.md          ← user-facing privacy policy
-│   └── Shell/
+│   └── PRIVACY.md          ← user-facing privacy policy
 ├── Packages/
 │   ├── Core/               (shared)
 │   ├── Chat/               (shared)
@@ -80,11 +81,11 @@ In `project.yml`:
 - New scheme `SuperBible` declared inline in `project.yml`'s `schemes:` block, mirroring the existing `Super` scheme. **xcodegen generates the app-level scheme automatically** — no hand-maintained `SuperBible.xcscheme` in `Scripts/xcodegen-extras/`. The hand-maintained files in `xcodegen-extras/` exist solely for SPM-package test schemes (Chat, Bible, Todo, and future Plans/Memorize/Quiz/Learn), which xcodegen 2.45.4 can't model from `project.yml`. App-level schemes are out of that scope.
 - `postGenCommand` is unchanged for the SuperBible target itself; it still only copies the per-package test schemes.
 
-The existing `Super` target is otherwise unchanged. The two file renames in `App/` (`SuperApp.swift` → `SuperOSApp.swift`, `AppBootstrap.swift` → `SuperOSAppBootstrap.swift`) land in the same commit as the SuperBible target wiring so both apps adopt the symmetric naming (`SuperOSApp` + `SuperOSAppBootstrap` ↔ `SuperBibleApp` + `SuperBibleAppBootstrap`) at the same time. `@main` annotation and any internal references update to match.
+The existing `Super` target is otherwise unchanged. The two file renames in `App/` (`SuperApp.swift` → `SuperOSApp.swift`, `AppBootstrap.swift` → `SuperOSAppBootstrap.swift`) landed in the same commit as the SuperBible target wiring so both apps adopt the symmetric naming (`SuperOSApp` + `SuperOSAppBootstrap` ↔ `SuperBibleApp` + `SuperBibleAppBootstrap`) at the same time. `@main` annotation and any internal references updated to match. Post-SB-M1, the SuperOS files moved from `App/` to `App-SuperOS/` for full directory symmetry with `App-SuperBible/`, and the remaining SuperOS-only type names (`ContentView`, `BootstrapState`, `AppDependencies`) were prefixed to match (`SuperOSContentView`, `SuperOSBootstrapState`, `SuperOSAppDependencies`).
 
 ### 2.3 Composition root
 
-`App-SuperBible/SuperBibleApp.swift` is a near-mirror of `App/SuperOSApp.swift` (the same `BootstrapState` machine, the same `.task` load pattern). It calls `SuperBibleAppBootstrap.bootstrap()`, which differs from `SuperOSAppBootstrap.bootstrap()` only in the applet set it registers:
+`App-SuperBible/SuperBibleApp.swift` is a near-mirror of `App-SuperOS/SuperOSApp.swift` (parallel `SuperOSBootstrapState` / `SuperBibleBootstrapState` machines, the same `.task` load pattern). It calls `SuperBibleAppBootstrap.bootstrap()`, which differs from `SuperOSAppBootstrap.bootstrap()` only in the applet set it registers:
 
 - Both bootstraps reuse Core services (event bus, GRDB factories, Keychain, model registry, SuperTheme).
 - Both bootstraps register Chat as the host.

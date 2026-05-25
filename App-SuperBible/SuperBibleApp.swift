@@ -39,10 +39,10 @@ struct SuperBibleApp: App {
     }
 }
 
-/// Three-state launch machine, parallel to SuperOS's `BootstrapState`. A
-/// SuperBible-specific copy (rather than a shared type in Core) keeps
-/// the two targets' associated-value types — `SuperBibleAppDependencies`
-/// here vs SuperOS's `AppDependencies` — from collapsing into a generic.
+/// Three-state launch machine, parallel to SuperOS's `SuperOSBootstrapState`.
+/// A SuperBible-specific copy (rather than a shared type in Core) keeps the
+/// two targets' associated-value types — `SuperBibleAppDependencies` here
+/// vs SuperOS's `SuperOSAppDependencies` — from collapsing into a generic.
 enum SuperBibleBootstrapState {
     case loading
     case ready(SuperBibleAppDependencies)
@@ -51,7 +51,7 @@ enum SuperBibleBootstrapState {
     /// Stable identity for the case (ignoring the associated value) so
     /// `.animation(value:)` can observe state transitions in the content
     /// view without forcing the dependency type to be `Equatable`.
-    /// Matches SuperOS's `BootstrapState.discriminant`.
+    /// Matches SuperOS's `SuperOSBootstrapState.discriminant`.
     var discriminant: Int {
         switch self {
         case .loading: 0

@@ -45,7 +45,7 @@ The same shell, mini-app registry, and `MiniApplet` protocol serve **both app ta
 
 **Composition roots (one per target):**
 
-- `App/SuperOSApp.swift` → `SuperOSAppBootstrap` → Chat + Bible + Todo (and more, over time).
+- `App-SuperOS/SuperOSApp.swift` → `SuperOSAppBootstrap` → Chat + Bible + Todo (and more, over time).
 - `App-SuperBible/SuperBibleApp.swift` → `SuperBibleAppBootstrap` → Bible (SB-M0 stub); Chat + Bible + Plans at SB-M1 and beyond.
 
 Every overlay state, every animation choreography, every long-press / deep-link / event-bus interaction described below applies identically to both apps. The shell knows nothing about which target it's running inside — it only knows which applets the bootstrap handed it.

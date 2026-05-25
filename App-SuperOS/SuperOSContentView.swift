@@ -9,8 +9,8 @@ import SwiftUI
 /// both the SuperOS *and* SuperBible targets via `project.yml` file
 /// inclusion. SuperBible has its own equivalent `SuperBibleContentView`
 /// that hands it a `SuperBibleAppDependencies.shellDependencies` slice.
-struct ContentView: View {
-    let state: BootstrapState
+struct SuperOSContentView: View {
+    let state: SuperOSBootstrapState
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -41,9 +41,9 @@ struct ContentView: View {
 // MARK: - Previews
 
 #Preview("loading") {
-    ContentView(state: .loading)
+    SuperOSContentView(state: .loading)
 }
 
 #Preview("failed") {
-    ContentView(state: .failed("could not open chat.sqlite"))
+    SuperOSContentView(state: .failed("could not open chat.sqlite"))
 }

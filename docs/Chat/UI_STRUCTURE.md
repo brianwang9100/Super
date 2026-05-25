@@ -13,22 +13,24 @@
 
 ## 1. Composition Root
 
-The SuperOS app target (`App/`) is the composition root. It builds the dependency graph once at launch (`SuperOSAppBootstrap`) and then renders a single host view (`ContentView` → `ChatHostView`) that stacks three Chat surfaces in a `ZStack`:
+Each app target (`App-SuperOS/` and `App-SuperBible/`) is its own composition root. It builds the dependency graph once at launch (`SuperOSAppBootstrap` or `SuperBibleAppBootstrap`) and then renders the shared `AppShell` (from `App/Shell/AppShell.swift`), which stacks the Chat surfaces and the active applet's backdrop in a `ZStack`:
 
 ```
-ChatHostView                                                (App/ContentView.swift)
-├── ChatScreen        — base layer, always rendered          (Chat/UI/ChatScreen.swift)
-├── SidebarDrawer     — overlay, gated on @State sidebarOpen (Chat/UI/SidebarDrawer.swift)
-└── SettingsSheet     — overlay, gated on @State settingsOpen(Chat/UI/Settings/SettingsSheet.swift)
+AppShell                                                    (App/Shell/AppShell.swift)
+├── BackdropLayer    — the active MiniApplet's `rootView`     (varies per applet)
+├── ChatLayer        — ChatOverlay → ChatScreen              (Chat/UI/ChatScreen.swift)
+├── SidebarDrawer    — overlay, gated on @State sidebarOpen  (Chat/UI/SidebarDrawer.swift)
+└── SettingsSheet    — overlay, gated on @State settingsOpen (Chat/UI/Settings/SettingsSheet.swift)
 ```
 
-`ChatHostView` owns:
+`AppShell` owns:
 - The three `@State` view models — `ChatScreenViewModel`, `SidebarViewModel`, `SettingsViewModel` — each `@Observable @MainActor final class` (no Combine, no ObservableObject).
 - The two overlay-visibility bindings (`sidebarOpen`, `settingsOpen`).
 - The active `SuperTheme`, re-derived whenever the persisted theme id changes.
+- The chat-overlay presentation state (`.expanded` / `.semiExpanded` / `.minimized`) and live drag progress.
 - Conversation-switching plumbing: tapping a row in the sidebar rebuilds `ChatScreenViewModel` against the new conversation id; tapping "New Chat" constructs an in-memory draft conversation that doesn't hit GRDB until the user sends a first message (lazy persist via `LazyConversationDriver`).
 
-`ContentView` itself also defines two trivial private screens — `LoadingScreen` and `FailureScreen` — used during bootstrap before `ChatHostView` is ready.
+The per-target content view (`SuperOSContentView` / `SuperBibleContentView`) is a thin wrapper that branches on the bootstrap state machine to show a `SplashView` during `.loading`, a `FailureScreen` on `.failed`, and `AppShell` on `.ready`.
 
 The Sidebar and Settings overlays never coexist visually because opening Settings always fires through `onOpenSettings` *after* the sidebar has started its dismissal animation — see the callback contract on `SidebarDrawer`.
 
@@ -195,7 +197,7 @@ Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelR
 | `SidebarDrawer` | `SidebarViewModel` | `ConversationRepository`, `ChatSessionStore.runningConversations()` | (none — navigation only) |
 | `SettingsSheet` | `SettingsViewModel` | `SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`, `ToolRegistry`, `LLMProviderRegistry`, `ConversationRepository` (for chat count) | the same repositories on every edit |
 
-All three view models are `@Observable @MainActor final class`, mutate only on the main actor, and are constructed by `ChatHostView` from the bootstrap `AppDependencies`.
+All three view models are `@Observable @MainActor final class`, mutate only on the main actor, and are constructed by `AppShell` from the bootstrap dependency graph (`SuperOSAppDependencies` or `SuperBibleAppDependencies`, sliced through `AppShellDependencies`).
 
 ---
 

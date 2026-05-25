@@ -51,15 +51,26 @@ targets:
       Debug: Config/Base.xcconfig
       Release: Config/Base.xcconfig
     sources:
-      - path: App
-        # Per-module AGENTS.md / CLAUDE.md files under App/ live with the
-        # source for contributor convenience but must not ship as runtime
-        # resources in the production .app. The SuperBible target has the
-        # mirror exclude on its own App-SuperBible block.
+      - path: App-SuperOS
+        # Per-target AGENTS.md / CLAUDE.md live with the source for
+        # contributor convenience but must not ship as runtime resources.
+        # The SuperBible target has the mirror exclude on its own block.
         excludes:
           - "**/*.md"
+      # Shared shell files compiled into both SuperOS and SuperBible via
+      # explicit per-file entries here (was a whole-directory `App/`
+      # include before App-SuperOS/ existed). Keep this list narrow and
+      # in sync with the SuperBible `sources:` block below — any new
+      # `App/Shell/*.swift` must be added to both.
+      - path: App/Shell/AppShell.swift
+      - path: App/Shell/AppShellDependencies.swift
+      - path: App/Shell/AppShellLaunchBehavior.swift
+      - path: App/Shell/AppBootstrapSupport.swift
+      - path: App/Shell/FailureScreen.swift
+      - path: App/Shell/FixedHamburgerButton.swift
+      - path: App/Shell/LazyConversationDriver.swift
     info:
-      path: App/Info.plist
+      path: App-SuperOS/Info.plist
       properties:
         # System launch screen rendered before SwiftUI mounts. Setting
         # UIColorName to `SplashBackground` (an asset colorset matching
@@ -108,7 +119,7 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
         GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: App/Info.plist
+        INFOPLIST_FILE: App-SuperOS/Info.plist
         SUPPORTS_MACCATALYST: NO
       configs:
         # Release-only signing config is target-scoped (not project- or
@@ -150,13 +161,14 @@ targets:
         # `buildPhase: resources` entry further down.
         excludes:
           - "**/*.md"
-      # Shared shell files compiled into both SuperOS and SuperBible
-      # via project.yml file inclusion. `App/Shell/Placeholders/` is
-      # deliberately NOT included — Recipes/Finance/etc. are SuperOS-only.
-      # Keep this list narrow; any new `App/Shell/*.swift` must be added
-      # explicitly here.
+      # Shared shell files compiled into both SuperOS and SuperBible via
+      # project.yml file inclusion. Keep this list in sync with the
+      # SuperOS `sources:` block above — any new `App/Shell/*.swift` must
+      # be added to both. SuperOS-only placeholders (Recipes/Finance/etc.)
+      # live under `App-SuperOS/Placeholders/`, never compiled here.
       - path: App/Shell/AppShell.swift
       - path: App/Shell/AppShellDependencies.swift
+      - path: App/Shell/AppShellLaunchBehavior.swift
       - path: App/Shell/AppBootstrapSupport.swift
       - path: App/Shell/FailureScreen.swift
       - path: App/Shell/FixedHamburgerButton.swift

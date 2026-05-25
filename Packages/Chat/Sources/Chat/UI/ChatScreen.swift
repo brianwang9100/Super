@@ -6,7 +6,8 @@ import UIKit
 
 /// Top-level chat surface: drag handle on top, centered title, transcript or
 /// empty state in the middle, composer pinned to the bottom. Owned by the
-/// shell which constructs the view model with the live `AppDependencies`.
+/// shell which constructs the view model with the live per-target dependency
+/// graph (`SuperOSAppDependencies` / `SuperBibleAppDependencies`).
 ///
 /// The hamburger menu lives in the shell chrome (`FixedHamburgerButton` in
 /// `App/Shell/`), not in this surface. The drag handle is visually present

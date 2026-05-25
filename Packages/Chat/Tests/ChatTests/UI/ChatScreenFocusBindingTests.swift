@@ -139,7 +139,7 @@ private final class ProgressDriver {
     init(value: Double) { self.value = value }
 }
 
-/// Host view that owns `@FocusState` the way `ContentView` does in
+/// Host view that owns `@FocusState` the way `AppShell` does in
 /// production, plus the progress driver and observer the test reads.
 private struct ExternalFocusHost: View {
     let viewModel: ChatScreenViewModel

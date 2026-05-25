@@ -224,7 +224,7 @@ public final class ChatScreenViewModel {
         // so callers that don't care about voice (snapshot tests,
         // previews, view-model unit tests) keep working without wiring a
         // fake. Production wires `SpeechRecognizerVoiceInputService` from
-        // the composition root in `App/ContentView.swift`.
+        // the shared shell in `App/Shell/AppShell.swift`.
         self.voice = voice ?? VoiceInputController(service: PlaceholderVoiceInputService())
         // Capture the controller binding so the closure body can reach
         // committed text without a `self` strong-ref cycle.

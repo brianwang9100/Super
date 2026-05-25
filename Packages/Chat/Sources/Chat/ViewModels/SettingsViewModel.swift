@@ -381,7 +381,7 @@ public final class SettingsViewModel {
     /// Remembers the model the user just activated so the next new chat
     /// opens on it. Called by the host from `ChatScreenViewModel`'s
     /// `onModelSelected` hook (user picks in the composer) and from the
-    /// initial auto-pick path in `ContentView.rebuildChatViewModel`.
+    /// initial auto-pick path in `AppShell.rebuildChatViewModel`.
     public func setLastSelectedModelId(_ id: String) async {
         settings.lastSelectedModelId = id
         try? await store.setLastSelectedModelId(id)

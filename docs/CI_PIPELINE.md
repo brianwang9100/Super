@@ -688,7 +688,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 - **Apple Distribution cert + App Store profile** — proves *who* can sign Super for App Store distribution. Imported into the runner's ephemeral keychain at build time.
 - **App Store Connect API key (`.p8`)** — proves *who* can upload on behalf of the team. Passed via `-authenticationKeyPath` to `xcodebuild -exportArchive` for the upload itself. App Manager role is sufficient for upload (only Distribution cert management requires Admin).
 
-**Build numbering.** `CURRENT_PROJECT_VERSION` is set to `GITHUB_RUN_NUMBER` so every run yields a unique, monotonically increasing build number. Marketing version (`CFBundleShortVersionString`) is whatever's in `App/Info.plist` unless overridden via the `marketing_version` workflow input.
+**Build numbering.** `CURRENT_PROJECT_VERSION` is set to `GITHUB_RUN_NUMBER` so every run yields a unique, monotonically increasing build number. Marketing version (`CFBundleShortVersionString`) is whatever's in `App-SuperOS/Info.plist` (or `App-SuperBible/Info.plist`) unless overridden via the `marketing_version` workflow input.
 
 **Cert rotation runbook (annual).** Apple Distribution certs expire ~1 year after issue. When that happens:
 

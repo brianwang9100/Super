@@ -126,9 +126,9 @@ public struct ChatSettingsStore: Sendable {
 
     /// Persists the upstream `LLMModel.id` the user just activated so the
     /// next new chat opens on the same model. Stale ids (the model has
-    /// since been deleted) are tolerated at read time — `ContentView`
-    /// falls back to the first available model when the persisted id is
-    /// no longer registered.
+    /// since been deleted) are tolerated at read time — the shell falls
+    /// back to the first available model when the persisted id is no
+    /// longer registered.
     public func setLastSelectedModelId(_ id: String) async throws {
         try await repository.set(Keys.lastSelectedModelId, value: id)
     }
