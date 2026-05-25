@@ -166,6 +166,7 @@ enum AppBootstrap {
         // chat turn — those two surfaces would otherwise drift if a
         // future PR registered an applet in only one place.
         let applets: [any MiniApplet] = [
+            ChatsApplet(chatDatabase: database),
             TodoApplet(dependencies: todoDependencies),
             RecipesPlaceholderApplet(),
             BibleApplet(),
@@ -188,13 +189,13 @@ enum AppBootstrap {
         // placeholder applets don't contribute stray `## <Name> applet`
         // headers to the leading system block.
         let appletBriefings = appletRegistry.resolvedBriefings()
-        // The Chat-assistant base prompt is the renamed
-        // `DefaultSystemPrompt.md` resource. Loaded through
-        // `ChatApplet().systemPrompt` so the lookup runs against
-        // *Chat's* bundle — calling `AppletSystemPrompt.load(from:
-        // .module, ...)` directly from `App/` would resolve to the App
-        // target's bundle, which doesn't ship the markdown.
-        let chatBriefing = ChatApplet().systemPrompt
+        // The Chat-assistant base prompt is the `DefaultSystemPrompt.md`
+        // resource shipped inside the Chat package. `ChatBriefing.load()`
+        // calls `AppletSystemPrompt.load(from: .module, ...)` from
+        // within the Chat package so `.module` resolves to Chat's
+        // bundle — calling it directly from `App/` would resolve to
+        // the App target's bundle, which doesn't ship the markdown.
+        let chatBriefing = ChatBriefing.load()
 
         let chatSessionStore = ChatSessionStore(
             messageRepository: messageRepo,

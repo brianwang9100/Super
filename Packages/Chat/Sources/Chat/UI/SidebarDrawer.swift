@@ -63,6 +63,13 @@ public struct SidebarDrawer: View {
     /// begun closing; the host should flip the registry's `activeID`.
     public let onSelectApplet: (String) -> Void
 
+    /// Fires when the "See all chats…" overflow row is tapped (only
+    /// rendered when `viewModel.hasMoreChats == true`). The drawer
+    /// has already begun closing; the host should switch the backdrop
+    /// to the Chats applet — which is the see-all surface — and
+    /// collapse the chat overlay so the list owns the screen.
+    public let onSeeAllChats: () -> Void
+
     @Environment(\.superTheme) private var theme
 
     private let drawerWidth: CGFloat = 300
@@ -82,6 +89,9 @@ public struct SidebarDrawer: View {
     ///   - onNewChat: Invoked when the New Chat CTA is tapped.
     ///   - onOpenSettings: Invoked when the Settings gear is tapped.
     ///   - onSelectApplet: Invoked with the tapped applet's `appletID`.
+    ///   - onSeeAllChats: Invoked when the "See all chats…" overflow
+    ///     row is tapped — only present when the underlying chats list
+    ///     is capped (more than 10 conversations on disk).
     public init(
         isPresented: Binding<Bool>,
         viewModel: SidebarViewModel,
@@ -93,7 +103,8 @@ public struct SidebarDrawer: View {
         onSelectConversation: @escaping (String) -> Void,
         onNewChat: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
-        onSelectApplet: @escaping (String) -> Void
+        onSelectApplet: @escaping (String) -> Void,
+        onSeeAllChats: @escaping () -> Void
     ) {
         self._isPresented = isPresented
         self.viewModel = viewModel
@@ -106,6 +117,7 @@ public struct SidebarDrawer: View {
         self.onNewChat = onNewChat
         self.onOpenSettings = onOpenSettings
         self.onSelectApplet = onSelectApplet
+        self.onSeeAllChats = onSeeAllChats
     }
 
     public var body: some View {
@@ -164,6 +176,13 @@ public struct SidebarDrawer: View {
                             isActive: chat.id == viewModel.activeConversationId,
                             onSelect: { onSelectConversation(chat.id) }
                         )
+                    }
+
+                    if viewModel.hasMoreChats {
+                        SeeAllChatsRow {
+                            close()
+                            onSeeAllChats()
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -351,6 +370,40 @@ private struct ChatRow: View {
             )
         }
         .buttonStyle(SidebarPressableRowStyle(theme: theme, cornerRadius: 10, suppressBackground: isActive))
+    }
+}
+
+// MARK: - See-all overflow row
+
+/// Footer row in the CHATS section rendered when there are more than
+/// `SidebarViewModel.sidebarChatLimit` conversations on disk. Routes to
+/// the Chats applet — which is the searchable see-all surface — rather
+/// than expanding the list inline.
+private struct SeeAllChatsRow: View {
+    let onTap: () -> Void
+
+    @Environment(\.superTheme) private var theme
+    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                Text("See all chats…")
+                    .font(.system(size: rowTitleBase))
+                    .foregroundStyle(theme.inkSoft)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.inkMute)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(SidebarPressableRowStyle(theme: theme, cornerRadius: 10))
+        .accessibilityLabel("See all chats")
     }
 }
 

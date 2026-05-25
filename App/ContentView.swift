@@ -235,6 +235,19 @@ struct AppShell: View {
                     withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                         chatState = .minimized
                     }
+                },
+                onSeeAllChats: {
+                    // The Chats applet is the see-all surface for the
+                    // sidebar's capped list. Same chrome transition as
+                    // any other applet selection — flip the registry,
+                    // persist, dismiss keyboard, collapse the chat
+                    // overlay so the list owns the screen.
+                    dismissKeyboard()
+                    registry.activeID = ChatsApplet.appletID
+                    UserDefaults.standard.set(ChatsApplet.appletID, forKey: Self.activeAppletStorageKey)
+                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+                        chatState = .minimized
+                    }
                 }
             )
             SettingsLayer(
@@ -375,6 +388,29 @@ struct AppShell: View {
             // Begin draining the cross-applet bus before any composer
             // mounts, so a verse added early is buffered, not lost.
             await referenceInbox.attach(to: dependencies.eventBus)
+
+            // Drain the Chats applet's "open this chat" / "new chat"
+            // requests onto the shell's existing routing. The bus
+            // does no buffering before subscription, so any event the
+            // Chats backdrop publishes after this task starts is
+            // delivered exactly once. The task is intentionally
+            // long-lived — `AppShell` lives for the whole app session,
+            // so cancellation isn't load-bearing.
+            let eventBus = dependencies.eventBus
+            Task { [self] in
+                for await event in await eventBus.events() {
+                    switch event {
+                    case .openConversationRequested(let id):
+                        await selectConversation(id: id)
+                    case .newConversationRequested:
+                        await startNewChat()
+                    case .recordAddedToChat:
+                        // Owned by `ChatReferenceInbox` — skip here so
+                        // we don't double-route the verse hand-off.
+                        break
+                    }
+                }
+            }
             let conversation = ensureConversation()
             // Whether this conversation came from disk or is a fresh
             // launch-into-empty-DB draft. Captured before
@@ -825,6 +861,7 @@ private struct SidebarLayer: View {
     let onNewChat: () -> Void
     let onOpenSettings: () -> Void
     let onSelectApplet: (String) -> Void
+    let onSeeAllChats: () -> Void
 
     var body: some View {
         if let sidebarViewModel {
@@ -839,7 +876,8 @@ private struct SidebarLayer: View {
                 onSelectConversation: onSelectConversation,
                 onNewChat: onNewChat,
                 onOpenSettings: onOpenSettings,
-                onSelectApplet: onSelectApplet
+                onSelectApplet: onSelectApplet,
+                onSeeAllChats: onSeeAllChats
             )
             .superTheme(theme)
             .chatAppearance(appearance)

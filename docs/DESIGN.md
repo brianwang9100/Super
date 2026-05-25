@@ -331,7 +331,7 @@ Mini-apps are Swift Packages in the monorepo, registered once at the composition
 @main
 struct SuperApp: App {
     let registry = AppletRegistry(applets: [
-        ChatApplet(),
+        ChatsApplet(chatDatabase: database),  // searchable history backdrop
         ToDoApplet(),
         RecipesApplet(),
         BibleApplet(),

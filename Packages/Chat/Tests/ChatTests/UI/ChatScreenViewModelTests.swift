@@ -2195,6 +2195,13 @@ private actor StubConversationRepository: ConversationRepository {
         rows.filter { $0.deletedAt == nil }
     }
 
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord] {
+        let active = rows
+            .filter { $0.deletedAt == nil }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        return Array(active.prefix(limit))
+    }
+
     func fetch(id: String) async throws -> ConversationRecord? {
         rows.first(where: { $0.id == id })
     }
