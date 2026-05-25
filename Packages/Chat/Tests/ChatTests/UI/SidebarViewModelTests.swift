@@ -69,6 +69,47 @@ struct SidebarViewModelTests {
         #expect(running["b"] == true)
     }
 
+    @Test("refresh caps chats at 10 and exposes hasMoreChats when there are more")
+    func refreshCapsAtTenWithHasMoreFlag() async {
+        let store = makeStore(running: [])
+        var rows: [ConversationRecord] = []
+        for i in 0..<15 {
+            rows.append(.init(
+                id: "row-\(i)",
+                title: "Row \(i)",
+                createdAt: Self.now,
+                updatedAt: Self.now.addingTimeInterval(TimeInterval(i))
+            ))
+        }
+        let repo = StubConversationRepository(rows: rows)
+        let vm = SidebarViewModel(conversationRepository: repo, sessionStore: store)
+        await vm.refresh()
+        #expect(vm.chats.count == 10)
+        #expect(vm.hasMoreChats == true)
+        // Newest first: row-14 ... row-5.
+        #expect(vm.chats.first?.id == "row-14")
+        #expect(vm.chats.last?.id == "row-5")
+    }
+
+    @Test("refresh leaves hasMoreChats false when at or under 10 rows")
+    func refreshHasMoreFalseWhenAtCap() async {
+        let store = makeStore(running: [])
+        var rows: [ConversationRecord] = []
+        for i in 0..<10 {
+            rows.append(.init(
+                id: "row-\(i)",
+                title: "Row \(i)",
+                createdAt: Self.now,
+                updatedAt: Self.now.addingTimeInterval(TimeInterval(i))
+            ))
+        }
+        let repo = StubConversationRepository(rows: rows)
+        let vm = SidebarViewModel(conversationRepository: repo, sessionStore: store)
+        await vm.refresh()
+        #expect(vm.chats.count == 10)
+        #expect(vm.hasMoreChats == false)
+    }
+
     @Test("activeConversationId starts at the seeded value and is mutable")
     func activeConversationIdMutable() async {
         let store = makeStore(running: [])
@@ -117,6 +158,14 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
     func listActive() async throws -> [ConversationRecord] {
         if shouldThrow { throw NSError(domain: "test", code: 1) }
         return rows.filter { $0.deletedAt == nil }
+    }
+
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord] {
+        if shouldThrow { throw NSError(domain: "test", code: 1) }
+        let active = rows
+            .filter { $0.deletedAt == nil }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        return Array(active.prefix(limit))
     }
 
     func fetch(id: String) async throws -> ConversationRecord? {

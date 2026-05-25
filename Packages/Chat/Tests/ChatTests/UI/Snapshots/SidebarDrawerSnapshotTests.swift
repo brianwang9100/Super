@@ -22,12 +22,20 @@ struct SidebarDrawerSnapshotTests {
 
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
-    /// Applet list passed to every snapshot. Currently only `ChatApplet`
-    /// — the M2 placeholder applets live in the App target, which the
-    /// Chat test target can't import. The 5-applet rail snapshot lands
-    /// in M4 alongside stub `MiniApplet` conformances local to this
-    /// test file or a future Shell-package test target.
-    private static let sampleApplets: [any MiniApplet] = [ChatApplet()]
+    /// Applet list passed to every snapshot. The placeholder applets
+    /// for Recipes / Bible / Finance live in the App target which the
+    /// Chat test target can't import, so the rail in these snapshots
+    /// renders only the two applets the Chat package owns — the new
+    /// Chats applet (`ChatsApplet`) and any future Chat-package-local
+    /// rail entry. The 5-applet rail snapshot lands when a Shell-package
+    /// test target exists.
+    private static let sampleApplets: [any MiniApplet] = {
+        // Force-try is acceptable in a test fixture: the in-memory
+        // database is a deterministic constructor that only fails on
+        // out-of-memory, in which case the whole test process is gone.
+        let db = try! ChatDatabase.makeInMemory()
+        return [ChatsApplet(chatDatabase: db)]
+    }()
 
     private static let sampleChats: [SidebarViewModel.ChatItem] = [
         .init(id: "c1", title: "Italy trip planning", updatedAt: now, running: false),
@@ -80,6 +88,37 @@ struct SidebarDrawerSnapshotTests {
     // `MessageListSnapshotTests`. Tracked to revisit when a reliable
     // env-injection seam appears in a future SDK.
 
+    @Test("with overflow shows 'See all chats…' row")
+    func seeAllOverflowRow() {
+        let function = #function
+        let viewModel = SidebarViewModel(
+            conversationRepository: NoopConversationRepository(),
+            sessionStore: makeIsolatedStore()
+        )
+        viewModel._setSnapshotState(
+            chats: Self.sampleChats,
+            activeId: "c1",
+            hasMoreChats: true
+        )
+        let view = SidebarDrawer(
+            isPresented: .constant(true),
+            viewModel: viewModel,
+            appInfo: appInfo,
+            userInitials: "BW",
+            userName: "Brian Wang",
+            applets: Self.sampleApplets,
+            activeAppletID: nil,
+            onSelectConversation: { _ in },
+            onNewChat: {},
+            onOpenSettings: {},
+            onSelectApplet: { _ in },
+            onSeeAllChats: {}
+        )
+        .superTheme(.make(.light))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "sidebar_see_all_row_light", function: function)
+    }
+
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
@@ -99,7 +138,8 @@ struct SidebarDrawerSnapshotTests {
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
-            onSelectApplet: { _ in }
+            onSelectApplet: { _ in },
+            onSeeAllChats: {}
         )
         .superTheme(.make(.light))
         .dynamicTypeSize(.xxLarge)
@@ -169,7 +209,8 @@ struct SidebarDrawerSnapshotTests {
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
-            onSelectApplet: { _ in }
+            onSelectApplet: { _ in },
+            onSeeAllChats: {}
         )
         .superTheme(.make(theme))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
@@ -200,7 +241,8 @@ struct SidebarDrawerSnapshotTests {
             onSelectConversation: { _ in },
             onNewChat: {},
             onOpenSettings: {},
-            onSelectApplet: { _ in }
+            onSelectApplet: { _ in },
+            onSeeAllChats: {}
         )
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
@@ -241,6 +283,7 @@ struct SidebarDrawerSnapshotTests {
 
 private struct NoopConversationRepository: ConversationRepository {
     func listActive() async throws -> [ConversationRecord] { [] }
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord] { [] }
     func fetch(id: String) async throws -> ConversationRecord? { nil }
     func save(_ record: ConversationRecord) async throws {}
     func softDelete(id: String, at deletedAt: Date) async throws {}

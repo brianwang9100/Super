@@ -838,6 +838,7 @@ private struct NoopModelRepository: ModelConfigurationRepository {
 
 private struct NoopConversationRepository: ConversationRepository {
     func listActive() async throws -> [ConversationRecord] { [] }
+    func listActiveRecent(limit: Int) async throws -> [ConversationRecord] { [] }
     func fetch(id: String) async throws -> ConversationRecord? { nil }
     func save(_ record: ConversationRecord) async throws {}
     func softDelete(id: String, at deletedAt: Date) async throws {}

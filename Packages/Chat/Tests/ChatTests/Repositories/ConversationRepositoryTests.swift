@@ -77,4 +77,43 @@ struct ConversationRepositoryTests {
         #expect(active.count == 1)
         #expect(active.first?.title == "New")
     }
+
+    @Test func listActiveRecentHonorsLimitAndExcludesSoftDeleted() async throws {
+        let (_, repo) = try makeRepo()
+        // Seed 15 active rows with strictly increasing updatedAt, plus one
+        // soft-deleted row that should never appear regardless of limit.
+        for i in 0..<15 {
+            try await repo.save(ConversationRecord(
+                id: "row-\(i)",
+                title: "Row \(i)",
+                createdAt: now,
+                updatedAt: now.addingTimeInterval(TimeInterval(i))
+            ))
+        }
+        try await repo.save(ConversationRecord(
+            id: "row-deleted",
+            title: "Deleted",
+            createdAt: now,
+            updatedAt: now.addingTimeInterval(1000),
+            deletedAt: now
+        ))
+
+        let limited = try await repo.listActiveRecent(limit: 10)
+        #expect(limited.count == 10)
+        // Newest first: row-14, row-13, …, row-5.
+        #expect(limited.map(\.id) == (5...14).reversed().map { "row-\($0)" })
+        #expect(!limited.contains(where: { $0.id == "row-deleted" }))
+    }
+
+    @Test func listActiveRecentReturnsAllWhenFewerThanLimit() async throws {
+        let (_, repo) = try makeRepo()
+        try await repo.save(ConversationRecord(
+            id: "a", title: "A", createdAt: now, updatedAt: now
+        ))
+        try await repo.save(ConversationRecord(
+            id: "b", title: "B", createdAt: now, updatedAt: now.addingTimeInterval(60)
+        ))
+        let rows = try await repo.listActiveRecent(limit: 10)
+        #expect(rows.map(\.id) == ["b", "a"])
+    }
 }

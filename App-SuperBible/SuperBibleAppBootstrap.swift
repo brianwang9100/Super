@@ -146,11 +146,15 @@ enum SuperBibleAppBootstrap {
 
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
-        // SuperBible v1 applet set: Bible only at SB-M1. Plans joins at
-        // SB-M2; no Todo or productivity-style placeholders ever
-        // (per `App-SuperBible/AGENTS.md` § Module identity).
+        // SuperBible v1 applet set: Bible (default backdrop) + Chats
+        // (searchable history list, distinct from the chat overlay).
+        // Plans joins at SB-M2; no Todo or productivity-style
+        // placeholders ever (per `App-SuperBible/AGENTS.md` § Module
+        // identity). Order is load-bearing — `applets.first` is the
+        // cold-start default on a fresh install, so Bible stays first.
         let applets: [any MiniApplet] = [
             BibleApplet(),
+            ChatsApplet(chatDatabase: database),
         ]
         let storedID = UserDefaults.standard.string(forKey: AppShell.activeAppletStorageKey)
         let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
@@ -166,8 +170,8 @@ enum SuperBibleAppBootstrap {
         // The SuperBible-flavor Chat-assistant base prompt. Reads
         // `Resources/SuperBibleSystemPrompt.md` from the App-SuperBible
         // target bundle (i.e., `Bundle.main`), not Chat's SwiftPM
-        // bundle — `ChatApplet().systemPrompt` would otherwise return
-        // Chat's generic `DefaultSystemPrompt.md`.
+        // bundle — `ChatBriefing.load()` (used by SuperOS) would
+        // otherwise return Chat's generic `DefaultSystemPrompt.md`.
         let chatBriefing = SuperBibleSystemPromptLoader.load()
 
         let chatSessionStore = ChatSessionStore(

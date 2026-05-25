@@ -17,7 +17,7 @@ Anything chat-overlay-specific (the three state shapes, the drag handle, the spr
 
 ## Rules
 
-- **Chat is not a registered applet.** It's the host. Don't add `ChatApplet()` back to the registry list in either bootstrap. The sidebar always shows chat history + New Chat CTA; backdrop applets only render behind the chat overlay.
+- **Chat-the-overlay is not a registered applet.** It's the host. Don't register a backdrop applet with `appletID: "chat"` in either bootstrap — the searchable conversation-list backdrop is `ChatsApplet` (`appletID: "chats"`), and it's the only Chat-package applet that belongs in the registry. The sidebar always shows chat history + New Chat CTA; backdrop applets only render behind the chat overlay.
 - **AppletRegistry mutation is composition-root only.** The shell can flip `registry.activeID` at runtime, but the `applets` list is fixed at app init. Dynamic install / uninstall flows from `docs/DESIGN.md §3.2-3.3` are deferred.
 - **Default chat-presentation-state transitions** (`docs/DESIGN.md §4.4`):
   - Tap an applet from the sidebar → `chatState = .minimized` (chat collapses; backdrop owns the screen)

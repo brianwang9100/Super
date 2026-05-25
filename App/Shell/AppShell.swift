@@ -93,6 +93,19 @@ struct AppShell: View {
     /// second bootstrap before the first finishes. Safe to read/write
     /// without coordination because `.task` runs on the main actor.
     @State private var bootstrapStarted = false
+    /// Queued navigation request from the cross-applet event bus. The
+    /// drain task in `ensureViewModel()` writes here; the body's
+    /// `.onChange` reads and dispatches to `selectConversation` /
+    /// `startNewChat`. Routing through `@State` (rather than calling
+    /// the methods directly from the captured-self drain task) is
+    /// load-bearing: a `[self]`-captured closure snapshots `self`
+    /// once at task spawn, and `@Environment` values on a struct copy
+    /// don't refresh when the OS setting changes — `reduceMotion`
+    /// would be frozen at boot time for every routed navigation.
+    /// `@State` storage is reference-backed and survives the copy,
+    /// and body re-eval gives the dispatcher fresh `@Environment`
+    /// values so `withAnimation` honors the live `reduceMotion`.
+    @State private var pendingNavigation: PendingNavigation?
 
     /// Adopts the registry the composition root built. Pre-existing
     /// `applets` array + `UserDefaults` read used to live here; both
@@ -183,6 +196,25 @@ struct AppShell: View {
                     withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                         chatState = .minimized
                     }
+                },
+                onSeeAllChats: {
+                    // The Chats applet is the see-all surface for the
+                    // sidebar's capped list. Same chrome transition as
+                    // any other applet selection — flip the registry,
+                    // persist, dismiss keyboard, collapse the chat
+                    // overlay so the list owns the screen. No-op when
+                    // ChatsApplet isn't registered for this target
+                    // (e.g. a hypothetical future target without the
+                    // Chats backdrop) — the SidebarDrawer only renders
+                    // the See-all row when the underlying list is
+                    // capped, which itself only happens once there are
+                    // more than 10 conversations.
+                    dismissKeyboard()
+                    registry.activeID = ChatsApplet.appletID
+                    UserDefaults.standard.set(ChatsApplet.appletID, forKey: Self.activeAppletStorageKey)
+                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+                        chatState = .minimized
+                    }
                 }
             )
             SettingsLayer(
@@ -267,6 +299,23 @@ struct AppShell: View {
                 dismissKeyboard()
             }
         }
+        // Drain queued navigation requests written by the event-bus
+        // task. This observer fires inside a body re-eval, so the
+        // `selectConversation` / `startNewChat` calls run on a fresh
+        // `self` whose `@Environment` reflects the live OS state
+        // (notably `reduceMotion` for `withAnimation`).
+        .onChange(of: pendingNavigation) { _, newValue in
+            guard let request = newValue else { return }
+            pendingNavigation = nil
+            Task {
+                switch request {
+                case .openConversation(let id):
+                    await selectConversation(id: id)
+                case .newConversation:
+                    await startNewChat()
+                }
+            }
+        }
         // One bus instance shared by every applet — the Bible backdrop
         // publishes verse references, the Chat overlay's inbox consumes.
         .environment(\.superEventBus, dependencies.eventBus)
@@ -323,6 +372,37 @@ struct AppShell: View {
             // Begin draining the cross-applet bus before any composer
             // mounts, so a verse added early is buffered, not lost.
             await referenceInbox.attach(to: dependencies.eventBus)
+
+            // Drain the Chats applet's "open this chat" / "new chat"
+            // requests onto the shell's existing routing. The bus
+            // does no buffering before subscription, so any event the
+            // Chats backdrop publishes after this task starts is
+            // delivered exactly once. The task is intentionally
+            // long-lived — `AppShell` lives for the whole app session,
+            // so cancellation isn't load-bearing.
+            //
+            // Writes land in `pendingNavigation`, a `@State` whose
+            // reference-backed storage survives the struct copy this
+            // closure captures. The body's `.onChange` then dispatches
+            // from a fresh `self` so `@Environment` reads (notably
+            // `reduceMotion`) reflect the live OS setting at the
+            // moment of navigation — not the value frozen into this
+            // captured copy at task-spawn time.
+            let eventBus = dependencies.eventBus
+            Task { [self] in
+                for await event in await eventBus.events() {
+                    switch event {
+                    case .openConversationRequested(let id):
+                        pendingNavigation = .openConversation(id: id)
+                    case .newConversationRequested:
+                        pendingNavigation = .newConversation
+                    case .recordAddedToChat:
+                        // Owned by `ChatReferenceInbox` — skip here so
+                        // we don't double-route the verse hand-off.
+                        break
+                    }
+                }
+            }
             let conversation = ensureConversation()
             // Whether this conversation came from disk or is a fresh
             // launch-into-empty-DB draft. Captured before
@@ -565,6 +645,18 @@ struct AppShell: View {
     }
 }
 
+// MARK: - Navigation request envelope
+
+/// In-flight navigation written by the cross-applet event-bus drain
+/// task and consumed by `AppShell.body`'s `.onChange` observer.
+/// Re-entrancy is benign: each enqueue triggers exactly one consume,
+/// and the consumer nils out the slot before dispatching so a rapid
+/// pair of taps never collapses into one routed call.
+private enum PendingNavigation: Equatable {
+    case openConversation(id: String)
+    case newConversation
+}
+
 // MARK: - Shell layers
 
 /// Backdrop layer hosting the active mini-app's root view, plus the
@@ -775,6 +867,7 @@ private struct SidebarLayer: View {
     let onNewChat: () -> Void
     let onOpenSettings: () -> Void
     let onSelectApplet: (String) -> Void
+    let onSeeAllChats: () -> Void
 
     var body: some View {
         if let sidebarViewModel {
@@ -789,7 +882,8 @@ private struct SidebarLayer: View {
                 onSelectConversation: onSelectConversation,
                 onNewChat: onNewChat,
                 onOpenSettings: onOpenSettings,
-                onSelectApplet: onSelectApplet
+                onSelectApplet: onSelectApplet,
+                onSeeAllChats: onSeeAllChats
             )
             .superTheme(theme)
             .chatAppearance(appearance)
