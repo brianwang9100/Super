@@ -31,7 +31,10 @@ extension EnvironmentValues {
 ///   `progress` so the row collapses smoothly to zero in pill mode.
 ///
 /// Behavior:
-/// - Enter submits; Shift-Enter inserts a newline.
+/// - Return inserts a newline; submission is driven by the trailing
+///   send button. (iOS's multi-line `TextField(axis: .vertical)` always
+///   consumes Return as a newline on the software keyboard, so there is
+///   no Enter-to-send path here.)
 /// - Submitting a slash command (`/compact`, `/...`) is the parent's
 ///   responsibility; this view just hands the trimmed text up via
 ///   `onSubmit(_:)`.
@@ -333,8 +336,7 @@ public struct ChatComposer: View {
         .foregroundStyle(theme.ink)
         .tint(theme.accent)
         .focused($isFocused)
-        .submitLabel(.send)
-        .onSubmit(submit)
+        .submitLabel(.return)
         .padding(.vertical, 4)
         .accessibilityHint(isRecording ? "Recording. Double-tap stop to commit." : "")
     }
