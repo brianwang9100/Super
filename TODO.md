@@ -41,14 +41,15 @@ Public App Store ship: free, BYOK, open source, local-first AI Bible app. Siblin
 - [x] **P1** No new required-checks-list entry needed — the renamed aggregation gate publishes `build`, matching the pre-existing required name (manual GitHub Settings step **avoided** by the rename).
 - [x] **P1** Smoke test: `SuperBible` target launches a Bible-only stub. Both `xcodebuild build -scheme Super` and `-scheme SuperBible` succeed locally.
 
-### SB-M0 follow-ups (deferred to SB-M1 or a focused PR)
-- [ ] **P2** App-target XCTest bundle for snapshot tests of both `App/Shell/*` views (today untested per `App/Shell/AGENTS.md`) and `App-SuperBible/SuperBibleContentView` (loading / ready / failed × light + dark + Dynamic Type XXL). Requires a new `SuperBibleTests` (and `SuperTests`) target in `project.yml`, hand-maintained xcschemes per the xcodegen 2.45.4 limitation, and a discover-step update in `ios-build.yml`. Logical landing point: SB-M1, when the real shell replaces the stub and one new test target covers both.
-
 ### SB-M1 — Composition root + applet registration
-- [ ] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study.
-- [ ] **P1** Sanity-check: AFM is seeded as the default model on first launch (inherits from Core's seeding logic per the default-model design memory).
-- [ ] **P1** Settings → About row pointing at the (placeholder) GitHub Sponsors URL.
-- [ ] **P1** Audit `App-SuperBible/Info.plist` permission strings (`NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`, `NSAppTransportSecurity` localhost) against the SB-M1 binary's actual API usage. SB-M0 carried these forward from the SuperOS Info.plist as pre-staging; SB-M1 is the first build that actually exercises Chat's mic/speech/localhost code paths, so strip any that remain unused before then.
+- [x] **P1** `SuperBibleAppBootstrap` registers Chat + Bible. SuperBible-specific Chat system prompt (per the per-applet system-prompt pattern from PR #75) framed for biblical-study. Prompt lives at `App-SuperBible/Resources/SuperBibleSystemPrompt.md` and is loaded via `SuperBibleSystemPromptLoader` from `Bundle.main`. `AppShell` + `AppShellDependencies` + `AppBootstrapHelpers` extracted to `App/Shell/` and compiled into both targets via explicit `project.yml` file inclusion (the SuperOS `AppShell` is unchanged behaviorally — just relocated and re-typed against the shared dependency slice).
+- [x] **P1** Sanity-check: AFM is seeded as the default model on first launch — `SuperBibleAppBootstrap` calls the same `ModelConfigurationSeeding.seedDefaultIfEmpty` SuperOS does, gated on `AppleFoundationAvailability.isAvailable`.
+- [ ] **P1** Settings → About row pointing at the (placeholder) GitHub Sponsors URL. *(Deferred from SB-M1 — `SettingsSheet` already renders an About section via SuperOS's Settings; SuperBible inherits it. The GitHub Sponsors link is the new surface and is being kept out of SB-M1 to land at SB-M4 alongside the rest of the App Store polish.)*
+- [ ] **P1** Audit `App-SuperBible/Info.plist` permission strings (`NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`, `NSAppTransportSecurity` localhost) against the SB-M1 binary's actual API usage. Now that SB-M1 has Chat wired, the mic/speech strings are genuinely exercised (composer dictation via `VoiceInputController`). Localhost ATS exemption is exercised by any BYOK Ollama/MLX/LM Studio entry the user adds. **Verdict: keep all three.** No string changes for this pass.
+
+### SB-M1 follow-ups (deferred)
+- [ ] **P2** App-target XCTest bundle covering `App/Shell/AppShell` + `App-SuperBible/SuperBibleContentView` snapshots (loading / ready / failed × light + dark + Dynamic Type XXL). SB-M0's deferred item carried forward — SB-M1 now has more surface to cover so the test-target investment is larger. Logical landing point: a focused PR after SB-M1 lands, before SB-M2 widens scope further.
+- [ ] **P3** Reusable bootstrap → `AppShellDependencies` adapter — if a third target ever ships, refactor the per-target `shellDependencies` slicers into a protocol both `AppDependencies` and `SuperBibleAppDependencies` conform to. Premature for two targets.
 
 ### SB-M2 — Plans applet core
 - [ ] **P1** Brainstorm → spec → plan cycle for the Plans applet (its own future spec, not designed in the fork spec).

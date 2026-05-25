@@ -123,9 +123,10 @@ targets:
   # Second App Store target. Shares Core, Chat, and Bible with SuperOS;
   # does NOT depend on Todo (per App-SuperBible/AGENTS.md § Module identity).
   # Plans / Memorize / Quiz / Learn are SuperBible-only and land in their
-  # own packages at SB-M2+. SB-M0 renders a Bible-only stub shell; the
-  # real composition root (Chat host, full applet set) lands at SB-M1.
-  # Full design: docs/superpowers/specs/2026-05-23-superbible-fork-design.md.
+  # own packages at SB-M2+. SB-M0 wired the target; SB-M1 wires the real
+  # composition root (Chat host + Bible) via the shared `App/Shell/*`
+  # files included below. Full design:
+  # docs/superpowers/specs/2026-05-23-superbible-fork-design.md.
   SuperBible:
     type: application
     platform: iOS
@@ -139,8 +140,26 @@ targets:
         # source for contributor convenience but are not runtime resources.
         # PRIVACY.md will be re-included as a bundled resource at SB-M4
         # when Settings → About → Privacy lands.
+        # `SuperBibleSystemPrompt.md` IS bundled — see the explicit
+        # `buildPhase: resources` entry further down.
         excludes:
           - "**/*.md"
+      # Shared shell files compiled into both SuperOS and SuperBible
+      # via project.yml file inclusion. `App/Shell/Placeholders/` is
+      # deliberately NOT included — Recipes/Finance/etc. are SuperOS-only.
+      # Keep this list narrow; any new `App/Shell/*.swift` must be added
+      # explicitly here.
+      - path: App/Shell/AppShell.swift
+      - path: App/Shell/AppShellDependencies.swift
+      - path: App/Shell/AppBootstrapHelpers.swift
+      - path: App/Shell/FailureScreen.swift
+      - path: App/Shell/FixedHamburgerButton.swift
+      - path: App/Shell/LazyConversationDriver.swift
+      # Bundled chat-briefing markdown. Excluded from the compile phase
+      # by the `**/*.md` glob above; this entry re-adds it as a runtime
+      # resource. `SuperBibleSystemPromptLoader` reads it via Bundle.main.
+      - path: App-SuperBible/Resources/SuperBibleSystemPrompt.md
+        buildPhase: resources
     info:
       path: App-SuperBible/Info.plist
       properties:

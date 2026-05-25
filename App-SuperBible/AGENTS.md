@@ -2,16 +2,23 @@
 
 The composition root and target-specific assets for the **SuperBible** App Store app. Pairs with the SuperOS root at `App/` — both apps share `Core`, `Chat`, and `Bible` packages; each lives in its own folder and registers its own applet set. Full design + rationale: [`../docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md). Contributor one-pager: [`../docs/SuperBible/OVERVIEW.md`](../docs/SuperBible/OVERVIEW.md).
 
-**Status (2026-05-23):** folder exists with `PRIVACY.md` and these agent rules; the actual Swift target is wired up at milestone SB-M0 (see [`../TODO.md`](../TODO.md) § SuperBible).
+**Status (2026-05-24):** SB-M0 (target wired) and SB-M1 (composition root + Chat host + Bible) have shipped. Plans (SB-M2) is the next applet; not yet present.
 
 ## Module identity
 
 - **Bundle ID:** `com.brianwang.SuperBible`
 - **Display name:** `SuperBible`
-- **Composition root:** `SuperBibleApp.swift` → `SuperBibleAppBootstrap`
-- **Applet set (v1):** Chat (host) + Bible + Plans
+- **Composition root:** `SuperBibleApp.swift` → `SuperBibleAppBootstrap` → `SuperBibleAppDependencies.shellDependencies` → shared `AppShell` (from `App/Shell/`)
+- **Applet set (v1):** Chat (host) + Bible *(present)* + Plans *(SB-M2)*
 - **Applet set (post-v1, roadmap):** + Memorize, Quiz, Learn — each its own future spec
-- **Deployment target:** iOS 26.0 (matches the SuperOS target's post-raise target; if `project.yml` still reads `18.0` at SB-M0 time, raise both)
+- **Deployment target:** iOS 26.0 (matches the SuperOS target's post-raise target)
+
+## How the SuperBible chat persona is wired
+
+- **Prompt source:** `App-SuperBible/Resources/SuperBibleSystemPrompt.md` — a markdown file bundled as a runtime resource via `project.yml`'s explicit `buildPhase: resources` entry. Edit this file to change the chat persona; no Swift recompile needed for prompt-only iteration in a future PR cycle.
+- **Loader:** `App-SuperBible/SuperBibleSystemPromptLoader.swift` exposes `static func load() -> String`. Reads from `Bundle.main` via Core's shared `AppletSystemPrompt.load(from:resource:)` helper. The bootstrap calls it once and hands the result into `ChatSessionStore.init(chatBriefing:)`.
+- **Divergence from SuperOS:** SuperOS uses `ChatApplet().systemPrompt` (loads `DefaultSystemPrompt.md` from the Chat SwiftPM bundle — generic assistant persona). SuperBible substitutes its own biblical-study persona at this seam only; every other Chat surface is identical between the two targets.
+- **Updating the persona later:** if a future revision changes what the assistant claims to be capable of (new tools, new applets, different scope), update `SuperBibleSystemPrompt.md` in the same PR — don't let the prose drift from the actual capabilities.
 
 ## SuperBible-specific rules
 
