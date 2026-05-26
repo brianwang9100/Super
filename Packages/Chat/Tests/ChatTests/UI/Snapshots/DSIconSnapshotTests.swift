@@ -24,6 +24,14 @@ struct DSIconSnapshotTests {
     /// name, (b) the imageset's `Contents.json` is malformed, or (c) the
     /// asset isn't marked template — fix `template-rendering-intent` in
     /// `Contents.json` for that imageset.
+    ///
+    /// **Runs on iOS only.** This file is wrapped in `#if canImport(UIKit)`,
+    /// so the local `swift test` pre-PR gate (macOS-hosted) skips it
+    /// silently. Adding a new `DSIcon` case? Run the iOS simulator suite
+    /// via `xcodebuild test -scheme Chat -destination 'platform=iOS
+    /// Simulator,...'` (or push and let CI's `ios-snapshot-test (Chat)`
+    /// job exercise it) — `swift test` won't catch a `rawValue` typo
+    /// against the asset name.
     @Test(arguments: DSIcon.allCases)
     func assetLoadsAsTemplate(for icon: DSIcon) {
         guard let image = UIImage(named: icon.rawValue, in: DSIcon.resourceBundle, with: nil) else {

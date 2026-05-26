@@ -4,7 +4,7 @@ import SwiftUI
 /// maps to an `.imageset` of the same raw value inside `Icons.xcassets` in
 /// Chat's resource bundle. Use via `Image(dsIcon:)`; the asset ships as a
 /// template image, so tint with `.foregroundStyle(...)` at the call site.
-public enum DSIcon: String, CaseIterable, Sendable {
+enum DSIcon: String, CaseIterable, Sendable {
     case menu = "Menu"
     case plus = "Plus"
     case close = "Close"
@@ -60,7 +60,7 @@ extension Image {
     /// Loads a design-system icon from Chat's `Icons.xcassets`. The asset is
     /// already marked template-rendering, so the loaded image tints with
     /// `.foregroundStyle(...)` at the call site.
-    public init(dsIcon: DSIcon) {
+    init(dsIcon: DSIcon) {
         self.init(dsIcon.rawValue, bundle: DSIcon.resourceBundle)
     }
 }
