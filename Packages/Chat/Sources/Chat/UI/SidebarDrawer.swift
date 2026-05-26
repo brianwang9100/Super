@@ -4,7 +4,7 @@ import SwiftUI
 /// Left-anchored 300pt drawer overlaying the active applet. Hosts the Super
 /// wordmark, a New-Chat call-to-action (CTA), the registry-driven applet
 /// rail, the chronological chats list (rendered only when Chat is the active
-/// applet), and a footer with an identity capsule + Settings button.
+/// applet), and a footer with a Settings button.
 ///
 /// The host is responsible for placing this in a `ZStack` over the active
 /// surface and toggling `isPresented`. This view paints its own scrim so the
@@ -26,12 +26,6 @@ public struct SidebarDrawer: View {
 
     /// Bundle metadata rendered into the wordmark caption (`v… · personal`).
     public let appInfo: SuperAppInfo
-
-    /// Two-letter initials painted into the 30pt circle in the footer.
-    public let userInitials: String
-
-    /// Full display name shown next to the initials in the footer capsule.
-    public let userName: String
 
     /// Applets registered with the shell, in display order. Rendered as a
     /// vertical rail between the New Chat CTA and the CHATS history list.
@@ -81,8 +75,6 @@ public struct SidebarDrawer: View {
     ///   - viewModel: Shared sidebar state owner.
     ///   - appInfo: Supplies the wordmark text (`bundleName`) and the
     ///     version caption beneath it.
-    ///   - userInitials: Painted into the footer initials circle.
-    ///   - userName: Displayed next to the initials.
     ///   - applets: Ordered list of registered applets to render in the rail.
     ///   - activeAppletID: Identifier of the active backdrop applet, or
     ///     `nil` if no backdrop is active (chat-only surface).
@@ -97,8 +89,6 @@ public struct SidebarDrawer: View {
         isPresented: Binding<Bool>,
         viewModel: SidebarViewModel,
         appInfo: SuperAppInfo,
-        userInitials: String,
-        userName: String,
         applets: [any MiniApplet],
         activeAppletID: String?,
         onSelectConversation: @escaping (String) -> Void,
@@ -110,8 +100,6 @@ public struct SidebarDrawer: View {
         self._isPresented = isPresented
         self.viewModel = viewModel
         self.appInfo = appInfo
-        self.userInitials = userInitials
-        self.userName = userName
         self.applets = applets
         self.activeAppletID = activeAppletID
         self.onSelectConversation = onSelectConversation
@@ -281,35 +269,7 @@ public struct SidebarDrawer: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(theme.accentSoft)
-                    Text(userInitials)
-                        .font(.system(.caption2).weight(.semibold))
-                        .foregroundStyle(theme.accent)
-                }
-                .frame(width: 30, height: 30)
-
-                Text(userName)
-                    .font(.system(.footnote))
-                    .foregroundStyle(theme.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(theme.backgroundRaised)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(theme.borderFaint, lineWidth: 1)
-                    )
-            )
-            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 4)
-
+        HStack(spacing: 0) {
             Button(action: {
                 close()
                 onOpenSettings()
@@ -323,6 +283,7 @@ public struct SidebarDrawer: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)

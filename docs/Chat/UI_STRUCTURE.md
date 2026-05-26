@@ -110,8 +110,8 @@ SidebarDrawer                                    (Chat/UI/SidebarDrawer.swift)
     │                                     when isActive
     │
     └── footer (overlay alignment: .bottom)
-        ├── identityCapsule            ⟵ initials circle + display name
-        └── Settings gear button       ⟵ 44pt accent-filled circle
+        └── Settings gear button       ⟵ 44pt accent-filled circle,
+                                          left-aligned
 ```
 
 **View model:** `SidebarViewModel` (`Chat/ViewModels/SidebarViewModel.swift`).
