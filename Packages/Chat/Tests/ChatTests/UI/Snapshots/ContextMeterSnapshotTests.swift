@@ -10,16 +10,6 @@ import Testing
 @Suite("ContextMeter snapshots", .serialized)
 @MainActor
 struct ContextMeterSnapshotTests {
-    // The `init` here registers the bundled brand fonts so that any
-    // `Font.custom("JetBrainsMono-Regular", ...)` call in `ContextMeter`
-    // resolves to the real face rather than the system-mono fallback.
-    // Note: re-recording the 4 baselines under this hook produces
-    // byte-identical PNGs to the pre-registration recordings — at 10.5pt
-    // with `theme.inkFaint` and short numeric glyphs (`"0.0K / 32K"`),
-    // JetBrains Mono and the system mono fallback anti-alias to the same
-    // pixels. The registration is still load-bearing for parallel-suite
-    // determinism (composer and overlay baselines *do* shift) and for
-    // production-fidelity insurance against future glyph changes.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("empty meter")
