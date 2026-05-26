@@ -25,10 +25,12 @@ struct DSIconSnapshotTests {
     /// `Contents.json` for that imageset.
     @Test(arguments: DSIcon.allCases)
     func assetLoadsAsTemplate(for icon: DSIcon) {
-        let image = UIImage(named: icon.rawValue, in: DSIcon.resourceBundle, with: nil)
-        #expect(image != nil, "Missing asset for DSIcon.\(icon) — expected \(icon.rawValue).imageset")
+        guard let image = UIImage(named: icon.rawValue, in: DSIcon.resourceBundle, with: nil) else {
+            Issue.record("Missing asset for DSIcon.\(icon) — expected \(icon.rawValue).imageset")
+            return
+        }
         #expect(
-            image?.renderingMode == .alwaysTemplate,
+            image.renderingMode == .alwaysTemplate,
             "DSIcon.\(icon) is not template-rendered — fix template-rendering-intent in \(icon.rawValue).imageset/Contents.json"
         )
     }
