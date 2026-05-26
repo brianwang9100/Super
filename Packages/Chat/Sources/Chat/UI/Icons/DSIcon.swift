@@ -26,14 +26,9 @@ enum DSIcon: String, CaseIterable, Sendable {
     case newChat = "NewChat"
     case think = "Think"
     case tool = "Tool"
-    /// Pencil-over-line glyph. Shares its path data with ``newChat`` —
-    /// the design system deliberately uses the same compose glyph for
-    /// both "start a new conversation" and "edit existing content", at
-    /// slightly different stroke weights (1.5 vs 1.6). If a future
-    /// dedupe pass merges these two cases, the visual distinction
-    /// designers intended at the call site (action vs nav affordance)
-    /// will be lost — keep both cases even though the SVG geometry is
-    /// identical.
+    /// Compose/edit glyph. Shares SVG geometry with ``newChat`` at a
+    /// different stroke weight (1.6 vs 1.5) — keep both; merging would
+    /// erase the design's action-vs-nav affordance distinction.
     case edit = "Edit"
     case trash = "Trash"
     case star = "Star"
