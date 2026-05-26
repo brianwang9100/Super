@@ -48,12 +48,12 @@ public enum DSIcon: String, CaseIterable, Sendable {
 }
 
 extension DSIcon {
-    /// The resource bundle that ships the icon assets. Exposed for test
-    /// code that needs to do a synchronous asset-presence assertion
-    /// outside the `Image(dsIcon:)` path — `Bundle.module` resolves to
-    /// the *defining* module, so a test target's `Bundle.module` is its
-    /// own bundle, not Chat's.
-    public static var resourceBundle: Bundle { Bundle.module }
+    /// The resource bundle that ships the icon assets. Internal-only —
+    /// callers go through `Image(dsIcon:)`. Tests reach this via
+    /// `@testable import Chat` for the synchronous asset-presence
+    /// assertion, since a test target's own `Bundle.module` resolves
+    /// to the test bundle, not Chat's.
+    static var resourceBundle: Bundle { Bundle.module }
 }
 
 extension Image {
