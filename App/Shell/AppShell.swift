@@ -609,12 +609,9 @@ struct AppShell: View {
         sidebarOpen = false
         // Starting a fresh chat is a context shift — drop the prior
         // composer's focus so the keyboard doesn't carry into the empty
-        // draft when the new view model mounts.
+        // draft when the new view model mounts. We re-focus the new
+        // composer below once the expand animation has visually settled.
         dismissKeyboard()
-        // New Chat is an intent to focus on chat — snap to expanded.
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-            chatState = .expanded
-        }
         let now = Date()
         // Construct an in-memory draft. Persistence is deferred to the
         // first send (`LazyConversationDriver` writes the record then,
@@ -626,7 +623,32 @@ struct AppShell: View {
             updatedAt: now
         )
         sidebarViewModel?.draftConversation = row
+        // Rebuild *before* the animation so the new view model is in
+        // place when the overlay slides up — the user never sees a flash
+        // of the previous conversation's content during the transition.
         await rebuildChatViewModel(for: row)
+        // New Chat is an intent to focus on chat — snap to expanded and
+        // wait for the chat-overlay animation to visually settle before
+        // focusing the composer. Focusing mid-animation makes iOS
+        // keyboard-avoidance read the composer's in-flight position and
+        // apply a layout adjustment that collides with the overlay's
+        // own spring animation, stranding the overlay in a broken
+        // intermediate layout (seen on minimized → expanded, where the
+        // animation traverses the full 0 → 1 range).
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            withAnimation(
+                SuperMotion.transition(reduceMotion: reduceMotion),
+                completionCriteria: .logicallyComplete
+            ) {
+                chatState = .expanded
+            } completion: {
+                cont.resume()
+            }
+        }
+        // User intent on New Chat is to type immediately — surface the
+        // keyboard so the composer is first responder without an extra
+        // tap.
+        composerIsFocused = true
     }
 
     /// Returns the conversation to load on launch — always a fresh
