@@ -39,20 +39,39 @@ struct DSIconSnapshotTests {
     /// light background. A single baseline covers every icon's geometry;
     /// any unintended SVG edit (path drift, stroke-width change, missing
     /// glyph) registers as a diff in this one test.
-    @Test("catalog grid renders all 32 icons")
-    func catalogGrid() {
-        let view = catalogGridView()
-            .background(Color.white)
+    @Test("catalog grid renders all 32 icons — light")
+    func catalogGridLight() {
+        verify(scheme: .light, name: "ds_icon_catalog_grid")
+    }
+
+    /// Dark-mode counterpart per AGENTS.md §Testing.3 (`light + dark` is
+    /// required for new SwiftUI snapshots). Template-rendered icons keep
+    /// their geometry across schemes, so this baseline mirrors the light
+    /// one structurally — but it catches the failure mode that a pure
+    /// light snapshot misses: an asset that silently loses its
+    /// `template-rendering-intent` renders pure-black-stroke in dark
+    /// mode instead of tinting white, which only a dark baseline pins.
+    @Test("catalog grid renders all 32 icons — dark")
+    func catalogGridDark() {
+        verify(scheme: .dark, name: "ds_icon_catalog_grid_dark")
+    }
+
+    private func verify(scheme: ColorScheme, name: String, function: String = #function) {
+        let background: Color = scheme == .dark ? .black : .white
+        let foreground: Color = scheme == .dark ? .white : .black
+        let view = catalogGridView(foreground: foreground)
+            .background(background)
+            .environment(\.colorScheme, scheme)
             .frame(width: Self.gridWidth, height: Self.gridHeight)
         let failure = verifySnapshot(
             of: view,
             as: .image(layout: .fixed(width: Self.gridWidth, height: Self.gridHeight)),
-            named: "ds_icon_catalog_grid",
+            named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
-            testName: #function
+            testName: function
         )
         if let failure {
-            Issue.record("ds_icon_catalog_grid: \(failure)")
+            Issue.record("\(name): \(failure)")
         }
     }
 
@@ -68,7 +87,7 @@ struct DSIconSnapshotTests {
     private static let gridWidth: CGFloat = CGFloat(columns) * cellWidth
     private static let gridHeight: CGFloat = CGFloat(rows) * cellHeight
 
-    private func catalogGridView() -> some View {
+    private func catalogGridView(foreground: Color) -> some View {
         let cases = DSIcon.allCases
         return VStack(spacing: 0) {
             ForEach(0..<Self.rows, id: \.self) { row in
@@ -76,7 +95,7 @@ struct DSIconSnapshotTests {
                     ForEach(0..<Self.columns, id: \.self) { col in
                         let index = row * Self.columns + col
                         if index < cases.count {
-                            iconCell(cases[index])
+                            iconCell(cases[index], foreground: foreground)
                         } else {
                             Color.clear.frame(width: Self.cellWidth, height: Self.cellHeight)
                         }
@@ -86,15 +105,15 @@ struct DSIconSnapshotTests {
         }
     }
 
-    private func iconCell(_ icon: DSIcon) -> some View {
+    private func iconCell(_ icon: DSIcon, foreground: Color) -> some View {
         VStack(spacing: 6) {
             Image(dsIcon: icon)
                 .resizable()
                 .frame(width: 28, height: 28)
-                .foregroundStyle(.black)
+                .foregroundStyle(foreground)
             Text(icon.rawValue)
                 .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.black)
+                .foregroundStyle(foreground)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
