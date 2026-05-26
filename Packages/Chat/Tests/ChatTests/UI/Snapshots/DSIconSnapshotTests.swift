@@ -75,6 +75,12 @@ struct DSIconSnapshotTests {
         verify(theme: .sepia, name: "ds_icon_catalog_grid_sepia")
     }
 
+    // Dynamic Type XXL variant omitted from the matrix: both the icon
+    // frame (`.resizable().frame(width: 28, height: 28)`) and the label
+    // font (`.system(size: 9)`) are fixed-size and unaffected by the
+    // trait. An XXL baseline would be byte-identical to the light/dark/
+    // sepia variants above — recording one would just be noise.
+
     private func verify(theme: SuperTheme.Identifier, name: String, function: String = #function) {
         let superTheme = SuperTheme.make(theme)
         let view = catalogGridView(foreground: superTheme.ink)
