@@ -106,7 +106,7 @@ public struct ChatsScreen: View {
 
     private var header: some View {
         Text("Chats")
-            .font(.system(size: titleSize * fontScale, design: .serif))
+            .font(.custom("InstrumentSerif-Italic", size: titleSize * fontScale))
             .foregroundStyle(theme.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

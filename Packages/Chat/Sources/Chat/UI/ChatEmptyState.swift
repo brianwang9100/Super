@@ -33,7 +33,7 @@ public struct ChatEmptyState: View {
                 .opacity(0.8)
                 .padding(.bottom, 18)
             Text(greeting)
-                .font(.custom("Instrument Serif", size: 26, relativeTo: .title))
+                .font(.custom("InstrumentSerif-Italic", size: 26, relativeTo: .title))
                 .tracking(-0.26)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)

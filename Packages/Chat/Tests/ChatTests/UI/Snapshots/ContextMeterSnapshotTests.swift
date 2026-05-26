@@ -10,6 +10,8 @@ import Testing
 @Suite("ContextMeter snapshots", .serialized)
 @MainActor
 struct ContextMeterSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("empty meter")
     func empty() {
         verify(used: 0, max: 32_000, theme: .light, name: "meter_empty_light")

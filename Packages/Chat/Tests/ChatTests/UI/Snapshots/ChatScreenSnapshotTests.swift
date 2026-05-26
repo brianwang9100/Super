@@ -14,6 +14,8 @@ import Testing
 @Suite("ChatScreen snapshots", .serialized)
 @MainActor
 struct ChatScreenSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let model = LLMModel(
         id: "gpt-4o",
         displayName: "GPT-4o",
