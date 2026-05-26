@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Core
+import Testing
 import UIKit
 
 /// One-time, process-global registration of `Core`'s bundled `.ttf` fonts
@@ -9,21 +10,20 @@ import UIKit
 /// snapshot suite that renders a bundled face.
 @MainActor
 enum SnapshotFontRegistration {
-    private static let didEnsureFonts: Bool = {
-        Core.registerBundledFonts()
-        precondition(
-            UIFont(name: "InstrumentSerif-Italic", size: 26) != nil,
-            "Instrument Serif Italic failed to register — snapshots would bake the system-serif fallback"
-        )
-        precondition(
-            UIFont(name: "JetBrainsMono-Regular", size: 10.5) != nil,
-            "JetBrains Mono Regular failed to register — snapshots would bake the system-mono fallback"
-        )
-        return true
-    }()
+    private static var verified = false
 
     static func ensureRegistered() {
-        _ = didEnsureFonts
+        if verified { return }
+        Core.registerBundledFonts()
+        guard UIFont(name: "InstrumentSerif-Italic", size: 26) != nil else {
+            Issue.record("Instrument Serif Italic failed to register — snapshots would bake the system-serif fallback")
+            return
+        }
+        guard UIFont(name: "JetBrainsMono-Regular", size: 10.5) != nil else {
+            Issue.record("JetBrains Mono Regular failed to register — snapshots would bake the system-mono fallback")
+            return
+        }
+        verified = true
     }
 }
 #endif
