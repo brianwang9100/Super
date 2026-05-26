@@ -13,7 +13,7 @@ import UIKit
 /// shape of every icon so an unintended SVG edit (or a regression in
 /// template-rendering) fails the test instead of slipping through
 /// per-call-site snapshots one at a time.
-@Suite("DSIcon catalog snapshots", .serialized)
+@Suite("DSIcon catalog snapshots")
 @MainActor
 struct DSIconSnapshotTests {
 
@@ -85,7 +85,6 @@ struct DSIconSnapshotTests {
         VStack(spacing: 6) {
             Image(dsIcon: icon)
                 .resizable()
-                .renderingMode(.template)
                 .frame(width: 28, height: 28)
                 .foregroundStyle(.black)
             Text(icon.rawValue)

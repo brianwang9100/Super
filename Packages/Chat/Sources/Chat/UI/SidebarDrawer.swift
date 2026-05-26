@@ -276,7 +276,6 @@ public struct SidebarDrawer: View {
             }) {
                 Image(dsIcon: .settings)
                     .resizable()
-                    .renderingMode(.template)
                     .frame(width: 20, height: 20)
                     .foregroundStyle(theme.accentInk)
                     .frame(width: 44, height: 44)
