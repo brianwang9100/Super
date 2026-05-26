@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import Core
 import Foundation
 import SnapshotTesting
 import SwiftUI
@@ -41,11 +42,11 @@ struct DSIconSnapshotTests {
     /// glyph) registers as a diff in this one test.
     @Test("catalog grid renders all 32 icons — light")
     func catalogGridLight() {
-        verify(scheme: .light, name: "ds_icon_catalog_grid")
+        verify(theme: .light, name: "ds_icon_catalog_grid")
     }
 
-    /// Dark-mode counterpart per AGENTS.md §Testing.3 (`light + dark` is
-    /// required for new SwiftUI snapshots). Template-rendered icons keep
+    /// Dark-mode counterpart per Chat AGENTS.md (`light/dark/sepia ×
+    /// default/Dynamic Type XXL` matrix). Template-rendered icons keep
     /// their geometry across schemes, so this baseline mirrors the light
     /// one structurally — but it catches the failure mode that a pure
     /// light snapshot misses: an asset that silently loses its
@@ -53,15 +54,24 @@ struct DSIconSnapshotTests {
     /// mode instead of tinting white, which only a dark baseline pins.
     @Test("catalog grid renders all 32 icons — dark")
     func catalogGridDark() {
-        verify(scheme: .dark, name: "ds_icon_catalog_grid_dark")
+        verify(theme: .dark, name: "ds_icon_catalog_grid_dark")
     }
 
-    private func verify(scheme: ColorScheme, name: String, function: String = #function) {
-        let background: Color = scheme == .dark ? .black : .white
-        let foreground: Color = scheme == .dark ? .white : .black
-        let view = catalogGridView(foreground: foreground)
-            .background(background)
-            .environment(\.colorScheme, scheme)
+    /// Sepia-mode counterpart per Chat AGENTS.md (`light/dark/sepia ×
+    /// default/Dynamic Type XXL`). Uses the project's actual
+    /// `SuperTheme.sepia` ink + background colors rather than hardcoded
+    /// browns so the baseline tracks the theme's tokens; if a future
+    /// theme tweak shifts the sepia palette, this snapshot updates.
+    @Test("catalog grid renders all 32 icons — sepia")
+    func catalogGridSepia() {
+        verify(theme: .sepia, name: "ds_icon_catalog_grid_sepia")
+    }
+
+    private func verify(theme: SuperTheme.Identifier, name: String, function: String = #function) {
+        let superTheme = SuperTheme.make(theme)
+        let view = catalogGridView(foreground: superTheme.ink)
+            .background(superTheme.background)
+            .environment(\.colorScheme, superTheme.isDark ? .dark : .light)
             .frame(width: Self.gridWidth, height: Self.gridHeight)
         let failure = verifySnapshot(
             of: view,
