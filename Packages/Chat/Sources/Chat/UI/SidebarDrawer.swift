@@ -274,7 +274,9 @@ public struct SidebarDrawer: View {
                 close()
                 onOpenSettings()
             }) {
-                SettingsIcon(size: 20)
+                Image(dsIcon: .settings)
+                    .resizable()
+                    .frame(width: 20, height: 20)
                     .foregroundStyle(theme.accentInk)
                     .frame(width: 44, height: 44)
                     .background(Circle().fill(theme.accent))

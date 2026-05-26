@@ -110,53 +110,6 @@ struct NewChatIconShape: Shape {
     }
 }
 
-/// Six-tooth gear with center hole — the Settings glyph.
-///
-/// Approximates the SVG settings cog from `icons.jsx` while staying
-/// resolution-independent. The detailed teeth lobes are simplified into a
-/// stroked outer ring; the center punch-out matches the design.
-struct SettingsIconShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let cx = rect.midX
-        let cy = rect.midY
-        let unit = rect.width / 24
-        let outer: CGFloat = 9 * unit
-        let inner: CGFloat = 6.5 * unit
-        let toothHalf: Double = .pi / 12
-        let teeth = 8
-
-        for i in 0..<teeth {
-            let a = Double(i) * (.pi * 2 / Double(teeth))
-            let a0 = a - toothHalf
-            let a1 = a + toothHalf
-            let a2 = a + .pi / Double(teeth) - toothHalf
-            let a3 = a + .pi / Double(teeth) + toothHalf
-
-            let p0 = CGPoint(x: cx + cos(a0) * outer, y: cy + sin(a0) * outer)
-            let p1 = CGPoint(x: cx + cos(a1) * outer, y: cy + sin(a1) * outer)
-            let p2 = CGPoint(x: cx + cos(a2) * inner, y: cy + sin(a2) * inner)
-            let p3 = CGPoint(x: cx + cos(a3) * inner, y: cy + sin(a3) * inner)
-
-            if i == 0 { p.move(to: p0) } else { p.addLine(to: p0) }
-            p.addLine(to: p1)
-            p.addLine(to: p2)
-            p.addLine(to: p3)
-        }
-        p.closeSubpath()
-
-        // Center circle.
-        let centerSize: CGFloat = 6 * unit
-        p.addEllipse(in: CGRect(
-            x: cx - centerSize / 2,
-            y: cy - centerSize / 2,
-            width: centerSize,
-            height: centerSize
-        ))
-        return p
-    }
-}
-
 // MARK: - Public icon views
 
 /// Recipes applet glyph.
@@ -186,11 +139,3 @@ struct NewChatIcon: View {
     }
 }
 
-/// Settings (gear) glyph.
-struct SettingsIcon: View {
-    let size: CGFloat
-    init(size: CGFloat = 20) { self.size = size }
-    var body: some View {
-        StrokedGlyph(shape: SettingsIconShape(), size: size, lineWidth: 1.5)
-    }
-}
