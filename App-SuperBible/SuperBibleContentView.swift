@@ -6,14 +6,18 @@ import SwiftUI
 /// compiled into both targets via the explicit project.yml file-inclusion
 /// list) once the bootstrap is `.ready`.
 ///
-/// `.loading` deliberately paints a flat `SplashBackground` field rather
-/// than the shared `SplashView` SuperOS uses. The system launch screen
-/// (`UILaunchScreen` in `project.yml`) already shows the Star of
-/// Bethlehem mark + wordmark over the same `#3f774d` field; using the
-/// cream-themed `SplashView` here would hard-cut from dark green to
-/// cream at the moment SwiftUI mounts. A flat color extends the launch
-/// image's background through bootstrap so the user sees a single
-/// continuous green surface until `AppShell` fades in.
+/// `.loading` redraws the `LaunchImage` asset (Star of Bethlehem mark +
+/// wordmark) over the same `SplashBackground` field that the system
+/// `UILaunchScreen` paints, so the user doesn't see the lockup vanish
+/// the instant SwiftUI mounts. `GeometryReader` + `.position` pins the
+/// image to the geometric center of the full window — applying
+/// `.ignoresSafeArea()` to the overlay alone leaves the image centered
+/// inside the safe area instead, which produces a visible vertical jump
+/// during the system cross-fade from `UILaunchScreen` to SwiftUI's
+/// first frame. Reusing the asset (rather than reconstructing the
+/// lockup from `SplashSpark` + `Text`) keeps both surfaces in lockstep
+/// when the artwork changes. SuperOS uses the cream-themed `SplashView`
+/// instead; the targets diverge here on purpose.
 struct SuperBibleContentView: View {
     let state: SuperBibleBootstrapState
 
@@ -23,9 +27,15 @@ struct SuperBibleContentView: View {
         Group {
             switch state {
             case .loading:
-                Color("SplashBackground")
-                    .ignoresSafeArea()
-                    .transition(.opacity)
+                GeometryReader { geo in
+                    Color("SplashBackground")
+                        .overlay {
+                            Image("LaunchImage")
+                                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                        }
+                }
+                .ignoresSafeArea()
+                .transition(.opacity)
             case .failed(let message):
                 FailureScreen(message: message)
                     .transition(.opacity)
