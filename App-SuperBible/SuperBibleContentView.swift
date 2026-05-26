@@ -29,10 +29,10 @@ struct SuperBibleContentView: View {
             case .loading:
                 GeometryReader { geo in
                     Color("SplashBackground")
-                        .overlay(
+                        .overlay {
                             Image("LaunchImage")
                                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                        )
+                        }
                 }
                 .ignoresSafeArea()
                 .transition(.opacity)
