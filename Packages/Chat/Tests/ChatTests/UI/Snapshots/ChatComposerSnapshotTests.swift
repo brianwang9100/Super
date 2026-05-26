@@ -11,6 +11,8 @@ import Testing
 @Suite("ChatComposer snapshots", .serialized)
 @MainActor
 struct ChatComposerSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let models: [ModelPill.Option] = [
         .init(id: "gpt-4o", displayName: "GPT-4o", maxContextTokens: 128_000),
     ]
