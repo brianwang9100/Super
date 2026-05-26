@@ -57,7 +57,10 @@ struct DSIconSnapshotTests {
     // MARK: - Grid layout
 
     private static let columns = 4
-    private static let rows = 8 // 4 × 8 = 32 — matches DSIcon.allCases.count
+    /// Derived from `DSIcon.allCases.count` so the grid expands automatically
+    /// when a new icon is added — a hardcoded row count silently routes the
+    /// new icon to `Color.clear` and skips it from visual validation.
+    private static let rows = (DSIcon.allCases.count + columns - 1) / columns
     private static let cellWidth: CGFloat = 100
     private static let cellHeight: CGFloat = 72
     private static let gridWidth: CGFloat = CGFloat(columns) * cellWidth
