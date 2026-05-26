@@ -635,12 +635,9 @@ struct AppShell: View {
         sidebarOpen = false
         // Starting a fresh chat is a context shift — drop the prior
         // composer's focus so the keyboard doesn't carry into the empty
-        // draft when the new view model mounts.
+        // draft when the new view model mounts. We re-focus the new
+        // composer below once the expand animation has visually settled.
         dismissKeyboard()
-        // New Chat is an intent to focus on chat — snap to expanded.
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-            chatState = .expanded
-        }
         let now = Date()
         // Construct an in-memory draft. Persistence is deferred to the
         // first send (`LazyConversationDriver` writes the record then,
@@ -652,7 +649,24 @@ struct AppShell: View {
             updatedAt: now
         )
         sidebarViewModel?.draftConversation = row
+        // Rebuild *before* the animation so the new view model is in
+        // place when the overlay slides up — the user never sees a flash
+        // of the previous conversation's content during the transition.
         await rebuildChatViewModel(for: row)
+        // Focus mid-animation collides with iOS keyboard-avoidance, which
+        // reads the composer's in-flight position and breaks the overlay's
+        // spring layout. Await logical completion before setting focus.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            withAnimation(
+                SuperMotion.transition(reduceMotion: reduceMotion),
+                completionCriteria: .logicallyComplete
+            ) {
+                chatState = .expanded
+            } completion: {
+                cont.resume()
+            }
+        }
+        composerIsFocused = true
     }
 
     /// Returns the conversation to load on launch — always a fresh
