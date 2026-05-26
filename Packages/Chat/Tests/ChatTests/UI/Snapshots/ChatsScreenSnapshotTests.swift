@@ -20,6 +20,8 @@ struct ChatsScreenSnapshotTests {
     private static let frame = CGSize(width: 402, height: 874)
     private static let now = Date(timeIntervalSince1970: 1_750_000_000)
 
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     /// Conversations spanning every relative-time bucket. Titles are
     /// recognizable English phrases (not lorem ipsum) so search-active
     /// variants can target a stable substring.

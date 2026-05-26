@@ -27,6 +27,8 @@ import Testing
 @Suite("ChatOverlay snapshots", .serialized)
 @MainActor
 struct ChatOverlaySnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let model = LLMModel(
         id: "gpt-4o",
         displayName: "GPT-4o",

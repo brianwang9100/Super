@@ -11,6 +11,8 @@ import Testing
 @Suite("ChatEmptyState snapshots", .serialized)
 @MainActor
 struct ChatEmptyStateSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("morning greeting in light")
     func morningLight() {
         verify(greeting: "How can I help you this morning?", theme: .light, name: "empty_morning_light")
