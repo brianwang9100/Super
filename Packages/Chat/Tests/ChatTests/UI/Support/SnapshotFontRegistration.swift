@@ -14,16 +14,14 @@ enum SnapshotFontRegistration {
 
     static func ensureRegistered() {
         if verified { return }
-        Core.registerBundledFonts()
-        guard UIFont(name: "InstrumentSerif-Italic", size: 26) != nil else {
-            Issue.record("Instrument Serif Italic failed to register — snapshots would bake the system-serif fallback")
-            return
-        }
-        guard UIFont(name: "JetBrainsMono-Regular", size: 10.5) != nil else {
-            Issue.record("JetBrains Mono Regular failed to register — snapshots would bake the system-mono fallback")
-            return
-        }
         verified = true
+        Core.registerBundledFonts()
+        if UIFont(name: "InstrumentSerif-Italic", size: 26) == nil {
+            Issue.record("Instrument Serif Italic failed to register — snapshots would bake the system-serif fallback")
+        }
+        if UIFont(name: "JetBrainsMono-Regular", size: 10.5) == nil {
+            Issue.record("JetBrains Mono Regular failed to register — snapshots would bake the system-mono fallback")
+        }
     }
 }
 #endif
