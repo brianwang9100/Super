@@ -31,16 +31,6 @@ struct AppShellDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
-    /// User identity rendered in the sidebar drawer header and the
-    /// Settings → account row. Each target supplies its own value —
-    /// SuperOS hard-codes the founder's identity (single-user MVP);
-    /// SuperBible passes empty strings until real user identity lands
-    /// at SB-M3+ (the drawer header and settings row degrade gracefully
-    /// to empty / placeholder display rather than mis-attributing the
-    /// app to a stranger). Real account auth is tracked in the
-    /// SuperBible fork spec §7 (CloudKit + Sign in with Apple).
-    let userInitials: String
-    let userName: String
     let accountEmail: String
     /// Per-target cold-launch defaults. SuperOS passes `.standard`
     /// (chat opens expanded over last-used applet). SuperBible passes

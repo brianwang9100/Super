@@ -48,13 +48,8 @@ struct SuperBibleAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
-            // SuperBible v1 ships without user identity (no accounts, no
-            // server — see App-SuperBible/AGENTS.md § Local-only v1).
-            // Sidebar header + Settings account row render with empty
-            // strings; real identity arrives with SB-M3+ Sign in with
-            // Apple per the fork spec §7.
-            userInitials: "",
-            userName: "",
+            // Real identity arrives with SB-M3+ Sign in with Apple per
+            // the fork spec §7.
             accountEmail: "",
             // SuperBible diverges from SuperOS: every cold launch opens to
             // Bible with the chat overlay as a pill. The applet override

@@ -70,10 +70,6 @@ struct SuperOSAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
-            // SuperOS is a single-user dev MVP — hard-code the founder.
-            // SuperBible supplies empty strings instead (no user identity yet).
-            userInitials: "BW",
-            userName: "Brian Wang",
             accountEmail: "brianwang9100@gmail.com",
             // SuperOS keeps the standard launch policy: chat opens
             // expanded over the user's last-used applet (restored by

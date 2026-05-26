@@ -37,9 +37,9 @@ These complement the root [`../AGENTS.md`](../AGENTS.md). When the root rules an
 
 Per the root `AGENTS.md` § Backend: SuperOS proxies all LLM API calls through `super-server/`. API keys never live on device. SuperBible is the exception — it issues BYOK calls directly. Do not introduce direct-to-provider transport in SuperOS.
 
-### Hard-coded founder identity is fine
+### Hard-coded founder email is fine
 
-Sidebar header + Settings → account row use hard-coded "Brian Wang" / "BW" / `brianwang9100@gmail.com`. The single-user MVP doesn't ship account flows. SuperBible passes empty strings instead; do not collapse the two by reading shared global state.
+Settings → account row uses the hard-coded `brianwang9100@gmail.com`. The single-user MVP doesn't ship account flows. SuperBible passes `""` instead; do not collapse the two by reading shared global state. (The sidebar no longer renders an identity capsule — see the SidebarDrawer footer.)
 
 ## Testing expectations
 
