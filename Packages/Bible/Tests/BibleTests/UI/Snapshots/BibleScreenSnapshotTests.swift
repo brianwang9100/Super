@@ -142,6 +142,24 @@ struct BibleScreenSnapshotTests {
                name: "selection_at_chapter_end_sepia")
     }
 
+    @Test("selection at chapter end renders in the light theme at Dynamic Type XXL")
+    func selectionAtChapterEndLightXXL() async {
+        verify(await selectionAtChapterEndScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "selection_at_chapter_end_light_xxl")
+    }
+
+    @Test("selection at chapter end renders in the dark theme at Dynamic Type XXL")
+    func selectionAtChapterEndDarkXXL() async {
+        verify(await selectionAtChapterEndScreen(), theme: .dark, dynamicType: .xxLarge,
+               name: "selection_at_chapter_end_dark_xxl")
+    }
+
+    @Test("selection at chapter end renders in the sepia theme at Dynamic Type XXL")
+    func selectionAtChapterEndSepiaXXL() async {
+        verify(await selectionAtChapterEndScreen(), theme: .sepia, dynamicType: .xxLarge,
+               name: "selection_at_chapter_end_sepia_xxl")
+    }
+
     @Test("the chat stub raises the coming-soon toast over the reader")
     func chatToastLight() async {
         verify(await toastScreen(), theme: .light, name: "chat_toast_light")
