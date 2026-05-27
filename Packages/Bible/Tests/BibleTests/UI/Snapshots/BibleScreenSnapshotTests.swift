@@ -124,6 +124,24 @@ struct BibleScreenSnapshotTests {
                name: "selection_active_sepia_xxl")
     }
 
+    @Test("selecting the last verse of a chapter lifts it above the action sheet")
+    func selectionAtChapterEndLight() async {
+        verify(await selectionAtChapterEndScreen(), theme: .light,
+               name: "selection_at_chapter_end_light")
+    }
+
+    @Test("selection at chapter end renders in the dark theme")
+    func selectionAtChapterEndDark() async {
+        verify(await selectionAtChapterEndScreen(), theme: .dark,
+               name: "selection_at_chapter_end_dark")
+    }
+
+    @Test("selection at chapter end renders in the sepia theme")
+    func selectionAtChapterEndSepia() async {
+        verify(await selectionAtChapterEndScreen(), theme: .sepia,
+               name: "selection_at_chapter_end_sepia")
+    }
+
     @Test("the chat stub raises the coming-soon toast over the reader")
     func chatToastLight() async {
         verify(await toastScreen(), theme: .light, name: "chat_toast_light")
@@ -290,6 +308,21 @@ struct BibleScreenSnapshotTests {
         )
         await viewModel.load()
         for verse in [4, 5, 6, 9] { viewModel.toggleVerse(verse) }
+        return BibleScreen(viewModel: viewModel)
+    }
+
+    /// A `BibleScreen` on 1 Peter 2 with verse 25 (the chapter's last verse)
+    /// selected — the bug case where a verse near the chapter end would
+    /// otherwise vanish behind the action sheet. With the inset reserve
+    /// plus the paired scroll-to-anchor on appear, the snapshot should
+    /// show v25 lifted into view above the sheet.
+    private func selectionAtChapterEndScreen() async -> BibleScreen {
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        viewModel.toggleVerse(25)
         return BibleScreen(viewModel: viewModel)
     }
 

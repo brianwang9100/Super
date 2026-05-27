@@ -23,6 +23,13 @@ public struct BibleScreen: View {
     @Environment(\.superEventBus) private var eventBus
     @Bindable private var viewModel: BibleScreenViewModel
 
+    /// Measured intrinsic height of the verse-selection action sheet. The
+    /// reader extends its bottom reserve by this amount while verses are
+    /// selected so the sheet doesn't cover the last verses of the chapter.
+    /// The value can linger after the sheet hides; it's gated by
+    /// `selectedVerses.isEmpty` at the read site.
+    @State private var actionSheetHeight: CGFloat = 0
+
     /// How sheets, the action sheet, and the toast animate in and out — a
     /// bottom slide by default, a cross-fade when Reduce Motion is on.
     private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
@@ -195,6 +202,12 @@ public struct BibleScreen: View {
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
+            // Measured before the bottomReserve padding so we capture the
+            // sheet's intrinsic content height (which grows with Dynamic
+            // Type), not the padded distance to the screen edge.
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { newHeight in
+                actionSheetHeight = newHeight
+            }
             .padding(.bottom, bottomReserve)
             .frame(maxHeight: .infinity, alignment: .bottom)
             .transition(motion.transition)
@@ -269,6 +282,16 @@ public struct BibleScreen: View {
                 // a selection of their own.
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 pendingScrollVerse: viewModel.pendingScrollVerse,
+                // Action sheet sits `bottomReserve` (100pt) above the screen
+                // bottom; the reader already reserves 76pt for the chat
+                // pill, so the extra room needed to lift the chapter footer
+                // above the sheet's top edge is its measured height plus
+                // the 24pt gap between the chat pill and the sheet bottom.
+                // The ternary gates the lingering `actionSheetHeight` so the
+                // reserve collapses the instant selection clears.
+                bottomOverlayInset: viewModel.selectedVerses.isEmpty
+                    ? 0
+                    : actionSheetHeight + bottomReserve - 76,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },

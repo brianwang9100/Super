@@ -24,11 +24,18 @@ struct BibleChapterReader: View {
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
+    private let bottomOverlayInset: CGFloat
     private let onTapVerse: (Int) -> Void
     private let onPrevious: () -> Void
     private let onNext: () -> Void
     private let onClearSelection: () -> Void
     private let onConsumeScroll: () -> Void
+
+    /// Verse the user was reading just before the action sheet appeared.
+    /// Set when the sheet first measures (`bottomOverlayInset` becomes
+    /// non-zero) and consumed on dismiss to scroll the reader back to the
+    /// same vertical anchor. `nil` while no sheet is up.
+    @State private var preSheetSelectedVerse: Int? = nil
 
     /// - Parameters:
     ///   - bookId: the book whose highlights the `@Query` observes; paired
@@ -40,6 +47,10 @@ struct BibleChapterReader: View {
     ///     scroll offset stable as the narrator advances. Honored when
     ///     the user has selected verses — the spec disables auto-scroll
     ///     so the reader stays anchored to whatever the user is reading.
+    ///   - bottomOverlayInset: extra space appended below the chat-pill
+    ///     reserve when an applet-owned bottom overlay (e.g. the verse-
+    ///     selection action sheet) is visible. Lets the last verses
+    ///     scroll above the overlay instead of falling behind it.
     ///   - onClearSelection: invoked when a tap lands on the column but misses
     ///     every verse word.
     ///   - pendingScrollVerse: verse number to scroll to on appear and on
@@ -59,6 +70,7 @@ struct BibleChapterReader: View {
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
+        bottomOverlayInset: CGFloat = 0,
         onTapVerse: @escaping (Int) -> Void,
         onPrevious: @escaping () -> Void,
         onNext: @escaping () -> Void,
@@ -77,6 +89,7 @@ struct BibleChapterReader: View {
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
+        self.bottomOverlayInset = bottomOverlayInset
         self.onTapVerse = onTapVerse
         self.onPrevious = onPrevious
         self.onNext = onNext
@@ -126,7 +139,10 @@ struct BibleChapterReader: View {
 
                     // Bottom inset so the chat overlay's minimized pill doesn't
                     // obscure the footer — mirrors the shell's 76pt reserve.
-                    Color.clear.frame(height: 76)
+                    // `bottomOverlayInset` adds the action sheet's height on top
+                    // when verses are selected, letting the last verses scroll
+                    // clear of the sheet instead of vanishing behind it.
+                    Color.clear.frame(height: 76 + bottomOverlayInset)
                 }
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
@@ -136,6 +152,46 @@ struct BibleChapterReader: View {
                 // A tap that misses every verse word clears the selection.
                 .contentShape(Rectangle())
                 .onTapGesture { onClearSelection() }
+            }
+            // Action-sheet appear / dismiss drives a paired scroll: on show
+            // the just-selected verse is brought to `y = 0.35` (a third from
+            // top — same anchor narration uses) so the sheet doesn't cover
+            // it; on dismiss the reader scrolls back to that same verse at
+            // `y = 0.65` (two-thirds down), which approximates the verse's
+            // pre-sheet vertical position so the chapter visually returns
+            // to where the user was reading.
+            .onChange(of: bottomOverlayInset) { oldInset, newInset in
+                let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.3)
+                switch Self.sheetTransition(oldInset: oldInset, newInset: newInset) {
+                case .appearing:
+                    guard let verse = selectedVerses.min() else { return }
+                    preSheetSelectedVerse = verse
+                    withAnimation(animation) {
+                        proxy.scrollTo(
+                            VerseAnchor(verseNumber: verse),
+                            anchor: UnitPoint(x: 0.5, y: 0.35)
+                        )
+                    }
+                case .dismissing:
+                    guard let verse = preSheetSelectedVerse else { return }
+                    preSheetSelectedVerse = nil
+                    withAnimation(animation) {
+                        proxy.scrollTo(
+                            VerseAnchor(verseNumber: verse),
+                            anchor: UnitPoint(x: 0.5, y: 0.65)
+                        )
+                    }
+                case nil:
+                    return
+                }
+            }
+            // Keep the restore anchor aligned with the user's *current*
+            // first-selected verse: if they extend or shift the selection
+            // while the sheet is up, dismiss should return them near the
+            // verse they ended on, not the one they started with.
+            .onChange(of: selectedVerses) { _, newSelection in
+                guard preSheetSelectedVerse != nil, let verse = newSelection.min() else { return }
+                preSheetSelectedVerse = verse
             }
             .onChange(of: currentNarratingVerse) { _, new in
                 guard let new, Self.shouldAutoScroll(suppressed: suppressNarrationScroll) else {
@@ -181,6 +237,28 @@ struct BibleChapterReader: View {
     static func shouldAutoScroll(suppressed: Bool) -> Bool {
         !suppressed
     }
+
+    /// Sheet appear / dismiss is the only `bottomOverlayInset` change that
+    /// drives a scroll — a mid-show remeasurement (Dynamic Type rotation,
+    /// locale swap) changes the inset between two non-zero values and must
+    /// not re-scroll, otherwise the chapter jolts under the user. Factored
+    /// out as a pure predicate so a unit test can cover the three branches
+    /// without standing up a SwiftUI host.
+    static func sheetTransition(oldInset: CGFloat, newInset: CGFloat) -> SheetTransition? {
+        if oldInset == 0, newInset > 0 { return .appearing }
+        if oldInset > 0, newInset == 0 { return .dismissing }
+        return nil
+    }
+}
+
+/// Classifies a change in the action-sheet inset so the reader knows when
+/// to scroll the selected verse into view (`.appearing`) and when to
+/// restore the user to their pre-sheet anchor (`.dismissing`). A `nil`
+/// return from `BibleChapterReader.sheetTransition(…)` means the inset
+/// changed but neither edge was crossed, and no scroll should fire.
+enum SheetTransition {
+    case appearing
+    case dismissing
 }
 
 /// Identity tag attached to each verse's first word so
