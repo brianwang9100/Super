@@ -1,10 +1,16 @@
 import Chat
 import Core
 import GRDBQuery
+import os
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
+
+/// Apple-built-in `os.Logger` for shell-level routing diagnostics. Used
+/// today for the openRecord deep-link drop case; the subsystem matches
+/// the rest of the app so all shell logs filter together in Console.
+private let appShellLog = Logger(subsystem: "com.brianwang.Super", category: "app-shell")
 
 /// Hosts the active mini-app's backdrop, the always-on-top chat overlay,
 /// the shell-level hamburger chrome, and the sidebar + settings drawers.
@@ -339,12 +345,51 @@ struct AppShell: View {
                     await selectConversation(id: id)
                 case .newConversation:
                     await startNewChat()
+                case .openApplet(let id):
+                    selectApplet(id: id)
                 }
             }
         }
         // One bus instance shared by every applet — the Bible backdrop
         // publishes verse references, the Chat overlay's inbox consumes.
         .environment(\.superEventBus, dependencies.eventBus)
+        // External `super://bible/verse?...` deep links — from Safari,
+        // Notes, Messages, Spotlight — feed into the same event-bus
+        // path the in-transcript `OpenURLAction` interceptor uses, so
+        // every entry point lands the user on the same Bible chapter
+        // with the same verses pre-selected. Non-`super://` URLs are
+        // ignored here and SwiftUI's default handling continues.
+        .onOpenURL { url in
+            guard let link = BibleDeepLink(url: url) else { return }
+            let eventBus = dependencies.eventBus
+            Task { await eventBus.publish(.openRecord(reference: link.recordReference)) }
+        }
+    }
+
+    /// Switch the active backdrop applet to `id` and collapse the chat
+    /// overlay so the applet is on screen. Same chrome transition the
+    /// sidebar uses for an explicit pick — keyboard dismissal, registry
+    /// mutation, persistence, animated chat-state change — but driven
+    /// by an inbound `SuperEvent.openRecord`. No-op when the registry
+    /// doesn't host `id` (e.g. a stray deep link for an applet this
+    /// build doesn't ship).
+    @MainActor
+    private func selectApplet(id: String) {
+        guard registry.applets.contains(where: { $0.appletID == id }) else {
+            // Inbound deep links from outside the app (`super://` URLs in
+            // Notes, Spotlight, etc.) can name an applet this build
+            // doesn't ship — e.g. a SuperOS-only Todo link opened on a
+            // SuperBible device. Drop with a warning so the failure
+            // shows up in Console rather than vanishing silently.
+            appShellLog.warning("openRecord for unregistered applet \(id, privacy: .public) — dropped")
+            return
+        }
+        dismissKeyboard()
+        registry.activeID = id
+        UserDefaults.standard.set(id, forKey: Self.activeAppletStorageKey)
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+            chatState = .minimized
+        }
     }
 
     private func openSidebar() {
@@ -426,6 +471,15 @@ struct AppShell: View {
                         // Owned by `ChatReferenceInbox` — skip here so
                         // we don't double-route the verse hand-off.
                         break
+                    case .openRecord(let reference):
+                        // The receiving applet's own bus subscriber
+                        // performs the within-applet navigation; the
+                        // shell's job is only to make that applet's
+                        // backdrop visible. Route through
+                        // `pendingNavigation` so the dispatch runs
+                        // inside a body re-eval and `@Environment`
+                        // reads (notably `reduceMotion`) are fresh.
+                        pendingNavigation = .openApplet(id: reference.appletID)
                     }
                 }
             }
@@ -695,6 +749,11 @@ struct AppShell: View {
 private enum PendingNavigation: Equatable {
     case openConversation(id: String)
     case newConversation
+    /// Switch the active backdrop applet to the given id and collapse
+    /// the chat overlay so the applet is on screen. Driven by inbound
+    /// `SuperEvent.openRecord(reference:)` — e.g. a Bible-citation tap
+    /// in the Chat transcript or a `super://bible/...` deep link.
+    case openApplet(id: String)
 }
 
 // MARK: - Shell layers
