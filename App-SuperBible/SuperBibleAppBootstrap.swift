@@ -164,6 +164,10 @@ enum SuperBibleAppBootstrap {
         // with the user's chats. The cold-launch active backdrop is
         // decoupled from this order: `initialActiveID` is set explicitly
         // to `BibleApplet.appletID` below.
+        //
+        // BibleApplet is captured into a local first so we can wire its
+        // event-bus subscriber to the shared `SuperEventBus` below.
+        let bibleApplet = BibleApplet()
         let applets: [any MiniApplet] = [
             ChatsApplet(chatDatabase: database),
             bibleApplet,
@@ -210,6 +214,14 @@ enum SuperBibleAppBootstrap {
             memoryRepository: memoryRepository
         )
 
+        // Single shared event bus — created here (not inline in the
+        // return) so we can subscribe `BibleApplet` to inbound deep
+        // links from the Chat-side citation linkifier and the scene
+        // root's `.onOpenURL` handler before handing the bus to the
+        // shell.
+        let eventBus = SuperEventBus()
+        await bibleApplet.attach(to: eventBus)
+
         return SuperBibleAppDependencies(
             chatDatabase: database,
             chatSessionStore: chatSessionStore,
@@ -222,7 +234,7 @@ enum SuperBibleAppBootstrap {
             modelConfigurationRepository: modelConfigRepo,
             settingRepository: settingRepo,
             memoryRepository: memoryRepository,
-            eventBus: SuperEventBus(),
+            eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability
         )

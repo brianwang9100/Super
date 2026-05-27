@@ -57,4 +57,75 @@ struct BibleAppletTests {
         #expect(!body.isEmpty)
         #expect(body.contains("Bible applet"))
     }
+
+    @Test("openRecord event with a verse-range reference navigates the view model")
+    func openRecordEventDrivesViewModelNavigation() async throws {
+        let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
+        await viewModel.load()
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+
+        let applet = BibleApplet(viewModel: viewModel)
+        let bus = SuperEventBus()
+        await applet.attach(to: bus)
+
+        // Arm a continuation that fires *after* the inbox has processed
+        // the next event — synchronisation by `await`, never `sleep`.
+        await withCheckedContinuation { continuation in
+            applet._referenceInbox._onNextEvent {
+                continuation.resume()
+            }
+            // Publish on a child task so the continuation arming above
+            // is already in place when the subscriber handles the event.
+            Task {
+                let reference = BibleDeepLink(
+                    bookId: "ROM", chapter: 8, verseStart: 28, verseEnd: 30
+                ).recordReference
+                await bus.publish(.openRecord(reference: reference))
+            }
+        }
+
+        #expect(viewModel.position == BiblePosition(bookId: "ROM", chapterNumber: 8))
+        #expect(viewModel.selectedVerses == [28, 29, 30])
+    }
+
+    @Test("openRecord event with a non-bible reference is ignored")
+    func openRecordEventForOtherAppletIsIgnored() async throws {
+        let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
+        await viewModel.load()
+        let original = viewModel.position
+
+        let applet = BibleApplet(viewModel: viewModel)
+        let bus = SuperEventBus()
+        await applet.attach(to: bus)
+
+        await withCheckedContinuation { continuation in
+            applet._referenceInbox._onNextEvent {
+                continuation.resume()
+            }
+            Task {
+                let stray = RecordReference(
+                    appletID: "todo", kind: "task", sourceID: "x",
+                    displayLabel: "x", citation: "x", snapshot: ""
+                )
+                await bus.publish(.openRecord(reference: stray))
+            }
+        }
+
+        #expect(viewModel.position == original)
+    }
+
+    @Test("attach is idempotent — second call does not double-subscribe")
+    func attachIsIdempotent() async throws {
+        let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
+        await viewModel.load()
+
+        let applet = BibleApplet(viewModel: viewModel)
+        let bus = SuperEventBus()
+        await applet.attach(to: bus)
+        let firstCount = await bus.subscriberCount
+        await applet.attach(to: bus)
+        let secondCount = await bus.subscriberCount
+        #expect(firstCount == 1)
+        #expect(secondCount == 1)
+    }
 }

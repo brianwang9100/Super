@@ -37,6 +37,14 @@ public final class BibleScreenViewModel {
     /// nav bar into selection mode and presents the action sheet.
     public private(set) var selectedVerses: Set<Int> = []
 
+    /// First verse to scroll into view the next time the chapter reader
+    /// renders. Set by ``openReference(bookId:chapterNumber:verseStart:verseEnd:)``
+    /// for deep-link navigation; the reader consumes it on appear (and on
+    /// any subsequent change for same-chapter deep links) and clears it
+    /// via ``consumePendingScrollVerse()`` so the next user-driven chapter
+    /// step doesn't re-snap to the old anchor.
+    public private(set) var pendingScrollVerse: Int?
+
     /// A transient message shown in the chat-attach toast, or `nil` when no
     /// toast is up. Used only for the "chat ships later" stub until hand-off
     /// lands; the toast is dismissed by a tap, never on a timer.
@@ -198,6 +206,57 @@ public final class BibleScreenViewModel {
         applyCurrentChapter()
         persist()
         bookSheet = nil
+    }
+
+    /// Open the reader at a specific verse range — switches book/chapter
+    /// if needed, then pre-selects the verses so the reader lands with
+    /// them highlighted (the same look as having just tapped them).
+    ///
+    /// Driven by Bible-citation taps inside the Chat transcript and by
+    /// `super://bible/...` URLs at the scene root. Both paths go
+    /// through `SuperEvent.openRecord(reference:)` → the Bible applet's
+    /// event-bus subscriber → this method.
+    ///
+    /// - Parameters:
+    ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).
+    ///     Unknown ids are a no-op.
+    ///   - chapterNumber: 1-based chapter; out-of-range is a no-op.
+    ///   - verseStart: First selected verse, or `nil` for a
+    ///     chapter-only navigation (no pre-selection).
+    ///   - verseEnd: Last selected verse, or `nil` for a single verse
+    ///     when `verseStart` is set. An inverted range
+    ///     (`verseEnd < verseStart`) is a no-op.
+    public func openReference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?) {
+        guard let book = catalog.book(id: bookId),
+              (1...book.chapterCount).contains(chapterNumber) else { return }
+        if let verseStart, verseStart < 1 { return }
+        if let verseStart, let verseEnd, verseEnd < verseStart { return }
+
+        narration.stop()
+        position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        if let verseStart {
+            let upper = verseEnd ?? verseStart
+            selectedVerses = Set(verseStart...upper)
+        } else {
+            selectedVerses.removeAll()
+        }
+        // Flag the first selected verse for the reader to scroll into
+        // view once it mounts (or, for a same-chapter deep link, on the
+        // next `pendingScrollVerse` change). Chapter-only navigation
+        // leaves this `nil` so the new chapter just snaps to its top
+        // like a manual nav.
+        pendingScrollVerse = verseStart
+        applyCurrentChapter()
+        persist()
+        bookSheet = nil
+    }
+
+    /// Read and clear the pending scroll target. The chapter reader calls
+    /// this after it has issued the scroll so a subsequent user-driven
+    /// chapter step doesn't re-trigger the snap.
+    public func consumePendingScrollVerse() -> Int? {
+        defer { pendingScrollVerse = nil }
+        return pendingScrollVerse
     }
 
     /// Toggle a verse's membership in the selection. The first tap enters

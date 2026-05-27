@@ -200,6 +200,13 @@ enum SuperOSAppBootstrap {
         // system block sent to the Large Language Model (LLM) on every
         // chat turn — those two surfaces would otherwise drift if a
         // future PR registered an applet in only one place.
+        //
+        // BibleApplet is captured into a local first so we can wire its
+        // event-bus subscriber to the shared `SuperEventBus` below.
+        // Struct copies share the same `BibleReferenceInbox` reference,
+        // so attaching here lights up the inbox for every copy that
+        // ends up in the `AppletRegistry`.
+        let bibleApplet = BibleApplet()
         let applets: [any MiniApplet] = [
             // Order is load-bearing: the first applet is the cold-start
             // default on a fresh install (no `activeAppletStorageKey`
@@ -255,6 +262,14 @@ enum SuperOSAppBootstrap {
 
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)
 
+        // Single shared event bus — created here (not inline in the
+        // return) so we can subscribe `BibleApplet` to inbound deep
+        // links from the Chat-side citation linkifier and the scene
+        // root's `.onOpenURL` handler before handing the bus to the
+        // shell.
+        let eventBus = SuperEventBus()
+        await bibleApplet.attach(to: eventBus)
+
         return SuperOSAppDependencies(
             chatDatabase: database,
             chatSessionStore: chatSessionStore,
@@ -269,7 +284,7 @@ enum SuperOSAppBootstrap {
             memoryRepository: memoryRepository,
             registeredToolIDs: registeredToolIDs,
             todoDependencies: todoDependencies,
-            eventBus: SuperEventBus(),
+            eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability
         )

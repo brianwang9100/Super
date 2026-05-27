@@ -39,19 +39,25 @@ struct MarkdownText: View {
 
     /// Test-only seam exposing the string that will be handed to
     /// MarkdownUI — i.e. the autocloser-processed text when
-    /// `treatAsPartial` is set, otherwise the raw input. Underscore
-    /// prefix marks it as not part of the stable API, per the codebase
-    /// convention for test seams (e.g. `_waitForPendingTitleTask`).
+    /// `treatAsPartial` is set, followed by the verse-reference
+    /// linkifier that wraps Bible citations in `super://bible/...`
+    /// markdown links the chat-side `OpenURLAction` interceptor can
+    /// route to the Bible applet. Underscore prefix marks it as not
+    /// part of the stable API, per the codebase convention for test
+    /// seams (e.g. `_waitForPendingTitleTask`).
     ///
-    /// Recomputes ``MarkdownAutocloser/close(_:)`` on every body
-    /// invocation rather than memoizing via `@State`. Streaming text
-    /// changes every coalescer flush, so a cache keyed on the input
-    /// would always miss; the prose-only fast path (one UTF-8 byte
-    /// walk) is the dominant case and is essentially free. Marker-rich
-    /// inputs pay the per-render cost — known and accepted in exchange
-    /// for the simpler view shape.
+    /// Recomputes both passes on every body invocation rather than
+    /// memoizing via `@State`. Streaming text changes every coalescer
+    /// flush so a cache keyed on the input would always miss; both
+    /// passes carry a prose-only fast path (single byte walk for the
+    /// autocloser, substring presence check for the linkifier) so the
+    /// dominant "no markers, no scripture" message is essentially
+    /// free. Marker-rich or citation-rich inputs pay the per-render
+    /// cost — known and accepted in exchange for the simpler view
+    /// shape.
     var _resolvedText: String {
-        treatAsPartial ? MarkdownAutocloser.close(text) : text
+        let autoclosed = treatAsPartial ? MarkdownAutocloser.close(text) : text
+        return BibleReferenceLinkifier.linkify(autoclosed)
     }
 
     /// Per-call-site overrides for the default `Theme.text` style.
