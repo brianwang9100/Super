@@ -268,6 +268,7 @@ public struct BibleScreen: View {
                 // Per spec: auto-scroll only when the user hasn't picked
                 // a selection of their own.
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
+                pendingScrollVerse: viewModel.pendingScrollVerse,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },
@@ -275,7 +276,8 @@ public struct BibleScreen: View {
                 onNext: { viewModel.stepChapter(.next) },
                 onClearSelection: {
                     withAnimation(motion.animation) { viewModel.clearSelection() }
-                }
+                },
+                onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() }
             )
             // A fresh identity per chapter resets the scroll offset to the
             // top and re-subscribes the highlight `@Query` when the reader

@@ -737,4 +737,123 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.isNarrationSheetPresented == false)
         #expect(service.stopCallCount == 0, "dismissing the sheet must keep narration playing")
     }
+
+    // MARK: - openReference
+
+    @Test("openReference with a verse range navigates and pre-selects the range")
+    func openReferenceWithRangeSelectsAllVerses() async {
+        let viewModel = makeViewModel()
+        await viewModel.load() // 1 Peter 2
+        viewModel.openReference(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+
+        #expect(viewModel.position == BiblePosition(bookId: "ROM", chapterNumber: 8))
+        #expect(viewModel.bookName == "Romans")
+        #expect(viewModel.chapter?.number == 8)
+        #expect(viewModel.selectedVerses == [28, 29, 30])
+    }
+
+    @Test("openReference with a single verse pre-selects just that verse")
+    func openReferenceWithSingleVerseSelectsOne() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.openReference(bookId: "JHN", chapterNumber: 3, verseStart: 16, verseEnd: nil)
+
+        #expect(viewModel.position == BiblePosition(bookId: "JHN", chapterNumber: 3))
+        #expect(viewModel.selectedVerses == [16])
+    }
+
+    @Test("openReference chapter-only leaves no verse selection")
+    func openReferenceChapterOnlyLeavesEmptySelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.openReference(bookId: "PSA", chapterNumber: 23, verseStart: nil, verseEnd: nil)
+
+        #expect(viewModel.position == BiblePosition(bookId: "PSA", chapterNumber: 23))
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("openReference with unknown book is a no-op")
+    func openReferenceUnknownBookIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load() // 1 Peter 2
+        viewModel.openReference(bookId: "ZZZ", chapterNumber: 1, verseStart: 1, verseEnd: nil)
+
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
+    @Test("openReference with out-of-range chapter is a no-op")
+    func openReferenceOutOfRangeChapterIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        // Genesis has 50 chapters.
+        viewModel.openReference(bookId: "GEN", chapterNumber: 51, verseStart: 1, verseEnd: nil)
+
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+    }
+
+    @Test("openReference with an inverted verse range is a no-op")
+    func openReferenceInvertedRangeIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.openReference(bookId: "ROM", chapterNumber: 8, verseStart: 10, verseEnd: 5)
+
+        #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
+    }
+
+    @Test("openReference persists the new position")
+    func openReferencePersistsNewPosition() async throws {
+        let repository = GRDBBibleReadingPositionRepository(
+            database: try BibleDatabase.makeInMemory()
+        )
+        let viewModel = makeViewModel(repository: repository)
+        await viewModel.load() // 1 Peter 2
+        viewModel.openReference(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+
+        await viewModel._waitForPendingPersist()
+        let saved = try await repository.load()
+        #expect(saved?.bookId == "ROM")
+        #expect(saved?.chapterNumber == 8)
+    }
+
+    @Test("openReference closes the book sheet if it was open")
+    func openReferenceClosesBookSheet() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentBookSheet()
+        #expect(viewModel.bookSheet != nil)
+
+        viewModel.openReference(bookId: "JHN", chapterNumber: 1, verseStart: 1, verseEnd: nil)
+        #expect(viewModel.bookSheet == nil)
+    }
+
+    @Test("openReference sets pendingScrollVerse to the first verse")
+    func openReferenceSignalsScrollTarget() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+
+        viewModel.openReference(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+        #expect(viewModel.pendingScrollVerse == 28)
+    }
+
+    @Test("openReference for a chapter-only navigation leaves pendingScrollVerse nil")
+    func openReferenceChapterOnlyLeavesScrollTargetNil() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+
+        viewModel.openReference(bookId: "PSA", chapterNumber: 23, verseStart: nil, verseEnd: nil)
+        #expect(viewModel.pendingScrollVerse == nil)
+    }
+
+    @Test("consumePendingScrollVerse returns and clears the target")
+    func consumePendingScrollVerseClearsTarget() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.openReference(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: nil)
+
+        #expect(viewModel.consumePendingScrollVerse() == 28)
+        #expect(viewModel.pendingScrollVerse == nil)
+        // A second consume is a no-op — returns nil and the slot stays clear.
+        #expect(viewModel.consumePendingScrollVerse() == nil)
+    }
 }

@@ -15,4 +15,13 @@ public enum SuperEvent: Sendable, Equatable {
     /// overlay. The shell handles allocating an id, snapping to expanded,
     /// and routing through the existing lazy-persist driver.
     case newConversationRequested
+
+    /// Any applet → shell: focus the applet identified by
+    /// `reference.appletID` and pass `reference` to it for in-applet
+    /// navigation. Mirrors `recordAddedToChat` in reverse — that one
+    /// pulls a record *into* Chat; this one pushes the user *back out*
+    /// to the record's home applet. Today's sole consumer is Bible
+    /// receiving a verse-range tap originating in the Chat transcript
+    /// (and from `super://bible/...` deep links at the scene root).
+    case openRecord(reference: RecordReference)
 }

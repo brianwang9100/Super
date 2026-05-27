@@ -104,6 +104,12 @@ public struct ChatScreen: View {
     /// flips the view-model's transient "Copied!" pill in the same
     /// gesture handler.
     @Environment(\.pasteboardClient) private var pasteboard
+    /// Cross-applet event bus used by `bibleDeepLinkRouting(eventBus:)`
+    /// below — Bible-citation taps inside the rendered transcript
+    /// publish `SuperEvent.openRecord` on it for the Bible applet to
+    /// receive. `nil` in snapshot/preview hosts; the router silently
+    /// no-ops there.
+    @Environment(\.superEventBus) private var superEventBus
     /// Fallback focus state used only when no external binding is passed in
     /// (snapshot tests, previews). The composer reads
     /// ``composerIsFocused`` which prefers the external binding when
@@ -313,6 +319,11 @@ public struct ChatScreen: View {
         .shadow(color: Color.black.opacity(0.18 * panelSurroundOpacity), radius: 12, x: 0, y: 12)
         .shadow(color: Color.black.opacity(0.12 * panelSurroundOpacity), radius: 30, x: 0, y: 30)
         .background(homeIndicatorFill)
+        // Route `super://bible/verse?...` link taps from the rendered
+        // transcript through the cross-applet event bus. Non-Bible URLs
+        // (e.g. plain `https://` links) fall through to the system
+        // handler — see `bibleDeepLinkRouting(eventBus:)`.
+        .bibleDeepLinkRouting(eventBus: superEventBus)
         .confirmationDialog(
             regenerationDialogTitle,
             isPresented: regenerationDialogIsPresented,

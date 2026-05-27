@@ -23,10 +23,12 @@ struct BibleChapterReader: View {
     private let nextLabel: String?
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
+    private let pendingScrollVerse: Int?
     private let onTapVerse: (Int) -> Void
     private let onPrevious: () -> Void
     private let onNext: () -> Void
     private let onClearSelection: () -> Void
+    private let onConsumeScroll: () -> Void
 
     /// - Parameters:
     ///   - bookId: the book whose highlights the `@Query` observes; paired
@@ -40,6 +42,13 @@ struct BibleChapterReader: View {
     ///     so the reader stays anchored to whatever the user is reading.
     ///   - onClearSelection: invoked when a tap lands on the column but misses
     ///     every verse word.
+    ///   - pendingScrollVerse: verse number to scroll to on appear and on
+    ///     subsequent changes. Set by `BibleScreenViewModel.openReference`
+    ///     for deep-link navigation; `nil` for normal browsing. The
+    ///     reader consumes it once via `onConsumeScroll` so a later
+    ///     manual chapter step doesn't re-snap to the old anchor.
+    ///   - onConsumeScroll: called after the reader issues the pending
+    ///     deep-link scroll so the view model can clear the target.
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -49,10 +58,12 @@ struct BibleChapterReader: View {
         nextLabel: String?,
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
+        pendingScrollVerse: Int? = nil,
         onTapVerse: @escaping (Int) -> Void,
         onPrevious: @escaping () -> Void,
         onNext: @escaping () -> Void,
-        onClearSelection: @escaping () -> Void
+        onClearSelection: @escaping () -> Void,
+        onConsumeScroll: @escaping () -> Void = {}
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -65,10 +76,12 @@ struct BibleChapterReader: View {
         self.nextLabel = nextLabel
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
+        self.pendingScrollVerse = pendingScrollVerse
         self.onTapVerse = onTapVerse
         self.onPrevious = onPrevious
         self.onNext = onNext
         self.onClearSelection = onClearSelection
+        self.onConsumeScroll = onConsumeScroll
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -139,6 +152,25 @@ struct BibleChapterReader: View {
                         anchor: UnitPoint(x: 0.5, y: 0.35)
                     )
                 }
+            }
+            // Deep-link landing: scroll the first selected verse into
+            // view. `.task(id:)` runs on first appear AND whenever the
+            // target changes, so a same-chapter deep link (already on
+            // Romans 8, tap a Romans 8:30 link) still snaps the verse
+            // into view even though the reader's `.id(position)` didn't
+            // change. The `onConsumeScroll` callback clears the target
+            // on the view model so a later manual chapter step doesn't
+            // re-trigger.
+            .task(id: pendingScrollVerse) {
+                guard let target = pendingScrollVerse else { return }
+                let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.35)
+                withAnimation(animation) {
+                    proxy.scrollTo(
+                        VerseAnchor(verseNumber: target),
+                        anchor: UnitPoint(x: 0.5, y: 0.35)
+                    )
+                }
+                onConsumeScroll()
             }
         }
     }

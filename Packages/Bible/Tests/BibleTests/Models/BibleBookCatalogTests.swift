@@ -1,3 +1,4 @@
+import Core
 import Testing
 @testable import Bible
 
@@ -97,6 +98,27 @@ struct BibleBookCatalogTests {
                 book.chapters.count == summary.chapterCount,
                 "chapter count mismatch for \(translation.rawValue)-\(summary.id)"
             )
+        }
+    }
+
+    @Test("Bible's catalog and Core's parser index agree on every book")
+    func catalogAgreesWithCoreIndex() {
+        // `Core.BibleBookIndex` is the Chat-side linkifier's data table
+        // for matching citations in LLM prose; `Bible.BibleBookCatalog`
+        // is the reader's own table. They were intentionally kept as
+        // two separate authoritative copies (the plan opted not to
+        // refactor the reader to consume Core) — but a drift between
+        // them would mean Chat could emit a `super://` link the Bible
+        // reader silently rejects in `openReference`. This test pins
+        // the parity so a future single-side edit fails here, not in
+        // production.
+        let catalogRows = catalog.books.map { ($0.id, $0.name, $0.chapterCount) }
+        let indexRows = BibleBookIndex.canonical.map { ($0.id, $0.name, $0.chapterCount) }
+        #expect(catalogRows.count == indexRows.count)
+        for (catalogRow, indexRow) in zip(catalogRows, indexRows) {
+            #expect(catalogRow.0 == indexRow.0, "id mismatch: catalog=\(catalogRow.0) index=\(indexRow.0)")
+            #expect(catalogRow.1 == indexRow.1, "name mismatch for \(catalogRow.0): catalog=\(catalogRow.1) index=\(indexRow.1)")
+            #expect(catalogRow.2 == indexRow.2, "chapterCount mismatch for \(catalogRow.0): catalog=\(catalogRow.2) index=\(indexRow.2)")
         }
     }
 }
