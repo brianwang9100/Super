@@ -104,4 +104,52 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["deletedAt"]
         )
     }
+
+    migrator.registerMigration("v3_createAnnotation") { db in
+        // Polymorphic single table — `target` discriminates the three
+        // scopes (book / chapter / verse). Position columns are nullable
+        // because lower-precision targets don't carry them: `.book` rows
+        // have only `bookId` set, `.chapter` rows add `chapterNumber`,
+        // `.verse` rows fill all three position columns (`verseEnd` equals
+        // `verseStart` for single-verse annotations). Multi-row per target
+        // group is deliberate — each row is one card in the popover. No
+        // UNIQUE constraint on the position tuple; uniqueness is by row id
+        // only.
+        try db.create(table: "bibleAnnotation") { t in
+            t.primaryKey("id", .text)
+            t.column("target", .text).notNull()
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer)
+            t.column("verseStart", .integer)
+            t.column("verseEnd", .integer)
+            t.column("kind", .text).notNull()
+            t.column("title", .text).notNull()
+            t.column("body", .text).notNull()
+            t.column("source", .text).notNull()
+            t.column("modelId", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+        }
+        // Chapter renderer's `@Query` slice — `verseEnd` is the lead axis
+        // for grouping bubbles after the last verse of each annotation
+        // range. The leading `(bookId, chapterNumber)` also satisfies
+        // chapter-scope lookups, so a single index covers both per-chapter
+        // listing and per-verse positioning.
+        try db.create(
+            index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
+            on: "bibleAnnotation",
+            columns: ["bookId", "chapterNumber", "verseEnd"]
+        )
+        // Book-picker bubble visibility — "does this book have any
+        // annotations at any level?" boils down to "is there a row whose
+        // bookId == X?"; restricting on `target` is not necessary because
+        // any annotation (book, chapter, or verse) makes the book "carry
+        // notes." Keeping `target` in the index leaves room to switch the
+        // book bubble's semantics later (e.g. light book bubble only when
+        // a book-target row exists) without a second index.
+        try db.create(
+            index: "bibleAnnotation_on_target_bookId",
+            on: "bibleAnnotation",
+            columns: ["target", "bookId"]
+        )
+    }
 }

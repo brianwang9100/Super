@@ -125,6 +125,15 @@ enum SuperOSAppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
+        // Construct Bible up-front so it can register `bible.annotate`
+        // against the shared registry. The applet owns `bible.sqlite`
+        // (opened inside `BibleApplet.init`), so tool registration funnels
+        // through `registerAnnotationTool(in:)` rather than the bootstrap
+        // building the repository directly. No-op when the database
+        // failed to open.
+        let bibleApplet = BibleApplet()
+        await bibleApplet.registerAnnotationTool(in: toolRegistry)
+
         // Best-effort: seed an AFM row for fresh installs so Chat opens
         // onto a usable provider. Skipped on ineligible devices and
         // pre-populated DBs; errors swallowed so a transient SQLite
@@ -201,7 +210,7 @@ enum SuperOSAppBootstrap {
             TodoApplet(dependencies: todoDependencies),
             ChatsApplet(chatDatabase: database),
             RecipesPlaceholderApplet(),
-            BibleApplet(),
+            bibleApplet,
             FinancePlaceholderApplet(),
         ]
         // Resolve the persisted active backdrop here (was in

@@ -35,21 +35,27 @@ public struct BibleApplet: MiniApplet {
     /// rather than failing outright.
     private let databaseContext: DatabaseContext?
 
+    /// Write seam for the `bible.annotate` tool. `nil` when the database
+    /// failed to open at init; `registerAnnotationTool(in:)` then becomes
+    /// a no-op so the rest of the reader still loads.
+    private let annotationRepository: (any BibleAnnotationRepository)?
+
     /// Production entry point — bundled text plus an on-disk store under
     /// Application Support for the reading position and verse highlights.
     ///
-    /// The database opens synchronously here: it is two small tables behind
-    /// two tiny migrations, and the applet is built in each target's
-    /// bootstrap (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`) where no
-    /// `async` context exists. Should the Bible schema ever grow heavy,
-    /// move this open into the bootstrap alongside `ChatDatabase` rather
-    /// than blocking the launch path.
+    /// The database opens synchronously here: it is three small tables
+    /// behind three tiny migrations, and the applet is built in each
+    /// target's bootstrap (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`)
+    /// where no `async` context exists. Should the Bible schema ever grow
+    /// heavy, move this open into the bootstrap alongside `ChatDatabase`
+    /// rather than blocking the launch path.
     @MainActor
     public init() {
         let database = BibleApplet.openDatabase()
         self.databaseContext = database.map { db in
             DatabaseContext.readOnly { db.queue }
         }
+        self.annotationRepository = database.map { GRDBBibleAnnotationRepository(database: $0) }
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -69,9 +75,40 @@ public struct BibleApplet: MiniApplet {
     /// never touches the real on-disk database. The highlight `@Query` runs
     /// without a database context — it falls back to an empty result.
     @MainActor
-    init(viewModel: BibleScreenViewModel, databaseContext: DatabaseContext? = nil) {
+    init(
+        viewModel: BibleScreenViewModel,
+        databaseContext: DatabaseContext? = nil,
+        annotationRepository: (any BibleAnnotationRepository)? = nil
+    ) {
         self.viewModel = viewModel
         self.databaseContext = databaseContext
+        self.annotationRepository = annotationRepository
+    }
+
+    /// Register the `bible.annotate` tool with the given registry, using
+    /// this applet's local database. No-op if the database failed to open
+    /// at init — the reader still loads, just without the tool.
+    ///
+    /// Called from each app's bootstrap (`SuperBibleAppBootstrap` /
+    /// `SuperOSAppBootstrap`), mirroring how Chat ships `TimeNowTool` and
+    /// `MemoryTool`. Tool ownership stays with the applet so the
+    /// Bible-internal `BibleDatabase` + repository never leak into the
+    /// composition root.
+    public func registerAnnotationTool(
+        in registry: ToolRegistry,
+        clock: any Clock = SystemClock(),
+        ids: any IDGenerator = UUIDGenerator(),
+        stampProvider: any BibleAnnotationStampProvider = DefaultBibleAnnotationStampProvider()
+    ) async {
+        guard let annotationRepository else { return }
+        await registry.register(
+            AnnotateBibleTool.registration(
+                repository: annotationRepository,
+                clock: clock,
+                ids: ids,
+                stampProvider: stampProvider
+            )
+        )
     }
 
     @MainActor

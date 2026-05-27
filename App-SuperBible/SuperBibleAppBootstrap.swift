@@ -108,6 +108,15 @@ enum SuperBibleAppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
+        // Construct Bible up-front so it can register `bible.annotate`
+        // against the shared registry. The applet owns `bible.sqlite`
+        // (opened inside `BibleApplet.init`), so tool registration funnels
+        // through `registerAnnotationTool(in:)` rather than the bootstrap
+        // building the repository directly. No-op when the database
+        // failed to open.
+        let bibleApplet = BibleApplet()
+        await bibleApplet.registerAnnotationTool(in: toolRegistry)
+
         // Best-effort AFM seed, same shape as SuperOS — skipped on
         // ineligible devices and pre-populated DBs.
         let bootAvailability = AppleFoundationAvailability(
@@ -157,7 +166,7 @@ enum SuperBibleAppBootstrap {
         // to `BibleApplet.appletID` below.
         let applets: [any MiniApplet] = [
             ChatsApplet(chatDatabase: database),
-            BibleApplet(),
+            bibleApplet,
         ]
         // SuperBible diverges from SuperOS: the persisted active applet
         // in `UserDefaults` is *deliberately ignored* on cold launch.
