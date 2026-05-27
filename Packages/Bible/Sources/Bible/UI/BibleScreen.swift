@@ -227,8 +227,8 @@ public struct BibleScreen: View {
         BibleTranslationSheet(
             current: viewModel.translation,
             // Lift the sheet's last row above the shell's minimized chat
-            // pill, mirroring the reader's 76pt bottom reserve.
-            bottomInset: 76,
+            // pill, mirroring the reader's chat-pill bottom reserve.
+            bottomInset: BibleChapterReader.chatPillHeight,
             onSelect: { translation in
                 withAnimation(motion.animation) { viewModel.selectTranslation(translation) }
             },
@@ -254,8 +254,8 @@ public struct BibleScreen: View {
             currentBookId: viewModel.position.bookId,
             currentChapterNumber: viewModel.position.chapterNumber,
             // Lift the order toggle above the shell's minimized chat pill,
-            // mirroring the reader's 76pt bottom reserve.
-            bottomInset: 76,
+            // mirroring the reader's chat-pill bottom reserve.
+            bottomInset: BibleChapterReader.chatPillHeight,
             onSelectChapter: { bookId, chapterNumber in
                 withAnimation(motion.animation) {
                     viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
@@ -283,15 +283,15 @@ public struct BibleScreen: View {
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 pendingScrollVerse: viewModel.pendingScrollVerse,
                 // Action sheet sits `bottomReserve` (100pt) above the screen
-                // bottom; the reader already reserves 76pt for the chat
-                // pill, so the extra room needed to lift the chapter footer
-                // above the sheet's top edge is its measured height plus
-                // the 24pt gap between the chat pill and the sheet bottom.
+                // bottom; the reader already reserves `chatPillHeight` for
+                // the chat pill, so the extra room needed to lift the chapter
+                // footer above the sheet's top edge is its measured height
+                // plus the gap between the chat pill and the sheet bottom.
                 // The ternary gates the lingering `actionSheetHeight` so the
                 // reserve collapses the instant selection clears.
                 bottomOverlayInset: viewModel.selectedVerses.isEmpty
                     ? 0
-                    : actionSheetHeight + bottomReserve - 76,
+                    : actionSheetHeight + bottomReserve - BibleChapterReader.chatPillHeight,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },

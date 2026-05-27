@@ -138,11 +138,11 @@ struct BibleChapterReader: View {
                     )
 
                     // Bottom inset so the chat overlay's minimized pill doesn't
-                    // obscure the footer — mirrors the shell's 76pt reserve.
+                    // obscure the footer — mirrors the shell's chat-pill reserve.
                     // `bottomOverlayInset` adds the action sheet's height on top
                     // when verses are selected, letting the last verses scroll
                     // clear of the sheet instead of vanishing behind it.
-                    Color.clear.frame(height: 76 + bottomOverlayInset)
+                    Color.clear.frame(height: Self.chatPillHeight + bottomOverlayInset)
                 }
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
@@ -230,6 +230,14 @@ struct BibleChapterReader: View {
             }
         }
     }
+
+    /// Height of the shell's minimized chat-pill clearance the reader
+    /// always reserves at the bottom of its scroll content. Surfaced as a
+    /// constant so the screen-level inset math (`actionSheetHeight +
+    /// bottomReserve - chatPillHeight`) and the picker sheets'
+    /// `bottomInset:` arguments stay locked to the same number — change it
+    /// here, not in four places.
+    static let chatPillHeight: CGFloat = 76
 
     /// Decide whether a narration advance should auto-scroll. Factored
     /// out so a unit test can cover the predicate without standing up a
