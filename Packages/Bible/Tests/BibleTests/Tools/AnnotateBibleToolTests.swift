@@ -270,8 +270,11 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
         verseStart: Int?,
         verseEnd: Int?
     ) async throws -> [BibleAnnotationRecord] {
-        Issue.record("SpyBibleAnnotationRepository.list called — tool path should not read.")
-        return []
+        // Strict double: the tool path never reads, so a hit here is a
+        // caller-side bug. Fail loudly with a stack trace that points at
+        // the misconfigured test rather than returning an empty array
+        // and letting downstream assertions accidentally pass.
+        fatalError("SpyBibleAnnotationRepository.list called — tool path should not read.")
     }
 
     func replace(
@@ -293,7 +296,7 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
     }
 
     func deleteOne(id: String) async throws {
-        Issue.record("SpyBibleAnnotationRepository.deleteOne called — tool path should not delete.")
+        fatalError("SpyBibleAnnotationRepository.deleteOne called — tool path should not delete.")
     }
 }
 

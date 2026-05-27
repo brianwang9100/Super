@@ -249,7 +249,7 @@ let ref = RecordReference(
     sourceID: annotation.id,                                       // single row
     displayLabel: "<citation> annotation",                          // e.g. "Romans 8:28-30 annotation"
     citation: "<citation>",
-    snapshot: AnnotationSnapshotComposer.compose(annotation: annotation, in: catalog)
+    snapshot: AnnotationSnapshotComposer.compose(annotation: annotation)
 )
 eventBus.publish(.recordAddedToChat(reference: ref, startNewConversation: false))
 ```
@@ -263,7 +263,7 @@ let ref = RecordReference(
     sourceID: annotations.map(\.id).joined(separator: ","),
     displayLabel: "<citation> annotations (N)",
     citation: "<citation>",
-    snapshot: AnnotationSnapshotComposer.compose(annotations: annotations, in: catalog)
+    snapshot: AnnotationSnapshotComposer.compose(annotations: annotations)
 )
 ```
 

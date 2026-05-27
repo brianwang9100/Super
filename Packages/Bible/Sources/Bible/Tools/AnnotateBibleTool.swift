@@ -235,24 +235,22 @@ public struct AnnotateBibleTool: ToolExecutor {
                 throw ValidationError(message: "target 'book' must not include chapterNumber, verseStart, or verseEnd.")
             }
         case .chapter:
-            guard let cn = chapterNumber, cn >= 1 else {
+            guard (chapterNumber ?? 0) >= 1 else {
                 throw ValidationError(message: "target 'chapter' requires chapterNumber ≥ 1.")
             }
-            _ = cn
             if verseStart != nil || verseEnd != nil {
                 throw ValidationError(message: "target 'chapter' must not include verseStart or verseEnd.")
             }
         case .verse:
-            guard let cn = chapterNumber, cn >= 1 else {
+            guard (chapterNumber ?? 0) >= 1 else {
                 throw ValidationError(message: "target 'verse' requires chapterNumber ≥ 1.")
             }
-            guard let vs = verseStart, vs >= 1 else {
+            guard (verseStart ?? 0) >= 1 else {
                 throw ValidationError(message: "target 'verse' requires verseStart ≥ 1.")
             }
-            guard let ve = verseEnd, ve >= vs else {
+            guard (verseEnd ?? 0) >= (verseStart ?? 0) else {
                 throw ValidationError(message: "target 'verse' requires verseEnd ≥ verseStart.")
             }
-            _ = (cn, vs, ve)
         }
 
         let entriesRaw = try requireArray(input, key: "entries")
