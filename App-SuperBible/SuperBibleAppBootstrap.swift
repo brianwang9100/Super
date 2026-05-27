@@ -108,12 +108,16 @@ enum SuperBibleAppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
-        // Construct Bible up-front so it can register `bible.annotate`
-        // against the shared registry. The applet owns `bible.sqlite`
-        // (opened inside `BibleApplet.init`), so tool registration funnels
-        // through `registerAnnotationTool(in:)` rather than the bootstrap
-        // building the repository directly. No-op when the database
-        // failed to open.
+        // Construct Bible up-front for two downstream wirings:
+        //   1. `registerAnnotationTool(in:)` here so `bible.annotate` is
+        //      registered against the shared `ToolRegistry`. The applet
+        //      owns `bible.sqlite` (opened inside `BibleApplet.init`), so
+        //      tool registration funnels through this helper rather than
+        //      the bootstrap building the repository directly. No-op when
+        //      the database failed to open.
+        //   2. `attach(to:)` below, once the shared `SuperEventBus` exists,
+        //      so the applet's `BibleReferenceInbox` receives Chat-side
+        //      verse-citation taps.
         let bibleApplet = BibleApplet()
         await bibleApplet.registerAnnotationTool(in: toolRegistry)
 
@@ -163,11 +167,10 @@ enum SuperBibleAppBootstrap {
         // drives the sidebar rail order — Chats first so the rail leads
         // with the user's chats. The cold-launch active backdrop is
         // decoupled from this order: `initialActiveID` is set explicitly
-        // to `BibleApplet.appletID` below.
-        //
-        // BibleApplet is captured into a local first so we can wire its
-        // event-bus subscriber to the shared `SuperEventBus` below.
-        let bibleApplet = BibleApplet()
+        // to `BibleApplet.appletID` below. (`bibleApplet` is constructed
+        // earlier so it can register the `bible.annotate` tool with the
+        // shared registry; the local is reused here for the registry slot
+        // and again below for `attach(to: eventBus)`.)
         let applets: [any MiniApplet] = [
             ChatsApplet(chatDatabase: database),
             bibleApplet,
