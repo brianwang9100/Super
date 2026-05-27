@@ -29,6 +29,12 @@ public struct BibleApplet: MiniApplet {
     /// applet is the active backdrop.
     private let viewModel: BibleScreenViewModel
 
+    /// App-session subscriber that routes inbound Bible deep links (Chat
+    /// citation taps + external `super://` URLs) onto `viewModel`. The
+    /// composition root calls `attach(to:)` once during bootstrap; until
+    /// then the inbox holds the viewModel ref but has no subscription.
+    private let referenceInbox: BibleReferenceInbox
+
     /// Read-only database access for the chapter renderer's highlight
     /// `@Query`, injected into the SwiftUI environment by `rootView()`. `nil`
     /// when the database failed to open — the reader then shows no highlights
@@ -58,11 +64,13 @@ public struct BibleApplet: MiniApplet {
         // is a no-op in production today. The adapter needs to live
         // at the composition root (`SuperOSAppBootstrap`) to bridge Bible →
         // Chat without violating the no-cross-applet-imports rule.
-        self.viewModel = BibleScreenViewModel(
+        let viewModel = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
             positionRepository: database.map { GRDBBibleReadingPositionRepository(database: $0) },
             highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) }
         )
+        self.viewModel = viewModel
+        self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
     }
 
     /// Test seam: inject a view model wired to in-memory doubles so a test
@@ -71,8 +79,26 @@ public struct BibleApplet: MiniApplet {
     @MainActor
     init(viewModel: BibleScreenViewModel, databaseContext: DatabaseContext? = nil) {
         self.viewModel = viewModel
+        self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
         self.databaseContext = databaseContext
     }
+
+    /// Subscribe the applet to inbound Bible deep links on `bus`. Called
+    /// once per composition root after the shared `SuperEventBus` is
+    /// constructed. Idempotent — `BibleReferenceInbox` no-ops on a
+    /// second attach. The applet's struct copies all share the same
+    /// `referenceInbox` reference (it's a class), so calling this on
+    /// the locally-held value before the struct is moved into the
+    /// `AppletRegistry` is sufficient.
+    public func attach(to bus: SuperEventBus) async {
+        await referenceInbox.attach(to: bus)
+    }
+
+    /// Test seam exposing the inbox so a test can publish events through
+    /// a real in-memory bus and assert the view-model side-effect.
+    /// Underscore prefix marks this as not part of the stable public
+    /// API, matching the convention used by other applets.
+    var _referenceInbox: BibleReferenceInbox { referenceInbox }
 
     @MainActor
     public func iconView(size: CGFloat) -> AnyView {

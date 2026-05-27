@@ -72,6 +72,26 @@ targets:
     info:
       path: App-SuperOS/Info.plist
       properties:
+        # Custom URL scheme `super://` — lets the OS hand `super://bible/...`
+        # deep links (from Safari, Notes, Messages, Spotlight, the share
+        # sheet) to the app's `.onOpenURL` modifier in `AppShell`. The
+        # in-app `OpenURLAction` interceptor on the chat transcript
+        # already routes the same URLs through the cross-applet bus, so
+        # external and internal taps land identically.
+        #
+        # Both SuperOS and SuperBible register the same `super` scheme.
+        # On a device with both apps installed (the founder's setup),
+        # iOS routes a `super://...` URL to whichever was *installed
+        # most recently* — there is no picker. This is acceptable for
+        # v1 because (a) the only URL host today is `bible`, which both
+        # apps handle correctly, and (b) SuperOS is the founder's
+        # personal target while SuperBible is the App Store target.
+        # Per-target namespacing (`superos://` vs `superbible://`) is on
+        # the post-v1 follow-up list; see `BibleDeepLink.urlScheme`.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.brianwang.Super.deeplink
+            CFBundleURLSchemes:
+              - super
         # System launch screen rendered before SwiftUI mounts. Setting
         # UIColorName to `SplashBackground` (an asset colorset matching
         # `SuperTheme.light.background = #E8EDE4`) avoids a white flash
@@ -181,6 +201,15 @@ targets:
     info:
       path: App-SuperBible/Info.plist
       properties:
+        # Custom URL scheme `super://` — mirrors the SuperOS target.
+        # See the SuperOS info block above for the full rationale and
+        # the per-target-namespacing follow-up. The short version: on
+        # a dual-install device, iOS picks the most-recently-installed
+        # app for any `super://...` URL with no system picker.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.brianwang.SuperBible.deeplink
+            CFBundleURLSchemes:
+              - super
         # SuperBible launch screen — Direction B (Star of Bethlehem).
         # `UIColorName` is the field that backs the centered image; we
         # repurposed the existing `SplashBackground` colorset to the
