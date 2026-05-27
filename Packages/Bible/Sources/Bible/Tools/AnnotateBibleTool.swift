@@ -228,27 +228,30 @@ public struct AnnotateBibleTool: ToolExecutor {
         let verseStart = optionalInt(input, key: "verseStart")
         let verseEnd = optionalInt(input, key: "verseEnd")
 
-        // Required-by-target validation.
+        // Required-by-target validation. The `guard let X, X >= 1`
+        // shorthand shadows the outer optional with its unwrapped value
+        // so the comparison reads naturally; the shadowed binding is
+        // intentionally not used past the guard.
         switch target {
         case .book:
             if chapterNumber != nil || verseStart != nil || verseEnd != nil {
                 throw ValidationError(message: "target 'book' must not include chapterNumber, verseStart, or verseEnd.")
             }
         case .chapter:
-            guard (chapterNumber ?? 0) >= 1 else {
+            guard let chapterNumber, chapterNumber >= 1 else {
                 throw ValidationError(message: "target 'chapter' requires chapterNumber ≥ 1.")
             }
             if verseStart != nil || verseEnd != nil {
                 throw ValidationError(message: "target 'chapter' must not include verseStart or verseEnd.")
             }
         case .verse:
-            guard (chapterNumber ?? 0) >= 1 else {
+            guard let chapterNumber, chapterNumber >= 1 else {
                 throw ValidationError(message: "target 'verse' requires chapterNumber ≥ 1.")
             }
-            guard (verseStart ?? 0) >= 1 else {
+            guard let verseStart, verseStart >= 1 else {
                 throw ValidationError(message: "target 'verse' requires verseStart ≥ 1.")
             }
-            guard (verseEnd ?? 0) >= (verseStart ?? 0) else {
+            guard let verseEnd, verseEnd >= verseStart else {
                 throw ValidationError(message: "target 'verse' requires verseEnd ≥ verseStart.")
             }
         }

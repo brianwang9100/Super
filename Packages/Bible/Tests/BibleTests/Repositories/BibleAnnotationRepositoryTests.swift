@@ -206,6 +206,35 @@ struct BibleAnnotationRepositoryTests {
         }
     }
 
+    @Test("replace is atomic — a mid-call validation throw leaves seed rows intact")
+    func replaceIsAtomicOnValidationFailure() async throws {
+        let (repository, _) = try makeFixture()
+        // Seed the target group with an existing row.
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30,
+            inserting: [verseRecord(id: "original")]
+        )
+        // Now replace with a batch where the second record doesn't match
+        // the target group. `replace` walks the batch up-front and throws
+        // before touching the table — the seed row must survive.
+        let mismatched = verseRecord(id: "bad", verseStart: 99, verseEnd: 100)
+        await #expect(throws: BibleAnnotationRepositoryError.recordOutsideTargetGroup(id: "bad")) {
+            try await repository.replace(
+                target: .verse, bookId: "ROM", chapterNumber: 8,
+                verseStart: 28, verseEnd: 30,
+                inserting: [verseRecord(id: "new-1"), mismatched]
+            )
+        }
+        let listed = try await repository.list(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30
+        )
+        // Original survives; neither the validated `new-1` row nor the
+        // mismatched `bad` row landed.
+        #expect(listed.map(\.id) == ["original"])
+    }
+
     // MARK: - Single-row delete
 
     @Test("deleteOne removes the row by id")

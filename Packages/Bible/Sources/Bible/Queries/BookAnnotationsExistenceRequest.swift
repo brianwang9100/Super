@@ -20,10 +20,10 @@ public struct BookAnnotationsExistenceRequest: ValueObservationQueryable {
     public init() {}
 
     public func fetch(_ db: Database) throws -> Set<String> {
-        let ids = try String.fetchAll(
-            db,
-            sql: "SELECT DISTINCT bookId FROM bibleAnnotation"
-        )
+        let ids = try BibleAnnotationRecord
+            .select(Column("bookId"), as: String.self)
+            .distinct()
+            .fetchAll(db)
         return Set(ids)
     }
 }
