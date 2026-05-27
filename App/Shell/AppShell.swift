@@ -295,12 +295,17 @@ struct AppShell: View {
             // when the user opens the next chat.
             viewModel?.applyExternalVerbosity(newValue)
         }
-        // Bible's "New chat with this verse" hand-off: start a fresh
-        // conversation; the new view model then adopts the verse
-        // reference the inbox is still buffering.
-        .onChange(of: referenceInbox.wantsNewConversation) { _, wants in
-            guard wants, referenceInbox.consumeNewConversationRequest() else { return }
-            Task { await startNewChat() }
+        // Bible hand-off: a verse (or whole chapter) was published on
+        // the bus. Single observer for both shapes — add-to-existing
+        // and start-new — so the two paths can't race and double-
+        // animate the chrome. The handler reads `wantsNewConversation`
+        // to pick the path and routes both through
+        // `handleComposerAttention(isNewChat:)`, which owns the
+        // semi-expand-from-minimized + composer focus.
+        .onChange(of: referenceInbox.wantsComposerAttention) { _, wants in
+            guard wants, referenceInbox.consumeAttentionRequest() else { return }
+            let isNewChat = referenceInbox.consumeNewConversationRequest()
+            Task { await handleComposerAttention(isNewChat: isNewChat) }
         }
         // Owner-side keyboard dismissal: every minimize-like transition
         // clears the shell's `@FocusState` *directly*, rather than
@@ -685,7 +690,12 @@ struct AppShell: View {
         }
     }
 
-    private func startNewChat() async {
+    /// Open a fresh in-memory draft conversation. `targetChatState`
+    /// controls the chrome the chat lands at — sidebar's "New Chat"
+    /// passes the default (`.expanded`); the Bible hand-off passes
+    /// `.semiExpanded` so the just-attached verse pill is visible
+    /// against the applet backdrop behind the floating panel.
+    private func startNewChat(targetChatState: ChatPresentationState = .expanded) async {
         sidebarOpen = false
         // Starting a fresh chat is a context shift — drop the prior
         // composer's focus so the keyboard doesn't carry into the empty
@@ -707,18 +717,54 @@ struct AppShell: View {
         // place when the overlay slides up — the user never sees a flash
         // of the previous conversation's content during the transition.
         await rebuildChatViewModel(for: row)
-        // Focus mid-animation collides with iOS keyboard-avoidance, which
-        // reads the composer's in-flight position and breaks the overlay's
-        // spring layout. Await logical completion before setting focus.
+        await animateChatState(to: targetChatState)
+        composerIsFocused = true
+    }
+
+    /// Animate the chat overlay to `target` and return only once the
+    /// animation has *logically* settled. The continuation guard is
+    /// load-bearing: focus assigned mid-animation collides with iOS
+    /// keyboard-avoidance, which reads the composer's in-flight position
+    /// and breaks the overlay's spring layout. Logical completion is the
+    /// signal that the field has reached its final frame and is safe to
+    /// focus.
+    private func animateChatState(to target: ChatPresentationState) async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             withAnimation(
                 SuperMotion.transition(reduceMotion: reduceMotion),
                 completionCriteria: .logicallyComplete
             ) {
-                chatState = .expanded
+                chatState = target
             } completion: {
                 cont.resume()
             }
+        }
+    }
+
+    /// Cross-applet hand-off has buffered a `RecordReference` for the
+    /// composer (today: a Bible verse range or whole chapter via the
+    /// action sheet or the spark menu). Owns the visible response:
+    /// semi-expand from minimized so the user sees the just-attached
+    /// pill, and assign first responder so they can type immediately.
+    ///
+    /// Sequencing mirrors the sidebar's "New Chat" path
+    /// (``startNewChat(targetChatState:)``): animate the chrome, await
+    /// logical completion via ``animateChatState(to:)``, *then* focus.
+    /// Focusing mid-animation collides with iOS keyboard-avoidance.
+    ///
+    /// Never demotes from a higher anchor — if the chat is already at
+    /// `.semiExpanded` or `.expanded`, leave the chrome alone and only
+    /// move focus. The action sheet that fires this path is unreachable
+    /// at `.expanded` today (the backdrop is hidden), but the spark menu
+    /// could be wired from a future surface, and "snapping down" would
+    /// be a regression.
+    private func handleComposerAttention(isNewChat: Bool) async {
+        if isNewChat {
+            await startNewChat(targetChatState: .semiExpanded)
+            return
+        }
+        if chatState == .minimized {
+            await animateChatState(to: .semiExpanded)
         }
         composerIsFocused = true
     }

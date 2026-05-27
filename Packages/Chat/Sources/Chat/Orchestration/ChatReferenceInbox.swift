@@ -21,6 +21,14 @@ public final class ChatReferenceInbox {
     /// then clears it via `consumeNewConversationRequest()`.
     public private(set) var wantsNewConversation = false
 
+    /// Set on every `.recordAddedToChat` event regardless of
+    /// `startNewConversation`. The shell observes this as the single
+    /// "Bible just handed a reference to chat" signal and dispatches the
+    /// chrome change (semi-expand from minimized) plus composer focus.
+    /// Separate from ``wantsNewConversation`` so the new-chat case and
+    /// the add-to-existing case share one observer instead of racing.
+    public private(set) var wantsComposerAttention = false
+
     private var subscriptionTask: Task<Void, Never>?
     /// One-shot callbacks fired after the next processed event — the
     /// `_onNextEvent` test seam. Not observed in production.
@@ -60,9 +68,16 @@ public final class ChatReferenceInbox {
         return wantsNewConversation
     }
 
+    /// Read and clear the composer-attention request flag.
+    public func consumeAttentionRequest() -> Bool {
+        defer { wantsComposerAttention = false }
+        return wantsComposerAttention
+    }
+
     private func handle(_ event: SuperEvent) {
         if case .recordAddedToChat(let reference, let startNew) = event {
             pending.append(reference)
+            wantsComposerAttention = true
             if startNew { wantsNewConversation = true }
         }
         let callbacks = eventCallbacks

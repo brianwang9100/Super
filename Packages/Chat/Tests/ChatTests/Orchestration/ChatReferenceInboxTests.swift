@@ -98,6 +98,33 @@ struct ChatReferenceInboxTests {
         #expect(inbox.consumeNewConversationRequest() == false)
     }
 
+    @Test func everyEventSetsAndClearsTheAttentionFlag() async {
+        // `wantsComposerAttention` fires regardless of
+        // `startNewConversation` — it's the single "Bible just handed a
+        // reference to chat" signal the shell observes to semi-expand
+        // the chat overlay and focus the composer. Both shapes set it;
+        // `consumeAttentionRequest()` is the read-and-clear path.
+        let bus = SuperEventBus()
+        let inbox = ChatReferenceInbox()
+        await inbox.attach(to: bus)
+
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("a"), startNewConversation: false),
+            on: bus, inbox: inbox
+        )
+        #expect(inbox.wantsComposerAttention)
+        #expect(inbox.consumeAttentionRequest())
+        #expect(inbox.wantsComposerAttention == false)
+        #expect(inbox.consumeAttentionRequest() == false)
+
+        await publishAndWait(
+            .recordAddedToChat(reference: reference("b"), startNewConversation: true),
+            on: bus, inbox: inbox
+        )
+        #expect(inbox.wantsComposerAttention)
+        #expect(inbox.wantsNewConversation)
+    }
+
     @Test func attachIsIdempotent() async {
         let bus = SuperEventBus()
         let inbox = ChatReferenceInbox()
