@@ -99,7 +99,10 @@ public struct BibleScreen: View {
 
     /// Shared publish path used by both selection and whole-chapter
     /// hand-offs. Falls back to the "coming soon" toast when no bus is
-    /// wired (previews and isolated tests).
+    /// wired (previews and isolated tests). On the live path the shell
+    /// owns the visible confirmation: the chat overlay semi-expands
+    /// from minimized and the composer becomes first responder, so we
+    /// only clean up the verse selection here — no toast.
     private func publishReferenceToChat(_ reference: RecordReference, startNew: Bool) {
         guard let eventBus else {
             withAnimation(motion.animation) { viewModel.presentChatComingSoon() }
@@ -111,7 +114,7 @@ public struct BibleScreen: View {
             )
         }
         withAnimation(motion.animation) {
-            viewModel.confirmAddedToChat(citation: reference.citation)
+            viewModel.clearSelection()
         }
     }
 

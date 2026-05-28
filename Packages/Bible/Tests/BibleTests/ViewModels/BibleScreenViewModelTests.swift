@@ -555,18 +555,6 @@ struct BibleScreenViewModelTests {
         #expect(reference?.sourceID.hasPrefix("KJV/") == true)
     }
 
-    @Test("confirmAddedToChat shows a toast and leaves selection mode")
-    func confirmAddedToChatShowsToastAndClears() async {
-        let viewModel = makeViewModel()
-        await viewModel.load()
-        viewModel.toggleVerse(9)
-
-        viewModel.confirmAddedToChat(citation: "1 Peter 2:9 (WEB)")
-
-        #expect(viewModel.toast == "Added 1 Peter 2:9 (WEB) to chat.")
-        #expect(viewModel.selectedVerses.isEmpty)
-    }
-
     // MARK: - Whole-chapter chat hand-off
 
     @Test("makeChapterReference returns the whole chapter's text + a colon-less citation")
