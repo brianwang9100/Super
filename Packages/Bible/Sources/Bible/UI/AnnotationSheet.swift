@@ -128,7 +128,11 @@ struct AnnotationSheet: View {
                 Button(action: onAddAllToChat) {
                     Label("Add all to chat", systemImage: "paperplane")
                 }
-                Button("Close", role: .cancel, action: onClose)
+                Divider()
+                // `Close` is not `.cancel`-roled: `.cancel` is a
+                // `.confirmationDialog` / `.alert` convention; inside a
+                // `Menu` it has no guaranteed dismiss-first behavior.
+                Button("Close", action: onClose)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .medium))
@@ -147,8 +151,16 @@ struct AnnotationSheet: View {
     @ViewBuilder
     private var cardList: some View {
         if cards.isEmpty {
+            // The empty state floats at the top of the sheet body (after
+            // the header divider) with its own 40-pt vertical padding —
+            // matches the JSX `EmptyState` layout. `.frame(maxHeight:
+            // .infinity)` would expand here, but in an unbounded parent
+            // (preview, ad-hoc reuse) that fires SwiftUI layout warnings.
+            // The sheet itself is always given a bound (presentation
+            // detent, snapshot frame), so the unfilled bottom area is
+            // just background.
             emptyState
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
         } else {
             ScrollView {
                 VStack(spacing: 10) {

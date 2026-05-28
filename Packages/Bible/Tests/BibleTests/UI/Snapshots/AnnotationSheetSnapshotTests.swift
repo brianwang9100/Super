@@ -106,6 +106,14 @@ struct AnnotationSheetSnapshotTests {
 
     // MARK: - Loaded states
 
+    @Test("one card renders without intercard spacing artifacts")
+    func oneCardLight() {
+        // Per ANNOTATIONS.md §10 the populated-state matrix is 0 / 1 /
+        // 3 / 8 cards. The single-card case isolates per-card chrome
+        // from the inter-card spacing the multi-card variants exercise.
+        verify(theme: .light, cards: [Self.threeCards[0]], name: "one_card_light")
+    }
+
     @Test("three cards render in the light theme")
     func threeCardsLight() {
         verify(theme: .light, cards: Self.threeCards, name: "three_cards_light")

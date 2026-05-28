@@ -38,6 +38,38 @@ struct AnnotationBubbleSnapshotTests {
         verify(theme: .light, state: .generating, name: "generating_light")
     }
 
+    /// Three filled bubbles side-by-side — the composition `BibleChapterReader`
+    /// uses in PR3 when multiple overlapping verse-range annotations share a
+    /// `verseEnd` (per `ANNOTATIONS.md` §5). The 3-pt gap and inline-flex
+    /// arrangement match the JSX `screens.jsx` `trailingCount` block. The
+    /// snapshot guards the per-bubble spacing contract so PR3 can layer the
+    /// stack directly without re-deriving the metrics.
+    @Test("three bubbles stack horizontally after one verse")
+    func multiStackLight() {
+        let theme = SuperTheme.make(.light)
+        let view = ZStack {
+            theme.background
+            HStack(spacing: 3) {
+                AnnotationBubble(state: .filled, size: 24)
+                AnnotationBubble(state: .filled, size: 24)
+                AnnotationBubble(state: .filled, size: 24)
+            }
+        }
+        .frame(width: 144, height: 64)
+        .superTheme(theme)
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(layout: .fixed(width: 144, height: 64)),
+            named: "multi_stack_light",
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: #function
+        )
+        if let failure {
+            Issue.record("multi_stack_light: \(failure)")
+        }
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         state: AnnotationBubble.BubbleState,

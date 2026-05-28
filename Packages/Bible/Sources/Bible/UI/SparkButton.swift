@@ -54,6 +54,10 @@ struct SparkButton: View {
         .buttonStyle(.plain)
         .disabled(state == .dim)
         .accessibilityLabel("Annotate selection")
+        // Disabled buttons announce "dimmed" but give no reason. The
+        // hint names the enabling condition (verse selection) so a
+        // VoiceOver user knows how to make the button active.
+        .accessibilityHint(state == .dim ? "Select verses to enable" : "")
     }
 
     private var background: some View {
