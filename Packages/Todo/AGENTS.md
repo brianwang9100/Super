@@ -11,15 +11,12 @@ The Todo applet: local task list with priorities, labels, and (eventually) a lon
 - **ViewModels** (`ViewModels/`): `@Observable @MainActor final class` only.
 - **UI** (`UI/`): SwiftUI views. The root surface is `TodoScreen`; the applet glyph is `TodoIcon`. Rows, sheets, and nested regions follow the `docs/NAMING_CONVENTIONS.md` Part 4 bucket suffixes (Screen / Sheet / Row / Region / …) — specific view names are coined against that taxonomy as each view is built (M3–M5).
 
-## Rules
+## Todo-specific rules
 
-- **Do not import other applets.** No `import Chat`. Cross-applet communication runs through Core (event bus when it lands; absent in MVP).
-- **Persistence is GRDB only.** No SwiftData / Core Data.
-- **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See [`docs/NAMING_CONVENTIONS.md` Part 5](../../docs/NAMING_CONVENTIONS.md#part-5--persistence-schema).
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (no cross-applet imports, GRDB-only persistence, GRDB naming, snapshot matrix + Xcode pin, coverage target ≥70%). Todo-specific additions:
+
 - **Schema is sync-ready.** Every persistable row carries `createdAt`, `updatedAt`, `deletedAt?` per `docs/SYNC.md` §6.2. Sync itself is deferred, but the schema must not need a follow-up migration to enable it.
-- **Snapshot tests** land in the same PR as the view they cover. Light / dark / sepia × default / Dynamic Type XXL per root AGENTS.md §Testing.
-- **Coverage target ≥70%** per root AGENTS.md.
 
 ## Tests
 
-`swift test` from `Packages/Todo/` runs the non-UI suites and must be green before any PR opens. SwiftUI snapshot suites are gated behind `#if canImport(UIKit)` and run via `xcodebuild test -scheme Todo` against the CI-pinned simulator (Xcode 26.4.1 + iOS 26.4 + iPhone 17); their fixtures live in `Tests/TodoTests/UI/Snapshots/__Snapshots__/`.
+`swift test` from `Packages/Todo/` runs the non-UI suites. SwiftUI snapshot suites are gated behind `#if canImport(UIKit)` and run via `xcodebuild test -scheme Todo` against the CI-pinned simulator; their fixtures live in `Tests/TodoTests/UI/Snapshots/__Snapshots__/`.

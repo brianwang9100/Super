@@ -14,19 +14,16 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).**
 - **View models** (`ViewModels/`): `@Observable @MainActor final class` view models for every screen.
 
-## Rules
+## Chat-specific rules
 
-- **Do not import other applets.** Cross-applet communication runs through Core (event bus when it lands; absent in MVP).
-- **Persistence is GRDB only.** No SwiftData / Core Data.
-- **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See [`docs/NAMING_CONVENTIONS.md` Part 5 — Persistence schema](../../docs/NAMING_CONVENTIONS.md#part-5--persistence-schema) for the full convention.
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (no cross-applet imports, GRDB-only persistence, GRDB naming, snapshot matrix + Xcode pin, coverage target ≥70%). Chat-specific additions:
+
 - **Streaming-text persistence**: write the final `MessageRecord` only on `.messageComplete` (per ADR-BB-003 in `docs/Chat/ARCHITECTURE.md`). Do not persist intermediate buffer state.
 - **LLM tests must mock `LLMProvider`.** Never hit a real LLM endpoint (OpenAI, local MLX, Ollama, anything).
-- **Snapshot tests** land in the same PR as the view they cover. See root AGENTS.md §Testing.2 for the per-state matrix (light/dark/sepia × default/Dynamic Type XXL).
-- **Coverage target ≥70%** per root AGENTS.md.
 
 ## Tests
 
-`swift test` from `Packages/Chat/` must be green before any PR opens. Snapshot fixtures live in `Tests/ChatTests/UI/__Snapshots__/`. SSE/LLM fixtures in `Tests/ChatTests/Fixtures/`.
+Snapshot fixtures live in `Tests/ChatTests/UI/__Snapshots__/`. SSE/LLM fixtures in `Tests/ChatTests/Fixtures/`.
 
 ## Manual testing in the simulator
 

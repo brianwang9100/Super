@@ -1,8 +1,6 @@
 # SuperBible App Target — Agent Rules
 
-The composition root and target-specific assets for the **SuperBible** App Store app. Pairs with the SuperOS root at `App-SuperOS/` — both apps share `Core`, `Chat`, and `Bible` packages, plus the shared shell at `App/Shell/`; each target lives in its own folder and registers its own applet set. Full design + rationale: [`../docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md). Contributor one-pager: [`../docs/SuperBible/OVERVIEW.md`](../docs/SuperBible/OVERVIEW.md).
-
-**Status (2026-05-25):** SB-M0 (target wired) and SB-M1 (composition root + Chat host + Bible) have shipped. Plans (SB-M2) is the next applet; not yet present.
+The composition root and target-specific assets for the **SuperBible** App Store app. Pairs with the SuperOS root at `App-SuperOS/` — both apps share `Core`, `Chat`, and `Bible` packages, plus the shared shell at `App/Shell/`; each target lives in its own folder and registers its own applet set. Full design + rationale: [`../docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md). Contributor one-pager: [`../docs/SuperBible/OVERVIEW.md`](../docs/SuperBible/OVERVIEW.md). Milestone status lives in the spec; do not duplicate it here.
 
 ## Module identity
 
@@ -40,9 +38,9 @@ SuperBible has no server and will not get one for v1. Chat issues BYOK LLM calls
 
 The root `AGENTS.md` § Backend rule "Backend proxies all LLM API calls (API keys never on client)" is a **SuperOS-only** rule. **Do NOT introduce a backend proxy for SuperBible.** If you find yourself wanting to, the right move is to refresh the fork spec §7 (Cloud roadmap) with the new evidence and discuss before writing code.
 
-### No third-party SDKs (project-wide, restated)
+### No third-party SDKs (restated for App Store proximity)
 
-No Sentry, PostHog, Datadog, Crashlytics, Bugsnag, Firebase, Mixpanel, Amplitude, AppsFlyer, Adjust, OpenTelemetry, ad SDKs, attribution SDKs. Observability is Apple-built-in only — see [`../docs/SuperBible/OBSERVABILITY.md`](../docs/SuperBible/OBSERVABILITY.md) and [`../docs/OBSERVABILITY.md`](../docs/OBSERVABILITY.md). This rule already lives in the root `AGENTS.md`; it's restated here because SuperBible is the App Store-facing target and the temptation to add a quick "just one SDK" is highest at submission time.
+The project-wide "no third-party SDKs" rule (Sentry, PostHog, Datadog, Crashlytics, Bugsnag, Firebase, Mixpanel, ad/attribution SDKs, OpenTelemetry, etc.) applies in full here. Restated because SuperBible is the App Store-facing target where the "just one SDK" temptation is highest at submission time. Observability is Apple-built-in only — see [`../docs/SuperBible/OBSERVABILITY.md`](../docs/SuperBible/OBSERVABILITY.md).
 
 ### No monetization beyond optional donations
 
