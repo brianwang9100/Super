@@ -182,11 +182,12 @@ private struct VerseWord: View {
         return number + Text(" ") + word
     }
 
-    /// Pale-warm wash behind a selected verse — lightened text in light and
-    /// sepia, a muted warm tint in dark so it reads against the dark page.
+    /// Neutral light-gray wash behind a selected verse — distinct from the
+    /// warm annotation highlight palette so a selection never reads as a
+    /// yellow highlight. Lighter in light/sepia, a muted mid-gray in dark.
     private var selectionTint: Color {
         theme.id == .dark
-            ? OKLCH(0.46, 0.07, 92, alpha: 0.55).color
-            : OKLCH(0.90, 0.10, 92, alpha: 0.85).color
+            ? OKLCH(0.58, 0.0, 0, alpha: 0.43).color
+            : OKLCH(0.88, 0.0, 0, alpha: 0.82).color
     }
 }
