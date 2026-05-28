@@ -79,7 +79,7 @@ struct NarrationTransportSheet: View {
             controlsRow
         }
         .padding(.horizontal, 18)
-        .padding(.top, 8)
+        .padding(.top, 4)
         .padding(.bottom, 16)
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -129,7 +129,7 @@ struct NarrationTransportSheet: View {
     /// back to centre.
     private var dragHandle: some View {
         Capsule()
-            .fill(theme.borderFaint)
+            .fill(theme.inkFaint)
             .frame(width: 36, height: 4)
             .frame(maxWidth: .infinity)
             .frame(height: 24)
