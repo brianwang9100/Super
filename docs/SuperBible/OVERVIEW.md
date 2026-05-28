@@ -55,6 +55,7 @@ Bundle ID: `com.brianwang.SuperBible`. Display name: `SuperBible`.
 
 - **Fork design + milestones (SB-M0–M5):** [`superpowers/specs/2026-05-23-superbible-fork-design.md`](../superpowers/specs/2026-05-23-superbible-fork-design.md)
 - **Observability posture (Apple-built-in only):** [`OBSERVABILITY.md`](./OBSERVABILITY.md)
+- **Annotations feature (M-A user-generated, M-B/M-C bulk roadmap):** [`ANNOTATIONS.md`](./ANNOTATIONS.md)
 - **User-facing privacy policy (when SB-M4 lands):** `../../App-SuperBible/PRIVACY.md`
 - **Cross-applet interactions catalog (shared with SuperOS):** [`../CHAT_INTERACTIONS.md`](../CHAT_INTERACTIONS.md)
 - **Open backlog:** [`../../TODO.md`](../../TODO.md) § SuperBible
