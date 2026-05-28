@@ -13,14 +13,14 @@ All design documents live in `docs/`. Read the relevant docs before working on a
 - `SYNC.md` — platform-agnostic sync engine
 - `AUTH.md` — username/password, JWT tokens, admin account setup
 - `CI_PIPELINE.md` — CI/CD, AI agent workflow, automated PR review
-- `OBSERVABILITY.md` — **Apple-built-in only** posture for crashes, metrics, diagnostics, logs. No third-party SDKs (no Sentry / PostHog / Datadog / Crashlytics). The "no third-party SDKs" rule is project-wide — do NOT add observability SDKs to any applet.
+- `OBSERVABILITY.md` — Apple-built-in posture for crashes, metrics, diagnostics, logs. No third-party SDKs anywhere in this project.
 - `SECURITY.md` — threat model, encryption, auth, home automation safety
 - `AI_TOOLS.md` — approved AI development tools and security rules
 - `CHAT_INTERACTIONS.md` — cross-applet interaction catalog
 - `DEVELOPMENT_SETUP.md` — clone, build, deploy, first-run wizard
 - `Chat/` — Chat (AI chatbot) applet-specific design and architecture
-- `SuperBible/` — SuperBible app target — `OVERVIEW.md` (one-pager intro) and `OBSERVABILITY.md` (Apple-only restatement scoped to SuperBible). SuperBible is the public App Store target; SuperOS is the founder's personal app. Both share Core + Chat + Bible.
-- `superpowers/specs/2026-05-23-superbible-fork-design.md` — full design for the SuperBible fork: architecture, milestones SB-M0–M5, monetization, CI, cloud roadmap. Read before touching `App-SuperBible/`, the SuperBible target in `project.yml`, or any of `Packages/{Plans,Memorize,Quiz,Learn}/` when they land.
+- `SuperBible/` — SuperBible target docs: `OVERVIEW.md` and `OBSERVABILITY.md`. SuperBible is the public App Store target; SuperOS is the founder's personal app. Both share Core + Chat + Bible.
+- `superpowers/specs/2026-05-23-superbible-fork-design.md` — SuperBible fork design (architecture, milestones, monetization, cloud roadmap). Read before touching `App-SuperBible/`, the `SuperBible` target in `project.yml`, or future `Packages/{Plans,Memorize,Quiz,Learn}/`.
 
 ## Terminology
 
@@ -41,61 +41,30 @@ When invoked inside a git worktree (path looks like `<repo>/.claude/worktrees/<n
 
 ## Swift function declarations
 
-Follow the official guidance in [The Swift Programming Language — Functions](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/). The rules below are the ones we hold the line on; the linked chapter is the source of truth for anything not stated here.
+Follow the Swift book — [Functions chapter](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/) — for anything not stated here. Parameter naming (argument labels, prepositions, `_`) lives in [`docs/NAMING_CONVENTIONS.md` Part 2](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters). The in-tree rules we hold the line on:
 
-> **Naming parameters** (argument labels, omitting labels with `_`, preferring prepositions): see [`docs/NAMING_CONVENTIONS.md` Part 2 — Function parameters](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters). The rules below cover function *shape*, not parameter naming.
-
-### Default parameter values
-
-- Place parameters without defaults first, before parameters with defaults. The Swift book justifies this directly: parameters without defaults are usually more important to the function's meaning, so writing them first makes it easier to recognize the same function across call sites with different optional arguments.
-- Use defaults to collapse small overload families into a single function rather than declaring multiple overloads.
-
-### Variadic parameters
-
-- Reach for `T...` when zero-or-more values is the natural shape (e.g. `print(_ items: Any...)`).
-- A function may declare multiple variadic parameters, but the parameter immediately after a variadic parameter must have an argument label so the compiler can disambiguate the call.
-
-### In-out parameters
-
-- Reserve `inout` for the rare case where you genuinely need to mutate a caller-owned variable (the swap pattern). Returning a new value is almost always cleaner.
-- `inout` parameters can't have default values and can't be variadic. Pass them with `&` at the call site.
-
-### Return values
-
-- Single-expression function bodies should rely on implicit return — drop the `return` keyword. Example: `func nextID() -> String { UUID().uuidString }`.
-- Use tuple return types (with named members) when a function naturally returns two or three closely-related values; reach for a struct beyond that.
-- Don't add `-> Void` — leave it implicit. Functions without a `->` clause already return `Void` (the empty tuple `()`).
-- Use optional tuples (`(min: Int, max: Int)?`) when the *whole tuple* may legitimately be absent.
-- A function declared with a return type *must* return on every path — the compiler enforces this, and so should code review.
-
-### Throwing functions
-
-- Mark functions that may throw with `throws`; mark async-throwing functions with `async throws` (in that order).
-- Throw a typed error (a `Sendable` enum) defined alongside the throwing API rather than `NSError` or string literals. See `LLMProviderRegistryError` and `ToolRegistryError` for the in-tree pattern.
+- **Defaults last.** Parameters without defaults come first. Use defaults to collapse small overload families into one function.
+- **Implicit return.** Single-expression bodies drop `return`: `func nextID() -> String { UUID().uuidString }`.
+- **No `-> Void`.** Leave it implicit.
+- **Tuples for 2–3 related returns** with named members; reach for a struct beyond that. Optional tuples (`(min: Int, max: Int)?`) when the whole tuple may be absent.
+- **Typed errors.** Throwing APIs throw a `Sendable` enum defined alongside the API (see `LLMProviderRegistryError`, `ToolRegistryError`) — not `NSError` or strings. Order keywords as `async throws`.
+- **Variadic (`T...`).** The parameter immediately after a variadic must carry an argument label — the compiler requires it to disambiguate calls.
+- **`inout` is rare** — prefer returning a new value. The book covers the constraints when you do need it.
 
 ## Source-file documentation
 
 Every public protocol, type, enum, struct, class, and free function ships with a short `///` doc comment **placed directly above the declaration** (so Xcode's Quick Help and Swift documentation tools pick it up). Keep it tight — the goal is orientation, not explanation of obvious code.
 
-- **Where the docs go**: `///` immediately above the declaration. Do **not** write a multi-paragraph file-header banner — if a file's primary purpose isn't obvious from its single primary type's doc, split it or rename it.
-- **Length**: 1–3 sentences per declaration. Skip docs on trivial `init`s and property accessors when meaning is obvious from the signature.
-- **Functions**: document parameters, return value, and usage **only when not obvious** from the signature. Use Swift's `/// - Parameters:` / `/// - Parameter name:` / `/// - Returns:` markup so Xcode Quick Help renders them. A `func setEnabled(toolID: String, enabled: Bool)` doesn't need parameter docs; a `func stream(messages:model:tools:temperature:)` with non-obvious semantics for `temperature` does. Single-param functions whose param is described by the type usually don't need parameter docs at all.
-- **Test files**: `///` on the test suite struct naming what surface is under test (e.g., "Tests for `SSEParser`'s framing across chunk boundaries."). Individual `@Test` cases don't need docs unless the case name leaves intent unclear.
-- **Expand domain acronyms on first use within each file** so a cold reader doesn't have to grep. Examples: SSE = Server-Sent Events, LLM = Large Language Model, MCP = Model Context Protocol, JWT = JSON Web Token, GRDB = Swift SQLite library, BYOK = Bring Your Own Key, JSON, HTTP, URL, UUID. After the first expansion the acronym alone is fine.
-- **Don't restate what the code says.** Prefer "Buffers partial chunks until a frame boundary appears." over "Appends data to the buffer and parses events."
-- **Why over what.** When behavior is non-obvious (a workaround, a perf trick, a deliberate divergence from a doc), say *why*.
-
-This rule complements the root system prompt's general guidance — it does not override the rule against overly chatty inline comments inside function bodies. Keep `//` inline comments rare; reserve prose for the `///` doc comments above declarations where a reader actually looks for orientation.
+- **Where**: `///` immediately above the declaration. No multi-paragraph file-header banners — if a file's primary purpose isn't obvious from its single primary type's doc, split it or rename it.
+- **Length**: 1–3 sentences. Skip trivial `init`s and property accessors when meaning is obvious from the signature.
+- **Functions**: document parameters and return only when non-obvious from the signature, using Swift's `/// - Parameters:` / `/// - Returns:` markup. `func setEnabled(toolID: String, enabled: Bool)` needs none; `func stream(messages:model:tools:temperature:)` with non-obvious `temperature` semantics does.
+- **Test files**: `///` on the test suite struct naming what surface is under test. Individual `@Test` cases only need docs when the case name leaves intent unclear.
+- **Expand domain acronyms on first use per file** (SSE, LLM, MCP, JWT, GRDB, BYOK, …) so a cold reader doesn't have to grep.
+- **Why over what.** Don't restate what the code says — explain non-obvious behavior (a workaround, a perf trick, a deliberate divergence from a doc).
 
 ## Naming
 
-All naming guidance — files, folders, function parameters, Swift type suffixes, SwiftUI view buckets, GRDB schema — lives in **[`docs/NAMING_CONVENTIONS.md`](./docs/NAMING_CONVENTIONS.md)**. Read it before coining a new file name, type name, or schema name. Quick map:
-
-- **Files and folders** (markdown, Swift, TypeScript, doc subdirectories) — [Part 1](./docs/NAMING_CONVENTIONS.md#part-1--files-and-folders).
-- **Function parameters** (argument labels) — [Part 2](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters).
-- **Swift types** — architectural-layer suffixes (`*Session`, `*Store`, `*Registry`, `*Repository`, `*Provider`, `*Driver`, `*Assembler`, `*Generator`, `*Estimator`, `*Tool`, `*Record`, `*Event`, `*Command`, `*Error`), anti-patterns, decision tree — [Part 3](./docs/NAMING_CONVENTIONS.md#part-3--swift-types-architectural-layer).
-- **SwiftUI views** (Chat applet — Screen / Drawer / Sheet / Pane / Region / Pill / Banner / Bubble / Block / Row / …) — [Part 4](./docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).
-- **GRDB schema** (table, column, foreign-key, timestamp, index naming) — [Part 5](./docs/NAMING_CONVENTIONS.md#part-5--persistence-schema).
+All naming — files, folders, function parameters, Swift type suffixes, SwiftUI view buckets, GRDB schema — lives in **[`docs/NAMING_CONVENTIONS.md`](./docs/NAMING_CONVENTIONS.md)**. Read it before coining a new name.
 
 ## Swift Concurrency & Type Policy
 
@@ -173,7 +142,7 @@ Async tests establish ordering through `await`, not through hope. Most "flaky" t
 - **New code paths** → unit tests with mocked dependencies.
 - **New GRDB schema or query** → integration test against an in-memory `DatabaseQueue` + `GRDBSnapshotTesting` where schema shape matters.
 - **New cross-applet event or tool call** → test that publishes/subscribes through a real in-memory `SuperEventBus`.
-- **New or changed SwiftUI view** → **snapshot test required.** Use `pointfreeco/swift-snapshot-testing`. Cover the view's key states (empty, loading, populated, error) and the variants that matter for Super: light + dark mode, at minimum one larger Dynamic Type size, and Reduce Motion where animation is involved. Any applet-level layout (iPhone tab view, iPad/Mac split view) needs a snapshot per form factor. Only rerecord snapshots when the visual change is intentional — never rerecord to "make the test pass."
+- **New or changed SwiftUI view** → **snapshot test required.** Use `pointfreeco/swift-snapshot-testing`. Cover the view's key states (empty, loading, populated, error) across the **light / dark / sepia × default Dynamic Type** matrix at minimum, plus Dynamic Type XXL for any view with text reflow, plus Reduce Motion where animation is involved. Any applet-level layout (iPhone tab view, iPad/Mac split view) needs a snapshot per form factor. Only rerecord snapshots when the visual change is intentional — never rerecord to "make the test pass."
 - **Bug fix** → a regression test that **fails before the fix** and passes after. If you can't write one, explain why in the PR description.
 - **No reducing coverage thresholds.** Core ≥80%, applets ≥70%, server ≥80%. Add tests, not exceptions.
 
@@ -182,11 +151,10 @@ Async tests establish ordering through `await`, not through hope. Most "flaky" t
 - **Swift package**: `swift test` from the package root (e.g., `Packages/Chat/`). All tests green before `gh pr create`.
 - **TypeScript server**: `pnpm test` (unit + integration) from `super-server/`. All tests green before `gh pr create`.
 - If a change crosses multiple packages, run tests in each touched package.
-- A PR that couldn't pass its own module's tests locally must not be pushed. CI will catch it, but that wastes the feedback loop.
 
 ### 5. iOS testing: match CI's Xcode + simulator runtime + iPhone
 
-Snapshot baselines are pixel-exact comparisons. A baseline recorded on one Xcode + iOS simulator runtime + iPhone model will fail on another, even between minor versions of the same Xcode, because the system text renderer and SwiftUI layout passes change. **Always record against CI's runtime.** Today that is **Xcode 26.4.1 + iOS 26.4 simulator on iPhone 17** running on the `macos-26` runner image; verify with `xcodebuild -version` and `xcrun simctl list devices "iOS 26.4"` before recording. The previous pin (Xcode 26.3 + iOS 26.2 on `macos-15`, with whichever iPhone the picker landed on) was abandoned because iOS 26.2 is no longer downloadable from Apple *and* the "first iPhone on highest runtime" picker silently chose different devices on different machines — both forcing baselines to flake across contributors.
+Snapshot baselines are pixel-exact comparisons. A baseline recorded on one Xcode + iOS simulator runtime + iPhone model will fail on another, even between minor versions of the same Xcode, because the system text renderer and SwiftUI layout passes change. **Always record against CI's runtime.** Today that is **Xcode 26.4.1 + iOS 26.4 simulator on iPhone 17** running on the `macos-26` runner image; verify with `xcodebuild -version` and `xcrun simctl list devices "iOS 26.4"` before recording.
 
 - **Xcode**: pinned literally to `26.4.1` (not `latest-stable`) by `maxim-lobanov/setup-xcode@v1` in every workflow under `.github/workflows/`. Match the version locally — install via `xcodes install 26.4.1` and select with `xcode-select -s /Applications/Xcode.app` (or `DEVELOPER_DIR=...` per-command when multiple Xcodes are installed). The `xcodebuild -version` build number in the worktree and on a fresh CI log must agree. Do **not** repin to Xcode 26.5 until it ships GA on the runner image — it's currently beta on macos-26, and pinning to a beta means re-recording baselines again when GA arrives.
 - **iOS simulator runtime**: CI uses iOS 26.4, the highest OS-level runtime preinstalled on the `macos-26` image. The simulator-discovery script in `ios-build.yml` picks the first iPhone on the highest-version available runtime — on macos-26 that resolves to an iPhone on iOS 26.4. If iOS 26.4 stops being downloadable in the future, the same options apply:
@@ -199,10 +167,6 @@ Before recording new snapshot baselines, confirm the local Xcode + runtime + dev
 ### 6. PR description must state what was tested
 
 Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
-
-### Why this is here and in CI
-
-`CI_PIPELINE.md` defines the blocking checks (test jobs, Codecov thresholds, branch protection). This section is the upstream rule that agents read before acting — it stops untested work from being opened as a PR in the first place, rather than relying on CI to reject it after the fact. Module-level `AGENTS.md` files may add module-specific testing expectations (e.g., "Chat tests must mock `LLMService` and `ToolRouter` — never hit a real LLM provider").
 
 ## Sync
 
@@ -221,25 +185,12 @@ Every PR description includes a **Test Coverage** section naming the new/updated
 
 - TypeScript + Hono + Drizzle + PostgreSQL + Redis
 - Single backend with domain-separated code modules
-- Backend proxies all LLM API calls (API keys never on client) — **applies to SuperOS only.** SuperBible is deliberately serverless (local-only v1, CloudKit-private as the planned v2 cloud path); SuperBible's Chat issues BYOK LLM calls **directly** from device to provider, with keys held in the iOS Keychain. See [`docs/SuperBible/OVERVIEW.md`](./docs/SuperBible/OVERVIEW.md) and [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](./docs/superpowers/specs/2026-05-23-superbible-fork-design.md) §7. Agents working on SuperBible Chat must NOT introduce a backend proxy.
+- Backend proxies all LLM API calls (API keys never on client) — **applies to SuperOS only.** SuperBible is serverless (local-only v1, CloudKit-private planned for v2) and issues BYOK calls directly from device to provider; see [`App-SuperBible/AGENTS.md`](./App-SuperBible/AGENTS.md) for the SuperBible rule.
 
 ## AGENTS.md Policy
 
-`AGENTS.md` is the canonical agent-instruction file for this project. `CLAUDE.md` is a symlink to `AGENTS.md` so Claude Code picks it up; other agent tools that read `AGENTS.md` directly work without configuration.
+`AGENTS.md` is the canonical agent-instruction file; `CLAUDE.md` is a symlink to it so Claude Code picks it up alongside tools that read `AGENTS.md` directly. Module rules load hierarchically — a module's `AGENTS.md` *adds to* the root, never replaces it.
 
-This root `AGENTS.md` contains global rules that apply to the entire project. Each module/directory should have its own `AGENTS.md` (with `CLAUDE.md` symlinked alongside it) with rules scoped to that module only. Agents load them hierarchically — a module's `AGENTS.md` adds to (not replaces) the root rules.
+When creating a new module: write `AGENTS.md` in the module root, then `ln -s AGENTS.md CLAUDE.md`. Never edit `CLAUDE.md` directly.
 
-When creating a new module:
-
-1. Write `AGENTS.md` in the module root.
-2. Create a symlink next to it: `ln -s AGENTS.md CLAUDE.md`.
-3. Never edit `CLAUDE.md` directly — it's a symlink. Always edit `AGENTS.md`.
-
-A module `AGENTS.md` should contain:
-- What the module does (one-line summary)
-- Module-specific conventions or patterns
-- Key dependencies and how they're used
-- Testing expectations for that module
-- Anything an AI agent needs to know to work in that module independently
-
-Keep module `AGENTS.md` files small and focused. Don't repeat rules from this root file.
+**Keep module `AGENTS.md` files small. Don't repeat rules from this root file** — point back to it instead. The module file is for what's unique: module-specific patterns, gotchas, and testing expectations beyond the root.
