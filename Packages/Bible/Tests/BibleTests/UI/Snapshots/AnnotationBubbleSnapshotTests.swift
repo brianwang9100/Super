@@ -40,7 +40,7 @@ struct AnnotationBubbleSnapshotTests {
 
     private func verify(
         theme themeID: SuperTheme.Identifier,
-        state: AnnotationBubble.State,
+        state: AnnotationBubble.BubbleState,
         name: String,
         function: String = #function
     ) {

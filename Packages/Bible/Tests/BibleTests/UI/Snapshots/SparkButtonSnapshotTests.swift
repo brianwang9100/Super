@@ -44,7 +44,7 @@ struct SparkButtonSnapshotTests {
 
     private func verify(
         theme themeID: SuperTheme.Identifier,
-        state: SparkButton.State,
+        state: SparkButton.ButtonState,
         name: String,
         function: String = #function
     ) {

@@ -17,15 +17,19 @@ import SwiftUI
 struct SparkButton: View {
     @Environment(\.superTheme) private var theme
 
-    enum State: Sendable, Equatable {
+    /// Named `ButtonState` rather than `State` to avoid shadowing
+    /// `SwiftUI.State` within this struct's scope — the same naming
+    /// rationale `AnnotationBlock.Content` follows to avoid clashing
+    /// with `View.body`.
+    enum ButtonState: Sendable, Equatable {
         case dim
         case active
     }
 
-    let state: State
+    let state: ButtonState
     let action: () -> Void
 
-    init(state: State, action: @escaping () -> Void) {
+    init(state: ButtonState, action: @escaping () -> Void) {
         self.state = state
         self.action = action
     }

@@ -21,16 +21,20 @@ import SwiftUI
 struct AnnotationBubble: View {
     @Environment(\.superTheme) private var theme
 
-    enum State: Sendable, Equatable {
+    /// Named `BubbleState` rather than `State` to avoid shadowing
+    /// `SwiftUI.State` within this struct's scope — the same naming
+    /// rationale `AnnotationBlock.Content` follows to avoid clashing
+    /// with `View.body`.
+    enum BubbleState: Sendable, Equatable {
         case empty
         case generating
         case filled
     }
 
-    let state: State
+    let state: BubbleState
     let size: CGFloat
 
-    init(state: State, size: CGFloat = 16) {
+    init(state: BubbleState, size: CGFloat = 16) {
         self.state = state
         self.size = size
     }

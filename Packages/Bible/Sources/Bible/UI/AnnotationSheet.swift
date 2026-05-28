@@ -41,9 +41,15 @@ struct AnnotationSheet: View {
     /// Display citation in the header, e.g. `"Romans 8:28-30"`.
     let citation: String
     let cards: [Card]
-    /// `true` distinguishes the empty-because-generating state from the
-    /// empty-because-nothing-yet state; only meaningful when `cards`
-    /// is empty.
+    /// `true` while a generation request is in flight.
+    ///
+    /// **Contract**: this flag is only consulted when `cards.isEmpty`.
+    /// When `cards` is non-empty the flag is silently a no-op — the
+    /// existing cards still render with no loading indicator. PR 3's
+    /// `AnnotationSheetViewModel` must therefore clear `cards` *first*
+    /// when the user taps Regenerate (so the spinner-state empty view
+    /// is visible), then write the freshly-produced rows once the
+    /// `bible.annotate` call returns.
     let isGenerating: Bool
     /// Extra bottom padding so the last card clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.

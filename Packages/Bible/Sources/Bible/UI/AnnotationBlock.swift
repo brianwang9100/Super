@@ -42,6 +42,12 @@ struct AnnotationBlock: View {
     let onDelete: () -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
 
+    /// Local gate for the destructive-delete confirmation dialog. The
+    /// kebab's "Delete this card" sets it true; the dialog's "Delete"
+    /// then fires `onDelete`. Per iOS HIG, non-reversible destructive
+    /// actions in menus get a confirmation step.
+    @State private var showDeleteConfirmation: Bool = false
+
     init(
         title: String,
         content: Content,
@@ -75,6 +81,16 @@ struct AnnotationBlock: View {
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(theme.borderFaint, lineWidth: 0.5)
         )
+        .confirmationDialog(
+            "Delete this annotation card?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete card", role: .destructive, action: onDelete)
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This card will be permanently removed.")
+        }
     }
 
     private var header: some View {
@@ -89,7 +105,7 @@ struct AnnotationBlock: View {
                 Button(action: onAddToChat) {
                     Label("Add to chat", systemImage: "paperplane")
                 }
-                Button(role: .destructive, action: onDelete) {
+                Button(role: .destructive, action: { showDeleteConfirmation = true }) {
                     Label("Delete this card", systemImage: "trash")
                 }
             } label: {
