@@ -401,13 +401,6 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Confirm a verse selection was handed to Chat: show a toast and
-    /// leave selection mode. Mirrors `copySelection()`'s cleanup.
-    public func confirmAddedToChat(citation: String) {
-        toast = "Added \(citation) to chat."
-        clearSelection()
-    }
-
     /// Stand-in for the still-deferred whole-chapter hand-off: the `+` nav
     /// button lands here, raising a "coming soon" toast. The action
     /// sheet's verse-selection chat rows now publish a real reference —
