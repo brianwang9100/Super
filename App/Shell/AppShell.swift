@@ -75,11 +75,10 @@ struct AppShell: View {
     @State private var viewModel: ChatScreenViewModel?
     /// App-session-lived inbox: subscribes to the `SuperEventBus` and
     /// buffers verse references handed in from Bible until a composer
-    /// drains them. Outlives the per-conversation `viewModel`.
-    /// Initialized in `init` so its bus subscription can be started
-    /// before the first body render — see the `Task { await
-    /// inbox.attach(to: bus) }` block at the end of `init`.
-    @State private var referenceInbox: ChatReferenceInbox
+    /// drains them. Outlives the per-conversation `viewModel`. Attached
+    /// to the bus from `ensureViewModel`'s `.task` — `attach(to:)` is
+    /// idempotent so the call is safe to repeat across identity changes.
+    @State private var referenceInbox = ChatReferenceInbox()
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
@@ -152,25 +151,15 @@ struct AppShell: View {
                 )
             }
         }())
-        // Subscribe the cross-applet reference inbox to the bus *during
-        // init*, not from `ensureViewModel`'s `.task`. The `.task`
-        // modifier fires after the first body render — and the Bible
-        // reader is mounted by `BackdropLayer` unconditionally on that
-        // first render, so a user tap on the action sheet's "Add to chat"
-        // between first frame and the `.task`'s first await can publish
-        // a `.recordAddedToChat` event into an empty subscriber list.
-        // `SuperEventBus` is fire-and-forget (no buffering), so an
-        // event without a subscriber is dropped silently — and with the
-        // toast removed there's no fallback feedback. Spawning the
-        // attach `Task` here narrows the race to the few microseconds
-        // between init returning and the unstructured Task scheduling
-        // its first actor hop; in practice that's well below human
-        // reaction time. `attach(to:)` is idempotent, so a second call
-        // from `ensureViewModel` is a no-op safety net.
-        let inbox = ChatReferenceInbox()
-        _referenceInbox = State(initialValue: inbox)
-        let bus = dependencies.eventBus
-        Task { await inbox.attach(to: bus) }
+        // The `referenceInbox` attaches to `SuperEventBus` from
+        // `ensureViewModel`'s `.task`. That `.task` fires within a
+        // runloop tick of first-render commit — orders of magnitude
+        // faster than the human reaction time needed to perceive the
+        // Bible reader, recognize a verse, tap it, see the action
+        // sheet, and tap "Add to chat". So no `recordAddedToChat`
+        // event can fire before the inbox subscribes in practice, and
+        // a one-shot init-side `Task` would only introduce ghost
+        // subscriptions on every parent re-render of `AppShell`.
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
