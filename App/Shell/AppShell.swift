@@ -76,7 +76,10 @@ struct AppShell: View {
     /// App-session-lived inbox: subscribes to the `SuperEventBus` and
     /// buffers verse references handed in from Bible until a composer
     /// drains them. Outlives the per-conversation `viewModel`.
-    @State private var referenceInbox = ChatReferenceInbox()
+    /// Initialized in `init` so its bus subscription can be started
+    /// before the first body render — see the `Task { await
+    /// inbox.attach(to: bus) }` block at the end of `init`.
+    @State private var referenceInbox: ChatReferenceInbox
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
@@ -149,6 +152,25 @@ struct AppShell: View {
                 )
             }
         }())
+        // Subscribe the cross-applet reference inbox to the bus *during
+        // init*, not from `ensureViewModel`'s `.task`. The `.task`
+        // modifier fires after the first body render — and the Bible
+        // reader is mounted by `BackdropLayer` unconditionally on that
+        // first render, so a user tap on the action sheet's "Add to chat"
+        // between first frame and the `.task`'s first await can publish
+        // a `.recordAddedToChat` event into an empty subscriber list.
+        // `SuperEventBus` is fire-and-forget (no buffering), so an
+        // event without a subscriber is dropped silently — and with the
+        // toast removed there's no fallback feedback. Spawning the
+        // attach `Task` here narrows the race to the few microseconds
+        // between init returning and the unstructured Task scheduling
+        // its first actor hop; in practice that's well below human
+        // reaction time. `attach(to:)` is idempotent, so a second call
+        // from `ensureViewModel` is a no-op safety net.
+        let inbox = ChatReferenceInbox()
+        _referenceInbox = State(initialValue: inbox)
+        let bus = dependencies.eventBus
+        Task { await inbox.attach(to: bus) }
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
@@ -296,16 +318,13 @@ struct AppShell: View {
             viewModel?.applyExternalVerbosity(newValue)
         }
         // Bible hand-off: a verse (or whole chapter) was published on
-        // the bus. Single observer for both shapes — add-to-existing
-        // and start-new — so the two paths can't race and double-
-        // animate the chrome. The handler reads `wantsNewConversation`
-        // to pick the path and routes both through
-        // `handleComposerAttention(isNewChat:)`, which owns the
-        // semi-expand-from-minimized + composer focus.
-        .onChange(of: referenceInbox.wantsComposerAttention) { _, wants in
-            guard wants, referenceInbox.consumeAttentionRequest() else { return }
-            let isNewChat = referenceInbox.consumeNewConversationRequest()
-            Task { await handleComposerAttention(isNewChat: isNewChat) }
+        // the bus. Single observable carrying both intents — request
+        // shape (`startNew`) and presence — so the two paths can't race
+        // and double-animate the chrome. `handleComposerAttention`
+        // owns the semi-expand-from-minimized + composer focus.
+        .onChange(of: referenceInbox.pendingAttention) { _, _ in
+            guard let request = referenceInbox.consumeAttention() else { return }
+            Task { await handleComposerAttention(isNewChat: request.startNew) }
         }
         // Owner-side keyboard dismissal: every minimize-like transition
         // clears the shell's `@FocusState` *directly*, rather than
@@ -728,7 +747,13 @@ struct AppShell: View {
     /// and breaks the overlay's spring layout. Logical completion is the
     /// signal that the field has reached its final frame and is safe to
     /// focus.
+    ///
+    /// Short-circuits when `chatState == target` so a sidebar "New Chat"
+    /// tapped while chat is already `.expanded` (the SuperOS cold-launch
+    /// default) doesn't pay for a no-op `withAnimation` round-trip plus
+    /// a `CheckedContinuation` allocation just to fall through.
     private func animateChatState(to target: ChatPresentationState) async {
+        guard chatState != target else { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             withAnimation(
                 SuperMotion.transition(reduceMotion: reduceMotion),

@@ -42,7 +42,7 @@ struct ChatReferenceInboxTests {
         )
 
         #expect(inbox.pending == [ref])
-        #expect(inbox.wantsNewConversation == false)
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: false))
     }
 
     @Test func drainPendingEmptiesTheInbox() async {
@@ -82,7 +82,7 @@ struct ChatReferenceInboxTests {
         #expect(inbox.drainPending() == [reference("a"), reference("b")])
     }
 
-    @Test func startNewConversationEventSetsAndClearsTheFlag() async {
+    @Test func startNewConversationEventCarriesStartNewIntent() async {
         let bus = SuperEventBus()
         let inbox = ChatReferenceInbox()
         await inbox.attach(to: bus)
@@ -92,18 +92,18 @@ struct ChatReferenceInboxTests {
             on: bus, inbox: inbox
         )
 
-        #expect(inbox.wantsNewConversation)
-        #expect(inbox.consumeNewConversationRequest())
-        #expect(inbox.wantsNewConversation == false)
-        #expect(inbox.consumeNewConversationRequest() == false)
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true))
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: true))
+        #expect(inbox.pendingAttention == nil)
+        #expect(inbox.consumeAttention() == nil)
     }
 
-    @Test func everyEventSetsAndClearsTheAttentionFlag() async {
-        // `wantsComposerAttention` fires regardless of
-        // `startNewConversation` — it's the single "Bible just handed a
-        // reference to chat" signal the shell observes to semi-expand
-        // the chat overlay and focus the composer. Both shapes set it;
-        // `consumeAttentionRequest()` is the read-and-clear path.
+    @Test func everyEventPopulatesPendingAttention() async {
+        // `pendingAttention` fires regardless of `startNewConversation` —
+        // it's the single "Bible just handed a reference to chat" signal
+        // the shell observes to semi-expand the overlay and focus the
+        // composer. The `startNew` field decides which dispatch path
+        // runs; `consumeAttention()` is the read-and-clear seam.
         let bus = SuperEventBus()
         let inbox = ChatReferenceInbox()
         await inbox.attach(to: bus)
@@ -112,17 +112,15 @@ struct ChatReferenceInboxTests {
             .recordAddedToChat(reference: reference("a"), startNewConversation: false),
             on: bus, inbox: inbox
         )
-        #expect(inbox.wantsComposerAttention)
-        #expect(inbox.consumeAttentionRequest())
-        #expect(inbox.wantsComposerAttention == false)
-        #expect(inbox.consumeAttentionRequest() == false)
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: false))
+        #expect(inbox.consumeAttention() == ComposerAttentionRequest(startNew: false))
+        #expect(inbox.pendingAttention == nil)
 
         await publishAndWait(
             .recordAddedToChat(reference: reference("b"), startNewConversation: true),
             on: bus, inbox: inbox
         )
-        #expect(inbox.wantsComposerAttention)
-        #expect(inbox.wantsNewConversation)
+        #expect(inbox.pendingAttention == ComposerAttentionRequest(startNew: true))
     }
 
     @Test func attachIsIdempotent() async {

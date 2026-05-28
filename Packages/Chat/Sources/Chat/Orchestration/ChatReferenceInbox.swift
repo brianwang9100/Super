@@ -1,6 +1,17 @@
 import Core
 import Observation
 
+/// Carries the shell's "Bible just handed a reference to chat" intent —
+/// the single observable signal `AppShell` reads to semi-expand the chat
+/// overlay from minimized and focus the composer. `startNew` decides
+/// whether the dispatch lands in a fresh conversation or the current one.
+public struct ComposerAttentionRequest: Sendable, Equatable {
+    public let startNew: Bool
+    public init(startNew: Bool) {
+        self.startNew = startNew
+    }
+}
+
 /// Applet-level holder for cross-applet record references handed to Chat
 /// (Bible verse ranges today). Lives for the whole app session — owned by
 /// the shell, not the per-conversation `ChatScreenViewModel` — so a
@@ -16,18 +27,13 @@ public final class ChatReferenceInbox {
     /// `ChatScreenViewModel` drains these via `drainPending()`.
     public private(set) var pending: [RecordReference] = []
 
-    /// Set when a `.recordAddedToChat(startNewConversation: true)` event
-    /// arrives. The shell observes this to start a fresh conversation,
-    /// then clears it via `consumeNewConversationRequest()`.
-    public private(set) var wantsNewConversation = false
-
-    /// Set on every `.recordAddedToChat` event regardless of
-    /// `startNewConversation`. The shell observes this as the single
-    /// "Bible just handed a reference to chat" signal and dispatches the
-    /// chrome change (semi-expand from minimized) plus composer focus.
-    /// Separate from ``wantsNewConversation`` so the new-chat case and
-    /// the add-to-existing case share one observer instead of racing.
-    public private(set) var wantsComposerAttention = false
+    /// The latest unconsumed composer-attention request from a Bible →
+    /// Chat hand-off, or `nil` if there's nothing to react to. The shell
+    /// observes this as a single signal and reads `startNew` to pick the
+    /// dispatch path; one observable replaces the prior two-flag /
+    /// two-consume dance and makes "attention is requested" + "new chat is
+    /// requested" a compile-checked invariant rather than a convention.
+    public private(set) var pendingAttention: ComposerAttentionRequest?
 
     private var subscriptionTask: Task<Void, Never>?
     /// One-shot callbacks fired after the next processed event — the
@@ -62,23 +68,17 @@ public final class ChatReferenceInbox {
         return pending
     }
 
-    /// Read and clear the new-conversation request flag.
-    public func consumeNewConversationRequest() -> Bool {
-        defer { wantsNewConversation = false }
-        return wantsNewConversation
-    }
-
-    /// Read and clear the composer-attention request flag.
-    public func consumeAttentionRequest() -> Bool {
-        defer { wantsComposerAttention = false }
-        return wantsComposerAttention
+    /// Read and clear the pending composer-attention request, returning
+    /// `nil` when there's nothing to act on.
+    public func consumeAttention() -> ComposerAttentionRequest? {
+        defer { pendingAttention = nil }
+        return pendingAttention
     }
 
     private func handle(_ event: SuperEvent) {
         if case .recordAddedToChat(let reference, let startNew) = event {
             pending.append(reference)
-            wantsComposerAttention = true
-            if startNew { wantsNewConversation = true }
+            pendingAttention = ComposerAttentionRequest(startNew: startNew)
         }
         let callbacks = eventCallbacks
         eventCallbacks.removeAll()
