@@ -785,7 +785,8 @@ struct AppShell: View {
     /// be a regression.
     private func handleComposerAttention(isNewChat: Bool) async {
         if isNewChat {
-            await startNewChat(targetChatState: .semiExpanded)
+            let target: ChatPresentationState = chatState == .expanded ? .expanded : .semiExpanded
+            await startNewChat(targetChatState: target)
             return
         }
         if chatState == .minimized {
