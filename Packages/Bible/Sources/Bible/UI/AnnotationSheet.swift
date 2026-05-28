@@ -1,0 +1,181 @@
+import Core
+import SwiftUI
+
+/// The bottom sheet that shows a target's annotation cards.
+///
+/// Anatomy (top to bottom):
+///
+/// - **Drag handle** — the standard 36×4 capsule reused by the
+///   translation + book sheets.
+/// - **Header** — the scripture citation (e.g. `"Romans 8:28-30"`) plus
+///   a small uppercase "Annotations" caption and a kebab-overflow menu
+///   carrying "Regenerate" and "Add all to chat".
+/// - **Body** — a vertical scroll of `AnnotationBlock` rows, or an
+///   empty/generating state when `cards.isEmpty`.
+///
+/// The sheet is stateless: it owns no GRDB-bound `@Query`, no view
+/// model, no event-bus publish. Its parent supplies the card payload
+/// and closes the eight callbacks. PR 3 wires the parent (an
+/// `AnnotationSheetViewModel`) into the live reactive query, the
+/// `bible.annotate` tool, the event bus, and the chapter navigator.
+struct AnnotationSheet: View {
+    @Environment(\.superTheme) private var theme
+
+    /// One card to render. The `body` carries the same shape
+    /// `AnnotationBlock` consumes; the parent does any markdown
+    /// pre-formatting / citation parsing before constructing the card.
+    struct Card: Sendable, Identifiable, Equatable {
+        let id: String
+        let title: String
+        let content: AnnotationBlock.Content
+        let provenance: String
+
+        init(id: String, title: String, content: AnnotationBlock.Content, provenance: String) {
+            self.id = id
+            self.title = title
+            self.content = content
+            self.provenance = provenance
+        }
+    }
+
+    /// Display citation in the header, e.g. `"Romans 8:28-30"`.
+    let citation: String
+    let cards: [Card]
+    /// `true` distinguishes the empty-because-generating state from the
+    /// empty-because-nothing-yet state; only meaningful when `cards`
+    /// is empty.
+    let isGenerating: Bool
+    /// Extra bottom padding so the last card clears the shell's
+    /// minimized chat pill; `0` in standalone (snapshot) contexts.
+    let bottomInset: CGFloat
+    let onRegenerate: () -> Void
+    let onAddAllToChat: () -> Void
+    let onClose: () -> Void
+    let onCardAddToChat: (Card.ID) -> Void
+    let onCardDelete: (Card.ID) -> Void
+    let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
+
+    init(
+        citation: String,
+        cards: [Card],
+        isGenerating: Bool = false,
+        bottomInset: CGFloat = 0,
+        onRegenerate: @escaping () -> Void,
+        onAddAllToChat: @escaping () -> Void,
+        onClose: @escaping () -> Void,
+        onCardAddToChat: @escaping (Card.ID) -> Void,
+        onCardDelete: @escaping (Card.ID) -> Void,
+        onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void
+    ) {
+        self.citation = citation
+        self.cards = cards
+        self.isGenerating = isGenerating
+        self.bottomInset = bottomInset
+        self.onRegenerate = onRegenerate
+        self.onAddAllToChat = onAddAllToChat
+        self.onClose = onClose
+        self.onCardAddToChat = onCardAddToChat
+        self.onCardDelete = onCardDelete
+        self.onOpenReference = onOpenReference
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            grabber
+            header
+            Rectangle()
+                .fill(theme.borderFaint)
+                .frame(height: 0.5)
+            cardList
+        }
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
+                .fill(theme.background)
+                .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private var grabber: some View {
+        Capsule()
+            .fill(theme.inkFaint)
+            .frame(width: 36, height: 4)
+            .opacity(0.6)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .accessibilityHidden(true)
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(citation)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(theme.ink)
+            Text("ANNOTATIONS")
+                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                .tracking(0.6)
+                .foregroundStyle(theme.inkFaint)
+            Spacer()
+            Menu {
+                Button(action: onRegenerate) {
+                    Label("Regenerate", systemImage: "arrow.clockwise")
+                }
+                Button(action: onAddAllToChat) {
+                    Label("Add all to chat", systemImage: "paperplane")
+                }
+                Button("Close", role: .cancel, action: onClose)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(theme.inkSoft)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(theme.backgroundSunken))
+                    .contentShape(Circle())
+            }
+            .menuStyle(.borderlessButton)
+            .accessibilityLabel("Sheet actions")
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private var cardList: some View {
+        if cards.isEmpty {
+            emptyState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    ForEach(cards) { card in
+                        AnnotationBlock(
+                            title: card.title,
+                            content: card.content,
+                            provenance: card.provenance,
+                            onAddToChat: { onCardAddToChat(card.id) },
+                            onDelete: { onCardDelete(card.id) },
+                            onOpenReference: onOpenReference
+                        )
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 24 + bottomInset)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            AnnotationBubble(state: isGenerating ? .generating : .empty, size: 28)
+            Text(isGenerating
+                 ? "Generating annotations…"
+                 : "No annotations yet. Tap to generate.")
+                .font(.system(size: 14))
+                .foregroundStyle(theme.inkSoft)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 220)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 40)
+    }
+}
