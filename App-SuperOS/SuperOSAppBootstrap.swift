@@ -125,6 +125,22 @@ enum SuperOSAppBootstrap {
         await toolRegistry.register(TimeNowTool.registration())
         await toolRegistry.register(MemoryTool.registration(repository: memoryRepository))
 
+        // Construct Bible up-front for two downstream wirings:
+        //   1. `registerAnnotationTool(in:)` here so `bible.annotate` is
+        //      registered against the shared `ToolRegistry`. The applet
+        //      owns `bible.sqlite` (opened inside `BibleApplet.init`), so
+        //      tool registration funnels through this helper rather than
+        //      the bootstrap building the repository directly. No-op when
+        //      the database failed to open.
+        //   2. `attach(to:)` below, once the shared `SuperEventBus` exists,
+        //      so the applet's `BibleReferenceInbox` receives Chat-side
+        //      verse-citation taps. Struct copies share the same inbox
+        //      reference (it's a class), so attaching the locally-held
+        //      value before the struct is moved into `AppletRegistry` is
+        //      sufficient for every copy.
+        let bibleApplet = BibleApplet()
+        await bibleApplet.registerAnnotationTool(in: toolRegistry)
+
         // Best-effort: seed an AFM row for fresh installs so Chat opens
         // onto a usable provider. Skipped on ineligible devices and
         // pre-populated DBs; errors swallowed so a transient SQLite
@@ -191,13 +207,10 @@ enum SuperOSAppBootstrap {
         // system block sent to the Large Language Model (LLM) on every
         // chat turn — those two surfaces would otherwise drift if a
         // future PR registered an applet in only one place.
-        //
-        // BibleApplet is captured into a local first so we can wire its
-        // event-bus subscriber to the shared `SuperEventBus` below.
-        // Struct copies share the same `BibleReferenceInbox` reference,
-        // so attaching here lights up the inbox for every copy that
-        // ends up in the `AppletRegistry`.
-        let bibleApplet = BibleApplet()
+        // (`bibleApplet` is constructed earlier so it can register the
+        // `bible.annotate` tool with the shared registry; the local is
+        // reused here for the registry slot and again below for
+        // `attach(to: eventBus)`.)
         let applets: [any MiniApplet] = [
             // Order is load-bearing: the first applet is the cold-start
             // default on a fresh install (no `activeAppletStorageKey`

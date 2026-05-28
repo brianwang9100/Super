@@ -55,4 +55,38 @@ struct BibleDatabaseTests {
             try database.queue.write { db in try row("b").insert(db) }
         }
     }
+
+    @Test("v3 creates the annotation table with its columns")
+    func v3CreatesAnnotationSchema() throws {
+        let database = try BibleDatabase.makeInMemory()
+        let columns = try database.queue.read { db in
+            try db.columns(in: "bibleAnnotation").map(\.name)
+        }
+        #expect(Set(columns) == [
+            "id", "target", "bookId", "chapterNumber",
+            "verseStart", "verseEnd", "kind", "title",
+            "body", "source", "modelId", "createdAt",
+        ])
+    }
+
+    @Test("v3 indexes the annotation table for chapter and book lookups")
+    func v3CreatesAnnotationIndexes() throws {
+        let database = try BibleDatabase.makeInMemory()
+        let indexes = try database.queue.read { db in
+            try db.indexes(on: "bibleAnnotation")
+        }
+        // The chapter-positioning index drives the reader's `@Query` and
+        // groups bubbles by `verseEnd`. The target+book index drives the
+        // book-picker's `BookAnnotationsExistenceRequest`. Neither is
+        // UNIQUE — the table allows multiple rows per target group, with
+        // ordering enforced by `(createdAt, id)` rather than the schema.
+        #expect(indexes.contains {
+            $0.name == "bibleAnnotation_on_bookId_chapterNumber_verseEnd"
+                && $0.isUnique == false
+        })
+        #expect(indexes.contains {
+            $0.name == "bibleAnnotation_on_target_bookId"
+                && $0.isUnique == false
+        })
+    }
 }

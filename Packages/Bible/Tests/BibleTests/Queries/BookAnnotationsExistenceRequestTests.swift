@@ -1,0 +1,95 @@
+import Foundation
+import GRDB
+import Testing
+@testable import Bible
+
+/// Tests for `BookAnnotationsExistenceRequest` — the book-picker bubble
+/// visibility request returning the set of `bookId`s with any annotation
+/// rows.
+@Suite("BookAnnotationsExistenceRequest")
+struct BookAnnotationsExistenceRequestTests {
+    private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func makeFixture() throws -> (GRDBBibleAnnotationRepository, BibleDatabase) {
+        let database = try BibleDatabase.makeInMemory()
+        return (GRDBBibleAnnotationRepository(database: database), database)
+    }
+
+    private func fetch(_ database: BibleDatabase) throws -> Set<String> {
+        try database.queue.read { db in
+            try BookAnnotationsExistenceRequest().fetch(db)
+        }
+    }
+
+    @Test("empty database yields the empty set")
+    func emptyDatabase() throws {
+        let (_, database) = try makeFixture()
+        #expect(try fetch(database).isEmpty)
+    }
+
+    @Test("any annotation row makes its book appear in the set")
+    func anyAnnotationCountsTheBook() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "a", target: .verse, bookId: "ROM",
+                    chapterNumber: 8, verseStart: 28, verseEnd: 30,
+                    kind: .text, title: "T", body: ".",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        #expect(try fetch(database) == ["ROM"])
+    }
+
+    @Test("multiple rows in one book yield a single set entry")
+    func deduplicatedAcrossRows() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "a", target: .verse, bookId: "ROM",
+                    chapterNumber: 8, verseStart: 28, verseEnd: 30,
+                    kind: .text, title: "T", body: ".",
+                    source: .user, modelId: "m", createdAt: t0
+                ),
+                BibleAnnotationRecord(
+                    id: "b", target: .verse, bookId: "ROM",
+                    chapterNumber: 8, verseStart: 28, verseEnd: 30,
+                    kind: .text, title: "U", body: ".",
+                    source: .user, modelId: "m", createdAt: t0
+                ),
+            ]
+        )
+        #expect(try fetch(database) == ["ROM"])
+    }
+
+    @Test("rows in different books yield the full set")
+    func multipleBooks() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .book, bookId: "GEN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "g", target: .book, bookId: "GEN",
+                    kind: .text, title: "Prologue", body: "In the beginning.",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        try await repository.replace(
+            target: .chapter, bookId: "JHN", chapterNumber: 3, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "j", target: .chapter, bookId: "JHN", chapterNumber: 3,
+                    kind: .text, title: "Summary", body: "Nicodemus.",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        #expect(try fetch(database) == ["GEN", "JHN"])
+    }
+}

@@ -15,6 +15,7 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/groue/GRDBQuery.git", from: "0.10.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
+        .package(url: "https://github.com/groue/GRDBSnapshotTesting.git", from: "0.3.0"),
     ],
     targets: [
         .target(
@@ -41,12 +42,14 @@ let package = Package(
             dependencies: [
                 "Bible",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+                .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],
             // Snapshot baselines are read from the source tree at test time
             // via `#filePath`, not the bundle — exclude them from resource
             // processing.
             exclude: [
                 "UI/Snapshots/__Snapshots__",
+                "Database/__Snapshots__",
             ],
             // `Fixtures/WEB-BAD.json` is a deliberately malformed resource
             // the loader's malformed-resource test reads via the test bundle.
