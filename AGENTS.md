@@ -48,6 +48,7 @@ Follow the Swift book — [Functions chapter](https://docs.swift.org/swift-book/
 - **No `-> Void`.** Leave it implicit.
 - **Tuples for 2–3 related returns** with named members; reach for a struct beyond that. Optional tuples (`(min: Int, max: Int)?`) when the whole tuple may be absent.
 - **Typed errors.** Throwing APIs throw a `Sendable` enum defined alongside the API (see `LLMProviderRegistryError`, `ToolRegistryError`) — not `NSError` or strings. Order keywords as `async throws`.
+- **Variadic (`T...`).** The parameter immediately after a variadic must carry an argument label — the compiler requires it to disambiguate calls.
 - **`inout` is rare** — prefer returning a new value. The book covers the constraints when you do need it.
 
 ## Source-file documentation
@@ -141,7 +142,7 @@ Async tests establish ordering through `await`, not through hope. Most "flaky" t
 - **New code paths** → unit tests with mocked dependencies.
 - **New GRDB schema or query** → integration test against an in-memory `DatabaseQueue` + `GRDBSnapshotTesting` where schema shape matters.
 - **New cross-applet event or tool call** → test that publishes/subscribes through a real in-memory `SuperEventBus`.
-- **New or changed SwiftUI view** → **snapshot test required.** Use `pointfreeco/swift-snapshot-testing`. Cover the view's key states (empty, loading, populated, error) and the variants that matter for Super: light + dark mode, at minimum one larger Dynamic Type size, and Reduce Motion where animation is involved. Any applet-level layout (iPhone tab view, iPad/Mac split view) needs a snapshot per form factor. Only rerecord snapshots when the visual change is intentional — never rerecord to "make the test pass."
+- **New or changed SwiftUI view** → **snapshot test required.** Use `pointfreeco/swift-snapshot-testing`. Cover the view's key states (empty, loading, populated, error) across the **light / dark / sepia × default Dynamic Type** matrix at minimum, plus Dynamic Type XXL for any view with text reflow, plus Reduce Motion where animation is involved. Any applet-level layout (iPhone tab view, iPad/Mac split view) needs a snapshot per form factor. Only rerecord snapshots when the visual change is intentional — never rerecord to "make the test pass."
 - **Bug fix** → a regression test that **fails before the fix** and passes after. If you can't write one, explain why in the PR description.
 - **No reducing coverage thresholds.** Core ≥80%, applets ≥70%, server ≥80%. Add tests, not exceptions.
 
