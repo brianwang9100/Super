@@ -16,7 +16,7 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 
 ## Chat-specific rules
 
-Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (no cross-applet imports, GRDB-only persistence, GRDB naming, snapshot matrix + Xcode pin, coverage target ≥70%). Chat-specific additions:
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Chat-specific additions:
 
 - **Streaming-text persistence**: write the final `MessageRecord` only on `.messageComplete` (per ADR-BB-003 in `docs/Chat/ARCHITECTURE.md`). Do not persist intermediate buffer state.
 - **LLM tests must mock `LLMProvider`.** Never hit a real LLM endpoint (OpenAI, local MLX, Ollama, anything).

@@ -13,7 +13,7 @@ The Todo applet: local task list with priorities, labels, and (eventually) a lon
 
 ## Todo-specific rules
 
-Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (no cross-applet imports, GRDB-only persistence, GRDB naming, snapshot matrix + Xcode pin, coverage target ≥70%). Todo-specific additions:
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Todo-specific additions:
 
 - **Schema is sync-ready.** Every persistable row carries `createdAt`, `updatedAt`, `deletedAt?` per `docs/SYNC.md` §6.2. Sync itself is deferred, but the schema must not need a follow-up migration to enable it.
 

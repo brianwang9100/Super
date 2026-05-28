@@ -17,8 +17,9 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 
 ## Bible-specific rules
 
-Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (no cross-applet imports, GRDB-only persistence, GRDB naming, record/view-model/repository patterns, side-effect injection, snapshot test matrix + Xcode pin, coverage target ≥70%). Bible-specific additions:
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Bible-specific additions:
 
+- **Record / view-model / repository shape.** Records add `Equatable, Identifiable` on top of root's four protocols (for `ForEach` diffing and test equality). View models named `*ScreenViewModel` / `*SheetViewModel`. Repositories are a protocol seam + `GRDB`-prefixed concrete impl.
 - **Cross-applet hand-off uses generic `RecordReference`.** The action sheet's "Add to chat" / "New chat" rows publish on Core's `SuperEventBus` (`BibleScreen.addSelectionToChat`); Chat consumes it. Never reach into Chat types directly.
 - **`+` whole-chapter hand-off is still deferred.** The action sheet's verse-selection chat rows are live, but the `+` nav button's whole-chapter hand-off remains a "coming soon" toast (`presentChatComingSoon`) — a whole-chapter snapshot would be unbounded. (The floating "Ask about this chapter…" bubble was dropped — it duplicated the shell's chat composer.)
 - **Reactive vs. imperative reads — split by data source.** Chapter *text* is a bundled static resource and reading position is single-writer (only the Bible screen writes it): both stay imperative `@Observable` view model loads — do not reactive-ify them. *Decorations* — highlights, saved verses, reading-plan progress — get written from outside the chapter on screen (a detail sheet, a highlights list, and later Chat via an event-bus projection into `bible.sqlite`), so the chapter renderer **must** bind those through GRDBQuery `@Query` over the decoration tables, layered over the static text.

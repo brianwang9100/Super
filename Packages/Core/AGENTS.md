@@ -12,9 +12,11 @@ Shared primitives consumed by every applet. No applet may import another applet 
 
 ## Core-specific rules
 
-Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules (Sendable + strict concurrency, structs-for-data / actors-for-identity, side-effect injection, coverage target ≥80%). Core-specific additions:
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Core-specific additions:
 
 - **No GRDB dependency.** Persistence (records, repositories, migrations) is each applet's concern; Core stays platform/persistence-neutral.
 - **No applet-specific code.** Anything tied to a single applet's domain (Chat orchestration, Bible verse lookup, Todo task model) belongs in that applet's package, not here.
+
+## Tests
 
 Tests live in `Tests/CoreTests/` mirroring the source layout.
