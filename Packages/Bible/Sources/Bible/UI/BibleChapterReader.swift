@@ -252,7 +252,7 @@ struct BibleChapterReader: View {
     /// not re-scroll, otherwise the chapter jolts under the user. Factored
     /// out as a pure predicate so a unit test can cover the three branches
     /// without standing up a SwiftUI host.
-    static func sheetTransition(oldInset: CGFloat, newInset: CGFloat) -> SheetTransition? {
+    static func sheetTransition(oldInset: CGFloat, newInset: CGFloat) -> BibleSheetTransition? {
         if oldInset == 0, newInset > 0 { return .appearing }
         if oldInset > 0, newInset == 0 { return .dismissing }
         return nil
@@ -264,7 +264,7 @@ struct BibleChapterReader: View {
 /// restore the user to their pre-sheet anchor (`.dismissing`). A `nil`
 /// return from `BibleChapterReader.sheetTransition(…)` means the inset
 /// changed but neither edge was crossed, and no scroll should fire.
-enum SheetTransition {
+enum BibleSheetTransition {
     case appearing
     case dismissing
 }
