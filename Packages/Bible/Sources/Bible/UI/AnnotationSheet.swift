@@ -61,17 +61,21 @@ struct AnnotationSheet: View {
     let onCardDelete: (Card.ID) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
 
+    /// Parameters without defaults come first, per the root AGENTS.md
+    /// "Default parameter values" rule — the required content and
+    /// callback set up front, the optional `isGenerating` /
+    /// `bottomInset` last.
     init(
         citation: String,
         cards: [Card],
-        isGenerating: Bool = false,
-        bottomInset: CGFloat = 0,
         onRegenerate: @escaping () -> Void,
         onAddAllToChat: @escaping () -> Void,
         onClose: @escaping () -> Void,
         onCardAddToChat: @escaping (Card.ID) -> Void,
         onCardDelete: @escaping (Card.ID) -> Void,
-        onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void
+        onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
+        isGenerating: Bool = false,
+        bottomInset: CGFloat = 0
     ) {
         self.citation = citation
         self.cards = cards

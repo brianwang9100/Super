@@ -160,14 +160,14 @@ struct AnnotationSheetSnapshotTests {
             AnnotationSheet(
                 citation: Self.citation,
                 cards: cards,
-                isGenerating: isGenerating,
-                bottomInset: 0,
                 onRegenerate: {},
                 onAddAllToChat: {},
                 onClose: {},
                 onCardAddToChat: { _ in },
                 onCardDelete: { _ in },
-                onOpenReference: { _ in }
+                onOpenReference: { _ in },
+                isGenerating: isGenerating,
+                bottomInset: 0
             )
         }
         .frame(width: 393, height: height)

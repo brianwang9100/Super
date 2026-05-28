@@ -41,7 +41,7 @@ struct AnnotationDisclaimerSheetSnapshotTests {
         let theme = SuperTheme.make(themeID)
         let view = ZStack(alignment: .bottom) {
             theme.background
-            AnnotationDisclaimerSheet(bottomInset: 0, onGotIt: {})
+            AnnotationDisclaimerSheet(onGotIt: {}, bottomInset: 0)
         }
         .frame(width: 393, height: height)
         .superTheme(theme)

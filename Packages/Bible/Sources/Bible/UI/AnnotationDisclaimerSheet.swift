@@ -21,7 +21,9 @@ struct AnnotationDisclaimerSheet: View {
     let bottomInset: CGFloat
     let onGotIt: () -> Void
 
-    init(bottomInset: CGFloat = 0, onGotIt: @escaping () -> Void) {
+    /// Required `onGotIt` first, optional `bottomInset` last, per the
+    /// root AGENTS.md "Default parameter values" rule.
+    init(onGotIt: @escaping () -> Void, bottomInset: CGFloat = 0) {
         self.bottomInset = bottomInset
         self.onGotIt = onGotIt
     }
