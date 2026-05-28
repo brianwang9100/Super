@@ -60,13 +60,13 @@ struct BibleActionSheetSnapshotTests {
                 onClose: {}
             )
         }
-        .frame(width: 402, height: 220)
+        .frame(width: 402, height: 260)
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 220)),
+            as: .image(layout: .fixed(width: 402, height: 260)),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
