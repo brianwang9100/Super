@@ -15,21 +15,16 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 - **ViewModels** (`ViewModels/`): `@Observable @MainActor` view models, one per screen or sheet.
 - **UI** (`UI/`): SwiftUI views. **Before naming a new view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).** Drop the `View` suffix, one struct per file, bucket suffix per the doc (`*Screen`, `*Sheet`, `*Bar`, `*Block`, `*Toast`, `*Bubble`, `*Footer`); composed strips inside the screen are Regions with a bare role name. `VerseFlowLayout` is the custom `Layout` that reflows tappable verse words. `BibleChapterReader` (a Region) owns the highlight `@Query`; `BibleScreen` injects the `DatabaseContext` and gives the reader a fresh identity per chapter so the constant request always matches the on-screen position. `BibleSheetMotion` resolves the Reduce Motion setting into the sheet animation + transition.
 
-## Rules
+## Bible-specific rules
 
-- **Do not import other applets.** Cross-applet communication runs through Core. The action sheet's "Add to chat" / "New chat" rows publish a generic `RecordReference` on Core's `SuperEventBus` (`BibleScreen.addSelectionToChat`); the Chat applet consumes it. Never reach into Chat types directly.
+Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Bible-specific additions:
+
+- **Record / view-model / repository shape.** Records add `Equatable, Identifiable` on top of root's four protocols (for `ForEach` diffing and test equality). View models named `*ScreenViewModel` / `*SheetViewModel`. Repositories are a protocol seam + `GRDB`-prefixed concrete impl.
+- **Cross-applet hand-off uses generic `RecordReference`.** The action sheet's "Add to chat" / "New chat" rows publish on Core's `SuperEventBus` (`BibleScreen.addSelectionToChat`); Chat consumes it. Never reach into Chat types directly.
 - **`+` whole-chapter hand-off is still deferred.** The action sheet's verse-selection chat rows are live, but the `+` nav button's whole-chapter hand-off remains a "coming soon" toast (`presentChatComingSoon`) — a whole-chapter snapshot would be unbounded. (The floating "Ask about this chapter…" bubble was dropped — it duplicated the shell's chat composer.)
-- **Persistence is GRDB only** when it lands (M2+). No SwiftData / Core Data.
-- **GRDB naming**: `camelCase` Swift property names = `camelCase` columns. Foreign keys are `<referencedTableSingular>Id`. Primary key is `id` (String UUID). Indexes follow `<tableName>_on_<column>[_<column>]`. See [`docs/NAMING_CONVENTIONS.md` Part 5](../../docs/NAMING_CONVENTIONS.md#part-5--persistence-schema).
-- **Records** are `struct` + `Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable`.
-- **View models** are `@Observable @MainActor final class`, named `*ScreenViewModel` / `*SheetViewModel`.
-- **Repositories** are protocol-typed at the seam, `GRDB`-prefixed concrete impls.
-- **Inject side effects.** Clocks, ID generators, and any future network paths come through Core's protocols. No `Date()` / `UUID()` in testable logic.
-- **Reactive vs. imperative reads — split by data source.** Chapter *text* is a bundled static resource and reading position is single-writer (only the Bible screen writes it): both stay imperative `@Observable` view model loads — do not reactive-ify them. *Decorations* — highlights, saved verses, reading-plan progress — get written from outside the chapter on screen (a detail sheet, a highlights list, and later Chat via an event-bus projection into `bible.sqlite`), so the chapter renderer **must** bind those through GRDBQuery `@Query` over the decoration tables, layered over the static text. See root AGENTS.md §Persistence for the full rule.
-- **Snapshot tests** land in the same PR as the view they cover. Per root AGENTS.md §Testing.2: light/dark/sepia × default/Dynamic Type XXL for any view-level change, recorded against CI's Xcode 26.4.1 + iOS 26.4 + iPhone 17 pin.
+- **Reactive vs. imperative reads — split by data source.** Chapter *text* is a bundled static resource and reading position is single-writer (only the Bible screen writes it): both stay imperative `@Observable` view model loads — do not reactive-ify them. *Decorations* — highlights, saved verses, reading-plan progress — get written from outside the chapter on screen (a detail sheet, a highlights list, and later Chat via an event-bus projection into `bible.sqlite`), so the chapter renderer **must** bind those through GRDBQuery `@Query` over the decoration tables, layered over the static text.
 - **Accessibility.** Every interactive element carries an `accessibilityLabel`; verse spans coalesce to one VoiceOver element per verse (the first word labels the whole verse, the rest are `accessibilityHidden`). Sheet presentation honours Reduce Motion via `BibleSheetMotion`.
-- **Coverage target ≥70%** per root AGENTS.md.
 
 ## Tests
 
-`swift test` from `Packages/Bible/` must be green before any PR opens. Snapshot fixtures live in `Tests/BibleTests/UI/Snapshots/__Snapshots__/`.
+Snapshot fixtures live in `Tests/BibleTests/UI/Snapshots/__Snapshots__/`.
