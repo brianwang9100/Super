@@ -35,7 +35,7 @@ public struct ChatsScreen: View {
     private var eventBus: SuperEventBus? { injectedEventBus ?? environmentEventBus }
     @Environment(\.superTheme) private var theme
     @Environment(\.superFontScale) private var fontScale
-    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 30
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 36
     @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 11
     @ScaledMetric(relativeTo: .subheadline) private var searchInputSize: CGFloat = 14
 

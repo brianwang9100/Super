@@ -13,6 +13,8 @@ import Testing
 @Suite("TodoEmptyState snapshots", .serialized)
 @MainActor
 struct TodoEmptyStateSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("light theme") func light() {
         verify(theme: .light, name: "empty_light")
     }

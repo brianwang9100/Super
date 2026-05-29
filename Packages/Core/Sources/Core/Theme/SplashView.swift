@@ -18,6 +18,7 @@ public struct SplashView: View {
     private let version: String
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var pulse: Bool
@@ -68,7 +69,9 @@ public struct SplashView: View {
                 .stroke(theme.accentDark, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
                 .frame(width: 44, height: 44)
             Text(name)
-                .font(.custom("InstrumentSerif-Italic", size: 38))
+                // Fixed size — the splash wordmark deliberately ignores
+                // Dynamic Type per SPEC, so `relativeTo: nil`.
+                .font(typography.display(38, relativeTo: nil))
                 .foregroundStyle(theme.ink)
                 .tracking(-0.57)
         }
@@ -98,7 +101,7 @@ public struct SplashView: View {
                     value: pulse
                 )
             Text("V \(version) · EST. MMXXV")
-                .font(.custom("JetBrainsMono-Regular", size: 10.5))
+                .font(typography.mono(10.5, relativeTo: nil))
                 .tracking(1.4)
                 .foregroundStyle(theme.inkFaint)
         }
