@@ -46,6 +46,11 @@ public struct BibleApplet: MiniApplet {
     /// a no-op so the rest of the reader still loads.
     private let annotationRepository: (any BibleAnnotationRepository)?
 
+    /// Write seam for the `bible.note` tool. `nil` when the database failed
+    /// to open at init; `registerNoteTool(in:)` then becomes a no-op so the
+    /// rest of the reader still loads.
+    private let noteRepository: (any BibleNoteRepository)?
+
     /// Production entry point — bundled text plus an on-disk store under
     /// Application Support for the reading position and verse highlights.
     ///
@@ -62,6 +67,7 @@ public struct BibleApplet: MiniApplet {
             DatabaseContext.readOnly { db.queue }
         }
         self.annotationRepository = database.map { GRDBBibleAnnotationRepository(database: $0) }
+        self.noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -86,12 +92,14 @@ public struct BibleApplet: MiniApplet {
     init(
         viewModel: BibleScreenViewModel,
         databaseContext: DatabaseContext? = nil,
-        annotationRepository: (any BibleAnnotationRepository)? = nil
+        annotationRepository: (any BibleAnnotationRepository)? = nil,
+        noteRepository: (any BibleNoteRepository)? = nil
     ) {
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
         self.databaseContext = databaseContext
         self.annotationRepository = annotationRepository
+        self.noteRepository = noteRepository
     }
 
     /// Register the `bible.annotate` tool with the given registry, using
@@ -113,6 +121,30 @@ public struct BibleApplet: MiniApplet {
         await registry.register(
             AnnotateBibleTool.registration(
                 repository: annotationRepository,
+                clock: clock,
+                ids: ids,
+                stampProvider: stampProvider
+            )
+        )
+    }
+
+    /// Register the `bible.note` tool with the given registry, using this
+    /// applet's local database. No-op if the database failed to open at init.
+    ///
+    /// Called from each app's bootstrap alongside `registerAnnotationTool`,
+    /// so the assistant can create / edit / delete notes during a chat turn.
+    /// Tool ownership stays with the applet so the Bible-internal
+    /// `BibleDatabase` + repository never leak into the composition root.
+    public func registerNoteTool(
+        in registry: ToolRegistry,
+        clock: any Clock = SystemClock(),
+        ids: any IDGenerator = UUIDGenerator(),
+        stampProvider: any BibleNoteStampProvider = DefaultBibleNoteStampProvider()
+    ) async {
+        guard let noteRepository else { return }
+        await registry.register(
+            NoteBibleTool.registration(
+                repository: noteRepository,
                 clock: clock,
                 ids: ids,
                 stampProvider: stampProvider
