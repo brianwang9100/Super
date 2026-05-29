@@ -1,4 +1,5 @@
 import Core
+import GRDBQuery
 import SwiftUI
 
 /// The book picker: a bottom-aligned sheet listing every book. The expanded
@@ -6,6 +7,14 @@ import SwiftUI
 /// and closes the sheet. A search field filters by name and a toggle switches
 /// between traditional (Genesis → Revelation, grouped by testament) and
 /// alphabetical order.
+///
+/// Annotation bubbles sit next to each book name. The bubble is `.filled`
+/// when the book has at least one annotation row (any target level), and
+/// `.empty` otherwise — per spec §5, the book picker is one of the two
+/// surfaces that paint empty bubbles to invite generation. The
+/// existence-set comes from a reactive `@Query` so writes from other
+/// surfaces (chat tool calls, the chapter reader's regenerate path)
+/// repaint the picker without intervention.
 struct BibleBookSheet: View {
     @Environment(\.superTheme) private var theme
     @Bindable var viewModel: BibleBookSheetViewModel
@@ -25,6 +34,20 @@ struct BibleBookSheet: View {
     let bottomInset: CGFloat
     let onSelectChapter: (_ bookId: String, _ chapterNumber: Int) -> Void
     let onClose: () -> Void
+    /// Tap on a filled bubble — present the annotation sheet for the
+    /// `.book(bookId)` target.
+    let onPresentBookAnnotations: (_ bookId: String) -> Void
+    /// Tap on an empty bubble — start a generation intent for the
+    /// `.book(bookId)` target (which the view model routes through its
+    /// disclaimer gate).
+    let onRequestBookAnnotations: (_ bookId: String) -> Void
+
+    /// Books with at least one annotation row at any target level. Used
+    /// to switch each bubble between `.filled` and `.empty` per book. An
+    /// empty set means *no* books have rows; the entire picker shows
+    /// empty bubbles. The default-value-on-failure `[]` matches that —
+    /// failing safe to "no annotations" never misleads the user.
+    @Query<BookAnnotationsExistenceRequest> private var booksWithAnnotations: Set<String>
 
     // Font sizes and the chapter cell height are carried as scaled metrics
     // so the picker tracks Dynamic Type — the design's fixed point sizes,
@@ -36,6 +59,31 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .caption) private var countSize: CGFloat = 11
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
+    @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 16
+
+    /// Required content + callbacks come first per the AGENTS.md
+    /// "Default parameter values" rule; the lone `bottomInset` default
+    /// stays trailing.
+    init(
+        viewModel: BibleBookSheetViewModel,
+        currentBookId: String,
+        currentChapterNumber: Int,
+        onSelectChapter: @escaping (_ bookId: String, _ chapterNumber: Int) -> Void,
+        onClose: @escaping () -> Void,
+        onPresentBookAnnotations: @escaping (_ bookId: String) -> Void,
+        onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
+        bottomInset: CGFloat = 0
+    ) {
+        self.viewModel = viewModel
+        self.currentBookId = currentBookId
+        self.currentChapterNumber = currentChapterNumber
+        self.onSelectChapter = onSelectChapter
+        self.onClose = onClose
+        self.onPresentBookAnnotations = onPresentBookAnnotations
+        self.onRequestBookAnnotations = onRequestBookAnnotations
+        self.bottomInset = bottomInset
+        self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -187,31 +235,63 @@ struct BibleBookSheet: View {
     private func bookRow(_ book: BibleBookSummary) -> some View {
         let isExpanded = viewModel.expandedBookId == book.id
         let isCurrent = book.id == currentBookId
+        let hasAnnotations = booksWithAnnotations.contains(book.id)
 
         VStack(alignment: .leading, spacing: 0) {
-            Button {
-                viewModel.toggleExpansion(bookId: book.id)
-            } label: {
-                HStack {
-                    Text(book.name)
-                        .font(.system(size: bookNameSize, weight: isCurrent ? .medium : .regular))
-                        .foregroundStyle(theme.ink)
-                    Spacer()
-                    Text("\(book.chapterCount)")
-                        .font(.system(size: countSize, design: .monospaced))
-                        .foregroundStyle(theme.inkFaint)
+            // Row layout: a tappable name area (expansion toggle) flush
+            // left, an annotation bubble carved out as its own tap target,
+            // and the chapter count flush right. Splitting the bubble out
+            // of the expansion button keeps the two intents independent —
+            // tapping the bubble never expands the book and vice versa.
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.toggleExpansion(bookId: book.id)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(book.name)
+                            .font(.system(size: bookNameSize, weight: isCurrent ? .medium : .regular))
+                            .foregroundStyle(theme.ink)
+                        Spacer(minLength: 4)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                annotationBubble(for: book.id, isFilled: hasAnnotations)
+
+                Text("\(book.chapterCount)")
+                    .font(.system(size: countSize, design: .monospaced))
+                    .foregroundStyle(theme.inkFaint)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
 
             if isExpanded {
                 chapterGrid(for: book)
             }
         }
         .id(Self.bookRowID(book.id))
+    }
+
+    private func annotationBubble(for bookId: String, isFilled: Bool) -> some View {
+        Button {
+            if isFilled {
+                onPresentBookAnnotations(bookId)
+            } else {
+                onRequestBookAnnotations(bookId)
+            }
+        } label: {
+            AnnotationBubble(
+                state: isFilled ? .filled : .empty,
+                size: bubbleSize
+            )
+            .frame(width: 30, height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFilled
+            ? "View annotations for this book"
+            : "Generate annotations for this book")
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
@@ -305,9 +385,10 @@ struct BibleBookSheet: View {
         ),
         currentBookId: "1PE",
         currentChapterNumber: 2,
-        bottomInset: 0,
         onSelectChapter: { _, _ in },
-        onClose: {}
+        onClose: {},
+        onPresentBookAnnotations: { _ in },
+        onRequestBookAnnotations: { _ in }
     )
     .superTheme(.make(.light))
 }

@@ -116,7 +116,8 @@ struct BibleNavBarSnapshotTests {
                 onTranslation: {},
                 onClearSelection: {},
                 onSparkMenuAction: { _ in },
-                onTapNarrationPill: {}
+                onTapNarrationPill: {},
+                onAnnotateSelection: {}
             )
         }
         .frame(width: 402, height: 96)

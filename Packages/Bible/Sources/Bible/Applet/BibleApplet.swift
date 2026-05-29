@@ -144,7 +144,10 @@ public struct BibleApplet: MiniApplet {
 
     @MainActor
     public func rootView() -> AnyView {
-        let screen = BibleScreen(viewModel: viewModel)
+        let screen = BibleScreen(
+            viewModel: viewModel,
+            annotationRepository: annotationRepository
+        )
         guard let databaseContext else { return AnyView(screen) }
         return AnyView(screen.databaseContext(databaseContext))
     }

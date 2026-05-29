@@ -68,6 +68,40 @@ struct BibleBookSheetSnapshotTests {
     /// A `BibleBookSheet` opened on the given current position (defaulting
     /// to Genesis 1, which keeps the existing baselines stable), in the
     /// given order with the given query applied.
+    @Test("the picker renders filled annotation bubbles for books with rows")
+    func filledLight() async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleAnnotationRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Seed two books with annotations across the canon — Genesis at
+        // the top and Psalms in the middle — so both the always-visible
+        // expanded Genesis row and a scrolled mid-list row exercise the
+        // filled-glyph layout.
+        try await repository.replace(
+            target: .book, bookId: "GEN", chapterNumber: nil,
+            verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "gen-1", target: .book, bookId: "GEN", chapterNumber: nil,
+                    kind: .text, title: "Author", body: "Traditionally Moses.",
+                    source: .user, modelId: "afm-3.0", createdAt: now
+                )
+            ]
+        )
+        try await repository.replace(
+            target: .book, bookId: "PSA", chapterNumber: nil,
+            verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "psa-1", target: .book, bookId: "PSA", chapterNumber: nil,
+                    kind: .text, title: "Compilation", body: "150 songs across five books.",
+                    source: .user, modelId: "afm-3.0", createdAt: now
+                )
+            ]
+        )
+        verifyWithDatabase(sheet(), database: database, theme: .light, name: "filled_light")
+    }
+
     private func sheet(
         currentPosition: BiblePosition = BiblePosition(bookId: "GEN", chapterNumber: 1),
         order: BibleBookOrder = .traditional,
@@ -80,9 +114,10 @@ struct BibleBookSheetSnapshotTests {
             viewModel: viewModel,
             currentBookId: currentPosition.bookId,
             currentChapterNumber: currentPosition.chapterNumber,
-            bottomInset: 0,
             onSelectChapter: { _, _ in },
-            onClose: {}
+            onClose: {},
+            onPresentBookAnnotations: { _ in },
+            onRequestBookAnnotations: { _ in }
         )
     }
 
@@ -101,6 +136,40 @@ struct BibleBookSheetSnapshotTests {
         .frame(width: 402, height: 760)
         .dynamicTypeSize(dynamicType)
         .superTheme(theme)
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(layout: .fixed(width: 402, height: 760)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
+    }
+
+    /// Snapshot driver that attaches a real `DatabaseContext` so the
+    /// picker's `@Query<BookAnnotationsExistenceRequest>` returns the
+    /// seeded set instead of falling back to its empty default. Used by
+    /// the filled-bubble variant.
+    private func verifyWithDatabase(
+        _ sheet: BibleBookSheet,
+        database: BibleDatabase,
+        theme themeID: SuperTheme.Identifier,
+        dynamicType: DynamicTypeSize = .large,
+        name: String,
+        function: String = #function
+    ) {
+        let theme = SuperTheme.make(themeID)
+        let view = ZStack(alignment: .top) {
+            theme.background
+            sheet.padding(.top, 80)
+        }
+        .frame(width: 402, height: 760)
+        .dynamicTypeSize(dynamicType)
+        .superTheme(theme)
+        .databaseContext(.readOnly { database.queue })
 
         let failure = verifySnapshot(
             of: view,
