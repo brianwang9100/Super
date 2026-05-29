@@ -7,7 +7,7 @@ The composition root and target-specific assets for the **SuperOS** app — the 
 - **Bundle ID:** `com.brianwang.Super`
 - **Display name:** `SuperOS` (App Store name; `PRODUCT_NAME` is `Super` because the App Store name `Super` was taken)
 - **Composition root:** `SuperOSApp.swift` → `SuperOSAppBootstrap` → `SuperOSAppDependencies.shellDependencies` → shared `AppShell` (from `App/Shell/`)
-- **Applet set:** Todo (default backdrop) + Chats + Recipes (placeholder) + Bible + Finance (placeholder). Order is load-bearing — see `SuperOSAppBootstrap.bootstrap()`.
+- **Applet set:** Chats + Todo + Recipes (placeholder) + Bible + Finance (placeholder). Sidebar rail order leads with Chats; Todo is the cold-start default backdrop (decoupled from rail order — see below). See `SuperOSAppBootstrap.bootstrap()`.
 - **Deployment target:** iOS 26.0
 
 ### Launch behavior
@@ -15,7 +15,7 @@ The composition root and target-specific assets for the **SuperOS** app — the 
 SuperOS uses `AppShellLaunchBehavior.standard`:
 
 - **Chat overlay opens expanded.** Full-screen chat surface over the active backdrop on every cold launch. User drags down to reveal the backdrop.
-- **Active backdrop is restored from `UserDefaults`.** `SuperOSAppBootstrap` reads `AppShell.activeAppletStorageKey` and falls back to `applets.first?.appletID` (Todo) when there's nothing persisted. Mid-session picks (`onSelectApplet` in the shell) persist via the same key.
+- **Active backdrop is restored from `UserDefaults`.** `SuperOSAppBootstrap` reads `AppShell.activeAppletStorageKey` and resolves the backdrop via `AppletRegistry.resolveActiveID(applets:storedID:fallbackID:)`, falling back to `TodoApplet.appletID` (Todo) when there's nothing persisted. The fallback is pinned to Todo explicitly — **not** `applets.first` — so the rail can lead with Chats without changing the fresh-install landing surface. Mid-session picks (`onSelectApplet` in the shell) persist via the same key.
 
 This is the default that `AppShellLaunchBehavior.standard` encodes — if you find yourself reading `UserDefaults` for the active applet, or constructing a launch-behavior struct outside this bootstrap, you're at the wrong layer.
 

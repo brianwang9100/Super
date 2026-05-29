@@ -26,6 +26,33 @@ public final class AppletRegistry {
     /// model the empty-registry edge case for tests.
     public var activeID: String?
 
+    /// Resolves which applet should be the active backdrop at launch.
+    ///
+    /// Prefers `storedID` (the persisted selection) when it still matches a
+    /// registered applet; otherwise returns `fallbackID`. The fallback is the
+    /// caller's explicit cold-start default and is **independent of the
+    /// `applets` array order** — so the sidebar rail can list applets in any
+    /// order without moving the fresh-install landing surface. The composition
+    /// root passes the persisted `UserDefaults` value as `storedID` (kept out
+    /// of here so this resolution stays a pure, testable function).
+    ///
+    /// - Parameters:
+    ///   - applets: The registered applets, in sidebar order.
+    ///   - storedID: The persisted active id, or `nil` on a fresh install.
+    ///   - fallbackID: The cold-start default returned verbatim when `storedID`
+    ///     is `nil` or no longer matches a registered applet. Callers must pass
+    ///     a `fallbackID` that is itself a registered applet, otherwise the
+    ///     returned id won't resolve to a backdrop (`activeApplet` is `nil`).
+    /// - Returns: The persisted id when it matches a registered applet, else
+    ///   `fallbackID`.
+    public static func resolveActiveID(
+        applets: [any MiniApplet],
+        storedID: String?,
+        fallbackID: String
+    ) -> String {
+        applets.first(where: { $0.appletID == storedID })?.appletID ?? fallbackID
+    }
+
     public init(applets: [any MiniApplet], initialActiveID: String? = nil) {
         self.applets = applets
         // `initialActiveID` defaults to `nil` for tests / empty-registry

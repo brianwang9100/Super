@@ -65,6 +65,67 @@ struct AppletRegistryTests {
     }
 }
 
+/// Tests for `AppletRegistry.resolveActiveID(applets:storedID:fallbackID:)` —
+/// the cold-start backdrop resolution. Pins the invariant that the fallback is
+/// independent of the applets array order, so the sidebar rail can lead with
+/// any applet (Chats, in SuperOS) without moving the fresh-install landing
+/// surface (Todo).
+@Suite("AppletRegistry.resolveActiveID")
+@MainActor
+struct ResolveActiveIDTests {
+    private let applets: [any MiniApplet] = [
+        FakeApplet(appletID: "chats", displayName: "Chats", prompt: ""),
+        FakeApplet(appletID: "todo", displayName: "Todo", prompt: ""),
+        FakeApplet(appletID: "bible", displayName: "Bible", prompt: ""),
+    ]
+
+    @Test("Persisted id is honored when it still matches a registered applet")
+    func honorsStoredID() {
+        let resolved = AppletRegistry.resolveActiveID(
+            applets: applets,
+            storedID: "bible",
+            fallbackID: "todo"
+        )
+        #expect(resolved == "bible")
+    }
+
+    @Test("Fresh install (nil stored id) resolves to the explicit fallback, not applets.first")
+    func freshInstallUsesFallback() {
+        let resolved = AppletRegistry.resolveActiveID(
+            applets: applets,
+            storedID: nil,
+            fallbackID: "todo"
+        )
+        // The decoupling guard: applets.first is "chats", but a fresh install
+        // must land on the explicit fallback "todo".
+        #expect(resolved == "todo")
+        #expect(resolved != applets.first?.appletID)
+    }
+
+    @Test("Stale persisted id (no longer registered) falls back to the default")
+    func staleStoredIDFallsBack() {
+        let resolved = AppletRegistry.resolveActiveID(
+            applets: applets,
+            storedID: "recipes", // not in `applets`
+            fallbackID: "todo"
+        )
+        #expect(resolved == "todo")
+    }
+
+    @Test("Fallback is returned verbatim even when it isn't a registered applet")
+    func unregisteredFallbackReturnedVerbatim() {
+        // Pins the documented contract: the helper does NOT chain an
+        // unregistered fallback to applets.first — it returns the caller's
+        // fallback as-is. (Production always passes a registered id.)
+        let resolved = AppletRegistry.resolveActiveID(
+            applets: applets,
+            storedID: nil,
+            fallbackID: "ghost"
+        )
+        #expect(resolved == "ghost")
+    }
+}
+
 /// Bare-bones test conformance — only the fields touched by
 /// `resolvedBriefings()` carry meaning; the rest exist to satisfy the
 /// protocol.
