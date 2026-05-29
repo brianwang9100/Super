@@ -101,7 +101,7 @@ struct TodoTaskEditorSheet: View {
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("What needs to happen?", text: $draft.title, axis: .vertical)
-                .font(.system(size: 22 * fontScale, design: .serif))
+                .font(.custom("InstrumentSerif-Italic", size: 22 * fontScale))
                 .foregroundStyle(theme.ink)
             TextField("Notes (optional)", text: $draft.notes, axis: .vertical)
                 .font(.system(size: 15 * fontScale))
