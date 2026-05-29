@@ -238,6 +238,11 @@ struct BibleScreenSnapshotTests {
         verify(try await annotatedScreen(), theme: .dark, name: "annotated_dark")
     }
 
+    @Test("annotation bubbles render in the sepia theme")
+    func annotatedSepia() async throws {
+        verify(try await annotatedScreen(), theme: .sepia, name: "annotated_sepia")
+    }
+
     @Test("annotation bubbles render at Dynamic Type XXL")
     func annotatedLightXXL() async throws {
         verify(try await annotatedScreen(), theme: .light, dynamicType: .xxLarge,

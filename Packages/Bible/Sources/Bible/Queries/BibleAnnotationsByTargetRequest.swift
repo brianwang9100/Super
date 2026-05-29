@@ -1,3 +1,10 @@
+// `import Combine` is mandatory, not stray: `ValueObservationQueryable`
+// inherits `Queryable`, whose `ValuePublisher` associated type resolves
+// to an `AnyPublisher`. Conforming to it needs the `AnyPublisher:
+// Publisher` conformance visible here or the build fails. No Combine
+// data flow is used — observation runs through GRDB's
+// `ValueObservation` and `@Query`. Matches the convention in
+// `ChapterAnnotationsRequest`.
 import Combine
 import GRDB
 import GRDBQuery

@@ -119,11 +119,28 @@ public struct BibleScreen: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.hidden)
         }
-        .sheet(isPresented: $viewModel.isAnnotationDisclaimerPresented) {
-            // Drag-down dismissal without ack: discard the queued intent
-            // so the next generation trigger re-prompts.
-            viewModel.discardAnnotationDisclaimer()
-        } content: {
+        .sheet(
+            isPresented: $viewModel.isAnnotationDisclaimerPresented,
+            onDismiss: {
+                // `sheet(onDismiss:)` fires on *both* dismissal paths —
+                // the user's "Got it" tap (acknowledge) and the
+                // drag-down (discard). The two are distinguished by the
+                // queue state: acknowledge drains it synchronously
+                // before flipping the binding, so an empty queue here
+                // means the user acked; a non-empty queue means they
+                // drag-dismissed without confirmation.
+                //
+                // The previous shape called `discardAnnotationDisclaimer()`
+                // unconditionally — it was a silent no-op when the queue
+                // was already empty, but a future side effect on
+                // `discardAnnotationDisclaimer` (telemetry, logging,
+                // toast) would have fired on the acknowledge path too.
+                // The explicit guard documents the contract.
+                if !viewModel.pendingAnnotationIntents.isEmpty {
+                    viewModel.discardAnnotationDisclaimer()
+                }
+            }
+        ) {
             AnnotationDisclaimerSheet(
                 onGotIt: { viewModel.acknowledgeAnnotationDisclaimer() }
             )
