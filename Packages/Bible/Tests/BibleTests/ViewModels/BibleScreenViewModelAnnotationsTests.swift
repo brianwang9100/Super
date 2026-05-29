@@ -125,6 +125,27 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(viewModel.toast == "Annotation generation ships in a later update.")
     }
 
+    @Test("a generation trigger fired from the action sheet path clears the selection")
+    func generationClearsSelection() async {
+        // Reproduces the BibleActionSheet "Annotate" tile path: the user
+        // has verses selected, taps Annotate, the spec is built from the
+        // selection and fired through the gate. After the toast, the
+        // action sheet should dismiss (selectedVerses empty) so it
+        // doesn't compete with the toast for the bottom edge — matches
+        // every other action-sheet action (copy, chat, highlight).
+        let store = FakeDisclaimerStore(initial: true)
+        let viewModel = makeViewModel(disclaimerStore: store)
+        await viewModel.load()
+        viewModel.toggleVerse(28)
+        viewModel.toggleVerse(29)
+        viewModel.toggleVerse(30)
+        viewModel.triggerAnnotationGeneration(
+            for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+        )
+        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(viewModel.toast == "Annotation generation ships in a later update.")
+    }
+
     @Test("discardAnnotationDisclaimer clears the whole queue without acknowledging")
     func discardDoesNotAcknowledge() async {
         let store = FakeDisclaimerStore()

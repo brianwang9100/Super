@@ -546,8 +546,17 @@ public final class BibleScreenViewModel {
     /// PR 3 placeholder for the real generation dispatch (PR 4).
     /// Centralized so the disclaimer-gated and ungated call paths share
     /// one swap site.
+    ///
+    /// `clearSelection()` mirrors every other `BibleActionSheet`-reachable
+    /// action (copy, chat hand-off, highlight): the selection-driven sheet
+    /// is dismissed on completion so the user's next action starts fresh
+    /// and the toast isn't competing with the sheet for the bottom edge.
+    /// When PR 4 swaps the toast for the real dispatch, the selection
+    /// still needs to clear here — the LLM call works off the spec, not
+    /// the live selection.
     private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
         _ = spec
+        clearSelection()
         toast = "Annotation generation ships in a later update."
     }
 
