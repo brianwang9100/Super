@@ -5,10 +5,15 @@ CREATE INDEX "bibleAnnotation_on_target_bookId" ON "bibleAnnotation"("target", "
 CREATE TABLE "bibleHighlight" ("id" TEXT PRIMARY KEY NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "verseNumber" INTEGER NOT NULL, "colorId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
 CREATE UNIQUE INDEX "bibleHighlight_on_bookId_chapterNumber_verseNumber" ON "bibleHighlight"("bookId", "chapterNumber", "verseNumber");
 CREATE INDEX "bibleHighlight_on_deletedAt" ON "bibleHighlight"("deletedAt");
+CREATE TABLE "bibleNote" ("id" TEXT PRIMARY KEY NOT NULL, "target" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER, "verseStart" INTEGER, "verseEnd" INTEGER, "body" TEXT NOT NULL, "source" TEXT NOT NULL, "modelId" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL);
+CREATE INDEX "bibleNote_on_bookId_chapterNumber_verseEnd" ON "bibleNote"("bookId", "chapterNumber", "verseEnd");
+CREATE INDEX "bibleNote_on_target_bookId" ON "bibleNote"("target", "bookId");
 CREATE TABLE "bibleReadingPosition" ("id" TEXT PRIMARY KEY NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "translationId" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL);
 
 bibleAnnotation
 
 bibleHighlight
+
+bibleNote
 
 bibleReadingPosition
