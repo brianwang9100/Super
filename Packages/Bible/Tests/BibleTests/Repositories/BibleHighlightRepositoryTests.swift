@@ -96,6 +96,30 @@ struct BibleHighlightRepositoryTests {
         #expect(total == 1)
     }
 
+    @Test("activeHighlightColors returns only active verses' colours")
+    func activeHighlightColorsOmitsClearedAndUnhighlighted() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 4, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 5, color: .green, at: now
+        )
+        // Verse 6 is highlighted then cleared — it must not surface.
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 6, color: .blue, at: now
+        )
+        try await repository.clearHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 6, at: later
+        )
+
+        // Verse 7 was never highlighted; it's queried but should be absent.
+        let colors = try await repository.activeHighlightColors(
+            bookId: "1PE", chapterNumber: 2, verseNumbers: [4, 5, 6, 7]
+        )
+        #expect(colors == [4: .yellow, 5: .green])
+    }
+
     @Test("clearing a verse that was never highlighted is a no-op")
     func clearUnhighlightedIsNoOp() async throws {
         let (repository, database) = try makeFixture()

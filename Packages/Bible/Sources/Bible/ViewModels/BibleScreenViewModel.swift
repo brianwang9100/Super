@@ -332,47 +332,62 @@ public final class BibleScreenViewModel {
         clearSelection()
     }
 
-    /// Paint `color` onto every selected verse, then leave selection mode. The
-    /// write is asynchronous; the chapter's reactive `@Query` repaints once it
-    /// lands. A no-op without a highlight store or with nothing selected.
+    /// Toggle `color` across the selection, then leave selection mode. Tapping
+    /// a colour paints every selected verse with it — *unless* every selected
+    /// verse already carries exactly that colour, in which case the tap clears
+    /// them (re-tapping the active colour is a natural way to remove a
+    /// highlight). The write is asynchronous; the chapter's reactive `@Query`
+    /// repaints once it lands. A no-op without a highlight store or with
+    /// nothing selected.
     public func applyHighlight(_ color: BibleHighlightColor) {
         writeHighlights(failureMessage: "Couldn't save the highlight.") {
-            repository, bookId, chapterNumber, verseNumber, now in
-            try await repository.setHighlight(
-                bookId: bookId,
-                chapterNumber: chapterNumber,
-                verseNumber: verseNumber,
-                color: color,
-                at: now
+            repository, verses, bookId, chapterNumber, now in
+            let current = try await repository.activeHighlightColors(
+                bookId: bookId, chapterNumber: chapterNumber, verseNumbers: verses
             )
+            // Clear only when the whole selection already carries this colour;
+            // any other state (a different colour, or an unhighlighted verse)
+            // means the tap applies the colour to all.
+            let clearing = verses.allSatisfy { current[$0] == color }
+            for verse in verses {
+                if clearing {
+                    try await repository.clearHighlight(
+                        bookId: bookId, chapterNumber: chapterNumber, verseNumber: verse, at: now
+                    )
+                } else {
+                    try await repository.setHighlight(
+                        bookId: bookId, chapterNumber: chapterNumber, verseNumber: verse,
+                        color: color, at: now
+                    )
+                }
+            }
         }
     }
 
     /// Clear the highlight on every selected verse, then leave selection mode.
     public func clearHighlight() {
         writeHighlights(failureMessage: "Couldn't clear the highlight.") {
-            repository, bookId, chapterNumber, verseNumber, now in
-            try await repository.clearHighlight(
-                bookId: bookId,
-                chapterNumber: chapterNumber,
-                verseNumber: verseNumber,
-                at: now
-            )
+            repository, verses, bookId, chapterNumber, now in
+            for verse in verses {
+                try await repository.clearHighlight(
+                    bookId: bookId, chapterNumber: chapterNumber, verseNumber: verse, at: now
+                )
+            }
         }
     }
 
-    /// Run `write` for every selected verse on a background task chained after
-    /// any prior highlight write, then clear the selection. The two highlight
-    /// actions — apply and clear — differ only in this per-verse operation and
-    /// in the toast shown when a write fails.
+    /// Run `mutate` for the selected verses on a background task chained after
+    /// any prior highlight write, then clear the selection. The highlight
+    /// actions — toggle and clear — differ only in this mutation block and in
+    /// the toast shown when it fails.
     ///
-    /// - Parameter failureMessage: shown in the toast if any verse's write
-    ///   throws. The selection clears synchronously, so without this a failed
-    ///   write would read as success — the chapter just never repaints.
+    /// - Parameter failureMessage: shown in the toast if the mutation throws.
+    ///   The selection clears synchronously, so without this a failed write
+    ///   would read as success — the chapter just never repaints.
     private func writeHighlights(
         failureMessage: String,
-        _ write: @escaping @Sendable (
-            any BibleHighlightRepository, String, Int, Int, Date
+        _ mutate: @escaping @Sendable (
+            any BibleHighlightRepository, [Int], String, Int, Date
         ) async throws -> Void
     ) {
         guard let highlightRepository, !selectedVerses.isEmpty else { return }
@@ -384,15 +399,11 @@ public final class BibleScreenViewModel {
         let previous = highlightTask
         highlightTask = Task { [weak self] in
             await previous?.value
-            var anyFailed = false
-            for verse in verses {
-                do {
-                    try await write(highlightRepository, bookId, chapterNumber, verse, now)
-                } catch {
-                    anyFailed = true
-                }
+            do {
+                try await mutate(highlightRepository, verses, bookId, chapterNumber, now)
+            } catch {
+                self?.toast = failureMessage
             }
-            if anyFailed { self?.toast = failureMessage }
         }
         clearSelection()
     }
