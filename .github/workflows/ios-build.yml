@@ -14,6 +14,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Detects whether anything other than docs changed. A docs-only PR then
+    # skips the expensive macOS build/test legs, while the required-check
+    # gate jobs (`build`, `ios-test`) still run and still report — preserving
+    # the "no path filter on the workflow" property the top-of-file comment
+    # relies on (we gate the heavy *steps*, never the *checks*). dot: true is
+    # on by default in paths-filter@v3, so a change confined to .github/ or
+    # another dotfile counts as code and runs the full matrix.
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+      # Third-party community action pinned to a commit SHA (not a mutable
+      # tag) so a tag force-push can't swap the code under us.
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
   build-app:
     # One leg per app target. Both build in parallel on their own runners;
     # the shared SPM cache (key includes project.yml so target-shape changes
@@ -26,6 +50,11 @@ jobs:
     # per-leg checks (`build-app (Super)`, `build-app (SuperBible)`), and
     # the aggregation gate below is named `build` so it takes over the
     # pre-existing required-check name without a branch-protection edit.
+    #
+    # Gated on `changes`: a docs-only PR skips these macOS legs entirely;
+    # the `build` gate below still reports success in that case.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -47,8 +76,11 @@ jobs:
       - name: Show toolchain
         run: xcodebuild -version
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install XcodeGen
+        # Pinned release binary instead of `brew install xcodegen` (avoids the
+        # ~30-90s brew formula auto-update per leg). Version + install logic
+        # live in the composite action so all call sites stay in lockstep.
+        uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -66,6 +98,26 @@ jobs:
           key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
             ios-spm-${{ runner.os }}-
+
+      - name: Cache DerivedData build products
+        # Speed-only optimization: persist the compiled module cache + build
+        # products so the 2nd…Nth run of a branch incrementally recompiles
+        # only changed inputs instead of cold-building Core / GRDB / app
+        # sources from scratch. Keyed per scheme; the project.yml/Package
+        # hash in the key (plus the prefix restore-key) means a target-shape
+        # change starts fresh while source-only edits warm-start. A stale
+        # cache can never go green on broken code — xcodebuild still compiles
+        # every changed input on every run.
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/Super-*/Build
+          # Xcode version (literal 26.4.1, matching the setup-xcode pin) is in
+          # the key so a runner-image Xcode bump with unchanged Package.resolved
+          # / project.yml auto-busts the cache instead of restoring DerivedData
+          # built by a different toolchain (which causes stale-module failures).
+          key: ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          restore-keys: |
+            ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-
 
       - name: Build (iOS Simulator)
         env:
@@ -87,14 +139,29 @@ jobs:
     # re-exports a single stable `build` status that depends on every leg.
     # Same pattern as the `ios-test` gate below. A required check that
     # never reports blocks merge forever — see the note at the top of file.
-    needs: build-app
+    needs: [changes, build-app]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Verify all app-build matrix legs passed
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
           RESULT: ${{ needs.build-app.result }}
         run: |
+          # Fail closed: if the `changes` detector didn't succeed its empty
+          # output must NOT be misread as "docs-only" and skip the build.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes-detection job did not succeed — refusing to skip the build."
+            exit 1
+          fi
+          # Docs-only PR: build-app was intentionally skipped, so this
+          # required check passes without a build. Any code change must
+          # produce a successful build-app.
+          if [ "$CODE" != "true" ]; then
+            echo "Docs-only change — no app build required."
+            exit 0
+          fi
           if [ "$RESULT" != "success" ]; then
             echo "::error::One or more build-app matrix legs failed."
             exit 1
@@ -133,7 +200,10 @@ jobs:
           echo "schemes=$schemes" >> "$GITHUB_OUTPUT"
 
   ios-snapshot-test:
-    needs: discover
+    # Gated on `changes` (like build-app): docs-only PRs skip these macOS
+    # legs; the `ios-test` gate below still reports success in that case.
+    needs: [changes, discover]
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     # One leg per applet scheme. Each leg runs on its own runner, so it
     # builds its dependency graph (Core, GRDB, SnapshotTesting, …) exactly
@@ -161,8 +231,11 @@ jobs:
       - name: Show toolchain
         run: xcodebuild -version
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install XcodeGen
+        # Pinned release binary instead of `brew install xcodegen` (avoids the
+        # ~30-90s brew formula auto-update per leg). Version + install logic
+        # live in the composite action so all call sites stay in lockstep.
+        uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -176,6 +249,21 @@ jobs:
           key: ios-spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ios-spm-${{ runner.os }}-
+
+      - name: Cache DerivedData build products
+        # Speed-only optimization (see the matching step in build-app): the
+        # snapshot legs build into -derivedDataPath build/derived, so cache
+        # that Build/ tree to incrementally recompile across runs. Keyed per
+        # scheme; the Build/ tree excludes Logs/ (xcresults) which are
+        # uploaded separately on failure.
+        uses: actions/cache@v5
+        with:
+          path: build/derived/Build
+          # Xcode version in the key (see build-app) so a toolchain bump
+          # busts the cache rather than restoring stale compiled modules.
+          key: ios-dd-snap-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          restore-keys: |
+            ios-dd-snap-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-
 
       - name: Pick iOS simulator
         id: sim
@@ -283,20 +371,38 @@ jobs:
     # (`ios-snapshot-test (Chat)` …), so this job re-exports a single stable
     # `ios-test` status that depends on every leg. A required check that
     # never reports blocks merge forever — see the note at the top of file.
-    needs: [discover, ios-snapshot-test]
+    needs: [changes, discover, ios-snapshot-test]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Verify discovery and all snapshot test legs passed
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           RESULT: ${{ needs.ios-snapshot-test.result }}
         run: |
-          # Check `discover` explicitly: if it failed, the snapshot matrix
-          # is skipped, and an empty/skipped matrix must not read as success.
+          # Fail closed if the `changes` detector didn't succeed (see the
+          # build gate for rationale).
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes-detection job did not succeed — refusing to skip snapshot tests."
+            exit 1
+          fi
+          # `discover` runs on every PR (incl. docs-only) and is ubuntu-cheap.
+          # Check it BEFORE the docs-only early-exit so a broken discovery
+          # script (e.g. after a directory restructure) blocks merge promptly
+          # instead of hiding until the next code-change PR, where it would be
+          # misattributed. A failed discover means the snapshot matrix is
+          # skipped, and an empty/skipped matrix must not read as success.
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::Snapshot-scheme discovery failed — no snapshot tests ran."
             exit 1
+          fi
+          # Docs-only PR: snapshot legs were intentionally skipped, so this
+          # required check passes without running them.
+          if [ "$CODE" != "true" ]; then
+            echo "Docs-only change — no snapshot tests required."
+            exit 0
           fi
           if [ "$RESULT" != "success" ]; then
             echo "::error::One or more ios-snapshot-test matrix legs failed."
