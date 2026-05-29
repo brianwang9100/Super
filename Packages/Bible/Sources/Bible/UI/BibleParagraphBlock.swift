@@ -113,11 +113,21 @@ struct BibleParagraphBlock: View {
         }
     }
 
+    /// Thin wrapper around `BibleParagraphBlock.flowItems(_:annotationsByVerseEnd:)`
+    /// that closes over the instance's `annotationsByVerseEnd` map.
+    private func flowItems(_ tokens: [VerseWordToken]) -> [FlowItem] {
+        Self.flowItems(tokens, annotationsByVerseEnd: annotationsByVerseEnd)
+    }
+
     /// Builds the flat sequence of layout items for one verse run: each
     /// word followed by any trailing annotation bubbles for that verse's
-    /// end. Pure so a unit test can lock in the interleave order without
-    /// standing up a SwiftUI host.
-    private func flowItems(_ tokens: [VerseWordToken]) -> [FlowItem] {
+    /// end. Pure so a unit test can lock in the interleave contract
+    /// (word, then bubble(s) per `isVerseEnd` token, then the next word)
+    /// without standing up a SwiftUI host.
+    static func flowItems(
+        _ tokens: [VerseWordToken],
+        annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
+    ) -> [FlowItem] {
         var items: [FlowItem] = []
         for token in tokens {
             items.append(.word(token))
@@ -131,8 +141,10 @@ struct BibleParagraphBlock: View {
     }
 
     /// One flow cell: either a word or a trailing bubble. Both are siblings
-    /// in `VerseFlowLayout`'s subview list.
-    private enum FlowItem {
+    /// in `VerseFlowLayout`'s subview list. Internal — exposed for
+    /// `BibleParagraphBlockFlowItemsTests` to assert the interleave
+    /// contract; not part of any public API surface.
+    enum FlowItem: Equatable {
         case word(VerseWordToken)
         case bubble(BibleAnnotationTargetSpec)
     }
