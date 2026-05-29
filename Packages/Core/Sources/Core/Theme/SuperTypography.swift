@@ -71,23 +71,6 @@ public struct SuperTypography: Sendable, Equatable {
             case .caption2: return 11
             }
         }
-
-        /// Dynamic Type anchor used when this role resolves to a custom face.
-        var textStyle: Font.TextStyle {
-            switch self {
-            case .display, .largeTitle: return .largeTitle
-            case .title: return .title
-            case .title2: return .title2
-            case .title3: return .title3
-            case .headline: return .headline
-            case .body: return .body
-            case .callout: return .callout
-            case .subheadline: return .subheadline
-            case .footnote: return .footnote
-            case .caption: return .caption
-            case .caption2: return .caption2
-            }
-        }
     }
 
     public let id: Identifier
@@ -111,9 +94,14 @@ public struct SuperTypography: Sendable, Equatable {
     /// A system-sans role at its base size. Scales with `fontScale`; for OS
     /// Dynamic Type the view supplies its own `@ScaledMetric` base via
     /// `font(size:)`. Use `display(_:)` for the brand serif title instead.
+    ///
+    /// `weight` is honored for every role, including `.display` — under the
+    /// `.system` identity the display role resolves to the system serif, whose
+    /// weight is meaningful (the bundled Instrument Serif face is single-weight,
+    /// so weight is a no-op there, but the API must not silently drop it).
     public func font(_ role: Role, weight: Font.Weight? = nil) -> Font {
         if role == .display {
-            return display(role.baseSize)
+            return resolve(size: role.baseSize, relativeTo: .largeTitle, weight: weight, design: .serif)
         }
         return resolve(size: role.baseSize, relativeTo: nil, weight: weight, design: .default)
     }

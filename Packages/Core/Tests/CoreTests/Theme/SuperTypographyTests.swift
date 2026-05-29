@@ -75,4 +75,19 @@ struct SuperTypographyTests {
         #expect(SuperTypography.Role.footnote.baseSize == 13)
         #expect(SuperTypography.Role.caption2.baseSize == 11)
     }
+
+    @Test("font(_:weight:) threads weight through every role, including display")
+    func fontRoleThreadsWeight() {
+        // Regression: the .display branch previously routed through display(),
+        // which hardcoded weight: nil and silently dropped a caller's weight.
+        let t = SuperTypography.make(.serif)
+        let display = t.spec(size: SuperTypography.Role.display.baseSize,
+                             relativeTo: .largeTitle, weight: .bold, design: .serif)
+        #expect(display.weight == .bold)
+        #expect(display.face == "InstrumentSerif-Italic")
+
+        let body = t.spec(size: SuperTypography.Role.body.baseSize,
+                          relativeTo: nil, weight: .semibold, design: .default)
+        #expect(body.weight == .semibold)
+    }
 }
