@@ -280,6 +280,21 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
+                // Tap-to-dismiss must attach to `content` (a *sibling* of the
+                // composer), not to the `.safeAreaInset` composite below (an
+                // *ancestor* of the composer). On the composite the
+                // `.simultaneousGesture` fires concurrently with the composer
+                // `TextField`'s own tap and resigns first responder before the
+                // edit (select/copy) menu can present — so tapping a focused
+                // composer used to drop the keyboard. As a sibling gesture it's
+                // outside the eligibility set for taps the composer layer
+                // consumes, so composer taps reach the `TextField` untouched
+                // while transcript/empty-state taps still dismiss. Do not move
+                // this back below `.safeAreaInset`.
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    TapGesture().onEnded { dismissKeyboard() }
+                )
                 // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
@@ -301,10 +316,6 @@ public struct ChatScreen: View {
                 }
                 .clipped()
                 .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture().onEnded { dismissKeyboard() }
-                )
         }
         .background(panelBackground)
         .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
