@@ -39,8 +39,19 @@ public struct BibleScreen: View {
     /// the pill's drag handle rather than touching it.
     private let bottomReserve: CGFloat = 100
 
-    public init(viewModel: BibleScreenViewModel) {
+    /// Write seam for per-card deletion from the annotation sheet, and
+    /// the dependency the `AnnotationSheetContainer` needs for its
+    /// mutation callbacks. `nil` in previews / isolated tests — the
+    /// sheet then renders without per-card delete (the delete tap is a
+    /// silent no-op).
+    private let annotationRepository: (any BibleAnnotationRepository)?
+
+    public init(
+        viewModel: BibleScreenViewModel,
+        annotationRepository: (any BibleAnnotationRepository)? = nil
+    ) {
         self.viewModel = viewModel
+        self.annotationRepository = annotationRepository
     }
 
     public var body: some View {
@@ -79,6 +90,43 @@ public struct BibleScreen: View {
         // card hides only via an explicit drag-down on the handle or
         // by tapping the nav-bar speaker again, both wrapped in
         // `withAnimation` so the slide-out is animated.
+        .sheet(item: $viewModel.presentedAnnotationTarget) { spec in
+            AnnotationSheetContainer(
+                spec: spec,
+                citation: viewModel.citationLabel(for: spec),
+                catalog: .standard,
+                repository: annotationRepository,
+                onRegenerate: { viewModel.triggerAnnotationGeneration(for: spec) },
+                onAddAllToChat: { records in
+                    if let reference = viewModel.makeAnnotationGroupReference(records, for: spec) {
+                        publishReferenceToChat(reference, startNew: false)
+                    }
+                },
+                onCardAddToChat: { record in
+                    publishReferenceToChat(
+                        viewModel.makeAnnotationCardReference(record),
+                        startNew: false
+                    )
+                },
+                onOpenReference: { parsed in
+                    viewModel.navigateToVerseReference(parsed)
+                },
+                onClose: { viewModel.dismissAnnotationSheet() }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.hidden)
+        }
+        .sheet(isPresented: $viewModel.isAnnotationDisclaimerPresented) {
+            // Drag-down dismissal without ack: discard the queued intent
+            // so the next generation trigger re-prompts.
+            viewModel.discardAnnotationDisclaimer()
+        } content: {
+            AnnotationDisclaimerSheet(
+                onGotIt: { viewModel.acknowledgeAnnotationDisclaimer() }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.hidden)
+        }
     }
 
     /// Hand the current verse selection to the Chat composer over the
@@ -163,8 +211,23 @@ public struct BibleScreen: View {
                         viewModel.presentNarrationSheet()
                     }
                 }
-            }
+            },
+            onAnnotateSelection: { handleAnnotateSelection() }
         )
+    }
+
+    /// Fire a generation intent for each contiguous range in the current
+    /// verse selection. A non-contiguous selection (e.g. 28, 30) produces
+    /// two independent intents — the disclaimer-gate runs once, then both
+    /// fire in selection order. With no selection the spark button is
+    /// `.dim` and a tap shouldn't reach this method, but the guard keeps
+    /// the call site idempotent if the precondition ever loosens.
+    private func handleAnnotateSelection() {
+        let ranges = viewModel.selectedAnnotationRanges
+        guard !ranges.isEmpty else { return }
+        for spec in ranges {
+            viewModel.triggerAnnotationGeneration(for: spec)
+        }
     }
 
     /// Bottom-anchored overlay. The narration transport card takes
@@ -203,6 +266,7 @@ public struct BibleScreen: View {
                 onCopy: { withAnimation(motion.animation) { viewModel.copySelection() } },
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
+                onAnnotate: { handleAnnotateSelection() },
                 onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
             // Measured before the bottomReserve padding so we capture the
@@ -256,15 +320,22 @@ public struct BibleScreen: View {
             viewModel: sheetViewModel,
             currentBookId: viewModel.position.bookId,
             currentChapterNumber: viewModel.position.chapterNumber,
-            // Lift the order toggle above the shell's minimized chat pill,
-            // mirroring the reader's chat-pill bottom reserve.
-            bottomInset: BibleChapterReader.chatPillHeight,
             onSelectChapter: { bookId, chapterNumber in
                 withAnimation(motion.animation) {
                     viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
                 }
             },
-            onClose: { withAnimation(motion.animation) { viewModel.dismissBookSheet() } }
+            onClose: { withAnimation(motion.animation) { viewModel.dismissBookSheet() } },
+            onPresentBookAnnotations: { bookId in
+                withAnimation(motion.animation) { viewModel.dismissBookSheet() }
+                viewModel.presentAnnotationSheet(for: .book(bookId: bookId))
+            },
+            onRequestBookAnnotations: { bookId in
+                viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId))
+            },
+            // Lift the order toggle above the shell's minimized chat pill,
+            // mirroring the reader's chat-pill bottom reserve.
+            bottomInset: BibleChapterReader.chatPillHeight
         )
         .padding(.top, 80)
         .transition(motion.transition)
@@ -303,7 +374,10 @@ public struct BibleScreen: View {
                 onClearSelection: {
                     withAnimation(motion.animation) { viewModel.clearSelection() }
                 },
-                onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() }
+                onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() },
+                onAnnotationBubbleTap: { spec in
+                    viewModel.presentAnnotationSheet(for: spec)
+                }
             )
             // A fresh identity per chapter resets the scroll offset to the
             // top and re-subscribes the highlight `@Query` when the reader

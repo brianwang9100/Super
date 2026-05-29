@@ -28,6 +28,10 @@ struct BibleActionSheet: View {
     let onCopy: () -> Void
     let onAddToChat: () -> Void
     let onNewChat: () -> Void
+    /// Invoked when the "Annotate" tile is tapped — routes the selection
+    /// through the view-model's disclaimer-gated generation flow, same
+    /// path the nav-bar `SparkButton` uses.
+    let onAnnotate: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -174,6 +178,7 @@ struct BibleActionSheet: View {
 
     private var actionRow: some View {
         HStack(spacing: 4) {
+            actionButton(symbol: "sparkles", label: "Annotate", accent: true, action: onAnnotate)
             actionButton(symbol: "paperplane.fill", label: "Add to chat", accent: true, action: onAddToChat)
             actionButton(symbol: "bubble.left.and.bubble.right.fill", label: "New chat", accent: true, action: onNewChat)
             actionButton(symbol: "doc.on.doc", label: "Copy", accent: false, action: onCopy)

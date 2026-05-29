@@ -80,9 +80,10 @@ struct BibleBookSheetSnapshotTests {
             viewModel: viewModel,
             currentBookId: currentPosition.bookId,
             currentChapterNumber: currentPosition.chapterNumber,
-            bottomInset: 0,
             onSelectChapter: { _, _ in },
-            onClose: {}
+            onClose: {},
+            onPresentBookAnnotations: { _ in },
+            onRequestBookAnnotations: { _ in }
         )
     }
 

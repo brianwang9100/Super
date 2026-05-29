@@ -16,17 +16,26 @@ enum VerseTokenizer {
     /// first word of each verse is flagged `isVerseStart`; it also carries the
     /// raised number unless the verse number is in `numberedEarlier` — i.e. an
     /// earlier paragraph already numbered this straddling verse.
+    ///
+    /// `endsHere` is the set of verse numbers whose final fragment lives in
+    /// *this* paragraph. The last word of each such verse is flagged
+    /// `isVerseEnd` so the chapter renderer can place a trailing annotation
+    /// bubble right after it. Verses with a fragment in a later paragraph
+    /// don't carry the flag here.
     static func proseTokens(
         _ verses: [BibleVerse],
-        numberedEarlier: Set<Int> = []
+        numberedEarlier: Set<Int> = [],
+        endsHere: Set<Int> = []
     ) -> [VerseWordToken] {
         var tokens: [VerseWordToken] = []
         for verse in verses {
-            let words = verse.text.split(whereSeparator: \.isWhitespace)
+            let words = Array(verse.text.split(whereSeparator: \.isWhitespace))
             for (index, word) in words.enumerated() {
+                let isLastWordOfFragment = index == words.count - 1
                 tokens.append(VerseWordToken(
                     verseNumber: verse.number,
                     isVerseStart: index == 0,
+                    isVerseEnd: isLastWordOfFragment && endsHere.contains(verse.number),
                     showsVerseNumber: index == 0 && !numberedEarlier.contains(verse.number),
                     word: String(word),
                     verseText: verse.text
@@ -44,11 +53,20 @@ enum VerseTokenizer {
     /// segment, but the flag follows it so the verse keeps exactly one VoiceOver
     /// anchor. `showsVerseNumber` follows the same word but is suppressed when
     /// `numberedEarlier` already holds the verse number.
+    ///
+    /// `isVerseEnd` flags the verse's *last* word in this paragraph when the
+    /// verse number is in `endsHere` — i.e. no later paragraph carries
+    /// another fragment of the same verse. The chapter renderer uses the flag
+    /// to place trailing annotation bubbles.
     static func poetryLines(
         _ verses: [BibleVerse],
-        numberedEarlier: Set<Int> = []
+        numberedEarlier: Set<Int> = [],
+        endsHere: Set<Int> = []
     ) -> [[VerseWordToken]] {
         var lines: [[VerseWordToken]] = [[]]
+        // Track the index of each verse's last token across lines so we can
+        // back-patch the `isVerseEnd` flag once the whole verse is laid out.
+        var lastTokenLocation: [Int: (lineIndex: Int, tokenIndex: Int)] = [:]
         for verse in verses {
             var seenFirstWord = false
             let segments = verse.text.split(separator: "\n", omittingEmptySubsequences: false)
@@ -56,16 +74,31 @@ enum VerseTokenizer {
                 if segmentIndex > 0 { lines.append([]) }
                 for word in segment.split(whereSeparator: \.isWhitespace) {
                     let isVerseStart = !seenFirstWord
-                    lines[lines.count - 1].append(VerseWordToken(
+                    let lineIndex = lines.count - 1
+                    lines[lineIndex].append(VerseWordToken(
                         verseNumber: verse.number,
                         isVerseStart: isVerseStart,
+                        isVerseEnd: false,
                         showsVerseNumber: isVerseStart && !numberedEarlier.contains(verse.number),
                         word: String(word),
                         verseText: verse.text
                     ))
+                    lastTokenLocation[verse.number] = (lineIndex, lines[lineIndex].count - 1)
                     seenFirstWord = true
                 }
             }
+        }
+        for verseNumber in endsHere {
+            guard let location = lastTokenLocation[verseNumber] else { continue }
+            let original = lines[location.lineIndex][location.tokenIndex]
+            lines[location.lineIndex][location.tokenIndex] = VerseWordToken(
+                verseNumber: original.verseNumber,
+                isVerseStart: original.isVerseStart,
+                isVerseEnd: true,
+                showsVerseNumber: original.showsVerseNumber,
+                word: original.word,
+                verseText: original.verseText
+            )
         }
         return lines.filter { !$0.isEmpty }
     }
@@ -89,6 +122,33 @@ enum VerseTokenizer {
         }
         return result
     }
+
+    /// For each paragraph in reading order, the verse numbers whose final
+    /// fragment lives in *this* paragraph (i.e. no later paragraph carries
+    /// another fragment of that verse). The result is parallel to
+    /// `paragraphs`; element `i` is the set to pass as `endsHere` when
+    /// tokenizing paragraph `i`.
+    ///
+    /// Used by the chapter renderer to anchor trailing annotation bubbles to
+    /// the exact word a verse range ends on — overlapping verse-annotation
+    /// ranges sharing a `verseEnd` then naturally stack side-by-side after
+    /// that word, per the spec's multi-row semantics.
+    static func verseEndsByParagraph(_ paragraphs: [BibleParagraph]) -> [Set<Int>] {
+        var lastSeenIndex: [Int: Int] = [:]
+        for (index, paragraph) in paragraphs.enumerated() {
+            switch paragraph {
+            case .heading:
+                continue
+            case .prose(let verses), .poetry(let verses):
+                for verse in verses { lastSeenIndex[verse.number] = index }
+            }
+        }
+        var result: [Set<Int>] = Array(repeating: [], count: paragraphs.count)
+        for (verseNumber, paragraphIndex) in lastSeenIndex {
+            result[paragraphIndex].insert(verseNumber)
+        }
+        return result
+    }
 }
 
 /// One layout unit of a verse: a single word, tagged with its verse number,
@@ -99,6 +159,12 @@ struct VerseWordToken: Sendable {
     /// The verse fragment's first word — it stands in for the whole fragment
     /// as that fragment's single VoiceOver element.
     let isVerseStart: Bool
+    /// The very last word of the verse — its final fragment's last word. Only
+    /// true when the verse number is in the tokenizer's `endsHere` set, so a
+    /// verse straddling a paragraph break carries the flag once, at the close
+    /// of its trailing fragment. Used by the chapter renderer to anchor
+    /// trailing annotation bubbles.
+    let isVerseEnd: Bool
     /// The word that carries the raised verse number. True only for the first
     /// fragment of a verse: a verse straddling a paragraph break is numbered
     /// once, so later fragments leave this `false`.
