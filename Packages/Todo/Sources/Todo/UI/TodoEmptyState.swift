@@ -15,7 +15,7 @@ public struct TodoEmptyState: View {
     public var body: some View {
         VStack(spacing: 6) {
             Text("Nothing here.")
-                .font(.system(size: headlineSize * fontScale, design: .serif))
+                .font(.custom("InstrumentSerif-Italic", size: headlineSize * fontScale))
                 .foregroundStyle(theme.inkSoft)
             Text("Adjust your filter or tap ＋ to add a task.")
                 .font(.system(size: captionSize * fontScale))

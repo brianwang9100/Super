@@ -39,6 +39,7 @@ let package = Package(
             name: "TodoTests",
             dependencies: [
                 "Todo",
+                .product(name: "Core", package: "Core"),
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],

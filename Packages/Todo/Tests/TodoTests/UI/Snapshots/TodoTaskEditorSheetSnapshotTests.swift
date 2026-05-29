@@ -12,6 +12,8 @@ import Testing
 @Suite("TodoTaskEditorSheet snapshots")
 @MainActor
 struct TodoTaskEditorSheetSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     @Test("create mode, light") func createLight() {

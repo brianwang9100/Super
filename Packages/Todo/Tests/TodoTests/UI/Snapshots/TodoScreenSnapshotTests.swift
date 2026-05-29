@@ -19,6 +19,8 @@ import Testing
 @Suite("TodoScreen snapshots")
 @MainActor
 struct TodoScreenSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     @Test("empty, light") func emptyLight() throws {

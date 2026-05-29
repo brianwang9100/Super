@@ -89,7 +89,7 @@ public struct TodoScreen: View {
         let counts = stateCounts
         return VStack(alignment: .leading, spacing: 5) {
             Text("Tasks")
-                .font(.system(size: 34 * fontScale, design: .serif))
+                .font(.custom("InstrumentSerif-Italic", size: 36 * fontScale))
                 .foregroundStyle(theme.ink)
             HStack(spacing: 6) {
                 Text("\(counts.open) open").foregroundStyle(theme.inkFaint)
