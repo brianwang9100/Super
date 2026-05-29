@@ -66,6 +66,14 @@ struct SuperThemeTests {
         #expect(baseline.accent != shifted.accent)
     }
 
+    @Test("accent hue is exposed and defaults to the per-theme baseline")
+    func accentHueIsExposed() {
+        #expect(SuperTheme.make(.light).accentHue == 150)
+        #expect(SuperTheme.make(.dark).accentHue == 150)
+        #expect(SuperTheme.make(.sepia).accentHue == 80)
+        #expect(SuperTheme.make(.light, accentHue: 30).accentHue == 30)
+    }
+
     @Test("display name matches identifier")
     func displayNameMatchesId() {
         #expect(SuperTheme.make(.light).displayName == "Light")
