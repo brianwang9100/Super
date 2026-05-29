@@ -83,6 +83,16 @@ public final class BibleScreenViewModel {
     /// drag-down dismiss.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
+    /// Per-target dispatch state. `.running` for a target whose
+    /// headless `bible.annotate` turn is in flight; `.failed` for one
+    /// whose turn returned `BibleAnnotateResult.failure`. Successful
+    /// dispatches drop their entry — the new rows surface through the
+    /// reactive `@Query` and the sheet flips to its populated state.
+    /// `AnnotationSheetContainer` reads the entry for the target it's
+    /// presenting to pick between generating, failed-with-retry, and
+    /// the regular empty / populated layouts.
+    public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
@@ -91,6 +101,17 @@ public final class BibleScreenViewModel {
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
+
+    /// The shared event bus, set when `attach(to:)` is called once at
+    /// applet bootstrap. `nil` for tests that don't exercise the
+    /// headless dispatch path — those keep getting the PR 3 toast
+    /// fallback so view-model tests written against the disclaimer
+    /// gate stay green without a bus fixture.
+    private var eventBus: SuperEventBus?
+
+    /// Subscription task draining `bibleAnnotateCompleted` envelopes.
+    /// Owned so a future tear-down can cancel it.
+    private var dispatchSubscriptionTask: Task<Void, Never>?
 
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
@@ -554,21 +575,111 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// PR 3 placeholder for the real generation dispatch (PR 4).
-    /// Centralized so the disclaimer-gated and ungated call paths share
-    /// one swap site.
+    /// Re-fire a failed dispatch with a fresh request id. Triggered by
+    /// the retry button on the annotation sheet. The previous
+    /// `.failed(...)` entry is replaced with a fresh `.running(...)`
+    /// keyed on the new id; the bus completion event for the original
+    /// id (if it ever arrives — typically it already has) is ignored
+    /// because no entry matches.
+    public func retryAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
+        performAnnotationGeneration(for: spec)
+    }
+
+    /// Build the `RecordReference` envelope for a one-off
+    /// `bible.annotate` dispatch request. The reference's `id` is the
+    /// `requestId` the completion event will echo back. The `kind` /
+    /// `sourceID` / `displayLabel` / `citation` fields let
+    /// `BibleAnnotateDispatcher`'s prompt name the target without
+    /// importing Bible.
+    private func makeAnnotateRequestReference(for spec: BibleAnnotationTargetSpec) -> RecordReference {
+        let citation = citationLabel(for: spec)
+        let kind: String
+        switch spec {
+        case .book: kind = "book"
+        case .chapter: kind = "chapter"
+        case .verseRange: kind = "verseRange"
+        }
+        return RecordReference(
+            appletID: BibleApplet.appletID,
+            kind: kind,
+            sourceID: spec.id,
+            displayLabel: citation,
+            citation: "\(citation) (\(translation.rawValue))",
+            snapshot: "",
+            id: idGenerator.nextID()
+        )
+    }
+
+    /// Headless `bible.annotate` dispatch.
+    ///
+    /// When a `SuperEventBus` is wired through `attach(to:)`, publishes
+    /// `SuperEvent.bibleAnnotateRequested(reference:)`, marks the
+    /// target running in `dispatchStatusByTarget`, and presents the
+    /// annotation sheet so the user sees the generating state. The
+    /// matching `bibleAnnotateCompleted` envelope flips the entry to
+    /// either gone (success — rows arrive through `@Query`) or
+    /// `.failed(message)` (retry button appears).
+    ///
+    /// When no bus is wired (test fixtures pre-PR4), falls back to the
+    /// PR 3 stub toast so existing view-model tests stay green without
+    /// constructing a bus.
     ///
     /// `clearSelection()` mirrors every other `BibleActionSheet`-reachable
-    /// action (copy, chat hand-off, highlight): the selection-driven sheet
-    /// is dismissed on completion so the user's next action starts fresh
-    /// and the toast isn't competing with the sheet for the bottom edge.
-    /// When PR 4 swaps the toast for the real dispatch, the selection
-    /// still needs to clear here — the LLM call works off the spec, not
-    /// the live selection.
+    /// action (copy, chat hand-off, highlight): the selection-driven
+    /// sheet is dismissed on completion so the user's next action
+    /// starts fresh and the sheet isn't competing for the bottom edge.
     private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
-        _ = spec
         clearSelection()
-        toast = "Annotation generation ships in a later update."
+        guard let bus = eventBus else {
+            toast = "Annotation generation ships in a later update."
+            return
+        }
+        let reference = makeAnnotateRequestReference(for: spec)
+        dispatchStatusByTarget[spec] = .running(requestId: reference.id)
+        presentedAnnotationTarget = spec
+        Task { await bus.publish(.bibleAnnotateRequested(reference: reference)) }
+    }
+
+    /// Subscribe the view model to the shared event bus so headless
+    /// `bibleAnnotateCompleted` envelopes flip the per-target dispatch
+    /// status. Symmetric with how `BibleApplet.attach(to:)` wires the
+    /// `BibleReferenceInbox` — call once after the bus is constructed.
+    /// Idempotent.
+    public func attach(to bus: SuperEventBus) async {
+        guard dispatchSubscriptionTask == nil else { return }
+        eventBus = bus
+        let stream = await bus.events()
+        dispatchSubscriptionTask = Task { [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                self.handleBusEvent(event)
+            }
+        }
+    }
+
+    private func handleBusEvent(_ event: SuperEvent) {
+        guard case .bibleAnnotateCompleted(let requestId, let result) = event else { return }
+        // Find the target whose running status carries this id. The
+        // map is small (one entry per in-flight target) so a linear
+        // scan is fine and avoids a parallel reverse map.
+        let matching = dispatchStatusByTarget.first { _, status in
+            if case .running(let id) = status, id == requestId { return true }
+            return false
+        }
+        guard let spec = matching?.key else { return }
+        switch result {
+        case .success:
+            dispatchStatusByTarget.removeValue(forKey: spec)
+        case .failure(let message):
+            dispatchStatusByTarget[spec] = .failed(message: message)
+        }
+    }
+
+    /// Dispatch status for `spec`, or `nil` when no headless dispatch
+    /// is running or failed for it. `AnnotationSheetContainer` reads
+    /// this to drive its generating / failed / populated layouts.
+    public func dispatchStatus(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
+        dispatchStatusByTarget[spec]
     }
 
     /// Raise the toast shown when a per-card delete write fails — the

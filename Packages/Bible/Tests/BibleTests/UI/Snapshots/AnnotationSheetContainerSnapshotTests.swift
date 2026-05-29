@@ -39,6 +39,16 @@ struct AnnotationSheetContainerSnapshotTests {
                          name: "empty_generating_light")
     }
 
+    @Test("a failed-dispatch status renders the message + retry button")
+    func emptyFailedLight() async throws {
+        try await verify(
+            seeding: [],
+            theme: .light,
+            dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
+            name: "empty_failed_light"
+        )
+    }
+
     // MARK: - Populated states
 
     @Test("text + reference cards render in the light theme")
@@ -97,6 +107,7 @@ struct AnnotationSheetContainerSnapshotTests {
         seeding rows: [BibleAnnotationRecord],
         theme themeID: SuperTheme.Identifier,
         isGenerating: Bool = false,
+        dispatchStatus: BibleAnnotationDispatchStatus? = nil,
         height: CGFloat = 620,
         name: String,
         function: String = #function
@@ -114,6 +125,16 @@ struct AnnotationSheetContainerSnapshotTests {
             )
         }
 
+        // `isGenerating: true` legacy callers fold into the same
+        // dispatchStatus parameter the container now reads — translate
+        // here so the existing baselines (which were recorded with the
+        // PR 3 flag) keep matching their new dispatchStatus-equivalent.
+        let resolvedStatus: BibleAnnotationDispatchStatus? = {
+            if let dispatchStatus { return dispatchStatus }
+            if isGenerating { return .running(requestId: "snapshot-fixture") }
+            return nil
+        }()
+
         let theme = SuperTheme.make(themeID)
         let view = ZStack(alignment: .bottom) {
             theme.background
@@ -127,7 +148,7 @@ struct AnnotationSheetContainerSnapshotTests {
                 onCardAddToChat: { _ in },
                 onOpenReference: { _ in },
                 onClose: {},
-                isGenerating: isGenerating
+                dispatchStatus: resolvedStatus
             )
         }
         .frame(width: 393, height: height)

@@ -244,4 +244,16 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             ON modelConfiguration(isSelected) WHERE isSelected = 1
         """)
     }
+
+    // Adds the `kind` discriminator column to `conversation` so the
+    // Chats list can filter out transient conversations created by the
+    // headless `bible.annotate` dispatcher. Pre-existing rows backfill
+    // to `'user'` via the default; the dispatcher inserts `'transient'`
+    // and hard-deletes the row when its turn ends. Additive — no
+    // existing index or query needs to change.
+    migrator.registerMigration("v5_conversationKind") { db in
+        try db.alter(table: "conversation") { t in
+            t.add(column: "kind", .text).notNull().defaults(to: "user")
+        }
+    }
 }

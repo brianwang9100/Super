@@ -28,6 +28,11 @@ struct SuperBibleAppDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
+    /// Headless `bible.annotate` dispatcher. Held here so it lives as
+    /// long as the dependency graph does — its bus subscription is
+    /// owned by the instance, so dropping the reference would silently
+    /// kill the headless dispatch path.
+    let bibleAnnotateDispatcher: BibleAnnotateDispatcher
 
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
@@ -226,6 +231,26 @@ enum SuperBibleAppBootstrap {
         let eventBus = SuperEventBus()
         await bibleApplet.attach(to: eventBus)
 
+        // Bible → Chat headless dispatch (PR4): a fresh
+        // single-tool `ToolRegistry` exposing only `bible.annotate`
+        // so the transient session can't reach for any other tool.
+        // The shared user-facing registry stays unchanged. The
+        // dispatcher subscribes to `bibleAnnotateRequested` on the
+        // same bus the Bible UI publishes on.
+        let bibleAnnotateRegistry = ToolRegistry()
+        await bibleApplet.registerAnnotationTool(in: bibleAnnotateRegistry)
+        let bibleAnnotateDispatcher = BibleAnnotateDispatcher(
+            conversationRepository: conversationRepo,
+            messageRepository: messageRepo,
+            toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
+            modelConfigurationRepository: modelConfigRepo,
+            llmProviderRegistry: llmProviderRegistry,
+            toolRegistry: bibleAnnotateRegistry,
+            compactor: compactor
+        )
+        await bibleAnnotateDispatcher.attach(to: eventBus)
+
         return SuperBibleAppDependencies(
             chatDatabase: database,
             chatSessionStore: chatSessionStore,
@@ -240,7 +265,8 @@ enum SuperBibleAppBootstrap {
             memoryRepository: memoryRepository,
             eventBus: eventBus,
             appletRegistry: appletRegistry,
-            appleFoundationAvailability: bootAvailability
+            appleFoundationAvailability: bootAvailability,
+            bibleAnnotateDispatcher: bibleAnnotateDispatcher
         )
     }
 }
