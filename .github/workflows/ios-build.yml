@@ -27,7 +27,9 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      # Third-party community action pinned to a commit SHA (not a mutable
+      # tag) so a tag force-push can't swap the code under us.
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         id: filter
         with:
           filters: |
@@ -109,9 +111,13 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/Library/Developer/Xcode/DerivedData/Super-*/Build
-          key: ios-dd-${{ runner.os }}-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          # Xcode version (literal 26.4.1, matching the setup-xcode pin) is in
+          # the key so a runner-image Xcode bump with unchanged Package.resolved
+          # / project.yml auto-busts the cache instead of restoring DerivedData
+          # built by a different toolchain (which causes stale-module failures).
+          key: ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
-            ios-dd-${{ runner.os }}-${{ matrix.scheme }}-
+            ios-dd-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-
 
       - name: Build (iOS Simulator)
         env:
@@ -253,9 +259,11 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/derived/Build
-          key: ios-dd-snap-${{ runner.os }}-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          # Xcode version in the key (see build-app) so a toolchain bump
+          # busts the cache rather than restoring stale compiled modules.
+          key: ios-dd-snap-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
           restore-keys: |
-            ios-dd-snap-${{ runner.os }}-${{ matrix.scheme }}-
+            ios-dd-snap-${{ runner.os }}-xc26.4.1-${{ matrix.scheme }}-
 
       - name: Pick iOS simulator
         id: sim

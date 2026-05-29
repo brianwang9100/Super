@@ -11,6 +11,15 @@ inputs:
     required: false
     # Single source of truth — bump here, every call site follows.
     default: "2.45.4"
+  sha256:
+    description: >
+      Expected SHA-256 of the release's xcodegen.zip. Verified before the
+      binary is installed with sudo, so a compromised release asset or a
+      force-pushed tag can't deliver a tampered binary into the build env
+      (per docs/SECURITY.md supply-chain posture). Bump in lockstep with
+      `version` — `shasum -a 256 xcodegen.zip` on the new release.
+    required: false
+    default: "090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef"
 
 runs:
   using: composite
@@ -19,12 +28,16 @@ runs:
       shell: bash
       env:
         XCODEGEN_VERSION: ${{ inputs.version }}
+        XCODEGEN_SHA256: ${{ inputs.sha256 }}
       run: |
         set -euo pipefail
         # The release zip lays out bin/ + share/ — the binary locates its
         # SettingsPresets at ../share/xcodegen relative to the executable, so
         # both must land under the same /usr/local prefix.
         curl -sSfL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o /tmp/xcodegen.zip
+        # Verify integrity before extracting/installing as root. shasum -c
+        # exits non-zero on mismatch, which set -e turns into a hard failure.
+        echo "${XCODEGEN_SHA256}  /tmp/xcodegen.zip" | shasum -a 256 -c -
         unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-dist
         # Guard the empty-string case: `find | head -1` assigns "" when the
         # archive layout changes, and `set -u` does NOT catch an assigned-

@@ -26,7 +26,9 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      # Third-party community action pinned to a commit SHA (not a mutable
+      # tag) so a tag force-push can't swap the code under us.
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         id: filter
         with:
           filters: |
@@ -96,9 +98,12 @@ jobs:
         uses: actions/cache@v5
         with:
           path: Packages/${{ matrix.package }}/.build
-          key: spm-${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('Packages/{0}/Package.resolved', matrix.package)) }}
+          # Xcode version (literal 26.4.1, matching the setup-xcode pin) in the
+          # key so a runner-image toolchain bump busts the compiled .build
+          # cache instead of restoring modules built by a different Swift.
+          key: spm-${{ runner.os }}-xc26.4.1-${{ matrix.package }}-${{ hashFiles(format('Packages/{0}/Package.resolved', matrix.package)) }}
           restore-keys: |
-            spm-${{ runner.os }}-${{ matrix.package }}-
+            spm-${{ runner.os }}-xc26.4.1-${{ matrix.package }}-
 
       - name: Run tests
         working-directory: Packages/${{ matrix.package }}
