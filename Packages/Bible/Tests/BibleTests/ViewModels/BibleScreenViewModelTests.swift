@@ -478,6 +478,61 @@ struct BibleScreenViewModelTests {
         #expect(try highlights(in: database).isEmpty)
     }
 
+    @Test("re-tapping the verse's current colour clears the highlight")
+    func reapplyingActiveColorClearsHighlight() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+        #expect(try highlights(in: database).map(\.verseNumber) == [9])
+
+        // Re-select the now-yellow verse and tap yellow again — the toggle
+        // reads the live colour and clears instead of re-painting.
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+        #expect(try highlights(in: database).isEmpty)
+    }
+
+    @Test("re-tapping a different colour recolours rather than clearing")
+    func reapplyingDifferentColorRecolours() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+
+        viewModel.toggleVerse(9)
+        viewModel.applyHighlight(.green)
+        await viewModel._waitForPendingHighlightWrite()
+
+        let rows = try highlights(in: database)
+        #expect(rows.map(\.verseNumber) == [9])
+        #expect(rows.first?.color == .green)
+    }
+
+    @Test("re-tapping a colour over a mixed selection applies to all, never clears")
+    func reapplyingColorToMixedSelectionApplies() async throws {
+        let (viewModel, database) = try makeHighlightingViewModel()
+        await viewModel.load()
+        // Verse 4 is yellow; verse 5 is unhighlighted.
+        viewModel.toggleVerse(4)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+
+        // Select both and tap yellow — only verse 4 matches, so the tap
+        // paints both rather than clearing.
+        viewModel.toggleVerse(4)
+        viewModel.toggleVerse(5)
+        viewModel.applyHighlight(.yellow)
+        await viewModel._waitForPendingHighlightWrite()
+
+        let rows = try highlights(in: database)
+        #expect(rows.map(\.verseNumber) == [4, 5])
+        #expect(rows.allSatisfy { $0.color == .yellow })
+    }
+
     @Test("applying a highlight with no selection writes nothing")
     func applyHighlightWithoutSelectionIsNoOp() async throws {
         let (viewModel, database) = try makeHighlightingViewModel()
