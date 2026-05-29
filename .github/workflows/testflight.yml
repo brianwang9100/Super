@@ -81,8 +81,11 @@ jobs:
       - name: Show toolchain
         run: xcodebuild -version
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install XcodeGen
+        # Same pinned-version composite action the PR-CI workflows use, so the
+        # TestFlight archive is generated with exactly the XcodeGen that CI
+        # validated — no second copy of the version to drift out of sync.
+        uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
