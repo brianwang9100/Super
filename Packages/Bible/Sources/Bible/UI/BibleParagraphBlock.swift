@@ -182,12 +182,15 @@ private struct VerseWord: View {
         return number + Text(" ") + word
     }
 
-    /// Neutral light-gray wash behind a selected verse — distinct from the
-    /// warm annotation highlight palette so a selection never reads as a
-    /// yellow highlight. Lighter in light/sepia, a muted mid-gray in dark.
+    /// A subtle wash behind a selected verse, tinted toward the active theme's
+    /// accent hue so a selection feels native to the reading theme (green on
+    /// Light/Dark, warm on Sepia) and tracks the Settings accent-hue slider.
+    /// The low chroma keeps it clearly a *selection* wash — distinct from the
+    /// vivid highlight swatches in the action sheet — and never a highlight.
+    /// Selection still wins over a persisted highlight in `wordBackground`.
     private var selectionTint: Color {
         theme.id == .dark
-            ? OKLCH(0.58, 0.0, 0, alpha: 0.43).color
-            : OKLCH(0.88, 0.0, 0, alpha: 0.82).color
+            ? OKLCH(0.58, 0.055, theme.accentHue, alpha: 0.43).color
+            : OKLCH(0.90, 0.060, theme.accentHue, alpha: 0.82).color
     }
 }
