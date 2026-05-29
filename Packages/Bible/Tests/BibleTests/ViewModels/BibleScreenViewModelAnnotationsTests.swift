@@ -73,7 +73,7 @@ struct BibleScreenViewModelAnnotationsTests {
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
         viewModel.triggerAnnotationGeneration(for: spec)
         #expect(viewModel.isAnnotationDisclaimerPresented)
-        #expect(viewModel.pendingAnnotationIntent == spec)
+        #expect(viewModel.pendingAnnotationIntents == [spec])
         // The generation stub (toast) does NOT fire while the disclaimer
         // is up — the queued intent fires on acknowledgement.
         #expect(viewModel.toast == nil)
@@ -87,9 +87,30 @@ struct BibleScreenViewModelAnnotationsTests {
         viewModel.triggerAnnotationGeneration(for: .chapter(bookId: "ROM", chapterNumber: 8))
         viewModel.acknowledgeAnnotationDisclaimer()
         #expect(viewModel.isAnnotationDisclaimerPresented == false)
-        #expect(viewModel.pendingAnnotationIntent == nil)
+        #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(store.isAcknowledged == true)
         // Stub generation produces the deferred-dispatch toast.
+        #expect(viewModel.toast == "Annotation generation ships in a later update.")
+    }
+
+    @Test("multi-range pre-ack intents are all queued and all fire on acknowledgement")
+    func multiRangeIntentsAllFire() async {
+        let store = FakeDisclaimerStore()
+        let viewModel = makeViewModel(disclaimerStore: store)
+        await viewModel.load()
+        let a = BibleAnnotationTargetSpec.verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 1, verseEnd: 2)
+        let b = BibleAnnotationTargetSpec.verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 5, verseEnd: 5)
+        viewModel.triggerAnnotationGeneration(for: a)
+        viewModel.triggerAnnotationGeneration(for: b)
+        // Both queued; disclaimer up; no toast yet.
+        #expect(viewModel.pendingAnnotationIntents == [a, b])
+        #expect(viewModel.isAnnotationDisclaimerPresented)
+        #expect(viewModel.toast == nil)
+        viewModel.acknowledgeAnnotationDisclaimer()
+        // Both drained; toast reflects the last replay (the stub toast
+        // text is identical per spec — both fired, the last one's toast
+        // is what the user sees, which is fine).
+        #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(viewModel.toast == "Annotation generation ships in a later update.")
     }
 
@@ -100,19 +121,20 @@ struct BibleScreenViewModelAnnotationsTests {
         await viewModel.load()
         viewModel.triggerAnnotationGeneration(for: .chapter(bookId: "ROM", chapterNumber: 8))
         #expect(viewModel.isAnnotationDisclaimerPresented == false)
-        #expect(viewModel.pendingAnnotationIntent == nil)
+        #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(viewModel.toast == "Annotation generation ships in a later update.")
     }
 
-    @Test("discardAnnotationDisclaimer clears the queue without acknowledging")
+    @Test("discardAnnotationDisclaimer clears the whole queue without acknowledging")
     func discardDoesNotAcknowledge() async {
         let store = FakeDisclaimerStore()
         let viewModel = makeViewModel(disclaimerStore: store)
         await viewModel.load()
         viewModel.triggerAnnotationGeneration(for: .chapter(bookId: "ROM", chapterNumber: 8))
+        viewModel.triggerAnnotationGeneration(for: .chapter(bookId: "ROM", chapterNumber: 9))
         viewModel.discardAnnotationDisclaimer()
         #expect(viewModel.isAnnotationDisclaimerPresented == false)
-        #expect(viewModel.pendingAnnotationIntent == nil)
+        #expect(viewModel.pendingAnnotationIntents.isEmpty)
         #expect(store.isAcknowledged == false)
         // No queued intent fires — no toast.
         #expect(viewModel.toast == nil)

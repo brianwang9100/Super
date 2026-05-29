@@ -149,13 +149,32 @@ struct BibleParagraphBlock: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("View annotation for verse \(spec.verseEnd ?? 0)")
+            .accessibilityLabel(Self.trailingBubbleLabel(for: spec))
         } else {
             // No tap host — render the glyph as a decoration only. Lets a
             // preview / driver view show the bubble without wiring a
             // sheet path.
             AnnotationBubble(state: .filled, size: trailingBubbleSize)
                 .padding(.horizontal, 2)
+        }
+    }
+
+    /// VoiceOver label for the trailing bubble. The call site only ever
+    /// produces `.verseRange` specs (the chapter reader builds the
+    /// annotations map under a `target == .verse` guard), but a `switch`
+    /// here makes that contract explicit so a future caller that hands
+    /// in a `.book` / `.chapter` spec gets a sensible label instead of
+    /// "View annotation for verse 0".
+    static func trailingBubbleLabel(for spec: BibleAnnotationTargetSpec) -> String {
+        switch spec {
+        case .verseRange(_, _, let start, let end) where start == end:
+            return "View annotation for verse \(start)"
+        case .verseRange(_, _, let start, let end):
+            return "View annotation for verses \(start)–\(end)"
+        case .chapter:
+            return "View chapter annotation"
+        case .book:
+            return "View book annotation"
         }
     }
 }

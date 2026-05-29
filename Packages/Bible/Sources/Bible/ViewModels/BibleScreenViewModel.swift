@@ -73,11 +73,15 @@ public final class BibleScreenViewModel {
     /// `pendingAnnotationIntent`.
     public var isAnnotationDisclaimerPresented = false
 
-    /// The generation intent stashed while the disclaimer is up. When the
-    /// user acknowledges, the view model replays it through
-    /// `triggerAnnotationGeneration(for:)`; declining (drag-down on the
-    /// sheet without acknowledgement) simply discards it without firing.
-    public private(set) var pendingAnnotationIntent: BibleAnnotationTargetSpec?
+    /// Generation intents queued while the disclaimer is up. A gapped
+    /// verse selection (e.g. 28, 30) decomposes into multiple
+    /// contiguous-range intents; before the user acknowledges the
+    /// disclaimer they all arrive synchronously in `handleAnnotateSelection`
+    /// and must each be replayed once the user taps "Got it". A scalar
+    /// would let the second arrival overwrite the first and silently
+    /// drop it. Drained in FIFO order on acknowledgement; discarded on
+    /// drag-down dismiss.
+    public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
@@ -478,9 +482,15 @@ public final class BibleScreenViewModel {
     /// Trigger a user-initiated annotation-generation intent for `spec`.
     ///
     /// On the *first* call (per device install) the disclaimer modal goes
-    /// up first and the intent is stashed in `pendingAnnotationIntent`;
-    /// `acknowledgeAnnotationDisclaimer()` replays it. On subsequent calls
-    /// the intent fires immediately.
+    /// up first and the intent is appended to `pendingAnnotationIntents`;
+    /// `acknowledgeAnnotationDisclaimer()` drains the whole queue in FIFO
+    /// order. Subsequent calls fire immediately.
+    ///
+    /// The queue is what makes a gapped multi-range selection survive the
+    /// gate: `handleAnnotateSelection` in `BibleScreen` synchronously
+    /// calls this method once per contiguous run; without the queue, the
+    /// second call would overwrite the first while the disclaimer was
+    /// still up, silently dropping it.
     ///
     /// **PR 3 contract**: "fires" means posting the toast
     /// `"Annotation generation ships in a later update."` — the headless
@@ -490,7 +500,7 @@ public final class BibleScreenViewModel {
     /// change.
     public func triggerAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
         guard disclaimerStore.isAcknowledged else {
-            pendingAnnotationIntent = spec
+            pendingAnnotationIntents.append(spec)
             isAnnotationDisclaimerPresented = true
             return
         }
@@ -498,23 +508,23 @@ public final class BibleScreenViewModel {
     }
 
     /// Persist the disclaimer acknowledgement, dismiss the sheet, and
-    /// fire any queued intent (the one that triggered the disclaimer in
-    /// the first place).
+    /// fire every queued intent in FIFO order.
     public func acknowledgeAnnotationDisclaimer() {
         disclaimerStore.setAcknowledged(true)
         isAnnotationDisclaimerPresented = false
-        if let pending = pendingAnnotationIntent {
-            pendingAnnotationIntent = nil
-            performAnnotationGeneration(for: pending)
+        let queue = pendingAnnotationIntents
+        pendingAnnotationIntents.removeAll()
+        for spec in queue {
+            performAnnotationGeneration(for: spec)
         }
     }
 
     /// Dismiss the disclaimer without acknowledging it (drag-down). The
-    /// queued intent is discarded — the user will be prompted again on
-    /// the next generation trigger.
+    /// whole intent queue is discarded — the user will be prompted again
+    /// on the next generation trigger.
     public func discardAnnotationDisclaimer() {
         isAnnotationDisclaimerPresented = false
-        pendingAnnotationIntent = nil
+        pendingAnnotationIntents.removeAll()
     }
 
     /// Navigate the reader to a verse range parsed from an annotation

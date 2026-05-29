@@ -334,6 +334,11 @@ public struct BibleScreen: View {
                 viewModel.presentAnnotationSheet(for: .book(bookId: bookId))
             },
             onRequestBookAnnotations: { bookId in
+                // Dismiss the picker first so the disclaimer (or the
+                // future generated sheet) lands on the bare reader, not
+                // composited over a still-visible picker backdrop.
+                // Mirrors the filled-bubble path above.
+                withAnimation(motion.animation) { viewModel.dismissBookSheet() }
                 viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId))
             },
             // Lift the order toggle above the shell's minimized chat pill,
