@@ -212,14 +212,15 @@ enum SuperOSAppBootstrap {
         // reused here for the registry slot and again below for
         // `attach(to: eventBus)`.)
         let applets: [any MiniApplet] = [
-            // Order is load-bearing: the first applet is the cold-start
-            // default on a fresh install (no `activeAppletStorageKey`
-            // in `UserDefaults`). Keep `TodoApplet` first so Todo
-            // remains the default landing surface — `ChatsApplet`
-            // sits second as a recently-added rail entry that the
-            // user can pin via `onSelectApplet`.
-            TodoApplet(dependencies: todoDependencies),
+            // Order is the sidebar rail order: `ChatsApplet` sits first
+            // so Chats is the most prominent entry. Note this is now
+            // decoupled from the cold-start default — that default is
+            // pinned explicitly to Todo via the `resolvedID` fallback
+            // below, *not* taken from this array's first element. Don't
+            // re-couple them: reordering this array must not change the
+            // fresh-install landing surface.
             ChatsApplet(chatDatabase: database),
+            TodoApplet(dependencies: todoDependencies),
             RecipesPlaceholderApplet(),
             bibleApplet,
             FinancePlaceholderApplet(),
@@ -227,10 +228,16 @@ enum SuperOSAppBootstrap {
         // Resolve the persisted active backdrop here (was in
         // `AppShell.init`). Fallback chain keeps the invariant that
         // some backdrop is always selected: persisted id if it still
-        // matches a registered applet, else the first applet.
-        let storedID = UserDefaults.standard.string(forKey: AppShell.activeAppletStorageKey)
-        let resolvedID = applets.first(where: { $0.appletID == storedID })?.appletID
-            ?? applets.first?.appletID
+        // matches a registered applet, else Todo as the cold-start
+        // default. The fallback is pinned to `TodoApplet.appletID`
+        // (not `applets.first`) so the sidebar order above can change
+        // without moving the fresh-install landing surface — mirrors
+        // SuperBible's explicit `initialActiveID:` approach.
+        let resolvedID = AppletRegistry.resolveActiveID(
+            applets: applets,
+            storedID: UserDefaults.standard.string(forKey: AppShell.activeAppletStorageKey),
+            fallbackID: TodoApplet.appletID
+        )
         let appletRegistry = AppletRegistry(
             applets: applets,
             initialActiveID: resolvedID
