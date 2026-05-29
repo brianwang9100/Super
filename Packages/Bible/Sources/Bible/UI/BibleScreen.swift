@@ -27,8 +27,14 @@ public struct BibleScreen: View {
     /// reader extends its bottom reserve by this amount while verses are
     /// selected so the sheet doesn't cover the last verses of the chapter.
     /// The value can linger after the sheet hides; it's gated by
-    /// `selectedVerses.isEmpty` at the read site.
+    /// `activeOverlayKind` at the read site.
     @State private var actionSheetHeight: CGFloat = 0
+
+    /// Measured intrinsic height of the narration transport card — the
+    /// narration counterpart to `actionSheetHeight`. Feeds the same reader
+    /// bottom-reserve so the last verses scroll clear of the card while
+    /// narration is presented. Also lingers; gated by `activeOverlayKind`.
+    @State private var narrationSheetHeight: CGFloat = 0
 
     /// How sheets, the action sheet, and the toast animate in and out — a
     /// bottom slide by default, a cross-fade when Reduce Motion is on.
@@ -38,6 +44,33 @@ public struct BibleScreen: View {
     /// the action sheet and toast both clear it, settling a few points above
     /// the pill's drag handle rather than touching it.
     private let bottomReserve: CGFloat = 100
+
+    /// Which bottom card is currently presented, following `bottomOverlay`'s
+    /// precedence (narration over selection). Drives both the inset magnitude
+    /// and the reader's selection-scroll gate.
+    private var activeOverlayKind: BibleBottomOverlayKind? {
+        if viewModel.isNarrationSheetPresented { return .narration }
+        if !viewModel.selectedVerses.isEmpty { return .selection }
+        return nil
+    }
+
+    /// Extra bottom reserve the reader adds (on top of its chat-pill clearance)
+    /// so the presented card doesn't cover the chapter's last verses. The
+    /// measured card height sits `bottomReserve` above the screen bottom and the
+    /// reader already reserves `chatPillHeight`, so the extra room needed is the
+    /// card's height plus the gap between the pill and the card's bottom edge.
+    /// Keyed on `activeOverlayKind` so the lingering measured heights collapse
+    /// the instant the card hides.
+    private var bottomOverlayInset: CGFloat {
+        switch activeOverlayKind {
+        case .narration:
+            return narrationSheetHeight + bottomReserve - BibleChapterReader.chatPillHeight
+        case .selection:
+            return actionSheetHeight + bottomReserve - BibleChapterReader.chatPillHeight
+        case nil:
+            return 0
+        }
+    }
 
     /// Write seam for per-card deletion from the annotation sheet, and
     /// the dependency the `AnnotationSheetContainer` needs for its
@@ -274,6 +307,13 @@ public struct BibleScreen: View {
                 }
             )
             .padding(.horizontal, 12)
+            // Measured before the bottomReserve padding so we capture the
+            // card's intrinsic content height (which grows with Dynamic Type),
+            // not the padded distance to the screen edge — mirrors the action
+            // sheet, so narration insets the reader the same way.
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { newHeight in
+                narrationSheetHeight = newHeight
+            }
             .padding(.bottom, bottomReserve)
             .frame(maxHeight: .infinity, alignment: .bottom)
             .transition(motion.transition)
@@ -381,16 +421,14 @@ public struct BibleScreen: View {
                 // a selection of their own.
                 suppressNarrationScroll: !viewModel.selectedVerses.isEmpty,
                 pendingScrollVerse: viewModel.pendingScrollVerse,
-                // Action sheet sits `bottomReserve` (100pt) above the screen
-                // bottom; the reader already reserves `chatPillHeight` for
-                // the chat pill, so the extra room needed to lift the chapter
-                // footer above the sheet's top edge is its measured height
-                // plus the gap between the chat pill and the sheet bottom.
-                // The ternary gates the lingering `actionSheetHeight` so the
-                // reserve collapses the instant selection clears.
-                bottomOverlayInset: viewModel.selectedVerses.isEmpty
-                    ? 0
-                    : actionSheetHeight + bottomReserve - BibleChapterReader.chatPillHeight,
+                // The presented card (selection action sheet or narration
+                // transport) reserves room so the chapter footer lifts above
+                // its top edge; see `bottomOverlayInset`. `bottomOverlayKind`
+                // tells the reader which card it is, so the paired selection
+                // scroll runs only for the action sheet and narration's own
+                // follow-scroll stays the sole driver while it plays.
+                bottomOverlayInset: bottomOverlayInset,
+                bottomOverlayKind: activeOverlayKind,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
                 },

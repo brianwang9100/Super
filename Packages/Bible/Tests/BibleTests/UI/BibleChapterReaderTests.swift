@@ -46,3 +46,26 @@ struct BibleChapterSheetTransitionTests {
         #expect(BibleChapterReader.sheetTransition(oldInset: 0, newInset: 0) == nil)
     }
 }
+
+/// Unit tests for the gate deciding whether a `bottomOverlayInset` change
+/// should drive the paired selection scroll. Only the action sheet does;
+/// the narration card reserves inset space silently so its own follow-scroll
+/// stays the sole driver.
+@Suite("BibleChapterReader.shouldRunSelectionScroll")
+@MainActor
+struct BibleChapterSelectionScrollGateTests {
+    @Test("the action sheet runs the paired selection scroll")
+    func runsForSelection() {
+        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: .selection) == true)
+    }
+
+    @Test("the narration card does not run the paired selection scroll")
+    func skipsForNarration() {
+        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: .narration) == false)
+    }
+
+    @Test("no overlay does not run the paired selection scroll")
+    func skipsForNoOverlay() {
+        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: nil) == false)
+    }
+}
