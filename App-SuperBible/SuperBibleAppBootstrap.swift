@@ -120,6 +120,7 @@ enum SuperBibleAppBootstrap {
         //      verse-citation taps.
         let bibleApplet = BibleApplet()
         await bibleApplet.registerAnnotationTool(in: toolRegistry)
+        await bibleApplet.registerNoteTool(in: toolRegistry)
 
         // Best-effort AFM seed, same shape as SuperOS — skipped on
         // ineligible devices and pre-populated DBs.

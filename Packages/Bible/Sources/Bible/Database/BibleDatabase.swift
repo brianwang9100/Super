@@ -152,4 +152,46 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["target", "bookId"]
         )
     }
+
+    migrator.registerMigration("v4_createNote") { db in
+        // Polymorphic single table mirroring `bibleAnnotation` — `target`
+        // discriminates the three scopes (book / chapter / verse), and the
+        // position columns are nullable because lower-precision targets don't
+        // carry them. Notes differ from annotations in two ways: there is no
+        // `kind`/`title` (a note is just free-text `body`), and rows carry an
+        // `updatedAt` because notes are edited in place rather than
+        // regenerated wholesale. `source` is 'user' or 'assistant'; `modelId`
+        // is nullable (set only for assistant-written notes). Multi-row per
+        // target group is deliberate — each row is one card in the list sheet.
+        try db.create(table: "bibleNote") { t in
+            t.primaryKey("id", .text)
+            t.column("target", .text).notNull()
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer)
+            t.column("verseStart", .integer)
+            t.column("verseEnd", .integer)
+            t.column("body", .text).notNull()
+            t.column("source", .text).notNull()
+            t.column("modelId", .text)
+            t.column("createdAt", .datetime).notNull()
+            t.column("updatedAt", .datetime).notNull()
+        }
+        // Reader's `@Query` slice — `verseEnd` is the lead axis for grouping
+        // note glyphs after the last verse of each note's range. The leading
+        // `(bookId, chapterNumber)` also satisfies chapter-scope lookups, so a
+        // single index covers both per-chapter listing and per-verse
+        // positioning. Mirrors `bibleAnnotation_on_bookId_chapterNumber_verseEnd`.
+        try db.create(
+            index: "bibleNote_on_bookId_chapterNumber_verseEnd",
+            on: "bibleNote",
+            columns: ["bookId", "chapterNumber", "verseEnd"]
+        )
+        // Book-picker glyph visibility — "does this book carry any note at any
+        // level?" resolves to a DISTINCT bookId over this index.
+        try db.create(
+            index: "bibleNote_on_target_bookId",
+            on: "bibleNote",
+            columns: ["target", "bookId"]
+        )
+    }
 }

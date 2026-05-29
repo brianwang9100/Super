@@ -140,6 +140,7 @@ enum SuperOSAppBootstrap {
         //      sufficient for every copy.
         let bibleApplet = BibleApplet()
         await bibleApplet.registerAnnotationTool(in: toolRegistry)
+        await bibleApplet.registerNoteTool(in: toolRegistry)
 
         // Best-effort: seed an AFM row for fresh installs so Chat opens
         // onto a usable provider. Skipped on ineligible devices and
