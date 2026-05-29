@@ -226,6 +226,85 @@ struct BibleScreenSnapshotTests {
                name: "highlighted_sepia_xxl")
     }
 
+    // MARK: - Annotations
+
+    @Test("annotation bubbles render after the chapter title and after annotated verses")
+    func annotatedLight() async throws {
+        verify(try await annotatedScreen(), theme: .light, name: "annotated_light")
+    }
+
+    @Test("annotation bubbles render in the dark theme")
+    func annotatedDark() async throws {
+        verify(try await annotatedScreen(), theme: .dark, name: "annotated_dark")
+    }
+
+    @Test("annotation bubbles render in the sepia theme")
+    func annotatedSepia() async throws {
+        verify(try await annotatedScreen(), theme: .sepia, name: "annotated_sepia")
+    }
+
+    @Test("annotation bubbles render at Dynamic Type XXL")
+    func annotatedLightXXL() async throws {
+        verify(try await annotatedScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "annotated_light_xxl")
+    }
+
+    /// A `BibleScreen` on 1 Peter 2 with one chapter-target annotation
+    /// (a bubble next to the title) plus two verse-target rows ending at
+    /// distinct verses (bubbles inline after each verse's last word).
+    /// Wired to a database context whose `bibleAnnotation` rows the
+    /// chapter reader's `@Query<ChapterAnnotationsRequest>` observes.
+    private func annotatedScreen() async throws -> some View {
+        let database = try BibleDatabase.makeInMemory()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let repository = GRDBBibleAnnotationRepository(database: database)
+        try await repository.replace(
+            target: .chapter, bookId: "1PE", chapterNumber: 2,
+            verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "chap", target: .chapter, bookId: "1PE", chapterNumber: 2,
+                    kind: .text, title: "Summary",
+                    body: "Peter calls scattered believers a chosen race and royal priesthood.",
+                    source: .user, modelId: "afm-3.0", createdAt: now
+                )
+            ]
+        )
+        try await repository.replace(
+            target: .verse, bookId: "1PE", chapterNumber: 2,
+            verseStart: 4, verseEnd: 4,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "v4", target: .verse, bookId: "1PE",
+                    chapterNumber: 2, verseStart: 4, verseEnd: 4,
+                    kind: .text, title: "Living stone",
+                    body: "Echo of Psalm 118:22 — rejected by men, chosen by God.",
+                    source: .user, modelId: "afm-3.0", createdAt: now
+                )
+            ]
+        )
+        try await repository.replace(
+            target: .verse, bookId: "1PE", chapterNumber: 2,
+            verseStart: 9, verseEnd: 9,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "v9", target: .verse, bookId: "1PE",
+                    chapterNumber: 2, verseStart: 9, verseEnd: 9,
+                    kind: .text, title: "Royal priesthood",
+                    body: "Drawn from Exodus 19:5-6 — Israel's identity language extended to the church.",
+                    source: .user, modelId: "afm-3.0", createdAt: now
+                )
+            ]
+        )
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(),
+            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
+        )
+        await viewModel.load()
+        return BibleScreen(viewModel: viewModel, annotationRepository: repository)
+            .databaseContext(.readOnly { database.queue })
+    }
+
     // MARK: - Narration overlay
 
     @Test("the narration card sits over the populated reader with the active verse underlined")

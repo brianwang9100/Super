@@ -22,13 +22,27 @@ struct BibleParagraphBlock: View {
     /// a verse straddling a paragraph break is numbered once, at its first
     /// fragment, so this block leaves those numbers off.
     let numberedEarlier: Set<Int>
+    /// Verse numbers whose final fragment lives in this paragraph — used to
+    /// flag `isVerseEnd` on the right token so trailing annotation bubbles
+    /// land at the close of the verse, even when it straddles a paragraph.
+    let verseEndsHere: Set<Int>
+    /// Annotation target specs keyed by `verseEnd`, each value the list of
+    /// (deduplicated) ranges that end at that verse — drives the trailing
+    /// bubble stack after the last word of the verse. An empty map means no
+    /// verse-target annotations in this paragraph; no bubbles render.
+    let annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
     /// Verse currently being spoken by the narrator — its words render
     /// with an underline so the reader can follow along. `nil` when
     /// narration is idle.
     let currentNarratingVerse: Int?
     /// Invoked with a verse number when any of its words is tapped.
     let onTapVerse: (Int) -> Void
+    /// Invoked when an annotation bubble after a verse-end word is tapped.
+    /// `nil` disables the bubble (used by previews / driver views without a
+    /// sheet host).
+    let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
     @Environment(\.superTheme) private var theme
+    @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 16
 
     var body: some View {
         switch paragraph {
@@ -42,12 +56,20 @@ struct BibleParagraphBlock: View {
                 .padding(.bottom, 2)
         case .prose(let verses):
             flow(
-                VerseTokenizer.proseTokens(verses, numberedEarlier: numberedEarlier),
+                VerseTokenizer.proseTokens(
+                    verses,
+                    numberedEarlier: numberedEarlier,
+                    endsHere: verseEndsHere
+                ),
                 isPoetry: false
             )
         case .poetry(let verses):
             VStack(alignment: .leading, spacing: 5) {
-                let lines = VerseTokenizer.poetryLines(verses, numberedEarlier: numberedEarlier)
+                let lines = VerseTokenizer.poetryLines(
+                    verses,
+                    numberedEarlier: numberedEarlier,
+                    endsHere: verseEndsHere
+                )
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     flow(line, isPoetry: true)
                 }
@@ -58,20 +80,114 @@ struct BibleParagraphBlock: View {
     }
 
     private func flow(_ tokens: [VerseWordToken], isPoetry: Bool) -> some View {
-        VerseFlowLayout {
-            ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
-                VerseWord(
-                    token: token,
-                    isSelected: selectedVerses.contains(token.verseNumber),
-                    highlightColor: highlightedVerses[token.verseNumber],
-                    isNarrating: currentNarratingVerse == token.verseNumber,
-                    isPoetry: isPoetry,
-                    theme: theme,
-                    onTap: onTapVerse
-                )
+        // Interleave verse words with trailing annotation bubbles as a flat
+        // list of `FlowItem`s, then `ForEach` over the items so each one is
+        // a single subview to `VerseFlowLayout`. Wrapping in `Group` would
+        // collapse a word + bubble into one layout cell, breaking per-word
+        // tap targets and line-wrap; this projection keeps every item as
+        // its own placement candidate.
+        let items = flowItems(tokens)
+        return VerseFlowLayout {
+            ForEach(items.indices, id: \.self) { index in
+                flowCell(items[index], isPoetry: isPoetry)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func flowCell(_ item: FlowItem, isPoetry: Bool) -> some View {
+        switch item {
+        case .word(let token):
+            VerseWord(
+                token: token,
+                isSelected: selectedVerses.contains(token.verseNumber),
+                highlightColor: highlightedVerses[token.verseNumber],
+                isNarrating: currentNarratingVerse == token.verseNumber,
+                isPoetry: isPoetry,
+                theme: theme,
+                onTap: onTapVerse
+            )
+        case .bubble(let spec):
+            trailingBubble(for: spec)
+        }
+    }
+
+    /// Thin wrapper around `BibleParagraphBlock.flowItems(_:annotationsByVerseEnd:)`
+    /// that closes over the instance's `annotationsByVerseEnd` map.
+    private func flowItems(_ tokens: [VerseWordToken]) -> [FlowItem] {
+        Self.flowItems(tokens, annotationsByVerseEnd: annotationsByVerseEnd)
+    }
+
+    /// Builds the flat sequence of layout items for one verse run: each
+    /// word followed by any trailing annotation bubbles for that verse's
+    /// end. Pure so a unit test can lock in the interleave contract
+    /// (word, then bubble(s) per `isVerseEnd` token, then the next word)
+    /// without standing up a SwiftUI host.
+    static func flowItems(
+        _ tokens: [VerseWordToken],
+        annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
+    ) -> [FlowItem] {
+        var items: [FlowItem] = []
+        for token in tokens {
+            items.append(.word(token))
+            if token.isVerseEnd, let bubbles = annotationsByVerseEnd[token.verseNumber] {
+                for spec in bubbles {
+                    items.append(.bubble(spec))
+                }
+            }
+        }
+        return items
+    }
+
+    /// One flow cell: either a word or a trailing bubble. Both are siblings
+    /// in `VerseFlowLayout`'s subview list. Internal — exposed for
+    /// `BibleParagraphBlockFlowItemsTests` to assert the interleave
+    /// contract; not part of any public API surface.
+    enum FlowItem: Equatable {
+        case word(VerseWordToken)
+        case bubble(BibleAnnotationTargetSpec)
+    }
+
+    @ViewBuilder
+    private func trailingBubble(for spec: BibleAnnotationTargetSpec) -> some View {
+        if let onAnnotationBubbleTap {
+            Button {
+                onAnnotationBubbleTap(spec)
+            } label: {
+                AnnotationBubble(state: .filled, size: trailingBubbleSize)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 1)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Self.trailingBubbleLabel(for: spec))
+        } else {
+            // No tap host — render the glyph as a decoration only. Lets a
+            // preview / driver view show the bubble without wiring a
+            // sheet path.
+            AnnotationBubble(state: .filled, size: trailingBubbleSize)
+                .padding(.horizontal, 2)
+        }
+    }
+
+    /// VoiceOver label for the trailing bubble. The call site only ever
+    /// produces `.verseRange` specs (the chapter reader builds the
+    /// annotations map under a `target == .verse` guard), but a `switch`
+    /// here makes that contract explicit so a future caller that hands
+    /// in a `.book` / `.chapter` spec gets a sensible label instead of
+    /// "View annotation for verse 0".
+    static func trailingBubbleLabel(for spec: BibleAnnotationTargetSpec) -> String {
+        switch spec {
+        case .verseRange(_, _, let start, let end) where start == end:
+            return "View annotation for verse \(start)"
+        case .verseRange(_, _, let start, let end):
+            return "View annotation for verses \(start)–\(end)"
+        case .chapter:
+            return "View chapter annotation"
+        case .book:
+            return "View book annotation"
+        }
     }
 }
 

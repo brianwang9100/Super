@@ -15,8 +15,18 @@ struct BibleChapterReader: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query<ChapterHighlightsRequest> private var highlights: [BibleHighlightRecord]
+    /// Annotation rows for the on-screen chapter. Drives both the
+    /// chapter-title bubble (any row with target `.chapter`) and the
+    /// per-verse trailing bubble stacks (rows with target `.verse`,
+    /// grouped by `verseEnd`). Writes from anywhere — the popover's
+    /// regenerate path, an in-chat tool call, the future bulk runner —
+    /// flow back through this `@Query` and repaint without re-rendering
+    /// the chapter's text. `BookAnnotationsExistenceRequest` (the
+    /// book-picker badge feed) is held separately by the picker.
+    @Query<ChapterAnnotationsRequest> private var annotations: [BibleAnnotationRecord]
 
     private let chapter: BibleChapter
+    private let bookId: String
     private let bookName: String
     private let selectedVerses: Set<Int>
     private let previousLabel: String?
@@ -30,6 +40,7 @@ struct BibleChapterReader: View {
     private let onNext: () -> Void
     private let onClearSelection: () -> Void
     private let onConsumeScroll: () -> Void
+    private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
 
     /// Verse the user was reading just before the action sheet appeared.
     /// Set when the sheet first measures (`bottomOverlayInset` becomes
@@ -75,13 +86,19 @@ struct BibleChapterReader: View {
         onPrevious: @escaping () -> Void,
         onNext: @escaping () -> Void,
         onClearSelection: @escaping () -> Void,
-        onConsumeScroll: @escaping () -> Void = {}
+        onConsumeScroll: @escaping () -> Void = {},
+        onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
             chapterNumber: chapter.number
         ))
+        _annotations = Query(constant: ChapterAnnotationsRequest(
+            bookId: bookId,
+            chapterNumber: chapter.number
+        ))
         self.chapter = chapter
+        self.bookId = bookId
         self.bookName = bookName
         self.selectedVerses = selectedVerses
         self.previousLabel = previousLabel
@@ -95,6 +112,7 @@ struct BibleChapterReader: View {
         self.onNext = onNext
         self.onClearSelection = onClearSelection
         self.onConsumeScroll = onConsumeScroll
+        self.onAnnotationBubbleTap = onAnnotationBubbleTap
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -107,26 +125,61 @@ struct BibleChapterReader: View {
         return map
     }
 
+    /// Verse-target annotation specs keyed by `verseEnd`, with each value
+    /// the deduplicated list of ranges that end at that verse. Drives the
+    /// trailing-bubble stack a paragraph renders after the verse's last
+    /// word. Overlapping ranges that share a `verseEnd` produce multiple
+    /// bubbles, in stable insertion order.
+    private var annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]] {
+        var map: [Int: [BibleAnnotationTargetSpec]] = [:]
+        var seen: Set<String> = []
+        for record in annotations {
+            guard record.target == .verse,
+                  let start = record.verseStart,
+                  let end = record.verseEnd else { continue }
+            let spec = BibleAnnotationTargetSpec.verseRange(
+                bookId: bookId,
+                chapterNumber: chapter.number,
+                verseStart: start,
+                verseEnd: end
+            )
+            if seen.insert(spec.id).inserted {
+                map[end, default: []].append(spec)
+            }
+        }
+        return map
+    }
+
+    /// `true` when at least one row attaches to the on-screen chapter as
+    /// a `.chapter`-target — drives the bubble alongside the chapter
+    /// title. Book-target rows live in the picker; verse-target rows
+    /// drive the trailing stacks.
+    private var hasChapterAnnotation: Bool {
+        annotations.contains { $0.target == .chapter }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("\(bookName) \(chapter.number)")
-                        .font(.system(.largeTitle, design: .serif))
-                        .italic()
-                        .foregroundStyle(theme.ink)
+                    chapterTitle
                         .padding(.bottom, 6)
 
                     let highlightsByVerse = highlightsByVerse
+                    let annotationsByVerseEnd = annotationsByVerseEnd
                     let numberedEarlier = VerseTokenizer.priorlyNumberedVerses(chapter.paragraphs)
+                    let verseEndsByParagraph = VerseTokenizer.verseEndsByParagraph(chapter.paragraphs)
                     ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, paragraph in
                         BibleParagraphBlock(
                             paragraph: paragraph,
                             selectedVerses: selectedVerses,
                             highlightedVerses: highlightsByVerse,
                             numberedEarlier: numberedEarlier[index],
+                            verseEndsHere: verseEndsByParagraph[index],
+                            annotationsByVerseEnd: annotationsByVerseEnd,
                             currentNarratingVerse: currentNarratingVerse,
-                            onTapVerse: onTapVerse
+                            onTapVerse: onTapVerse,
+                            onAnnotationBubbleTap: onAnnotationBubbleTap
                         )
                     }
 
@@ -228,6 +281,35 @@ struct BibleChapterReader: View {
                 }
                 onConsumeScroll()
             }
+        }
+    }
+
+    /// The italicised chapter title — book name + chapter number — with a
+    /// trailing chapter-level annotation bubble when one exists. Tapping
+    /// the bubble presents the chapter-target popover. The bubble is
+    /// suppressed when no `onAnnotationBubbleTap` is wired (preview /
+    /// driver views without a sheet host).
+    @ViewBuilder
+    private var chapterTitle: some View {
+        let title = Text("\(bookName) \(chapter.number)")
+            .font(.system(.largeTitle, design: .serif))
+            .italic()
+            .foregroundStyle(theme.ink)
+        if hasChapterAnnotation, let onAnnotationBubbleTap {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                title
+                Button {
+                    onAnnotationBubbleTap(.chapter(bookId: bookId, chapterNumber: chapter.number))
+                } label: {
+                    AnnotationBubble(state: .filled, size: 20)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View chapter annotations")
+            }
+        } else {
+            title
         }
     }
 

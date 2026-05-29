@@ -17,6 +17,66 @@ struct VerseTokenizerTests {
         #expect(starts.map(\.word) == ["In", "And"])
     }
 
+    @Test("endsHere flags the last word of each named verse in prose")
+    func proseVerseEndsForFlaggedVerses() {
+        let tokens = VerseTokenizer.proseTokens(
+            [
+                BibleVerse(number: 1, text: "In the beginning"),
+                BibleVerse(number: 2, text: "And the earth was formless"),
+            ],
+            endsHere: [1, 2]
+        )
+        let ends = tokens.filter(\.isVerseEnd)
+        // Verse 1 ends at "beginning"; verse 2 ends at "formless".
+        #expect(ends.map(\.verseNumber) == [1, 2])
+        #expect(ends.map(\.word) == ["beginning", "formless"])
+    }
+
+    @Test("a verse omitted from endsHere carries no verse-end flag in prose")
+    func proseStraddlingVerseDoesNotEndHere() {
+        // Verse 1 has only its opening fragment in this paragraph — a
+        // later paragraph holds the trailing fragment — so endsHere is
+        // empty and no token is flagged.
+        let tokens = VerseTokenizer.proseTokens(
+            [BibleVerse(number: 1, text: "Continuing the prior thought")],
+            endsHere: []
+        )
+        #expect(tokens.contains(where: \.isVerseEnd) == false)
+    }
+
+    @Test("endsHere flags the verse's final word in poetry across line breaks")
+    func poetryVerseEndsAtFinalWord() {
+        let lines = VerseTokenizer.poetryLines(
+            [BibleVerse(number: 1, text: "Praise him\nall his angels")],
+            endsHere: [1]
+        )
+        let allTokens = lines.flatMap { $0 }
+        let ends = allTokens.filter(\.isVerseEnd)
+        #expect(ends.count == 1)
+        #expect(ends.first?.word == "angels")
+    }
+
+    @Test("verseEndsByParagraph slots each verse with its terminal paragraph")
+    func verseEndsByParagraphPartitions() {
+        let paragraphs: [BibleParagraph] = [
+            .prose([
+                BibleVerse(number: 1, text: "Verse one all in here."),
+                BibleVerse(number: 2, text: "Verse two starts here"),
+            ]),
+            .heading("Heading interleaved"),
+            .prose([
+                BibleVerse(number: 2, text: "and finishes here."),
+                BibleVerse(number: 3, text: "Verse three."),
+            ]),
+        ]
+        let result = VerseTokenizer.verseEndsByParagraph(paragraphs)
+        // Verse 1 ends in paragraph 0; verses 2 and 3 end in paragraph 2.
+        // The heading paragraph carries no verses.
+        #expect(result[0] == [1])
+        #expect(result[1].isEmpty)
+        #expect(result[2] == [2, 3])
+    }
+
     @Test("each poetry verse flags exactly one verse-start word")
     func poetryVerseStarts() {
         let tokens = VerseTokenizer.poetryLines([
