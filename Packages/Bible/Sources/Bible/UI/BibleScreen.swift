@@ -111,7 +111,10 @@ public struct BibleScreen: View {
                 onOpenReference: { parsed in
                     viewModel.navigateToVerseReference(parsed)
                 },
-                onClose: { viewModel.dismissAnnotationSheet() }
+                onClose: { viewModel.dismissAnnotationSheet() },
+                onCardDeleteFailed: { _ in
+                    viewModel.presentDeleteAnnotationFailedToast()
+                }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.hidden)

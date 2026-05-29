@@ -541,6 +541,14 @@ public final class BibleScreenViewModel {
         toast = "Annotation generation ships in a later update."
     }
 
+    /// Raise the toast shown when a per-card delete write fails — the
+    /// `AnnotationSheet`'s @Query would otherwise leave the card visible
+    /// with no signal that the tap did nothing. Routed from
+    /// `AnnotationSheetContainer.onCardDeleteFailed`.
+    public func presentDeleteAnnotationFailedToast() {
+        toast = "Couldn't delete the annotation."
+    }
+
     /// Human-readable citation for an annotation target, used as the
     /// sheet header. Examples: `"Romans"` for a book target,
     /// `"Romans 8"` for a chapter, `"Romans 8:28-30"` for a verse range,
@@ -632,21 +640,37 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Map a stored `BibleAnnotationRecord` back to its target spec. The
+    /// schema constraints make the column-`nil` arms unreachable when
+    /// `target` matches (chapter/verse rows are written with their
+    /// chapter / verse columns set), so a violation here means a
+    /// migration regression. `preconditionFailure` surfaces the bug
+    /// immediately rather than silently producing a `chapterNumber: 0`
+    /// spec that opens the wrong sheet.
     private func targetSpec(for record: BibleAnnotationRecord) -> BibleAnnotationTargetSpec {
         switch record.target {
         case .book:
             return .book(bookId: record.bookId)
         case .chapter:
-            return .chapter(
-                bookId: record.bookId,
-                chapterNumber: record.chapterNumber ?? 0
-            )
+            guard let chapterNumber = record.chapterNumber else {
+                preconditionFailure(
+                    "chapter-target record \(record.id) has nil chapterNumber — schema constraint violated"
+                )
+            }
+            return .chapter(bookId: record.bookId, chapterNumber: chapterNumber)
         case .verse:
+            guard let chapterNumber = record.chapterNumber,
+                  let verseStart = record.verseStart,
+                  let verseEnd = record.verseEnd else {
+                preconditionFailure(
+                    "verse-target record \(record.id) has nil chapter/verse columns — schema constraint violated"
+                )
+            }
             return .verseRange(
                 bookId: record.bookId,
-                chapterNumber: record.chapterNumber ?? 0,
-                verseStart: record.verseStart ?? 0,
-                verseEnd: record.verseEnd ?? 0
+                chapterNumber: chapterNumber,
+                verseStart: verseStart,
+                verseEnd: verseEnd
             )
         }
     }

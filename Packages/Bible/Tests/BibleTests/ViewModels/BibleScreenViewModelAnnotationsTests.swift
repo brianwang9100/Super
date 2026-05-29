@@ -239,6 +239,14 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(reference == nil)
     }
 
+    @Test("presentDeleteAnnotationFailedToast raises the documented copy")
+    func deleteFailedToast() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentDeleteAnnotationFailedToast()
+        #expect(viewModel.toast == "Couldn't delete the annotation.")
+    }
+
     @Test("makeAnnotationGroupReference joins ids and stamps the count")
     func groupReferenceCarriesCount() async {
         let viewModel = makeViewModel()

@@ -54,6 +54,12 @@ struct AnnotationSheetContainer: View {
     let onCardAddToChat: (BibleAnnotationRecord) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
     let onClose: () -> Void
+    /// Fired when a per-card delete write fails. The parent surfaces this
+    /// as a toast so the user gets feedback instead of the silent "tap
+    /// did nothing" the @Query would otherwise produce (the row would
+    /// still be there, so the card wouldn't disappear). `nil` swallows
+    /// the error — used only by previews / driver views.
+    let onCardDeleteFailed: ((any Error) -> Void)?
 
     @Query<BibleAnnotationsByTargetRequest> private var records: [BibleAnnotationRecord]
 
@@ -67,6 +73,7 @@ struct AnnotationSheetContainer: View {
         onCardAddToChat: @escaping (BibleAnnotationRecord) -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
         onClose: @escaping () -> Void,
+        onCardDeleteFailed: ((any Error) -> Void)? = nil,
         isGenerating: Bool = false,
         bottomInset: CGFloat = 0
     ) {
@@ -79,6 +86,7 @@ struct AnnotationSheetContainer: View {
         self.onCardAddToChat = onCardAddToChat
         self.onOpenReference = onOpenReference
         self.onClose = onClose
+        self.onCardDeleteFailed = onCardDeleteFailed
         self.isGenerating = isGenerating
         self.bottomInset = bottomInset
         self._records = Query(constant: BibleAnnotationsByTargetRequest(spec: spec))
@@ -97,7 +105,13 @@ struct AnnotationSheetContainer: View {
             },
             onCardDelete: { id in
                 guard let repository else { return }
-                Task { try? await repository.deleteOne(id: id) }
+                Task {
+                    do {
+                        try await repository.deleteOne(id: id)
+                    } catch {
+                        onCardDeleteFailed?(error)
+                    }
+                }
             },
             onOpenReference: onOpenReference,
             isGenerating: isGenerating,
