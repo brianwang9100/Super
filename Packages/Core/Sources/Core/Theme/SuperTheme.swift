@@ -25,6 +25,12 @@ public struct SuperTheme: Sendable, Equatable {
     /// by views that ask SwiftUI to pin `.preferredColorScheme(...)` so
     /// the iOS status bar adopts the matching style.
     public let isDark: Bool
+    /// The accent hue (0–360°) this theme was built with — the design
+    /// baseline (150° Light/Dark, 80° Sepia) unless overridden via the
+    /// Settings hue slider. Surfaced so derived washes (e.g. the Bible
+    /// selection tint) can track the accent without re-deriving it from a
+    /// resolved `Color`.
+    public let accentHue: Double
 
     // Surfaces
     public let background: Color
@@ -85,6 +91,7 @@ public struct SuperTheme: Sendable, Equatable {
             id: .light,
             displayName: "Light",
             isDark: false,
+            accentHue: h,
             background:        OKLCH(0.965, 0.018, 150).color,
             backgroundRaised:  OKLCH(0.985, 0.012, 150).color,
             backgroundSunken:  OKLCH(0.945, 0.020, 150).color,
@@ -117,6 +124,7 @@ public struct SuperTheme: Sendable, Equatable {
             id: .dark,
             displayName: "Dark",
             isDark: true,
+            accentHue: h,
             background:        OKLCH(0.22, 0.025, 155).color,
             backgroundRaised:  OKLCH(0.27, 0.028, 155).color,
             backgroundSunken:  OKLCH(0.18, 0.022, 155).color,
@@ -149,6 +157,7 @@ public struct SuperTheme: Sendable, Equatable {
             id: .sepia,
             displayName: "Sepia",
             isDark: false,
+            accentHue: h,
             background:        OKLCH(0.95, 0.035, 80).color,
             backgroundRaised:  OKLCH(0.97, 0.025, 80).color,
             backgroundSunken:  OKLCH(0.92, 0.040, 80).color,
