@@ -14,6 +14,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Detects whether anything other than docs changed. A docs-only PR then
+    # skips the macOS `test` legs, while the required-check gate (`swift-test`)
+    # still runs and reports — preserving the "no path filter on the workflow"
+    # property the top-of-file comment relies on. dot: true is on by default
+    # in paths-filter@v3, so a .github/ or other dotfile change runs the
+    # full matrix.
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
   discover:
     # Emits the package matrix by globbing `Packages/*/Package.swift`, so a
     # new SwiftPM package is tested with zero workflow edits. A GitHub
@@ -44,7 +65,10 @@ jobs:
           echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
 
   test:
-    needs: discover
+    # Gated on `changes`: docs-only PRs skip these macOS legs; the
+    # `swift-test` gate below still reports success in that case.
+    needs: [changes, discover]
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -105,15 +129,29 @@ jobs:
     # protection requires `swift-test` alone, so adding a package never
     # needs a branch-protection edit. A required check that never reports
     # blocks merge forever — keep this job's name and trigger stable.
-    needs: [discover, test]
+    needs: [changes, discover, test]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Verify discovery and all package test legs passed
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
           DISCOVER_RESULT: ${{ needs.discover.result }}
           TEST_RESULT: ${{ needs.test.result }}
         run: |
+          # Fail closed if the `changes` detector didn't succeed: its empty
+          # output must not be misread as "docs-only" and skip the tests.
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::changes-detection job did not succeed — refusing to skip Swift tests."
+            exit 1
+          fi
+          # Docs-only PR: the `test` matrix was intentionally skipped, so
+          # this required check passes without running it.
+          if [ "$CODE" != "true" ]; then
+            echo "Docs-only change — no Swift tests required."
+            exit 0
+          fi
           # Check `discover` explicitly: if it failed, the `test` matrix is
           # skipped, and an empty/skipped matrix must not read as success.
           if [ "$DISCOVER_RESULT" != "success" ]; then

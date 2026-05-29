@@ -81,8 +81,25 @@ jobs:
       - name: Show toolchain
         run: xcodebuild -version
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install XcodeGen
+        # Pinned release binary instead of `brew install xcodegen`: avoids
+        # brew's implicit formula auto-update tax and version drift. The
+        # release zip lays out bin/ + share/ — the binary locates its
+        # SettingsPresets at ../share/xcodegen relative to the executable, so
+        # both must land under the same /usr/local prefix. Mirrors the
+        # gitleaks pinned-release pattern in secrets-scan.yml.
+        env:
+          XCODEGEN_VERSION: "2.45.4"
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o /tmp/xcodegen.zip
+          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-dist
+          BIN=$(find /tmp/xcodegen-dist -type f -name xcodegen -path '*/bin/*' | head -1)
+          SHARE="$(dirname "$(dirname "$BIN")")/share/xcodegen"
+          sudo cp "$BIN" /usr/local/bin/xcodegen
+          sudo mkdir -p /usr/local/share/xcodegen
+          sudo cp -R "$SHARE/." /usr/local/share/xcodegen/
+          xcodegen --version
 
       - name: Generate Xcode project
         run: xcodegen generate
