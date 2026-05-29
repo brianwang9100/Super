@@ -113,6 +113,12 @@ public final class BibleScreenViewModel {
     /// Owned so a future tear-down can cancel it.
     private var dispatchSubscriptionTask: Task<Void, Never>?
 
+    /// One-shot callbacks fired after the dispatch-subscription task
+    /// processes its next bus event. Test seam — mirrors
+    /// `ChatReferenceInbox._onNextEvent` and the dispatcher's seam of
+    /// the same name. Never observed in production.
+    private var dispatchEventCallbacks: [@MainActor () -> Void] = []
+
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
 
@@ -581,8 +587,14 @@ public final class BibleScreenViewModel {
     /// keyed on the new id; the bus completion event for the original
     /// id (if it ever arrives — typically it already has) is ignored
     /// because no entry matches.
+    ///
+    /// Skips the `clearSelection()` call the initial trigger does —
+    /// on retry there's no live selection to clear (the dispatch is
+    /// keyed on the captured `spec`), and clearing would briefly
+    /// dismiss + re-present the sheet because the same animation
+    /// chain re-evaluates `presentedAnnotationTarget`.
     public func retryAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
-        performAnnotationGeneration(for: spec)
+        publishDispatchRequest(for: spec)
     }
 
     /// Build the `RecordReference` envelope for a one-off
@@ -610,9 +622,23 @@ public final class BibleScreenViewModel {
         )
     }
 
-    /// Headless `bible.annotate` dispatch.
+    /// Initial headless `bible.annotate` dispatch — called by the
+    /// disclaimer-gated trigger from the spark button, the Annotate
+    /// action tile, and empty book-picker bubbles.
     ///
-    /// When a `SuperEventBus` is wired through `attach(to:)`, publishes
+    /// `clearSelection()` mirrors every other `BibleActionSheet`-reachable
+    /// action (copy, chat hand-off, highlight): the selection-driven
+    /// sheet is dismissed on completion so the user's next action
+    /// starts fresh and the sheet isn't competing for the bottom edge.
+    /// Retry skips this — see `retryAnnotationGeneration(for:)`.
+    private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
+        clearSelection()
+        publishDispatchRequest(for: spec)
+    }
+
+    /// Core dispatch publish — extracted so both the initial trigger
+    /// and retry path share one wire site. When a `SuperEventBus` is
+    /// wired through `attach(to:)`, publishes
     /// `SuperEvent.bibleAnnotateRequested(reference:)`, marks the
     /// target running in `dispatchStatusByTarget`, and presents the
     /// annotation sheet so the user sees the generating state. The
@@ -623,13 +649,7 @@ public final class BibleScreenViewModel {
     /// When no bus is wired (test fixtures pre-PR4), falls back to the
     /// PR 3 stub toast so existing view-model tests stay green without
     /// constructing a bus.
-    ///
-    /// `clearSelection()` mirrors every other `BibleActionSheet`-reachable
-    /// action (copy, chat hand-off, highlight): the selection-driven
-    /// sheet is dismissed on completion so the user's next action
-    /// starts fresh and the sheet isn't competing for the bottom edge.
-    private func performAnnotationGeneration(for spec: BibleAnnotationTargetSpec) {
-        clearSelection()
+    private func publishDispatchRequest(for spec: BibleAnnotationTargetSpec) {
         guard let bus = eventBus else {
             toast = "Annotation generation ships in a later update."
             return
@@ -658,6 +678,11 @@ public final class BibleScreenViewModel {
     }
 
     private func handleBusEvent(_ event: SuperEvent) {
+        defer {
+            let callbacks = dispatchEventCallbacks
+            dispatchEventCallbacks.removeAll()
+            for callback in callbacks { callback() }
+        }
         guard case .bibleAnnotateCompleted(let requestId, let result) = event else { return }
         // Find the target whose running status carries this id. The
         // map is small (one entry per in-flight target) so a linear
@@ -673,6 +698,15 @@ public final class BibleScreenViewModel {
         case .failure(let message):
             dispatchStatusByTarget[spec] = .failed(message: message)
         }
+    }
+
+    /// Test seam: register a one-shot callback fired after the
+    /// dispatch subscription processes its next bus event. Lets tests
+    /// await event delivery deterministically without `Task.yield()`
+    /// polling (AGENTS.md §2). Underscored because it's not stable
+    /// API.
+    func _onNextDispatchEvent(_ callback: @escaping @MainActor () -> Void) {
+        dispatchEventCallbacks.append(callback)
     }
 
     /// Dispatch status for `spec`, or `nil` when no headless dispatch

@@ -39,13 +39,33 @@ struct AnnotationSheetContainerSnapshotTests {
                          name: "empty_generating_light")
     }
 
-    @Test("a failed-dispatch status renders the message + retry button")
+    @Test("a failed-dispatch status renders the message + retry button in light")
     func emptyFailedLight() async throws {
         try await verify(
             seeding: [],
             theme: .light,
             dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
             name: "empty_failed_light"
+        )
+    }
+
+    @Test("a failed-dispatch status renders the message + retry button in dark")
+    func emptyFailedDark() async throws {
+        try await verify(
+            seeding: [],
+            theme: .dark,
+            dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
+            name: "empty_failed_dark"
+        )
+    }
+
+    @Test("a failed-dispatch status renders the message + retry button in sepia")
+    func emptyFailedSepia() async throws {
+        try await verify(
+            seeding: [],
+            theme: .sepia,
+            dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
+            name: "empty_failed_sepia"
         )
     }
 

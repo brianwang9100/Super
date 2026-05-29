@@ -145,15 +145,15 @@ struct BibleAnnotateDispatcherTests {
         )
     }
 
-    /// Await the next completion event for `requestId` on a fresh
-    /// subscriber stream. Bus delivery is fire-and-forget — the test
-    /// must subscribe before publishing the request so the matching
-    /// completion isn't missed.
-    private func awaitCompletion(
+    /// Drain `stream` until the matching `bibleAnnotateCompleted`
+    /// envelope arrives. The caller is responsible for subscribing
+    /// (`await bus.events()`) before publishing the request — that
+    /// ensures the dispatcher's later completion event is delivered
+    /// on this iterator instead of being missed.
+    private func drainUntilCompletion(
         requestId: String,
-        bus: SuperEventBus
+        stream: AsyncStream<SuperEvent>
     ) async -> BibleAnnotateResult {
-        let stream = await bus.events()
         for await event in stream {
             if case .bibleAnnotateCompleted(let id, let result) = event,
                id == requestId {
@@ -181,13 +181,13 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference()
-        async let resultTask = awaitCompletion(requestId: request.id, bus: setup.bus)
-
-        // Tiny yield to ensure the awaiter has subscribed before publish.
-        await Task.yield()
+        // Subscribe to the bus *before* publishing the request so the
+        // completion the dispatcher fires after its turn is guaranteed
+        // to land in the iterator below.
+        let stream = await setup.bus.events()
         await setup.bus.publish(.bibleAnnotateRequested(reference: request))
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
-        let result = await resultTask
         #expect(result == .success(annotationCount: 2))
 
         // Tool was invoked exactly once with the dispatcher's prompt.
@@ -209,10 +209,9 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference(id: "req-2")
-        async let resultTask = awaitCompletion(requestId: request.id, bus: setup.bus)
-        await Task.yield()
+        let stream = await setup.bus.events()
         await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await resultTask
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
         guard case .failure(let message) = result else {
             Issue.record("expected .failure, got \(result)")
@@ -236,10 +235,9 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference(id: "req-3")
-        async let resultTask = awaitCompletion(requestId: request.id, bus: setup.bus)
-        await Task.yield()
+        let stream = await setup.bus.events()
         await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await resultTask
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
         guard case .failure = result else {
             Issue.record("expected .failure, got \(result)")
@@ -256,10 +254,9 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [], seedSelectedModel: false)
 
         let request = reference(id: "req-4")
-        async let resultTask = awaitCompletion(requestId: request.id, bus: setup.bus)
-        await Task.yield()
+        let stream = await setup.bus.events()
         await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await resultTask
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
 
         guard case .failure(let message) = result else {
             Issue.record("expected .failure, got \(result)")

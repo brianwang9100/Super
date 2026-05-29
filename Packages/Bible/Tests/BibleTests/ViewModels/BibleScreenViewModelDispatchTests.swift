@@ -8,10 +8,18 @@ import Testing
 /// toast with a real `bibleAnnotateRequested` publish + per-target
 /// dispatch tracking + retry.
 ///
-/// All tests wire a real in-memory `SuperEventBus` through `attach(to:)`
-/// so the publish path runs. Tests that don't attach a bus still see
-/// the PR 3 toast fallback — that path is covered by
-/// `BibleScreenViewModelAnnotationsTests`.
+/// Synchronization (per AGENTS.md §2 — no `Task.yield()` polling):
+///
+/// - Capturing a *published* request: subscribe to `bus.events()`
+///   synchronously before triggering. The `await bus.events()` call
+///   blocks on the bus actor until the subscription is registered, so
+///   the next published event is guaranteed to land in the returned
+///   stream.
+///
+/// - Waiting for a *received* completion to flip view-model state:
+///   register `viewModel._onNextDispatchEvent` (test seam) before
+///   publishing. The callback fires after `handleBusEvent` runs, so
+///   the post-await assertions see the post-event state.
 @Suite("BibleScreenViewModel headless dispatch")
 @MainActor
 struct BibleScreenViewModelDispatchTests {
@@ -39,23 +47,43 @@ struct BibleScreenViewModelDispatchTests {
         return viewModel
     }
 
-    /// Drain bus events into an array until the next
-    /// `bibleAnnotateRequested` arrives. Used to capture the
-    /// dispatcher-bound reference the view model just published.
-    private func awaitRequested(
-        on bus: SuperEventBus
-    ) async -> RecordReference {
+    /// Subscribe to the bus synchronously, then iterate the returned
+    /// stream until we see the next `bibleAnnotateRequested` envelope.
+    /// The `await bus.events()` registers the subscription on the
+    /// actor before this function returns, so any publish that happens
+    /// after the subscription was returned is guaranteed to be
+    /// delivered — no `Task.yield()` race.
+    private func nextRequest(on bus: SuperEventBus) async -> RecordReference {
         let stream = await bus.events()
         for await event in stream {
             if case .bibleAnnotateRequested(let reference) = event {
                 return reference
             }
         }
-        Issue.record("event stream closed without a bibleAnnotateRequested envelope")
+        Issue.record("bus stream closed without a bibleAnnotateRequested envelope")
         return RecordReference(
             appletID: "bible", kind: "", sourceID: "",
             displayLabel: "", citation: "", snapshot: "", id: ""
         )
+    }
+
+    /// Publish `event` and await the view model's dispatch
+    /// subscription processing it. Uses `_onNextDispatchEvent` as a
+    /// continuation handle so the assertion that follows sees the
+    /// post-event state deterministically.
+    private func publishAndAwaitDispatch(
+        _ event: SuperEvent,
+        on bus: SuperEventBus,
+        through viewModel: BibleScreenViewModel
+    ) async {
+        await withCheckedContinuation { continuation in
+            viewModel._onNextDispatchEvent {
+                continuation.resume()
+            }
+            Task {
+                await bus.publish(event)
+            }
+        }
     }
 
     @Test("a generation trigger publishes bibleAnnotateRequested and marks the target running")
@@ -64,8 +92,7 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        async let captured = awaitRequested(on: bus)
-        await Task.yield()
+        async let captured = nextRequest(on: bus)
         viewModel.triggerAnnotationGeneration(for: spec)
         let reference = await captured
 
@@ -86,20 +113,15 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        async let captured = awaitRequested(on: bus)
-        await Task.yield()
+        async let captured = nextRequest(on: bus)
         viewModel.triggerAnnotationGeneration(for: spec)
         let reference = await captured
 
-        await bus.publish(.bibleAnnotateCompleted(
-            requestId: reference.id,
-            result: .success(annotationCount: 3)
-        ))
-
-        // Give the view model's subscription one main-actor turn to
-        // process the event.
-        await Task.yield()
-        await Task.yield()
+        await publishAndAwaitDispatch(
+            .bibleAnnotateCompleted(requestId: reference.id, result: .success(annotationCount: 3)),
+            on: bus,
+            through: viewModel
+        )
         #expect(viewModel.dispatchStatusByTarget[spec] == nil)
     }
 
@@ -109,17 +131,15 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        async let captured = awaitRequested(on: bus)
-        await Task.yield()
+        async let captured = nextRequest(on: bus)
         viewModel.triggerAnnotationGeneration(for: spec)
         let reference = await captured
 
-        await bus.publish(.bibleAnnotateCompleted(
-            requestId: reference.id,
-            result: .failure(message: "no key configured")
-        ))
-        await Task.yield()
-        await Task.yield()
+        await publishAndAwaitDispatch(
+            .bibleAnnotateCompleted(requestId: reference.id, result: .failure(message: "no key configured")),
+            on: bus,
+            through: viewModel
+        )
         #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "no key configured"))
     }
 
@@ -129,21 +149,18 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        async let firstCaptured = awaitRequested(on: bus)
-        await Task.yield()
+        async let firstCaptured = nextRequest(on: bus)
         viewModel.triggerAnnotationGeneration(for: spec)
         let first = await firstCaptured
 
-        await bus.publish(.bibleAnnotateCompleted(
-            requestId: first.id,
-            result: .failure(message: "boom")
-        ))
-        await Task.yield()
-        await Task.yield()
+        await publishAndAwaitDispatch(
+            .bibleAnnotateCompleted(requestId: first.id, result: .failure(message: "boom")),
+            on: bus,
+            through: viewModel
+        )
         #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "boom"))
 
-        async let secondCaptured = awaitRequested(on: bus)
-        await Task.yield()
+        async let secondCaptured = nextRequest(on: bus)
         viewModel.retryAnnotationGeneration(for: spec)
         let second = await secondCaptured
 
@@ -157,17 +174,15 @@ struct BibleScreenViewModelDispatchTests {
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
 
-        async let captured = awaitRequested(on: bus)
-        await Task.yield()
+        async let captured = nextRequest(on: bus)
         viewModel.triggerAnnotationGeneration(for: spec)
         _ = await captured
 
-        await bus.publish(.bibleAnnotateCompleted(
-            requestId: "unrelated-id",
-            result: .success(annotationCount: 1)
-        ))
-        await Task.yield()
-        await Task.yield()
+        await publishAndAwaitDispatch(
+            .bibleAnnotateCompleted(requestId: "unrelated-id", result: .success(annotationCount: 1)),
+            on: bus,
+            through: viewModel
+        )
         // The running entry stays because no entry matched the
         // unknown id.
         if case .running = viewModel.dispatchStatusByTarget[spec] {
