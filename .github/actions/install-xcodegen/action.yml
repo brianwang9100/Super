@@ -1,0 +1,39 @@
+name: Install XcodeGen
+description: >
+  Install a pinned XcodeGen release binary instead of `brew install xcodegen`
+  (which triggers an implicit formula auto-update, ~30-90s per macOS leg).
+  Single source of truth for the pinned version across every workflow that
+  needs `xcodegen generate`. Requires the repo to be checked out first.
+
+inputs:
+  version:
+    description: XcodeGen release tag to install.
+    required: false
+    # Single source of truth — bump here, every call site follows.
+    default: "2.45.4"
+
+runs:
+  using: composite
+  steps:
+    - name: Download and install XcodeGen ${{ inputs.version }}
+      shell: bash
+      env:
+        XCODEGEN_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        # The release zip lays out bin/ + share/ — the binary locates its
+        # SettingsPresets at ../share/xcodegen relative to the executable, so
+        # both must land under the same /usr/local prefix.
+        curl -sSfL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o /tmp/xcodegen.zip
+        unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-dist
+        # Guard the empty-string case: `find | head -1` assigns "" when the
+        # archive layout changes, and `set -u` does NOT catch an assigned-
+        # but-empty var — without this the failure surfaces as a cryptic
+        # `cp: missing destination file operand` instead of a clear message.
+        BIN=$(find /tmp/xcodegen-dist -type f -name xcodegen -path '*/bin/*' | head -1)
+        [ -n "$BIN" ] || { echo "::error::xcodegen binary not found in extracted zip — check archive layout"; exit 1; }
+        SHARE="$(dirname "$(dirname "$BIN")")/share/xcodegen"
+        sudo cp "$BIN" /usr/local/bin/xcodegen
+        sudo mkdir -p /usr/local/share/xcodegen
+        sudo cp -R "$SHARE/." /usr/local/share/xcodegen/
+        xcodegen --version

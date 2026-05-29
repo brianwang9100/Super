@@ -146,17 +146,19 @@ jobs:
             echo "::error::changes-detection job did not succeed — refusing to skip Swift tests."
             exit 1
           fi
+          # `discover` runs on every PR (incl. docs-only). Check it BEFORE the
+          # docs-only early-exit so a broken package-glob script blocks merge
+          # promptly rather than hiding until the next code-change PR. A failed
+          # discover skips the `test` matrix, which must not read as success.
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::Package discovery failed — no packages were tested."
+            exit 1
+          fi
           # Docs-only PR: the `test` matrix was intentionally skipped, so
           # this required check passes without running it.
           if [ "$CODE" != "true" ]; then
             echo "Docs-only change — no Swift tests required."
             exit 0
-          fi
-          # Check `discover` explicitly: if it failed, the `test` matrix is
-          # skipped, and an empty/skipped matrix must not read as success.
-          if [ "$DISCOVER_RESULT" != "success" ]; then
-            echo "::error::Package discovery failed — no packages were tested."
-            exit 1
           fi
           if [ "$TEST_RESULT" != "success" ]; then
             echo "::error::One or more swift-test matrix legs failed."

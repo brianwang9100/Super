@@ -75,25 +75,10 @@ jobs:
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        # Pinned release binary instead of `brew install xcodegen`: brew's
-        # implicit formula auto-update costs ~30-90s on every macOS leg, and
-        # an unpinned formula can drift the version under us. The release zip
-        # lays out bin/ + share/ — the binary locates its SettingsPresets at
-        # ../share/xcodegen relative to the executable, so both must land
-        # under the same /usr/local prefix. Same pinned-release pattern as
-        # gitleaks in secrets-scan.yml.
-        env:
-          XCODEGEN_VERSION: "2.45.4"
-        run: |
-          set -euo pipefail
-          curl -sSfL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o /tmp/xcodegen.zip
-          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-dist
-          BIN=$(find /tmp/xcodegen-dist -type f -name xcodegen -path '*/bin/*' | head -1)
-          SHARE="$(dirname "$(dirname "$BIN")")/share/xcodegen"
-          sudo cp "$BIN" /usr/local/bin/xcodegen
-          sudo mkdir -p /usr/local/share/xcodegen
-          sudo cp -R "$SHARE/." /usr/local/share/xcodegen/
-          xcodegen --version
+        # Pinned release binary instead of `brew install xcodegen` (avoids the
+        # ~30-90s brew formula auto-update per leg). Version + install logic
+        # live in the composite action so all call sites stay in lockstep.
+        uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -241,25 +226,10 @@ jobs:
         run: xcodebuild -version
 
       - name: Install XcodeGen
-        # Pinned release binary instead of `brew install xcodegen`: brew's
-        # implicit formula auto-update costs ~30-90s on every macOS leg, and
-        # an unpinned formula can drift the version under us. The release zip
-        # lays out bin/ + share/ — the binary locates its SettingsPresets at
-        # ../share/xcodegen relative to the executable, so both must land
-        # under the same /usr/local prefix. Same pinned-release pattern as
-        # gitleaks in secrets-scan.yml.
-        env:
-          XCODEGEN_VERSION: "2.45.4"
-        run: |
-          set -euo pipefail
-          curl -sSfL "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip" -o /tmp/xcodegen.zip
-          unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen-dist
-          BIN=$(find /tmp/xcodegen-dist -type f -name xcodegen -path '*/bin/*' | head -1)
-          SHARE="$(dirname "$(dirname "$BIN")")/share/xcodegen"
-          sudo cp "$BIN" /usr/local/bin/xcodegen
-          sudo mkdir -p /usr/local/share/xcodegen
-          sudo cp -R "$SHARE/." /usr/local/share/xcodegen/
-          xcodegen --version
+        # Pinned release binary instead of `brew install xcodegen` (avoids the
+        # ~30-90s brew formula auto-update per leg). Version + install logic
+        # live in the composite action so all call sites stay in lockstep.
+        uses: ./.github/actions/install-xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -410,17 +380,21 @@ jobs:
             echo "::error::changes-detection job did not succeed — refusing to skip snapshot tests."
             exit 1
           fi
+          # `discover` runs on every PR (incl. docs-only) and is ubuntu-cheap.
+          # Check it BEFORE the docs-only early-exit so a broken discovery
+          # script (e.g. after a directory restructure) blocks merge promptly
+          # instead of hiding until the next code-change PR, where it would be
+          # misattributed. A failed discover means the snapshot matrix is
+          # skipped, and an empty/skipped matrix must not read as success.
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::Snapshot-scheme discovery failed — no snapshot tests ran."
+            exit 1
+          fi
           # Docs-only PR: snapshot legs were intentionally skipped, so this
           # required check passes without running them.
           if [ "$CODE" != "true" ]; then
             echo "Docs-only change — no snapshot tests required."
             exit 0
-          fi
-          # Check `discover` explicitly: if it failed, the snapshot matrix
-          # is skipped, and an empty/skipped matrix must not read as success.
-          if [ "$DISCOVER_RESULT" != "success" ]; then
-            echo "::error::Snapshot-scheme discovery failed — no snapshot tests ran."
-            exit 1
           fi
           if [ "$RESULT" != "success" ]; then
             echo "::error::One or more ios-snapshot-test matrix legs failed."
