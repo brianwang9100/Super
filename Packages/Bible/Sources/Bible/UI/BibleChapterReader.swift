@@ -35,6 +35,7 @@ struct BibleChapterReader: View {
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
     private let bottomOverlayInset: CGFloat
+    private let bottomOverlayKind: BibleBottomOverlayKind?
     private let onTapVerse: (Int) -> Void
     private let onPrevious: () -> Void
     private let onNext: () -> Void
@@ -59,9 +60,14 @@ struct BibleChapterReader: View {
     ///     the user has selected verses — the spec disables auto-scroll
     ///     so the reader stays anchored to whatever the user is reading.
     ///   - bottomOverlayInset: extra space appended below the chat-pill
-    ///     reserve when an applet-owned bottom overlay (e.g. the verse-
-    ///     selection action sheet) is visible. Lets the last verses
-    ///     scroll above the overlay instead of falling behind it.
+    ///     reserve when an applet-owned bottom overlay (the verse-selection
+    ///     action sheet or the narration transport card) is visible. Lets
+    ///     the last verses scroll above the overlay instead of falling
+    ///     behind it.
+    ///   - bottomOverlayKind: which overlay is driving `bottomOverlayInset`.
+    ///     The paired selection auto-scroll runs only for `.selection`; a
+    ///     `.narration` inset reserves space without triggering it, so
+    ///     narration's own follow-scroll stays the sole scroll driver.
     ///   - onClearSelection: invoked when a tap lands on the column but misses
     ///     every verse word.
     ///   - pendingScrollVerse: verse number to scroll to on appear and on
@@ -82,6 +88,7 @@ struct BibleChapterReader: View {
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
         bottomOverlayInset: CGFloat = 0,
+        bottomOverlayKind: BibleBottomOverlayKind? = nil,
         onTapVerse: @escaping (Int) -> Void,
         onPrevious: @escaping () -> Void,
         onNext: @escaping () -> Void,
@@ -107,6 +114,7 @@ struct BibleChapterReader: View {
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
         self.bottomOverlayInset = bottomOverlayInset
+        self.bottomOverlayKind = bottomOverlayKind
         self.onTapVerse = onTapVerse
         self.onPrevious = onPrevious
         self.onNext = onNext
@@ -212,8 +220,12 @@ struct BibleChapterReader: View {
             // it; on dismiss the reader scrolls back to that same verse at
             // `y = 0.65` (two-thirds down), which approximates the verse's
             // pre-sheet vertical position so the chapter visually returns
-            // to where the user was reading.
+            // to where the user was reading. Gated to the action sheet: the
+            // narration card feeds the same inset to reserve space, but its
+            // own current-verse follow-scroll is the sole scroll driver, so a
+            // paired selection scroll here would fight it.
             .onChange(of: bottomOverlayInset) { oldInset, newInset in
+                guard Self.shouldRunSelectionScroll(kind: bottomOverlayKind) else { return }
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.3)
                 switch Self.sheetTransition(oldInset: oldInset, newInset: newInset) {
                 case .appearing:
@@ -326,6 +338,15 @@ struct BibleChapterReader: View {
     /// SwiftUI host.
     static func shouldAutoScroll(suppressed: Bool) -> Bool {
         !suppressed
+    }
+
+    /// Whether a `bottomOverlayInset` change should drive the paired
+    /// selection auto-scroll. Only the verse-selection action sheet does;
+    /// the narration card reserves inset space without scrolling, leaving
+    /// its own follow-scroll the sole driver. Factored out so a unit test
+    /// can cover the gate without a SwiftUI host.
+    static func shouldRunSelectionScroll(kind: BibleBottomOverlayKind?) -> Bool {
+        kind == .selection
     }
 
     /// Sheet appear / dismiss is the only `bottomOverlayInset` change that
