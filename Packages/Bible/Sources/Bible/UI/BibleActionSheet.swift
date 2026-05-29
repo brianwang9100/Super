@@ -9,13 +9,6 @@ import SwiftUI
 /// in for the deferred hand-off and raise a "coming soon" toast.
 struct BibleActionSheet: View {
     @Environment(\.superTheme) private var theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// Live drag offset for the handle gesture. Reset to zero on a short drag
-    /// (spring-back); on a drag past the dismiss threshold the offset is left
-    /// at its end position so the card's slide-out transition continues from
-    /// where the finger left it instead of snapping back to centre first.
-    @State private var dragOffset: CGFloat = 0
 
     /// The selection citation shown in the sheet header, e.g. `"1 Peter 2:9"`.
     let citation: String
@@ -36,7 +29,6 @@ struct BibleActionSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            dragHandle
             header
             highlightRow
             Rectangle()
@@ -45,82 +37,8 @@ struct BibleActionSheet: View {
                 .padding(.horizontal, 2)
             actionRow
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-        .padding(.bottom, 10)
-        .background(RoundedRectangle(cornerRadius: 20).fill(theme.backgroundRaised))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(theme.borderFaint, lineWidth: 0.5))
-        .offset(y: dragOffset)
-        // Suppresses SwiftUI's implicit transaction animation on gesture-driven
-        // offset changes. Without this, the parent `withAnimation` contexts the
-        // screen wraps around presentation flips leak into the per-frame offset
-        // updates and read as a visible jitter while dragging.
-        .animation(nil, value: dragOffset)
-        .padding(.horizontal, 8)
+        .modifier(BibleSheetChromeModifier(style: .actionSheet, onDismiss: onClose))
     }
-
-    // MARK: Drag handle
-
-    /// Horizontal pill at the top of the card that the user grabs to dismiss.
-    /// The visible capsule is small; the surrounding container is intentionally
-    /// taller (and uses `contentShape(Rectangle())`) so the touch target
-    /// matches a system sheet's drag affordance rather than just the 4pt pill.
-    /// Mirrors `NarrationTransportSheet`'s handle so the two bottom cards drag
-    /// identically. A drag past ``Self.dismissTranslationThreshold`` (or with
-    /// enough downward flick velocity) calls `onClose`; anything shorter springs
-    /// back to centre.
-    private var dragHandle: some View {
-        Capsule()
-            .fill(theme.inkFaint)
-            .frame(width: 36, height: 4)
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
-            .contentShape(Rectangle())
-            // `.global` (not `.local`) is load-bearing: the offset modifier
-            // moves the handle's local origin every frame, so a `.local`-space
-            // gesture would measure each `onChanged` value against a moved
-            // coordinate system and produce a self-feedback jitter. Global space
-            // keeps the gesture coordinate stable while the card follows the
-            // finger.
-            .gesture(
-                DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                    .onChanged { value in
-                        // Upward drags clamp to zero so the card doesn't peel
-                        // off the top — only downward motion counts toward
-                        // dismissal.
-                        dragOffset = max(0, value.translation.height)
-                    }
-                    .onEnded { value in
-                        let dragged = value.translation.height
-                        let predicted = value.predictedEndTranslation.height
-                        if dragged > Self.dismissTranslationThreshold ||
-                           predicted > Self.dismissPredictedThreshold {
-                            // Leave dragOffset where the finger left it so the
-                            // slide-out transition continues from the same
-                            // position instead of snapping back to centre first.
-                            // `onClose` wraps `clearSelection()` in
-                            // `withAnimation`, so the card rides out on the
-                            // screen's sheet motion.
-                            onClose()
-                        } else {
-                            let springBack: Animation? = reduceMotion
-                                ? nil
-                                : .spring(response: 0.32, dampingFraction: 0.85)
-                            withAnimation(springBack) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
-            )
-            .accessibilityHidden(true)
-    }
-
-    /// Downward drag distance past which the card commits to dismiss.
-    private static let dismissTranslationThreshold: CGFloat = 80
-    /// Predicted end translation past which a quick flick (even with small
-    /// current displacement) commits to dismiss — mirrors how system sheets
-    /// honour velocity.
-    private static let dismissPredictedThreshold: CGFloat = 160
 
     private var header: some View {
         HStack {
@@ -129,13 +47,6 @@ struct BibleActionSheet: View {
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
             Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(theme.inkFaint)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
         }
         .padding(.horizontal, 4)
         .padding(.bottom, 8)

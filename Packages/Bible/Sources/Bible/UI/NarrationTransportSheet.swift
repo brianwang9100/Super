@@ -33,7 +33,6 @@ import UIKit
 struct NarrationTransportSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.openURL) private var openURL
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var controller: NarrationController
     /// Short citation of what's being narrated — shown as the card's
     /// title line under the `NOW NARRATING` label (e.g.
@@ -63,41 +62,15 @@ struct NarrationTransportSheet: View {
     /// card freely, and a per-presentation rescan would jank each
     /// re-open.
     @State private var voices: [VoiceOption] = NarrationTransportSheet.cachedVoices
-    /// Live drag offset for the handle gesture. Reset to zero on a
-    /// short drag (spring-back); on a drag past the dismiss threshold
-    /// the offset is left at its end position so the card's slide-out
-    /// transition continues from where the finger left it instead of
-    /// snapping back to centre first.
-    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            dragHandle
             header
             transportRow
             Divider().background(theme.borderFaint)
             controlsRow
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 4)
-        .padding(.bottom, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(theme.backgroundRaised)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(theme.borderFaint, lineWidth: 0.5)
-        )
-        .shadow(color: Color.black.opacity(0.10), radius: 18, x: 0, y: 6)
-        .offset(y: dragOffset)
-        // Suppresses SwiftUI's implicit transaction animation on
-        // gesture-driven offset changes. Without this, parent
-        // animation contexts (from the screen's `withAnimation`
-        // wrappers around presentation flips) can leak into the per-
-        // frame offset updates, producing a visible jitter as the
-        // animation interpolator fights the gesture's discrete writes.
-        .animation(nil, value: dragOffset)
+        .modifier(BibleSheetChromeModifier(style: .narration, onDismiss: onDismiss))
         .task {
             // First-open path only: `cachedVoices` was empty at view
             // construction, so do the 100-300 ms
@@ -115,78 +88,6 @@ struct NarrationTransportSheet: View {
             }
         }
     }
-
-    // MARK: Drag handle
-
-    /// Horizontal pill at the top of the card that the user grabs to
-    /// dismiss. The visible capsule is small; the surrounding container
-    /// is intentionally taller (and uses `contentShape(Rectangle())`) so
-    /// the touch target matches a system sheet's drag affordance rather
-    /// than just the 4pt-tall pill. The card follows the finger in real
-    /// time via `dragOffset`; a drag past
-    /// ``Self.dismissTranslationThreshold`` (or with enough downward
-    /// flick velocity) triggers `onDismiss`. Anything shorter springs
-    /// back to centre.
-    private var dragHandle: some View {
-        Capsule()
-            .fill(theme.inkFaint)
-            .frame(width: 36, height: 4)
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
-            .contentShape(Rectangle())
-            // `.global` (not `.local`) is load-bearing: the offset
-            // modifier moves the handle's local origin every frame, so
-            // a `.local`-space gesture would measure each `onChanged`
-            // value against a moved coordinate system and produce a
-            // self-feedback loop that reads as jitter on screen.
-            // Measuring in global space keeps the gesture coordinate
-            // stable while the card visually follows the finger.
-            .gesture(
-                DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                    .onChanged { value in
-                        // Upward drags are clamped to zero so the card
-                        // doesn't peel off the top — only downward
-                        // motion counts toward dismissal.
-                        dragOffset = max(0, value.translation.height)
-                    }
-                    .onEnded { value in
-                        let dragged = value.translation.height
-                        let predicted = value.predictedEndTranslation.height
-                        if dragged > Self.dismissTranslationThreshold ||
-                           predicted > Self.dismissPredictedThreshold {
-                            // Leave dragOffset where the finger left
-                            // it so the slide-out transition continues
-                            // from the same position instead of
-                            // snapping back to centre first.
-                            onDismiss()
-                        } else {
-                            // Match the rest of the Bible screen's
-                            // Reduce Motion handling (see
-                            // `BibleChapterReader`'s narration auto-
-                            // scroll, which also opts out of animation
-                            // when the user has reduced motion on).
-                            let springBack: Animation? = reduceMotion
-                                ? nil
-                                : .spring(response: 0.32, dampingFraction: 0.85)
-                            withAnimation(springBack) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
-            )
-            .accessibilityHidden(true)
-    }
-
-    /// Downward drag distance past which the card commits to dismiss.
-    /// 80pt is roughly the depth of one of the transport rows — small
-    /// enough that a deliberate drag never has to cross the whole card,
-    /// large enough that a stray finger movement on a button doesn't
-    /// trip it.
-    private static let dismissTranslationThreshold: CGFloat = 80
-    /// Predicted end translation past which a quick flick (even if its
-    /// current displacement is small) commits to dismiss — mirrors how
-    /// system sheets honour velocity.
-    private static let dismissPredictedThreshold: CGFloat = 160
 
     // MARK: Header
 
