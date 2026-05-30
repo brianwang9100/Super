@@ -42,18 +42,23 @@ struct AnnotationSheetContainer: View {
     /// Write seam for per-card deletion. `nil` disables the per-card
     /// delete action — used only in previews / tests with no database.
     let repository: (any BibleAnnotationRepository)?
-    /// `true` while a generation dispatch is in flight. Forwarded to
-    /// `AnnotationSheet` so the empty-state spinner shows when
-    /// `records.isEmpty`. PR 3 always passes `false` (the dispatch path
-    /// is the deferred "coming soon" toast); PR 4 wires this to the
-    /// real in-flight flag.
-    let isGenerating: Bool
+    /// Per-target dispatch status from `BibleScreenViewModel`. `nil`
+    /// means no headless dispatch is running or failed for this
+    /// target — the sheet renders the regular empty / populated
+    /// layouts. `.running` flips the empty layout to the generating
+    /// spinner; `.failed` flips it to the error + retry button.
+    /// Ignored while `records` is non-empty (populated wins).
+    let dispatchStatus: BibleAnnotationDispatchStatus?
     let bottomInset: CGFloat
     let onRegenerate: () -> Void
     let onAddAllToChat: ([BibleAnnotationRecord]) -> Void
     let onCardAddToChat: (BibleAnnotationRecord) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
     let onClose: () -> Void
+    /// Tap on the empty-state retry button. Fired only when
+    /// `dispatchStatus == .failed(...)`. Routed to the view model's
+    /// `retryAnnotationGeneration(for:)`.
+    let onRetry: () -> Void
     /// Fired when a per-card delete write fails. The parent surfaces this
     /// as a toast so the user gets feedback instead of the silent "tap
     /// did nothing" the @Query would otherwise produce (the row would
@@ -73,8 +78,9 @@ struct AnnotationSheetContainer: View {
         onCardAddToChat: @escaping (BibleAnnotationRecord) -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
         onClose: @escaping () -> Void,
+        onRetry: @escaping () -> Void = {},
         onCardDeleteFailed: ((any Error) -> Void)? = nil,
-        isGenerating: Bool = false,
+        dispatchStatus: BibleAnnotationDispatchStatus? = nil,
         bottomInset: CGFloat = 0
     ) {
         self.spec = spec
@@ -86,8 +92,9 @@ struct AnnotationSheetContainer: View {
         self.onCardAddToChat = onCardAddToChat
         self.onOpenReference = onOpenReference
         self.onClose = onClose
+        self.onRetry = onRetry
         self.onCardDeleteFailed = onCardDeleteFailed
-        self.isGenerating = isGenerating
+        self.dispatchStatus = dispatchStatus
         self.bottomInset = bottomInset
         self._records = Query(constant: BibleAnnotationsByTargetRequest(spec: spec))
     }
@@ -114,9 +121,26 @@ struct AnnotationSheetContainer: View {
                 }
             },
             onOpenReference: onOpenReference,
-            isGenerating: isGenerating,
+            onRetry: onRetry,
+            isGenerating: isGeneratingFromStatus,
+            errorMessage: errorMessageFromStatus,
             bottomInset: bottomInset
         )
+    }
+
+    /// `.running` → spinner; other states → no spinner.
+    private var isGeneratingFromStatus: Bool {
+        if case .running = dispatchStatus { return true }
+        return false
+    }
+
+    /// `.failed(message)` → error variant carrying `message`; other
+    /// states → no error variant. The sheet itself suppresses the
+    /// error layout when `records` is non-empty so a late-arriving
+    /// failure event doesn't hide already-rendered cards.
+    private var errorMessageFromStatus: String? {
+        if case .failed(let message) = dispatchStatus { return message }
+        return nil
     }
 
     private var cards: [AnnotationSheet.Card] {

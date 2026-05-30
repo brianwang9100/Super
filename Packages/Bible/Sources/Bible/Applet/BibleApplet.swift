@@ -152,15 +152,24 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Subscribe the applet to inbound Bible deep links on `bus`. Called
+    /// Subscribe the applet to the shared event bus on `bus`. Called
     /// once per composition root after the shared `SuperEventBus` is
-    /// constructed. Idempotent — `BibleReferenceInbox` no-ops on a
-    /// second attach. The applet's struct copies all share the same
-    /// `referenceInbox` reference (it's a class), so calling this on
-    /// the locally-held value before the struct is moved into the
+    /// constructed. Idempotent — both observers no-op on a second
+    /// attach. Wires:
+    ///
+    /// - `BibleReferenceInbox` for inbound Bible deep links from Chat.
+    /// - `BibleScreenViewModel` for headless `bibleAnnotateCompleted`
+    ///   envelopes so the per-target dispatch table flips on
+    ///   completion (success removes the entry; failure flips to a
+    ///   retry-button state).
+    ///
+    /// Applet struct copies share the same `referenceInbox` and
+    /// `viewModel` references (both classes), so calling this on the
+    /// locally-held value before the struct is moved into the
     /// `AppletRegistry` is sufficient.
     public func attach(to bus: SuperEventBus) async {
         await referenceInbox.attach(to: bus)
+        await viewModel.attach(to: bus)
     }
 
     /// Test seam exposing the inbox so a test can publish events through

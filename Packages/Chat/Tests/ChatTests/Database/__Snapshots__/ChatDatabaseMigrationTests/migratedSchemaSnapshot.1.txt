@@ -1,7 +1,7 @@
 sqlite_master
 CREATE TABLE "compactionCheckpoint" ("id" TEXT PRIMARY KEY NOT NULL, "conversationId" TEXT NOT NULL REFERENCES "conversation"("id") ON DELETE CASCADE, "uptoMessageId" TEXT NOT NULL, "summary" TEXT NOT NULL, "tokensBefore" INTEGER NOT NULL, "tokensAfter" INTEGER NOT NULL, "createdAt" DATETIME NOT NULL, "isLive" BOOLEAN NOT NULL);
 CREATE INDEX "compactionCheckpoint_on_conversationId_isLive" ON "compactionCheckpoint"("conversationId", "isLive");
-CREATE TABLE "conversation" ("id" TEXT PRIMARY KEY NOT NULL, "title" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
+CREATE TABLE "conversation" ("id" TEXT PRIMARY KEY NOT NULL, "title" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME, "kind" TEXT NOT NULL DEFAULT 'user');
 CREATE INDEX "conversation_on_updatedAt" ON "conversation"("updatedAt");
 CREATE TABLE "memory" ("id" TEXT PRIMARY KEY NOT NULL, "text" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL);
 CREATE INDEX "memory_on_createdAt" ON "memory"("createdAt");

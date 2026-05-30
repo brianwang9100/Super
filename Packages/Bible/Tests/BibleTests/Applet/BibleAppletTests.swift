@@ -114,18 +114,23 @@ struct BibleAppletTests {
         #expect(viewModel.position == original)
     }
 
-    @Test("attach is idempotent — second call does not double-subscribe")
+    @Test("attach is idempotent — second call does not add another subscriber")
     func attachIsIdempotent() async throws {
         let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
         await viewModel.load()
 
         let applet = BibleApplet(viewModel: viewModel)
         let bus = SuperEventBus()
+        // PR4 onwards `BibleApplet.attach(to:)` wires both the
+        // `BibleReferenceInbox` (inbound `openRecord`) and the
+        // `BibleScreenViewModel` (inbound `bibleAnnotateCompleted`),
+        // so the absolute subscriber count after the first attach is
+        // implementation-defined. The load-bearing invariant is that
+        // the *second* attach doesn't change it.
         await applet.attach(to: bus)
         let firstCount = await bus.subscriberCount
         await applet.attach(to: bus)
         let secondCount = await bus.subscriberCount
-        #expect(firstCount == 1)
-        #expect(secondCount == 1)
+        #expect(secondCount == firstCount)
     }
 }
