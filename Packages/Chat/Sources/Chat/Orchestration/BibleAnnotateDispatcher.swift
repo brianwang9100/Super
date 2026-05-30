@@ -46,9 +46,16 @@ public final class BibleAnnotateDispatcher {
     public private(set) var inFlightRequestIDs: Set<String> = []
 
     private var subscriptionTask: Task<Void, Never>?
-    /// One-shot callbacks fired after the next processed event — test
-    /// seam, never observed in production.
-    private var eventCallbacks: [@MainActor () -> Void] = []
+    /// One-shot callbacks fired after the dispatcher's subscription
+    /// processes a `bibleAnnotateRequested` envelope — test seam,
+    /// never observed in production. Scoped to request envelopes only
+    /// (rather than "next event") so unrelated bus traffic — a
+    /// concurrent `bibleAnnotateCompleted` from another dispatch, an
+    /// `openRecord` from a Chat-side citation tap — doesn't race the
+    /// callback ahead of the actual request handling and mislead a
+    /// test assertion. Mirrors `BibleScreenViewModel`'s same-shape
+    /// `_onNextDispatchCompletion`.
+    private var requestCallbacks: [@MainActor () -> Void] = []
 
     public init(
         conversationRepository: any ConversationRepository,
@@ -89,11 +96,6 @@ public final class BibleAnnotateDispatcher {
     }
 
     private func handle(_ event: SuperEvent, bus: SuperEventBus) {
-        defer {
-            let callbacks = eventCallbacks
-            eventCallbacks.removeAll()
-            for callback in callbacks { callback() }
-        }
         guard case .bibleAnnotateRequested(let reference) = event else { return }
         inFlightRequestIDs.insert(reference.id)
         // Inherits @MainActor from the dispatcher so updates to
@@ -110,6 +112,13 @@ public final class BibleAnnotateDispatcher {
                 result: result
             ))
         }
+        // Fire after the in-flight insert + dispatch spawn so a test
+        // awaiting the callback observes both. Unlike a `defer`, this
+        // sits *inside* the request-filtered branch so unrelated
+        // events don't drain the queue prematurely.
+        let callbacks = requestCallbacks
+        requestCallbacks.removeAll()
+        for callback in callbacks { callback() }
     }
 
     /// Run one headless dispatch end-to-end. Always awaits the
@@ -183,6 +192,7 @@ public final class BibleAnnotateDispatcher {
         let stream = await session.send(text: prompt, model: model)
 
         var annotationCount = 0
+        var toolWasCalled = false
         var failureMessage: String?
 
         for await event in stream {
@@ -192,6 +202,7 @@ public final class BibleAnnotateDispatcher {
                 if result.isError {
                     failureMessage = result.content
                 } else {
+                    toolWasCalled = true
                     annotationCount += result.artifacts
                         .filter { $0.type == "annotation" }
                         .count
@@ -209,9 +220,16 @@ public final class BibleAnnotateDispatcher {
         if let message = failureMessage {
             return .failure(message: message)
         }
-        if annotationCount == 0 {
+        if !toolWasCalled {
             return .failure(message: "The model didn't call bible.annotate. Try again or pick a different model.")
         }
+        // Tool was called successfully — zero new rows is a valid
+        // outcome (the tool's `replace` may have cleared an
+        // already-present set without inserting new ones, or all
+        // entries collided with existing rows). The Bible side reads
+        // `.success` as "stop showing the running indicator"; the
+        // sheet's reactive `@Query` is what determines whether cards
+        // appear.
         return .success(annotationCount: annotationCount)
     }
 
@@ -262,11 +280,14 @@ public final class BibleAnnotateDispatcher {
     static let bibleAnnotateToolID = "bible.annotate"
 
     /// Test seam: register a one-shot callback fired after the
-    /// dispatcher processes its next bus event. Symmetric with
-    /// `ChatReferenceInbox._onNextEvent`. Underscored because it's a
+    /// dispatcher processes a `bibleAnnotateRequested` envelope
+    /// (in-flight insert recorded, dispatch task spawned). Scoped to
+    /// request envelopes only so unrelated bus traffic doesn't drain
+    /// the queue prematurely. Symmetric with `BibleScreenViewModel`'s
+    /// `_onNextDispatchCompletion`. Underscored because it's a
     /// test-only surface, not stable API.
-    func _onNextEvent(_ callback: @escaping @MainActor () -> Void) {
-        eventCallbacks.append(callback)
+    func _onNextAnnotateRequest(_ callback: @escaping @MainActor () -> Void) {
+        requestCallbacks.append(callback)
     }
 
     // MARK: - Prompts

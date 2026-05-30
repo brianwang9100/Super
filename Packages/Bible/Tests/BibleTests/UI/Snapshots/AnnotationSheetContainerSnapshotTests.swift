@@ -69,6 +69,18 @@ struct AnnotationSheetContainerSnapshotTests {
         )
     }
 
+    @Test("a failed-dispatch status reflows at Dynamic Type XXL")
+    func emptyFailedLightXXL() async throws {
+        try await verify(
+            seeding: [],
+            theme: .light,
+            dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
+            dynamicType: .xxLarge,
+            height: 760,
+            name: "empty_failed_light_xxl"
+        )
+    }
+
     // MARK: - Populated states
 
     @Test("text + reference cards render in the light theme")
@@ -128,6 +140,7 @@ struct AnnotationSheetContainerSnapshotTests {
         theme themeID: SuperTheme.Identifier,
         isGenerating: Bool = false,
         dispatchStatus: BibleAnnotationDispatchStatus? = nil,
+        dynamicType: DynamicTypeSize = .large,
         height: CGFloat = 620,
         name: String,
         function: String = #function
@@ -173,6 +186,7 @@ struct AnnotationSheetContainerSnapshotTests {
         }
         .frame(width: 393, height: height)
         .superTheme(theme)
+        .dynamicTypeSize(dynamicType)
         .databaseContext(.readOnly { database.queue })
 
         let failure = verifySnapshot(

@@ -198,6 +198,44 @@ struct BibleAnnotateDispatcherTests {
         #expect(lingering == nil)
     }
 
+    @Test("a tool call that returns zero artifacts is reported as success, not failure")
+    func zeroArtifactsIsStillSuccess() async throws {
+        // Regression for the doc-code contract on `BibleAnnotateResult`:
+        // `.success(annotationCount: 0)` is a valid outcome when the
+        // tool was called but produced no new rows (e.g., the
+        // `replace` cleared an already-present set without inserting).
+        // Distinct from "the model never called the tool" — that's
+        // still a failure.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Done."),
+                .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+            ],
+        ])
+        // Override the default 2-artifact result with a no-artifact
+        // success (mimics the "all rows already exist" cleared-replace
+        // case the tool's `content` line uses).
+        await setup.toolExecutor.setResult(ToolResult(
+            toolID: "bible.annotate",
+            content: "Cleared annotations for the target.",
+            isError: false,
+            artifacts: []
+        ))
+
+        let request = reference(id: "req-zero")
+        let stream = await setup.bus.events()
+        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+
+        #expect(result == .success(annotationCount: 0))
+    }
+
     @Test("a model that never calls bible.annotate produces a failure with a clear message")
     func textOnlyTurnIsAFailure() async throws {
         let setup = try await makeSetup(scripts: [

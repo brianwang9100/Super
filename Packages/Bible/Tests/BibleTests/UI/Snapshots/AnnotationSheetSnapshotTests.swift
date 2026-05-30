@@ -175,6 +175,18 @@ struct AnnotationSheetSnapshotTests {
         )
     }
 
+    @Test("the failed-dispatch state reflows the message + retry button at Dynamic Type XXL")
+    func failedDispatchLightXXL() {
+        verify(
+            theme: .light,
+            cards: [],
+            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
+            dynamicType: .xxLarge,
+            height: 720,
+            name: "failed_dispatch_light_xxl"
+        )
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         cards: [AnnotationSheet.Card],
