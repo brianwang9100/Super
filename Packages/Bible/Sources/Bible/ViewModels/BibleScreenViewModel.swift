@@ -114,10 +114,13 @@ public final class BibleScreenViewModel {
     private var dispatchSubscriptionTask: Task<Void, Never>?
 
     /// One-shot callbacks fired after the dispatch-subscription task
-    /// processes its next bus event. Test seam — mirrors
-    /// `ChatReferenceInbox._onNextEvent` and the dispatcher's seam of
-    /// the same name. Never observed in production.
-    private var dispatchEventCallbacks: [@MainActor () -> Void] = []
+    /// processes a `bibleAnnotateCompleted` envelope. Test seam — kept
+    /// specific to *completion* envelopes because the view model also
+    /// receives its own `bibleAnnotateRequested` echo through the bus;
+    /// a "next event" seam would fire on that echo before the actual
+    /// completion arrives, racing assertions ahead of the state
+    /// update. Never observed in production.
+    private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
 
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
@@ -678,11 +681,6 @@ public final class BibleScreenViewModel {
     }
 
     private func handleBusEvent(_ event: SuperEvent) {
-        defer {
-            let callbacks = dispatchEventCallbacks
-            dispatchEventCallbacks.removeAll()
-            for callback in callbacks { callback() }
-        }
         guard case .bibleAnnotateCompleted(let requestId, let result) = event else { return }
         // Find the target whose running status carries this id. The
         // map is small (one entry per in-flight target) so a linear
@@ -691,22 +689,32 @@ public final class BibleScreenViewModel {
             if case .running(let id) = status, id == requestId { return true }
             return false
         }
-        guard let spec = matching?.key else { return }
-        switch result {
-        case .success:
-            dispatchStatusByTarget.removeValue(forKey: spec)
-        case .failure(let message):
-            dispatchStatusByTarget[spec] = .failed(message: message)
+        if let spec = matching?.key {
+            switch result {
+            case .success:
+                dispatchStatusByTarget.removeValue(forKey: spec)
+            case .failure(let message):
+                dispatchStatusByTarget[spec] = .failed(message: message)
+            }
         }
+        // Callbacks fire *after* the state update and only on
+        // completion envelopes — see `dispatchCompletionCallbacks`'s
+        // doc for why a "next event" seam would race the request echo
+        // ahead of the actual completion.
+        let callbacks = dispatchCompletionCallbacks
+        dispatchCompletionCallbacks.removeAll()
+        for callback in callbacks { callback() }
     }
 
     /// Test seam: register a one-shot callback fired after the
-    /// dispatch subscription processes its next bus event. Lets tests
-    /// await event delivery deterministically without `Task.yield()`
-    /// polling (AGENTS.md §2). Underscored because it's not stable
-    /// API.
-    func _onNextDispatchEvent(_ callback: @escaping @MainActor () -> Void) {
-        dispatchEventCallbacks.append(callback)
+    /// dispatch subscription processes a `bibleAnnotateCompleted`
+    /// envelope. Lets tests await completion-processing
+    /// deterministically without `Task.yield()` polling (AGENTS.md
+    /// §2). Scoped to completion events only — the request echo would
+    /// otherwise race the callback ahead of the actual state update.
+    /// Underscored because it's not stable API.
+    func _onNextDispatchCompletion(_ callback: @escaping @MainActor () -> Void) {
+        dispatchCompletionCallbacks.append(callback)
     }
 
     /// Dispatch status for `spec`, or `nil` when no headless dispatch

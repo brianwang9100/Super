@@ -45,7 +45,6 @@ public final class BibleAnnotateDispatcher {
     /// off the bus instead.
     public private(set) var inFlightRequestIDs: Set<String> = []
 
-    private weak var subscribedBus: SuperEventBus?
     private var subscriptionTask: Task<Void, Never>?
     /// One-shot callbacks fired after the next processed event — test
     /// seam, never observed in production.
@@ -80,17 +79,16 @@ public final class BibleAnnotateDispatcher {
     /// no-op so the shell can call it unconditionally after bootstrap.
     public func attach(to bus: SuperEventBus) async {
         guard subscriptionTask == nil else { return }
-        subscribedBus = bus
         let stream = await bus.events()
         subscriptionTask = Task { [weak self] in
             for await event in stream {
                 guard let self else { return }
-                await self.handle(event, bus: bus)
+                self.handle(event, bus: bus)
             }
         }
     }
 
-    private func handle(_ event: SuperEvent, bus: SuperEventBus) async {
+    private func handle(_ event: SuperEvent, bus: SuperEventBus) {
         defer {
             let callbacks = eventCallbacks
             eventCallbacks.removeAll()
