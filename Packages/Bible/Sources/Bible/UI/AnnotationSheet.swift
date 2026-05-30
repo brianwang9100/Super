@@ -43,14 +43,22 @@ struct AnnotationSheet: View {
     let cards: [Card]
     /// `true` while a generation request is in flight.
     ///
-    /// **Contract**: this flag is only consulted when `cards.isEmpty`.
-    /// When `cards` is non-empty the flag is silently a no-op — the
-    /// existing cards still render with no loading indicator. PR 3's
-    /// `AnnotationSheetViewModel` must therefore clear `cards` *first*
-    /// when the user taps Regenerate (so the spinner-state empty view
-    /// is visible), then write the freshly-produced rows once the
-    /// `bible.annotate` call returns.
+    /// **Contract**: this flag is only consulted when `cards.isEmpty`
+    /// AND `errorMessage` is `nil`. When `cards` is non-empty the flag
+    /// is silently a no-op — the existing cards still render with no
+    /// loading indicator. PR 4's `AnnotationSheetContainer` clears
+    /// `cards` first when retry kicks off (so the spinner-state empty
+    /// view is visible), then writes the freshly-produced rows once
+    /// the `bible.annotate` call returns.
     let isGenerating: Bool
+    /// Short human-readable failure reason from a terminal
+    /// `BibleAnnotateResult.failure`. When non-nil, the empty state
+    /// renders an error variant with this message + a "Try again"
+    /// button instead of the generating or empty layouts. Non-nil only
+    /// while `cards.isEmpty` — if rows landed despite the failure
+    /// (rare race: tool wrote rows and *then* the LLM emitted an
+    /// error), the cards take precedence and the error is suppressed.
+    let errorMessage: String?
     /// Extra bottom padding so the last card clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
@@ -60,11 +68,15 @@ struct AnnotationSheet: View {
     let onCardAddToChat: (Card.ID) -> Void
     let onCardDelete: (Card.ID) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
+    /// Tap on the empty-state retry button. Fires only when
+    /// `errorMessage` is non-nil; ignored on the empty and generating
+    /// branches.
+    let onRetry: () -> Void
 
     /// Parameters without defaults come first, per the root AGENTS.md
     /// "Default parameter values" rule — the required content and
     /// callback set up front, the optional `isGenerating` /
-    /// `bottomInset` last.
+    /// `errorMessage` / `bottomInset` last.
     init(
         citation: String,
         cards: [Card],
@@ -74,12 +86,15 @@ struct AnnotationSheet: View {
         onCardAddToChat: @escaping (Card.ID) -> Void,
         onCardDelete: @escaping (Card.ID) -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
+        onRetry: @escaping () -> Void = {},
         isGenerating: Bool = false,
+        errorMessage: String? = nil,
         bottomInset: CGFloat = 0
     ) {
         self.citation = citation
         self.cards = cards
         self.isGenerating = isGenerating
+        self.errorMessage = errorMessage
         self.bottomInset = bottomInset
         self.onRegenerate = onRegenerate
         self.onAddAllToChat = onAddAllToChat
@@ -87,6 +102,7 @@ struct AnnotationSheet: View {
         self.onCardAddToChat = onCardAddToChat
         self.onCardDelete = onCardDelete
         self.onOpenReference = onOpenReference
+        self.onRetry = onRetry
     }
 
     var body: some View {
@@ -186,16 +202,52 @@ struct AnnotationSheet: View {
         }
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            AnnotationBubble(state: isGenerating ? .generating : .empty, size: 28)
-            Text(isGenerating
-                 ? "Generating annotations…"
-                 : "No annotations yet. Tap to generate.")
+        if let errorMessage {
+            errorState(message: errorMessage)
+        } else {
+            VStack(spacing: 10) {
+                AnnotationBubble(state: isGenerating ? .generating : .empty, size: 28)
+                Text(isGenerating
+                     ? "Generating annotations…"
+                     : "No annotations yet. Tap to generate.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(theme.inkSoft)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 220)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 40)
+        }
+    }
+
+    /// Render the terminal-failure variant: the empty bubble, the
+    /// short failure reason, and a primary "Try again" button bound to
+    /// `onRetry`. Spec §5's failure copy is intentionally short — the
+    /// dispatcher's message text already names the underlying cause
+    /// (no key, model didn't call tool, provider error), so the sheet
+    /// just surfaces it verbatim above the retry affordance.
+    private func errorState(message: String) -> some View {
+        VStack(spacing: 12) {
+            AnnotationBubble(state: .empty, size: 28)
+            Text(message)
                 .font(.system(size: 14))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 220)
+                .frame(maxWidth: 260)
+            Button(action: onRetry) {
+                Text("Try again")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(theme.ink)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(theme.backgroundSunken)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Try again")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 40)

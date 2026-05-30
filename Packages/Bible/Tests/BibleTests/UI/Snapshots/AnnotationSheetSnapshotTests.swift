@@ -145,10 +145,53 @@ struct AnnotationSheetSnapshotTests {
         )
     }
 
+    @Test("the failed-dispatch state renders the message and retry button in light")
+    func failedDispatchLight() {
+        verify(
+            theme: .light,
+            cards: [],
+            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
+            name: "failed_dispatch_light"
+        )
+    }
+
+    @Test("the failed-dispatch state renders the message and retry button in dark")
+    func failedDispatchDark() {
+        verify(
+            theme: .dark,
+            cards: [],
+            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
+            name: "failed_dispatch_dark"
+        )
+    }
+
+    @Test("the failed-dispatch state renders the message and retry button in sepia")
+    func failedDispatchSepia() {
+        verify(
+            theme: .sepia,
+            cards: [],
+            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
+            name: "failed_dispatch_sepia"
+        )
+    }
+
+    @Test("the failed-dispatch state reflows the message + retry button at Dynamic Type XXL")
+    func failedDispatchLightXXL() {
+        verify(
+            theme: .light,
+            cards: [],
+            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
+            dynamicType: .xxLarge,
+            height: 720,
+            name: "failed_dispatch_light_xxl"
+        )
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         cards: [AnnotationSheet.Card],
         isGenerating: Bool = false,
+        errorMessage: String? = nil,
         dynamicType: DynamicTypeSize = .large,
         height: CGFloat = 600,
         name: String,
@@ -166,7 +209,9 @@ struct AnnotationSheetSnapshotTests {
                 onCardAddToChat: { _ in },
                 onCardDelete: { _ in },
                 onOpenReference: { _ in },
+                onRetry: {},
                 isGenerating: isGenerating,
+                errorMessage: errorMessage,
                 bottomInset: 0
             )
         }

@@ -188,7 +188,7 @@ struct ChatDatabaseMigrationTests {
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v4_modelConfigurationKind`) via
+    /// (currently through `v5_conversationKind`) via
     /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
     /// DEFAULT expressions that the targeted PRAGMA assertions don't
     /// cover. Snapshot files land under
@@ -223,6 +223,45 @@ struct ChatDatabaseMigrationTests {
             """)
         }
         #expect(indexNames.contains("modelConfiguration_unique_selected"))
+    }
+
+    /// `v5_conversationKind` adds the `kind` discriminator column to
+    /// the `conversation` table with `NOT NULL DEFAULT 'user'`. Pre-v5
+    /// rows backfill via the default — verified with the same
+    /// stop-at-prior-version + seed pattern used for v4.
+    @Test func v5AddsConversationKindWithUserDefault() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(conversation)")
+                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int, $0["dflt_value"] as String?) }
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2, $0.3)) })
+        #expect(lookup["kind"]?.0 == "TEXT")
+        #expect(lookup["kind"]?.1 == 1)
+        #expect(lookup["kind"]?.2 == "'user'")
+    }
+
+    @Test func v5BackfillsPreExistingConversationsAsUser() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+
+        // Stop at v4 — the `conversation` table doesn't have `kind` yet.
+        try migrator.migrate(queue, upTo: "v4_modelConfigurationKind")
+
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO conversation (id, title, createdAt, updatedAt)
+                VALUES ('legacy', 'Pre-v5', '2026-01-01 00:00:00', '2026-01-01 00:00:00')
+            """)
+        }
+
+        try migrator.migrate(queue)
+
+        let kinds = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT kind FROM conversation ORDER BY id")
+        }
+        #expect(kinds == ["user"])
     }
 
     /// Pre-existing rows are migrated to `kind = 'openAICompatible'` by
