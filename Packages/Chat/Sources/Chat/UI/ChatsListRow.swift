@@ -22,27 +22,25 @@ struct ChatsListRow: View {
     /// `.openConversationRequested(id:)` on the shared event bus.
     let onTap: () -> Void
 
-    @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var subtitleSize: CGFloat = 11.5
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: titleSize * fontScale).weight(.medium))
+                        .font(typography.font(size: 15, relativeTo: .subheadline, weight: .medium))
                         .foregroundStyle(theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Text(RelativeTimeFormatter.format(updatedAt, now: now))
-                        .font(.system(size: subtitleSize * fontScale))
+                        .font(typography.font(size: 11.5, relativeTo: .caption))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(typography.font(size: 13, weight: .medium))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.vertical, 13)

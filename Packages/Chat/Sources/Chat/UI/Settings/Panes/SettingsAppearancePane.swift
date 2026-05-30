@@ -17,6 +17,7 @@ struct SettingsAppearancePane: View {
     @State private var localFontScale: Double = ChatSettings.default.fontScale
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private static let order: [ChatSettings.ThemeID] = [.light, .dark, .sepia]
 
@@ -43,7 +44,7 @@ struct SettingsAppearancePane: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(.footnote))
+            .font(typography.font(.footnote))
             .tracking(1)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -107,7 +108,7 @@ struct SettingsAppearancePane: View {
 
                 HStack(spacing: 6) {
                     Text(palette.displayName)
-                        .font(.system(.footnote).weight(.medium))
+                        .font(typography.font(.footnote, weight: .medium))
                         .foregroundStyle(theme.ink)
                     Spacer(minLength: 0)
                     if isSelected {
@@ -159,15 +160,15 @@ struct SettingsAppearancePane: View {
 
             HStack {
                 Text("Small")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
                 Spacer()
                 Text("\(Int(round(localFontScale * 100)))%")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
                 Spacer()
                 Text("Large")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
             }
         }

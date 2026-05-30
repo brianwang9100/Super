@@ -65,6 +65,7 @@ public struct SidebarDrawer: View {
     public let onSeeAllChats: () -> Void
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private let drawerWidth: CGFloat = 300
 
@@ -189,12 +190,12 @@ public struct SidebarDrawer: View {
     private var wordmarkHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(appInfo.bundleName)
-                .font(.system(size: 36, weight: .regular, design: .serif))
+                .font(typography.display(36, relativeTo: nil))
                 .italic()
                 .lineLimit(1)
                 .foregroundStyle(theme.ink)
             Text("v\(appInfo.version) · personal")
-                .font(.system(.caption2, design: .monospaced))
+                .font(typography.mono(11, relativeTo: .caption2))
                 .tracking(0.3)
                 .foregroundStyle(theme.inkFaint)
         }
@@ -211,7 +212,7 @@ public struct SidebarDrawer: View {
                 NewChatIcon(size: 20)
                     .foregroundStyle(theme.accentInk)
                 Text("New Chat")
-                    .font(.system(.body).weight(.medium))
+                    .font(typography.font(.body, weight: .medium))
                     .foregroundStyle(theme.accentInk)
                 Spacer(minLength: 0)
             }
@@ -239,7 +240,7 @@ public struct SidebarDrawer: View {
                 applet.iconView(size: 20)
                     .foregroundStyle(isActive ? theme.accent : theme.inkSoft)
                 Text(applet.displayName)
-                    .font(.system(.body).weight(isActive ? .medium : .regular))
+                    .font(typography.font(.body, weight: isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                 Spacer(minLength: 0)
             }
@@ -257,7 +258,7 @@ public struct SidebarDrawer: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(.system(.caption2).weight(.medium))
+            .font(typography.font(.caption2, weight: .medium))
             .tracking(1)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,12 +303,7 @@ private struct ChatRow: View {
     let onSelect: () -> Void
 
     @Environment(\.superTheme) private var theme
-    /// Row title intentionally does **not** track the chat font-scale
-    /// slider — it's drawer chrome, not reading content, so the slider
-    /// stays scoped to the message list. `@ScaledMetric` still composes
-    /// Dynamic Type on top of the 17pt base so accessibility text-size
-    /// preferences continue to apply.
-    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 17
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         Button(action: onSelect) {
@@ -318,7 +314,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(.system(size: rowTitleBase).weight(isActive ? .medium : .regular))
+                    .font(typography.font(size: 17, relativeTo: .subheadline, weight: isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -347,23 +343,18 @@ private struct SeeAllChatsRow: View {
     let onTap: () -> Void
 
     @Environment(\.superTheme) private var theme
-    /// Intentionally does **not** track the chat font-scale slider —
-    /// mirrors `ChatRow` above: the drawer is chrome, not reading
-    /// content, so the slider stays scoped to the message list.
-    /// `@ScaledMetric` still composes Dynamic Type on top of the 15pt
-    /// base so accessibility text-size preferences continue to apply.
-    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 Text("See all chats…")
-                    .font(.system(size: rowTitleBase))
+                    .font(typography.font(size: 15, relativeTo: .subheadline))
                     .foregroundStyle(theme.inkSoft)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(typography.font(size: 11, weight: .medium))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.horizontal, 14)

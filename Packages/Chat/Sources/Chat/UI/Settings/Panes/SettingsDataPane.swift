@@ -9,6 +9,7 @@ struct SettingsDataPane: View {
     @State private var showsConfirmation = false
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,7 +33,7 @@ struct SettingsDataPane: View {
                     accessibilityHint: "Deletes every conversation. Cannot be undone.",
                     trailing: {
                         Text("Delete")
-                            .font(.system(.subheadline))
+                            .font(typography.font(.subheadline))
                             .foregroundStyle(theme.errorAccent)
                     },
                     action: { showsConfirmation = true }

@@ -10,6 +10,7 @@ struct ThinkingBlock: View {
     let durationSource: DurationSource
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @State private var isExpanded: Bool
 
     /// Two distinct duration sources: `.live` ticks against the wall clock
@@ -95,14 +96,14 @@ struct ThinkingBlock: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "brain.head.profile")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkSoft)
                 Text(label)
-                    .font(.system(.footnote).weight(.medium))
+                    .font(typography.font(.footnote, weight: .medium))
                     .foregroundStyle(theme.inkSoft)
                 Spacer(minLength: 0)
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(.caption2).weight(.semibold))
+                    .font(typography.font(.caption2, weight: .semibold))
                     .foregroundStyle(theme.inkFaint)
             }
             .padding(.horizontal, 14)

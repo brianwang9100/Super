@@ -25,6 +25,7 @@ public struct ChatEmptyState: View {
     }
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -33,7 +34,7 @@ public struct ChatEmptyState: View {
                 .opacity(0.8)
                 .padding(.bottom, 18)
             Text(greeting)
-                .font(.custom("InstrumentSerif-Italic", size: 26, relativeTo: .title))
+                .font(typography.display(26, relativeTo: .title))
                 .tracking(-0.26)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)

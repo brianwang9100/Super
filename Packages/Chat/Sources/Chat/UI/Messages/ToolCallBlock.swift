@@ -7,6 +7,7 @@ struct ToolCallBlock: View {
     let call: MessageList.ToolCallItem
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @State private var isExpanded: Bool
 
     init(call: MessageList.ToolCallItem, verbosity: ChatVerbosity) {
@@ -29,15 +30,15 @@ struct ToolCallBlock: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "wrench.and.screwdriver")
-                        .font(.system(.caption))
+                        .font(typography.font(.caption))
                         .foregroundStyle(theme.inkSoft)
                     Text(call.toolName)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(typography.mono(12, relativeTo: .caption))
                         .foregroundStyle(theme.ink)
                     statusBadge
                     Spacer(minLength: 0)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(.caption2).weight(.semibold))
+                        .font(typography.font(.caption2, weight: .semibold))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .padding(.horizontal, 14)
@@ -82,25 +83,25 @@ struct ToolCallBlock: View {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
                 Text("running")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
             }
         case .success:
             HStack(spacing: 4) {
                 Image(systemName: "checkmark")
-                    .font(.system(.caption2).weight(.bold))
+                    .font(typography.font(.caption2, weight: .bold))
                     .foregroundStyle(theme.accent)
                 Text("done")
-                    .font(.system(.caption2))
+                    .font(typography.font(.caption2))
                     .foregroundStyle(theme.accent)
             }
         case .failed:
             HStack(spacing: 4) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(.caption2))
+                    .font(typography.font(.caption2))
                     .foregroundStyle(theme.errorAccent)
                 Text("failed")
-                    .font(.system(.caption2))
+                    .font(typography.font(.caption2))
                     .foregroundStyle(theme.errorAccent)
             }
         }
@@ -109,7 +110,7 @@ struct ToolCallBlock: View {
     @ViewBuilder
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(.caption2).weight(.medium))
+            .font(typography.font(.caption2, weight: .medium))
             .tracking(0.5)
             .foregroundStyle(theme.inkFaint)
     }
@@ -118,7 +119,7 @@ struct ToolCallBlock: View {
     private func monospaceBlock(_ text: String) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(text)
-                .font(.system(.caption2, design: .monospaced))
+                .font(typography.mono(11, relativeTo: .caption2))
                 .foregroundStyle(theme.inkSoft)
                 .padding(10)
         }

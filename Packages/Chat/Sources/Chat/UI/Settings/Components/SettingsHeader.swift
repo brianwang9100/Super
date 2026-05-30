@@ -11,6 +11,7 @@ struct SettingsHeader: View {
     let onClose: () -> Void
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,7 +27,7 @@ struct SettingsHeader: View {
             .accessibilityLabel(isRoot ? "Close settings" : "Back")
 
             Text(title)
-                .font(.system(.body).weight(.semibold))
+                .font(typography.font(.body, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity)
                 .lineLimit(1)

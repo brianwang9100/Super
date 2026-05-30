@@ -12,6 +12,7 @@ struct SettingsCompactionPane: View {
     @State private var localThreshold: Double = ChatSettings.default.autoCompactThreshold
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,10 +30,10 @@ struct SettingsCompactionPane: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Auto-compact")
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
                 Text("Summarize older turns when context fills up")
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,11 +63,11 @@ struct SettingsCompactionPane: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Trigger at")
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(viewModel.settings.autoCompactEnabled ? theme.ink : theme.inkMute)
                 Spacer()
                 Text("\(Int(round(localThreshold * 100)))%")
-                    .font(.system(.caption, design: .monospaced))
+                    .font(typography.mono(12, relativeTo: .caption))
                     .foregroundStyle(theme.inkFaint)
             }
             Slider(
@@ -90,7 +91,7 @@ struct SettingsCompactionPane: View {
 
     private var footnote: some View {
         Text("Lower values compact sooner. Older turns are replaced with a summary.")
-            .font(.system(.caption))
+            .font(typography.font(.caption))
             .foregroundStyle(theme.inkFaint)
             .padding(.top, 4)
     }

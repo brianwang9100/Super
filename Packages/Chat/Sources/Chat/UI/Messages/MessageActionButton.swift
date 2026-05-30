@@ -11,11 +11,12 @@ struct MessageActionButton: View {
     /// opacity. Regenerate uses this during in-flight streaming.
     var disabled: Bool = false
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(.caption))
+                .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
                 .frame(width: 26, height: 26)
         }

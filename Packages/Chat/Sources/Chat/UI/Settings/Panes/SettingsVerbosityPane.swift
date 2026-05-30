@@ -8,6 +8,7 @@ struct SettingsVerbosityPane: View {
     @Bindable var viewModel: SettingsViewModel
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private static let options: [(verbosity: ChatVerbosity, description: String)] = [
         (.simple, "Hide thinking and tool calls"),
@@ -43,10 +44,10 @@ struct SettingsVerbosityPane: View {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbosity.displayName)
-                        .font(.system(.subheadline))
+                        .font(typography.font(.subheadline))
                         .foregroundStyle(theme.ink)
                     Text(description)
-                        .font(.system(.caption))
+                        .font(typography.font(.caption))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

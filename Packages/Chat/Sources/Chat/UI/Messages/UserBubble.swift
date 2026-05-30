@@ -11,12 +11,8 @@ struct UserBubble: View {
     /// an ordinary text message.
     var references: [VerseReferencePillModel] = []
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
-    /// Base body size, declared via `@ScaledMetric` so the rendered
-    /// point size composes Dynamic Type with the chat font-scale knob —
-    /// at XXL the user bubble grows beyond plain markdown body, matching
-    /// the pre-`ChatAppearance` behavior.
-    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     var body: some View {
         HStack {
@@ -35,7 +31,7 @@ struct UserBubble: View {
 
     private var textBubble: some View {
         Text(text)
-            .font(.system(size: basePoint * appearance.fontScale))
+            .font(typography.font(size: 17, relativeTo: .subheadline))
             .lineSpacing(2)
             .foregroundStyle(theme.bubbleInk)
             .padding(.horizontal, 14)

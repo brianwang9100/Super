@@ -22,6 +22,7 @@ struct MemoryUpdatedPill: View {
     private let parsed: ParsedMemoryCall
     @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Production initializer — pill starts collapsed; user taps to expand.
     init(call: MessageList.ToolCallItem) {
@@ -47,14 +48,14 @@ struct MemoryUpdatedPill: View {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "brain")
-                    .font(.system(.caption2))
+                    .font(typography.font(.caption2))
                     .foregroundStyle(theme.inkFaint)
                 Text(headline)
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkSoft)
                 if let detail = detailText {
                     Text("— \(detail)")
-                        .font(.system(.caption))
+                        .font(typography.font(.caption))
                         .foregroundStyle(theme.inkFaint)
                         .lineLimit(3)
                 }

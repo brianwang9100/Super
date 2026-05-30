@@ -34,6 +34,7 @@ struct SettingsModelDetailPane: View {
     let editingId: String?
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     @State private var providerID: String
     @State private var modelCatalogID: String
@@ -347,7 +348,7 @@ struct SettingsModelDetailPane: View {
 
             if let errorMessage = viewModel.modelEditError {
                 Text(errorMessage)
-                    .font(.system(.footnote))
+                    .font(typography.font(.footnote))
                     .foregroundStyle(theme.errorAccent)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -463,18 +464,18 @@ struct SettingsModelDetailPane: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(label)
-                    .font(.system(.caption).weight(.medium))
+                    .font(typography.font(.caption, weight: .medium))
                     .foregroundStyle(theme.inkFaint)
                     .textCase(.uppercase)
                     .tracking(0.5)
                 HStack(spacing: 8) {
                     Text(value)
-                        .font(.system(.callout))
+                        .font(typography.font(.callout))
                         .foregroundStyle(theme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(.footnote).weight(.semibold))
+                        .font(typography.font(.footnote, weight: .semibold))
                         .foregroundStyle(theme.inkFaint)
                 }
             }
@@ -502,7 +503,7 @@ struct SettingsModelDetailPane: View {
     @ViewBuilder
     private func editHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(.callout).weight(.medium))
+            .font(typography.font(.callout, weight: .medium))
             .foregroundStyle(theme.inkSoft)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 18)
@@ -524,7 +525,7 @@ struct SettingsModelDetailPane: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.system(.caption).weight(.medium))
+                .font(typography.font(.caption, weight: .medium))
                 .foregroundStyle(theme.inkFaint)
                 .textCase(.uppercase)
                 .tracking(0.5)
@@ -556,13 +557,13 @@ struct SettingsModelDetailPane: View {
     private func apiKeyFieldRow() -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("API Key")
-                .font(.system(.caption).weight(.medium))
+                .font(typography.font(.caption, weight: .medium))
                 .foregroundStyle(theme.inkFaint)
                 .textCase(.uppercase)
                 .tracking(0.5)
             SecureField(isEditing ? "•••• (tap to change)" : "sk-…", text: $apiKey)
                 .focused($apiKeyFieldFocused)
-                .font(.system(.callout))
+                .font(typography.font(.callout))
                 .foregroundStyle(theme.ink)
                 .onChange(of: apiKeyFieldFocused) { _, focused in
                     if focused, apiKeyIsPlaceholder {
@@ -633,7 +634,7 @@ struct SettingsModelDetailPane: View {
     ) -> some View {
         HStack(spacing: 14) {
             Text(label)
-                .font(.system(.callout))
+                .font(typography.font(.callout))
                 .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
             SettingsToggle(isOn: isOn, accessibilityLabel: label)
@@ -656,7 +657,7 @@ struct SettingsModelDetailPane: View {
     @ViewBuilder
     private func contextWindowErrorRow(_ message: String) -> some View {
         Text(message)
-            .font(.system(.footnote))
+            .font(typography.font(.footnote))
             .foregroundStyle(theme.errorAccent)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 18)
@@ -667,7 +668,7 @@ struct SettingsModelDetailPane: View {
     private var saveButton: some View {
         Button(action: save) {
             Text(isEditing ? "Save" : "Add Model")
-                .font(.system(.body).weight(.semibold))
+                .font(typography.font(.body, weight: .semibold))
                 .foregroundStyle(isValid ? theme.background : theme.inkFaint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -687,7 +688,7 @@ struct SettingsModelDetailPane: View {
     private var deleteButton: some View {
         Button(action: { showingDeleteConfirm = true }) {
             Text("Delete model endpoint")
-                .font(.system(.callout).weight(.medium))
+                .font(typography.font(.callout, weight: .medium))
                 .foregroundStyle(theme.errorAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

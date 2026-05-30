@@ -121,14 +121,7 @@ public struct ChatComposer: View {
     }
 
     @Environment(\.superTheme) private var theme
-    /// The composer's text editor tracks the chat font slider so what the
-    /// user types renders at the same size as the message it'll become.
-    @Environment(\.chatAppearance) private var appearance
-    /// Base editor size declared via `@ScaledMetric` so Dynamic Type
-    /// composes with the chat font-scale knob — same pattern as
-    /// ``UserBubble``. Plain `appearance.bodyFont` would drop the
-    /// Dynamic-Type response the prior `.subheadline` styling had.
-    @ScaledMetric(relativeTo: .subheadline) private var editorBase: CGFloat = 17
+    @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
     @State private var pulseScale: CGFloat = 1.0
@@ -309,7 +302,7 @@ public struct ChatComposer: View {
             // the row's height doesn't jump as the morph crosses the
             // transition band.
             Text("Chat with Super")
-                .font(.system(size: editorBase * appearance.fontScale))
+                .font(typography.font(size: 17, relativeTo: .subheadline))
                 .foregroundStyle(theme.inkFaint)
                 .opacity(pillLabelOpacity)
                 .allowsHitTesting(false)
@@ -332,7 +325,7 @@ public struct ChatComposer: View {
             axis: .vertical
         )
         .lineLimit(1...6)
-        .font(.system(size: editorBase * appearance.fontScale))
+        .font(typography.font(size: 17, relativeTo: .subheadline))
         .foregroundStyle(theme.ink)
         .tint(theme.accent)
         .focused($isFocused)
@@ -379,7 +372,7 @@ public struct ChatComposer: View {
     private var sendButton: some View {
         Button(action: submit) {
             Image(systemName: "arrow.up")
-                .font(.system(.callout).weight(.bold))
+                .font(typography.font(.callout, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(theme.accent))
@@ -391,7 +384,7 @@ public struct ChatComposer: View {
     private var micButton: some View {
         Button(action: onMicTap) {
             Image(systemName: "mic")
-                .font(.system(.callout))
+                .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(theme.backgroundSunken))
@@ -406,7 +399,7 @@ public struct ChatComposer: View {
     private var micButtonDimmed: some View {
         Button(action: {}) {
             Image(systemName: "mic.slash")
-                .font(.system(.callout))
+                .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft.opacity(0.4))
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(theme.backgroundSunken))
@@ -425,7 +418,7 @@ public struct ChatComposer: View {
     private var recordingButton: some View {
         Button(action: onStopRecording) {
             Image(systemName: "stop.fill")
-                .font(.system(.callout).weight(.bold))
+                .font(typography.font(.callout, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(theme.accent))
@@ -452,7 +445,7 @@ public struct ChatComposer: View {
     private var cancelButton: some View {
         Button(action: onCancelStreaming) {
             Image(systemName: "stop.fill")
-                .font(.system(.subheadline).weight(.bold))
+                .font(typography.font(.subheadline, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(theme.accent))

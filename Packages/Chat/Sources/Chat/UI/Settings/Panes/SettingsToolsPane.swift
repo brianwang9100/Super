@@ -7,6 +7,7 @@ struct SettingsToolsPane: View {
     @Bindable var viewModel: SettingsViewModel
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,10 +33,10 @@ struct SettingsToolsPane: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(tool.name)
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
                 Text(tool.summary)
-                    .font(.system(.caption))
+                    .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
                     .lineLimit(2)
             }
@@ -50,7 +51,7 @@ struct SettingsToolsPane: View {
                     viewModel.openPane(pane)
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(typography.font(size: 16, weight: .regular))
                         .foregroundStyle(theme.inkSoft)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -85,10 +86,10 @@ struct SettingsToolsPane: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Text("No tools registered")
-                .font(.system(.subheadline))
+                .font(typography.font(.subheadline))
                 .foregroundStyle(theme.inkSoft)
             Text("Tools surface here as applets register them.")
-                .font(.system(.caption))
+                .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
         }
         .frame(maxWidth: .infinity, alignment: .center)

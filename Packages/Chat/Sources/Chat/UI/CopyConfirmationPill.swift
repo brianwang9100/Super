@@ -7,13 +7,14 @@ import SwiftUI
 /// of its own and is safe to re-mount on every show.
 struct CopyConfirmationPill: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         ZStack {
             Capsule(style: .continuous)
                 .fill(theme.ink.opacity(0.92))
             Text("Copied!")
-                .font(.system(.footnote, weight: .medium))
+                .font(typography.font(.footnote, weight: .medium))
                 .foregroundStyle(theme.background)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)

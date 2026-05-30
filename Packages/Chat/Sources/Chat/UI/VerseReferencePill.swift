@@ -27,25 +27,20 @@ struct VerseReferencePill: View {
     let onRemove: (() -> Void)?
 
     @Environment(\.superTheme) private var theme
-    @Environment(\.chatAppearance) private var appearance
-    /// Base chip text size, declared via `@ScaledMetric` so it composes
-    /// Dynamic Type with the chat font-scale knob, like `UserBubble`.
-    @ScaledMetric(relativeTo: .caption) private var basePoint: CGFloat = 12
-
-    private var pointSize: CGFloat { basePoint * appearance.fontScale }
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "book.closed.fill")
-                .font(.system(size: pointSize * 0.85))
+                .font(typography.font(size: 12 * 0.85, relativeTo: .caption))
             Text(label)
-                .font(.system(size: pointSize, weight: .medium))
+                .font(typography.font(size: 12, relativeTo: .caption, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
-                        .font(.system(size: pointSize * 0.8, weight: .bold))
+                        .font(typography.font(size: 12 * 0.8, relativeTo: .caption, weight: .bold))
                         .padding(2)
                 }
                 .buttonStyle(.plain)

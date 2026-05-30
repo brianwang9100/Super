@@ -22,6 +22,7 @@ struct SettingsRow<Trailing: View>: View {
     let action: () -> Void
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     init(
         icon: AnyView? = nil,
@@ -57,12 +58,12 @@ struct SettingsRow<Trailing: View>: View {
                     // alongside the rest of the system. Pixel reference is
                     // 15.5pt at 1.0× — `.callout` is the closest stock
                     // metric (16pt) that respects accessibility scaling.
-                    .font(.system(.callout))
+                    .font(typography.font(.callout))
                     .foregroundStyle(theme.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if let value, !value.isEmpty {
                     Text(value)
-                        .font(.system(.subheadline))
+                        .font(typography.font(.subheadline))
                         .foregroundStyle(theme.inkFaint)
                 }
                 trailingView

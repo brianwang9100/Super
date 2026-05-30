@@ -275,3 +275,18 @@ public extension SuperTheme {
         }
     }
 }
+
+/// Bridge between `ChatSettings.TypographyID` (persisted enum) and
+/// `SuperTypography.Identifier` (face-set factory enum), folding in the
+/// active font scale so call sites read one environment value. Mirrors the
+/// `SuperTheme` bridge above; both sides stay free to add a case the other
+/// doesn't know about yet.
+public extension SuperTypography {
+    static func make(_ id: ChatSettings.TypographyID, fontScale: Double = 1) -> SuperTypography {
+        let scale = CGFloat(fontScale)
+        switch id {
+        case .serif: return .make(SuperTypography.Identifier.serif, fontScale: scale)
+        case .system: return .make(SuperTypography.Identifier.system, fontScale: scale)
+        }
+    }
+}

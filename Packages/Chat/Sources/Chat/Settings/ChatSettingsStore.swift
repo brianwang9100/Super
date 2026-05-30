@@ -34,6 +34,8 @@ public struct ChatSettingsStore: Sendable {
         return ChatSettings(
             themeId: raw[Keys.themeId].flatMap(ChatSettings.ThemeID.init(rawValue:))
                 ?? ChatSettings.default.themeId,
+            typographyID: raw[Keys.typographyID].flatMap(ChatSettings.TypographyID.init(rawValue:))
+                ?? ChatSettings.default.typographyID,
             userPersonalization: personalization,
             defaultVerbosity: raw[Keys.defaultVerbosity].flatMap(ChatVerbosity.init(rawValue:))
                 ?? ChatSettings.default.defaultVerbosity,
@@ -159,6 +161,8 @@ public struct ChatSettingsStore: Sendable {
     public enum Keys {
         /// `ChatSettings.ThemeID` rawValue. Active theme.
         public static let themeId = "theme.id"
+        /// `ChatSettings.TypographyID` rawValue. Active typeface identity.
+        public static let typographyID = "typography.id"
         /// User-authored personalization / "about me" text (was
         /// `systemPrompt` in the previous release; see
         /// `legacySystemPrompt` for the migration path).
