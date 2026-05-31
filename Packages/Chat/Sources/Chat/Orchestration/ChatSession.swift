@@ -746,8 +746,11 @@ public actor ChatSession {
                 // affordance via a ChatEvent is a follow-up.
                 break
             case .citations(let cites):
-                for cite in cites where !accumulatedSources.contains(where: { $0.url == cite.url }) {
-                    accumulatedSources.append(cite)
+                for cite in cites {
+                    let key = Self.citationDedupeKey(cite.url)
+                    if !accumulatedSources.contains(where: { Self.citationDedupeKey($0.url) == key }) {
+                        accumulatedSources.append(cite)
+                    }
                 }
             case .searchSuggestionsHTML(let html):
                 searchSuggestionsHTML = html
@@ -922,6 +925,19 @@ public actor ChatSession {
     private enum ToolOutcome {
         case success(ToolResult)
         case failure(ToolResult, message: String)
+    }
+
+    /// Dedup key for a citation URL. Scheme and host are case-insensitive per
+    /// RFC 3986, so `HTTPS://Example.com/A` and `https://example.com/A` are the
+    /// same source; the path stays case-sensitive. Falls back to the raw string
+    /// for URLs without a host.
+    private static func citationDedupeKey(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        return components.url?.absoluteString ?? url.absoluteString
     }
 }
 

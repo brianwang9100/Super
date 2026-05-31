@@ -100,4 +100,25 @@ struct MessageAttachmentsTests {
         #expect(decoded?.sources.isEmpty == true)
         #expect(decoded?.searchSuggestionsHTML == nil)
     }
+
+    @Test("Malformed sources element degrades to [] without nuking references")
+    func malformedSourcesDoesNotEraseReferences() throws {
+        // `sources` is present but an element is invalid (URL missing). The bad
+        // sources array must degrade to [] rather than throwing and taking the
+        // whole sidecar — including the Bible `references` — down via the `try?`
+        // in `MessageRecord.attachments`.
+        let badJSON = """
+        {"references":[{"appletID":"bible","kind":"verseRange","sourceID":"WEB/JHN/3/16",\
+        "id":"r1","displayLabel":"John 3:16","citation":"John 3:16 (WEB)","snapshot":"…"}],\
+        "sources":[{"id":"s1","title":"No URL here"}]}
+        """
+        let record = MessageRecord(
+            id: "m1", conversationId: "c1", role: .assistant,
+            content: "hi", createdAt: Date(), attachmentsJSON: badJSON
+        )
+        let decoded = record.attachments
+        #expect(decoded != nil)
+        #expect(decoded?.references.count == 1)
+        #expect(decoded?.sources.isEmpty == true)
+    }
 }

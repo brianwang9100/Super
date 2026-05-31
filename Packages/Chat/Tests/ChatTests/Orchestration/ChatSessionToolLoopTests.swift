@@ -444,4 +444,31 @@ struct ChatSessionToolLoopTests {
         #expect(assistant.content.isEmpty)
         #expect(assistant.attachments?.sources.map(\.url) == [url])
     }
+
+    @Test func citationDedupeIsCaseInsensitiveOnSchemeAndHost() async throws {
+        // RFC 3986: scheme + host are case-insensitive, path is not. The two
+        // URLs below differ only in host/scheme casing → one stored source.
+        let first = URL(string: "https://Example.com/Article")!
+        let dupe = URL(string: "HTTPS://example.com/Article")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "grounded"),
+                .citations([
+                    SourceCitation(id: "s1", title: "First", url: first),
+                    SourceCitation(id: "s2", title: "Dupe (case)", url: dupe),
+                ]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "q", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let sources = try #require(stored.last?.attachments?.sources)
+        #expect(sources.count == 1)
+        #expect(sources.first?.title == "First")
+    }
 }

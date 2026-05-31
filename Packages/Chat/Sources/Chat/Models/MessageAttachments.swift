@@ -36,8 +36,14 @@ public struct MessageAttachments: Codable, Sendable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `references` (Bible verse pills) is the load-bearing field already in
+        // production; decode it first so nothing below can affect it.
         self.references = try container.decodeIfPresent([RecordReference].self, forKey: .references) ?? []
-        self.sources = try container.decodeIfPresent([SourceCitation].self, forKey: .sources) ?? []
-        self.searchSuggestionsHTML = try container.decodeIfPresent(String.self, forKey: .searchSuggestionsHTML)
+        // Contain the blast radius of a malformed `sources` element: a single
+        // bad citation (e.g. a future adapter emitting an invalid URL) must not
+        // throw and take the whole sidecar — and its `references` — down with it
+        // via the `try?` in `MessageRecord.attachments`. Degrade to [] instead.
+        self.sources = (try? container.decodeIfPresent([SourceCitation].self, forKey: .sources)) ?? []
+        self.searchSuggestionsHTML = try? container.decodeIfPresent(String.self, forKey: .searchSuggestionsHTML)
     }
 }
