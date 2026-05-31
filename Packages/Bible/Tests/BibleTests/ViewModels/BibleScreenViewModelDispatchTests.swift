@@ -149,6 +149,33 @@ struct BibleScreenViewModelDispatchTests {
         #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "no key configured"))
     }
 
+    @Test("presentRegenerateAnnotationFailedToast raises the copy and clears the failed status")
+    func regenerateFailedToastClearsStatus() async {
+        let bus = SuperEventBus()
+        let viewModel = await makeViewModel(bus: bus)
+        let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
+
+        // Drive the target into a real `.failed` status the way a
+        // regenerate-over-populated failure would.
+        let stream = await bus.events()
+        viewModel.triggerAnnotationGeneration(for: spec)
+        let reference = await drainNextRequest(stream: stream)
+        await publishAndAwaitDispatch(
+            .bibleAnnotateCompleted(requestId: reference.id, result: .failure(message: "boom")),
+            on: bus,
+            through: viewModel
+        )
+        #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "boom"))
+
+        viewModel.presentRegenerateAnnotationFailedToast(for: spec)
+
+        #expect(viewModel.toast == "Couldn't regenerate annotations.")
+        // Status cleared so the sheet keeps showing the still-present
+        // previous cards rather than the inline error state.
+        #expect(viewModel.dispatchStatusByTarget[spec] == nil)
+        #expect(viewModel.dispatchStatus(for: spec) == nil)
+    }
+
     @Test("retryAnnotationGeneration re-publishes with a fresh request id")
     func retryGetsFreshId() async {
         let bus = SuperEventBus()
