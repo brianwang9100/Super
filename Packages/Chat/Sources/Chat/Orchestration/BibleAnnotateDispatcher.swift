@@ -33,7 +33,6 @@ public final class BibleAnnotateDispatcher {
     private let messageRepository: any MessageRepository
     private let toolCallRepository: any ToolCallRepository
     private let checkpointRepository: any CompactionCheckpointRepository
-    private let modelConfigurationRepository: any ModelConfigurationRepository
     private let llmProviderRegistry: LLMProviderRegistry
     private let toolRegistry: ToolRegistry
     private let compactor: Compactor
@@ -62,7 +61,6 @@ public final class BibleAnnotateDispatcher {
         messageRepository: any MessageRepository,
         toolCallRepository: any ToolCallRepository,
         checkpointRepository: any CompactionCheckpointRepository,
-        modelConfigurationRepository: any ModelConfigurationRepository,
         llmProviderRegistry: LLMProviderRegistry,
         toolRegistry: ToolRegistry,
         compactor: Compactor,
@@ -73,7 +71,6 @@ public final class BibleAnnotateDispatcher {
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
         self.checkpointRepository = checkpointRepository
-        self.modelConfigurationRepository = modelConfigurationRepository
         self.llmProviderRegistry = llmProviderRegistry
         self.toolRegistry = toolRegistry
         self.compactor = compactor
@@ -233,22 +230,24 @@ public final class BibleAnnotateDispatcher {
         return .success(annotationCount: annotationCount)
     }
 
-    /// Resolve the user's currently-selected model into an `LLMModel`
-    /// the active provider knows about. Throws on any missing piece
-    /// (no provider registered, no row selected, the selected row's
-    /// `modelId` isn't in `supportedModels`) so the caller can map to
-    /// a `.failure` result with a clear reason.
+    /// Resolve the model the active provider serves — the same model
+    /// normal chat sessions run against. Bootstrap seeds the active
+    /// provider from the selected row (falling back to first-registered
+    /// when that row's provider didn't register), and the shell then
+    /// keeps it in sync with the chat composer's selection via
+    /// `AppShell.activateProvider(matching:)`. Every provider maps 1:1
+    /// to a single model, so the active provider's sole model *is* the
+    /// chat model. Deriving the model from the active provider
+    /// (rather than cross-checking the persisted selection row) also
+    /// guarantees membership in `supportedModels`, which is all
+    /// `provider.stream(...)` validates. Throws only when no provider is
+    /// registered/active so the caller can surface a clear reason.
     private func resolveActiveModel() async throws -> LLMModel {
-        guard let provider = await llmProviderRegistry.active() else {
+        guard let provider = await llmProviderRegistry.active(),
+              let model = provider.supportedModels.first else {
             throw DispatchPrepError.noActiveProvider
         }
-        guard let configuration = try await modelConfigurationRepository.selected() else {
-            throw DispatchPrepError.noSelectedModel
-        }
-        guard let match = provider.supportedModels.first(where: { $0.id == configuration.modelId }) else {
-            throw DispatchPrepError.modelNotSupportedByProvider(configuration.modelId)
-        }
-        return match
+        return model
     }
 
     /// Map a thrown error from any prep or save step to the
@@ -257,10 +256,6 @@ public final class BibleAnnotateDispatcher {
         switch error {
         case DispatchPrepError.noActiveProvider:
             return "No LLM provider is configured. Add a model in Settings, then try again."
-        case DispatchPrepError.noSelectedModel:
-            return "No model is selected. Pick a model in Settings, then try again."
-        case DispatchPrepError.modelNotSupportedByProvider(let id):
-            return "The selected model (\(id)) isn't available from the active provider."
         default:
             return error.localizedDescription
         }
@@ -268,8 +263,6 @@ public final class BibleAnnotateDispatcher {
 
     private enum DispatchPrepError: Error {
         case noActiveProvider
-        case noSelectedModel
-        case modelNotSupportedByProvider(String)
     }
 
     /// Tool id we filter `ChatEvent.toolCallCompleted` /

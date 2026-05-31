@@ -34,7 +34,9 @@ struct BibleAnnotateDispatcherTests {
 
     private func makeSetup(
         scripts: [[LLMStreamEvent]],
-        seedSelectedModel: Bool = true
+        registerProvider: Bool = true,
+        seedSelectedModel: Bool = true,
+        selectedModelId: String? = nil
     ) async throws -> Setup {
         let database = try ChatDatabase.makeInMemory()
         let conversationRepo = GRDBConversationRepository(database: database)
@@ -53,19 +55,25 @@ struct BibleAnnotateDispatcherTests {
         for script in scripts { await provider.enqueue(script) }
 
         let llmRegistry = LLMProviderRegistry()
-        await llmRegistry.register(provider)
-        try await llmRegistry.setActive(id: provider.id)
+        if registerProvider {
+            await llmRegistry.register(provider)
+            try await llmRegistry.setActive(id: provider.id)
+        }
 
         if seedSelectedModel {
-            // Seed a selected model row matching the fake provider's
-            // model id so `resolveActiveModel` returns the fake's model.
+            // Seed a selected model row. By default its `modelId` matches
+            // the fake provider's model; `selectedModelId` overrides it to
+            // simulate a selection that's desynced from the active provider
+            // (e.g. Apple Intelligence picked on a device where AFM didn't
+            // register). The dispatcher resolves its model from the active
+            // provider, so the desynced row must be ignored, not fatal.
             try await modelConfigRepo.save(
                 ModelConfigurationRecord(
                     id: "cfg-1",
                     name: "Fake",
                     baseURL: URL(string: "https://example.com/v1")!,
                     apiKeyRef: "ref",
-                    modelId: model.id,
+                    modelId: selectedModelId ?? model.id,
                     createdAt: clock.now(),
                     isSelected: true
                 )
@@ -109,7 +117,6 @@ struct BibleAnnotateDispatcherTests {
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
             checkpointRepository: checkpointRepo,
-            modelConfigurationRepository: modelConfigRepo,
             llmProviderRegistry: llmRegistry,
             toolRegistry: toolRegistry,
             compactor: compactor,
@@ -285,11 +292,16 @@ struct BibleAnnotateDispatcherTests {
         #expect(lingering == nil)
     }
 
-    @Test("with no model selected the dispatcher fails fast before opening a conversation")
-    func missingSelectedModelFailsFast() async throws {
-        // Skip seeding — the dispatcher hits `resolveActiveModel`
-        // before opening the conversation and bails on `.noSelectedModel`.
-        let setup = try await makeSetup(scripts: [], seedSelectedModel: false)
+    @Test("with no provider registered the dispatcher fails fast before opening a conversation")
+    func noActiveProviderFailsFast() async throws {
+        // No provider registered → `llmProviderRegistry.active()` is nil,
+        // so the dispatcher hits `resolveActiveModel` before opening the
+        // conversation and bails on `.noActiveProvider`.
+        let setup = try await makeSetup(
+            scripts: [],
+            registerProvider: false,
+            seedSelectedModel: false
+        )
 
         let request = reference(id: "req-4")
         let stream = await setup.bus.events()
@@ -300,11 +312,59 @@ struct BibleAnnotateDispatcherTests {
             Issue.record("expected .failure, got \(result)")
             return
         }
-        #expect(message.contains("No model is selected"))
+        #expect(message.contains("No LLM provider is configured"))
 
-        // No transient conversation was created — nothing to clean up.
-        // Use the first generated id ("id-1") because the model-resolve
-        // step bails before the id generator is consumed for the row.
+        // Guards the ordering invariant: `resolveActiveModel` must throw
+        // *before* `dispatch` saves the conversation. The deterministic
+        // generator names the first (unconsumed) id "id-1", so a regression
+        // that saved the row before resolving — and skipped cleanup on the
+        // throw path — would leave "id-1" behind and fail this assertion.
+        let lingering = try await setup.conversationRepo.fetch(id: "id-1")
+        #expect(lingering == nil)
+    }
+
+    @Test("a selection desynced from the active provider resolves the active provider's model, not a failure")
+    func desyncedSelectionUsesActiveProviderModel() async throws {
+        // Regression: the selected config row points at Apple Intelligence
+        // ("system-default") but AFM never registered, so the active
+        // provider is a different one. The dispatcher must run the turn
+        // against the active provider's model — the same model normal chat
+        // sessions use — instead of hard-failing because the persisted
+        // selection isn't in the active provider's `supportedModels`.
+        let setup = try await makeSetup(
+            scripts: [
+                [
+                    .messageStart(id: "m1", model: "fake-model-1"),
+                    .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                    .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+                ],
+                [
+                    .messageStart(id: "m2", model: "fake-model-1"),
+                    .textDelta(index: 0, text: "Done."),
+                    .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+                ],
+            ],
+            selectedModelId: "system-default"
+        )
+
+        let request = reference(id: "req-desync")
+        let stream = await setup.bus.events()
+        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+
+        #expect(result == .success(annotationCount: 2))
+        #expect(await setup.toolExecutor.executionCount() == 1)
+
+        // The turn ran against the *active provider's* model
+        // ("fake-model-1"), not the desynced selected row's
+        // "system-default" — this is the assertion that makes the test a
+        // real regression guard rather than a happy-path duplicate. Every
+        // captured request carries the active provider's model id.
+        let capturedModels = await setup.provider.capturedRequests().map(\.modelID)
+        #expect(!capturedModels.isEmpty)
+        #expect(capturedModels.allSatisfy { $0 == "fake-model-1" })
+
+        // Transient conversation is hard-deleted like every other dispatch.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
