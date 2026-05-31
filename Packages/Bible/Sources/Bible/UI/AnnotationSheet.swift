@@ -9,7 +9,7 @@ import SwiftUI
 ///   translation + book sheets.
 /// - **Header** — the scripture citation (e.g. `"Romans 8:28-30"`) plus
 ///   a small uppercase "Annotations" caption and a kebab-overflow menu
-///   carrying "Regenerate" and "Add all to chat".
+///   carrying "Regenerate all" and "Add all to chat".
 /// - **Body** — a vertical scroll of `AnnotationBlock` rows, or an
 ///   empty/generating state when `cards.isEmpty`.
 ///
@@ -64,7 +64,6 @@ struct AnnotationSheet: View {
     let bottomInset: CGFloat
     let onRegenerate: () -> Void
     let onAddAllToChat: () -> Void
-    let onClose: () -> Void
     let onCardAddToChat: (Card.ID) -> Void
     let onCardDelete: (Card.ID) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
@@ -82,7 +81,6 @@ struct AnnotationSheet: View {
         cards: [Card],
         onRegenerate: @escaping () -> Void,
         onAddAllToChat: @escaping () -> Void,
-        onClose: @escaping () -> Void,
         onCardAddToChat: @escaping (Card.ID) -> Void,
         onCardDelete: @escaping (Card.ID) -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
@@ -98,7 +96,6 @@ struct AnnotationSheet: View {
         self.bottomInset = bottomInset
         self.onRegenerate = onRegenerate
         self.onAddAllToChat = onAddAllToChat
-        self.onClose = onClose
         self.onCardAddToChat = onCardAddToChat
         self.onCardDelete = onCardDelete
         self.onOpenReference = onOpenReference
@@ -143,16 +140,11 @@ struct AnnotationSheet: View {
             Spacer()
             Menu {
                 Button(action: onRegenerate) {
-                    Label("Regenerate", systemImage: "arrow.clockwise")
+                    Label("Regenerate all", systemImage: "arrow.clockwise")
                 }
                 Button(action: onAddAllToChat) {
                     Label("Add all to chat", systemImage: "paperplane")
                 }
-                Divider()
-                // `Close` is not `.cancel`-roled: `.cancel` is a
-                // `.confirmationDialog` / `.alert` convention; inside a
-                // `Menu` it has no guaranteed dismiss-first behavior.
-                Button("Close", action: onClose)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .medium))
