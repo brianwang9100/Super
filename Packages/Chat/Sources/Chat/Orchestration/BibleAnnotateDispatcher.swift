@@ -308,7 +308,8 @@ public final class BibleAnnotateDispatcher {
     `text` (concise prose) with `reference` (a single scripture citation \
     when a parallel passage is genuinely illuminating). Keep each body to \
     ~240 characters / ≤2 sentences and give each a plain-language title. \
-    The user message names the sections to cover for this target.
+    When the user message lists sections to cover, aim for one focused \
+    card per section.
     """
 
     /// `send(text:)` payload — names the target structurally so even

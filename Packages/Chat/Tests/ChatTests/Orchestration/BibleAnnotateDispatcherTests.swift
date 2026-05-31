@@ -358,7 +358,24 @@ struct BibleAnnotateDispatcherTests {
         // No per-scope steer leaked in...
         #expect(!prompt.contains("aim to cover"))
         #expect(BibleAnnotateDispatcher.sectionGuidance(forKind: "mystery") == nil)
-        // ...but the structural instruction to call the tool once stands.
+        // ...the target-identification block still names the target so the
+        // model can still produce valid arguments (guards against the
+        // first paragraph being dropped on the fallback path)...
+        #expect(prompt.contains("Target kind: mystery"))
+        #expect(prompt.contains("Reference id: mystery:ROM"))
+        #expect(prompt.contains("Romans 8:28-30 (WEB)"))
+        // ...and the structural instruction to call the tool once stands.
         #expect(prompt.contains("Call `bible.annotate` once"))
+    }
+
+    @Test("the dispatcher briefing keeps its load-bearing one-tool mandate")
+    func briefingKeepsToolMandate() {
+        // The briefing is steering the model, not just documentation:
+        // guard the invariants a future edit could silently blank — the
+        // single `bible.annotate` call and the no-other-tool constraint.
+        let briefing = BibleAnnotateDispatcher.dispatcherBriefing
+        #expect(briefing.contains("`bible.annotate`"))
+        #expect(briefing.contains("exactly once"))
+        #expect(briefing.contains("do not call any other tool"))
     }
 }
