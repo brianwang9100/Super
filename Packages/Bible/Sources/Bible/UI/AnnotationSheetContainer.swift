@@ -54,7 +54,6 @@ struct AnnotationSheetContainer: View {
     let onAddAllToChat: ([BibleAnnotationRecord]) -> Void
     let onCardAddToChat: (BibleAnnotationRecord) -> Void
     let onOpenReference: (BibleCitationParser.ParsedCitation) -> Void
-    let onClose: () -> Void
     /// Tap on the empty-state retry button. Fired only when
     /// `dispatchStatus == .failed(...)`. Routed to the view model's
     /// `retryAnnotationGeneration(for:)`.
@@ -77,7 +76,6 @@ struct AnnotationSheetContainer: View {
         onAddAllToChat: @escaping ([BibleAnnotationRecord]) -> Void,
         onCardAddToChat: @escaping (BibleAnnotationRecord) -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
-        onClose: @escaping () -> Void,
         onRetry: @escaping () -> Void = {},
         onCardDeleteFailed: ((any Error) -> Void)? = nil,
         dispatchStatus: BibleAnnotationDispatchStatus? = nil,
@@ -91,7 +89,6 @@ struct AnnotationSheetContainer: View {
         self.onAddAllToChat = onAddAllToChat
         self.onCardAddToChat = onCardAddToChat
         self.onOpenReference = onOpenReference
-        self.onClose = onClose
         self.onRetry = onRetry
         self.onCardDeleteFailed = onCardDeleteFailed
         self.dispatchStatus = dispatchStatus
@@ -105,7 +102,6 @@ struct AnnotationSheetContainer: View {
             cards: cards,
             onRegenerate: onRegenerate,
             onAddAllToChat: { onAddAllToChat(records) },
-            onClose: onClose,
             onCardAddToChat: { id in
                 guard let record = records.first(where: { $0.id == id }) else { return }
                 onCardAddToChat(record)

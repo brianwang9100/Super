@@ -180,7 +180,6 @@ struct AnnotationSheetContainerSnapshotTests {
                 onAddAllToChat: { _ in },
                 onCardAddToChat: { _ in },
                 onOpenReference: { _ in },
-                onClose: {},
                 dispatchStatus: resolvedStatus
             )
         }
