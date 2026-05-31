@@ -1,20 +1,49 @@
 import Core
 import Foundation
 
-/// Structured, non-text payload persisted alongside a `MessageRecord` —
-/// serialized into its nullable `attachmentsJSON` column. A versioned shape:
-/// future attachment kinds add fields here rather than new columns.
+/// Non-text payloads attached to a `MessageRecord`, serialized to the
+/// `attachmentsJSON` column. Carries cross-applet record references (Bible verse
+/// pills) and web-search citations; the shape is versioned so future attachment
+/// kinds add fields here rather than new columns.
 public struct MessageAttachments: Codable, Sendable, Equatable {
-    /// Cross-applet record references attached to this message — Bible
-    /// verse pills today. An empty array is never persisted (the column
-    /// stays NULL), so a non-nil decode always carries at least one
-    /// reference.
     public var references: [RecordReference]
+    /// Web sources cited in a grounded assistant answer (native or standalone
+    /// search). Rendered as the collapsible "N sources" pill.
+    public var sources: [SourceCitation]
+    /// Provider-mandated search-attribution HTML (Gemini "Google Search
+    /// Suggestions") that must be rendered unmodified; `nil` for all others.
+    public var searchSuggestionsHTML: String?
 
-    public init(references: [RecordReference]) {
+    public init(
+        references: [RecordReference] = [],
+        sources: [SourceCitation] = [],
+        searchSuggestionsHTML: String? = nil
+    ) {
         self.references = references
+        self.sources = sources
+        self.searchSuggestionsHTML = searchSuggestionsHTML
     }
 
-    /// True when there is nothing worth persisting.
-    public var isEmpty: Bool { references.isEmpty }
+    public var isEmpty: Bool {
+        references.isEmpty && sources.isEmpty && searchSuggestionsHTML == nil
+    }
+
+    // Custom decoding so rows written before `sources` / `searchSuggestionsHTML`
+    // existed (keys absent) still decode cleanly.
+    private enum CodingKeys: String, CodingKey {
+        case references, sources, searchSuggestionsHTML
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `references` (Bible verse pills) is the load-bearing field already in
+        // production; decode it first so nothing below can affect it.
+        self.references = try container.decodeIfPresent([RecordReference].self, forKey: .references) ?? []
+        // Contain the blast radius of a malformed `sources` element: a single
+        // bad citation (e.g. a future adapter emitting an invalid URL) must not
+        // throw and take the whole sidecar — and its `references` — down with it
+        // via the `try?` in `MessageRecord.attachments`. Degrade to [] instead.
+        self.sources = (try? container.decodeIfPresent([SourceCitation].self, forKey: .sources)) ?? []
+        self.searchSuggestionsHTML = try? container.decodeIfPresent(String.self, forKey: .searchSuggestionsHTML)
+    }
 }
