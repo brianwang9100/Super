@@ -370,6 +370,18 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ---
 
+## 11a. Carried-forward review items from PR1 (must address in adapter PRs)
+
+- **Gemini suggestions-HTML turn attribution (PR3c).** In a tool loop, Gemini can
+  emit `searchEntryPoint.renderedContent` on the search turn while the model's
+  prose summary lands on a *later* turn. Decide which assistant `MessageRecord`
+  owns the suggestions HTML (and add a `ChatSession` cross-turn test). PR1 ensures
+  the HTML is no longer dropped, but attribution is undecided until a real stream
+  exists.
+- **`SourceCitation.id` uniqueness (all adapter PRs).** When a provider supplies no
+  id, derive `id` from the full URL string (not just host) so a SwiftUI `ForEach`
+  keyed on `id` can't collide. The sources pill must key on this.
+
 ## 11. Open questions / risks (need human decision)
 
 1. **Spec location** — top-level `superpowers/specs/` (briefed) vs `docs/superpowers/specs/` (where real specs actually live). Pick one.
