@@ -298,26 +298,69 @@ public final class BibleAnnotateDispatcher {
     questions. After the tool call completes, end your turn.
 
     Default to 2–4 short annotation cards per target. Cards can mix \
-    `text` (concise prose: author, context, key idea, plain-language \
-    paraphrase) with `reference` (a single scripture citation when a \
-    parallel passage is genuinely illuminating). Keep each body to ~240 \
-    characters / ≤2 sentences. Plain-language titles like "Author", \
-    "Historical context", "See also", "Key idea".
+    `text` (concise prose) with `reference` (a single scripture citation \
+    when a parallel passage is genuinely illuminating). Keep each body to \
+    ~240 characters / ≤2 sentences and give each a plain-language title. \
+    When the user message lists sections to cover, aim for one focused \
+    card per section.
     """
 
-    /// `send(text:)` payload — names the target structurally so even \
-    /// weaker models can produce the right `bible.annotate` arguments.
+    /// `send(text:)` payload — names the target structurally so even
+    /// weaker models can produce the right `bible.annotate` arguments,
+    /// and names the per-scope sections to cover so generated cards stay
+    /// consistent across calls.
     static func prompt(for reference: RecordReference) -> String {
-        """
-        Annotate this scripture target.
+        // Assemble as blank-line-separated paragraphs so the optional
+        // per-scope steer reads as its own block — and so dropping it
+        // (unknown kind) still leaves clean spacing around the closing
+        // instruction rather than a stray blank line.
+        var paragraphs = [
+            """
+            Annotate this scripture target.
 
-        Target kind: \(reference.kind)
-        Reference id: \(reference.sourceID)
-        Display: \(reference.displayLabel)
-        Citation: \(reference.citation)
+            Target kind: \(reference.kind)
+            Reference id: \(reference.sourceID)
+            Display: \(reference.displayLabel)
+            Citation: \(reference.citation)
+            """
+        ]
+        if let sections = sectionGuidance(forKind: reference.kind) {
+            paragraphs.append(sections)
+        }
+        paragraphs.append("""
+            Call `bible.annotate` once with arguments matching this target, \
+            then end the turn.
+            """)
+        return paragraphs.joined(separator: "\n\n")
+    }
 
-        Call `bible.annotate` once with arguments matching this target, \
-        then end the turn.
-        """
+    /// One-line "sections to cover" steer for an annotation `kind`,
+    /// mirroring the per-scope sections in `docs/SuperBible/ANNOTATIONS.md`
+    /// §1 (keep the two in sync). `reference.kind` is the structural
+    /// discriminator the Bible UI stamps onto the request — `"book"`,
+    /// `"chapter"`, or `"verseRange"` (note: *not* `"verse"`). Returns
+    /// `nil` for an unrecognised kind so the prompt falls back to the
+    /// generic briefing rather than asserting a wrong structure.
+    static func sectionGuidance(forKind kind: String) -> String? {
+        switch kind {
+        case "book":
+            """
+            For this book, aim to cover its author/origin, historical \
+            context, and a short summary — one focused card each.
+            """
+        case "chapter":
+            """
+            For this chapter, aim to cover a summary, plus an optional \
+            outline of its movements — one focused card each.
+            """
+        case "verseRange":
+            """
+            For this verse range, aim to cover historical context, a \
+            plain-language clarification, and any illuminating \
+            cross-reference(s) — one focused card each.
+            """
+        default:
+            nil
+        }
     }
 }
