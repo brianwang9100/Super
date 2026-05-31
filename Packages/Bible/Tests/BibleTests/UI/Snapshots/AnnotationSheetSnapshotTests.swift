@@ -205,7 +205,6 @@ struct AnnotationSheetSnapshotTests {
                 cards: cards,
                 onRegenerate: {},
                 onAddAllToChat: {},
-                onClose: {},
                 onCardAddToChat: { _ in },
                 onCardDelete: { _ in },
                 onOpenReference: { _ in },
