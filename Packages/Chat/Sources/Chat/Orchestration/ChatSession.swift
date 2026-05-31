@@ -772,8 +772,15 @@ public actor ChatSession {
         // Skip empty turns — the LLM yielded `.messageComplete` without
         // any text or tool calls. Persisting an empty assistant row would
         // diverge the on-disk view from `assembleHistory`'s output (which
-        // drops empty rows when projecting back).
-        if accumulatedText.isEmpty && pendingCalls.isEmpty {
+        // drops empty rows when projecting back). Citations and the Gemini
+        // suggestions HTML also count as output: a native provider can emit
+        // `.citations` + `.messageComplete` with no text, and dropping the
+        // turn here would lose those sources for good (they persist only on
+        // this `.messageComplete` path).
+        if accumulatedText.isEmpty,
+           pendingCalls.isEmpty,
+           accumulatedSources.isEmpty,
+           searchSuggestionsHTML == nil {
             return []
         }
 

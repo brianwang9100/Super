@@ -418,4 +418,30 @@ struct ChatSessionToolLoopTests {
         // First-seen wins on dedupe: the later "A (dupe)" title is discarded.
         #expect(sources.first?.title == "A")
     }
+
+    @Test func citationsOnlyTurnWithoutTextStillPersistsAssistantMessageWithSources() async throws {
+        // A native provider may emit citations + .messageComplete with no text
+        // and no tool calls. The empty-turn guard must NOT discard this turn,
+        // or the sources are lost for good (they persist only on this path).
+        let url = URL(string: "https://example.com/grounded")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .searchStarted(query: "q"),
+                .citations([SourceCitation(id: "s1", title: "Grounded", url: url)]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "ground this", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        // user + assistant(citations-only); the assistant row must exist.
+        #expect(stored.map(\.role) == [.user, .assistant])
+        let assistant = try #require(stored.last)
+        #expect(assistant.content.isEmpty)
+        #expect(assistant.attachments?.sources.map(\.url) == [url])
+    }
 }
