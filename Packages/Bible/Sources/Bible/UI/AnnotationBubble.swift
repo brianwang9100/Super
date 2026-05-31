@@ -39,6 +39,18 @@ struct AnnotationBubble: View {
         self.size = size
     }
 
+    /// Derive the bubble state for a target from its annotation-row
+    /// presence and in-flight generation status. `filled` wins over
+    /// `generating`: once rows exist the user should be able to view them
+    /// even if a regenerate is mid-flight. A pure factory so both the
+    /// chapter-title and book-picker bubbles share one rule and a unit
+    /// test can cover it without a SwiftUI host.
+    static func state(hasAnnotation: Bool, isGenerating: Bool) -> BubbleState {
+        if hasAnnotation { return .filled }
+        if isGenerating { return .generating }
+        return .empty
+    }
+
     var body: some View {
         Canvas { context, canvasSize in
             let scale = canvasSize.width / 24.0

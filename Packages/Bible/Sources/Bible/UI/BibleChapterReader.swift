@@ -42,6 +42,8 @@ struct BibleChapterReader: View {
     private let onClearSelection: () -> Void
     private let onConsumeScroll: () -> Void
     private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
+    private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
+    private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
 
     /// Verse the user was reading just before the action sheet appeared.
     /// Set when the sheet first measures (`bottomOverlayInset` becomes
@@ -77,6 +79,14 @@ struct BibleChapterReader: View {
     ///     manual chapter step doesn't re-snap to the old anchor.
     ///   - onConsumeScroll: called after the reader issues the pending
     ///     deep-link scroll so the view model can clear the target.
+    ///   - onAnnotationBubbleTap: tap on a *filled* chapter / verse bubble —
+    ///     presents the annotation popover for the target.
+    ///   - onRequestChapterAnnotation: tap on an *empty* chapter bubble —
+    ///     fires a chapter-level generation intent (disclaimer-gated by the
+    ///     view model). `nil` suppresses the empty bubble's generate action.
+    ///   - chapterDispatchStatus: the chapter target's in-flight dispatch
+    ///     status, or `nil` when none. A `.running` status renders the
+    ///     chapter bubble in its generating state.
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -94,7 +104,9 @@ struct BibleChapterReader: View {
         onNext: @escaping () -> Void,
         onClearSelection: @escaping () -> Void,
         onConsumeScroll: @escaping () -> Void = {},
-        onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil
+        onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
+        onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
+        chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -121,6 +133,8 @@ struct BibleChapterReader: View {
         self.onClearSelection = onClearSelection
         self.onConsumeScroll = onConsumeScroll
         self.onAnnotationBubbleTap = onAnnotationBubbleTap
+        self.onRequestChapterAnnotation = onRequestChapterAnnotation
+        self.chapterDispatchStatus = chapterDispatchStatus
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -296,32 +310,66 @@ struct BibleChapterReader: View {
         }
     }
 
+    /// `true` while the chapter target's headless `bible.annotate` dispatch
+    /// is in flight — flips the chapter bubble to its generating state.
+    private var isChapterGenerating: Bool {
+        if case .running = chapterDispatchStatus { return true }
+        return false
+    }
+
     /// The italicised chapter title — book name + chapter number — with a
-    /// trailing chapter-level annotation bubble when one exists. Tapping
-    /// the bubble presents the chapter-target popover. The bubble is
-    /// suppressed when no `onAnnotationBubbleTap` is wired (preview /
-    /// driver views without a sheet host).
+    /// trailing chapter-level annotation bubble. The bubble is always shown
+    /// when a sheet host is wired (`onAnnotationBubbleTap` non-nil), so
+    /// every chapter offers a generate affordance per spec §5; it's
+    /// suppressed in preview / driver views without a host. State follows
+    /// `AnnotationBubble.state(...)`: empty (no rows) → tapping generates,
+    /// generating (dispatch in flight) → disabled, filled (rows exist) →
+    /// tapping presents the popover.
     @ViewBuilder
     private var chapterTitle: some View {
         let title = Text("\(bookName) \(chapter.number)")
             .font(.system(.largeTitle, design: .serif))
             .italic()
             .foregroundStyle(theme.ink)
-        if hasChapterAnnotation, let onAnnotationBubbleTap {
+        if let onAnnotationBubbleTap {
+            let spec = BibleAnnotationTargetSpec.chapter(
+                bookId: bookId, chapterNumber: chapter.number
+            )
+            let state = AnnotationBubble.state(
+                hasAnnotation: hasChapterAnnotation, isGenerating: isChapterGenerating
+            )
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 title
                 Button {
-                    onAnnotationBubbleTap(.chapter(bookId: bookId, chapterNumber: chapter.number))
+                    switch state {
+                    case .filled: onAnnotationBubbleTap(spec)
+                    case .empty: onRequestChapterAnnotation?(spec)
+                    case .generating: break
+                    }
                 } label: {
-                    AnnotationBubble(state: .filled, size: 20)
+                    AnnotationBubble(state: state, size: 20)
                         .padding(6)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("View chapter annotations")
+                // `.generating` is non-interactive; an `.empty` bubble with no
+                // generate callback wired (preview / driver host) would be a
+                // dead control, so disable it rather than render a tap that
+                // silently no-ops. The live screen always wires the callback.
+                .disabled(state == .generating || (state == .empty && onRequestChapterAnnotation == nil))
+                .accessibilityLabel(Self.chapterBubbleLabel(for: state))
             }
         } else {
             title
+        }
+    }
+
+    /// VoiceOver label for the chapter bubble, keyed to its state.
+    static func chapterBubbleLabel(for state: AnnotationBubble.BubbleState) -> String {
+        switch state {
+        case .filled: return "View chapter annotations"
+        case .empty: return "Generate chapter annotations"
+        case .generating: return "Generating chapter annotations"
         }
     }
 

@@ -102,10 +102,25 @@ struct BibleBookSheetSnapshotTests {
         verifyWithDatabase(sheet(), database: database, theme: .light, name: "filled_light")
     }
 
+    @Test("a book with an in-flight dispatch renders a generating bubble")
+    func generatingLight() {
+        // No database context → no rows, so Genesis is unannotated; the
+        // generating set flips its bubble to the dotted in-flight glyph.
+        verify(
+            sheet(generatingBookIds: ["GEN"]),
+            theme: .light,
+            name: "generating_light"
+        )
+    }
+
+    /// A `BibleBookSheet` opened on the given current position (defaulting
+    /// to Genesis 1, which keeps the existing baselines stable), in the
+    /// given order with the given query applied.
     private func sheet(
         currentPosition: BiblePosition = BiblePosition(bookId: "GEN", chapterNumber: 1),
         order: BibleBookOrder = .traditional,
-        query: String = ""
+        query: String = "",
+        generatingBookIds: Set<String> = []
     ) -> BibleBookSheet {
         let viewModel = BibleBookSheetViewModel(currentPosition: currentPosition)
         viewModel.order = order
@@ -117,7 +132,8 @@ struct BibleBookSheetSnapshotTests {
             onSelectChapter: { _, _ in },
             onClose: {},
             onPresentBookAnnotations: { _ in },
-            onRequestBookAnnotations: { _ in }
+            onRequestBookAnnotations: { _ in },
+            generatingBookIds: generatingBookIds
         )
     }
 
