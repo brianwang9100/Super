@@ -106,6 +106,10 @@ public struct ChatSettingsStore: Sendable {
         try await repository.set(Keys.themeId, value: themeId.rawValue)
     }
 
+    public func setTypography(_ typographyID: ChatSettings.TypographyID) async throws {
+        try await repository.set(Keys.typographyID, value: typographyID.rawValue)
+    }
+
     public func setUserPersonalization(_ value: String) async throws {
         try await repository.set(Keys.userPersonalization, value: value)
     }
