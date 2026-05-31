@@ -35,6 +35,12 @@ public struct ChatsScreen: View {
     private var eventBus: SuperEventBus? { injectedEventBus ?? environmentEventBus }
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Search-field base size, declared via `@ScaledMetric` so the
+    /// system-font input composes OS Dynamic Type on top of the app
+    /// font-scale that `SuperTypography` folds in. The "Chats" title and
+    /// the result-count line are brand serif / mono roles that carry
+    /// Dynamic Type through their own `relativeTo`.
+    @ScaledMetric(relativeTo: .subheadline) private var searchInputSize: CGFloat = 14
 
     /// Bottom inset that clears the shell's minimized "Chat with Super"
     /// dock. Mirrors `TodoScreen.chatDockClearance`.
@@ -114,7 +120,7 @@ public struct ChatsScreen: View {
     /// non-UI suites) can't see it.
     @ViewBuilder private var searchTextField: some View {
         let field = TextField("Search chats", text: $searchText)
-            .font(typography.font(size: 14))
+            .font(typography.font(size: searchInputSize))
             .foregroundStyle(theme.ink)
             .autocorrectionDisabled()
             .submitLabel(.search)
@@ -159,7 +165,7 @@ public struct ChatsScreen: View {
         let count = filteredConversations.count
         let label = count == 1 ? "1 match" : "\(count) matches"
         return Text(label)
-            .font(typography.mono(11))
+            .font(typography.mono(11, relativeTo: .footnote))
             .tracking(0.5)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)

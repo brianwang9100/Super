@@ -21,15 +21,20 @@ struct ChatsEmptyState: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Caption base size, declared via `@ScaledMetric` so the system-font
+    /// caption composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The headline is a brand-serif `display`
+    /// role, which carries Dynamic Type through its own `relativeTo`.
+    @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 13
 
     var body: some View {
         VStack(spacing: 6) {
             Text(headline)
-                .font(typography.display(22, relativeTo: nil))
+                .font(typography.display(22, relativeTo: .title2))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
             caption
-                .font(typography.font(size: 13))
+                .font(typography.font(size: captionSize))
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 20)

@@ -13,6 +13,11 @@ struct UserBubble: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
+    /// Base body size, declared via `@ScaledMetric` so the bubble text
+    /// composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so this metric is how the view opts into Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     var body: some View {
         HStack {
@@ -31,7 +36,7 @@ struct UserBubble: View {
 
     private var textBubble: some View {
         Text(text)
-            .font(typography.font(size: 17, relativeTo: .subheadline))
+            .font(typography.font(size: basePoint))
             .lineSpacing(2)
             .foregroundStyle(theme.bubbleInk)
             .padding(.horizontal, 14)

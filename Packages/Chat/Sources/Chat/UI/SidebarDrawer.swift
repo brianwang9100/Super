@@ -304,6 +304,11 @@ private struct ChatRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Row title base size, declared via `@ScaledMetric` so it composes
+    /// OS Dynamic Type on top of the app font-scale that `SuperTypography`
+    /// folds in. The typography system path ignores `relativeTo`, so this
+    /// metric is how the row opts into Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
         Button(action: onSelect) {
@@ -314,7 +319,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(typography.font(size: 17, relativeTo: .subheadline, weight: isActive ? .medium : .regular))
+                    .font(typography.font(size: rowTitleBase, weight: isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -344,12 +349,17 @@ private struct SeeAllChatsRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Row title base size, declared via `@ScaledMetric` so it composes
+    /// OS Dynamic Type on top of the app font-scale that `SuperTypography`
+    /// folds in. The typography system path ignores `relativeTo`, so this
+    /// metric is how the row opts into Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 Text("See all chats…")
-                    .font(typography.font(size: 15, relativeTo: .subheadline))
+                    .font(typography.font(size: rowTitleBase))
                     .foregroundStyle(theme.inkSoft)
                     .lineLimit(1)
                 Spacer(minLength: 0)

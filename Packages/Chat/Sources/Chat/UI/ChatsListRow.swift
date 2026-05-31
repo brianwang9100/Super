@@ -24,18 +24,24 @@ struct ChatsListRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Row title + subtitle base sizes, declared via `@ScaledMetric` so
+    /// they compose OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so these metrics are how the row opts into Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 15
+    @ScaledMetric(relativeTo: .caption) private var subtitleSize: CGFloat = 11.5
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(typography.font(size: 15, relativeTo: .subheadline, weight: .medium))
+                        .font(typography.font(size: titleSize, weight: .medium))
                         .foregroundStyle(theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Text(RelativeTimeFormatter.format(updatedAt, now: now))
-                        .font(typography.font(size: 11.5, relativeTo: .caption))
+                        .font(typography.font(size: subtitleSize))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

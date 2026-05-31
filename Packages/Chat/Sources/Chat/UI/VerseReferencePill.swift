@@ -28,19 +28,25 @@ struct VerseReferencePill: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Base chip text size, declared via `@ScaledMetric` so the pill
+    /// composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so this metric is how the view opts into Dynamic Type.
+    @ScaledMetric(relativeTo: .caption) private var basePoint: CGFloat = 12
+    private var pointSize: CGFloat { basePoint }
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "book.closed.fill")
-                .font(typography.font(size: 12 * 0.85, relativeTo: .caption))
+                .font(typography.font(size: pointSize * 0.85))
             Text(label)
-                .font(typography.font(size: 12, relativeTo: .caption, weight: .medium))
+                .font(typography.font(size: pointSize, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
-                        .font(typography.font(size: 12 * 0.8, relativeTo: .caption, weight: .bold))
+                        .font(typography.font(size: pointSize * 0.8, weight: .bold))
                         .padding(2)
                 }
                 .buttonStyle(.plain)

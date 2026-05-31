@@ -208,6 +208,7 @@ struct SidebarDrawerSnapshotTests {
         )
         .superTheme(.make(theme))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }

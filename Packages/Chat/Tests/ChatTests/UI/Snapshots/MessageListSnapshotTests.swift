@@ -452,6 +452,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(.light))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .superTypography(.make(.serif, fontScale: 1.20))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: "list_scale_max_light_xxl", function: function)
@@ -704,6 +705,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
             .chatAppearance(ChatAppearance(fontScale: fontScale))
+            .superTypography(.make(.serif, fontScale: CGFloat(fontScale)))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
     }

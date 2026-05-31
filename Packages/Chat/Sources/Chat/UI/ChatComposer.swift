@@ -122,6 +122,12 @@ public struct ChatComposer: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Editor base size, declared via `@ScaledMetric` so the system-font
+    /// pill label and text editor compose OS Dynamic Type on top of the
+    /// app font-scale that `SuperTypography` folds in. The typography
+    /// system path ignores `relativeTo`, so this metric is how the
+    /// composer opts into Dynamic Type for its body text.
+    @ScaledMetric(relativeTo: .subheadline) private var editorBase: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
     @State private var pulseScale: CGFloat = 1.0
@@ -302,7 +308,7 @@ public struct ChatComposer: View {
             // the row's height doesn't jump as the morph crosses the
             // transition band.
             Text("Chat with Super")
-                .font(typography.font(size: 17, relativeTo: .subheadline))
+                .font(typography.font(size: editorBase))
                 .foregroundStyle(theme.inkFaint)
                 .opacity(pillLabelOpacity)
                 .allowsHitTesting(false)
@@ -325,7 +331,7 @@ public struct ChatComposer: View {
             axis: .vertical
         )
         .lineLimit(1...6)
-        .font(typography.font(size: 17, relativeTo: .subheadline))
+        .font(typography.font(size: editorBase))
         .foregroundStyle(theme.ink)
         .tint(theme.accent)
         .focused($isFocused)
