@@ -171,16 +171,14 @@ struct AnnotationSheet: View {
     @ViewBuilder
     private var cardList: some View {
         if cards.isEmpty {
-            // The empty state floats at the top of the sheet body (after
-            // the header divider) with its own 40-pt vertical padding —
-            // matches the JSX `EmptyState` layout. `.frame(maxHeight:
-            // .infinity)` would expand here, but in an unbounded parent
-            // (preview, ad-hoc reuse) that fires SwiftUI layout warnings.
-            // The sheet itself is always given a bound (presentation
-            // detent, snapshot frame), so the unfilled bottom area is
-            // just background.
+            // Expand to fill the sheet body so the empty / generating /
+            // error cluster centers in the detent instead of hugging
+            // the divider with dead space below. The presentation
+            // detent (or the snapshot test's `.frame(height:)`) is the
+            // bound that resolves `.infinity` — no unbounded-parent
+            // layout warning fires in either context.
             emptyState
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
                 VStack(spacing: 10) {

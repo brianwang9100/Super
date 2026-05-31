@@ -31,6 +31,7 @@ struct AnnotationDisclaimerSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             grabber
+            Spacer(minLength: 24)
             iconPanel
                 .padding(.top, 4)
                 .padding(.bottom, 16)
@@ -42,12 +43,12 @@ struct AnnotationDisclaimerSheet: View {
             paragraph("Annotations are AI-generated and may contain errors. SuperBible doesn’t verify theological accuracy.")
                 .padding(.bottom, 8)
             paragraph("Treat them as a starting point — not as commentary you’d cite.")
-                .padding(.bottom, 22)
+            Spacer(minLength: 24)
             gotItButton
                 .padding(.bottom, 30 + bottomInset)
         }
         .padding(.horizontal, 22)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
                 .fill(theme.background)
