@@ -113,6 +113,24 @@ struct BibleBookSheetSnapshotTests {
         )
     }
 
+    @Test("generating bubble renders in the dark theme")
+    func generatingDark() {
+        verify(
+            sheet(generatingBookIds: ["GEN"]),
+            theme: .dark,
+            name: "generating_dark"
+        )
+    }
+
+    @Test("generating bubble renders in the sepia theme")
+    func generatingSepia() {
+        verify(
+            sheet(generatingBookIds: ["GEN"]),
+            theme: .sepia,
+            name: "generating_sepia"
+        )
+    }
+
     /// A `BibleBookSheet` opened on the given current position (defaulting
     /// to Genesis 1, which keeps the existing baselines stable), in the
     /// given order with the given query applied.
