@@ -22,8 +22,7 @@ struct BibleActionSheet: View {
     let onAddToChat: () -> Void
     let onNewChat: () -> Void
     /// Invoked when the "Annotate" tile is tapped — routes the selection
-    /// through the view-model's disclaimer-gated generation flow, same
-    /// path the nav-bar `SparkButton` uses.
+    /// through the view-model's disclaimer-gated generation flow.
     let onAnnotate: () -> Void
     let onClose: () -> Void
 
@@ -89,35 +88,53 @@ struct BibleActionSheet: View {
 
     private var actionRow: some View {
         HStack(spacing: 4) {
-            actionButton(symbol: "sparkles", label: "Annotate", accent: true, action: onAnnotate)
-            actionButton(symbol: "paperplane.fill", label: "Add to chat", accent: true, action: onAddToChat)
-            actionButton(symbol: "bubble.left.and.bubble.right.fill", label: "New chat", accent: true, action: onNewChat)
-            actionButton(symbol: "doc.on.doc", label: "Copy", accent: false, action: onCopy)
+            actionButton(label: "Annotate", accent: true, action: onAnnotate) {
+                AnnotationBubble(state: .filled, size: 18)
+            }
+            actionButton(label: "Add to chat", accent: true, action: onAddToChat) {
+                sfIcon("paperplane.fill", accent: true)
+            }
+            actionButton(label: "New chat", accent: true, action: onNewChat) {
+                sfIcon("bubble.left.and.bubble.right.fill", accent: true)
+            }
+            actionButton(label: "Copy", accent: false, action: onCopy) {
+                sfIcon("doc.on.doc", accent: false)
+            }
             ShareLink(item: shareText) {
-                actionTile(symbol: "square.and.arrow.up", label: "Share", accent: false)
+                actionTile(label: "Share", accent: false) {
+                    sfIcon("square.and.arrow.up", accent: false)
+                }
             }
             .buttonStyle(.plain)
         }
         .padding(.top, 8)
     }
 
-    private func actionButton(
-        symbol: String,
+    private func sfIcon(_ symbol: String, accent: Bool) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(accent ? theme.accent : theme.ink)
+    }
+
+    private func actionButton<Icon: View>(
         label: String,
         accent: Bool,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
+        @ViewBuilder icon: () -> Icon
     ) -> some View {
         Button(action: action) {
-            actionTile(symbol: symbol, label: label, accent: accent)
+            actionTile(label: label, accent: accent, icon: icon)
         }
         .buttonStyle(.plain)
     }
 
-    private func actionTile(symbol: String, label: String, accent: Bool) -> some View {
+    private func actionTile<Icon: View>(
+        label: String,
+        accent: Bool,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(accent ? theme.accent : theme.ink)
+            icon()
                 .frame(width: 38, height: 38)
                 .background(
                     RoundedRectangle(cornerRadius: 12)

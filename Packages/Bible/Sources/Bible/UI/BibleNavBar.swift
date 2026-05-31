@@ -33,8 +33,7 @@ struct BibleNavBar: View {
     let chapterNumber: Int
     let translation: BibleTranslation
     /// The selection's citation, or `nil` when no verse is selected — its
-    /// presence switches the centre group into selection mode and lights
-    /// the annotation `SparkButton` to its `.active` state.
+    /// presence switches the centre group into selection mode.
     let selectionCitation: String?
     let canStepBackward: Bool
     let canStepForward: Bool
@@ -52,11 +51,6 @@ struct BibleNavBar: View {
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
     let onTapNarrationPill: () -> Void
-    /// Tap on the annotation `SparkButton`. The button is `.dim` when no
-    /// verses are selected and a tap is ignored; `.active` when verses
-    /// are selected, and a tap routes to the view-model's annotation
-    /// generation flow (which gates on the first-run disclaimer).
-    let onAnnotateSelection: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -94,11 +88,6 @@ struct BibleNavBar: View {
                     .opacity(canStepForward ? 1 : 0.35)
                     .accessibilityLabel("Next chapter")
             }
-
-            SparkButton(
-                state: selectionCitation == nil ? .dim : .active,
-                action: onAnnotateSelection
-            )
 
             trailingControl
         }

@@ -265,8 +265,7 @@ public struct BibleScreen: View {
                         viewModel.presentNarrationSheet()
                     }
                 }
-            },
-            onAnnotateSelection: { handleAnnotateSelection() }
+            }
         )
     }
 
