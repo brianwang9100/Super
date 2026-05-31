@@ -383,4 +383,39 @@ struct ChatSessionToolLoopTests {
         let toolRows = captured[1].messages.filter { $0.role == .tool }
         #expect(toolRows.count == 2)
     }
+
+    @Test func citationsArePersistedOntoAssistantMessageDedupedByURL() async throws {
+        let dupeURL = URL(string: "https://example.com/a")!
+        let otherURL = URL(string: "https://example.com/b")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .searchStarted(query: "history of westphalia"),
+                .textDelta(index: 0, text: "The treaty was signed in 1648."),
+                // Two citation events; the second repeats `dupeURL`, which must
+                // collapse to a single stored source (first-seen wins).
+                .citations([
+                    SourceCitation(id: "s1", title: "A", url: dupeURL),
+                    SourceCitation(id: "s2", title: "B", url: otherURL),
+                ]),
+                .citations([
+                    SourceCitation(id: "s3", title: "A (dupe)", url: dupeURL),
+                ]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "tell me about the treaty", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let assistant = try #require(stored.last)
+        #expect(assistant.role == .assistant)
+        let sources = assistant.attachments?.sources ?? []
+        #expect(sources.count == 2)
+        #expect(sources.map(\.url) == [dupeURL, otherURL])
+        // First-seen wins on dedupe: the later "A (dupe)" title is discarded.
+        #expect(sources.first?.title == "A")
+    }
 }
