@@ -159,6 +159,9 @@ public struct BibleScreen: View {
                 onCardDeleteFailed: { _ in
                     viewModel.presentDeleteAnnotationFailedToast()
                 },
+                onRegenerateFailed: {
+                    viewModel.presentRegenerateAnnotationFailedToast(for: spec)
+                },
                 dispatchStatus: viewModel.dispatchStatus(for: spec)
             )
             .presentationDetents([.medium, .large])

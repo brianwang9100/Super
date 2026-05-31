@@ -43,13 +43,13 @@ struct AnnotationSheet: View {
     let cards: [Card]
     /// `true` while a generation request is in flight.
     ///
-    /// **Contract**: this flag is only consulted when `cards.isEmpty`
-    /// AND `errorMessage` is `nil`. When `cards` is non-empty the flag
-    /// is silently a no-op — the existing cards still render with no
-    /// loading indicator. PR 4's `AnnotationSheetContainer` clears
-    /// `cards` first when retry kicks off (so the spinner-state empty
-    /// view is visible), then writes the freshly-produced rows once
-    /// the `bible.annotate` call returns.
+    /// **Contract**: when `true`, the generating state is shown
+    /// *regardless* of whether `cards` is populated — a regenerate hides
+    /// the stale cards behind the spinner until the fresh rows land. On
+    /// failure the parent clears the running status, so the previous
+    /// cards reappear (a regenerate never destroys the old rows up
+    /// front). `errorMessage` is only consulted when `cards.isEmpty` AND
+    /// `isGenerating` is `false`.
     let isGenerating: Bool
     /// Short human-readable failure reason from a terminal
     /// `BibleAnnotateResult.failure`. When non-nil, the empty state
@@ -162,13 +162,20 @@ struct AnnotationSheet: View {
 
     @ViewBuilder
     private var cardList: some View {
-        if cards.isEmpty {
-            // Expand to fill the sheet body so the empty / generating /
-            // error cluster centers in the detent instead of hugging
-            // the divider with dead space below. The presentation
-            // detent (or the snapshot test's `.frame(height:)`) is the
-            // bound that resolves `.infinity` — no unbounded-parent
-            // layout warning fires in either context.
+        if isGenerating {
+            // A regenerate is in flight: hide the stale cards behind the
+            // generating state so the user sees fresh work underway, not
+            // the about-to-be-replaced previous annotations. Wins over
+            // `cards` — see the `isGenerating` contract above.
+            generatingState
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if cards.isEmpty {
+            // Expand to fill the sheet body so the empty / error cluster
+            // centers in the detent instead of hugging the divider with
+            // dead space below. The presentation detent (or the snapshot
+            // test's `.frame(height:)`) is the bound that resolves
+            // `.infinity` — no unbounded-parent layout warning fires in
+            // either context.
             emptyState
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -192,16 +199,29 @@ struct AnnotationSheet: View {
         }
     }
 
+    /// Spinner-bubble cluster shown while a generation request is in
+    /// flight, including a regenerate over already-populated cards.
+    private var generatingState: some View {
+        VStack(spacing: 10) {
+            AnnotationBubble(state: .generating, size: 28)
+            Text("Generating annotations…")
+                .font(.system(size: 14))
+                .foregroundStyle(theme.inkSoft)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 220)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 40)
+    }
+
     @ViewBuilder
     private var emptyState: some View {
         if let errorMessage {
             errorState(message: errorMessage)
         } else {
             VStack(spacing: 10) {
-                AnnotationBubble(state: isGenerating ? .generating : .empty, size: 28)
-                Text(isGenerating
-                     ? "Generating annotations…"
-                     : "No annotations yet. Tap to generate.")
+                AnnotationBubble(state: .empty, size: 28)
+                Text("No annotations yet. Tap to generate.")
                     .font(.system(size: 14))
                     .foregroundStyle(theme.inkSoft)
                     .multilineTextAlignment(.center)

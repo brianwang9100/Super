@@ -732,6 +732,17 @@ public final class BibleScreenViewModel {
         toast = "Couldn't delete the annotation."
     }
 
+    /// A regenerate failed while existing cards were on screen. Surface a
+    /// toast and clear the lingering `.failed` status so the sheet keeps
+    /// showing the still-present previous annotations (populated wins over
+    /// the inline error layout) instead of a stale error state. Routed
+    /// from `AnnotationSheetContainer.onRegenerateFailed`, which fires
+    /// only when the failed target still has rows.
+    public func presentRegenerateAnnotationFailedToast(for spec: BibleAnnotationTargetSpec) {
+        toast = "Couldn't regenerate annotations."
+        dispatchStatusByTarget.removeValue(forKey: spec)
+    }
+
     /// Human-readable citation for an annotation target, used as the
     /// sheet header. Examples: `"Romans"` for a book target,
     /// `"Romans 8"` for a chapter, `"Romans 8:28-30"` for a verse range,

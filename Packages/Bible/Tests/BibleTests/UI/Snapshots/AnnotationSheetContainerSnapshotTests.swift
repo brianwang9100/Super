@@ -98,6 +98,33 @@ struct AnnotationSheetContainerSnapshotTests {
         try await verify(seeding: populatedRows, theme: .sepia, name: "populated_sepia")
     }
 
+    // MARK: - Regenerate-over-populated states
+
+    @Test("a running dispatch over seeded rows hides the cards behind the generating state in light")
+    func generatingOverPopulatedLight() async throws {
+        try await verify(seeding: populatedRows, theme: .light, isGenerating: true,
+                         name: "generating_over_populated_light")
+    }
+
+    @Test("a running dispatch over seeded rows hides the cards behind the generating state in dark")
+    func generatingOverPopulatedDark() async throws {
+        try await verify(seeding: populatedRows, theme: .dark, isGenerating: true,
+                         name: "generating_over_populated_dark")
+    }
+
+    @Test("a running dispatch over seeded rows hides the cards behind the generating state in sepia")
+    func generatingOverPopulatedSepia() async throws {
+        try await verify(seeding: populatedRows, theme: .sepia, isGenerating: true,
+                         name: "generating_over_populated_sepia")
+    }
+
+    @Test("the running-over-populated state reflows its label at Dynamic Type XXL")
+    func generatingOverPopulatedLightXXL() async throws {
+        try await verify(seeding: populatedRows, theme: .light, isGenerating: true,
+                         dynamicType: .xxLarge, height: 760,
+                         name: "generating_over_populated_light_xxl")
+    }
+
     @Test("a reference card with an unparseable body renders as plain text fallback")
     func unparseableReferenceFallback() async throws {
         let rows = [
