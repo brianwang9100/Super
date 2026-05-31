@@ -314,9 +314,11 @@ struct BibleAnnotateDispatcherTests {
         }
         #expect(message.contains("No LLM provider is configured"))
 
-        // No transient conversation was created — nothing to clean up.
-        // Use the first generated id ("id-1") because the model-resolve
-        // step bails before the id generator is consumed for the row.
+        // Guards the ordering invariant: `resolveActiveModel` must throw
+        // *before* `dispatch` saves the conversation. The deterministic
+        // generator names the first (unconsumed) id "id-1", so a regression
+        // that saved the row before resolving — and skipped cleanup on the
+        // throw path — would leave "id-1" behind and fail this assertion.
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
@@ -352,5 +354,18 @@ struct BibleAnnotateDispatcherTests {
 
         #expect(result == .success(annotationCount: 2))
         #expect(await setup.toolExecutor.executionCount() == 1)
+
+        // The turn ran against the *active provider's* model
+        // ("fake-model-1"), not the desynced selected row's
+        // "system-default" — this is the assertion that makes the test a
+        // real regression guard rather than a happy-path duplicate. Every
+        // captured request carries the active provider's model id.
+        let capturedModels = await setup.provider.capturedRequests().map(\.modelID)
+        #expect(!capturedModels.isEmpty)
+        #expect(capturedModels.allSatisfy { $0 == "fake-model-1" })
+
+        // Transient conversation is hard-deleted like every other dispatch.
+        let lingering = try await setup.conversationRepo.fetch(id: "id-1")
+        #expect(lingering == nil)
     }
 }
