@@ -528,6 +528,9 @@ struct OpenAICompatibleLLMProviderTests {
         case .thinkingDelta: return "thinkingDelta"
         case .toolUse: return "toolUse"
         case .contentBlockStop(let index): return "contentBlockStop(\(index))"
+        case .searchStarted: return "searchStarted"
+        case .citations: return "citations"
+        case .searchSuggestionsHTML: return "searchSuggestionsHTML"
         case .messageComplete: return "messageComplete"
         case .error: return "error"
         }

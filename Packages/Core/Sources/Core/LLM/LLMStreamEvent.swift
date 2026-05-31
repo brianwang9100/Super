@@ -18,6 +18,16 @@ public enum LLMStreamEvent: Sendable, Equatable {
     /// downstream serializers can encode/decode the payload in one hop.
     case toolUse(index: Int, id: String, name: String, input: JSONValue)
     case contentBlockStop(index: Int)
+    /// A native server-side web search has started for the given query. Drives a
+    /// "Searching the web…" affordance independently of whether citations arrive.
+    case searchStarted(query: String)
+    /// Normalized citations parsed from the stream. May arrive more than once in a
+    /// turn; consumers accumulate and dedupe on `url`.
+    case citations([SourceCitation])
+    /// Provider-supplied search-attribution HTML that MUST be rendered unmodified
+    /// and kept visible (Gemini "Google Search Suggestions"). Other providers
+    /// never emit this case.
+    case searchSuggestionsHTML(String)
     case messageComplete(usage: TokenUsage)
     case error(LLMError)
 

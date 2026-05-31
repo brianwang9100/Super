@@ -722,6 +722,8 @@ public actor ChatSession {
         var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
         var capturedUsage: TokenUsage?
         var streamError: LLMError?
+        var accumulatedSources: [SourceCitation] = []
+        var searchSuggestionsHTML: String?
 
         for try await event in stream {
             try Task.checkCancellation()
@@ -739,6 +741,19 @@ public actor ChatSession {
                 broadcast(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
                 pendingCalls.append((id, name, input))
+            case .searchStarted:
+                // PR1 captures-and-persists citations only; a live "Searching…"
+                // affordance via a ChatEvent is a follow-up.
+                break
+            case .citations(let cites):
+                for cite in cites {
+                    let key = Self.citationDedupeKey(cite.url)
+                    if !accumulatedSources.contains(where: { Self.citationDedupeKey($0.url) == key }) {
+                        accumulatedSources.append(cite)
+                    }
+                }
+            case .searchSuggestionsHTML(let html):
+                searchSuggestionsHTML = html
             case .messageComplete(let usage):
                 capturedUsage = usage
             case .error(let err):
@@ -760,8 +775,15 @@ public actor ChatSession {
         // Skip empty turns — the LLM yielded `.messageComplete` without
         // any text or tool calls. Persisting an empty assistant row would
         // diverge the on-disk view from `assembleHistory`'s output (which
-        // drops empty rows when projecting back).
-        if accumulatedText.isEmpty && pendingCalls.isEmpty {
+        // drops empty rows when projecting back). Citations and the Gemini
+        // suggestions HTML also count as output: a native provider can emit
+        // `.citations` + `.messageComplete` with no text, and dropping the
+        // turn here would lose those sources for good (they persist only on
+        // this `.messageComplete` path).
+        if accumulatedText.isEmpty,
+           pendingCalls.isEmpty,
+           accumulatedSources.isEmpty,
+           searchSuggestionsHTML == nil {
             return []
         }
 
@@ -769,6 +791,10 @@ public actor ChatSession {
             guard let start = thinkingStartedAt, let end = thinkingEndedAt else { return nil }
             return max(0, Int(end.timeIntervalSince(start) * 1000))
         }()
+        let attachments = MessageAttachments(
+            sources: accumulatedSources,
+            searchSuggestionsHTML: searchSuggestionsHTML
+        )
         let assistantMessage = MessageRecord(
             id: idGenerator.nextID(),
             conversationId: conversationId,
@@ -778,7 +804,8 @@ public actor ChatSession {
             thinkingDurationMs: thinkingDurationMs,
             toolCallId: nil,
             createdAt: clock.now(),
-            tokenCount: capturedUsage?.outputTokens
+            tokenCount: capturedUsage?.outputTokens,
+            attachmentsJSON: MessageRecord.encode(attachments)
         )
         try await messageRepository.save(assistantMessage)
         broadcast(.assistantMessageSaved(assistantMessage))
@@ -898,6 +925,19 @@ public actor ChatSession {
     private enum ToolOutcome {
         case success(ToolResult)
         case failure(ToolResult, message: String)
+    }
+
+    /// Dedup key for a citation URL. Scheme and host are case-insensitive per
+    /// RFC 3986, so `HTTPS://Example.com/A` and `https://example.com/A` are the
+    /// same source; the path stays case-sensitive. Falls back to the raw string
+    /// for URLs without a host.
+    private static func citationDedupeKey(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        return components.url?.absoluteString ?? url.absoluteString
     }
 }
 

@@ -383,4 +383,92 @@ struct ChatSessionToolLoopTests {
         let toolRows = captured[1].messages.filter { $0.role == .tool }
         #expect(toolRows.count == 2)
     }
+
+    @Test func citationsArePersistedOntoAssistantMessageDedupedByURL() async throws {
+        let dupeURL = URL(string: "https://example.com/a")!
+        let otherURL = URL(string: "https://example.com/b")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .searchStarted(query: "history of westphalia"),
+                .textDelta(index: 0, text: "The treaty was signed in 1648."),
+                // Two citation events; the second repeats `dupeURL`, which must
+                // collapse to a single stored source (first-seen wins).
+                .citations([
+                    SourceCitation(id: "s1", title: "A", url: dupeURL),
+                    SourceCitation(id: "s2", title: "B", url: otherURL),
+                ]),
+                .citations([
+                    SourceCitation(id: "s3", title: "A (dupe)", url: dupeURL),
+                ]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "tell me about the treaty", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let assistant = try #require(stored.last)
+        #expect(assistant.role == .assistant)
+        let sources = assistant.attachments?.sources ?? []
+        #expect(sources.count == 2)
+        #expect(sources.map(\.url) == [dupeURL, otherURL])
+        // First-seen wins on dedupe: the later "A (dupe)" title is discarded.
+        #expect(sources.first?.title == "A")
+    }
+
+    @Test func citationsOnlyTurnWithoutTextStillPersistsAssistantMessageWithSources() async throws {
+        // A native provider may emit citations + .messageComplete with no text
+        // and no tool calls. The empty-turn guard must NOT discard this turn,
+        // or the sources are lost for good (they persist only on this path).
+        let url = URL(string: "https://example.com/grounded")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .searchStarted(query: "q"),
+                .citations([SourceCitation(id: "s1", title: "Grounded", url: url)]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "ground this", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        // user + assistant(citations-only); the assistant row must exist.
+        #expect(stored.map(\.role) == [.user, .assistant])
+        let assistant = try #require(stored.last)
+        #expect(assistant.content.isEmpty)
+        #expect(assistant.attachments?.sources.map(\.url) == [url])
+    }
+
+    @Test func citationDedupeIsCaseInsensitiveOnSchemeAndHost() async throws {
+        // RFC 3986: scheme + host are case-insensitive, path is not. The two
+        // URLs below differ only in host/scheme casing → one stored source.
+        let first = URL(string: "https://Example.com/Article")!
+        let dupe = URL(string: "HTTPS://example.com/Article")!
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "grounded"),
+                .citations([
+                    SourceCitation(id: "s1", title: "First", url: first),
+                    SourceCitation(id: "s2", title: "Dupe (case)", url: dupe),
+                ]),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+
+        let stream = await setup.session.send(text: "q", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let sources = try #require(stored.last?.attachments?.sources)
+        #expect(sources.count == 1)
+        #expect(sources.first?.title == "First")
+    }
 }

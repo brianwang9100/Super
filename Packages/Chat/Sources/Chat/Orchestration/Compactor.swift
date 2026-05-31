@@ -205,7 +205,8 @@ public actor Compactor {
             case .error(let err):
                 throw CompactorError.llmError(err)
             case .messageStart, .contentBlockStart, .contentBlockStop,
-                 .thinkingDelta, .toolUse, .messageComplete:
+                 .thinkingDelta, .toolUse, .messageComplete,
+                 .searchStarted, .citations, .searchSuggestionsHTML:
                 break
             }
         }
