@@ -722,6 +722,8 @@ public actor ChatSession {
         var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
         var capturedUsage: TokenUsage?
         var streamError: LLMError?
+        var accumulatedSources: [SourceCitation] = []
+        var searchSuggestionsHTML: String?
 
         for try await event in stream {
             try Task.checkCancellation()
@@ -739,6 +741,16 @@ public actor ChatSession {
                 broadcast(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
                 pendingCalls.append((id, name, input))
+            case .searchStarted:
+                // PR1 captures-and-persists citations only; a live "Searching…"
+                // affordance via a ChatEvent is a follow-up.
+                break
+            case .citations(let cites):
+                for cite in cites where !accumulatedSources.contains(where: { $0.url == cite.url }) {
+                    accumulatedSources.append(cite)
+                }
+            case .searchSuggestionsHTML(let html):
+                searchSuggestionsHTML = html
             case .messageComplete(let usage):
                 capturedUsage = usage
             case .error(let err):
@@ -769,6 +781,10 @@ public actor ChatSession {
             guard let start = thinkingStartedAt, let end = thinkingEndedAt else { return nil }
             return max(0, Int(end.timeIntervalSince(start) * 1000))
         }()
+        let attachments = MessageAttachments(
+            sources: accumulatedSources,
+            searchSuggestionsHTML: searchSuggestionsHTML
+        )
         let assistantMessage = MessageRecord(
             id: idGenerator.nextID(),
             conversationId: conversationId,
@@ -778,7 +794,8 @@ public actor ChatSession {
             thinkingDurationMs: thinkingDurationMs,
             toolCallId: nil,
             createdAt: clock.now(),
-            tokenCount: capturedUsage?.outputTokens
+            tokenCount: capturedUsage?.outputTokens,
+            attachmentsJSON: MessageRecord.encode(attachments)
         )
         try await messageRepository.save(assistantMessage)
         broadcast(.assistantMessageSaved(assistantMessage))
