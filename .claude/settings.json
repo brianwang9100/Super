@@ -15,5 +15,19 @@
       "Bash(git add:*)",
       "Bash(git commit:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/block-outside-worktree.sh\"",
+            "statusMessage": "Checking write path is inside the worktree"
+          }
+        ]
+      }
+    ]
   }
 }
