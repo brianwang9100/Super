@@ -83,6 +83,20 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// Groq, Ollama, MLX, LM Studio, llama.cpp). Requires `baseURL` and
     /// optionally `apiKeyRef`.
     case openAICompatible
+    /// Native Anthropic Messages API (`/v1/messages`) adapter. Selected at
+    /// add-time when a model opts into native web search; the OpenAI-compat
+    /// shim can't carry Anthropic's `web_search` server tool or citations.
+    /// The adapter itself lands in a later PR — see the native-web-search
+    /// design spec.
+    case anthropicNative
+    /// Native Gemini `generateContent` adapter (`google_search` grounding).
+    /// Distinct from the `.openAICompatible` Google shim. Adapter lands in
+    /// a later PR.
+    case geminiNative
+    /// Native OpenAI Responses API (`/v1/responses`) adapter (`web_search`
+    /// tool + `url_citation` annotations). Distinct from the
+    /// `.openAICompatible` Chat Completions path. Adapter lands in a later PR.
+    case openAIResponses
     #if DEBUG
     /// Development-only fake provider that streams canned markdown
     /// responses with randomized delays. Used to exercise the streaming
@@ -112,6 +126,11 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     public let modelID: String
     public let supportsThinking: Bool
     public let maxContextTokens: Int
+    /// Selected web-search engine for this model: `"native"` (the
+    /// provider's own server-side search, requires a native `kind`), a
+    /// standalone search-provider id, or `nil` for no web search. Drives
+    /// provider hydration and the per-turn tool wiring in later PRs.
+    public let searchBackend: String?
 
     public init(
         id: String,
@@ -121,7 +140,8 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
         apiKeyRef: String?,
         modelID: String,
         supportsThinking: Bool = false,
-        maxContextTokens: Int = 8_192
+        maxContextTokens: Int = 8_192,
+        searchBackend: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -131,6 +151,7 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
         self.modelID = modelID
         self.supportsThinking = supportsThinking
         self.maxContextTokens = maxContextTokens
+        self.searchBackend = searchBackend
     }
 }
 

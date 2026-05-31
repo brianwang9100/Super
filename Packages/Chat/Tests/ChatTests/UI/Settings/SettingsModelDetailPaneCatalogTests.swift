@@ -91,6 +91,46 @@ struct SettingsModelDetailPaneCatalogTests {
         }
     }
 
+    // MARK: - Native web-search adapters
+
+    @Test("Native-search providers map to the right adapter kind + base URL")
+    func nativeSearchAdaptersMatchExpectations() throws {
+        let openai = try #require(LLMProviderCatalog.entry(forID: "openai"))
+        #expect(openai.nativeSearchAdapter == .openAIResponses)
+        #expect(openai.nativeSearchBaseURL?.absoluteString == "https://api.openai.com/v1")
+        #expect(openai.supportsNativeSearch)
+
+        let anthropic = try #require(LLMProviderCatalog.entry(forID: "anthropic"))
+        #expect(anthropic.nativeSearchAdapter == .anthropicNative)
+        #expect(anthropic.nativeSearchBaseURL?.absoluteString == "https://api.anthropic.com/v1")
+        #expect(anthropic.supportsNativeSearch)
+
+        let google = try #require(LLMProviderCatalog.entry(forID: "google"))
+        #expect(google.nativeSearchAdapter == .geminiNative)
+        #expect(google.nativeSearchBaseURL?.absoluteString == "https://generativelanguage.googleapis.com/v1beta")
+        #expect(google.supportsNativeSearch)
+    }
+
+    @Test("Providers without a native adapter expose nil + supportsNativeSearch == false")
+    func providersWithoutNativeSearch() {
+        for id in [LLMProviderCatalog.appleProviderID, "xai", LLMProviderCatalog.customProviderID] {
+            let entry = LLMProviderCatalog.entry(forID: id)
+            #expect(entry?.nativeSearchAdapter == nil, "\(id) should have no native adapter")
+            #expect(entry?.nativeSearchBaseURL == nil, "\(id) should have no native base URL")
+            #expect(entry?.supportsNativeSearch == false, "\(id) should not support native search")
+        }
+    }
+
+    @Test("nativeSearchBaseURL is non-nil exactly when nativeSearchAdapter is")
+    func nativeSearchFieldsArePaired() {
+        for entry in LLMProviderCatalog.all {
+            #expect(
+                (entry.nativeSearchAdapter == nil) == (entry.nativeSearchBaseURL == nil),
+                "provider \(entry.id): adapter/baseURL nullability must agree"
+            )
+        }
+    }
+
     // MARK: - Lookup helpers
 
     @Test("entry(forID:) returns the matching provider")

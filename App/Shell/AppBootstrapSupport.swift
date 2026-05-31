@@ -106,6 +106,11 @@ enum AppBootstrapSupport {
                     toolRegistry: toolRegistry
                 )
                 await registry.register(provider)
+            case .anthropicNative, .geminiNative, .openAIResponses:
+                // Native-search adapters land in a later PR; until then no
+                // persisted row can carry a native `kind` (the Add-Model
+                // native-search option ships with the adapters), so skip.
+                continue
             #if DEBUG
             case .debug:
                 await registry.register(DebugLLMProvider(id: record.id))

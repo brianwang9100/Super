@@ -594,7 +594,10 @@ public final class SettingsViewModel {
             switch existing.kind {
             case .openAICompatible:
                 nextBaseURL = baseURL ?? existing.baseURL
-            case .appleFoundation:
+            case .appleFoundation, .anthropicNative, .geminiNative, .openAIResponses:
+                // AFM has no URL; native-search rows resolve their baseURL
+                // from the catalog at add-time, not from a user-editable
+                // field. Either way, preserve whatever was persisted.
                 nextBaseURL = existing.baseURL
             #if DEBUG
             case .debug:
@@ -613,7 +616,11 @@ public final class SettingsViewModel {
                 kind: existing.kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: existing.isSelected
+                isSelected: existing.isSelected,
+                // Preserve the stored search backend — this edit path
+                // rebuilds the whole record from form fields, so omitting
+                // it would silently reset the row to "no web search".
+                searchBackend: existing.searchBackend
             )
             try await modelRepository.save(updated)
             let resolvedKey: String?
@@ -678,6 +685,13 @@ public final class SettingsViewModel {
                 toolRegistry: toolRegistry
             )
             await registry.register(provider)
+        case .anthropicNative, .geminiNative, .openAIResponses:
+            // Native-search adapters land in a later PR. No row can carry
+            // a native `kind` yet (the Add-Model native-search option ships
+            // alongside the adapters), so this arm is unreachable today;
+            // when the adapters arrive, this and `hydrateProviders` collapse
+            // into one shared provider factory.
+            break
         #if DEBUG
         case .debug:
             await registry.register(DebugLLMProvider(id: record.id))

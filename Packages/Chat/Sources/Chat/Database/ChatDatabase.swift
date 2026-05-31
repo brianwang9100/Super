@@ -256,4 +256,16 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "kind", .text).notNull().defaults(to: "user")
         }
     }
+
+    // Adds the nullable `searchBackend` column to `modelConfiguration`,
+    // selecting a model's web-search engine: "native" (the provider's own
+    // server-side search, paired with a native `kind`), a standalone
+    // search-provider id, or NULL = no web search. Additive and nullable,
+    // so a plain ALTER ADD via the DSL suffices — no table rebuild like
+    // v4. Existing rows keep NULL. Never queried, so no index.
+    migrator.registerMigration("v6_searchBackend") { db in
+        try db.alter(table: "modelConfiguration") { t in
+            t.add(column: "searchBackend", .text)
+        }
+    }
 }
