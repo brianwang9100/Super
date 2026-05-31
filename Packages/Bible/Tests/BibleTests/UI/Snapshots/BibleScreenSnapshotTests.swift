@@ -15,7 +15,7 @@ import Testing
 /// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
 /// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
 /// arrow and a footer card drop out. The selection state shows the citation
-/// pill, the transient selection tint, and the action sheet together; the
+/// pill, the solid selection underline, and the action sheet together; the
 /// highlighted state shows verses painted in three persisted colours; the
 /// toast state covers the chat "coming soon" stub. The unavailable state
 /// covers the "chapter unavailable" fallback.

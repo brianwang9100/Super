@@ -6,17 +6,18 @@ import SwiftUI
 ///
 /// Prose and poetry lay each word out as its own tappable subview reflowed by
 /// `VerseFlowLayout`, so a tap toggles the word's verse into the selection.
-/// A word carries a wash behind it when its verse is selected (the transient
-/// selection tint) or persistently highlighted; selection wins when a verse
-/// is both. Poetry is italic, indented, and keeps the `\n` line breaks
+/// A selected verse draws a solid underline; a persistently highlighted verse
+/// carries a colour wash behind it; a verse that is both shows the underline
+/// over the wash. Poetry is italic, indented, and keeps the `\n` line breaks
 /// carried in its verse text.
 struct BibleParagraphBlock: View {
     let paragraph: BibleParagraph
-    /// Verse numbers currently selected — their words render with the
-    /// transient selection tint.
+    /// Verse numbers currently selected — their words render with a solid
+    /// underline.
     let selectedVerses: Set<Int>
     /// Persisted highlight colour per verse number — their words render with
-    /// that colour's wash unless the verse is also selected.
+    /// that colour's wash, shown together with the selection underline when a
+    /// verse is both highlighted and selected.
     let highlightedVerses: [Int: BibleHighlightColor]
     /// Verse numbers an earlier paragraph already drew the raised number for —
     /// a verse straddling a paragraph break is numbered once, at its first
@@ -32,7 +33,7 @@ struct BibleParagraphBlock: View {
     /// verse-target annotations in this paragraph; no bubbles render.
     let annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
     /// Verse currently being spoken by the narrator — its words render
-    /// with an underline so the reader can follow along. `nil` when
+    /// with a dashed underline so the reader can follow along. `nil` when
     /// narration is idle.
     let currentNarratingVerse: Int?
     /// Invoked with a verse number when any of its words is tapped.
@@ -192,9 +193,9 @@ struct BibleParagraphBlock: View {
 }
 
 /// A single tappable word of a verse — the smallest unit `VerseFlowLayout`
-/// reflows. A tap reports the word's verse number; a selected or highlighted
-/// verse tints the word, the trailing space included so adjacent words read
-/// as one continuous wash.
+/// reflows. A tap reports the word's verse number; a selected verse underlines
+/// the word and a highlighted verse washes it, the trailing space included so
+/// adjacent words read as one continuous span.
 private struct VerseWord: View {
     let token: VerseWordToken
     let isSelected: Bool
@@ -241,6 +242,7 @@ private struct VerseWord: View {
     @ViewBuilder
     private var identifiedWord: some View {
         let word = styledText
+            .overlay(alignment: .bottom) { underlineRule }
             .padding(.vertical, 1.5)
             .background(wordBackground)
             .contentShape(Rectangle())
@@ -264,12 +266,11 @@ private struct VerseWord: View {
             : "Selects the verse for highlight, copy, and share"
     }
 
-    /// The wash behind the word: the selection tint when selected, otherwise
-    /// the persisted highlight colour, otherwise nothing. Selection wins so
-    /// the reader can see which verses a pending action will act on even when
-    /// they are already highlighted.
+    /// The wash behind the word: the persisted highlight colour, otherwise
+    /// nothing. Selection is drawn as a solid underline (see `underlineRule`),
+    /// not a wash, so a selected *and* highlighted verse shows both at once —
+    /// the underline over the highlight colour.
     private var wordBackground: Color {
-        if isSelected { return selectionTint }
         if let highlightColor {
             return highlightColor.verseTint(forDarkPage: theme.id == .dark).color
         }
@@ -278,35 +279,58 @@ private struct VerseWord: View {
 
     /// The word `Text`, prefixed with the raised verse marker on the word that
     /// carries the verse number — a verse straddling a paragraph break draws it
-    /// once. A trailing space is baked in so the selection background bridges
-    /// the gap to the next word.
-    ///
-    /// The narrator underline is applied here (not as a `.underline(...)`
-    /// modifier on the outer view) so the line runs through the verse
-    /// number ornament as well as the word — making it visually clear
-    /// the whole verse is the unit being read.
+    /// once. A trailing space is baked in so the word's cell — and the
+    /// `underlineRule` drawn under it — extends to meet the next word.
     private var styledText: Text {
-        var word = Text(token.word + " ")
+        let word = Text(token.word + " ")
             .font(isPoetry ? .body.italic() : .body)
             .foregroundStyle(theme.ink)
-        if isNarrating {
-            word = word.underline(true, color: theme.accent.opacity(0.65))
-        }
         guard token.showsVerseNumber else { return word }
         let number = BibleVerseNumber(number: token.verseNumber)
             .text(color: theme.inkFaint)
         return number + Text(" ") + word
     }
 
-    /// A subtle wash behind a selected verse, tinted toward the active theme's
-    /// accent hue so a selection feels native to the reading theme (green on
-    /// Light/Dark, warm on Sepia) and tracks the Settings accent-hue slider.
-    /// The low chroma keeps it clearly a *selection* wash — distinct from the
-    /// vivid highlight swatches in the action sheet — and never a highlight.
-    /// Selection still wins over a persisted highlight in `wordBackground`.
-    private var selectionTint: Color {
-        theme.id == .dark
-            ? OKLCH(0.58, 0.055, theme.accentHue, alpha: 0.43).color
-            : OKLCH(0.90, 0.060, theme.accentHue, alpha: 0.82).color
+    /// The selection / narration underline, drawn as a bottom-aligned rule
+    /// rather than `Text.underline`.
+    ///
+    /// `Text.underline` decorates only the glyph runs and skips the trailing
+    /// space that separates words, so its line broke at every word boundary.
+    /// This rule spans the word's full cell — trailing space included — and the
+    /// flow layout adds no inter-word gap, so each word's rule abuts the next
+    /// into one continuous line. Selection is a full-strength solid line;
+    /// narration is a softer dashed line so the two never look alike. Selection
+    /// wins when a verse is both selected and narrated — it is the active user
+    /// action.
+    @ViewBuilder
+    private var underlineRule: some View {
+        if isSelected {
+            Rectangle()
+                .fill(theme.accent)
+                .frame(height: Self.underlineWeight)
+        } else if isNarrating {
+            HorizontalRule()
+                .stroke(
+                    theme.accent.opacity(0.65),
+                    style: StrokeStyle(lineWidth: Self.underlineWeight, dash: [3, 3])
+                )
+                .frame(height: Self.underlineWeight)
+        }
+    }
+
+    /// Hairline weight shared by the solid (selection) and dashed (narration)
+    /// rules so the two stay visually equal — and so the dashed stroke, centred
+    /// in a frame of this height, fills it exactly without clipping.
+    private static let underlineWeight: CGFloat = 1.5
+}
+
+/// A single horizontal line spanning its rect, centred vertically — stroked
+/// dashed for the narrator's follow-along underline.
+private struct HorizontalRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }
