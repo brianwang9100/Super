@@ -45,9 +45,13 @@ struct AnnotationSheetContainer: View {
     /// Per-target dispatch status from `BibleScreenViewModel`. `nil`
     /// means no headless dispatch is running or failed for this
     /// target — the sheet renders the regular empty / populated
-    /// layouts. `.running` flips the empty layout to the generating
-    /// spinner; `.failed` flips it to the error + retry button.
-    /// Ignored while `records` is non-empty (populated wins).
+    /// layouts. `.running` shows the generating state, taking
+    /// precedence over populated cards so a regenerate hides the stale
+    /// cards behind the spinner. `.failed` flips the *empty* layout to
+    /// the error + retry button, but stays suppressed while `records`
+    /// is non-empty (populated wins) — that regenerate-failure case
+    /// routes `onRegenerateFailed` instead, so the previous cards
+    /// reappear alongside a toast.
     let dispatchStatus: BibleAnnotationDispatchStatus?
     let bottomInset: CGFloat
     let onRegenerate: () -> Void
@@ -64,6 +68,16 @@ struct AnnotationSheetContainer: View {
     /// still be there, so the card wouldn't disappear). `nil` swallows
     /// the error — used only by previews / driver views.
     let onCardDeleteFailed: ((any Error) -> Void)?
+    /// Fired when a dispatch fails *while existing cards are on screen*
+    /// (a regenerate, not a first generation). The sheet keeps showing
+    /// the still-present previous cards — they were never deleted — so
+    /// this routes a toast + status-clear to the parent for feedback.
+    /// First-generation failures (no existing rows) skip this and render
+    /// the inline error + retry state instead. Production must always
+    /// supply it (`BibleScreen` does) — a `nil` here would leave a
+    /// regenerate failure on stale cards with a lingering `.failed`
+    /// status and no feedback. `nil` is for previews / driver views only.
+    let onRegenerateFailed: (() -> Void)?
 
     @Query<BibleAnnotationsByTargetRequest> private var records: [BibleAnnotationRecord]
 
@@ -78,6 +92,7 @@ struct AnnotationSheetContainer: View {
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void,
         onRetry: @escaping () -> Void = {},
         onCardDeleteFailed: ((any Error) -> Void)? = nil,
+        onRegenerateFailed: (() -> Void)? = nil,
         dispatchStatus: BibleAnnotationDispatchStatus? = nil,
         bottomInset: CGFloat = 0
     ) {
@@ -91,6 +106,7 @@ struct AnnotationSheetContainer: View {
         self.onOpenReference = onOpenReference
         self.onRetry = onRetry
         self.onCardDeleteFailed = onCardDeleteFailed
+        self.onRegenerateFailed = onRegenerateFailed
         self.dispatchStatus = dispatchStatus
         self.bottomInset = bottomInset
         self._records = Query(constant: BibleAnnotationsByTargetRequest(spec: spec))
@@ -122,6 +138,16 @@ struct AnnotationSheetContainer: View {
             errorMessage: errorMessageFromStatus,
             bottomInset: bottomInset
         )
+        // A dispatch failed. If cards are still on screen this was a
+        // regenerate — the sheet keeps rendering them (populated wins
+        // over the error layout), so route a toast + status-clear to the
+        // parent rather than silently leaving the stale `.failed` status.
+        // When no cards exist (first generation), the inline error +
+        // retry state already gives feedback, so we leave it alone.
+        .onChange(of: errorMessageFromStatus) { _, message in
+            guard message != nil, !records.isEmpty else { return }
+            onRegenerateFailed?()
+        }
     }
 
     /// `.running` → spinner; other states → no spinner.

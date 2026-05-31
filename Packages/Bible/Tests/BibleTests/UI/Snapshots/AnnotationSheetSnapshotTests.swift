@@ -104,6 +104,24 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .light, cards: [], isGenerating: true, name: "generating_light")
     }
 
+    @Test("a regenerate over populated cards hides them behind the generating state in light")
+    func generatingOverPopulatedLight() {
+        verify(theme: .light, cards: Self.threeCards, isGenerating: true,
+               name: "generating_over_populated_light")
+    }
+
+    @Test("a regenerate over populated cards hides them behind the generating state in dark")
+    func generatingOverPopulatedDark() {
+        verify(theme: .dark, cards: Self.threeCards, isGenerating: true,
+               name: "generating_over_populated_dark")
+    }
+
+    @Test("a regenerate over populated cards hides them behind the generating state in sepia")
+    func generatingOverPopulatedSepia() {
+        verify(theme: .sepia, cards: Self.threeCards, isGenerating: true,
+               name: "generating_over_populated_sepia")
+    }
+
     // MARK: - Loaded states
 
     @Test("one card renders without intercard spacing artifacts")
