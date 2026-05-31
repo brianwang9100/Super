@@ -308,4 +308,57 @@ struct BibleAnnotateDispatcherTests {
         let lingering = try await setup.conversationRepo.fetch(id: "id-1")
         #expect(lingering == nil)
     }
+
+    // MARK: - Per-scope section guidance
+
+    // `prompt(for:)` is a pure static function, so these exercise it
+    // directly — no bus, session, or model needed. They're the
+    // regression guard for the per-scope steer: before the dispatcher
+    // carried `ANNOTATIONS.md` §1's sections, every scope got the same
+    // generic prompt and these section keywords were absent.
+
+    @Test("a book request's prompt names the book-level sections to cover")
+    func bookPromptNamesBookSections() {
+        let prompt = BibleAnnotateDispatcher.prompt(
+            for: reference(kind: "book", sourceID: "book:ROM")
+        )
+        #expect(prompt.contains("this book"))
+        #expect(prompt.contains("historical context"))
+        #expect(prompt.contains("summary"))
+    }
+
+    @Test("a chapter request's prompt names the chapter-level sections to cover")
+    func chapterPromptNamesChapterSections() {
+        let prompt = BibleAnnotateDispatcher.prompt(
+            for: reference(kind: "chapter", sourceID: "chapter:ROM:8")
+        )
+        #expect(prompt.contains("this chapter"))
+        #expect(prompt.contains("summary"))
+        #expect(prompt.contains("outline"))
+    }
+
+    @Test("a verse-range request's prompt names the verse-level sections to cover")
+    func versePromptNamesVerseSections() {
+        // Note the kind is "verseRange", not "verse" — the Bible UI
+        // stamps the former, while the tool's `target` is "verse".
+        let prompt = BibleAnnotateDispatcher.prompt(
+            for: reference(kind: "verseRange", sourceID: "verse:ROM:8:28:30")
+        )
+        #expect(prompt.contains("this verse range"))
+        #expect(prompt.contains("historical context"))
+        #expect(prompt.contains("clarification"))
+        #expect(prompt.contains("cross-reference"))
+    }
+
+    @Test("an unrecognised kind falls back to the generic prompt with no scope line")
+    func unknownKindFallsBackToGenericPrompt() {
+        let prompt = BibleAnnotateDispatcher.prompt(
+            for: reference(kind: "mystery", sourceID: "mystery:ROM")
+        )
+        // No per-scope steer leaked in...
+        #expect(!prompt.contains("aim to cover"))
+        #expect(BibleAnnotateDispatcher.sectionGuidance(forKind: "mystery") == nil)
+        // ...but the structural instruction to call the tool once stands.
+        #expect(prompt.contains("Call `bible.annotate` once"))
+    }
 }
