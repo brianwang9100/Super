@@ -118,6 +118,13 @@ struct AnnotationSheetContainerSnapshotTests {
                          name: "generating_over_populated_sepia")
     }
 
+    @Test("the running-over-populated state reflows its label at Dynamic Type XXL")
+    func generatingOverPopulatedLightXXL() async throws {
+        try await verify(seeding: populatedRows, theme: .light, isGenerating: true,
+                         dynamicType: .xxLarge, height: 760,
+                         name: "generating_over_populated_light_xxl")
+    }
+
     @Test("a reference card with an unparseable body renders as plain text fallback")
     func unparseableReferenceFallback() async throws {
         let rows = [

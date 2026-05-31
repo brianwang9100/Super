@@ -138,16 +138,28 @@ struct AnnotationSheetContainer: View {
             errorMessage: errorMessageFromStatus,
             bottomInset: bottomInset
         )
-        // A dispatch failed. If cards are still on screen this was a
-        // regenerate — the sheet keeps rendering them (populated wins
-        // over the error layout), so route a toast + status-clear to the
-        // parent rather than silently leaving the stale `.failed` status.
-        // When no cards exist (first generation), the inline error +
-        // retry state already gives feedback, so we leave it alone.
-        .onChange(of: errorMessageFromStatus) { _, message in
-            guard message != nil, !records.isEmpty else { return }
-            onRegenerateFailed?()
+        // A dispatch failed while cards are still on screen — a
+        // regenerate, not a first generation. The sheet keeps rendering
+        // the cards (populated wins over the error layout), so route a
+        // toast + status-clear to the parent rather than silently
+        // leaving the stale `.failed` status. First-generation failures
+        // (no cards) render the inline error + retry state instead, so
+        // we leave those alone. `initial: true` covers a sheet
+        // re-opened onto an already-`.failed` status (dismissed mid
+        // regenerate, failed in the background); reacting to the
+        // combined `records`/status signal covers the `@Query`
+        // delivering `records` after mount.
+        .onChange(of: hasRegenerateFailureWithCards, initial: true) { _, failed in
+            if failed { onRegenerateFailed?() }
         }
+    }
+
+    /// `true` while a dispatch has failed *and* cards are still on
+    /// screen — the regenerate-failure case the parent surfaces as a
+    /// toast. A first-generation failure (no rows) is `false` here and
+    /// renders the inline error + retry layout instead.
+    private var hasRegenerateFailureWithCards: Bool {
+        errorMessageFromStatus != nil && !records.isEmpty
     }
 
     /// `.running` → spinner; other states → no spinner.

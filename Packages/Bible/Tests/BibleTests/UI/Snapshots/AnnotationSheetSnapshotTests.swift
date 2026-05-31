@@ -122,6 +122,13 @@ struct AnnotationSheetSnapshotTests {
                name: "generating_over_populated_sepia")
     }
 
+    @Test("the generating-over-populated state reflows its label at Dynamic Type XXL")
+    func generatingOverPopulatedLightXXL() {
+        verify(theme: .light, cards: Self.threeCards, isGenerating: true,
+               dynamicType: .xxLarge, height: 720,
+               name: "generating_over_populated_light_xxl")
+    }
+
     // MARK: - Loaded states
 
     @Test("one card renders without intercard spacing artifacts")
