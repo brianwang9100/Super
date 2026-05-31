@@ -298,7 +298,6 @@ enum SuperOSAppBootstrap {
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
             checkpointRepository: checkpointRepo,
-            modelConfigurationRepository: modelConfigRepo,
             llmProviderRegistry: llmProviderRegistry,
             toolRegistry: bibleAnnotateRegistry,
             compactor: compactor
