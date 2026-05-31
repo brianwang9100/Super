@@ -72,6 +72,17 @@ public struct BibleScreen: View {
         }
     }
 
+    /// Book ids whose `.book`-target annotation generation is currently in
+    /// flight, derived from the view model's dispatch-status map. Drives the
+    /// book picker's generating bubbles. Reading `dispatchStatusByTarget` in
+    /// the body keeps the picker reactive as dispatches start and complete.
+    private var generatingBookIds: Set<String> {
+        Set(viewModel.dispatchStatusByTarget.compactMap { spec, status in
+            guard spec.target == .book, case .running = status else { return nil }
+            return spec.bookId
+        })
+    }
+
     /// Write seam for per-card deletion from the annotation sheet, and
     /// the dependency the `AnnotationSheetContainer` needs for its
     /// mutation callbacks. `nil` in previews / isolated tests — the
@@ -398,6 +409,11 @@ public struct BibleScreen: View {
                 withAnimation(motion.animation) { viewModel.dismissBookSheet() }
                 viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId))
             },
+            // Books with an in-flight `.book`-target dispatch — their
+            // bubbles render generating. Reading the view model's status
+            // map here keeps the picker reactive as dispatches start and
+            // finish.
+            generatingBookIds: generatingBookIds,
             // Lift the order toggle above the shell's minimized chat pill,
             // mirroring the reader's chat-pill bottom reserve.
             bottomInset: BibleChapterReader.chatPillHeight
@@ -440,7 +456,16 @@ public struct BibleScreen: View {
                 onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() },
                 onAnnotationBubbleTap: { spec in
                     viewModel.presentAnnotationSheet(for: spec)
-                }
+                },
+                onRequestChapterAnnotation: { spec in
+                    viewModel.triggerAnnotationGeneration(for: spec)
+                },
+                chapterDispatchStatus: viewModel.dispatchStatus(
+                    for: .chapter(
+                        bookId: viewModel.position.bookId,
+                        chapterNumber: viewModel.position.chapterNumber
+                    )
+                )
             )
             // A fresh identity per chapter resets the scroll offset to the
             // top and re-subscribes the highlight `@Query` when the reader

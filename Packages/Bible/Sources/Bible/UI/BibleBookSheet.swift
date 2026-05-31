@@ -41,6 +41,10 @@ struct BibleBookSheet: View {
     /// `.book(bookId)` target (which the view model routes through its
     /// disclaimer gate).
     let onRequestBookAnnotations: (_ bookId: String) -> Void
+    /// Book ids whose `.book`-target generation is in flight. A book in
+    /// this set renders its bubble in the generating state (disabled),
+    /// surfacing dispatches triggered from chat or a prior picker visit.
+    let generatingBookIds: Set<String>
 
     /// Books with at least one annotation row at any target level. Used
     /// to switch each bubble between `.filled` and `.empty` per book. An
@@ -72,6 +76,7 @@ struct BibleBookSheet: View {
         onClose: @escaping () -> Void,
         onPresentBookAnnotations: @escaping (_ bookId: String) -> Void,
         onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
+        generatingBookIds: Set<String> = [],
         bottomInset: CGFloat = 0
     ) {
         self.viewModel = viewModel
@@ -81,6 +86,7 @@ struct BibleBookSheet: View {
         self.onClose = onClose
         self.onPresentBookAnnotations = onPresentBookAnnotations
         self.onRequestBookAnnotations = onRequestBookAnnotations
+        self.generatingBookIds = generatingBookIds
         self.bottomInset = bottomInset
         self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
     }
@@ -257,7 +263,7 @@ struct BibleBookSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                annotationBubble(for: book.id, isFilled: hasAnnotations)
+                annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
 
                 Text("\(book.chapterCount)")
                     .font(.system(size: countSize, design: .monospaced))
@@ -273,25 +279,34 @@ struct BibleBookSheet: View {
         .id(Self.bookRowID(book.id))
     }
 
-    private func annotationBubble(for bookId: String, isFilled: Bool) -> some View {
-        Button {
-            if isFilled {
-                onPresentBookAnnotations(bookId)
-            } else {
-                onRequestBookAnnotations(bookId)
+    private func annotationBubble(for bookId: String, hasAnnotations: Bool) -> some View {
+        let state = AnnotationBubble.state(
+            hasAnnotation: hasAnnotations,
+            isGenerating: generatingBookIds.contains(bookId)
+        )
+        return Button {
+            switch state {
+            case .filled: onPresentBookAnnotations(bookId)
+            case .empty: onRequestBookAnnotations(bookId)
+            case .generating: break
             }
         } label: {
-            AnnotationBubble(
-                state: isFilled ? .filled : .empty,
-                size: bubbleSize
-            )
-            .frame(width: 30, height: 30)
-            .contentShape(Rectangle())
+            AnnotationBubble(state: state, size: bubbleSize)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isFilled
-            ? "View annotations for this book"
-            : "Generate annotations for this book")
+        .disabled(state == .generating)
+        .accessibilityLabel(Self.bookBubbleLabel(for: state))
+    }
+
+    /// VoiceOver label for a book's annotation bubble, keyed to its state.
+    static func bookBubbleLabel(for state: AnnotationBubble.BubbleState) -> String {
+        switch state {
+        case .filled: return "View annotations for this book"
+        case .empty: return "Generate annotations for this book"
+        case .generating: return "Generating annotations for this book"
+        }
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
