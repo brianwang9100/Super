@@ -122,7 +122,9 @@ public enum BibleSearchQueryParser {
     /// `"1 Peter"` intact while the chapter is still untyped).
     private static func peelChapter(from leftRaw: String) -> (bookPart: String, chapter: Int)? {
         let tokens = leftRaw.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
-        guard tokens.count >= 2, let chapter = Int(tokens.last!), chapter >= 1 else { return nil }
+        guard tokens.count >= 2, let last = tokens.last, let chapter = Int(last), chapter >= 1 else {
+            return nil
+        }
         return (tokens.dropLast().joined(separator: " "), chapter)
     }
 

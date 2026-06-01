@@ -62,6 +62,14 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter"), theme: .sepia, name: "auto_expand_sepia")
     }
 
+    @Test("the auto-expanded grid renders at Dynamic Type XXL")
+    func autoExpandLightXXL() {
+        verify(
+            sheet(query: "1 Peter"),
+            theme: .light, dynamicType: .xxLarge, name: "auto_expand_light_xxl"
+        )
+    }
+
     @Test("a book-plus-chapter query shows the single chapter jump row")
     func chapterDeepLinkLight() {
         verify(sheet(query: "1 Peter 2"), theme: .light, name: "chapter_deep_link_light")
