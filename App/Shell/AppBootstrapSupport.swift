@@ -87,8 +87,14 @@ enum AppBootstrapSupport {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
+            // Resolve the Keychain key only when this binary will actually
+            // build a provider for the row (`hasProviderAdapter`) *and* the
+            // row carries a key reference. This preserves the pre-factory
+            // behavior of not touching the Keychain for keyless kinds
+            // (`.appleFoundation`/`.debug` never set `apiKeyRef`) or for
+            // not-yet-buildable native kinds whose key we'd only discard.
             let apiKey: String?
-            if let ref = record.apiKeyRef {
+            if record.kind.hasProviderAdapter, let ref = record.apiKeyRef {
                 apiKey = try? await repository.loadAPIKey(ref: ref)
             } else {
                 apiKey = nil

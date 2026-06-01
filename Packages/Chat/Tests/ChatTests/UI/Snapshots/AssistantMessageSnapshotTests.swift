@@ -109,6 +109,16 @@ struct AssistantMessageSnapshotTests {
         verify(isStreaming: false, theme: .dark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
     }
 
+    @Test("grounded answer with the sources pill below the text (sepia)")
+    func withSourcesSepia() {
+        verify(isStreaming: false, theme: .sepia, sources: Self.sampleSources, name: "assistant_with_sources_sepia")
+    }
+
+    @Test("grounded answer with the sources pill, Dynamic Type XXL")
+    func withSourcesXXL() {
+        verify(isStreaming: false, theme: .light, dynamicType: .xxLarge, sources: Self.sampleSources, name: "assistant_with_sources_light_xxl")
+    }
+
     private static let sampleSources: [SourceCitationPillModel] = [
         SourceCitationPillModel(id: "1", title: "Perseverance confirms subsurface water ice", host: "nasa.gov", url: URL(string: "https://www.nasa.gov/mars")!),
         SourceCitationPillModel(id: "2", title: "Mars rover relays new imagery", host: "space.com", url: URL(string: "https://www.space.com/rover")!),
