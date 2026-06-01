@@ -15,9 +15,9 @@ struct AnnotateBibleToolTests {
     ) -> (AnnotateBibleTool, SpyBibleAnnotationRepository) {
         let tool = AnnotateBibleTool(
             repository: repository,
+            stampProvider: FakeStampProvider(stamp: stamp),
             clock: FixedClock(t0),
-            ids: DeterministicIDGenerator(prefix: "anno-"),
-            stampProvider: FakeStampProvider(stamp: stamp)
+            ids: DeterministicIDGenerator(prefix: "anno-")
         )
         return (tool, repository)
     }

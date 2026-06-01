@@ -126,9 +126,9 @@ public struct BibleApplet: MiniApplet {
         await registry.register(
             AnnotateBibleTool.registration(
                 repository: annotationRepository,
+                stampProvider: stampProvider,
                 clock: clock,
-                ids: ids,
-                stampProvider: stampProvider
+                ids: ids
             )
         )
     }
