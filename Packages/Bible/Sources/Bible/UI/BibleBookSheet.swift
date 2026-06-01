@@ -394,7 +394,7 @@ struct BibleBookSheet: View {
 
     /// VoiceOver label for a book's note glyph, keyed to whether it has notes.
     static func bookNoteGlyphLabel(hasNotes: Bool) -> String {
-        hasNotes ? "View notes for this book" : "Notes for this book"
+        hasNotes ? "View notes for this book" : "Open notes for this book"
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {

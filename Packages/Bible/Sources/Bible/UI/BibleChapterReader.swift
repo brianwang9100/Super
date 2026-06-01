@@ -472,7 +472,7 @@ struct BibleChapterReader: View {
     /// VoiceOver label for the chapter-title note glyph, keyed to whether the
     /// chapter already carries notes.
     static func chapterNoteGlyphLabel(hasNote: Bool) -> String {
-        hasNote ? "View chapter notes" : "Notes for this chapter"
+        hasNote ? "View chapter notes" : "Open chapter notes"
     }
 
     /// Height of the shell's minimized chat-pill clearance the reader
