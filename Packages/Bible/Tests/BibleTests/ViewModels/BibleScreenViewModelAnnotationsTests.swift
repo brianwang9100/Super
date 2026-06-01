@@ -258,7 +258,7 @@ struct BibleScreenViewModelAnnotationsTests {
         let record = BibleAnnotationRecord(
             id: "rec-1", target: .verse, bookId: "ROM",
             chapterNumber: 8, verseStart: 28, verseEnd: 30,
-            kind: .text, title: "In context",
+            category: .clarification, title: "In context",
             body: "Suffering is the backdrop, not the contradiction.",
             source: .user, modelId: "afm-3.0", createdAt: now
         )
@@ -297,12 +297,12 @@ struct BibleScreenViewModelAnnotationsTests {
         let records = [
             BibleAnnotationRecord(
                 id: "a", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                kind: .text, title: "Author", body: "Paul.",
+                category: .author, title: "Author", body: "Paul.",
                 source: .user, modelId: "m", createdAt: now
             ),
             BibleAnnotationRecord(
                 id: "b", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                kind: .text, title: "Summary", body: "Golden chain.",
+                category: .summary, title: "Summary", body: "Golden chain.",
                 source: .user, modelId: "m", createdAt: now
             ),
         ]

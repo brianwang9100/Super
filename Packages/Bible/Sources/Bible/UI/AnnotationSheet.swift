@@ -26,12 +26,20 @@ struct AnnotationSheet: View {
     /// pre-formatting / citation parsing before constructing the card.
     struct Card: Sendable, Identifiable, Equatable {
         let id: String
+        let category: BibleAnnotationCategory
         let title: String
         let content: AnnotationBlock.Content
         let provenance: String
 
-        init(id: String, title: String, content: AnnotationBlock.Content, provenance: String) {
+        init(
+            id: String,
+            category: BibleAnnotationCategory,
+            title: String,
+            content: AnnotationBlock.Content,
+            provenance: String
+        ) {
             self.id = id
+            self.category = category
             self.title = title
             self.content = content
             self.provenance = provenance
@@ -183,6 +191,7 @@ struct AnnotationSheet: View {
                 VStack(spacing: 10) {
                     ForEach(cards) { card in
                         AnnotationBlock(
+                            category: card.category,
                             title: card.title,
                             content: card.content,
                             provenance: card.provenance,

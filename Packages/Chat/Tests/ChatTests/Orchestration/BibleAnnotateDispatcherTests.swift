@@ -438,4 +438,17 @@ struct BibleAnnotateDispatcherTests {
         #expect(briefing.contains("exactly once"))
         #expect(briefing.contains("do not call any other tool"))
     }
+
+    @Test("the dispatcher briefing teaches the category vocabulary")
+    func briefingCarriesCategoryVocabulary() {
+        // The briefing must steer the model to the `category` field and its
+        // five tokens — a revert to the old `kind`/`text`/`reference` wording
+        // would silently break generation (the tool would reject every entry)
+        // with no other test catching it.
+        let briefing = BibleAnnotateDispatcher.dispatcherBriefing
+        #expect(briefing.contains("category"))
+        for token in ["author", "summary", "historical", "clarification", "reference"] {
+            #expect(briefing.contains(token), "briefing should name the '\(token)' category")
+        }
+    }
 }

@@ -18,12 +18,12 @@ import SwiftUI
 /// The container projects each `BibleAnnotationRecord` into one
 /// `AnnotationSheet.Card`:
 ///
-/// - `kind: .text` rows render the body as inline markdown
+/// - `.prose`-rendering categories render the body as inline markdown
 ///   (`AnnotationBlock` handles the conversion).
-/// - `kind: .reference` rows pass the body through
-///   `BibleCitationParser` so a parsed `ParsedCitation` reaches the
-///   sheet's reference card; an unresolvable body lands as a plain-text
-///   fallback inside the card.
+/// - `.citation`-rendering rows (`category == .reference`) pass the body
+///   through `BibleCitationParser` so a parsed `ParsedCitation` reaches
+///   the sheet's reference card; an unresolvable body lands as a
+///   plain-text fallback inside the card.
 ///
 /// The provenance footer is composed here from `modelId` + `createdAt`.
 /// Empty `modelId` (the seed default before PR 4 wires the active LLM
@@ -181,6 +181,7 @@ struct AnnotationSheetContainer: View {
         records.map { record in
             AnnotationSheet.Card(
                 id: record.id,
+                category: record.category,
                 title: record.title,
                 content: makeContent(for: record),
                 provenance: makeProvenance(for: record)
@@ -189,10 +190,10 @@ struct AnnotationSheetContainer: View {
     }
 
     private func makeContent(for record: BibleAnnotationRecord) -> AnnotationBlock.Content {
-        switch record.kind {
-        case .text:
+        switch record.category.rendering {
+        case .prose:
             return .text(record.body)
-        case .reference:
+        case .citation:
             return .reference(
                 label: record.body,
                 target: BibleCitationParser.parse(record.body, in: catalog)

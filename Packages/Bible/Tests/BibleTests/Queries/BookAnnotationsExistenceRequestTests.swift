@@ -36,7 +36,7 @@ struct BookAnnotationsExistenceRequestTests {
                 BibleAnnotationRecord(
                     id: "a", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "T", body: ".",
+                    category: .summary, title: "T", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -53,13 +53,13 @@ struct BookAnnotationsExistenceRequestTests {
                 BibleAnnotationRecord(
                     id: "a", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "T", body: ".",
+                    category: .summary, title: "T", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "b", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "U", body: ".",
+                    category: .summary, title: "U", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 ),
             ]
@@ -75,7 +75,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "g", target: .book, bookId: "GEN",
-                    kind: .text, title: "Prologue", body: "In the beginning.",
+                    category: .summary, title: "Prologue", body: "In the beginning.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -85,7 +85,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "j", target: .chapter, bookId: "JHN", chapterNumber: 3,
-                    kind: .text, title: "Summary", body: "Nicodemus.",
+                    category: .summary, title: "Summary", body: "Nicodemus.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]

@@ -17,9 +17,10 @@ import GRDBQuery
 /// including writes from elsewhere (the chapter reader's regenerate path,
 /// an in-chat tool call, the future bulk runner).
 ///
-/// Returns rows ordered by `(createdAt ASC, id ASC)`, matching
-/// `ChapterAnnotationsRequest` so the card stack inside the sheet
-/// preserves the LLM's insertion order.
+/// Returns rows ordered by `(category ASC, createdAt ASC, id ASC)`,
+/// matching `ChapterAnnotationsRequest` so the card stack inside the sheet
+/// follows the canonical semantic order (author → summary → historical →
+/// clarification → reference) regardless of the order the LLM produced them.
 public struct BibleAnnotationsByTargetRequest: ValueObservationQueryable {
     public static var defaultValue: [BibleAnnotationRecord] { [] }
 
@@ -47,7 +48,7 @@ public struct BibleAnnotationsByTargetRequest: ValueObservationQueryable {
         }
 
         return try query
-            .order(Column("createdAt").asc, Column("id").asc)
+            .order(Column("category").asc, Column("createdAt").asc, Column("id").asc)
             .fetchAll(db)
     }
 }

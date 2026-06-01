@@ -30,7 +30,7 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
                 verseStart: verseStart,
                 verseEnd: verseEnd
             )
-            .order(Column("createdAt").asc, Column("id").asc)
+            .order(Column("category").asc, Column("createdAt").asc, Column("id").asc)
             .fetchAll(db)
         }
     }

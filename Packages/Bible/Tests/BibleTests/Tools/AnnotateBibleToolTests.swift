@@ -24,7 +24,7 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Happy path
 
-    @Test("verse-target call inserts records in entry order with stamped fields")
+    @Test("verse-target call inserts records with the parsed category and stamped fields")
     func versePathInsertsOrderedStampedRecords() async throws {
         let (tool, repo) = makeTool()
         let input: [String: JSONValue] = [
@@ -35,12 +35,12 @@ struct AnnotateBibleToolTests {
             "verseEnd": .int(30),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("author"),
                     "title": .string("Author"),
                     "body": .string("Paul, writing from Rome."),
                 ]),
                 .object([
-                    "kind": .string("reference"),
+                    "category": .string("reference"),
                     "title": .string("See also"),
                     "body": .string("Heb 4:15"),
                 ]),
@@ -56,13 +56,55 @@ struct AnnotateBibleToolTests {
         let inserts = call?.inserts ?? []
         #expect(inserts.count == 2)
         #expect(inserts[0].id == "anno-1")
-        #expect(inserts[0].kind == .text)
+        #expect(inserts[0].category == .author)
         #expect(inserts[0].title == "Author")
         #expect(inserts[0].source == .user)
         #expect(inserts[0].modelId == "afm-3.0")
         #expect(inserts[0].createdAt == t0)
-        #expect(inserts[1].kind == .reference)
+        #expect(inserts[1].category == .reference)
         #expect(inserts[1].body == "Heb 4:15")
+        // Entries are staggered 1 ms apart in emission order so same-category
+        // siblings keep their order via `createdAt` rather than UUID `id`.
+        #expect(inserts[1].createdAt == t0.addingTimeInterval(0.001))
+    }
+
+    @Test("same-category entries are stamped in emission order so the query keeps it")
+    func sameCategoryEntriesStaggerInEmissionOrder() async throws {
+        let (tool, repo) = makeTool()
+        // Two `reference` cards: `category ASC` can't distinguish them, so the
+        // 1 ms `createdAt` stagger is the *only* thing preserving the order
+        // the LLM emitted them in. Without it they'd tie-break on random UUID.
+        let input: [String: JSONValue] = [
+            "target": .string("verse"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(28),
+            "verseEnd": .int(30),
+            "entries": .array([
+                .object([
+                    "category": .string("reference"),
+                    "title": .string("Cross-reference"),
+                    "body": .string("John 1:14"),
+                ]),
+                .object([
+                    "category": .string("reference"),
+                    "title": .string("See also"),
+                    "body": .string("Ephesians 1:11"),
+                ]),
+            ]),
+        ]
+
+        _ = try await tool.execute(input: input)
+        let inserts = await repo.lastCall?.inserts ?? []
+        #expect(inserts.count == 2)
+        // Same category, monotonically increasing createdAt in emission order.
+        #expect(inserts[0].category == .reference)
+        #expect(inserts[1].category == .reference)
+        #expect(inserts[0].body == "John 1:14")
+        #expect(inserts[1].body == "Ephesians 1:11")
+        #expect(inserts[0].createdAt == t0)
+        #expect(inserts[1].createdAt == t0.addingTimeInterval(0.001))
+        #expect(inserts[0].createdAt < inserts[1].createdAt)
     }
 
     @Test("book-target call has no chapter or verse columns set")
@@ -73,7 +115,7 @@ struct AnnotateBibleToolTests {
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("author"),
                     "title": .string("Prologue"),
                     "body": .string("Long, systematic letter."),
                 ]),
@@ -101,7 +143,7 @@ struct AnnotateBibleToolTests {
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("summary"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),
@@ -140,7 +182,7 @@ struct AnnotateBibleToolTests {
             "verseEnd": .double(30.0),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("summary"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),
@@ -211,8 +253,8 @@ struct AnnotateBibleToolTests {
         #expect(result.content.contains("book"))
     }
 
-    @Test("entry missing kind rejects")
-    func entryMissingKindRejects() async throws {
+    @Test("entry missing category rejects")
+    func entryMissingCategoryRejects() async throws {
         let (tool, _) = makeTool()
         let result = try await tool.execute(input: [
             "target": .string("book"),
@@ -225,18 +267,18 @@ struct AnnotateBibleToolTests {
             ]),
         ])
         #expect(result.isError == true)
-        #expect(result.content.contains("kind"))
+        #expect(result.content.contains("category"))
     }
 
-    @Test("entry with unknown kind rejects")
-    func entryUnknownKindRejects() async throws {
+    @Test("entry with unknown category rejects")
+    func entryUnknownCategoryRejects() async throws {
         let (tool, _) = makeTool()
         let result = try await tool.execute(input: [
             "target": .string("book"),
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("audio"),
+                    "category": .string("audio"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),

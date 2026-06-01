@@ -297,12 +297,14 @@ public final class BibleAnnotateDispatcher {
     conversationally, do not call any other tool, do not ask follow-up \
     questions. After the tool call completes, end your turn.
 
-    Default to 2–4 short annotation cards per target. Cards can mix \
-    `text` (concise prose) with `reference` (a single scripture citation \
-    when a parallel passage is genuinely illuminating). Keep each body to \
-    ~240 characters / ≤2 sentences and give each a plain-language title. \
-    When the user message lists sections to cover, aim for one focused \
-    card per section.
+    Default to 2–4 short annotation cards per target. Classify each card \
+    with a `category`: `author`, `summary`, `historical`, \
+    `clarification` (concise prose), or `reference` (a single scripture \
+    citation when a parallel passage is genuinely illuminating). Keep \
+    each body to ~240 characters / ≤2 sentences and give each a \
+    plain-language title. When the user message lists sections to cover, \
+    aim for one focused card per section. Card display order is fixed by \
+    category — emit them in any order.
     """
 
     /// `send(text:)` payload — names the target structurally so even
@@ -345,19 +347,22 @@ public final class BibleAnnotateDispatcher {
         switch kind {
         case "book":
             """
-            For this book, aim to cover its author/origin, historical \
-            context, and a short summary — one focused card each.
+            For this book, aim to cover its author (category `author`), a \
+            short summary (`summary`), and historical context \
+            (`historical`) — one focused card each.
             """
         case "chapter":
             """
-            For this chapter, aim to cover a summary, plus an optional \
-            outline of its movements — one focused card each.
+            For this chapter, aim to cover a summary (category `summary`), \
+            plus an optional outline of its movements (category \
+            `clarification`) — one focused card each.
             """
         case "verseRange":
             """
-            For this verse range, aim to cover historical context, a \
-            plain-language clarification, and any illuminating \
-            cross-reference(s) — one focused card each.
+            For this verse range, aim to cover historical context \
+            (category `historical`), a plain-language clarification \
+            (`clarification`), and any illuminating cross-reference(s) \
+            (`reference`) — one focused card each.
             """
         default:
             nil
