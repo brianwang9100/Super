@@ -73,10 +73,10 @@ public enum BibleNoteTargetSpec: Sendable, Equatable, Hashable, Identifiable {
 ///
 /// Carries the target range plus whether the editor should open in create
 /// mode the instant the list mounts. `autoCompose` distinguishes the two ways
-/// a list is opened: a *filled* glyph means "browse this range's notes"
-/// (`false`); an *outline* glyph or the "Add note" tile means "write a note
-/// here" (`true`), where the list mounts behind the editor so a saved note
-/// lands the user on the populated list. Identity is the spec's id so
+/// a list is opened: a note glyph (filled or outline) means "browse this
+/// range's notes" (`false`); the verse-selection "Add note" tile means "write
+/// a note here" (`true`), where the list mounts behind the editor so a saved
+/// note lands the user on the populated list. Identity is the spec's id so
 /// `.sheet(item:)` treats two presentations of the same range as the same
 /// sheet.
 public struct BibleNoteListPresentation: Sendable, Equatable, Identifiable {
