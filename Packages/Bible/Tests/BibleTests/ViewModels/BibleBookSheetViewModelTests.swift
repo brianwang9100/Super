@@ -221,6 +221,36 @@ struct BibleBookSheetViewModelTests {
         #expect(viewModel.isBookExpanded("1PE"))
     }
 
+    @Test("a user tap collapses an auto-expanded book")
+    func tapCollapsesAutoExpandedBook() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        #expect(viewModel.isBookExpanded("1PE"))   // auto-expanded by the unique match
+        viewModel.toggleExpansion(bookId: "1PE")   // tap to collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        #expect(viewModel.autoExpandedBookId == "1PE")  // still the unique match, just suppressed
+    }
+
+    @Test("re-tapping a collapsed auto-expanded book re-opens it")
+    func reTapReopensAutoExpandedBook() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        viewModel.toggleExpansion(bookId: "1PE")   // collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        viewModel.toggleExpansion(bookId: "1PE")   // re-open
+        #expect(viewModel.isBookExpanded("1PE"))
+    }
+
+    @Test("editing the query re-auto-expands a previously collapsed book")
+    func queryChangeClearsCollapseSuppression() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        viewModel.toggleExpansion(bookId: "1PE")   // collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        viewModel.query = "1 Pete"                 // a new (still-unique) query
+        #expect(viewModel.isBookExpanded("1PE"))   // re-auto-expanded from scratch
+    }
+
     @Test("a query matching several books auto-expands none")
     func multiMatchDoesNotAutoExpand() {
         let viewModel = makeViewModel(currentPosition: nil)

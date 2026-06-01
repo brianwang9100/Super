@@ -52,6 +52,16 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter"), theme: .light, name: "auto_expand_light")
     }
 
+    @Test("the auto-expanded grid renders in the dark theme")
+    func autoExpandDark() {
+        verify(sheet(query: "1 Peter"), theme: .dark, name: "auto_expand_dark")
+    }
+
+    @Test("the auto-expanded grid renders in the sepia theme")
+    func autoExpandSepia() {
+        verify(sheet(query: "1 Peter"), theme: .sepia, name: "auto_expand_sepia")
+    }
+
     @Test("a book-plus-chapter query shows the single chapter jump row")
     func chapterDeepLinkLight() {
         verify(sheet(query: "1 Peter 2"), theme: .light, name: "chapter_deep_link_light")
