@@ -73,7 +73,18 @@ public func makeLLMProvider(
         return nil
     #if DEBUG
     case .debug:
-        return DebugLLMProvider(id: record.id)
+        // One `.debug` kind, three providers — dispatch on `modelId` so the
+        // canned-stream, annotate, and note debug rows each build their own
+        // provider without churning the enum / `hasProviderAdapter` /
+        // Settings switch (which all key off `kind == .debug`).
+        switch record.modelId {
+        case DebugAnnotateLLMProvider.modelID:
+            return DebugAnnotateLLMProvider(id: record.id)
+        case DebugNoteLLMProvider.modelID:
+            return DebugNoteLLMProvider(id: record.id)
+        default:
+            return DebugLLMProvider(id: record.id)
+        }
     #endif
     }
 }
