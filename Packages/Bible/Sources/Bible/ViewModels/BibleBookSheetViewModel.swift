@@ -87,11 +87,41 @@ public final class BibleBookSheetViewModel {
         self.catalog = catalog
     }
 
-    /// The books to display, filtered by `query` and ordered by `order`,
-    /// split into titled sections. Empty sections are dropped, so `groups`
-    /// is empty exactly when the query matches nothing.
+    /// The parsed search query — the book-name filter plus an optional
+    /// chapter / verse deep-link target. Recomputed from `query` on demand;
+    /// drives `groups`, `deepLinkResult`, and `autoExpandedBookId`.
+    private var parsed: BibleSearchQuery {
+        BibleSearchQueryParser.parse(query, in: catalog)
+    }
+
+    /// A resolved chapter / verse range when the query named one (e.g.
+    /// `"1 Peter 2:5-6"`), else `nil`. Non-nil makes the picker show a single
+    /// deep-link row in place of the book list.
+    public var deepLinkResult: BibleSearchResult? { parsed.resolved }
+
+    /// The single book the picker should auto-expand: set when the query is a
+    /// book-only search that filters the list down to exactly one book, so its
+    /// chapter grid opens without a tap. `nil` while a deep-link is resolved
+    /// (the row replaces the list) or whenever zero or many books match.
+    public var autoExpandedBookId: String? {
+        guard deepLinkResult == nil else { return nil }
+        let books = groups.flatMap(\.books)
+        return books.count == 1 ? books.first?.id : nil
+    }
+
+    /// Whether `bookId`'s chapter grid should be shown — either the user's
+    /// manually expanded book or the lone search match the picker auto-expands.
+    public func isBookExpanded(_ bookId: String) -> Bool {
+        bookId == expandedBookId || bookId == autoExpandedBookId
+    }
+
+    /// The books to display, filtered by the query's book-name part and
+    /// ordered by `order`, split into titled sections. Empty sections are
+    /// dropped, so `groups` is empty exactly when the book filter matches
+    /// nothing. When the query resolves to a chapter / verse the picker shows
+    /// `deepLinkResult` instead, so `groups` is not consulted then.
     public var groups: [BibleBookGroup] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let trimmed = parsed.bookNameQuery.trimmingCharacters(in: .whitespaces)
 
         var books = catalog.books
         if order == .alphabetical {
@@ -120,8 +150,9 @@ public final class BibleBookSheetViewModel {
         ].filter { !$0.books.isEmpty }
     }
 
-    /// `false` only when the current query filters every book away.
-    public var hasResults: Bool { !groups.isEmpty }
+    /// `false` only when the query neither resolves to a deep-link nor leaves
+    /// any book in the filtered list.
+    public var hasResults: Bool { deepLinkResult != nil || !groups.isEmpty }
 
     /// Where the picker should anchor on first appear; `nil` when no
     /// `currentPosition` was supplied (the sheet stays at the top).

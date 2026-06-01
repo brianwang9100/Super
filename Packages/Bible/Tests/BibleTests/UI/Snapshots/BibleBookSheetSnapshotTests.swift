@@ -47,6 +47,39 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(), theme: .light, dynamicType: .xxLarge, name: "expanded_light_xxl")
     }
 
+    @Test("a book-only query that matches one book auto-expands its grid")
+    func autoExpandLight() {
+        verify(sheet(query: "1 Peter"), theme: .light, name: "auto_expand_light")
+    }
+
+    @Test("a book-plus-chapter query shows the single chapter jump row")
+    func chapterDeepLinkLight() {
+        verify(sheet(query: "1 Peter 2"), theme: .light, name: "chapter_deep_link_light")
+    }
+
+    @Test("a verse-range query shows the verse jump row in the light theme")
+    func verseDeepLinkLight() {
+        verify(sheet(query: "1 Peter 2:5-6"), theme: .light, name: "verse_deep_link_light")
+    }
+
+    @Test("the verse jump row renders in the dark theme")
+    func verseDeepLinkDark() {
+        verify(sheet(query: "1 Peter 2:5-6"), theme: .dark, name: "verse_deep_link_dark")
+    }
+
+    @Test("the verse jump row renders in the sepia theme")
+    func verseDeepLinkSepia() {
+        verify(sheet(query: "1 Peter 2:5-6"), theme: .sepia, name: "verse_deep_link_sepia")
+    }
+
+    @Test("the verse jump row renders at Dynamic Type XXL")
+    func verseDeepLinkLightXXL() {
+        verify(
+            sheet(query: "1 Peter 2:5-6"),
+            theme: .light, dynamicType: .xxLarge, name: "verse_deep_link_light_xxl"
+        )
+    }
+
     @Test("a mid-canon short-book position anchors the book row at the top")
     func midListLight() {
         verify(
@@ -148,6 +181,7 @@ struct BibleBookSheetSnapshotTests {
             currentBookId: currentPosition.bookId,
             currentChapterNumber: currentPosition.chapterNumber,
             onSelectChapter: { _, _ in },
+            onSelectVerseRange: { _, _, _, _ in },
             onClose: {},
             onPresentBookAnnotations: { _ in },
             onRequestBookAnnotations: { _ in },

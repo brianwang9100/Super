@@ -121,4 +121,37 @@ struct BibleBookCatalogTests {
             #expect(catalogRow.2 == indexRow.2, "chapterCount mismatch for \(catalogRow.0): catalog=\(catalogRow.2) index=\(indexRow.2)")
         }
     }
+
+    // MARK: - resolve(bookName:)
+
+    @Test("resolve matches a three-letter id case-insensitively")
+    func resolveMatchesId() {
+        #expect(catalog.resolve(bookName: "1pe")?.id == "1PE")
+        #expect(catalog.resolve(bookName: "GEN")?.id == "GEN")
+    }
+
+    @Test("resolve matches a full display name ignoring whitespace and case")
+    func resolveMatchesName() {
+        #expect(catalog.resolve(bookName: "1 Peter")?.id == "1PE")
+        #expect(catalog.resolve(bookName: "1peter")?.id == "1PE")
+        #expect(catalog.resolve(bookName: "song of solomon")?.id == "SNG")
+    }
+
+    @Test("resolve accepts a unique prefix of the display name")
+    func resolveMatchesUniquePrefix() {
+        #expect(catalog.resolve(bookName: "Gen")?.id == "GEN")
+        #expect(catalog.resolve(bookName: "Phile")?.id == "PHM")   // only Philemon
+    }
+
+    @Test("resolve rejects an ambiguous prefix")
+    func resolveRejectsAmbiguousPrefix() {
+        #expect(catalog.resolve(bookName: "Phil") == nil)          // Philippians + Philemon
+        #expect(catalog.resolve(bookName: "J") == nil)
+    }
+
+    @Test("resolve rejects an empty or whitespace-only candidate")
+    func resolveRejectsEmpty() {
+        #expect(catalog.resolve(bookName: "") == nil)
+        #expect(catalog.resolve(bookName: "   ") == nil)
+    }
 }

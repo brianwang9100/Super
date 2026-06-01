@@ -33,6 +33,11 @@ struct BibleBookSheet: View {
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
     let onSelectChapter: (_ bookId: String, _ chapterNumber: Int) -> Void
+    /// Tap on a resolved verse-range search row — deep-link to those verses,
+    /// pre-selected, the same as a `super://bible/` citation tap.
+    let onSelectVerseRange: (
+        _ bookId: String, _ chapterNumber: Int, _ verseStart: Int, _ verseEnd: Int
+    ) -> Void
     let onClose: () -> Void
     /// Tap on a filled bubble — present the annotation sheet for the
     /// `.book(bookId)` target.
@@ -73,6 +78,9 @@ struct BibleBookSheet: View {
         currentBookId: String,
         currentChapterNumber: Int,
         onSelectChapter: @escaping (_ bookId: String, _ chapterNumber: Int) -> Void,
+        onSelectVerseRange: @escaping (
+            _ bookId: String, _ chapterNumber: Int, _ verseStart: Int, _ verseEnd: Int
+        ) -> Void,
         onClose: @escaping () -> Void,
         onPresentBookAnnotations: @escaping (_ bookId: String) -> Void,
         onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
@@ -83,6 +91,7 @@ struct BibleBookSheet: View {
         self.currentBookId = currentBookId
         self.currentChapterNumber = currentChapterNumber
         self.onSelectChapter = onSelectChapter
+        self.onSelectVerseRange = onSelectVerseRange
         self.onClose = onClose
         self.onPresentBookAnnotations = onPresentBookAnnotations
         self.onRequestBookAnnotations = onRequestBookAnnotations
@@ -143,7 +152,7 @@ struct BibleBookSheet: View {
                 .font(.system(size: controlSize, weight: .medium))
                 .foregroundStyle(theme.inkFaint)
 
-            TextField("Search books", text: $viewModel.query)
+            TextField("Search — e.g. 1 Peter 2:5", text: $viewModel.query)
                 .font(.system(size: mediumSize))
                 .foregroundStyle(theme.ink)
                 .autocorrectionDisabled()
@@ -177,7 +186,11 @@ struct BibleBookSheet: View {
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if groups.isEmpty {
+                    if let result = viewModel.deepLinkResult {
+                        // The query named a concrete chapter / verse — show a
+                        // single tappable jump row in place of the book list.
+                        deepLinkRow(result)
+                    } else if groups.isEmpty {
                         emptyState
                     } else {
                         ForEach(groups) { group in
@@ -237,9 +250,42 @@ struct BibleBookSheet: View {
             .padding(.vertical, 20)
     }
 
+    /// The single jump row shown when the search query resolved to a concrete
+    /// chapter or verse range. Tapping it deep-links and closes the sheet.
+    private func deepLinkRow(_ result: BibleSearchResult) -> some View {
+        Button {
+            switch result {
+            case let .chapter(bookId, _, chapterNumber):
+                onSelectChapter(bookId, chapterNumber)
+            case let .verseRange(bookId, _, chapterNumber, verseStart, verseEnd):
+                onSelectVerseRange(bookId, chapterNumber, verseStart, verseEnd)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(result.displayLabel)
+                        .font(.system(size: bookNameSize, weight: .medium))
+                        .foregroundStyle(theme.ink)
+                    Text(result.subtitle)
+                        .font(.system(size: countSize))
+                        .foregroundStyle(theme.inkFaint)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: controlSize, weight: .semibold))
+                    .foregroundStyle(theme.inkFaint)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Go to \(result.displayLabel)")
+    }
+
     @ViewBuilder
     private func bookRow(_ book: BibleBookSummary) -> some View {
-        let isExpanded = viewModel.expandedBookId == book.id
+        let isExpanded = viewModel.isBookExpanded(book.id)
         let isCurrent = book.id == currentBookId
         let hasAnnotations = booksWithAnnotations.contains(book.id)
 
@@ -401,6 +447,7 @@ struct BibleBookSheet: View {
         currentBookId: "1PE",
         currentChapterNumber: 2,
         onSelectChapter: { _, _ in },
+        onSelectVerseRange: { _, _, _, _ in },
         onClose: {},
         onPresentBookAnnotations: { _ in },
         onRequestBookAnnotations: { _ in }
