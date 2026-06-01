@@ -370,7 +370,9 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ---
 
-## 11a. Carried-forward review items from PR1 (must address in adapter PRs)
+## 11a. Carried-forward review items from PR1/PR2 (must address in adapter PRs)
+
+From PR1:
 
 - **Gemini suggestions-HTML turn attribution (PR3c).** In a tool loop, Gemini can
   emit `searchEntryPoint.renderedContent` on the search turn while the model's
@@ -381,6 +383,33 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 - **`SourceCitation.id` uniqueness (all adapter PRs).** When a provider supplies no
   id, derive `id` from the full URL string (not just host) so a SwiftUI `ForEach`
   keyed on `id` can't collide. The sources pill must key on this.
+
+From PR2 (#138) — all latent today because no native-kind row can be persisted
+until the Add-Model native option ships; each **must** be handled in the same PR
+that makes native rows persistable (PR3a / the Add-Model PR), not deferred past it:
+
+- **`updateModel` unregister-then-`break` drops the provider (PR3a).**
+  `SettingsViewModel.updateModel` calls `registry.unregister(id:)` unconditionally,
+  then `registerProvider`'s native arm `break`s without re-registering. Once a
+  native row exists, editing it mid-session permanently removes its provider from
+  the live registry until app restart. Fix: replace the native `break` with real
+  provider construction **and** guard the `unregister` call on `existing.kind` so
+  it only runs for kinds `registerProvider` will re-register. Ship a test that
+  edits a registered native-kind row and asserts the provider is still registered.
+- **`SettingsModelDetailPane` URL-match misclassifies `.openAIResponses` rows
+  (PR3a / Add-Model PR).** Because `openAIResponsesBaseURL` == the compat
+  `defaultBaseURL` (`/v1`), the pane's URL-match branch opens an `.openAIResponses`
+  row in compat-edit mode, and a model-ID change on save can overwrite the native
+  wire model ID. Fix: classify by `row.kind` (native kinds → native-edit mode)
+  **before** the URL-match branch in `SettingsModelDetailPane.init`. Documented on
+  the `openAIResponsesBaseURL` constant.
+- **`demoteUnknownKindSelections` doesn't demote native-kind rows (PR3a / Add-Model
+  PR).** Native kinds are in `LLMProviderKind.allCases`, so a selected native-kind
+  row survives demotion, is returned by `selected()`, is skipped by hydration, and
+  `setActive` silently fails → empty registry. PR2 added a warning log at the skip
+  site; the durable fix is a demotion predicate that demotes native-kind selections
+  while their adapters aren't registered, so the first-registered fallback fires
+  cleanly instead of leaving the unexplained empty-state banner.
 
 ## 11. Open questions / risks (need human decision)
 
