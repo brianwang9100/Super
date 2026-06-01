@@ -48,6 +48,14 @@ public final class SettingsViewModel {
         /// leave snapshot tests racing the load). Always `false` for
         /// `.appleFoundation` rows since they carry no key.
         public let hasAPIKey: Bool
+        /// Selected web-search engine for this row (mirrors
+        /// `ModelConfigurationRecord.searchBackend`): `"native"`, a
+        /// standalone search-provider id, or `nil`. Surfaced here so the
+        /// Add-Model native-search UI (next PR) reads it off the loaded row
+        /// instead of re-fetching the record — without this projection the
+        /// field would silently read `nil` and the toggle would show "off"
+        /// for a row that actually has search configured.
+        public let searchBackend: String?
 
         public init(
             id: String,
@@ -60,7 +68,8 @@ public final class SettingsViewModel {
             baseURL: URL? = nil,
             modelId: String = "",
             supportsThinking: Bool = false,
-            hasAPIKey: Bool = false
+            hasAPIKey: Bool = false,
+            searchBackend: String? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -73,6 +82,7 @@ public final class SettingsViewModel {
             self.modelId = modelId
             self.supportsThinking = supportsThinking
             self.hasAPIKey = hasAPIKey
+            self.searchBackend = searchBackend
         }
     }
 
@@ -281,7 +291,8 @@ public final class SettingsViewModel {
                 baseURL: record.baseURL,
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
-                hasAPIKey: keyExists
+                hasAPIKey: keyExists,
+                searchBackend: record.searchBackend
             ))
         }
         models = rows
@@ -592,9 +603,17 @@ public final class SettingsViewModel {
             // "preserve existing."
             let nextBaseURL: URL?
             switch existing.kind {
-            case .openAICompatible:
+            case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
+                // openAICompatible and the native-search kinds all surface an
+                // *editable* Base URL field in the edit pane — native kinds
+                // route through the Custom pane (`resolveEditProvider`) until
+                // PR3a gives them their own read-only catalog entry. While the
+                // field is editable, honor the caller's URL rather than
+                // silently discarding a user edit; `nil` means "no
+                // field-driven change," so fall back to the persisted value.
                 nextBaseURL = baseURL ?? existing.baseURL
             case .appleFoundation:
+                // AFM has no URL field; preserve whatever was persisted (nil).
                 nextBaseURL = existing.baseURL
             #if DEBUG
             case .debug:
@@ -613,7 +632,11 @@ public final class SettingsViewModel {
                 kind: existing.kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: existing.isSelected
+                isSelected: existing.isSelected,
+                // Preserve the stored search backend — this edit path
+                // rebuilds the whole record from form fields, so omitting
+                // it would silently reset the row to "no web search".
+                searchBackend: existing.searchBackend
             )
             try await modelRepository.save(updated)
             let resolvedKey: String?
@@ -624,7 +647,17 @@ public final class SettingsViewModel {
             } else {
                 resolvedKey = nil
             }
-            await llmProviderRegistry?.unregister(id: id)
+            // Only unregister the old provider when we'll actually
+            // re-register a replacement. `registerProvider` is a no-op for
+            // kinds whose adapter hasn't shipped (the native-search kinds);
+            // unconditionally unregistering first would strip a provider
+            // registered at hydration time and leave nothing in its place,
+            // silently killing chat for that row until app restart. Gate on
+            // the same condition `registerProvider` uses so the two can't
+            // disagree.
+            if updated.kind.hasProviderAdapter {
+                await llmProviderRegistry?.unregister(id: id)
+            }
             await registerProvider(for: updated, apiKey: resolvedKey)
             await loadModels()
             onModelsChanged?()
@@ -678,6 +711,13 @@ public final class SettingsViewModel {
                 toolRegistry: toolRegistry
             )
             await registry.register(provider)
+        case .anthropicNative, .geminiNative, .openAIResponses:
+            // Native-search adapters land in a later PR. No row can carry
+            // a native `kind` yet (the Add-Model native-search option ships
+            // alongside the adapters), so this arm is unreachable today;
+            // when the adapters arrive, this and `hydrateProviders` collapse
+            // into one shared provider factory.
+            break
         #if DEBUG
         case .debug:
             await registry.register(DebugLLMProvider(id: record.id))

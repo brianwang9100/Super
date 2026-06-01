@@ -53,20 +53,57 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
     /// picked. Nil for Apple Intelligence (on-device, no URL) and
     /// for Custom (user supplies their own).
     public let defaultBaseURL: URL?
+    /// The native provider `kind` this entry resolves to when the user
+    /// enables native web search, or `nil` for providers without a native
+    /// adapter (Apple, xAI, Custom). Selecting `Native (<Provider>)` in the
+    /// Add-Model dropdown persists this as the row's `kind`; everything
+    /// else keeps `.openAICompatible`. The dropdown's knowledge of "which
+    /// providers ship a native adapter" comes solely from this field — a
+    /// future native provider is a catalog edit, no UI change.
+    public let nativeSearchAdapter: LLMProviderKind?
+    /// Base URL for the native adapter, distinct from the
+    /// `.openAICompatible` `defaultBaseURL` shim so a model can be added
+    /// either way. Non-nil exactly when `nativeSearchAdapter` is.
+    public let nativeSearchBaseURL: URL?
     public let models: [LLMCatalogModel]
+
+    /// `true` when this provider ships a native web-search adapter.
+    public var supportsNativeSearch: Bool { nativeSearchAdapter != nil }
 
     public init(
         id: String,
         displayName: String,
         kind: LLMProviderKind,
         defaultBaseURL: URL?,
-        models: [LLMCatalogModel]
+        models: [LLMCatalogModel],
+        nativeSearchAdapter: LLMProviderKind? = nil,
+        nativeSearchBaseURL: URL? = nil
     ) {
         self.id = id
         self.displayName = displayName
+        // The two native-search fields are a unit: an adapter is useless
+        // without its base URL and vice versa. Enforce the pairing at
+        // construction so a mistyped catalog entry (or any future caller)
+        // fails loudly rather than silently producing a half-configured
+        // entry that `supportsNativeSearch` reports as capable.
+        //
+        // `precondition` (unlike `assert`) fires in **both** Debug and
+        // Release — a mismatched entry would crash at first access to
+        // `LLMProviderCatalog.all`. That's the intended behavior: the pair
+        // is compile-time-constant data, so a violation is a programmer
+        // error that should never ship. `nativeSearchFieldsArePaired` in
+        // `SettingsModelDetailPaneCatalogTests` is the first line of defense
+        // (catches a bad entry in CI before release); this is the
+        // belt-and-suspenders backstop.
+        precondition(
+            (nativeSearchAdapter == nil) == (nativeSearchBaseURL == nil),
+            "nativeSearchAdapter and nativeSearchBaseURL must both be set or both be nil"
+        )
         self.kind = kind
         self.defaultBaseURL = defaultBaseURL
         self.models = models
+        self.nativeSearchAdapter = nativeSearchAdapter
+        self.nativeSearchBaseURL = nativeSearchBaseURL
     }
 }
 
@@ -76,11 +113,13 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
 /// they map to, what context-window cap they enforce, and which
 /// support thinking.
 ///
-/// Anthropic uses its OpenAI-compat shim (`/v1/openai/`) so all
-/// non-Apple entries share `OpenAICompatibleLLMProvider`. Adding a
-/// native-Messages-API Anthropic adapter later would change Anthropic's
-/// `kind` here and require a parallel provider registration in
-/// `SettingsViewModel.registerProvider`.
+/// Anthropic uses its OpenAI-compat shim (`/v1/openai/`) for the default
+/// (non-search) path, so every non-Apple entry's `kind` is
+/// `.openAICompatible`. A provider's *native* web-search adapter is
+/// declared separately via `nativeSearchAdapter` / `nativeSearchBaseURL`;
+/// when the user enables native search, the row's persisted `kind` and
+/// `baseURL` are resolved from those fields at add-time, leaving the
+/// default path untouched.
 public enum LLMProviderCatalog {
     /// Identifier of the Custom entry. Held as a constant rather
     /// than a string literal so visibility predicates can reference
@@ -90,6 +129,28 @@ public enum LLMProviderCatalog {
     /// Identifier of the Apple Intelligence entry. Same rationale
     /// as `customProviderID`.
     public static let appleProviderID = "apple"
+
+    // Native web-search endpoint bases. Held as named constants — distinct
+    // from each provider's `defaultBaseURL` OpenAI-compat shim — so the
+    // catalog entries below and the native adapters (PR3a/3b/3c) reference
+    // one source of truth rather than re-typing the literal. Force-unwrapped:
+    // these are compile-time-constant valid URLs, and a typo should fail
+    // the catalog invariant tests, not silently produce a nil base URL.
+    /// Anthropic Messages API base (`/v1/messages` appended by the adapter).
+    public static let anthropicNativeBaseURL = URL(string: "https://api.anthropic.com/v1")!
+    /// Gemini `generateContent` base (distinct from the `/openai` shim).
+    public static let geminiNativeBaseURL = URL(string: "https://generativelanguage.googleapis.com/v1beta")!
+    /// OpenAI Responses API base (`/responses` appended by the adapter).
+    /// ⚠️ Byte-for-byte identical to the OpenAI compat entry's
+    /// `defaultBaseURL` — the Responses API and Chat Completions API share
+    /// `/v1`, so a distinct constant can't disambiguate them. When native
+    /// rows become persistable (the Add-Model native option, next PR),
+    /// `SettingsModelDetailPane.init` must classify rows by `row.kind`
+    /// *before* its URL-match-against-`defaultBaseURL` branch — otherwise an
+    /// `.openAIResponses` row URL-matches the compat "openai" entry and the
+    /// edit pane opens in the wrong (compat) mode. Latent until then: no
+    /// native-kind row can be created today.
+    public static let openAIResponsesBaseURL = URL(string: "https://api.openai.com/v1")!
 
     /// All providers in dropdown order. Apple first so on-device
     /// users find it at the top; Custom last because it's the
@@ -121,7 +182,9 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "gpt-5.5-pro", displayName: "GPT-5.5 Pro", maxContextTokens: 1_000_000, supportsThinking: true),
                 LLMCatalogModel(id: "gpt-5.4-mini", displayName: "GPT-5.4 mini", maxContextTokens: 400_000, supportsThinking: false),
                 LLMCatalogModel(id: "gpt-5.4-nano", displayName: "GPT-5.4 nano", maxContextTokens: 400_000, supportsThinking: false),
-            ]
+            ],
+            nativeSearchAdapter: .openAIResponses,
+            nativeSearchBaseURL: openAIResponsesBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "anthropic",
@@ -142,7 +205,9 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "claude-opus-4-7", displayName: "Opus 4.7", maxContextTokens: 1_000_000, supportsThinking: true),
                 LLMCatalogModel(id: "claude-sonnet-4-6", displayName: "Sonnet 4.6", maxContextTokens: 200_000, supportsThinking: true),
                 LLMCatalogModel(id: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", maxContextTokens: 200_000, supportsThinking: false),
-            ]
+            ],
+            nativeSearchAdapter: .anthropicNative,
+            nativeSearchBaseURL: anthropicNativeBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "google",
@@ -156,7 +221,9 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "gemini-3-pro", displayName: "Gemini 3 Pro", maxContextTokens: 1_000_000, supportsThinking: true),
                 LLMCatalogModel(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash", maxContextTokens: 1_000_000, supportsThinking: true),
                 LLMCatalogModel(id: "gemini-3-flash", displayName: "Gemini 3 Flash", maxContextTokens: 1_000_000, supportsThinking: true),
-            ]
+            ],
+            nativeSearchAdapter: .geminiNative,
+            nativeSearchBaseURL: geminiNativeBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "xai",

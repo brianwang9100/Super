@@ -27,6 +27,18 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
     public var maxContextTokens: Int
     public var isSelected: Bool
     public var createdAt: Date
+    /// Selected web-search engine: `"native"` (provider's own server-side
+    /// search, paired with a native `kind`), a standalone search-provider
+    /// id, or `nil` for no web search. Nullable column added by the
+    /// `v6_searchBackend` migration; old rows decode as `nil`.
+    ///
+    /// The `"native"` ⇒ native-`kind` pairing is an **add-time invariant**
+    /// established when the Add-Model flow resolves `kind`/`baseURL` from the
+    /// catalog's `nativeSearchAdapter`/`nativeSearchBaseURL` (a later PR);
+    /// it is not enforced by this type. No row can carry that pairing yet —
+    /// the native register arms in `hydrateProviders`/`registerProvider` are
+    /// unreachable until then.
+    public var searchBackend: String?
 
     public init(
         id: String,
@@ -38,7 +50,8 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
         kind: LLMProviderKind = .openAICompatible,
         supportsThinking: Bool = false,
         maxContextTokens: Int = 8_192,
-        isSelected: Bool = false
+        isSelected: Bool = false,
+        searchBackend: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -50,6 +63,7 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
         self.maxContextTokens = maxContextTokens
         self.isSelected = isSelected
         self.createdAt = createdAt
+        self.searchBackend = searchBackend
     }
 
     /// Project this row to the Core `ModelConfiguration` value used by
@@ -65,7 +79,8 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
             apiKeyRef: apiKeyRef,
             modelID: modelId,
             supportsThinking: supportsThinking,
-            maxContextTokens: maxContextTokens
+            maxContextTokens: maxContextTokens,
+            searchBackend: searchBackend
         )
     }
 }

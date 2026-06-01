@@ -95,7 +95,10 @@ struct SettingsModelsPane: View {
     /// rows are usable only when the OS reports AFM as available.
     private func isModelAvailable(_ model: SettingsViewModel.ModelRow) -> Bool {
         switch model.kind {
-        case .openAICompatible:
+        case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
+            // Remote rows (compat shim or a native-search adapter) are
+            // always usable from the UI's perspective; wire-level errors
+            // surface as runtime banners, not toggle gating.
             return true
         case .appleFoundation:
             return viewModel.appleFoundationAvailability.isAvailable
@@ -112,7 +115,7 @@ struct SettingsModelsPane: View {
     /// reason otherwise — the AFM equivalent of an endpoint subtitle.
     private func subtitle(for model: SettingsViewModel.ModelRow) -> String {
         switch model.kind {
-        case .openAICompatible:
+        case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
             return "\(model.maxContextTokens / 1000)K ctx · \(model.endpoint)"
         case .appleFoundation:
             switch viewModel.appleFoundationAvailability {

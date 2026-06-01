@@ -370,7 +370,9 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ---
 
-## 11a. Carried-forward review items from PR1 (must address in adapter PRs)
+## 11a. Carried-forward review items from PR1/PR2 (must address in adapter PRs)
+
+From PR1:
 
 - **Gemini suggestions-HTML turn attribution (PR3c).** In a tool loop, Gemini can
   emit `searchEntryPoint.renderedContent` on the search turn while the model's
@@ -381,6 +383,98 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 - **`SourceCitation.id` uniqueness (all adapter PRs).** When a provider supplies no
   id, derive `id` from the full URL string (not just host) so a SwiftUI `ForEach`
   keyed on `id` can't collide. The sources pill must key on this.
+
+From PR2 (#138) — these were flagged as latent native-kind hazards and have been
+**defensively fixed in PR2 itself**, gated on the new
+`LLMProviderKind.hasProviderAdapter` flag (native kinds report `false` until their
+adapters ship). When PR3a lands an adapter it flips the relevant arm of that flag
+to `true` and the guards below automatically start allowing the native path — no
+separate cleanup needed. Each fix has a regression test:
+
+- **`updateModel` unregister-then-`break` drops the provider — FIXED.**
+  `SettingsViewModel.updateModel` now guards `registry.unregister(id:)` on
+  `updated.kind.hasProviderAdapter`, so it only unregisters when
+  `registerProvider` will actually re-register. (`updateModelKeepsNativeKindProviderRegistered`.)
+  PR3a still must replace the native `break` in `registerProvider` with real
+  construction — once `hasProviderAdapter` flips, the unregister/re-register cycle
+  resumes automatically.
+- **`SettingsModelDetailPane` URL-match misclassifies `.openAIResponses` rows —
+  FIXED.** Classification is extracted to the testable
+  `SettingsModelDetailPane.resolveEditProvider(kind:modelId:baseURL:)`, which
+  classifies native (non-`hasProviderAdapter`) kinds **by kind, before** the
+  URL-match branch — so an `.openAIResponses` row no longer URL-matches the compat
+  `"openai"` entry. (`resolveEditProviderNativeKindByKind` +
+  `resolveEditProviderCompatStillMatchesByURL`.) PR3a maps native kinds to their own
+  native provider entries here instead of the current Custom fallback.
+  - **⚠️ PR3a regression hazard — the kind-before-URL guard must be preserved
+    explicitly.** Today `resolveEditProvider` short-circuits native kinds via the
+    `!kind.hasProviderAdapter` guard *before* the URL-match branch runs. When PR3a
+    flips `.openAIResponses.hasProviderAdapter` to `true`, that guard lifts and the
+    URL-match branch runs again — and because `.openAIResponses` shares
+    `https://api.openai.com/v1` with the compat `"openai"` entry, it will re-match
+    the wrong (compat) provider and reopen the edit pane in compat mode. PR3a **must**
+    add an explicit native-kind→native-entry dispatch *before* the URL match (not
+    rely on the now-lifted `hasProviderAdapter` guard) and ship a
+    `resolveEditProvider` test that pins an `.openAIResponses` row to its native
+    entry with `hasProviderAdapter == true`. A **tripwire test now exists**
+    (`resolveEditProviderNeverMisfilesOpenAIResponsesToCompat`): it asserts an
+    `.openAIResponses` row never resolves to the compat `"openai"` provider id —
+    an invariant that holds today (Custom) and after a correct PR3a (native entry),
+    but goes red the moment the flag flips without the dispatch fix, mechanically
+    forcing PR3a to address it. A `⚠️` comment at the guard site points back here.
+  - **`updateModel` honors the edited Base URL for native kinds (PR2 hardening).**
+    Because native rows route through the Custom pane (editable URL field), the
+    `nextBaseURL` switch now persists the caller's URL for native kinds rather than
+    silently discarding it. (`updateModelHonorsEditedURLForNativeKind`.) When PR3a
+    gives native kinds their own read-only catalog entry, revisit whether the field
+    should be read-only instead.
+- **`selected()` returned an unbuildable native-kind row → empty registry — FIXED.**
+  `selected()` now filters through `buildableKindRequest` (kinds with
+  `hasProviderAdapter`), so a native-only-selected DB returns `nil` and the
+  first-registered fallback fires cleanly instead of `setActive` swallowing
+  `unknownProvider`. The row stays visible/editable via `all()`/`fetch(id:)`.
+  (`selectedExcludesUnbuildableNativeKind` + `selectedReturnsBuildableRowDespiteNativeSibling`.)
+  PR2 also keeps the warning log at the hydration skip site.
+- **Seed paths must match `selected()`'s buildable filter — FIXED.** Once `selected()`
+  moved to `buildableKindRequest`, the seed paths had to follow or a native-kind row
+  could wedge the app empty: `insertIfEmpty`'s empty-check and `insertDebugIfMissing`'s
+  selected-check now both count through `buildableKindRequest`, so a DB carrying only a
+  native row still seeds AFM (recoverable model) and a selected native row doesn't block
+  the debug seed from claiming selection. The demote helper was generalized
+  (`demoteUnknownKindSelections` → `demoteUnselectableSelections`, filtering
+  `!buildableKindRawValues.contains(kind)`) so it also frees the partial-unique slot held
+  by a *native* selected row before a selected seed inserts — otherwise the seed would
+  UNIQUE-violate. (`insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists`,
+  `insertIfEmptyDemotesSelectedNativeRowBeforeSeeding`,
+  `insertDebugIfMissingTakesSelectionWhenOnlyNativeKindRowIsSelected`.)
+- **`setSelected(id:)` could select an unbuildable native row → no active model — FIXED.**
+  `selected()` filters native kinds, but `setSelected` didn't — selecting a native id
+  would demote every other row and then yield `nil` from `selected()`. `setSelected`
+  now guards on `record.kind.hasProviderAdapter` and throws
+  `ModelConfigurationRepositoryError.unselectableKind` *before* the demote, so the prior
+  selection survives. The in-tree `StubModelRepository` mirrors the guard.
+  (`setSelectedRefusesUnbuildableNativeKind`.) No production caller exists yet (the
+  model-picker selection path is future work), so this is defensive for when it lands.
+  - **Downgrade residue (tracked, low impact).** Because the guard throws *before*
+    the demote, a native-kind `isSelected = 1` row written by a newer binary stays
+    selected-on-disk after a downgrade until something clears it. It's invisible
+    (`selected()` filters it, the UI never shows it as active) and **self-resolving**:
+    the next `insertIfEmpty` sees zero buildable rows, demotes the native row via
+    `demoteUnselectableSelections`, and seeds AFM into the slot; if a buildable row
+    already exists, the first-registered fallback covers hydration and the stray flag
+    is harmless under the partial unique index. PR3a's adapter flip removes the case
+    entirely (the row becomes buildable and selectable). No fix needed in PR2; noted
+    for the downgrade story.
+- **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
+  value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
+  Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*
+  typed in PR2 because the value set isn't closed yet: it holds `"native"` now and
+  will also hold the standalone-provider ids (`"tavily"`/`"brave"`) Phase 2 adds, so
+  an enum coined now would have to be widened — and persisted rows migrated against —
+  once those land. PR3a builds the read/write path that actually branches on this
+  value (adapter instantiation in `hydrateProviders`/`registerProvider`), which is
+  the right place to introduce a `SearchBackend` type + GRDB codec and retire the
+  literal across all layers in one move.
 
 ## 11. Open questions / risks (need human decision)
 

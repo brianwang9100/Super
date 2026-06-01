@@ -692,6 +692,200 @@ struct SettingsViewModelTests {
         #expect(modelRepo.storedKeys["ref-1"] == "sk-rotated")
     }
 
+    @Test("updateModel preserves a configured searchBackend across an edit")
+    func updateModelPreservesSearchBackend() async {
+        // Regression: `updateModel` rebuilds the whole record from form
+        // fields. The form has no web-search field, so the saved record must
+        // carry `searchBackend` over from `existing` — otherwise editing any
+        // other field (name, model id, key) silently resets the row to "no
+        // web search". Dropping `searchBackend: existing.searchBackend` from
+        // the rebuild makes this test fail.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Old Name",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "old-model",
+                createdAt: Date(),
+                supportsThinking: false,
+                maxContextTokens: 8000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.updateModel(
+            id: "m1",
+            name: "New Name",
+            baseURL: URL(string: "https://api.example.com/v2")!,
+            modelId: "new-model",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 16000
+        )
+        let saved = modelRepo.rows.first
+        #expect(saved?.searchBackend == "native")
+    }
+
+    @Test("updateModel does not unregister a native-kind provider it can't re-register")
+    func updateModelKeepsNativeKindProviderRegistered() async {
+        // Regression for the unregister-then-break trap: `updateModel`
+        // rebuilds the record (preserving `existing.kind`), then unregisters
+        // the old provider and calls `registerProvider`. For a native-search
+        // kind, `registerProvider` is a no-op (no adapter yet) — so an
+        // unconditional unregister would strip a provider that was registered
+        // at hydration time and leave nothing behind. The `hasProviderAdapter`
+        // guard must skip the unregister so the provider survives the edit.
+        let registry = LLMProviderRegistry()
+        // Stand in for the (future) native provider registered at hydration.
+        let provider = FakeLLMProvider(
+            id: "m1",
+            model: LLMModel(id: "claude-opus-4-7", displayName: "Opus")
+        )
+        await registry.register(provider)
+        #expect(await registry.provider(id: "m1") != nil)
+
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Opus (native search)",
+                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "claude-opus-4-7",
+                createdAt: Date(),
+                kind: .anthropicNative,
+                supportsThinking: true,
+                maxContextTokens: 1_000_000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo, llmProviderRegistry: registry)
+
+        await vm.updateModel(
+            id: "m1",
+            name: "Opus (renamed)",
+            baseURL: URL(string: "https://api.anthropic.com/v1")!,
+            modelId: "claude-opus-4-7",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 1_000_000
+        )
+
+        // The provider must still be registered — the edit didn't strip it.
+        #expect(await registry.provider(id: "m1") != nil)
+    }
+
+    @Test("updateModel persists an edited Base URL for a native-kind row")
+    func updateModelHonorsEditedURLForNativeKind() async {
+        // Regression for the silent-URL-discard trap: `resolveEditProvider`
+        // routes native-kind rows through the Custom edit pane, which renders
+        // an *editable* Base URL field. If `updateModel`'s `nextBaseURL`
+        // switch preserved `existing.baseURL` for native kinds, a user edit
+        // would be accepted in the UI and silently dropped on save. The
+        // switch must honor the caller's URL so what the field shows is what
+        // gets persisted. Preserving `existing.baseURL` here fails this test.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Opus (native search)",
+                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "claude-opus-4-7",
+                createdAt: Date(),
+                kind: .anthropicNative,
+                supportsThinking: true,
+                maxContextTokens: 1_000_000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+
+        await vm.updateModel(
+            id: "m1",
+            name: "Opus (native search)",
+            baseURL: URL(string: "https://api.anthropic.com/v2")!,
+            modelId: "claude-opus-4-7",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 1_000_000
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.baseURL == URL(string: "https://api.anthropic.com/v2")!)
+    }
+
+    @Test("updateModel re-registers an openAICompatible provider across an edit")
+    func updateModelReregistersBuildableProvider() async {
+        // Counterpart to the native-kind test: for a buildable kind the
+        // guard still allows the normal unregister + re-register cycle, so a
+        // provider remains registered (under a possibly-rebuilt instance).
+        let registry = LLMProviderRegistry()
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "GPT",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "gpt-5.5",
+                createdAt: Date(),
+                kind: .openAICompatible,
+                supportsThinking: false,
+                maxContextTokens: 8000,
+                isSelected: false
+            ),
+        ])
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            llmProviderRegistry: registry,
+            httpClient: StubHTTPClient()
+        )
+
+        await vm.updateModel(
+            id: "m1",
+            name: "GPT renamed",
+            baseURL: URL(string: "https://api.example.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 8000
+        )
+
+        #expect(await registry.provider(id: "m1") != nil)
+    }
+
+    @Test("loadModels projects searchBackend onto the ModelRow")
+    func loadModelsProjectsSearchBackend() async {
+        // The Add-Model native-search UI (next PR) reads `searchBackend` off
+        // the loaded `ModelRow`. If `loadModels` drops it, the toggle reads
+        // `nil` and shows "off" for a row that has search configured.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "withSearch",
+                name: "With Search",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "m",
+                createdAt: Date(timeIntervalSince1970: 1),
+                searchBackend: "native"
+            ),
+            .init(
+                id: "noSearch",
+                name: "No Search",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-2",
+                modelId: "m",
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+        #expect(vm.model(id: "withSearch")?.searchBackend == "native")
+        #expect(vm.model(id: "noSearch")?.searchBackend == nil)
+    }
+
     @Test("deleteModel removes the row and refreshes the list")
     func deleteModelClears() async {
         let modelRepo = StubModelRepository(rows: [
@@ -832,6 +1026,8 @@ struct SettingsViewModelTests {
         userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
         memoryRepository: (any MemoryRepository)? = nil,
+        llmProviderRegistry: LLMProviderRegistry? = nil,
+        httpClient: (any HTTPClient)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
     ) -> SettingsViewModel {
         // The availability default is *deliberately* a fixed unavailable
@@ -850,6 +1046,8 @@ struct SettingsViewModelTests {
             userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
             memoryRepository: memoryRepository,
+            llmProviderRegistry: llmProviderRegistry,
+            httpClient: httpClient,
             appleFoundationAvailability: appleFoundationAvailability
         )
     }
@@ -888,7 +1086,15 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
 
     func all() async throws -> [ModelConfigurationRecord] { rows }
     func fetch(id: String) async throws -> ModelConfigurationRecord? { rows.first { $0.id == id } }
-    func selected() async throws -> ModelConfigurationRecord? { rows.first(where: \.isSelected) }
+    /// Mirrors `GRDBModelConfigurationRepository.selected()`, which filters
+    /// the selection through `buildableKindRequest` — a selected row whose
+    /// kind has no shipped adapter (the native-search kinds) is excluded so
+    /// hydration's `setActive` never sees an unbuildable id. Keeping the stub
+    /// in step avoids a future `isSelected: true` native-row test validating
+    /// against behavior production doesn't have.
+    func selected() async throws -> ModelConfigurationRecord? {
+        rows.first { $0.isSelected && $0.kind.hasProviderAdapter }
+    }
     func save(_ record: ModelConfigurationRecord) async throws {
         if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }
@@ -897,8 +1103,22 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     func insertIfEmpty(
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
-        guard rows.isEmpty else { return nil }
+        // Mirror production's `buildableKindRequest` empty-check: "empty"
+        // means no row this binary can build a provider for, so a table
+        // holding only native-kind rows still seeds (keeps the user a
+        // recoverable model). A plain `rows.isEmpty` would diverge.
+        guard !rows.contains(where: { $0.kind.hasProviderAdapter }) else { return nil }
         let record = make()
+        // Mirror `demoteUnselectableSelections`: free the selection slot from
+        // any non-buildable selected row before inserting a selected seed.
+        if record.isSelected {
+            rows = rows.map {
+                guard $0.isSelected, !$0.kind.hasProviderAdapter else { return $0 }
+                var copy = $0
+                copy.isSelected = false
+                return copy
+            }
+        }
         rows.append(record)
         return record
     }
@@ -906,7 +1126,24 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         rows.removeAll { $0.id == id }
         storedKeys[id] = nil
     }
-    func setSelected(id: String) async throws {}
+    func setSelected(id: String) async throws {
+        // Mirror production's guard: refuse to select a row the binary can't
+        // build a provider for, so a test exercising this path validates
+        // against the same contract as `GRDBModelConfigurationRepository`.
+        guard let row = rows.first(where: { $0.id == id }) else {
+            throw ModelConfigurationRepositoryError.unknownModel(id: id)
+        }
+        guard row.kind.hasProviderAdapter else {
+            throw ModelConfigurationRepositoryError.unselectableKind(
+                id: id, kind: row.kind.rawValue
+            )
+        }
+        rows = rows.map {
+            var copy = $0
+            copy.isSelected = ($0.id == id)
+            return copy
+        }
+    }
     func storeAPIKey(_ key: String, ref: String) async throws {
         if let error = storeAPIKeyError { throw error }
         storedKeys[ref] = key
@@ -941,6 +1178,16 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
         rows[idx] = updated
     }
     func hardDelete(id: String) async throws { rows.removeAll { $0.id == id } }
+}
+
+/// Minimal `HTTPClient` so `registerProvider` can build an
+/// `OpenAICompatibleLLMProvider` in tests that exercise the registry path.
+/// Never actually streamed in these tests (the provider is registered, not
+/// invoked), so it yields an empty body.
+private struct StubHTTPClient: HTTPClient {
+    func stream(_ request: URLRequest) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
 }
 
 private struct StaticExecutor: ToolExecutor {
