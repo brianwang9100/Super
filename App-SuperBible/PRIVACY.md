@@ -13,7 +13,7 @@ If you'd rather read the source: every claim below is backed by the code in this
 Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all by SuperBible:
 
 - **The verses you read.** Reading position, scroll position, time spent on a chapter — none of it leaves your device.
-- **Your highlights, notes, and bookmarks.** Stored locally on your device only.
+- **Your highlights, notes, and bookmarks.** Stored locally on your device only — including notes the AI assistant writes for you (when you ask it to), which are saved to the same on-device database and never leave your device.
 - **Your reading-plan progress.** Which plan you picked, which days you completed, your streak — all on-device only.
 - **Your identity.** No accounts. No email. No username. No sign-in. No "anonymous ID" tied to your device.
 - **Your location.** Never requested, never accessed.

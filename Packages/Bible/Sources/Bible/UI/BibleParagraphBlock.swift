@@ -32,6 +32,12 @@ struct BibleParagraphBlock: View {
     /// bubble stack after the last word of the verse. An empty map means no
     /// verse-target annotations in this paragraph; no bubbles render.
     let annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
+    /// Note target specs keyed by `verseEnd`, each value the list of
+    /// (deduplicated) ranges holding ≥1 note that ends at that verse —
+    /// drives the trailing note glyphs, rendered *after* any annotation
+    /// bubbles so the cluster reads annotation-then-note (the `VerseTrailers`
+    /// order). An empty map means no verse-target notes in this paragraph.
+    let notesByVerseEnd: [Int: [BibleNoteTargetSpec]]
     /// Verse currently being spoken by the narrator — its words render
     /// with a dashed underline so the reader can follow along. `nil` when
     /// narration is idle.
@@ -42,6 +48,10 @@ struct BibleParagraphBlock: View {
     /// `nil` disables the bubble (used by previews / driver views without a
     /// sheet host).
     let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
+    /// Invoked when a note glyph after a verse-end word is tapped — opens the
+    /// note list sheet for that range. `nil` disables the glyph (previews /
+    /// driver views without a sheet host).
+    let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
     @Environment(\.superTheme) private var theme
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 16
 
@@ -111,43 +121,58 @@ struct BibleParagraphBlock: View {
             )
         case .bubble(let spec):
             trailingBubble(for: spec)
+        case .note(let spec):
+            trailingNoteGlyph(for: spec)
         }
     }
 
-    /// Thin wrapper around `BibleParagraphBlock.flowItems(_:annotationsByVerseEnd:)`
-    /// that closes over the instance's `annotationsByVerseEnd` map.
+    /// Thin wrapper around the pure `flowItems(_:annotationsByVerseEnd:notesByVerseEnd:)`
+    /// that closes over the instance's two trailing-glyph maps.
     private func flowItems(_ tokens: [VerseWordToken]) -> [FlowItem] {
-        Self.flowItems(tokens, annotationsByVerseEnd: annotationsByVerseEnd)
+        Self.flowItems(
+            tokens,
+            annotationsByVerseEnd: annotationsByVerseEnd,
+            notesByVerseEnd: notesByVerseEnd
+        )
     }
 
-    /// Builds the flat sequence of layout items for one verse run: each
-    /// word followed by any trailing annotation bubbles for that verse's
-    /// end. Pure so a unit test can lock in the interleave contract
-    /// (word, then bubble(s) per `isVerseEnd` token, then the next word)
-    /// without standing up a SwiftUI host.
+    /// Builds the flat sequence of layout items for one verse run: each word
+    /// followed by any trailing glyphs for that verse's end — annotation
+    /// bubbles first, then note glyphs, locking the annotation-then-note
+    /// cluster order. Pure so a unit test can assert the interleave contract
+    /// (word, then bubble(s), then note(s) per `isVerseEnd` token, then the
+    /// next word) without standing up a SwiftUI host.
     static func flowItems(
         _ tokens: [VerseWordToken],
-        annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]]
+        annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]],
+        notesByVerseEnd: [Int: [BibleNoteTargetSpec]]
     ) -> [FlowItem] {
         var items: [FlowItem] = []
         for token in tokens {
             items.append(.word(token))
-            if token.isVerseEnd, let bubbles = annotationsByVerseEnd[token.verseNumber] {
+            guard token.isVerseEnd else { continue }
+            if let bubbles = annotationsByVerseEnd[token.verseNumber] {
                 for spec in bubbles {
                     items.append(.bubble(spec))
+                }
+            }
+            if let notes = notesByVerseEnd[token.verseNumber] {
+                for spec in notes {
+                    items.append(.note(spec))
                 }
             }
         }
         return items
     }
 
-    /// One flow cell: either a word or a trailing bubble. Both are siblings
-    /// in `VerseFlowLayout`'s subview list. Internal — exposed for
-    /// `BibleParagraphBlockFlowItemsTests` to assert the interleave
-    /// contract; not part of any public API surface.
+    /// One flow cell: a word, a trailing annotation bubble, or a trailing
+    /// note glyph. All are siblings in `VerseFlowLayout`'s subview list.
+    /// Internal — exposed for `BibleParagraphBlockFlowItemsTests` to assert
+    /// the interleave contract; not part of any public API surface.
     enum FlowItem: Equatable {
         case word(VerseWordToken)
         case bubble(BibleAnnotationTargetSpec)
+        case note(BibleNoteTargetSpec)
     }
 
     @ViewBuilder
@@ -188,6 +213,43 @@ struct BibleParagraphBlock: View {
             return "View chapter annotation"
         case .book:
             return "View book annotation"
+        }
+    }
+
+    @ViewBuilder
+    private func trailingNoteGlyph(for spec: BibleNoteTargetSpec) -> some View {
+        if let onNoteGlyphTap {
+            Button {
+                onNoteGlyphTap(spec)
+            } label: {
+                NoteGlyph(state: .filled, size: trailingBubbleSize)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 1)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Self.trailingNoteGlyphLabel(for: spec))
+        } else {
+            // No tap host — render the glyph as a decoration only, matching
+            // the bubble's preview / driver fallback.
+            NoteGlyph(state: .filled, size: trailingBubbleSize)
+                .padding(.horizontal, 2)
+        }
+    }
+
+    /// VoiceOver label for the trailing note glyph. As with the bubble, the
+    /// call site only produces `.verseRange` specs; the full `switch` keeps a
+    /// future `.book` / `.chapter` caller from reading "verse 0".
+    static func trailingNoteGlyphLabel(for spec: BibleNoteTargetSpec) -> String {
+        switch spec {
+        case .verseRange(_, _, let start, let end) where start == end:
+            return "View notes for verse \(start)"
+        case .verseRange(_, _, let start, let end):
+            return "View notes for verses \(start)–\(end)"
+        case .chapter:
+            return "View chapter notes"
+        case .book:
+            return "View book notes"
         }
     }
 }

@@ -93,10 +93,21 @@ public final class BibleScreenViewModel {
     /// the regular empty / populated layouts.
     public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
 
+    /// The note range whose list sheet is presented, or `nil` when no sheet
+    /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Setting it to a
+    /// non-nil presentation opens the list; dragging-to-dismiss or
+    /// `dismissNoteList()` clears it. `autoCompose` opens the editor in
+    /// create mode the moment the list mounts — the entry point for the
+    /// "Add note" tile, the action-sheet outline glyphs, and the chapter /
+    /// book outline glyphs, all of which mean "write a note here" rather than
+    /// "browse this range's notes".
+    public var presentedNoteList: BibleNoteListPresentation?
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
     private let highlightRepository: (any BibleHighlightRepository)?
+    private let noteRepository: (any BibleNoteRepository)?
     private let clock: any Clock
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
@@ -128,6 +139,11 @@ public final class BibleScreenViewModel {
     /// In-flight highlight write, retained so tests can await it.
     private var highlightTask: Task<Void, Never>?
 
+    /// In-flight note write (insert / update / delete), retained so tests can
+    /// await it. Each write chains on the prior so awaiting the latest drains
+    /// them all — the same shape as `highlightTask`.
+    private var noteTask: Task<Void, Never>?
+
     /// In-flight first-Narrate voice pick + start, retained so tests
     /// can await its completion. Production has no need to observe it
     /// — the user sees the card slide in immediately and the first
@@ -140,6 +156,10 @@ public final class BibleScreenViewModel {
     ///     to open, so the reader still works, just without restore).
     ///   - highlightRepository: persists verse highlights; `nil` disables
     ///     highlighting for the same database-unavailable reason.
+    ///   - noteRepository: persists verse notes; `nil` disables note
+    ///     create / edit / delete for the same database-unavailable reason
+    ///     (the note glyphs and list sheet still render from the reactive
+    ///     `@Query`s, which fall back to empty).
     ///   - initialPosition: the position before `load()` reads persisted
     ///     state — defaults to `defaultPosition`.
     public init(
@@ -147,6 +167,7 @@ public final class BibleScreenViewModel {
         catalog: BibleBookCatalog = .standard,
         positionRepository: (any BibleReadingPositionRepository)? = nil,
         highlightRepository: (any BibleHighlightRepository)? = nil,
+        noteRepository: (any BibleNoteRepository)? = nil,
         clock: any Clock = SystemClock(),
         clipboard: any ClipboardWriter = SystemClipboard(),
         idGenerator: any IDGenerator = UUIDGenerator(),
@@ -158,6 +179,7 @@ public final class BibleScreenViewModel {
         self.catalog = catalog
         self.positionRepository = positionRepository
         self.highlightRepository = highlightRepository
+        self.noteRepository = noteRepository
         self.clock = clock
         self.clipboard = clipboard
         self.idGenerator = idGenerator
@@ -879,6 +901,140 @@ public final class BibleScreenViewModel {
                 verseEnd: verseEnd
             )
         }
+    }
+
+    // MARK: - Notes
+
+    /// Present the note list sheet for `spec` — the tap target of a *filled*
+    /// note glyph (a verse trailer, the chapter title, or a book-picker row).
+    /// Opens straight to the list; the user composes from the sheet's `+`.
+    public func presentNoteList(for spec: BibleNoteTargetSpec) {
+        presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: false)
+    }
+
+    /// Present the note list for `spec` already composing — the tap target of
+    /// an *outline* note glyph (chapter title, book-picker row), which means
+    /// "write a note on this scope". The list mounts behind the editor so a
+    /// saved note lands the user back on the populated list.
+    public func composeNote(for spec: BibleNoteTargetSpec) {
+        presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: true)
+    }
+
+    /// Compose a note on the current verse selection — the action sheet's
+    /// "Add note" tile. The note's range is the selection's bounding span
+    /// (`min…max`); a gapped selection (e.g. 16, 18) still yields one note on
+    /// the whole passage rather than decomposing into multiple, because a note
+    /// is free-text *about* the passage, not a per-range generation like an
+    /// annotation. Clears the selection like every other action-sheet action.
+    /// A no-op with nothing selected.
+    public func composeNoteForSelection() {
+        let verses = selectedVerses.sorted()
+        guard let first = verses.first, let last = verses.last else { return }
+        let spec = BibleNoteTargetSpec.verseRange(
+            bookId: position.bookId,
+            chapterNumber: position.chapterNumber,
+            verseStart: first,
+            verseEnd: last
+        )
+        clearSelection()
+        composeNote(for: spec)
+    }
+
+    /// Close the note list sheet (drag-down or programmatic).
+    public func dismissNoteList() {
+        presentedNoteList = nil
+    }
+
+    /// Insert a user-authored note on `spec`. The body is trimmed and a blank
+    /// body is dropped (the editor already disables Save while blank — this
+    /// guards programmatic callers). The write is asynchronous; the list
+    /// sheet's `@Query` repaints once it lands. A no-op without a note store.
+    public func createNote(target spec: BibleNoteTargetSpec, body: String) {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let now = clock.now()
+        let record = BibleNoteRecord(
+            id: idGenerator.nextID(),
+            target: spec.target,
+            bookId: spec.bookId,
+            chapterNumber: spec.chapterNumber,
+            verseStart: spec.verseStart,
+            verseEnd: spec.verseEnd,
+            body: trimmed,
+            source: .user,
+            modelId: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        writeNote(failureMessage: "Couldn't save the note.") { repository in
+            try await repository.insert(record)
+        }
+    }
+
+    /// Replace one note's body, stamping a fresh `updatedAt`. Blank bodies are
+    /// dropped (same guard as `createNote`).
+    public func updateNote(id: String, body: String) {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let now = clock.now()
+        writeNote(failureMessage: "Couldn't save the note.") { repository in
+            try await repository.update(id: id, body: trimmed, updatedAt: now)
+        }
+    }
+
+    /// Delete one note by id. The list sheet's `@Query` drops the card once
+    /// the write lands; the failure toast covers a write that throws so the
+    /// still-present card doesn't read as a successful delete.
+    public func deleteNote(id: String) {
+        writeNote(failureMessage: "Couldn't delete the note.") { repository in
+            try await repository.deleteOne(id: id)
+        }
+    }
+
+    /// Run `mutate` against the note store on a task chained after any prior
+    /// note write, surfacing a toast if it throws. Chaining keeps rapid
+    /// create / edit / delete ordered and lets a test drain them all by
+    /// awaiting the latest — the same shape as `writeHighlights`.
+    private func writeNote(
+        failureMessage: String,
+        _ mutate: @escaping @Sendable (any BibleNoteRepository) async throws -> Void
+    ) {
+        guard let noteRepository else { return }
+        let previous = noteTask
+        noteTask = Task { [weak self] in
+            await previous?.value
+            do {
+                try await mutate(noteRepository)
+            } catch {
+                self?.toast = failureMessage
+            }
+        }
+    }
+
+    /// Human-readable citation for a note target, used as the list sheet's
+    /// header and the editor's "ON …" caption. Examples: `"Romans"` (book),
+    /// `"Romans 8"` (chapter), `"Romans 8:28-30"` (range), `"Romans 8:28"`
+    /// (single verse). Mirrors the annotation overload — kept separate so the
+    /// two features stay decoupled.
+    public func citationLabel(for spec: BibleNoteTargetSpec) -> String {
+        let bookName = catalog.book(id: spec.bookId)?.name ?? spec.bookId
+        switch spec {
+        case .book:
+            return bookName
+        case .chapter(_, let chapterNumber):
+            return "\(bookName) \(chapterNumber)"
+        case .verseRange(_, let chapterNumber, let verseStart, let verseEnd):
+            if verseStart == verseEnd {
+                return "\(bookName) \(chapterNumber):\(verseStart)"
+            }
+            return "\(bookName) \(chapterNumber):\(verseStart)-\(verseEnd)"
+        }
+    }
+
+    /// Awaits the pending background note writes. Test-only seam, with the
+    /// same chained-drain behaviour as `_waitForPendingHighlightWrite()`.
+    public func _waitForPendingNoteWrite() async {
+        await noteTask?.value
     }
 
     // MARK: - Narration
