@@ -733,7 +733,8 @@ struct SettingsViewModelTests {
         // Regression for the unregister-then-break trap: `updateModel`
         // rebuilds the record (preserving `existing.kind`), then unregisters
         // the old provider and calls `registerProvider`. For a native-search
-        // kind, `registerProvider` is a no-op (no adapter yet) — so an
+        // kind whose adapter hasn't shipped (`.geminiNative` — PR3c),
+        // `registerProvider` is a no-op — so an
         // unconditional unregister would strip a provider that was registered
         // at hydration time and leave nothing behind. The `hasProviderAdapter`
         // guard must skip the unregister so the provider survives the edit.
@@ -741,7 +742,7 @@ struct SettingsViewModelTests {
         // Stand in for the (future) native provider registered at hydration.
         let provider = FakeLLMProvider(
             id: "m1",
-            model: LLMModel(id: "claude-opus-4-7", displayName: "Opus")
+            model: LLMModel(id: "gemini-3-pro", displayName: "Gemini 3 Pro")
         )
         await registry.register(provider)
         #expect(await registry.provider(id: "m1") != nil)
@@ -749,12 +750,12 @@ struct SettingsViewModelTests {
         let modelRepo = StubModelRepository(rows: [
             .init(
                 id: "m1",
-                name: "Opus (native search)",
-                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                name: "Gemini (native search)",
+                baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")!,
                 apiKeyRef: "ref-1",
-                modelId: "claude-opus-4-7",
+                modelId: "gemini-3-pro",
                 createdAt: Date(),
-                kind: .anthropicNative,
+                kind: .geminiNative,
                 supportsThinking: true,
                 maxContextTokens: 1_000_000,
                 isSelected: false,
@@ -765,9 +766,9 @@ struct SettingsViewModelTests {
 
         await vm.updateModel(
             id: "m1",
-            name: "Opus (renamed)",
-            baseURL: URL(string: "https://api.anthropic.com/v1")!,
-            modelId: "claude-opus-4-7",
+            name: "Gemini (renamed)",
+            baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")!,
+            modelId: "gemini-3-pro",
             apiKey: "",
             supportsThinking: true,
             maxContextTokens: 1_000_000

@@ -256,6 +256,18 @@ public struct ContextAssembler: Sendable {
                 llmMessages.append(LLMMessage(role: .user, text: Self.expandedUserText(for: record)))
             case .assistant:
                 var blocks: [LLMContent] = []
+                // Replay stored web-search results (with their encrypted echoes)
+                // so providers that require it (Anthropic) keep prior-turn
+                // citations valid. Gated on a present `providerEcho` — only
+                // those carry the opaque blob worth round-tripping; OpenAI /
+                // Gemini citations have none, so we don't emit a `.searchResult`
+                // they'd just ignore. Positioned before the text block, matching
+                // the on-the-wire order (results precede the text that cites
+                // them); adapters that don't need it skip the block.
+                if let sources = record.attachments?.sources,
+                   sources.contains(where: { $0.providerEcho != nil }) {
+                    blocks.append(.searchResult(sources))
+                }
                 if !record.content.isEmpty {
                     blocks.append(.text(record.content))
                 }
