@@ -728,16 +728,17 @@ struct SettingsViewModelTests {
         #expect(saved?.searchBackend == "native")
     }
 
-    @Test("updateModel does not unregister a native-kind provider it can't re-register")
+    @Test("updateModel does not unregister a provider it can't re-register")
     func updateModelKeepsNativeKindProviderRegistered() async {
-        // Regression for the unregister-then-break trap: `updateModel`
-        // rebuilds the record (preserving `existing.kind`), then unregisters
-        // the old provider and calls `registerProvider`. For a native-search
-        // kind whose adapter hasn't shipped (`.geminiNative` — PR3c),
-        // `registerProvider` is a no-op — so an
-        // unconditional unregister would strip a provider that was registered
-        // at hydration time and leave nothing behind. The `hasProviderAdapter`
-        // guard must skip the unregister so the provider survives the edit.
+        // Regression for the unregister-then-break trap: `updateModel` now
+        // builds the replacement provider *first* and only swaps when it gets
+        // one. Here the view model is wired with no HTTP client, so
+        // `makeLLMProvider` yields nil for this network-backed `.geminiNative`
+        // row — meaning an unconditional unregister would strip the provider
+        // registered at hydration time and leave nothing behind. Building first
+        // skips the unregister so the provider survives the edit. (This exactly
+        // matches what re-registration would do — no `hasProviderAdapter` proxy
+        // that could drift from the factory.)
         let registry = LLMProviderRegistry()
         // Stand in for the (future) native provider registered at hydration.
         let provider = FakeLLMProvider(

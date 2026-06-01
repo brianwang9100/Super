@@ -14,15 +14,24 @@ struct LLMProviderKindTests {
         #expect(LLMProviderKind.openAIResponses.hasProviderAdapter)
         // `.anthropicNative` shipped its adapter in web-search PR3b.
         #expect(LLMProviderKind.anthropicNative.hasProviderAdapter)
+        // `.geminiNative` shipped its adapter in web-search PR3c — the last
+        // native-search kind to flip, so every known kind is now buildable.
+        #expect(LLMProviderKind.geminiNative.hasProviderAdapter)
         #if DEBUG
         #expect(LLMProviderKind.debug.hasProviderAdapter)
         #endif
     }
 
-    @Test("native-search kinds without a shipped adapter report false")
-    func nativeKindsAreNotYetBuildable() {
-        // `.geminiNative` adapter lands in web-search PR3c.
-        #expect(!LLMProviderKind.geminiNative.hasProviderAdapter)
+    /// As of PR3c every shipping kind has an adapter, so the buildable set
+    /// equals the full set. The flag isn't dead: a future native kind added
+    /// ahead of its adapter would re-introduce a `false` arm. Pinning the
+    /// current end-state guards against an accidental `false` regression and
+    /// documents that the not-yet-buildable scenario is now reachable only
+    /// via that future addition.
+    @Test("every known kind currently reports buildable")
+    func allKnownKindsAreCurrentlyBuildable() {
+        let allBuildable = LLMProviderKind.allCases.allSatisfy(\.hasProviderAdapter)
+        #expect(allBuildable)
     }
 
     /// Every case is covered by the switch (no `default`), so a newly added

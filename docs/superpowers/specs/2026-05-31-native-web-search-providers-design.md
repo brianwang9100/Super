@@ -405,15 +405,46 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 > covered by serialization-shape unit tests now and flagged in the adapter docs
 > for live validation in PR4. The Anthropic-specific items below are now
 > **DONE (PR3b)**.
+>
+> **Status update (web-search PR3c, Gemini — final native adapter).** PR3c
+> shipped `GeminiNativeLLMProvider` + `GeminiStreamReducer` + `GeminiWireTypes`
+> + offline SSE fixtures, mapping `streamGenerateContent?alt=sse` grounding
+> (`groundingMetadata` → `.searchStarted`/`.citations`, `searchEntryPoint
+> .renderedContent` → `.searchSuggestionsHTML`), the `makeLLMProvider` Gemini
+> arm, and flipped `.geminiNative.hasProviderAdapter → true`. **All native-search
+> kinds now have adapters**, so every known kind is buildable. It also ships
+> `GeminiSearchSuggestionsView` (a constrained `WKWebView` rendering the mandatory
+> Google Search-Suggestions HTML unmodified + always-visible under a grounded
+> answer; height-measured, link-intercepted) wired through
+> `AssistantMessage`/`MessageList`. Because the known-but-unbuildable-kind
+> scenario is no longer reachable with a real kind (it recurs only when a future
+> native kind is added ahead of its adapter), `GRDBModelConfigurationRepository`
+> gained an injectable `isKindBuildable` predicate (default
+> `hasProviderAdapter`) so the `selected()`/seed/`setSelected` guards stay
+> tested; `SettingsViewModel.updateModel` was refactored to build-the-replacement
+> -first (removing the `hasProviderAdapter` proxy that could drift from
+> `makeLLMProvider`). **Gemini suggestions-HTML turn attribution (decided):** the
+> HTML rides the assistant `MessageRecord` whose stream emitted it — i.e. the
+> turn `ChatSession` persists on `.messageComplete` (the grounded turn). A
+> cross-*turn* tool-loop split (HTML on the search turn, prose on a later turn) is
+> not reachable until tool-gated search lands (PR4); revisit then if a real
+> stream shows the split. **Unverified-until-live (no live API in unit tests; the
+> search sentinel isn't wired until PR4):** the extended-thinking request shape
+> (`thinkingConfig.includeThoughts`) and the client-tool round-trip
+> (`functionResponse` keyed by function name, since Gemini matches results to
+> calls by name; the reducer mints the call id as the name). Both are covered by
+> serialization-shape unit tests now and flagged in the adapter docs. The
+> Gemini-specific items below are now **DONE (PR3c)**; the `WKWebView` is verified
+> by logic unit tests (height clamp + navigation policy) + manual render rather
+> than a golden snapshot, per §0 #8.
 
 From PR1:
 
-- **Gemini suggestions-HTML turn attribution (PR3c).** In a tool loop, Gemini can
-  emit `searchEntryPoint.renderedContent` on the search turn while the model's
-  prose summary lands on a *later* turn. Decide which assistant `MessageRecord`
-  owns the suggestions HTML (and add a `ChatSession` cross-turn test). PR1 ensures
-  the HTML is no longer dropped, but attribution is undecided until a real stream
-  exists.
+- **Gemini suggestions-HTML turn attribution — DONE (PR3c).** The HTML rides the
+  assistant `MessageRecord` whose stream emitted it (the turn `ChatSession`
+  persists on `.messageComplete`). The cross-*turn* split (HTML on the search
+  turn, prose later) isn't reachable until tool-gated search (PR4); revisit then
+  if a real stream shows it. See the PR3c status note above.
 - **`SourceCitation.id` uniqueness (all adapter PRs).** When a provider supplies no
   id, derive `id` from the full URL string (not just host) so a SwiftUI `ForEach`
   keyed on `id` can't collide. The sources pill must key on this.

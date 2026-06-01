@@ -522,7 +522,7 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.isStreaming == false)
         #expect(viewModel.streamingTail == nil)
         let hasAssistantText = viewModel.items.contains { item in
-            if case .assistantText(_, _, _, let text, _, _) = item {
+            if case .assistantText(_, _, _, let text, _, _, _) = item {
                 return text == "in progress more"
             }
             return false
@@ -1457,7 +1457,7 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1471,9 +1471,9 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             .userBubble(id: "u2", text: "q2", references: []),
-            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1492,10 +1492,10 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             .compactionBanner(id: "cb1", summary: "checkpoint"),
             .userBubble(id: "u2", text: "q2", references: []),
-            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1510,7 +1510,7 @@ struct ChatScreenViewModelTests {
         viewModel._setSnapshotState(
             items: [
                 .userBubble(id: "u1", text: "hi", references: []),
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             ],
             streamingTail: MessageList.StreamingState(
                 thinking: "", thinkingStartedAt: nil, text: "", isCompacting: false
@@ -1529,7 +1529,7 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "does-not-exist")
@@ -1548,7 +1548,7 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen()
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "u1")
@@ -1563,7 +1563,7 @@ struct ChatScreenViewModelTests {
         let viewModel = makeViewModelForRegen(driver: driver)
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
 
@@ -1609,9 +1609,9 @@ struct ChatScreenViewModelTests {
         // in `retry()` sees a user bubble.
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             .userBubble(id: "u2", text: "q2", references: []),
-            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1648,13 +1648,13 @@ struct ChatScreenViewModelTests {
         // must drop the confirm without trimming.
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "hi", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
         viewModel._setSnapshotState(
             items: [
                 .userBubble(id: "u1", text: "hi", references: []),
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: []),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             ],
             streamingTail: MessageList.StreamingState(
                 thinking: "", thinkingStartedAt: nil, text: "", isCompacting: false
@@ -1708,7 +1708,7 @@ struct ChatScreenViewModelTests {
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1756,7 +1756,7 @@ struct ChatScreenViewModelTests {
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "ans", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1808,9 +1808,9 @@ struct ChatScreenViewModelTests {
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             .userBubble(id: "u2", text: "q2", references: []),
-            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a1")
@@ -1857,9 +1857,9 @@ struct ChatScreenViewModelTests {
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: []),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "first", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
             .userBubble(id: "u2", text: "q2", references: []),
-            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: []),
+            .assistantText(id: "a2", thinking: nil, thinkingDurationMs: nil, text: "second", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
         ])
 
         viewModel.requestRegeneration(fromAssistantMessageID: "a2")

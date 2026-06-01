@@ -11,6 +11,10 @@ struct AssistantMessage: View {
     /// Web sources this turn cited (native or standalone search). Rendered as
     /// the collapsible "N sources" pill below the answer; empty hides it.
     var sources: [SourceCitationPillModel] = []
+    /// Gemini's mandatory "Google Search Suggestions" HTML, present only on a
+    /// grounded Gemini turn. Rendered unmodified and always visible (not
+    /// collapsible) per Google's grounding terms; nil hides it.
+    var searchSuggestionsHTML: String? = nil
     let verbosity: ChatVerbosity
     /// Disables Regenerate while a turn is mid-stream. Copy stays
     /// enabled — copying text from an older response during a new one
@@ -74,6 +78,12 @@ struct AssistantMessage: View {
                         disabled: isStreaming
                     )
                 }
+            }
+            // Google's required Search-Suggestions strip sits directly under a
+            // grounded Gemini answer (always visible, unmodified). It precedes
+            // our own collapsible sources pill.
+            if let searchSuggestionsHTML, !searchSuggestionsHTML.isEmpty {
+                GeminiSearchSuggestionsView(html: searchSuggestionsHTML)
             }
             // Citations sit below the answer (and its action row), mirroring
             // the way a grounded reply reads: claim first, sources after.

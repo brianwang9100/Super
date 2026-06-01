@@ -97,8 +97,8 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// Implemented by `AnthropicNativeLLMProvider` (web-search PR3b).
     case anthropicNative
     /// Native Gemini `generateContent` adapter (`google_search` grounding).
-    /// Distinct from the `.openAICompatible` Google shim. Adapter lands in
-    /// a later PR.
+    /// Distinct from the `.openAICompatible` Google shim. Implemented by
+    /// `GeminiNativeLLMProvider` (web-search PR3c).
     case geminiNative
     /// Native OpenAI Responses API (`/v1/responses`) adapter (`web_search`
     /// tool + `url_citation` annotations). Distinct from the
@@ -116,30 +116,31 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     #endif
 
     /// Whether the running binary can construct a live `LLMProvider` for
-    /// this kind. `true` for kinds with a shipped adapter
+    /// this kind. As of web-search PR3c every shipping kind has an adapter
     /// (`.openAICompatible`, `.appleFoundation`, `.openAIResponses`,
-    /// `.anthropicNative`, and `.debug` in DEBUG); **`false` for the
-    /// native-search kinds whose
-    /// adapters haven't shipped yet** (`.geminiNative`) —
-    /// the catalog already advertises `nativeSearchAdapter`, and a row can
-    /// carry a native `kind` before the adapter exists, so callers gate on
-    /// this rather than assuming every persisted kind is buildable.
+    /// `.anthropicNative`, `.geminiNative`, and `.debug` in DEBUG), so this
+    /// currently returns `true` for all of them.
+    ///
+    /// It is **not** dead: the catalog can advertise a `nativeSearchAdapter`
+    /// and a row can carry a native `kind` *before* its adapter ships (that
+    /// was true for `.openAIResponses`/`.anthropicNative`/`.geminiNative` in
+    /// turn during the web-search rollout). When the next native provider is
+    /// added ahead of its adapter, give it a `case … return false` arm here;
+    /// callers gate on this rather than assuming every persisted kind is
+    /// buildable.
     ///
     /// Distinct from "is this kind decodable in this binary" (which the
     /// repository's `knownKindRequest` covers): a not-yet-built native kind
     /// decodes fine but has no provider to register, so a row carrying it
     /// must not claim the active-provider slot (`selected()`), must not
     /// trigger an unregister-without-re-register on edit, and must not be
-    /// classified by URL in the edit pane. Flip the relevant arm to `true`
-    /// in the PR that lands that adapter — `.openAIResponses` flipped when
-    /// `OpenAIResponsesLLMProvider` shipped (web-search PR3a),
-    /// `.anthropicNative` when `AnthropicNativeLLMProvider` shipped (PR3b).
+    /// classified by URL in the edit pane. Each arm flipped to `true` in the
+    /// PR that landed its adapter — `.openAIResponses` (PR3a),
+    /// `.anthropicNative` (PR3b), `.geminiNative` (PR3c).
     public var hasProviderAdapter: Bool {
         switch self {
-        case .openAICompatible, .appleFoundation, .openAIResponses, .anthropicNative:
+        case .openAICompatible, .appleFoundation, .openAIResponses, .anthropicNative, .geminiNative:
             return true
-        case .geminiNative:
-            return false
         #if DEBUG
         case .debug:
             return true

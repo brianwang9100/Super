@@ -10,16 +10,39 @@ import Testing
 struct ModelConfigurationRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
+    /// Buildability predicate that treats `.geminiNative` as unbuildable so the
+    /// known-but-unbuildable-kind guards (`selected()`/seed/`setSelected`
+    /// filters) stay exercised. As of web-search PR3c every shipping kind is
+    /// buildable, so this scenario is otherwise unreachable until a future
+    /// native kind is added ahead of its adapter; `.geminiNative` stands in for
+    /// "a known kind this binary can't build a provider for". (Production
+    /// defaults to `LLMProviderKind.hasProviderAdapter`, where gemini is
+    /// buildable.)
+    private static let geminiTreatedAsUnbuildable: @Sendable (LLMProviderKind) -> Bool = {
+        $0 != .geminiNative && $0.hasProviderAdapter
+    }
+
     private func makeRepo() throws -> (GRDBModelConfigurationRepository, InMemoryKeychainClient) {
         let db = try ChatDatabase.makeInMemory()
         let keychain = InMemoryKeychainClient()
-        return (GRDBModelConfigurationRepository(database: db, keychain: keychain), keychain)
+        return (
+            GRDBModelConfigurationRepository(
+                database: db, keychain: keychain, isKindBuildable: Self.geminiTreatedAsUnbuildable
+            ),
+            keychain
+        )
     }
 
     private func makeRepoExposingQueue() throws -> (GRDBModelConfigurationRepository, DatabaseQueue, InMemoryKeychainClient) {
         let db = try ChatDatabase.makeInMemory()
         let keychain = InMemoryKeychainClient()
-        return (GRDBModelConfigurationRepository(database: db, keychain: keychain), db.queue, keychain)
+        return (
+            GRDBModelConfigurationRepository(
+                database: db, keychain: keychain, isKindBuildable: Self.geminiTreatedAsUnbuildable
+            ),
+            db.queue,
+            keychain
+        )
     }
 
     private func makeRecord(

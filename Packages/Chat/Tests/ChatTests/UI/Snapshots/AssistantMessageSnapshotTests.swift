@@ -35,6 +35,11 @@ import Testing
 @Suite("AssistantMessage snapshots", .serialized)
 @MainActor
 struct AssistantMessageSnapshotTests {
+    /// Register the bundled fonts so this suite produces correct baselines even
+    /// when run in isolation (other snapshot suites do this too; registration is
+    /// process-wide + idempotent, so the existing baselines are unaffected).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("action row idle — Regenerate enabled (light)")
     func actionRowIdleLight() {
         verify(
@@ -128,6 +133,17 @@ struct AssistantMessageSnapshotTests {
             name: "assistant_with_sources_light_xxl"
         )
     }
+
+    // Note: a snapshot of the grounded-Gemini state with the Search-Suggestions
+    // strip is intentionally NOT included. The strip is a live `WKWebView`, which
+    // never signals snapshot-readiness synchronously — swift-snapshot-testing
+    // hits "Exceeded timeout waiting for snapshot" rather than producing a
+    // deterministic image (the async-load / separate-render-process limitation
+    // documented in the web-search spec §0 #8). The strip is covered instead by
+    // `GeminiSearchSuggestionsTests` (height clamp + navigation policy) +
+    // `ChatScreenViewModelProjectionTests` (the HTML reaches the row) + manual
+    // render. The conditional that mounts it is inert when the HTML is nil, so
+    // the baselines above are unaffected.
 
     private static let sampleSources: [SourceCitationPillModel] = [
         SourceCitationPillModel(id: "1", title: "Perseverance confirms subsurface water ice", host: "nasa.gov", url: URL(string: "https://www.nasa.gov/mars")!),

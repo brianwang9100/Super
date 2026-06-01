@@ -71,10 +71,32 @@ public protocol ModelConfigurationRepository: Sendable {
 public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     private let queue: DatabaseQueue
     private let keychain: any KeychainClient
+    /// Predicate deciding which kinds this binary can build a provider for —
+    /// the repository's notion of "buildable" (it can't consult the runtime
+    /// HTTP-client/AFM availability the factory does; for persistence purposes
+    /// "buildable" means the binary has an adapter for the kind). Defaults to
+    /// `LLMProviderKind.hasProviderAdapter`.
+    ///
+    /// Injectable so the known-but-unbuildable-kind guards stay testable: as of
+    /// web-search PR3c every shipping kind is buildable, so that scenario is
+    /// otherwise unreachable until a future native kind is added ahead of its
+    /// adapter. Tests inject a predicate that marks one real kind unbuildable to
+    /// drive the `selected()`/seed/`setSelected` filters.
+    private let isKindBuildable: @Sendable (LLMProviderKind) -> Bool
+    /// Raw values of the buildable subset, derived once from `isKindBuildable`
+    /// (fixed for the repository's lifetime — `selected()` runs on every launch
+    /// and selection change, so it's computed here rather than per request).
+    private let buildableKindRawValues: [String]
 
-    public init(database: ChatDatabase, keychain: any KeychainClient) {
+    public init(
+        database: ChatDatabase,
+        keychain: any KeychainClient,
+        isKindBuildable: @escaping @Sendable (LLMProviderKind) -> Bool = { $0.hasProviderAdapter }
+    ) {
         self.queue = database.queue
         self.keychain = keychain
+        self.isKindBuildable = isKindBuildable
+        self.buildableKindRawValues = LLMProviderKind.allCases.filter(isKindBuildable).map(\.rawValue)
     }
 
     public func all() async throws -> [ModelConfigurationRecord] {
@@ -95,7 +117,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func selected() async throws -> ModelConfigurationRecord? {
         try await queue.read { db in
-            try Self.buildableKindRequest
+            try buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchOne(db)
         }
@@ -111,15 +133,11 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// the host bootstrap. Rows with an unknown `kind` value are silently
     /// excluded from every read; the unreferenced row stays on disk
     /// unless a future migration cleans it up.
-    /// Raw values of every known kind, and of the buildable subset. Both
-    /// sets are fixed at compile time (driven by `LLMProviderKind.allCases`
-    /// + `hasProviderAdapter`), so they're computed once rather than on each
-    /// request build — `selected()` runs on every app launch and selection
-    /// change.
+    /// Raw values of every known kind (the buildable subset is the instance
+    /// `buildableKindRawValues`, derived from the injected predicate). Fixed at
+    /// compile time, so computed once.
     private static let knownKindRawValues: [String] =
         LLMProviderKind.allCases.map(\.rawValue)
-    private static let buildableKindRawValues: [String] =
-        LLMProviderKind.allCases.filter { $0.hasProviderAdapter }.map(\.rawValue)
 
     private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
         ModelConfigurationRecord.filter(knownKindRawValues.contains(Column("kind")))
@@ -135,7 +153,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// `selected()` instead lets the first-registered fallback fire cleanly.
     /// `all()`/`fetch(id:)` keep using `knownKindRequest` so such a row is
     /// still visible/editable in the Models list — it just can't be active.
-    private static var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
+    private var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
         ModelConfigurationRecord.filter(buildableKindRawValues.contains(Column("kind")))
     }
 
@@ -159,7 +177,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             // build) and known-but-unbuildable native-search kinds — so a DB
             // carrying only a native-kind row still seeds AFM and the user
             // keeps a recoverable model.
-            let count = try Self.buildableKindRequest.fetchCount(db)
+            let count = try buildableKindRequest.fetchCount(db)
             guard count == 0 else { return nil }
             let record = make()
             // Before inserting a row with `isSelected = 1`, demote any
@@ -171,7 +189,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             // safe — `selected()` filters those rows out, so the user can't
             // reach them as the active model anyway.
             if record.isSelected {
-                try Self.demoteUnselectableSelections(db: db)
+                try demoteUnselectableSelections(db: db)
             }
             try record.insert(db)
             return record
@@ -188,7 +206,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// violation. Demoting is benign because `selected()` filters these
     /// rows out anyway (it also runs through `buildableKindRequest`), so the
     /// user has no path to reach them as the active model from this binary.
-    private static func demoteUnselectableSelections(db: Database) throws {
+    private func demoteUnselectableSelections(db: Database) throws {
         try ModelConfigurationRecord
             .filter(!buildableKindRawValues.contains(Column("kind")))
             .filter(Column("isSelected") == true)
@@ -236,7 +254,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             // `selected()` — no active model, no error. Guard before the
             // demote so the prior selection is left intact. Consistent with
             // the seed paths' buildable-kind checks.
-            guard record.kind.hasProviderAdapter else {
+            guard isKindBuildable(record.kind) else {
                 throw ModelConfigurationRepositoryError.unselectableKind(
                     id: id, kind: record.kind.rawValue
                 )
@@ -294,7 +312,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             // seed from claiming selection. Filter through `buildableKindRequest`
             // so this stays consistent with `selected()`. Non-selectable rows
             // never claim selection regardless.
-            let hasBuildableSelected = try Self.buildableKindRequest
+            let hasBuildableSelected = try buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchCount(db) > 0
             let shouldSelect = selectable && !hasBuildableSelected
@@ -303,7 +321,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
             // `kind`, so without this an unknown- or native-kind selected row
             // from a newer binary would UNIQUE-violate the debug row's insert.
             if shouldSelect {
-                try Self.demoteUnselectableSelections(db: db)
+                try demoteUnselectableSelections(db: db)
             }
             let record = make(shouldSelect)
             try record.insert(db)

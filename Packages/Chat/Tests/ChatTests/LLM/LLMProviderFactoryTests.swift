@@ -27,7 +27,7 @@ struct LLMProviderFactoryTests {
             supportsThinking: false,
             maxContextTokens: 200_000,
             isSelected: false,
-            searchBackend: kind == .openAIResponses ? "native" : nil
+            searchBackend: [.openAIResponses, .anthropicNative, .geminiNative].contains(kind) ? "native" : nil
         )
     }
 
@@ -61,9 +61,11 @@ struct LLMProviderFactoryTests {
         #expect(provider?.id == "row-anthropicNative")
     }
 
-    @Test("returns nil for native kinds whose adapter has not shipped")
-    func returnsNilForUnbuiltNativeKinds() {
-        #expect(make(record(kind: .geminiNative)) == nil)
+    @Test("builds a GeminiNativeLLMProvider for a .geminiNative row")
+    func buildsGeminiProvider() {
+        let provider = make(record(kind: .geminiNative))
+        #expect(provider is GeminiNativeLLMProvider)
+        #expect(provider?.id == "row-geminiNative")
     }
 
     @Test("returns nil (no crash) for a network kind whose row is missing baseURL")
@@ -74,6 +76,7 @@ struct LLMProviderFactoryTests {
         #expect(make(record(kind: .openAIResponses, baseURL: nil)) == nil)
         #expect(make(record(kind: .openAICompatible, baseURL: nil)) == nil)
         #expect(make(record(kind: .anthropicNative, baseURL: nil)) == nil)
+        #expect(make(record(kind: .geminiNative, baseURL: nil)) == nil)
     }
 
     @Test("returns nil for HTTP-backed kinds when no client is supplied")
