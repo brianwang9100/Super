@@ -34,6 +34,18 @@ struct ActiveModelBibleAnnotationStampProviderTests {
         #expect(stamp.source == .user)
     }
 
+    @Test("falls back to an empty model id when the active provider advertises no models")
+    func emptyWhenActiveProviderHasNoModels() async {
+        let registry = LLMProviderRegistry()
+        await registry.register(StubLLMProvider(id: "empty", models: []))
+        let provider = ActiveModelBibleAnnotationStampProvider(registry: registry)
+
+        let stamp = await provider.stamp()
+
+        #expect(stamp.modelId.isEmpty)
+        #expect(stamp.source == .user)
+    }
+
     @Test("forwards the configured source")
     func forwardsSource() async {
         let registry = LLMProviderRegistry()
