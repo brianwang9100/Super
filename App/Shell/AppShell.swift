@@ -268,6 +268,11 @@ struct AppShell: View {
                     }
                 }
             )
+        }
+        // Settings presents as a native `.sheet` at the `.large` detent. The
+        // drag-down dismiss path only flips `settingsOpen`, so the nav-stack
+        // reset that the close button does inline runs here via `onDismiss`.
+        .sheet(isPresented: $settingsOpen, onDismiss: { settingsViewModel?.popToRoot() }) {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
@@ -287,6 +292,9 @@ struct AppShell: View {
                 appearance: appearance,
                 typography: typography
             )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.background)
         }
         .task {
             await ensureViewModel()
