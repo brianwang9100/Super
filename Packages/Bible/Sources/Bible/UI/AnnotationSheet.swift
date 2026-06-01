@@ -112,28 +112,20 @@ struct AnnotationSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            grabber
             header
             Rectangle()
                 .fill(theme.borderFaint)
                 .frame(height: 0.5)
             cardList
         }
+        // Top clearance for the system drag indicator now that the native
+        // `.sheet` supplies it in place of the removed custom grabber.
+        .padding(.top, 10)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
                 .fill(theme.background)
                 .ignoresSafeArea(edges: .bottom)
         }
-    }
-
-    private var grabber: some View {
-        Capsule()
-            .fill(theme.inkFaint)
-            .frame(width: 36, height: 4)
-            .opacity(0.6)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-            .accessibilityHidden(true)
     }
 
     private var header: some View {

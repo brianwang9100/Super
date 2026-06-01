@@ -30,7 +30,6 @@ struct AnnotationDisclaimerSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            grabber
             Spacer(minLength: 24)
             iconPanel
                 .padding(.top, 4)
@@ -54,16 +53,6 @@ struct AnnotationDisclaimerSheet: View {
                 .fill(theme.background)
                 .ignoresSafeArea(edges: .bottom)
         }
-    }
-
-    private var grabber: some View {
-        Capsule()
-            .fill(theme.inkFaint)
-            .frame(width: 36, height: 4)
-            .opacity(0.6)
-            .padding(.top, 10)
-            .padding(.bottom, 18)
-            .accessibilityHidden(true)
     }
 
     private var iconPanel: some View {

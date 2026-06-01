@@ -27,7 +27,6 @@ struct BibleActionSheet: View {
     /// Invoked when the "Add note" tile is tapped — composes a user note on
     /// the selection's bounding range through the view model.
     let onAddNote: () -> Void
-    let onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,7 +38,13 @@ struct BibleActionSheet: View {
                 .padding(.horizontal, 2)
             actionRow
         }
-        .modifier(BibleSheetChromeModifier(style: .actionSheet, onDismiss: onClose))
+        // The card is now a native `.sheet` (the system supplies the drag bar,
+        // rounded surface, and drag-to-dismiss). These insets are the content
+        // padding the retired `BibleSheetChromeModifier` used to provide; the
+        // extra top room clears the system drag indicator.
+        .padding(.horizontal, 10)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
     }
 
     private var header: some View {
