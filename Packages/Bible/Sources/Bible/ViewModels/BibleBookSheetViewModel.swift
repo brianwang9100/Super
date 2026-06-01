@@ -38,7 +38,12 @@ public enum BibleBookSheetScrollAnchor: Hashable, Sendable {
 /// hands back to `BibleScreenViewModel`.
 @MainActor
 @Observable
-public final class BibleBookSheetViewModel {
+public final class BibleBookSheetViewModel: Identifiable {
+    /// Per-instance identity for `.sheet(item:)` presentation — stable for the
+    /// lifetime of one picker presentation (a fresh model is built each time
+    /// the picker opens), so the sheet doesn't rebuild as the user searches.
+    public nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
+
     /// Case-insensitive substring filter over book names; empty shows all.
     /// A query that resolves a chapter / verse switches the picker to a
     /// single deep-link row — see ``deepLinkResult``.

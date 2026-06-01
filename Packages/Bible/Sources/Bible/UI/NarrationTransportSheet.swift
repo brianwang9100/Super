@@ -5,25 +5,24 @@ import SwiftUI
 import UIKit
 #endif
 
-/// Inline overlay card hosting the Narrate transport. Sits above the
-/// shell's chat pill while narration is running and rides under the
-/// nav-bar speaker button as the "now playing" surface.
+/// The Narrate transport, hosted in a native `.sheet`. Presents as the
+/// "now playing" surface under the nav-bar speaker button; the page stays
+/// readable behind it (`presentationBackgroundInteraction`), so it sits over
+/// the reader without a scrim.
 ///
-/// Layout (top → bottom): a draggable handle; a header row with a
-/// decorative speaker badge on the left, a `NOW NARRATING` / citation
-/// pair in the centre, and a stop button on the right; a transport row
-/// with restart-verse / play-pause / next-verse circles; a divider;
-/// and a row of two dropdowns for voice and speed.
+/// Layout (top → bottom): a header row with a decorative speaker badge on the
+/// left, a `NOW NARRATING` / citation pair in the centre, and a stop button on
+/// the right; a transport row with restart-verse / play-pause / next-verse
+/// circles; a divider; and a row of two dropdowns for voice and speed. The
+/// system supplies the drag bar above the header.
 ///
 /// Dismissal model:
 ///   - **Stop** halts playback only — the card stays so the play button
 ///     can re-run the same Narrate flow (via `onRestart`) without
-///     reopening the spark menu.
-///   - **Drag the handle down** is the only way to actually hide the
-///     card. Dismissing is animated (the caller wraps `onDismiss` in
-///     `withAnimation`).
-///   - Tapping outside the card does NOT dismiss it — the card is an
-///     inline overlay, not a UIKit sheet, so there's no system scrim.
+///     reopening the spark menu. Nothing flips the presentation state on
+///     Stop, so the native sheet stays up.
+///   - **Drag the sheet down** (or tap the nav-bar speaker again) hides it;
+///     the system animates the dismissal.
 ///
 /// The restart-verse glyph is a single button that, at the controller
 /// level, behaves like a 2000s music player: one tap restarts the
@@ -47,11 +46,6 @@ struct NarrationTransportSheet: View {
     /// Narrate flow the spark menu's `Narrate` entry triggers, so the
     /// user doesn't have to reopen the menu just to retry.
     let onRestart: () -> Void
-    /// Invoked when the user drags the handle past the dismiss
-    /// threshold. Callers wrap this in `withAnimation` so the card
-    /// slides out with the screen's `BibleSheetMotion` rather than
-    /// snapping off.
-    let onDismiss: () -> Void
 
     /// Locale-filtered voice list backed by the process-wide
     /// ``cachedVoices`` so the 100-300 ms
@@ -70,7 +64,13 @@ struct NarrationTransportSheet: View {
             Divider().background(theme.borderFaint)
             controlsRow
         }
-        .modifier(BibleSheetChromeModifier(style: .narration, onDismiss: onDismiss))
+        // The card is now a native `.sheet` (the system supplies the drag bar,
+        // rounded surface, and drag-to-dismiss). These insets are the content
+        // padding the retired `BibleSheetChromeModifier` used to provide; the
+        // extra top room clears the system drag indicator.
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 16)
         .task {
             // First-open path only: `cachedVoices` was empty at view
             // construction, so do the 100-300 ms

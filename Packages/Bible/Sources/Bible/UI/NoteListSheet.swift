@@ -69,7 +69,6 @@ struct NoteListSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            grabber
             navBar
             Rectangle()
                 .fill(theme.borderFaint)
@@ -86,16 +85,6 @@ struct NoteListSheet: View {
                 .fill(theme.background)
                 .ignoresSafeArea(edges: .bottom)
         }
-    }
-
-    private var grabber: some View {
-        Capsule()
-            .fill(theme.inkMute)
-            .frame(width: 36, height: 4)
-            .opacity(0.45)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-            .accessibilityHidden(true)
     }
 
     private var navBar: some View {
@@ -123,8 +112,10 @@ struct NoteListSheet: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Write a note")
         }
+        // Top room for the system drag indicator now that the native `.sheet`
+        // supplies it in place of the removed custom grabber.
         .padding(.horizontal, 18)
-        .padding(.top, 6)
+        .padding(.top, 10)
         .padding(.bottom, 12)
     }
 
