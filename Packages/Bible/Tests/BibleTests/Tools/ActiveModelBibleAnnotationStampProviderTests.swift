@@ -31,6 +31,7 @@ struct ActiveModelBibleAnnotationStampProviderTests {
         let stamp = await provider.stamp()
 
         #expect(stamp.modelId.isEmpty)
+        #expect(stamp.source == .user)
     }
 
     @Test("forwards the configured source")
