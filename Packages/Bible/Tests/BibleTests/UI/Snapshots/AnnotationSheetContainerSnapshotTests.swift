@@ -131,7 +131,7 @@ struct AnnotationSheetContainerSnapshotTests {
             BibleAnnotationRecord(
                 id: "ref-fail", target: .verse, bookId: "ROM",
                 chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                kind: .reference, title: "Parse failed",
+                category: .reference, title: "Parse failed",
                 body: "John 14, verse twelve",
                 source: .user, modelId: "afm-3.0", createdAt: Self.now
             )
@@ -146,14 +146,14 @@ struct AnnotationSheetContainerSnapshotTests {
             BibleAnnotationRecord(
                 id: "card-text", target: .verse, bookId: "ROM",
                 chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                kind: .text, title: "Summary",
+                category: .summary, title: "Summary",
                 body: "The golden chain of salvation: foreknown, predestined, called, justified, glorified.",
                 source: .user, modelId: "afm-3.0", createdAt: Self.now
             ),
             BibleAnnotationRecord(
                 id: "card-ref", target: .verse, bookId: "ROM",
                 chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                kind: .reference, title: "Cross-reference",
+                category: .reference, title: "Cross-reference",
                 body: "Ephesians 1:11",
                 source: .user, modelId: "afm-3.0", createdAt: Self.now
             ),

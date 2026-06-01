@@ -24,7 +24,7 @@ struct BibleAnnotationRepositoryTests {
         verseEnd: Int = 30,
         title: String = "Card",
         body: String = "Body",
-        kind: BibleAnnotationKind = .text,
+        category: BibleAnnotationCategory = .summary,
         createdAt: Date? = nil
     ) -> BibleAnnotationRecord {
         BibleAnnotationRecord(
@@ -34,7 +34,7 @@ struct BibleAnnotationRepositoryTests {
             chapterNumber: chapter,
             verseStart: verseStart,
             verseEnd: verseEnd,
-            kind: kind,
+            category: category,
             title: title,
             body: body,
             source: .user,
@@ -69,7 +69,7 @@ struct BibleAnnotationRepositoryTests {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "bp", target: .book, bookId: "ROM",
-            kind: .text, title: "Prologue", body: "Long letter.",
+            category: .author, title: "Prologue", body: "Long letter.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(
@@ -92,7 +92,7 @@ struct BibleAnnotationRepositoryTests {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
-            kind: .text, title: "Summary", body: "Life in the Spirit.",
+            category: .summary, title: "Summary", body: "Life in the Spirit.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(

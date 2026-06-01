@@ -36,7 +36,7 @@ struct ChapterAnnotationsRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "chap", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                    kind: .text, title: "Summary", body: "Life in the Spirit.",
+                    category: .summary, title: "Summary", body: "Life in the Spirit.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -48,7 +48,7 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "v28-30", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "Context", body: "Golden chain.",
+                    category: .summary, title: "Context", body: "Golden chain.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -67,7 +67,7 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "other", target: .verse, bookId: "ROM",
                     chapterNumber: 7, verseStart: 1, verseEnd: 1,
-                    kind: .text, title: "Other", body: ".",
+                    category: .summary, title: "Other", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -86,19 +86,19 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "b", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "B", body: ".",
+                    category: .summary, title: "B", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "a", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "A", body: ".",
+                    category: .summary, title: "A", body: ".",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "c", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    kind: .text, title: "C", body: ".",
+                    category: .summary, title: "C", body: ".",
                     source: .user, modelId: "m", createdAt: later
                 ),
             ]

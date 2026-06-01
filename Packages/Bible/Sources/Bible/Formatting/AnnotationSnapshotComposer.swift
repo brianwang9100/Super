@@ -6,7 +6,7 @@ import Foundation
 /// The LLM (Large Language Model) sees this block verbatim when the user
 /// taps "Add to chat" or "Add all to chat" on a popover card. The format
 /// is intentionally plain markdown — no embedded links, no per-card kebab
-/// affordances, no model-id footer. Reference-kind cards render as their
+/// affordances, no model-id footer. Reference-category cards render as their
 /// citation string (`"John 1:14"`) so the model sees a clean
 /// natural-language reference; the citation-as-link rendering is purely a
 /// UI affordance inside the popover and has no place in the chat context.

@@ -46,16 +46,20 @@ public struct AnnotateBibleTool: ToolExecutor {
         name: "bible.annotate",
         description: """
         Produce one or more annotation cards for a book, chapter, or \
-        verse range. Each card is a short, focused note: prose for \
-        context or clarification, or a single scripture citation for \
-        cross-references. Keep each body to ~240 characters / ≤2 \
-        sentences unless the user explicitly asks for more depth — \
-        readers see these in a tight popover.
+        verse range. Each card is a short, focused note classified by \
+        `category`. Keep each body to ~240 characters / ≤2 sentences \
+        unless the user explicitly asks for more depth — readers see \
+        these in a tight popover.
 
-        For `kind: "reference"`, the body is a single citation like \
-        `"Heb 4:15"` or `"Romans 8:28-30"`. For `kind: "text"`, the body \
-        is markdown. Use clear, plain-language titles \
-        (e.g. `"Author"`, `"Historical context"`, `"See also"`).
+        Each entry's `category` is one of: `author`, `summary`, \
+        `historical`, `clarification`, `reference`. The category sets \
+        both the card's display order (author → summary → historical → \
+        clarification → reference) and its rendering:
+        - `reference`: the body is a single citation like `"Heb 4:15"` \
+        or `"Romans 8:28-30"` — rendered as a tappable link.
+        - every other category: the body is markdown prose.
+        Use clear, plain-language titles (e.g. `"Author"`, \
+        `"Historical context"`, `"See also"`).
 
         The `target` discriminates which scripture unit the annotation \
         attaches to and decides which position fields are required:
@@ -106,11 +110,13 @@ public struct AnnotateBibleTool: ToolExecutor {
                 type: .array,
                 description: """
                 Array of annotation card objects. Each object has: \
-                `kind` ('text' or 'reference'), `title` (short heading), \
-                `body` (for 'text': markdown content; for 'reference': a \
-                citation string like 'John 1:14' or 'Romans 8:28-30'). \
-                An empty array clears existing annotations for the target \
-                without inserting new ones.
+                `category` ('author', 'summary', 'historical', \
+                'clarification', or 'reference'), `title` (short \
+                heading), `body` (for 'reference': a citation string like \
+                'John 1:14' or 'Romans 8:28-30'; for every other \
+                category: markdown content). An empty array clears \
+                existing annotations for the target without inserting new \
+                ones.
                 """,
                 isRequired: true
             ),
@@ -156,7 +162,7 @@ public struct AnnotateBibleTool: ToolExecutor {
                 chapterNumber: parsed.chapterNumber,
                 verseStart: parsed.verseStart,
                 verseEnd: parsed.verseEnd,
-                kind: entry.kind,
+                category: entry.category,
                 title: entry.title,
                 body: entry.body,
                 source: stamp.source,
@@ -204,7 +210,7 @@ public struct AnnotateBibleTool: ToolExecutor {
     }
 
     private struct ValidatedEntry {
-        let kind: BibleAnnotationKind
+        let category: BibleAnnotationCategory
         let title: String
         let body: String
     }
@@ -276,13 +282,13 @@ public struct AnnotateBibleTool: ToolExecutor {
         guard case .object(let fields) = value else {
             throw ValidationError(message: "entries[\(index)] is not an object.")
         }
-        let kindRaw = try requireString(fields, key: "kind", context: "entries[\(index)]")
-        guard let kind = BibleAnnotationKind(rawValue: kindRaw) else {
-            throw ValidationError(message: "entries[\(index)] has unknown kind '\(kindRaw)'. Use 'text' or 'reference'.")
+        let categoryRaw = try requireString(fields, key: "category", context: "entries[\(index)]")
+        guard let category = BibleAnnotationCategory(toolToken: categoryRaw) else {
+            throw ValidationError(message: "entries[\(index)] has unknown category '\(categoryRaw)'. Use 'author', 'summary', 'historical', 'clarification', or 'reference'.")
         }
         let title = try requireString(fields, key: "title", context: "entries[\(index)]")
         let body = try requireString(fields, key: "body", context: "entries[\(index)]")
-        return ValidatedEntry(kind: kind, title: title, body: body)
+        return ValidatedEntry(category: category, title: title, body: body)
     }
 
     private static func requireString(

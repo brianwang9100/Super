@@ -24,7 +24,7 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Happy path
 
-    @Test("verse-target call inserts records in entry order with stamped fields")
+    @Test("verse-target call inserts records with the parsed category and stamped fields")
     func versePathInsertsOrderedStampedRecords() async throws {
         let (tool, repo) = makeTool()
         let input: [String: JSONValue] = [
@@ -35,12 +35,12 @@ struct AnnotateBibleToolTests {
             "verseEnd": .int(30),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("author"),
                     "title": .string("Author"),
                     "body": .string("Paul, writing from Rome."),
                 ]),
                 .object([
-                    "kind": .string("reference"),
+                    "category": .string("reference"),
                     "title": .string("See also"),
                     "body": .string("Heb 4:15"),
                 ]),
@@ -56,12 +56,12 @@ struct AnnotateBibleToolTests {
         let inserts = call?.inserts ?? []
         #expect(inserts.count == 2)
         #expect(inserts[0].id == "anno-1")
-        #expect(inserts[0].kind == .text)
+        #expect(inserts[0].category == .author)
         #expect(inserts[0].title == "Author")
         #expect(inserts[0].source == .user)
         #expect(inserts[0].modelId == "afm-3.0")
         #expect(inserts[0].createdAt == t0)
-        #expect(inserts[1].kind == .reference)
+        #expect(inserts[1].category == .reference)
         #expect(inserts[1].body == "Heb 4:15")
     }
 
@@ -73,7 +73,7 @@ struct AnnotateBibleToolTests {
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("author"),
                     "title": .string("Prologue"),
                     "body": .string("Long, systematic letter."),
                 ]),
@@ -101,7 +101,7 @@ struct AnnotateBibleToolTests {
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("summary"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),
@@ -140,7 +140,7 @@ struct AnnotateBibleToolTests {
             "verseEnd": .double(30.0),
             "entries": .array([
                 .object([
-                    "kind": .string("text"),
+                    "category": .string("summary"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),
@@ -211,8 +211,8 @@ struct AnnotateBibleToolTests {
         #expect(result.content.contains("book"))
     }
 
-    @Test("entry missing kind rejects")
-    func entryMissingKindRejects() async throws {
+    @Test("entry missing category rejects")
+    func entryMissingCategoryRejects() async throws {
         let (tool, _) = makeTool()
         let result = try await tool.execute(input: [
             "target": .string("book"),
@@ -225,18 +225,18 @@ struct AnnotateBibleToolTests {
             ]),
         ])
         #expect(result.isError == true)
-        #expect(result.content.contains("kind"))
+        #expect(result.content.contains("category"))
     }
 
-    @Test("entry with unknown kind rejects")
-    func entryUnknownKindRejects() async throws {
+    @Test("entry with unknown category rejects")
+    func entryUnknownCategoryRejects() async throws {
         let (tool, _) = makeTool()
         let result = try await tool.execute(input: [
             "target": .string("book"),
             "bookId": .string("ROM"),
             "entries": .array([
                 .object([
-                    "kind": .string("audio"),
+                    "category": .string("audio"),
                     "title": .string("T"),
                     "body": .string("."),
                 ]),

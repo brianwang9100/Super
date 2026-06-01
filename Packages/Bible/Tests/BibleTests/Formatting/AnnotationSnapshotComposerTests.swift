@@ -11,7 +11,7 @@ struct AnnotationSnapshotComposerTests {
 
     private func record(
         id: String = "anno-1",
-        kind: BibleAnnotationKind = .text,
+        category: BibleAnnotationCategory = .summary,
         title: String,
         body: String
     ) -> BibleAnnotationRecord {
@@ -22,7 +22,7 @@ struct AnnotationSnapshotComposerTests {
             chapterNumber: 8,
             verseStart: 28,
             verseEnd: 30,
-            kind: kind,
+            category: category,
             title: title,
             body: body,
             source: .user,
@@ -42,7 +42,7 @@ struct AnnotationSnapshotComposerTests {
     @Test("single reference card renders the citation as the body")
     func singleReferenceCard() {
         let snapshot = AnnotationSnapshotComposer.compose(
-            annotation: record(kind: .reference, title: "See also", body: "Heb 4:15")
+            annotation: record(category: .reference, title: "See also", body: "Heb 4:15")
         )
         #expect(snapshot == "## See also\n\nHeb 4:15\n")
     }
@@ -52,7 +52,7 @@ struct AnnotationSnapshotComposerTests {
         let cards = [
             record(id: "a", title: "Author", body: "Paul, writing from Rome."),
             record(id: "b", title: "Historical context", body: "Mixed Jew/Gentile church."),
-            record(id: "c", kind: .reference, title: "See also", body: "Eph 1:11"),
+            record(id: "c", category: .reference, title: "See also", body: "Eph 1:11"),
         ]
         let snapshot = AnnotationSnapshotComposer.compose(annotations: cards)
         let expected = """
