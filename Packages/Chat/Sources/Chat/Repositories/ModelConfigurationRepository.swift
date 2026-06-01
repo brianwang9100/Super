@@ -277,37 +277,45 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     }
 
     #if DEBUG
-    /// DEBUG-only first-launch seed for `DebugLLMProvider`. Inserts a
-    /// `kind = .debug` row atomically iff no `.debug` row already exists.
-    /// `make` is invoked *inside* the write transaction and receives
-    /// `shouldSelect = true` only when the table currently has no
-    /// selected row — so a fresh install lands on the debug model by
-    /// default, but a developer who has already wired a real provider
-    /// keeps that one as active. Returns the inserted record on success,
-    /// nil when a debug row was already present.
+    /// DEBUG-only first-launch seed for a debug provider row. Inserts the row
+    /// atomically iff no row with `id` already exists, so each of the several
+    /// debug rows (canned stream, annotate, note) is seeded independently and
+    /// idempotently.
+    ///
+    /// When `selectable`, `make` receives `shouldSelect = true` only if the
+    /// table currently has no buildable selected row — so a fresh install
+    /// lands on the canned-stream debug model by default, but a developer who
+    /// has already wired a real provider keeps that one active. The
+    /// annotate/note rows pass `selectable: false`: they're alternatives in
+    /// the picker, never the auto-selected default, and `make` always
+    /// receives `false`. Returns the inserted record on success, nil when a
+    /// row with `id` was already present.
     ///
     /// Lives on the concrete type (not the protocol) so the in-tree
     /// `Stub`/`NoopModelRepository` test doubles don't have to grow a
     /// DEBUG-only stub.
-    public func insertDebugIfMissing(
+    public func insertDebugRowIfMissing(
+        id: String,
+        selectable: Bool,
         make: @Sendable (_ shouldSelect: Bool) -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
         try await queue.write { db in
-            let alreadyHasDebug = try ModelConfigurationRecord
-                .filter(Column("kind") == LLMProviderKind.debug.rawValue)
+            let alreadyPresent = try ModelConfigurationRecord
+                .filter(Column("id") == id)
                 .fetchCount(db) > 0
-            guard !alreadyHasDebug else { return nil }
+            guard !alreadyPresent else { return nil }
             // `shouldSelect` matches what `selected()` would report — only a
             // row this binary can build a provider for counts as "the active
             // model" from the user's perspective. A row the binary can't
             // surface (an unknown `kind`, or a known-but-unbuildable
             // native-search kind) is unusable here and shouldn't keep the
             // seed from claiming selection. Filter through `buildableKindRequest`
-            // so this stays consistent with `selected()`.
+            // so this stays consistent with `selected()`. Non-selectable rows
+            // never claim selection regardless.
             let hasBuildableSelected = try buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchCount(db) > 0
-            let shouldSelect = !hasBuildableSelected
+            let shouldSelect = selectable && !hasBuildableSelected
             // Demote any unselectable selected row before inserting our own —
             // the schema's partial unique index spans every row regardless of
             // `kind`, so without this an unknown- or native-kind selected row

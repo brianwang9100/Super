@@ -905,17 +905,20 @@ public final class BibleScreenViewModel {
 
     // MARK: - Notes
 
-    /// Present the note list sheet for `spec` — the tap target of a *filled*
-    /// note glyph (a verse trailer, the chapter title, or a book-picker row).
-    /// Opens straight to the list; the user composes from the sheet's `+`.
+    /// Present the note list sheet for `spec` — the tap target of every note
+    /// glyph (a verse trailer, the chapter title, or a book-picker row),
+    /// whether filled or outline. Opens straight to the list; the user composes
+    /// from the sheet's `+`, so an empty range lands on the list's empty state
+    /// rather than auto-opening the editor.
     public func presentNoteList(for spec: BibleNoteTargetSpec) {
         presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: false)
     }
 
-    /// Present the note list for `spec` already composing — the tap target of
-    /// an *outline* note glyph (chapter title, book-picker row), which means
-    /// "write a note on this scope". The list mounts behind the editor so a
-    /// saved note lands the user back on the populated list.
+    /// Present the note list for `spec` already composing. Reached only via the
+    /// verse-selection action sheet's explicit "Add note" tile
+    /// (`composeNoteForSelection`) — note glyphs route through `presentNoteList`
+    /// instead. The list mounts behind the editor so a saved note lands the
+    /// user back on the populated list.
     public func composeNote(for spec: BibleNoteTargetSpec) {
         presentedNoteList = BibleNoteListPresentation(spec: spec, autoCompose: true)
     }

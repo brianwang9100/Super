@@ -274,6 +274,13 @@ jobs:
           # safe-area insets, text-renderer build). When repinning, update
           # this script, the AGENTS.md trio (§ "iOS testing"), and re-record
           # every baseline under Packages/Chat/Tests/.../__Snapshots__.
+          #
+          # Source of truth: the local PreToolUse guard
+          # (.claude/hooks/enforce-snapshot-sim.py) reads the pin straight from
+          # this file — the `--json "iOS <ver>"` literal below, the
+          # `name")=="iPhone <n>"` literal, and the `xcode-version:` inputs.
+          # Keep those three shapes intact when editing, or the guard falls
+          # back to its hardcoded last-known pin.
           DEVICE=$(xcrun simctl list devices --json "iOS 26.4" \
             | python3 -c 'import json,sys; data=json.load(sys.stdin); \
                 target=next((d for r in data["devices"] for d in data["devices"][r] if d.get("name")=="iPhone 17"), None); \

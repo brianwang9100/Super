@@ -445,10 +445,6 @@ public struct BibleScreen: View {
                 withAnimation(motion.animation) { viewModel.dismissBookSheet() }
                 viewModel.presentNoteList(for: .book(bookId: bookId))
             },
-            onRequestBookNote: { bookId in
-                withAnimation(motion.animation) { viewModel.dismissBookSheet() }
-                viewModel.composeNote(for: .book(bookId: bookId))
-            },
             // Books with an in-flight `.book`-target dispatch — their
             // bubbles render generating. Reading the view model's status
             // map here keeps the picker reactive as dispatches start and
@@ -508,9 +504,6 @@ public struct BibleScreen: View {
                 ),
                 onNoteGlyphTap: { spec in
                     withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
-                },
-                onRequestChapterNote: { spec in
-                    withAnimation(motion.animation) { viewModel.composeNote(for: spec) }
                 }
             )
             // A fresh identity per chapter resets the scroll offset to the
