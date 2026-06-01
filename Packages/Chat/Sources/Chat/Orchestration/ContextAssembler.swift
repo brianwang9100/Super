@@ -263,7 +263,12 @@ public struct ContextAssembler: Sendable {
                 // Gemini citations have none, so we don't emit a `.searchResult`
                 // they'd just ignore. Positioned before the text block, matching
                 // the on-the-wire order (results precede the text that cites
-                // them); adapters that don't need it skip the block.
+                // them); adapters that don't need it skip the block. Invariant:
+                // a `.searchResult` always rides alongside non-empty assistant
+                // text (citations only attach to a grounded answer), so a model
+                // switched mid-conversation to `OpenAICompatibleLLMProvider`
+                // — which drops `.searchResult` via `compactMap` — never reaches
+                // its empty-content assertion on a citations-bearing turn.
                 if let sources = record.attachments?.sources,
                    sources.contains(where: { $0.providerEcho != nil }) {
                     blocks.append(.searchResult(sources))

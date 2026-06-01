@@ -234,6 +234,22 @@ struct AnthropicNativeLLMProviderTests {
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 7, outputTokens: 0)))
     }
 
+    @Test func unsupportedModelYieldsErrorBeforeCompletion() async throws {
+        // A model whose id isn't in `supportedModels` is rejected before any
+        // request is issued; the failure still rides the stream contract
+        // (messageStart-first, error immediately before the terminal).
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let unknown = LLMModel(id: "claude-not-configured", displayName: "Nope", maxContextTokens: 200_000)
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")], model: unknown, tools: [], temperature: 0.5
+        ))
+        #expect(events.map(Self.kind) == ["messageStart", "error", "messageComplete"])
+        let errors = events.compactMap { event -> LLMError? in
+            if case .error(let e) = event { return e } else { return nil }
+        }
+        #expect(errors == [.unsupportedModel("claude-not-configured")])
+    }
+
     @Test func transportFailureBeforeAnySSEStillEmitsMessageStartFirst() async throws {
         let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401))
         let events = try await collect(makeProvider(http: http).stream(
