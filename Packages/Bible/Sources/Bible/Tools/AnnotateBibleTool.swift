@@ -55,8 +55,11 @@ public struct AnnotateBibleTool: ToolExecutor {
         `historical`, `clarification`, `reference`. The category sets \
         both the card's display order (author → summary → historical → \
         clarification → reference) and its rendering:
-        - `reference`: the body is a single citation like `"Heb 4:15"` \
-        or `"Romans 8:28-30"` — rendered as a tappable link.
+        - `reference`: the body MUST be a single bare scripture citation \
+        like `"Heb 4:15"` or `"Romans 8:28-30"` — nothing else — so it \
+        renders as a tappable navigation link. If what you want to say is \
+        prose *about* a passage, use `clarification` and cite the passage \
+        inside the sentence instead.
         - every other category: the body is markdown prose.
         Use clear, plain-language titles (e.g. `"Author"`, \
         `"Historical context"`, `"See also"`).

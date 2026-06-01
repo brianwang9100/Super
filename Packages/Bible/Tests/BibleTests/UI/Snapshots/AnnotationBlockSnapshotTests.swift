@@ -64,6 +64,36 @@ struct AnnotationBlockSnapshotTests {
         )
     }
 
+    @Test("reference card with parsed target renders the pill in dark")
+    func referenceParsedDark() {
+        let target = BibleCitationParser.ParsedCitation(
+            position: BiblePosition(bookId: "JHN", chapterNumber: 1),
+            verseStart: 14, verseEnd: 14
+        )
+        verify(
+            theme: .dark,
+            category: .reference,
+            title: "Cross-reference",
+            content: .reference(label: "John 1:14", target: target),
+            name: "reference_parsed_dark"
+        )
+    }
+
+    @Test("reference card with parsed target renders the pill in sepia")
+    func referenceParsedSepia() {
+        let target = BibleCitationParser.ParsedCitation(
+            position: BiblePosition(bookId: "JHN", chapterNumber: 1),
+            verseStart: 14, verseEnd: 14
+        )
+        verify(
+            theme: .sepia,
+            category: .reference,
+            title: "Cross-reference",
+            content: .reference(label: "John 1:14", target: target),
+            name: "reference_parsed_sepia"
+        )
+    }
+
     @Test("reference card with parse failure falls back to plain text")
     func referenceUnparsedLight() {
         verify(
@@ -72,6 +102,28 @@ struct AnnotationBlockSnapshotTests {
             title: "Parse failed",
             content: .reference(label: "John 14, verse twelve", target: nil),
             name: "reference_unparsed_light"
+        )
+    }
+
+    @Test("reference parse-failure fallback renders in dark")
+    func referenceUnparsedDark() {
+        verify(
+            theme: .dark,
+            category: .reference,
+            title: "Parse failed",
+            content: .reference(label: "John 14, verse twelve", target: nil),
+            name: "reference_unparsed_dark"
+        )
+    }
+
+    @Test("reference parse-failure fallback renders in sepia")
+    func referenceUnparsedSepia() {
+        verify(
+            theme: .sepia,
+            category: .reference,
+            title: "Parse failed",
+            content: .reference(label: "John 14, verse twelve", target: nil),
+            name: "reference_unparsed_sepia"
         )
     }
 
