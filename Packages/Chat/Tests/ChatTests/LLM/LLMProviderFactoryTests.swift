@@ -87,4 +87,21 @@ struct LLMProviderFactoryTests {
         )
         #expect(provider == nil)
     }
+
+    #if DEBUG
+    @Test("dispatches the .debug arm on modelId across the three debug providers")
+    func buildsDebugProvidersByModelId() {
+        func debugRow(modelId: String) -> ModelConfigurationRecord {
+            ModelConfigurationRecord(
+                id: "row-\(modelId)", name: modelId, baseURL: nil, apiKeyRef: nil,
+                modelId: modelId, createdAt: Date(timeIntervalSince1970: 0), kind: .debug
+            )
+        }
+        #expect(make(debugRow(modelId: DebugAnnotateLLMProvider.modelID)) is DebugAnnotateLLMProvider)
+        #expect(make(debugRow(modelId: DebugNoteLLMProvider.modelID)) is DebugNoteLLMProvider)
+        // Any other (or the canned) modelId falls through to the stream provider.
+        #expect(make(debugRow(modelId: DebugLLMProvider.modelID)) is DebugLLMProvider)
+        #expect(make(debugRow(modelId: "anything-else")) is DebugLLMProvider)
+    }
+    #endif
 }

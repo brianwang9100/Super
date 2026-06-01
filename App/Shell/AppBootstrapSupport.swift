@@ -155,22 +155,27 @@ enum AppBootstrapSupport {
     }
 
     #if DEBUG
-    /// DEBUG-only first-launch seed: insert a `ModelConfigurationRecord`
-    /// with `kind = .debug` so `DebugLLMProvider` shows up in the model
-    /// picker without the user having to add a model manually. The
-    /// existence check and the insert run in a single GRDB write
-    /// transaction (via `insertDebugIfMissing`), so two concurrent
-    /// `bootstrap()` calls — vanishingly rare in practice but trivial to
-    /// close — can't both pass the empty check and then double-insert.
-    /// `shouldSelect` is computed inside the same transaction, so the
-    /// row is marked selected only when no other selection exists at the
-    /// moment of insert; a developer who has already wired a real
-    /// provider keeps that as active and just sees the debug entry as an
-    /// alternative.
+    /// DEBUG-only first-launch seed: insert the three `kind = .debug`
+    /// `ModelConfigurationRecord`s — canned stream, annotate, and note — so
+    /// the debug providers show up in the model picker without the user
+    /// adding a model manually. Each row's existence check and insert run in
+    /// a single GRDB write transaction (via `insertDebugRowIfMissing`), keyed
+    /// on the row `id`, so two concurrent `bootstrap()` calls — vanishingly
+    /// rare but trivial to close — can't both pass the check and double-insert.
+    /// Only the canned-stream row is `selectable`: its `shouldSelect` is
+    /// computed inside the transaction so it claims selection only when no
+    /// other selection exists; the annotate/note rows are always inserted
+    /// unselected (alternatives in the picker). A developer who has already
+    /// wired a real provider keeps that active and sees the debug entries as
+    /// alternatives.
     static func seedDebugModelIfNeeded(
         repository: GRDBModelConfigurationRepository
     ) async throws {
-        _ = try await repository.insertDebugIfMissing { shouldSelect in
+        // Canned-stream provider — the auto-selected default on a fresh
+        // install (when nothing else is wired).
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-canned", selectable: true
+        ) { shouldSelect in
             ModelConfigurationRecord(
                 id: "debug-canned",
                 name: "Debug (canned)",
@@ -182,6 +187,42 @@ enum AppBootstrapSupport {
                 supportsThinking: true,
                 maxContextTokens: DebugLLMProvider.maxContextTokens,
                 isSelected: shouldSelect
+            )
+        }
+        // Annotate / note debug providers — alternatives in the picker that
+        // emit canned `bible.annotate` / `bible.note` tool calls. Never the
+        // auto-selected default (`selectable: false`); the user picks them to
+        // exercise the Bible tool pipelines without a real model.
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-annotate", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-annotate",
+                name: "Debug (annotate)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugAnnotateLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: false,
+                maxContextTokens: DebugAnnotateLLMProvider.maxContextTokens,
+                isSelected: false
+            )
+        }
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-note", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-note",
+                name: "Debug (note)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugNoteLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: false,
+                maxContextTokens: DebugNoteLLMProvider.maxContextTokens,
+                isSelected: false
             )
         }
     }

@@ -404,7 +404,7 @@ struct ModelConfigurationRepositoryTests {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await insertUnknownKindRow(queue: queue, id: "future-selected", isSelected: true)
 
-        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+        let inserted = try await repo.insertDebugRowIfMissing(id: "debug-canned", selectable: true) { shouldSelect in
             self.makeRecord(
                 id: "debug-canned",
                 kind: .debug,
@@ -432,7 +432,7 @@ struct ModelConfigurationRepositoryTests {
             makeRecord(id: "native-selected", kind: .geminiNative, apiKeyRef: "kn", isSelected: true)
         )
 
-        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+        let inserted = try await repo.insertDebugRowIfMissing(id: "debug-canned", selectable: true) { shouldSelect in
             self.makeRecord(
                 id: "debug-canned",
                 kind: .debug,
@@ -453,7 +453,7 @@ struct ModelConfigurationRepositoryTests {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(makeRecord(id: "afm", kind: .appleFoundation, baseURL: nil, apiKeyRef: nil, isSelected: true))
 
-        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+        let inserted = try await repo.insertDebugRowIfMissing(id: "debug-canned", selectable: true) { shouldSelect in
             self.makeRecord(
                 id: "debug-canned",
                 kind: .debug,
@@ -468,6 +468,39 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await rawIsSelected(queue: queue, id: "afm") == true)
         #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == false)
         #expect(try await repo.selected()?.id == "afm")
+    }
+
+    /// A `selectable: false` debug row (the annotate/note providers) is never
+    /// auto-selected, even on a fresh empty table where it *could* claim the
+    /// slot. It's an alternative in the picker, not the default.
+    @Test func insertDebugRowIfMissingNeverSelectsWhenNotSelectable() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+
+        let inserted = try await repo.insertDebugRowIfMissing(id: "debug-annotate", selectable: false) { shouldSelect in
+            self.makeRecord(
+                id: "debug-annotate", kind: .debug, baseURL: nil, apiKeyRef: nil, isSelected: shouldSelect
+            )
+        }
+
+        #expect(inserted?.id == "debug-annotate")
+        #expect(try await rawIsSelected(queue: queue, id: "debug-annotate") == false)
+        #expect(try await repo.selected() == nil)
+    }
+
+    /// Existence is keyed on row `id`, so each debug row seeds independently
+    /// and a second call for the same id is a no-op (idempotent re-launch).
+    @Test func insertDebugRowIfMissingIsIdempotentPerID() async throws {
+        let (repo, _, _) = try makeRepoExposingQueue()
+        let make: @Sendable (Bool) -> ModelConfigurationRecord = { shouldSelect in
+            self.makeRecord(id: "debug-canned", kind: .debug, baseURL: nil, apiKeyRef: nil, isSelected: shouldSelect)
+        }
+
+        let first = try await repo.insertDebugRowIfMissing(id: "debug-canned", selectable: true, make: make)
+        let second = try await repo.insertDebugRowIfMissing(id: "debug-canned", selectable: true, make: make)
+
+        #expect(first?.id == "debug-canned")
+        #expect(second == nil)
+        #expect(try await repo.all().filter { $0.id == "debug-canned" }.count == 1)
     }
     #endif
 
