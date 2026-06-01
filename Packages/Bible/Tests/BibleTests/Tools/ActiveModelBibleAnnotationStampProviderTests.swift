@@ -55,6 +55,8 @@ struct ActiveModelBibleAnnotationStampProviderTests {
             id: "openai",
             models: [LLMModel(id: "gpt-4o-mini", displayName: "GPT-4o mini")]
         ))
+        // Explicit, not relying on register's first-provider auto-activation.
+        try? await registry.setActive(id: "openai")
         let provider = ActiveModelBibleAnnotationStampProvider(
             registry: registry,
             source: .userBulk
