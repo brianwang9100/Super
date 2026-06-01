@@ -251,6 +251,28 @@ struct BibleBookSheetViewModelTests {
         #expect(viewModel.isBookExpanded("1PE"))   // re-auto-expanded from scratch
     }
 
+    @Test("a unique match expands only the matched book, not the position book")
+    func uniqueMatchDoesNotDoubleExpand() {
+        // Open on John (its grid expands on open), then search for a different
+        // unique match. Only the matched book should report expanded — the
+        // position book must not render a second open grid.
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "JHN", chapterNumber: 3)
+        )
+        #expect(viewModel.isBookExpanded("JHN"))
+        viewModel.query = "Romans"
+        #expect(viewModel.isBookExpanded("ROM"))
+        #expect(viewModel.isBookExpanded("JHN") == false)
+    }
+
+    @Test("the empty-state filter reflects the book-name part of the query")
+    func bookNameFilterDropsChapter() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "Nonesuch 5"
+        #expect(viewModel.groups.isEmpty)            // nothing matches "Nonesuch"
+        #expect(viewModel.bookNameFilter == "Nonesuch")
+    }
+
     @Test("a query matching several books auto-expands none")
     func multiMatchDoesNotAutoExpand() {
         let viewModel = makeViewModel(currentPosition: nil)

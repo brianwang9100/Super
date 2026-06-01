@@ -127,6 +127,11 @@ public final class BibleBookSheetViewModel {
     /// deep-link row in place of the book list.
     public var deepLinkResult: BibleSearchResult? { parsed.resolved }
 
+    /// The book-name portion the list is actually filtered by — the whole query
+    /// unless a trailing chapter was typed (`"XYZ 5"` filters by `"XYZ"`). Drives
+    /// the empty-state copy so it names the real filter, not the raw query.
+    public var bookNameFilter: String { parsed.bookNameQuery }
+
     /// The single book the picker should auto-expand: set when the query is a
     /// book-only search that filters the list down to exactly one book, so its
     /// chapter grid opens without a tap. `nil` while a deep-link is resolved
@@ -137,12 +142,18 @@ public final class BibleBookSheetViewModel {
         return books.count == 1 ? books.first?.id : nil
     }
 
-    /// Whether `bookId`'s chapter grid should be shown — either the user's
-    /// manually expanded book or the lone search match the picker auto-expands,
-    /// unless the user has tapped to collapse that auto-expanded book.
+    /// Whether `bookId`'s chapter grid should be shown.
+    ///
+    /// Auto-expansion is *exclusive*: while the query uniquely resolves to one
+    /// book, only that book reports expanded (unless the user has tapped to
+    /// collapse it), so a different `expandedBookId` left over from the reader's
+    /// position can never render a second open grid. Without a unique match the
+    /// manual `expandedBookId` governs.
     public func isBookExpanded(_ bookId: String) -> Bool {
-        if bookId == expandedBookId { return true }
-        return bookId == autoExpandedBookId && bookId != autoCollapsedBookId
+        if let autoExpandedBookId {
+            return bookId == autoExpandedBookId && bookId != autoCollapsedBookId
+        }
+        return bookId == expandedBookId
     }
 
     /// The books to display, filtered by the query's book-name part and

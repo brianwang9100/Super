@@ -243,7 +243,7 @@ struct BibleBookSheet: View {
     }
 
     private var emptyState: some View {
-        Text("No books match \u{201C}\(viewModel.query)\u{201D}.")
+        Text("No books match \u{201C}\(viewModel.bookNameFilter)\u{201D}.")
             .font(.system(size: controlSize))
             .foregroundStyle(theme.inkFaint)
             .padding(.horizontal, 22)
