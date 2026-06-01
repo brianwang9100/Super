@@ -1,6 +1,12 @@
 import Chat
 import Core
 import Foundation
+import os
+
+/// Bootstrap-path diagnostics. File-scoped so the static helpers below and
+/// any future bootstrap telemetry share one `Logger` under the
+/// `app-bootstrap` category.
+private let bootstrapLog = Logger(subsystem: "com.brianwang.Super", category: "app-bootstrap")
 
 /// Bootstrap utilities shared by both `SuperOSAppBootstrap` and
 /// `SuperBibleAppBootstrap`. The applet roster and per-applet briefing
@@ -106,6 +112,28 @@ enum AppBootstrapSupport {
                     toolRegistry: toolRegistry
                 )
                 await registry.register(provider)
+            case .anthropicNative, .geminiNative, .openAIResponses:
+                // Native-search adapters land in a later PR; until then no
+                // persisted row *should* carry a native `kind` (the Add-Model
+                // native-search option ships with the adapters), so skip.
+                // (`continue` here vs. `break` in `SettingsViewModel`'s
+                // non-looping `registerProvider` switch — same intent:
+                // register nothing for this row.)
+                //
+                // This invariant is unguarded at the schema level. A DB
+                // written by a *future* binary (or synced from one) could
+                // carry a native-kind row. If it's also the selected row,
+                // `selected()` filters it out (native kinds lack a buildable
+                // adapter, so `buildableKindRequest` excludes them), so the
+                // `setActive` below never sees a native id and the
+                // first-registered fallback takes over cleanly. Log here
+                // anyway so the hydration skip is diagnosable in the field
+                // rather than presenting as a mute "no model configured".
+                // When the adapters land, this arm must construct the real
+                // provider atomically in the same PR as the Add-Model native
+                // option.
+                bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
+                continue
             #if DEBUG
             case .debug:
                 await registry.register(DebugLLMProvider(id: record.id))
@@ -114,11 +142,21 @@ enum AppBootstrapSupport {
         }
 
         if let selectedId = try await repository.selected()?.id {
-            // The only failure mode is `unknownProvider`, which can only
-            // happen if the selected row's kind was unavailable (AFM on
-            // an ineligible device) and skipped above. The
-            // first-registered fallback (or "no provider" empty state)
-            // is the right behavior in that case.
+            // `setActive` throws `unknownProvider` when the selected row was
+            // skipped above and never registered. The one path that reaches
+            // here is an `.appleFoundation` row on an AFM-ineligible device:
+            // AFM has a buildable adapter, so `selected()`'s
+            // `buildableKindRequest` still returns it even though the loop
+            // above skipped registration. The first-registered fallback (or
+            // the "no provider" empty state) is the right behavior, so the
+            // throw is swallowed.
+            //
+            // Native-kind rows do NOT reach here: `selected()` excludes them
+            // (native kinds lack `hasProviderAdapter`, so
+            // `buildableKindRequest` filters them out), so a native-only
+            // selection returns nil / the next buildable row rather than a
+            // native id. The hydration-loop skip is still logged above for
+            // field diagnosability.
             try? await registry.setActive(id: selectedId)
         }
     }

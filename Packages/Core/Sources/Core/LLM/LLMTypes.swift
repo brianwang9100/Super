@@ -83,6 +83,20 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// Groq, Ollama, MLX, LM Studio, llama.cpp). Requires `baseURL` and
     /// optionally `apiKeyRef`.
     case openAICompatible
+    /// Native Anthropic Messages API (`/v1/messages`) adapter. Selected at
+    /// add-time when a model opts into native web search; the OpenAI-compat
+    /// shim can't carry Anthropic's `web_search` server tool or citations.
+    /// The adapter itself lands in a later PR — see the native-web-search
+    /// design spec.
+    case anthropicNative
+    /// Native Gemini `generateContent` adapter (`google_search` grounding).
+    /// Distinct from the `.openAICompatible` Google shim. Adapter lands in
+    /// a later PR.
+    case geminiNative
+    /// Native OpenAI Responses API (`/v1/responses`) adapter (`web_search`
+    /// tool + `url_citation` annotations). Distinct from the
+    /// `.openAICompatible` Chat Completions path. Adapter lands in a later PR.
+    case openAIResponses
     #if DEBUG
     /// Development-only fake provider that streams canned markdown
     /// responses with randomized delays. Used to exercise the streaming
@@ -92,6 +106,34 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// seed/registration call sites compile into Release builds.
     case debug
     #endif
+
+    /// Whether the running binary can construct a live `LLMProvider` for
+    /// this kind. `true` for kinds with a shipped adapter
+    /// (`.openAICompatible`, `.appleFoundation`, and `.debug` in DEBUG);
+    /// **`false` for the native-search kinds until their adapters ship** —
+    /// the catalog already advertises `nativeSearchAdapter`, and a row can
+    /// carry a native `kind` before the adapter exists, so callers gate on
+    /// this rather than assuming every persisted kind is buildable.
+    ///
+    /// Distinct from "is this kind decodable in this binary" (which the
+    /// repository's `knownKindRequest` covers): a native kind decodes fine
+    /// but has no provider to register, so a row carrying it must not claim
+    /// the active-provider slot (`selected()`), must not trigger an
+    /// unregister-without-re-register on edit, and must not be classified by
+    /// URL in the edit pane. Flip the relevant arm to `true` in the PR that
+    /// lands that adapter.
+    public var hasProviderAdapter: Bool {
+        switch self {
+        case .openAICompatible, .appleFoundation:
+            return true
+        case .anthropicNative, .geminiNative, .openAIResponses:
+            return false
+        #if DEBUG
+        case .debug:
+            return true
+        #endif
+        }
+    }
 }
 
 /// Persisted user-facing configuration for a model + endpoint + key triple.
@@ -112,6 +154,11 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
     public let modelID: String
     public let supportsThinking: Bool
     public let maxContextTokens: Int
+    /// Selected web-search engine for this model: `"native"` (the
+    /// provider's own server-side search, requires a native `kind`), a
+    /// standalone search-provider id, or `nil` for no web search. Drives
+    /// provider hydration and the per-turn tool wiring in later PRs.
+    public let searchBackend: String?
 
     public init(
         id: String,
@@ -121,7 +168,8 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
         apiKeyRef: String?,
         modelID: String,
         supportsThinking: Bool = false,
-        maxContextTokens: Int = 8_192
+        maxContextTokens: Int = 8_192,
+        searchBackend: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -131,6 +179,7 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
         self.modelID = modelID
         self.supportsThinking = supportsThinking
         self.maxContextTokens = maxContextTokens
+        self.searchBackend = searchBackend
     }
 }
 

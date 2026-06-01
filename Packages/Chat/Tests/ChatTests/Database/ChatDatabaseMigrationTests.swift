@@ -188,7 +188,7 @@ struct ChatDatabaseMigrationTests {
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v5_conversationKind`) via
+    /// (currently through `v6_searchBackend`) via
     /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
     /// DEFAULT expressions that the targeted PRAGMA assertions don't
     /// cover. Snapshot files land under
@@ -299,5 +299,85 @@ struct ChatDatabaseMigrationTests {
             """)
         }
         #expect(kinds == ["openAICompatible"])
+    }
+
+    /// `v6_searchBackend` adds a nullable `searchBackend` column without a
+    /// table rebuild, so the partial unique index survives untouched.
+    @Test func v6AddsNullableSearchBackendColumn() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(modelConfiguration)")
+                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
+        #expect(lookup["searchBackend"]?.0 == "TEXT")
+        #expect(lookup["searchBackend"]?.1 == 0)   // nullable
+
+        let indexNames = try await db.queue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name FROM sqlite_master
+                WHERE type='index' AND tbl_name='modelConfiguration'
+            """)
+        }
+        #expect(indexNames.contains("modelConfiguration_unique_selected"))
+    }
+
+    /// Rows that existed before v6 migrate to `searchBackend = NULL` (no
+    /// web search). Stop at v5, seed a row whose schema lacks the column,
+    /// apply v6, assert the migrated value.
+    @Test func v6BackfillsExistingRowsAsNullSearchBackend() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+
+        try migrator.migrate(queue, upTo: "v5_conversationKind")
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, kind, name, baseURL, apiKeyRef, modelId,
+                     supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('legacy', 'openAICompatible', 'Pre-v6',
+                     'https://api.example.com/v1', 'ref-1', 'gpt', 0, 16000, 0,
+                     '2026-01-01 00:00:00')
+            """)
+        }
+
+        try migrator.migrate(queue)
+
+        let backends = try await queue.read { db in
+            try Optional<String>.fetchAll(db, sql: """
+                SELECT searchBackend FROM modelConfiguration ORDER BY id
+            """)
+        }
+        #expect(backends == [nil])
+    }
+
+    /// `searchBackend` round-trips through `ModelConfigurationRecord`'s
+    /// Codable mapping — both a set value and the nil default persist and
+    /// re-fetch unchanged.
+    @Test func searchBackendRoundTripsThroughRecord() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let url = URL(string: "https://example.com/v1")!
+
+        try await db.queue.write { db in
+            try ModelConfigurationRecord(
+                id: "native", name: "N", baseURL: url, apiKeyRef: "k1",
+                modelId: "m", createdAt: now, searchBackend: "native"
+            ).insert(db)
+            try ModelConfigurationRecord(
+                id: "none", name: "X", baseURL: url, apiKeyRef: "k2",
+                modelId: "m", createdAt: now
+            ).insert(db)
+        }
+
+        let fetched = try await db.queue.read { db in
+            try ModelConfigurationRecord
+                .order(Column("id"))
+                .fetchAll(db)
+        }
+        // Ordered by id ascending: "native" sorts before "none".
+        #expect(fetched.map(\.searchBackend) == ["native", nil])
     }
 }

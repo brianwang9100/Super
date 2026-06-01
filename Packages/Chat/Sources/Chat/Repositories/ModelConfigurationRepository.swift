@@ -6,6 +6,12 @@ import GRDB
 public enum ModelConfigurationRepositoryError: Error, Sendable, Equatable {
     /// `setSelected(id:)` referenced a row that doesn't exist.
     case unknownModel(id: String)
+    /// `setSelected(id:)` referenced a row whose `kind` the running binary
+    /// can't build a provider for (a native-search kind with no shipped
+    /// adapter). Selecting it would demote every other row and then make
+    /// `selected()` return nil — leaving no active model. The repository
+    /// refuses instead of wedging the app.
+    case unselectableKind(id: String, kind: String)
 }
 
 /// Persistence boundary for `ModelConfigurationRecord` plus the matching
@@ -89,7 +95,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func selected() async throws -> ModelConfigurationRecord? {
         try await queue.read { db in
-            try Self.knownKindRequest
+            try Self.buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchOne(db)
         }
@@ -105,9 +111,32 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// the host bootstrap. Rows with an unknown `kind` value are silently
     /// excluded from every read; the unreferenced row stays on disk
     /// unless a future migration cleans it up.
+    /// Raw values of every known kind, and of the buildable subset. Both
+    /// sets are fixed at compile time (driven by `LLMProviderKind.allCases`
+    /// + `hasProviderAdapter`), so they're computed once rather than on each
+    /// request build — `selected()` runs on every app launch and selection
+    /// change.
+    private static let knownKindRawValues: [String] =
+        LLMProviderKind.allCases.map(\.rawValue)
+    private static let buildableKindRawValues: [String] =
+        LLMProviderKind.allCases.filter { $0.hasProviderAdapter }.map(\.rawValue)
+
     private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
-        let kinds = LLMProviderKind.allCases.map(\.rawValue)
-        return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
+        ModelConfigurationRecord.filter(knownKindRawValues.contains(Column("kind")))
+    }
+
+    /// Like `knownKindRequest`, but further restricted to kinds the running
+    /// binary can actually build a provider for (`hasProviderAdapter`). The
+    /// native-search kinds (`.anthropicNative` etc.) decode fine but have no
+    /// adapter yet, so a row carrying one must not be returned as the
+    /// `selected()` model: hydration would skip it, `setActive` would throw
+    /// `unknownProvider`, the throw would be swallowed, and the registry
+    /// would be left with no active provider. Filtering them out of
+    /// `selected()` instead lets the first-registered fallback fire cleanly.
+    /// `all()`/`fetch(id:)` keep using `knownKindRequest` so such a row is
+    /// still visible/editable in the Models list — it just can't be active.
+    private static var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
+        ModelConfigurationRecord.filter(buildableKindRawValues.contains(Column("kind")))
     }
 
     public func save(_ record: ModelConfigurationRecord) async throws {
@@ -120,43 +149,48 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
         try await queue.write { db in
-            // Empty-check must match the read filter — otherwise a row
-            // with a `kind` value the binary doesn't recognise (e.g. a
-            // leftover DEBUG `kind = "debug"` row) makes the table look
-            // non-empty to a Release build, the AFM seed silently
-            // no-ops, and `hydrateProviders` ends up with an empty
-            // registry. Counting through `knownKindRequest` keeps the
-            // empty-check and the subsequent `all()` reads consistent.
-            let count = try Self.knownKindRequest.fetchCount(db)
+            // Empty-check must match what `selected()` can actually surface
+            // as the active model — otherwise a row the binary can't build a
+            // provider for makes the table look non-empty, the AFM seed
+            // silently no-ops, and `hydrateProviders` ends up with an empty
+            // registry. Counting through `buildableKindRequest` (the same
+            // filter `selected()` uses) excludes both unrecognised `kind`
+            // values (e.g. a leftover DEBUG `kind = "debug"` row in a Release
+            // build) and known-but-unbuildable native-search kinds — so a DB
+            // carrying only a native-kind row still seeds AFM and the user
+            // keeps a recoverable model.
+            let count = try Self.buildableKindRequest.fetchCount(db)
             guard count == 0 else { return nil }
             let record = make()
             // Before inserting a row with `isSelected = 1`, demote any
-            // unknown-kind row holding the selection slot. The schema's
-            // partial unique index (`WHERE isSelected = 1`) doesn't know
-            // about `kind`, so without the demote the insert would
-            // UNIQUE-violate when an older binary downgrades into a DB
-            // where a newer binary's row sits selected. Demoting is
-            // safe — `selected()` filters unknown-kind rows out, so the
-            // user can't reach that row anyway.
+            // unselectable row holding the selection slot (unknown-kind or
+            // native-kind). The schema's partial unique index
+            // (`WHERE isSelected = 1`) doesn't know about `kind`, so without
+            // the demote the insert would UNIQUE-violate when a newer binary
+            // left a selected row this build can't surface. Demoting is
+            // safe — `selected()` filters those rows out, so the user can't
+            // reach them as the active model anyway.
             if record.isSelected {
-                try Self.demoteUnknownKindSelections(db: db)
+                try Self.demoteUnselectableSelections(db: db)
             }
             try record.insert(db)
             return record
         }
     }
 
-    /// Clear `isSelected` on any row whose `kind` value isn't a known
-    /// case in the running binary. The partial unique index on
-    /// `isSelected = 1` ignores `kind`, so before inserting a new
-    /// selected row we have to free up the slot or risk a UNIQUE
-    /// violation. Demoting an unknown-kind row is benign because
-    /// `selected()` filters those rows out anyway — the user has no
-    /// path to interact with them from this binary.
-    private static func demoteUnknownKindSelections(db: Database) throws {
-        let kinds = LLMProviderKind.allCases.map(\.rawValue)
+    /// Clear `isSelected` on any selected row the running binary can't
+    /// surface as the active model — i.e. any row whose `kind` is *not*
+    /// buildable (`buildableKindRawValues`). That covers two cases: a
+    /// truly-unknown `kind` from a newer binary, and a known-but-not-yet-
+    /// buildable native-search kind (`.anthropicNative` etc.). The partial
+    /// unique index on `isSelected = 1` ignores `kind`, so before inserting
+    /// a new selected row we have to free up the slot or risk a UNIQUE
+    /// violation. Demoting is benign because `selected()` filters these
+    /// rows out anyway (it also runs through `buildableKindRequest`), so the
+    /// user has no path to reach them as the active model from this binary.
+    private static func demoteUnselectableSelections(db: Database) throws {
         try ModelConfigurationRecord
-            .filter(!kinds.contains(Column("kind")))
+            .filter(!buildableKindRawValues.contains(Column("kind")))
             .filter(Column("isSelected") == true)
             .updateAll(db, Column("isSelected").set(to: false))
     }
@@ -192,8 +226,20 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func setSelected(id: String) async throws {
         try await queue.write { db in
-            guard try ModelConfigurationRecord.fetchOne(db, key: id) != nil else {
+            guard let record = try ModelConfigurationRecord.fetchOne(db, key: id) else {
                 throw ModelConfigurationRepositoryError.unknownModel(id: id)
+            }
+            // Refuse to select a row this binary can't surface as the active
+            // model. `selected()` filters non-buildable kinds (the native-
+            // search kinds) through `buildableKindRequest`, so selecting one
+            // here would demote every other row and then yield nil from
+            // `selected()` — no active model, no error. Guard before the
+            // demote so the prior selection is left intact. Consistent with
+            // the seed paths' buildable-kind checks.
+            guard record.kind.hasProviderAdapter else {
+                throw ModelConfigurationRepositoryError.unselectableKind(
+                    id: id, kind: record.kind.rawValue
+                )
             }
             try ModelConfigurationRecord
                 .filter(Column("isSelected") == true)
@@ -233,23 +279,23 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
                 .filter(Column("kind") == LLMProviderKind.debug.rawValue)
                 .fetchCount(db) > 0
             guard !alreadyHasDebug else { return nil }
-            // `shouldSelect` matches what `selected()` would report —
-            // only a row whose `kind` the binary recognises counts as
-            // "the active model" from the user's perspective. An
-            // unknown-kind row holding the slot is unusable to this
-            // binary and shouldn't keep the seed from claiming
-            // selection.
-            let hasKnownSelected = try Self.knownKindRequest
+            // `shouldSelect` matches what `selected()` would report — only a
+            // row this binary can build a provider for counts as "the active
+            // model" from the user's perspective. A row the binary can't
+            // surface (an unknown `kind`, or a known-but-unbuildable
+            // native-search kind) is unusable here and shouldn't keep the
+            // seed from claiming selection. Filter through `buildableKindRequest`
+            // so this stays consistent with `selected()`.
+            let hasBuildableSelected = try Self.buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchCount(db) > 0
-            let shouldSelect = !hasKnownSelected
-            // Demote any unknown-kind selected row before inserting our
-            // own — the schema's partial unique index spans every row
-            // regardless of `kind`, so without this an unknown-kind
-            // selected row from a newer binary would UNIQUE-violate the
-            // debug row's insert.
+            let shouldSelect = !hasBuildableSelected
+            // Demote any unselectable selected row before inserting our own —
+            // the schema's partial unique index spans every row regardless of
+            // `kind`, so without this an unknown- or native-kind selected row
+            // from a newer binary would UNIQUE-violate the debug row's insert.
             if shouldSelect {
-                try Self.demoteUnknownKindSelections(db: db)
+                try Self.demoteUnselectableSelections(db: db)
             }
             let record = make(shouldSelect)
             try record.insert(db)

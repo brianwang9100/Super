@@ -91,6 +91,59 @@ struct SettingsModelDetailPaneCatalogTests {
         }
     }
 
+    // MARK: - Native web-search adapters
+
+    @Test("Native-search providers map to the right adapter kind + base URL")
+    func nativeSearchAdaptersMatchExpectations() throws {
+        let openai = try #require(LLMProviderCatalog.entry(forID: "openai"))
+        #expect(openai.nativeSearchAdapter == .openAIResponses)
+        #expect(openai.nativeSearchBaseURL?.absoluteString == "https://api.openai.com/v1")
+        #expect(openai.supportsNativeSearch)
+
+        let anthropic = try #require(LLMProviderCatalog.entry(forID: "anthropic"))
+        #expect(anthropic.nativeSearchAdapter == .anthropicNative)
+        #expect(anthropic.nativeSearchBaseURL?.absoluteString == "https://api.anthropic.com/v1")
+        #expect(anthropic.supportsNativeSearch)
+
+        let google = try #require(LLMProviderCatalog.entry(forID: "google"))
+        #expect(google.nativeSearchAdapter == .geminiNative)
+        #expect(google.nativeSearchBaseURL?.absoluteString == "https://generativelanguage.googleapis.com/v1beta")
+        #expect(google.supportsNativeSearch)
+    }
+
+    /// The OpenAI compat (`defaultBaseURL`) and native (`nativeSearchBaseURL`)
+    /// base URLs are byte-identical — both are `https://api.openai.com/v1`.
+    /// That collision is the whole reason `resolveEditProvider` classifies
+    /// `.openAIResponses` rows by kind before URL-matching. Pin the equality
+    /// so a future edit that diverges one constant (and would quietly defuse
+    /// the collision the kind-first guard exists to handle) trips here and
+    /// forces the §11a PR3a note to be revisited.
+    @Test("OpenAI compat and native base URLs are intentionally identical")
+    func openAICompatAndNativeBaseURLsCollide() throws {
+        let openai = try #require(LLMProviderCatalog.entry(forID: "openai"))
+        #expect(openai.defaultBaseURL == openai.nativeSearchBaseURL)
+    }
+
+    @Test("Providers without a native adapter expose nil + supportsNativeSearch == false")
+    func providersWithoutNativeSearch() {
+        for id in [LLMProviderCatalog.appleProviderID, "xai", LLMProviderCatalog.customProviderID] {
+            let entry = LLMProviderCatalog.entry(forID: id)
+            #expect(entry?.nativeSearchAdapter == nil, "\(id) should have no native adapter")
+            #expect(entry?.nativeSearchBaseURL == nil, "\(id) should have no native base URL")
+            #expect(entry?.supportsNativeSearch == false, "\(id) should not support native search")
+        }
+    }
+
+    @Test("nativeSearchBaseURL is non-nil exactly when nativeSearchAdapter is")
+    func nativeSearchFieldsArePaired() {
+        for entry in LLMProviderCatalog.all {
+            #expect(
+                (entry.nativeSearchAdapter == nil) == (entry.nativeSearchBaseURL == nil),
+                "provider \(entry.id): adapter/baseURL nullability must agree"
+            )
+        }
+    }
+
     // MARK: - Lookup helpers
 
     @Test("entry(forID:) returns the matching provider")
@@ -142,6 +195,86 @@ struct SettingsModelDetailPaneCatalogTests {
         // Two nils match; one-side-nil does not.
         #expect(SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(nil, nil))
         #expect(!SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(canonical, nil))
+    }
+
+    // MARK: - Edit-mode provider resolution
+
+    @Test("resolveEditProvider classifies a native-kind row by kind, not URL")
+    func resolveEditProviderNativeKindByKind() {
+        // An `.openAIResponses` row's baseURL (api.openai.com/v1) is
+        // byte-identical to the OpenAI compat entry's defaultBaseURL. A
+        // URL-first match would misfile it as the "openai" compat provider
+        // and open compat-edit mode. The kind-first guard must resolve it to
+        // Custom (fully editable, never URL-reclassified) until the native
+        // edit UI ships.
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAIResponses,
+            modelId: "gpt-5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.customProviderID)
+        #expect(resolved.catalogID == "")
+    }
+
+    /// PR3a tripwire. The `!kind.hasProviderAdapter` short-circuit is the
+    /// only thing keeping an `.openAIResponses` row off the compat "openai"
+    /// entry today (they share `https://api.openai.com/v1`). When PR3a flips
+    /// `.openAIResponses.hasProviderAdapter` to `true`, that short-circuit
+    /// lifts and the URL-match branch runs — and unless PR3a *also* adds an
+    /// explicit native-kind dispatch, it will re-match "openai". This
+    /// invariant ("an `.openAIResponses` row never resolves to the compat
+    /// 'openai' provider") holds now (it resolves to Custom) and must keep
+    /// holding after PR3a (it should resolve to a dedicated native entry).
+    /// The ONLY way it resolves to "openai" is the regression — so this test
+    /// goes red the moment the flag flips without the dispatch fix, mechanically
+    /// forcing PR3a to address it rather than relying on the §11a prose.
+    @Test("resolveEditProvider never resolves an .openAIResponses row to the compat openai entry")
+    func resolveEditProviderNeverMisfilesOpenAIResponsesToCompat() {
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAIResponses,
+            modelId: "gpt-5.5",                                   // a real openai catalog id
+            baseURL: URL(string: "https://api.openai.com/v1")    // URL-matches the compat entry
+        )
+        #expect(resolved.providerID != "openai")
+    }
+
+    @Test("resolveEditProvider keeps the compat URL-match for an .openAICompatible row")
+    func resolveEditProviderCompatStillMatchesByURL() {
+        // The same wire id + the catalog base URL on an .openAICompatible
+        // row must still resolve to the built-in provider — the kind-first
+        // guard only diverts the native kinds.
+        let entry = LLMProviderCatalog.entry(forID: "openai")
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAICompatible,
+            modelId: "gpt-5.5",
+            baseURL: entry?.defaultBaseURL
+        )
+        #expect(resolved.providerID == "openai")
+        #expect(resolved.catalogID == "gpt-5.5")
+    }
+
+    @Test("resolveEditProvider resolves an .appleFoundation row by kind")
+    func resolveEditProviderApple() {
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .appleFoundation,
+            modelId: "legacy-afm-id",   // off-catalog id still maps to Apple
+            baseURL: nil
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.appleProviderID)
+        #expect(resolved.catalogID == "system-default")
+    }
+
+    @Test("resolveEditProvider falls back to Custom for an off-catalog compat row")
+    func resolveEditProviderCustomFallback() {
+        // A catalog wire id pointed at a user's own proxy must stay Custom so
+        // Save doesn't re-URL it to the catalog default.
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAICompatible,
+            modelId: "gpt-5.5",
+            baseURL: URL(string: "https://my-proxy.local/v1")
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.customProviderID)
+        #expect(resolved.catalogID == "")
     }
 
     // MARK: - Create-flow seeds
