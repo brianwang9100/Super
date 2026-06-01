@@ -213,7 +213,13 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("chapterNumber", .integer)
             t.column("verseStart", .integer)
             t.column("verseEnd", .integer)
-            t.column("category", .integer).notNull()
+            // CHECK guards the `BibleAnnotationCategory` raw-value range:
+            // an out-of-range integer (a corrupt write, a direct DB edit, a
+            // future sync payload from a newer build) is rejected at insert
+            // time rather than throwing in GRDB's row decoder on read — where
+            // `@Query` would swallow it as `defaultValue: []` and blank every
+            // card. Widen this bound in lockstep when a category is added.
+            t.column("category", .integer).notNull().check { $0 >= 1 && $0 <= 5 }
             t.column("title", .text).notNull()
             t.column("body", .text).notNull()
             t.column("source", .text).notNull()

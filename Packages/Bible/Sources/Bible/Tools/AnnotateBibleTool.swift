@@ -157,7 +157,12 @@ public struct AnnotateBibleTool: ToolExecutor {
 
         let stamp = stampProvider.stamp()
         let now = clock.now()
-        let records = parsed.entries.map { entry in
+        // Stamp each entry 1 ms apart in emission order. `createdAt` is the
+        // secondary sort key after `category`, so same-category siblings
+        // (e.g. several `reference` cards) keep the order the LLM produced
+        // them in rather than tie-breaking on their random UUID `id` — which
+        // would re-shuffle on every regeneration.
+        let records = parsed.entries.enumerated().map { index, entry in
             BibleAnnotationRecord(
                 id: ids.nextID(),
                 target: parsed.target,
@@ -170,7 +175,7 @@ public struct AnnotateBibleTool: ToolExecutor {
                 body: entry.body,
                 source: stamp.source,
                 modelId: stamp.modelId,
-                createdAt: now
+                createdAt: now.addingTimeInterval(Double(index) * 0.001)
             )
         }
 
@@ -287,7 +292,8 @@ public struct AnnotateBibleTool: ToolExecutor {
         }
         let categoryRaw = try requireString(fields, key: "category", context: "entries[\(index)]")
         guard let category = BibleAnnotationCategory(toolToken: categoryRaw) else {
-            throw ValidationError(message: "entries[\(index)] has unknown category '\(categoryRaw)'. Use 'author', 'summary', 'historical', 'clarification', or 'reference'.")
+            let valid = BibleAnnotationCategory.allCases.map { "'\($0.toolToken)'" }.joined(separator: ", ")
+            throw ValidationError(message: "entries[\(index)] has unknown category '\(categoryRaw)'. Use one of: \(valid).")
         }
         let title = try requireString(fields, key: "title", context: "entries[\(index)]")
         let body = try requireString(fields, key: "body", context: "entries[\(index)]")

@@ -82,6 +82,34 @@ struct BibleDatabaseTests {
         #expect(categoryColumn?.type.uppercased() == "INTEGER")
     }
 
+    @Test("v5 CHECK rejects a category outside the 1...5 range")
+    func v5CategoryCheckConstraint() throws {
+        let database = try BibleDatabase.makeInMemory()
+        // Raw inserts bypass the Swift enum, which is the only way an
+        // out-of-range value could reach the column. A valid category
+        // inserts; an out-of-range one is rejected at write time by the
+        // CHECK rather than corrupting the read path.
+        func insert(category: Int) throws {
+            try database.queue.write { db in
+                try db.execute(
+                    sql: """
+                    INSERT INTO bibleAnnotation
+                    (id, target, bookId, category, title, body, source, modelId, createdAt)
+                    VALUES (?, 'book', 'ROM', ?, 't', 'b', 'user', 'm', '2026-01-01 00:00:00.000')
+                    """,
+                    arguments: ["row-\(category)", category]
+                )
+            }
+        }
+        try insert(category: 5)                       // in range — succeeds
+        #expect(throws: (any Error).self) {
+            try insert(category: 6)                    // out of range — rejected
+        }
+        #expect(throws: (any Error).self) {
+            try insert(category: 0)
+        }
+    }
+
     @Test("v3 indexes the annotation table for chapter and book lookups")
     func v3CreatesAnnotationIndexes() throws {
         let database = try BibleDatabase.makeInMemory()
