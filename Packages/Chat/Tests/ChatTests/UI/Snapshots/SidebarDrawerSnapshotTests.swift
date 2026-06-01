@@ -164,7 +164,7 @@ struct SidebarDrawerSnapshotTests {
     /// default content-size category, so they're byte-identical.)
     @Test("font scale max — drawer chrome stays fixed under max slider")
     func fontScaleMaxChromeFixed() {
-        verifyFontScaleMax(theme: .light, baseline: "sidebar_open_populated_light", baselineFunction: "openPopulated")
+        verifyFontScaleMax(theme: .light, baseline: "sidebar_open_populated_light", baselineFunction: "openPopulatedLight")
     }
 
     /// Dark-theme counterpart to ``fontScaleMaxChromeFixed`` — completes the
