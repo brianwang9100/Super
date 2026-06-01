@@ -269,9 +269,10 @@ struct AppShell: View {
                 }
             )
         }
-        // Settings presents as a native `.sheet` at the `.large` detent. The
-        // drag-down dismiss path only flips `settingsOpen`, so the nav-stack
-        // reset that the close button does inline runs here via `onDismiss`.
+        // Settings presents as a native `.sheet` at the `.large` detent. Both
+        // dismiss paths — the close button and a drag-down — only flip
+        // `settingsOpen`, so `onDismiss` is the single site that resets the
+        // nav stack to root, after the dismiss animation finishes.
         .sheet(isPresented: $settingsOpen, onDismiss: { settingsViewModel?.popToRoot() }) {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
