@@ -79,6 +79,7 @@ public struct ActiveModelBibleAnnotationStampProvider: BibleAnnotationStampProvi
         // seam) — a larger refactor we've chosen not to take on for a
         // provenance label. If one side ever stops using `.first` (e.g. real
         // multi-model providers), update both together or they drift.
+        // Tracked as a follow-up in #143.
         let modelId = await registry.active()?.supportedModels.first?.id ?? ""
         return BibleAnnotationStamp(source: source, modelId: modelId)
     }

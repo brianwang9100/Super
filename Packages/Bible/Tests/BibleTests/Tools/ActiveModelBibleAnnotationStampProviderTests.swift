@@ -15,6 +15,8 @@ struct ActiveModelBibleAnnotationStampProviderTests {
             id: "gemini",
             models: [LLMModel(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash")]
         ))
+        // Explicit, not relying on register's first-provider auto-activation.
+        try? await registry.setActive(id: "gemini")
         let provider = ActiveModelBibleAnnotationStampProvider(registry: registry)
 
         let stamp = await provider.stamp()
