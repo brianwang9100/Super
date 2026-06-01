@@ -129,6 +129,48 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 120, outputTokens: 40)))
     }
 
+    @Test func searchStartedCarriesQueryFromItemEvenWithoutProgressEvents() async throws {
+        // The query lives on the `web_search_call` item, not the
+        // `in_progress`/`searching` events. `.searchStarted` must fire with the
+        // query from `output_item.added` alone, so a stream that omits (or
+        // reorders) the progress events can't lock in an empty query.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-search-itemonly"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")],
+            model: model, tools: [LLMTool.nativeSearchSentinel], temperature: 0.5
+        ))
+        let starts = events.filter { if case .searchStarted = $0 { return true } else { return false } }
+        #expect(starts == [.searchStarted(query: "who won the 2026 world cup")])
+    }
+
+    @Test func transportErrorWithPartialToolCallDoesNotEmitASpuriousDecodingError() async throws {
+        // A `function_call` whose argument deltas are mid-stream when the
+        // transport drops: the flush must not parse the incomplete JSON and
+        // append a `.decodingFailed` after the real error — `ChatSession`
+        // keeps the last `.error`, so that would mask the network failure.
+        let partial = """
+        event: response.created
+        data: {"type":"response.created","response":{"id":"resp_x","model":"gpt-5.1"}}
+
+        event: response.output_item.added
+        data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_x"}}
+
+        event: response.function_call_arguments.delta
+        data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\\"partial\\":"}
+
+        """
+        let http = FakeHTTPClient(chunks: [Data(partial.utf8)], error: HTTPError.badStatus(503))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        let errors = events.compactMap { event -> LLMError? in
+            if case .error(let e) = event { return e } else { return nil }
+        }
+        // Exactly one error — the transport 503 — and no decoding artifact.
+        #expect(errors == [.providerError(code: "503", message: "HTTP 503")])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+    }
+
     @Test func toolCallFixtureAccumulatesArgumentsAndEmitsToolUse() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-toolcall"))
         let events = try await collect(makeProvider(http: http).stream(

@@ -33,6 +33,14 @@ struct OpenAIResponsesStreamReducer {
     private var emittedSearchStarted = false
     private var pendingSearchQuery: String?
 
+    /// Set once any `.error` has been emitted (an SSE `response.error`, or the
+    /// provider's thrown-error path via `markErrored()`). Suppresses the
+    /// tool-call flush in `closeOut()` so a half-streamed `function_call`'s
+    /// unparseable arguments don't tack a spurious `.decodingFailed` on *after*
+    /// the meaningful transport error — `ChatSession` keeps the last `.error`,
+    /// so the decode failure would otherwise mask the real cause.
+    private var hadError = false
+
     /// Per-citation ordinal so each `SourceCitation.id` is unique even when
     /// two annotations point at the same URL within one turn (the persisted
     /// set is later deduped on URL by `ChatSession`).
@@ -62,6 +70,13 @@ struct OpenAIResponsesStreamReducer {
                     if let query = item.action?.query, !query.isEmpty {
                         pendingSearchQuery = query
                     }
+                    // Emit `.searchStarted` here, where the query is available
+                    // on the item, rather than relying on the later
+                    // `in_progress`/`searching` events — those may (per proxy
+                    // or load) arrive before this item, and emitting there
+                    // would lock in an empty query that can't be corrected.
+                    ensureMessageStart(into: &events)
+                    emitSearchStartedIfNeeded(into: &events)
                 case "function_call":
                     if let id = item.id {
                         toolBuilders[id] = ToolCallBuilder(
@@ -76,11 +91,11 @@ struct OpenAIResponsesStreamReducer {
             }
 
         case "response.web_search_call.in_progress", "response.web_search_call.searching":
+            // Fallback trigger: normally `output_item.added` already emitted
+            // `.searchStarted` (with the query); this covers a stream that
+            // surfaces progress without a preceding item.
             ensureMessageStart(into: &events)
-            if !emittedSearchStarted {
-                events.append(.searchStarted(query: pendingSearchQuery ?? ""))
-                emittedSearchStarted = true
-            }
+            emitSearchStartedIfNeeded(into: &events)
 
         case "response.output_text.delta":
             if let delta = event.delta, !delta.isEmpty {
@@ -103,6 +118,12 @@ struct OpenAIResponsesStreamReducer {
             }
 
         case "response.output_text.annotation.added":
+            // NOTE: the Responses API interleaves annotations with text
+            // deltas, so `.citations` is emitted while the text block is still
+            // open (no `contentBlockStop` yet) — a deliberate divergence from
+            // `OpenAIStreamReducer`, which never interleaves events with a live
+            // block. Safe because `ChatSession` accumulates citations in a
+            // parallel buffer keyed off `.messageComplete`, not block spans.
             if let annotation = event.annotation,
                annotation.type == "url_citation",
                let url = annotation.url {
@@ -133,6 +154,7 @@ struct OpenAIResponsesStreamReducer {
             // before any content (e.g. an auth/rate-limit rejection from the
             // routing layer before a response object exists).
             ensureMessageStart(into: &events)
+            hadError = true
             events.append(.error(.providerError(
                 code: event.code ?? "error",
                 message: event.message ?? "OpenAI Responses stream error"
@@ -164,6 +186,23 @@ struct OpenAIResponsesStreamReducer {
         var events: [LLMStreamEvent] = []
         ensureMessageStart(into: &events)
         return events
+    }
+
+    /// Record that the provider already surfaced an error (its thrown-error
+    /// catch path). Suppresses the tool-call flush in the subsequent
+    /// `finish()` so a half-streamed `function_call` can't append a misleading
+    /// `.decodingFailed` after the real transport error.
+    mutating func markErrored() {
+        hadError = true
+    }
+
+    /// Emit `.searchStarted` once per turn with whatever query is known so
+    /// far. Idempotent; both the `web_search_call` item and the
+    /// `in_progress`/`searching` events route through here.
+    private mutating func emitSearchStartedIfNeeded(into events: inout [LLMStreamEvent]) {
+        guard !emittedSearchStarted else { return }
+        events.append(.searchStarted(query: pendingSearchQuery ?? ""))
+        emittedSearchStarted = true
     }
 
     /// Emit close events + `.messageComplete` exactly once. Both the
@@ -227,6 +266,15 @@ struct OpenAIResponsesStreamReducer {
     /// turn's tool result correlates back to it.
     private mutating func flushToolCalls() -> [LLMStreamEvent] {
         guard !toolBuilders.isEmpty else { return [] }
+        // After an error, drop partial tool calls silently — their arguments
+        // are mid-stream and "fail" to parse, but that decode failure is an
+        // artifact of the interrupted stream, not the real cause. Emitting it
+        // would overwrite the meaningful error in `ChatSession`.
+        if hadError {
+            toolBuilders.removeAll()
+            toolOrder.removeAll()
+            return []
+        }
         var events: [LLMStreamEvent] = []
         for itemID in toolOrder {
             guard let builder = toolBuilders[itemID], !builder.name.isEmpty else { continue }

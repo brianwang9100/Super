@@ -134,7 +134,10 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                     // Honor the messageStart-first contract: if the failure
                     // landed before any SSE arrived, flush the deferred start
                     // before the error. `finish()` below then only emits the
-                    // terminal `.messageComplete`.
+                    // terminal `.messageComplete`. `markErrored()` keeps that
+                    // `finish()` from tacking a `.decodingFailed` onto any
+                    // half-streamed tool call after this real error.
+                    reducer.markErrored()
                     for event in reducer.flushPendingStart() {
                         continuation.yield(event)
                     }
