@@ -141,6 +141,12 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                     for event in reducer.flushPendingStart() {
                         continuation.yield(event)
                     }
+                    // Close any open block before the error so `.error` lands
+                    // immediately before `.messageComplete` (which `finish()`
+                    // emits next), not after a stray `.contentBlockStop`.
+                    for event in reducer.closeOpenBlocks() {
+                        continuation.yield(event)
+                    }
                     continuation.yield(.error(mapToLLMError(error)))
                 }
 

@@ -1,0 +1,12 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_e","model":"gpt-5.1","usage":null}}
+
+event: response.error
+data: {"type":"response.error","code":"server_error","message":"boom"}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"should be ignored"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_e","usage":{"input_tokens":1,"output_tokens":0}}}
+

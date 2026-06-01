@@ -35,14 +35,23 @@ public func makeLLMProvider(
 ) -> (any LLMProvider)? {
     switch record.kind {
     case .openAICompatible:
-        guard let http else { return nil }
+        // Skip (don't crash) a row missing the `baseURL` the provider's init
+        // requires — `baseURL` is a nullable column, and a corrupt/synced row
+        // could carry `.openAICompatible` with `nil`. The init would
+        // `preconditionFailure`; returning `nil` here means the row is dropped
+        // gracefully and the first-registered fallback covers hydration.
+        guard let http, record.configuration.baseURL != nil else { return nil }
         return OpenAICompatibleLLMProvider(
             configuration: record.configuration,
             apiKey: apiKey,
             http: http
         )
     case .openAIResponses:
-        guard let http else { return nil }
+        // Same nil-`baseURL` guard as `.openAICompatible`: the flip to
+        // `hasProviderAdapter == true` routes these rows here, so a nil
+        // `baseURL` must skip rather than hit the init's `preconditionFailure`
+        // and crash on every launch.
+        guard let http, record.configuration.baseURL != nil else { return nil }
         return OpenAIResponsesLLMProvider(
             configuration: record.configuration,
             apiKey: apiKey,

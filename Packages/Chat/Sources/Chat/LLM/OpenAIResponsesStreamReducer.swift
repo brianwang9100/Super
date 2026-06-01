@@ -56,6 +56,14 @@ struct OpenAIResponsesStreamReducer {
     mutating func consume(_ event: OpenAIResponsesStreamEvent) -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
 
+        // Once an error has been surfaced the turn is over: ignore any trailing
+        // content/tool events a terminal `response.error` might be followed by,
+        // so nothing lands after the error. `response.completed` is still let
+        // through so its usage + block-close + `.messageComplete` run.
+        if hadError, event.type != "response.completed" {
+            return events
+        }
+
         switch event.type {
         case "response.created":
             if let response = event.response {
@@ -67,14 +75,15 @@ struct OpenAIResponsesStreamReducer {
             if let item = event.item {
                 switch item.type {
                 case "web_search_call":
+                    // Emit `.searchStarted` here — and ONLY here — because this
+                    // item is the one event that carries the query. The
+                    // `in_progress`/`searching` events don't, and emitting on
+                    // them would lock in an empty query if they arrived first
+                    // (which the API doesn't guarantee against). Emit once, with
+                    // the query when present.
                     if let query = item.action?.query, !query.isEmpty {
                         pendingSearchQuery = query
                     }
-                    // Emit `.searchStarted` here, where the query is available
-                    // on the item, rather than relying on the later
-                    // `in_progress`/`searching` events — those may (per proxy
-                    // or load) arrive before this item, and emitting there
-                    // would lock in an empty query that can't be corrected.
                     ensureMessageStart(into: &events)
                     emitSearchStartedIfNeeded(into: &events)
                 case "function_call":
@@ -90,12 +99,10 @@ struct OpenAIResponsesStreamReducer {
                 }
             }
 
-        case "response.web_search_call.in_progress", "response.web_search_call.searching":
-            // Fallback trigger: normally `output_item.added` already emitted
-            // `.searchStarted` (with the query); this covers a stream that
-            // surfaces progress without a preceding item.
-            ensureMessageStart(into: &events)
-            emitSearchStartedIfNeeded(into: &events)
+        // `response.web_search_call.in_progress` / `.searching` carry no query
+        // and no normalized signal of their own — `.searchStarted` already
+        // fired from the `web_search_call` item — so they fall through to the
+        // default no-op below.
 
         case "response.output_text.delta":
             if let delta = event.delta, !delta.isEmpty {
@@ -126,7 +133,8 @@ struct OpenAIResponsesStreamReducer {
             // parallel buffer keyed off `.messageComplete`, not block spans.
             if let annotation = event.annotation,
                annotation.type == "url_citation",
-               let url = annotation.url {
+               let urlString = annotation.url,
+               let url = URL(string: urlString) {
                 ensureMessageStart(into: &events)
                 let ordinal = citationOrdinal
                 citationOrdinal += 1
@@ -194,6 +202,18 @@ struct OpenAIResponsesStreamReducer {
     /// `.decodingFailed` after the real transport error.
     mutating func markErrored() {
         hadError = true
+    }
+
+    /// Close any open text/thinking content block. The provider calls this in
+    /// its error catch *before* yielding `.error`, so a mid-stream failure
+    /// produces `…, .contentBlockStop, .error, .messageComplete` — keeping
+    /// `.error` immediately before the terminal event per the stream contract,
+    /// rather than letting `finish()`'s block-close land between them.
+    mutating func closeOpenBlocks() -> [LLMStreamEvent] {
+        var events: [LLMStreamEvent] = []
+        closeThinkingBlock(into: &events)
+        closeTextBlock(into: &events)
+        return events
     }
 
     /// Emit `.searchStarted` once per turn with whatever query is known so

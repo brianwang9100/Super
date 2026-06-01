@@ -60,6 +60,15 @@ struct LLMProviderFactoryTests {
         #expect(make(record(kind: .geminiNative)) == nil)
     }
 
+    @Test("returns nil (no crash) for a network kind whose row is missing baseURL")
+    func returnsNilForNilBaseURL() {
+        // A nullable column: a corrupt/synced row could carry a network kind
+        // with nil baseURL. The factory must skip it, not hit the init's
+        // preconditionFailure (which would crash on every launch).
+        #expect(make(record(kind: .openAIResponses, baseURL: nil)) == nil)
+        #expect(make(record(kind: .openAICompatible, baseURL: nil)) == nil)
+    }
+
     @Test("returns nil for HTTP-backed kinds when no client is supplied")
     func returnsNilWithoutHTTPClient() {
         let provider = makeLLMProvider(

@@ -139,10 +139,15 @@ struct OpenAIResponsesStreamEvent: Decodable {
         }
     }
 
-    /// A citation annotation attached to a span of output text.
+    /// A citation annotation attached to a span of output text. `url` is a
+    /// raw `String` (not a decoded `URL`) on purpose: `URL.init(from:)` *throws*
+    /// on an RFC-3986-invalid string rather than nil-filling, and the
+    /// reducer's `try?` would then discard the whole SSE event — losing every
+    /// sibling field. As a string it always decodes; the reducer constructs
+    /// the `URL` itself and skips just that one citation when it's malformed.
     struct Annotation: Decodable {
         let type: String?
-        let url: URL?
+        let url: String?
         let title: String?
         let startIndex: Int?
         let endIndex: Int?

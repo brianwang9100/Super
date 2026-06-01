@@ -143,23 +143,67 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(starts == [.searchStarted(query: "who won the 2026 world cup")])
     }
 
+    @Test func malformedCitationURLSkipsThatCitationWithoutDroppingTheEvent() async throws {
+        // The annotation `url` is decoded as a String (not `URL`), so a value
+        // `URL(string:)` rejects skips just that citation — the event (and its
+        // siblings) survives. The valid citation + text + completion all land.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-badurl"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        let citations = events.flatMap { event -> [SourceCitation] in
+            if case .citations(let c) = event { return c } else { return [] }
+        }
+        #expect(citations.map(\.url) == [URL(string: "https://good.example.com/a")!])
+        #expect(events.contains(.textDelta(index: 0, text: "See sources.")))
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 3, outputTokens: 2)))
+    }
+
+    @Test func annotationURLDecodesAsStringSoAMalformedValueDoesNotThrow() throws {
+        // Regression for the whole-event-drop bug: `URL.init(from:)` throws on
+        // an RFC-3986-invalid string, which `try?` in the provider would
+        // promote to dropping the entire SSE event. As a `String` it decodes.
+        let json = #"{"type":"response.output_text.annotation.added","item_id":"m","annotation":{"type":"url_citation","url":"https://exa mple.com/a [b]","title":"T","start_index":0,"end_index":1}}"#
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let event = try decoder.decode(OpenAIResponsesStreamEvent.self, from: Data(json.utf8))
+        #expect(event.annotation?.title == "T")
+        #expect(event.annotation?.url == "https://exa mple.com/a [b]")
+    }
+
+    @Test func contentEventsAfterAnSSEErrorAreIgnored() async throws {
+        // A terminal `response.error` is the last signal; a stray text delta
+        // after it must not append to the message.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-error-then-text"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        #expect(events.map(Self.kind) == ["messageStart", "error", "messageComplete"])
+    }
+
+    @Test func transportErrorWithOpenTextBlockClosesBlockBeforeTheError() async throws {
+        // A mid-stream transport drop with a text block open must yield
+        // `…, .contentBlockStop, .error, .messageComplete` — `.error`
+        // immediately before the terminal event per the stream contract.
+        let http = FakeHTTPClient(
+            chunks: [Data(FixtureLoader.load("openai-responses-partial-text").utf8)],
+            error: HTTPError.badStatus(500)
+        )
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        #expect(events.suffix(4).map(Self.kind) == ["textDelta", "contentBlockStop", "error", "messageComplete"])
+    }
+
     @Test func transportErrorWithPartialToolCallDoesNotEmitASpuriousDecodingError() async throws {
         // A `function_call` whose argument deltas are mid-stream when the
         // transport drops: the flush must not parse the incomplete JSON and
         // append a `.decodingFailed` after the real error — `ChatSession`
         // keeps the last `.error`, so that would mask the network failure.
-        let partial = """
-        event: response.created
-        data: {"type":"response.created","response":{"id":"resp_x","model":"gpt-5.1"}}
-
-        event: response.output_item.added
-        data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_x"}}
-
-        event: response.function_call_arguments.delta
-        data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","delta":"{\\"partial\\":"}
-
-        """
-        let http = FakeHTTPClient(chunks: [Data(partial.utf8)], error: HTTPError.badStatus(503))
+        let http = FakeHTTPClient(
+            chunks: [Data(FixtureLoader.load("openai-responses-partial-toolcall").utf8)],
+            error: HTTPError.badStatus(503)
+        )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
         ))
