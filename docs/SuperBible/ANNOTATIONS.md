@@ -2,7 +2,7 @@
 
 > AI-generated study notes attached to books, chapters, and verse ranges. Users generate them on demand from the reader. Notes are stored locally per device, never shared, never pre-bundled.
 
-**Status (2026-05-27):** Designed. MVP = milestone M-A (per-target on-demand generation). The bulk pipeline (M-B, M-C) is future work; the data model is forward-compatible.
+**Status (2026-06-01):** Shipped. MVP = milestone M-A (per-target on-demand generation) is live. The bulk pipeline (M-B, M-C) is future work; the data model is forward-compatible.
 
 ## Contents
 
