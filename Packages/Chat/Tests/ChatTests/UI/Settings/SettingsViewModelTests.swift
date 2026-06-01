@@ -692,6 +692,72 @@ struct SettingsViewModelTests {
         #expect(modelRepo.storedKeys["ref-1"] == "sk-rotated")
     }
 
+    @Test("updateModel preserves a configured searchBackend across an edit")
+    func updateModelPreservesSearchBackend() async {
+        // Regression: `updateModel` rebuilds the whole record from form
+        // fields. The form has no web-search field, so the saved record must
+        // carry `searchBackend` over from `existing` — otherwise editing any
+        // other field (name, model id, key) silently resets the row to "no
+        // web search". Dropping `searchBackend: existing.searchBackend` from
+        // the rebuild makes this test fail.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Old Name",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "old-model",
+                createdAt: Date(),
+                supportsThinking: false,
+                maxContextTokens: 8000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.updateModel(
+            id: "m1",
+            name: "New Name",
+            baseURL: URL(string: "https://api.example.com/v2")!,
+            modelId: "new-model",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 16000
+        )
+        let saved = modelRepo.rows.first
+        #expect(saved?.searchBackend == "native")
+    }
+
+    @Test("loadModels projects searchBackend onto the ModelRow")
+    func loadModelsProjectsSearchBackend() async {
+        // The Add-Model native-search UI (next PR) reads `searchBackend` off
+        // the loaded `ModelRow`. If `loadModels` drops it, the toggle reads
+        // `nil` and shows "off" for a row that has search configured.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "withSearch",
+                name: "With Search",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "m",
+                createdAt: Date(timeIntervalSince1970: 1),
+                searchBackend: "native"
+            ),
+            .init(
+                id: "noSearch",
+                name: "No Search",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-2",
+                modelId: "m",
+                createdAt: Date(timeIntervalSince1970: 2)
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+        #expect(vm.model(id: "withSearch")?.searchBackend == "native")
+        #expect(vm.model(id: "noSearch")?.searchBackend == nil)
+    }
+
     @Test("deleteModel removes the row and refreshes the list")
     func deleteModelClears() async {
         let modelRepo = StubModelRepository(rows: [

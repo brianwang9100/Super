@@ -81,6 +81,17 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
     ) {
         self.id = id
         self.displayName = displayName
+        // The two native-search fields are a unit: an adapter is useless
+        // without its base URL and vice versa. Enforce the pairing at
+        // construction so a mistyped catalog entry (or any future caller)
+        // fails loudly here rather than silently producing a half-configured
+        // entry that `supportsNativeSearch` reports as capable. The catalog
+        // is a compile-time constant, so this fires in tests/at launch, not
+        // in the field.
+        precondition(
+            (nativeSearchAdapter == nil) == (nativeSearchBaseURL == nil),
+            "nativeSearchAdapter and nativeSearchBaseURL must both be set or both be nil"
+        )
         self.kind = kind
         self.defaultBaseURL = defaultBaseURL
         self.models = models
@@ -111,6 +122,19 @@ public enum LLMProviderCatalog {
     /// Identifier of the Apple Intelligence entry. Same rationale
     /// as `customProviderID`.
     public static let appleProviderID = "apple"
+
+    // Native web-search endpoint bases. Held as named constants — distinct
+    // from each provider's `defaultBaseURL` OpenAI-compat shim — so the
+    // catalog entries below and the native adapters (PR3a/3b/3c) reference
+    // one source of truth rather than re-typing the literal. Force-unwrapped:
+    // these are compile-time-constant valid URLs, and a typo should fail
+    // the catalog invariant tests, not silently produce a nil base URL.
+    /// Anthropic Messages API base (`/v1/messages` appended by the adapter).
+    public static let anthropicNativeBaseURL = URL(string: "https://api.anthropic.com/v1")!
+    /// Gemini `generateContent` base (distinct from the `/openai` shim).
+    public static let geminiNativeBaseURL = URL(string: "https://generativelanguage.googleapis.com/v1beta")!
+    /// OpenAI Responses API base (`/responses` appended by the adapter).
+    public static let openAIResponsesBaseURL = URL(string: "https://api.openai.com/v1")!
 
     /// All providers in dropdown order. Apple first so on-device
     /// users find it at the top; Custom last because it's the
@@ -144,7 +168,7 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "gpt-5.4-nano", displayName: "GPT-5.4 nano", maxContextTokens: 400_000, supportsThinking: false),
             ],
             nativeSearchAdapter: .openAIResponses,
-            nativeSearchBaseURL: URL(string: "https://api.openai.com/v1")
+            nativeSearchBaseURL: openAIResponsesBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "anthropic",
@@ -167,7 +191,7 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", maxContextTokens: 200_000, supportsThinking: false),
             ],
             nativeSearchAdapter: .anthropicNative,
-            nativeSearchBaseURL: URL(string: "https://api.anthropic.com/v1")
+            nativeSearchBaseURL: anthropicNativeBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "google",
@@ -183,7 +207,7 @@ public enum LLMProviderCatalog {
                 LLMCatalogModel(id: "gemini-3-flash", displayName: "Gemini 3 Flash", maxContextTokens: 1_000_000, supportsThinking: true),
             ],
             nativeSearchAdapter: .geminiNative,
-            nativeSearchBaseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")
+            nativeSearchBaseURL: geminiNativeBaseURL
         ),
         LLMProviderCatalogEntry(
             id: "xai",

@@ -48,6 +48,14 @@ public final class SettingsViewModel {
         /// leave snapshot tests racing the load). Always `false` for
         /// `.appleFoundation` rows since they carry no key.
         public let hasAPIKey: Bool
+        /// Selected web-search engine for this row (mirrors
+        /// `ModelConfigurationRecord.searchBackend`): `"native"`, a
+        /// standalone search-provider id, or `nil`. Surfaced here so the
+        /// Add-Model native-search UI (next PR) reads it off the loaded row
+        /// instead of re-fetching the record — without this projection the
+        /// field would silently read `nil` and the toggle would show "off"
+        /// for a row that actually has search configured.
+        public let searchBackend: String?
 
         public init(
             id: String,
@@ -60,7 +68,8 @@ public final class SettingsViewModel {
             baseURL: URL? = nil,
             modelId: String = "",
             supportsThinking: Bool = false,
-            hasAPIKey: Bool = false
+            hasAPIKey: Bool = false,
+            searchBackend: String? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -73,6 +82,7 @@ public final class SettingsViewModel {
             self.modelId = modelId
             self.supportsThinking = supportsThinking
             self.hasAPIKey = hasAPIKey
+            self.searchBackend = searchBackend
         }
     }
 
@@ -281,7 +291,8 @@ public final class SettingsViewModel {
                 baseURL: record.baseURL,
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
-                hasAPIKey: keyExists
+                hasAPIKey: keyExists,
+                searchBackend: record.searchBackend
             ))
         }
         models = rows

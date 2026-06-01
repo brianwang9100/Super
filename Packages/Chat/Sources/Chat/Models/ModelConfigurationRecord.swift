@@ -31,6 +31,13 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
     /// search, paired with a native `kind`), a standalone search-provider
     /// id, or `nil` for no web search. Nullable column added by the
     /// `v6_searchBackend` migration; old rows decode as `nil`.
+    ///
+    /// The `"native"` ⇒ native-`kind` pairing is an **add-time invariant**
+    /// established when the Add-Model flow resolves `kind`/`baseURL` from the
+    /// catalog's `nativeSearchAdapter`/`nativeSearchBaseURL` (a later PR);
+    /// it is not enforced by this type. No row can carry that pairing yet —
+    /// the native register arms in `hydrateProviders`/`registerProvider` are
+    /// unreachable until then.
     public var searchBackend: String?
 
     public init(

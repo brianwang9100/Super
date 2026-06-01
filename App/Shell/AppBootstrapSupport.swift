@@ -110,6 +110,9 @@ enum AppBootstrapSupport {
                 // Native-search adapters land in a later PR; until then no
                 // persisted row can carry a native `kind` (the Add-Model
                 // native-search option ships with the adapters), so skip.
+                // (`continue` here vs. `break` in `SettingsViewModel`'s
+                // non-looping `registerProvider` switch — same intent:
+                // register nothing for this row.)
                 continue
             #if DEBUG
             case .debug:
