@@ -360,7 +360,7 @@ struct BibleBookSheet: View {
             }
         } label: {
             AnnotationBubble(state: state, size: bubbleSize)
-                // Height-only frame: a fixed width re-introduces side-bearing and widens the gap past the verses' 3pt.
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the icon→icon gap.
                 .frame(height: 30)
                 .contentShape(Rectangle())
         }
@@ -389,7 +389,7 @@ struct BibleBookSheet: View {
             onPresentBookNotes(bookId)
         } label: {
             NoteGlyph(state: glyphState, size: bubbleSize)
-                // Height-only frame: a fixed width re-introduces side-bearing and widens the gap past the verses' 3pt.
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the icon→icon gap.
                 .frame(height: 30)
                 .contentShape(Rectangle())
         }

@@ -413,7 +413,7 @@ struct BibleChapterReader: View {
                 }
             } label: {
                 AnnotationBubble(state: state, size: 24)
-                    // No horizontal padding keeps the gap at 3pt; vertical-only reaches the 44pt HIG tap height.
+                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
@@ -444,7 +444,7 @@ struct BibleChapterReader: View {
                 onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: glyphState, size: 24)
-                    // No horizontal padding keeps the gap at 3pt; vertical-only reaches the 44pt HIG tap height.
+                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
