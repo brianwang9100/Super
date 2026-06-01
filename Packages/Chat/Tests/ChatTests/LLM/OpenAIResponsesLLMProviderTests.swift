@@ -356,6 +356,25 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(!names.contains(NativeWebSearch.sentinelToolName))
     }
 
+    @Test func userRoleToolUseBlockIsNotEmittedAsAFunctionCall() async throws {
+        // A `.user` message carrying a `.toolUse` block (not producible by
+        // `ContextAssembler`, but not type-prevented) must not place a
+        // `function_call` at the user position — the Responses API rejects that.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, content: [
+                .text("hi"),
+                .toolUse(id: "call_bad", name: "x", input: .object([:])),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let input = try #require(body["input"] as? [[String: Any]])
+        #expect(input.compactMap { $0["type"] as? String } == ["message"])
+    }
+
     @Test func noToolsOmitsToolsKeyEntirely() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
         _ = try await collect(makeProvider(http: http).stream(

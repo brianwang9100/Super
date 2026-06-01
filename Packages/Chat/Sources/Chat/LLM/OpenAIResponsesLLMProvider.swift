@@ -227,9 +227,16 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     /// already-pathed inputs both canonicalize to `/.../responses`.
     private func responsesURL() -> URL {
         let suffix = "/responses"
+        // Idempotent fallback for the exotic non-decomposable / non-recomposable
+        // cases: `assertionFailure` is a no-op in Release, so appending
+        // unconditionally would turn a URL already ending in `/responses` into
+        // `…/responses/responses` (a silent 404). Append only when absent.
+        func fallback() -> URL {
+            baseURL.path.hasSuffix(suffix) ? baseURL : baseURL.appending(path: "responses")
+        }
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             assertionFailure("baseURL is not URL-component-decomposable: \(baseURL)")
-            return baseURL.appending(path: "responses")
+            return fallback()
         }
         var path = components.path
         while path.hasSuffix("/") { path.removeLast() }
@@ -239,7 +246,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         components.path = path
         guard let url = components.url else {
             assertionFailure("failed to recompose URL from \(components)")
-            return baseURL.appending(path: "responses")
+            return fallback()
         }
         return url
     }
@@ -279,11 +286,17 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                 if !joined.isEmpty {
                     input.append(.message(role: role, text: joined))
                 }
-                for block in message.content {
-                    guard case .toolUse(let id, let name, let toolInput) = block else { continue }
-                    let argsData = try argsEncoder.encode(toolInput)
-                    let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
-                    input.append(.functionCall(callID: id, name: name, argumentsJSON: argsJSON))
+                // Tool calls are an assistant-only concept. Guard the emission
+                // so a `.user` message that (against convention) carried a
+                // `.toolUse` block can't place a `function_call` at the user
+                // position in `input` — the Responses API would reject that.
+                if message.role == .assistant {
+                    for block in message.content {
+                        guard case .toolUse(let id, let name, let toolInput) = block else { continue }
+                        let argsData = try argsEncoder.encode(toolInput)
+                        let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
+                        input.append(.functionCall(callID: id, name: name, argumentsJSON: argsJSON))
+                    }
                 }
             }
         }

@@ -123,11 +123,15 @@ enum AppBootstrapSupport {
                 // skip is diagnosable in the field rather than presenting as a
                 // mute "no model configured".
                 bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
+            } else {
+                // Buildable kind, but the factory still returned nil: either an
+                // `.appleFoundation` row on an AFM-ineligible device (the
+                // expected silent path) or a network kind with a nil `baseURL`
+                // (a corrupt/synced row). Debug-level keeps the common AFM case
+                // quiet while still making a bad row diagnosable in the field —
+                // restoring what the pre-factory per-arm code surfaced.
+                bootstrapLog.debug("Skipped buildable model row \(record.id, privacy: .public) kind \(record.kind.rawValue, privacy: .public) — provider construction returned nil (AFM unavailable or missing baseURL)")
             }
-            // A `nil` for an `.appleFoundation` row on an AFM-ineligible device
-            // is the silent expected path (the factory gated it); `selected()`
-            // still returns it since AFM is buildable, and the throw below is
-            // swallowed.
         }
 
         if let selectedId = try await repository.selected()?.id {

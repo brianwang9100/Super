@@ -24,9 +24,11 @@ struct OpenAIResponsesStreamReducer {
     private var emittedComplete = false
 
     /// Monotonic content-block index, same role as in `OpenAIStreamReducer`.
+    /// The `…Index` suffix keeps the stored state distinct from the
+    /// `openTextBlock(into:)` / `openThinkingBlock(into:)` opener methods below.
     private var nextBlockIndex = 0
-    private var openTextBlock: Int?
-    private var openThinkingBlock: Int?
+    private var openTextBlockIndex: Int?
+    private var openThinkingBlockIndex: Int?
 
     /// `.searchStarted` is emitted at most once per turn; the query is
     /// captured from the `web_search_call` item when the API supplies one.
@@ -259,34 +261,34 @@ struct OpenAIResponsesStreamReducer {
     }
 
     private mutating func openTextBlock(into events: inout [LLMStreamEvent]) -> Int {
-        if let existing = openTextBlock { return existing }
+        if let existing = openTextBlockIndex { return existing }
         let index = nextBlockIndex
         nextBlockIndex += 1
-        openTextBlock = index
+        openTextBlockIndex = index
         events.append(.contentBlockStart(index: index, type: .text))
         return index
     }
 
     private mutating func openThinkingBlock(into events: inout [LLMStreamEvent]) -> Int {
-        if let existing = openThinkingBlock { return existing }
+        if let existing = openThinkingBlockIndex { return existing }
         let index = nextBlockIndex
         nextBlockIndex += 1
-        openThinkingBlock = index
+        openThinkingBlockIndex = index
         events.append(.contentBlockStart(index: index, type: .thinking))
         return index
     }
 
     private mutating func closeTextBlock(into events: inout [LLMStreamEvent]) {
-        if let text = openTextBlock {
+        if let text = openTextBlockIndex {
             events.append(.contentBlockStop(index: text))
-            openTextBlock = nil
+            openTextBlockIndex = nil
         }
     }
 
     private mutating func closeThinkingBlock(into events: inout [LLMStreamEvent]) {
-        if let thinking = openThinkingBlock {
+        if let thinking = openThinkingBlockIndex {
             events.append(.contentBlockStop(index: thinking))
-            openThinkingBlock = nil
+            openThinkingBlockIndex = nil
         }
     }
 
