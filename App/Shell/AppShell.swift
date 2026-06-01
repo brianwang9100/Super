@@ -307,8 +307,12 @@ struct AppShell: View {
             typography = .make(settingsViewModel.settings.typographyID, fontScale: newScale)
         }
         .onChange(of: settingsViewModel?.settings.typographyID) { _, newID in
-            guard let newID else { return }
-            typography = .make(newID, fontScale: appearance.fontScale)
+            // Read fontScale from the source of truth (settings), not the
+            // derived `appearance` @State — keeps this handler independent of
+            // onChange delivery order when both keys change in one update, and
+            // mirrors the fontScale handler above.
+            guard let newID, let settingsViewModel else { return }
+            typography = .make(newID, fontScale: settingsViewModel.settings.fontScale)
         }
         .onChange(of: settingsViewModel?.models) { _, _ in
             // Refresh the composer's model picker whenever Settings adds,
