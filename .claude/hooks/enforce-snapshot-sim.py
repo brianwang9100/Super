@@ -72,9 +72,6 @@ def load_pin():
     return device, osv, xcode
 
 
-PIN_DEVICE, PIN_OS, PIN_XCODE = load_pin()
-
-
 def allow():
     sys.exit(0)
 
@@ -110,6 +107,11 @@ concrete = [d for d in dests
 if not concrete:
     allow()
 
+# Resolve the pin lazily — only now that we know this is a concrete iOS-sim run.
+# This keeps the ios-build.yml read off the hot path for every non-xcodebuild
+# command (and for generic builds), which is the overwhelming majority.
+PIN_DEVICE, PIN_OS, PIN_XCODE = load_pin()
+
 
 def parse_kv(dest):
     """Split a destination string into its key=value pairs."""
@@ -130,7 +132,7 @@ def resolve_udid(udid):
     try:
         raw = subprocess.run(
             ["xcrun", "simctl", "list", "devices", "--json"],
-            capture_output=True, text=True, timeout=20, check=True).stdout
+            capture_output=True, text=True, timeout=10, check=True).stdout
         data = json.loads(raw)
     except Exception:
         return (None, None)
@@ -212,7 +214,7 @@ def effective_xcode_version():
     try:
         out = subprocess.run(
             ["xcodebuild", "-version"], capture_output=True, text=True,
-            timeout=20, env=env, check=True).stdout
+            timeout=10, env=env, check=True).stdout
     except Exception:
         return None
     match = re.search(r"Xcode\s+([0-9][0-9.]*)", out)
