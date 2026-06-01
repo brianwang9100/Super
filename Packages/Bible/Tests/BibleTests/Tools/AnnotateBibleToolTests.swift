@@ -68,6 +68,45 @@ struct AnnotateBibleToolTests {
         #expect(inserts[1].createdAt == t0.addingTimeInterval(0.001))
     }
 
+    @Test("same-category entries are stamped in emission order so the query keeps it")
+    func sameCategoryEntriesStaggerInEmissionOrder() async throws {
+        let (tool, repo) = makeTool()
+        // Two `reference` cards: `category ASC` can't distinguish them, so the
+        // 1 ms `createdAt` stagger is the *only* thing preserving the order
+        // the LLM emitted them in. Without it they'd tie-break on random UUID.
+        let input: [String: JSONValue] = [
+            "target": .string("verse"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(28),
+            "verseEnd": .int(30),
+            "entries": .array([
+                .object([
+                    "category": .string("reference"),
+                    "title": .string("Cross-reference"),
+                    "body": .string("John 1:14"),
+                ]),
+                .object([
+                    "category": .string("reference"),
+                    "title": .string("See also"),
+                    "body": .string("Ephesians 1:11"),
+                ]),
+            ]),
+        ]
+
+        _ = try await tool.execute(input: input)
+        let inserts = await repo.lastCall?.inserts ?? []
+        #expect(inserts.count == 2)
+        // Same category, monotonically increasing createdAt in emission order.
+        #expect(inserts[0].category == .reference)
+        #expect(inserts[1].category == .reference)
+        #expect(inserts[0].body == "John 1:14")
+        #expect(inserts[1].body == "Ephesians 1:11")
+        #expect(inserts[0].createdAt == t0)
+        #expect(inserts[1].createdAt == t0.addingTimeInterval(0.001))
+        #expect(inserts[0].createdAt < inserts[1].createdAt)
+    }
+
     @Test("book-target call has no chapter or verse columns set")
     func bookPathLeavesPositionNil() async throws {
         let (tool, repo) = makeTool()
