@@ -181,6 +181,36 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(events.map(Self.kind) == ["messageStart", "error", "messageComplete"])
     }
 
+    @Test func sseErrorAfterAnOpenTextBlockClosesItBeforeTheError() async throws {
+        // The SSE `response.error` path (not just the thrown-error catch) must
+        // close an open block before the error, so the later `closeOut()`
+        // doesn't emit `.contentBlockStop` after `.error`.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-error-after-text"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        #expect(events.suffix(4).map(Self.kind) == ["textDelta", "contentBlockStop", "error", "messageComplete"])
+    }
+
+    @Test func transportErrorAfterAnSSEErrorDoesNotDoubleReport() async throws {
+        // An SSE `response.error` fires, then the transport also drops. The
+        // catch must not yield a second, less-specific error over the
+        // already-surfaced provider error (`ChatSession` keeps the last one).
+        let http = FakeHTTPClient(
+            chunks: [Data(FixtureLoader.load("openai-responses-error-only").utf8)],
+            error: HTTPError.badStatus(500)
+        )
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
+        ))
+        let errors = events.compactMap { event -> LLMError? in
+            if case .error(let e) = event { return e } else { return nil }
+        }
+        // Exactly the SSE error — not also the transport 500.
+        #expect(errors == [.providerError(code: "server_error", message: "boom")])
+        #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+    }
+
     @Test func transportErrorWithOpenTextBlockClosesBlockBeforeTheError() async throws {
         // A mid-stream transport drop with a text block open must yield
         // `…, .contentBlockStop, .error, .messageComplete` — `.error`

@@ -160,8 +160,13 @@ struct OpenAIResponsesStreamReducer {
         case "response.error", "error":
             // Honor the messageStart-first contract even when the error lands
             // before any content (e.g. an auth/rate-limit rejection from the
-            // routing layer before a response object exists).
+            // routing layer before a response object exists), and close any
+            // open block *before* the error so the later `closeOut()` doesn't
+            // emit `.contentBlockStop` after it — same ordering the catch path
+            // guarantees, so `.error` stays immediately before the terminal.
             ensureMessageStart(into: &events)
+            closeThinkingBlock(into: &events)
+            closeTextBlock(into: &events)
             hadError = true
             events.append(.error(.providerError(
                 code: event.code ?? "error",
@@ -195,6 +200,12 @@ struct OpenAIResponsesStreamReducer {
         ensureMessageStart(into: &events)
         return events
     }
+
+    /// Whether an `.error` has already been surfaced (an SSE `response.error`,
+    /// or a prior `markErrored()`). The provider reads this in its catch path
+    /// to avoid yielding a second, less-specific transport `.error` over the
+    /// already-emitted SSE one (`ChatSession` keeps the last `.error`).
+    var hasErrored: Bool { hadError }
 
     /// Record that the provider already surfaced an error (its thrown-error
     /// catch path). Suppresses the tool-call flush in the subsequent

@@ -37,7 +37,14 @@ enum OpenAIResponsesInputItem: Encodable {
     /// A user or assistant text message.
     case message(role: String, text: String)
     /// An assistant-issued function (client tool) call, echoed back into
-    /// history. `argumentsJSON` is a JSON string per the API.
+    /// history. `argumentsJSON` is a JSON string per the API. Only `call_id`
+    /// is carried for correlation — the server-assigned item `id` (`fc_…`) is
+    /// intentionally omitted: it's optional on input replay in the stateless
+    /// (`store: false`) mode this adapter uses, and we don't persist it.
+    /// ⚠️ PR4: tool-use through the Responses adapter only becomes reachable
+    /// once the `__native_web_search__` sentinel is emitted — validate this
+    /// multi-turn replay shape against the live API then (a missing required
+    /// `id` would surface as an HTTP 400 on the second turn).
     case functionCall(callID: String, name: String, argumentsJSON: String)
     /// The result of a prior function call, correlated by `callID`.
     case functionCallOutput(callID: String, output: String)

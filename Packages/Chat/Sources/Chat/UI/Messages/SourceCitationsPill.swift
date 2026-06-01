@@ -101,14 +101,16 @@ struct SourceCitationsPill: View {
     }
 
     private func sourceRow(_ source: SourceCitationPillModel) -> some View {
-        Button {
-            // Only follow web URLs. Citation URLs come from the provider's
-            // response, and a BYOK setup can point at any Responses-compatible
-            // proxy — a compromised one could inject a custom-scheme URL
-            // (`app://`, `tel:`, `file://`) that `openURL` would hand to a
-            // registered handler. Restrict to http(s).
-            let scheme = source.url.scheme?.lowercased()
-            if scheme == "https" || scheme == "http" {
+        // Only follow web URLs. Citation URLs come from the provider's
+        // response, and a BYOK setup can point at any Responses-compatible
+        // proxy — a compromised one could inject a custom-scheme URL
+        // (`app://`, `tel:`, `file://`) that `openURL` would hand to a
+        // registered handler. Restrict to http(s), and reflect that in the
+        // VoiceOver hint so the row doesn't promise an action it won't perform.
+        let scheme = source.url.scheme?.lowercased()
+        let canOpen = scheme == "https" || scheme == "http"
+        return Button {
+            if canOpen {
                 openURL(source.url)
             }
         } label: {
@@ -139,7 +141,7 @@ struct SourceCitationsPill: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(source.title.isEmpty ? source.host : "\(source.host), \(source.title)")
-        .accessibilityHint("Opens in your browser")
+        .accessibilityHint(canOpen ? "Opens in your browser" : "")
     }
 
     private var countLabel: String {

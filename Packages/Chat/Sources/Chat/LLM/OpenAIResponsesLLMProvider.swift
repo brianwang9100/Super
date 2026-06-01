@@ -137,6 +137,12 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                     // terminal `.messageComplete`. `markErrored()` keeps that
                     // `finish()` from tacking a `.decodingFailed` onto any
                     // half-streamed tool call after this real error.
+                    //
+                    // Don't double-report: if an SSE `response.error` already
+                    // surfaced a (more specific) error, skip this transport one
+                    // — `ChatSession` keeps the *last* `.error`, so re-yielding
+                    // would overwrite the meaningful provider error.
+                    let alreadyErrored = reducer.hasErrored
                     reducer.markErrored()
                     for event in reducer.flushPendingStart() {
                         continuation.yield(event)
@@ -147,7 +153,9 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                     for event in reducer.closeOpenBlocks() {
                         continuation.yield(event)
                     }
-                    continuation.yield(.error(mapToLLMError(error)))
+                    if !alreadyErrored {
+                        continuation.yield(.error(mapToLLMError(error)))
+                    }
                 }
 
                 for event in reducer.finish() {
