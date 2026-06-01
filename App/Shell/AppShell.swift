@@ -1091,9 +1091,10 @@ private struct SidebarLayer: View {
     }
 }
 
-/// Settings sheet layer. Body only renders content when
-/// `settingsViewModel` is wired; `SettingsSheet` itself early-returns
-/// on `isPresented == false`.
+/// Settings sheet layer — the content of the shell's native `.sheet`, so
+/// it's only instantiated while the sheet is presented (the system owns the
+/// present / dismiss lifecycle now). Body only renders content once
+/// `settingsViewModel` is wired.
 ///
 /// `makeDatabaseContext` is a factory closure (not a stored value) so
 /// the `.readOnly { ... }` allocation is skipped during the bootstrap
