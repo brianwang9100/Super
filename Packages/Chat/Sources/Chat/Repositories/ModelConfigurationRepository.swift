@@ -105,9 +105,18 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// the host bootstrap. Rows with an unknown `kind` value are silently
     /// excluded from every read; the unreferenced row stays on disk
     /// unless a future migration cleans it up.
+    /// Raw values of every known kind, and of the buildable subset. Both
+    /// sets are fixed at compile time (driven by `LLMProviderKind.allCases`
+    /// + `hasProviderAdapter`), so they're computed once rather than on each
+    /// request build — `selected()` runs on every app launch and selection
+    /// change.
+    private static let knownKindRawValues: [String] =
+        LLMProviderKind.allCases.map(\.rawValue)
+    private static let buildableKindRawValues: [String] =
+        LLMProviderKind.allCases.filter { $0.hasProviderAdapter }.map(\.rawValue)
+
     private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
-        let kinds = LLMProviderKind.allCases.map(\.rawValue)
-        return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
+        ModelConfigurationRecord.filter(knownKindRawValues.contains(Column("kind")))
     }
 
     /// Like `knownKindRequest`, but further restricted to kinds the running
@@ -121,8 +130,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// `all()`/`fetch(id:)` keep using `knownKindRequest` so such a row is
     /// still visible/editable in the Models list — it just can't be active.
     private static var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
-        let kinds = LLMProviderKind.allCases.filter { $0.hasProviderAdapter }.map(\.rawValue)
-        return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
+        ModelConfigurationRecord.filter(buildableKindRawValues.contains(Column("kind")))
     }
 
     public func save(_ record: ModelConfigurationRecord) async throws {
