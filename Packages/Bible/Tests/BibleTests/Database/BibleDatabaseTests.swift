@@ -122,6 +122,7 @@ struct BibleDatabaseTests {
         // than crash or render corrupt data.
         try database.queue.write { db in
             try db.execute(sql: "PRAGMA ignore_check_constraints = ON")
+            defer { try? db.execute(sql: "PRAGMA ignore_check_constraints = OFF") }
             try db.execute(
                 sql: """
                 INSERT INTO bibleAnnotation

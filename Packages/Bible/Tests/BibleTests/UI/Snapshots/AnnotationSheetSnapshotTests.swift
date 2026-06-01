@@ -168,6 +168,16 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .light, cards: [Self.threeCards[0]], name: "one_card_light")
     }
 
+    @Test("one card renders in the dark theme")
+    func oneCardDark() {
+        verify(theme: .dark, cards: [Self.threeCards[0]], name: "one_card_dark")
+    }
+
+    @Test("one card renders in the sepia theme")
+    func oneCardSepia() {
+        verify(theme: .sepia, cards: [Self.threeCards[0]], name: "one_card_sepia")
+    }
+
     @Test("three cards render in the light theme")
     func threeCardsLight() {
         verify(theme: .light, cards: Self.threeCards, name: "three_cards_light")

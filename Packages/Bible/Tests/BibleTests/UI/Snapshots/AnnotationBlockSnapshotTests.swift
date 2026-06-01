@@ -139,6 +139,30 @@ struct AnnotationBlockSnapshotTests {
         )
     }
 
+    @Test("long body wraps in the dark theme")
+    func longBodyDark() {
+        verify(
+            theme: .dark,
+            category: .clarification,
+            title: "Reformed reading",
+            content: .text(Self.longBody),
+            height: 280,
+            name: "long_body_dark"
+        )
+    }
+
+    @Test("long body wraps in the sepia theme")
+    func longBodySepia() {
+        verify(
+            theme: .sepia,
+            category: .clarification,
+            title: "Reformed reading",
+            content: .text(Self.longBody),
+            height: 280,
+            name: "long_body_sepia"
+        )
+    }
+
     @Test("long body renders at Dynamic Type XXL")
     func longBodyLightXXL() {
         verify(
