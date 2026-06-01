@@ -43,9 +43,23 @@ struct NoteGlyph: View {
         self.size = size
     }
 
+    /// Horizontal ink bounds in 24-unit design coordinates, padded by the
+    /// half stroke width (`1.6 / 2`) so round joins aren't clipped. The frame
+    /// hugs this range rather than the full 24-unit square, so the glyph
+    /// carries no empty side-bearing and adjacent glyphs gap by exactly the
+    /// layout spacing. The range is centred on x=12, so single / centred
+    /// placements render identically to the old square frame.
+    private static let inkMinX: CGFloat = 4.2   // page left (5) − half stroke
+    private static let inkMaxX: CGFloat = 19.8  // page right (19) + half stroke
+
     var body: some View {
-        Canvas { context, canvasSize in
-            let scale = canvasSize.width / 24.0
+        let scale = size / 24.0
+        let inkWidth = (Self.inkMaxX - Self.inkMinX) * scale
+        return Canvas { context, _ in
+            // Vertical mapping stays on the full 24-unit grid (frame height is
+            // `size`); shift left so the ink range sits flush in the trimmed
+            // width.
+            context.translateBy(x: -Self.inkMinX * scale, y: 0)
             let page = pagePath(scale: scale)
             let detail = detailPath(scale: scale)
             switch state {
@@ -63,7 +77,7 @@ struct NoteGlyph: View {
                 context.stroke(detail, with: .color(theme.inkFaint), style: stroke(scale: scale))
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: inkWidth, height: size)
         .accessibilityHidden(true)
     }
 
