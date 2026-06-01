@@ -20,13 +20,25 @@ import SwiftUI
 /// migration invariant (a system-design role resolves byte-identically to the
 /// hand-written `.font(.system(size:design:))` it replaces).
 ///
-/// ## Dynamic Type
-/// Custom-face accessors pass `relativeTo:` so the brand text scales with the
-/// OS Dynamic Type setting *and* the app `fontScale`. Pass `relativeTo: nil`
-/// for fixed-size brand marks that must not scale (the splash wordmark). The
-/// system-font path scales with `fontScale` only — matching the existing
-/// `.system(size: N * fontScale)` call sites, which a migrating view pairs
-/// with its own `@ScaledMetric` base when it needs OS Dynamic Type too.
+/// ## Two scaling axes
+/// Type scales along two *independent* axes, and the accessors expose one knob
+/// for each:
+///
+/// 1. **The app font-scale slider** (`fontScale`, set in Settings). It's folded
+///    into every size by `spec` — `size * fontScale`. This is the axis you
+///    *don't* want on chrome: a reading-content slider shouldn't move the
+///    wordmark or the nav rows. Opt a mark out with `tracksFontScale: false`,
+///    which renders at the unscaled base size regardless of the slider.
+/// 2. **OS Dynamic Type** (the system text-size / accessibility setting). On a
+///    custom brand face it's carried by `relativeTo:` (pass `nil` for a mark
+///    that must ignore Dynamic Type too). The system-font path *always* strips
+///    `relativeTo` — matching the literal `.system(size:)` call sites it
+///    replaces — so a system-face surface that wants Dynamic Type pairs a
+///    `@ScaledMetric` base with `font(size:)`.
+///
+/// The axes compose: drawer chrome that should honor the OS setting but ignore
+/// the app slider uses a `@ScaledMetric` base *and* `tracksFontScale: false`.
+/// Reading content (the default `tracksFontScale: true`) gets the slider.
 public struct SuperTypography: Sendable, Equatable {
     /// Swappable type systems. `.serif` is the brand set (Instrument Serif
     /// Italic display + JetBrains Mono); `.system` drops to system faces.
@@ -85,15 +97,23 @@ public struct SuperTypography: Sendable, Equatable {
 
     /// Brand display title (e.g. "Tasks", "Chats", "John 3"). Resolves to the
     /// `displayFace` when present, else the system serif. Pass `relativeTo:
-    /// nil` for a fixed-size mark that must not scale with Dynamic Type.
+    /// nil` for a mark that must not scale with OS Dynamic Type, and
+    /// `tracksFontScale: false` for a brand mark (a wordmark) that must not
+    /// move with the app font-scale slider.
     public func display(_ size: CGFloat = 36, // == Role.display.baseSize
-                        relativeTo: Font.TextStyle? = .largeTitle) -> Font {
-        resolve(size: size, relativeTo: relativeTo, weight: nil, design: .serif)
+                        relativeTo: Font.TextStyle? = .largeTitle,
+                        tracksFontScale: Bool = true) -> Font {
+        resolve(size: size, relativeTo: relativeTo, weight: nil, design: .serif, tracksFontScale: tracksFontScale)
     }
 
     /// A system-sans role at its base size. Scales with `fontScale`; for OS
     /// Dynamic Type the view supplies its own `@ScaledMetric` base via
     /// `font(size:)`. Use `display(_:)` for the brand serif title instead.
+    ///
+    /// There's deliberately no `tracksFontScale` knob here: the role API is the
+    /// *content* surface, which scales with the slider by definition. Chrome
+    /// that must ignore the slider also needs a `@ScaledMetric` base to keep OS
+    /// Dynamic Type, so it goes through `font(size:tracksFontScale:)` instead.
     ///
     /// `weight` is honored for every role, including `.display` — under the
     /// `.system` identity the display role resolves to the system serif, whose
@@ -108,20 +128,26 @@ public struct SuperTypography: Sendable, Equatable {
 
     /// Arbitrary fixed size that doesn't map to a `Role`. `design: .serif`
     /// resolves to the brand display face; `.monospaced` to the mono face;
-    /// `.default` to system sans.
+    /// `.default` to system sans. Pass `tracksFontScale: false` (typically with
+    /// a `@ScaledMetric` `size`) for chrome that should honor OS Dynamic Type
+    /// but stay independent of the app font-scale slider.
     public func font(size: CGFloat,
                      relativeTo: Font.TextStyle? = nil,
                      weight: Font.Weight? = nil,
-                     design: Font.Design = .default) -> Font {
-        resolve(size: size, relativeTo: relativeTo, weight: weight, design: design)
+                     design: Font.Design = .default,
+                     tracksFontScale: Bool = true) -> Font {
+        resolve(size: size, relativeTo: relativeTo, weight: weight, design: design, tracksFontScale: tracksFontScale)
     }
 
     /// Monospaced role (numeric chrome, section labels). Resolves to the
-    /// `monoFace` when present, else the system monospaced design.
+    /// `monoFace` when present, else the system monospaced design. Pass
+    /// `tracksFontScale: false` for a fixed brand mark (e.g. a version caption)
+    /// that must not move with the app font-scale slider.
     public func mono(_ size: CGFloat,
                      relativeTo: Font.TextStyle? = .caption2,
-                     weight: Font.Weight? = nil) -> Font {
-        resolve(size: size, relativeTo: relativeTo, weight: weight, design: .monospaced)
+                     weight: Font.Weight? = nil,
+                     tracksFontScale: Bool = true) -> Font {
+        resolve(size: size, relativeTo: relativeTo, weight: weight, design: .monospaced, tracksFontScale: tracksFontScale)
     }
 
     /// A fully-resolved font descriptor: the pure inputs to a `Font`, decided
@@ -156,7 +182,8 @@ public struct SuperTypography: Sendable, Equatable {
     func spec(size: CGFloat,
               relativeTo: Font.TextStyle?,
               weight: Font.Weight?,
-              design: Font.Design) -> FontSpec {
+              design: Font.Design,
+              tracksFontScale: Bool = true) -> FontSpec {
         let face: String? = switch design {
         case .serif: displayFace
         case .monospaced: monoFace
@@ -165,9 +192,12 @@ public struct SuperTypography: Sendable, Equatable {
         // A custom face is fixed (no Dynamic Type) only when relativeTo is nil;
         // the system path ignores relativeTo (system fonts scale via the view's
         // own @ScaledMetric base, matching the call sites being migrated).
+        // The app font-scale slider is folded in only when tracksFontScale is
+        // set — chrome and fixed brand marks opt out so the slider stays scoped
+        // to reading content.
         return FontSpec(
             face: face,
-            size: size * fontScale,
+            size: tracksFontScale ? size * fontScale : size,
             relativeTo: face != nil ? relativeTo : nil,
             weight: weight,
             design: design
@@ -177,8 +207,9 @@ public struct SuperTypography: Sendable, Equatable {
     private func resolve(size: CGFloat,
                          relativeTo: Font.TextStyle?,
                          weight: Font.Weight?,
-                         design: Font.Design) -> Font {
-        spec(size: size, relativeTo: relativeTo, weight: weight, design: design).font
+                         design: Font.Design,
+                         tracksFontScale: Bool = true) -> Font {
+        spec(size: size, relativeTo: relativeTo, weight: weight, design: design, tracksFontScale: tracksFontScale).font
     }
 
     /// Build a typography set by id, folding in the active font scale.

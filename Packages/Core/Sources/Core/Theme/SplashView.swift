@@ -69,9 +69,10 @@ public struct SplashView: View {
                 .stroke(theme.accentDark, style: StrokeStyle(lineWidth: 3.2, lineCap: .round))
                 .frame(width: 44, height: 44)
             Text(name)
-                // Fixed size — the splash wordmark deliberately ignores
-                // Dynamic Type per SPEC, so `relativeTo: nil`.
-                .font(typography.display(38, relativeTo: nil))
+                // Fixed brand mark: the splash wordmark deliberately ignores
+                // both axes — OS Dynamic Type (`relativeTo: nil`) and the app
+                // font-scale slider (`tracksFontScale: false`).
+                .font(typography.display(38, relativeTo: nil, tracksFontScale: false))
                 .foregroundStyle(theme.ink)
                 .tracking(-0.57)
         }
@@ -101,7 +102,7 @@ public struct SplashView: View {
                     value: pulse
                 )
             Text("V \(version) · EST. MMXXV")
-                .font(typography.mono(10.5, relativeTo: nil))
+                .font(typography.mono(10.5, relativeTo: nil, tracksFontScale: false))
                 .tracking(1.4)
                 .foregroundStyle(theme.inkFaint)
         }

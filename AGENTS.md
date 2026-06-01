@@ -68,6 +68,19 @@ Every public protocol, type, enum, struct, class, and free function ships with a
 
 All naming — files, folders, function parameters, Swift type suffixes, SwiftUI view buckets, GRDB schema — lives in **[`docs/NAMING_CONVENTIONS.md`](./docs/NAMING_CONVENTIONS.md)**. Read it before coining a new name.
 
+## Typography
+
+All text resolves through `SuperTypography` (`Packages/Core/Sources/Core/Theme/SuperTypography.swift`), read from `@Environment(\.superTypography)`. **Route every `Text` through the `typography.*` accessors** (`display`, `mono`, `font(_:)`, `font(size:)`) — never raw `.font(.system(...))` or `Font.custom(...)`. That keeps the brand-face swap and scale centralized; a literal `.system`/`.custom` call silently opts out of both.
+
+Type scales along **two independent axes**, one knob each:
+
+- **App font-scale slider** (`fontScale`, set in Settings) — folded into every accessor's size. This is the *reading-content* axis. Opt a surface out with **`tracksFontScale: false`**, which renders at the unscaled base size regardless of the slider.
+- **OS Dynamic Type** (the system text-size / accessibility setting) — carried by `relativeTo:` on a brand face (pass `nil` to ignore it), or by a `@ScaledMetric` base fed to `font(size:)` on a system face (the system path strips `relativeTo`).
+
+Rule of thumb: **reading content** scales with the slider (the default, `tracksFontScale: true`). **Chrome, fixed-size containers, and brand wordmarks** must pass `tracksFontScale: false` so the slider stays scoped to reading content — and pair it with a `@ScaledMetric` base when the chrome should still honor OS Dynamic Type (see `SidebarDrawer`'s `navLabelSize` / `rowTitleBase` for the canonical pattern). The two axes compose: drawer chrome wants OS Dynamic Type **on**, slider **off**.
+
+Snapshot implication: a slider-independent surface's `*_font_scale_max_*` baseline must render at the fixed base sizes (byte-identical to a `fontScale == 1.0` drawer) — never re-record it at the scaled size to "make the test pass". That re-record-to-pass is exactly how the original sidebar slider-independence regression slipped through.
+
 ## Swift Concurrency & Type Policy
 
 ### Structs for data, classes for identity

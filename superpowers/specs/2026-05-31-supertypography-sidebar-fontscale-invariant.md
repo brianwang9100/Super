@@ -1,10 +1,15 @@
 # Follow-up: restore the SidebarDrawer slider-independence invariant
 
-**Status:** deferred from PR #136 (SuperTypography PR B — shell + Chat). The fix below
-is written and verified-correct; it could not land in #136 because re-recording the
-affected snapshot baselines was blocked by a local simulator font-rendering failure
-(documented at the end). This spec is the carry-over so a follow-up PR can apply the fix
-and re-record on a healthy environment.
+**Status:** ✅ resolved in SuperTypography PR C (`typography-c-sidebar-invariant`). The
+open design question below resolved to **Option 2** (full drawer-wide restoration) via a
+new `tracksFontScale: false` knob added to `SuperTypography` — a cleaner path than the
+`.system(size:)` bypass this spec originally sketched, because the chrome stays routed
+through the typography accessors. The local font-rendering blocker (documented at the end)
+was worked around by **harvesting the CI-rendered PNGs**: CI runs snapshots in compare mode,
+so the three relabeled tests fail against the old baselines and the freshly-rendered
+fixed-chrome images are attached to the run's `.xcresult` (`failure_*`); those are extracted
+and committed as the new baselines, after which CI re-runs green. (CI never records/commits
+baselines itself — it only compares.) Retained for historical context.
 
 ## The regression
 
