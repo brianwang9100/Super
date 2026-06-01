@@ -40,7 +40,15 @@ public enum BibleBookSheetScrollAnchor: Hashable, Sendable {
 @Observable
 public final class BibleBookSheetViewModel {
     /// Case-insensitive substring filter over book names; empty shows all.
-    public var query: String = ""
+    /// A query that resolves a chapter / verse switches the picker to a
+    /// single deep-link row — see ``deepLinkResult``.
+    public var query: String = "" {
+        didSet {
+            // A fresh query re-evaluates auto-expansion from scratch — drop any
+            // prior user-collapse of the book the old query auto-expanded.
+            if query != oldValue { autoCollapsedBookId = nil }
+        }
+    }
     /// Whether the list is grouped by testament or flattened A–Z.
     public var order: BibleBookOrder = .traditional
     /// The book whose chapter grid is open, or `nil` if none is expanded.
@@ -49,6 +57,12 @@ public final class BibleBookSheetViewModel {
     /// reappears as such once the search clears, so the reader returns to
     /// the book they were focused on.
     public private(set) var expandedBookId: String?
+
+    /// An auto-expanded book the user has tapped to collapse, kept closed even
+    /// while the query still uniquely resolves it. Without this, `isBookExpanded`
+    /// would re-derive the book as expanded from the unchanged query and the
+    /// grid could never be closed. Cleared on any query change (`query.didSet`).
+    private var autoCollapsedBookId: String?
 
     /// The reader's current position when the sheet was opened, or `nil` if
     /// no position was supplied. Drives `initialScrollAnchor`; never mutated.
@@ -87,11 +101,68 @@ public final class BibleBookSheetViewModel {
         self.catalog = catalog
     }
 
-    /// The books to display, filtered by `query` and ordered by `order`,
-    /// split into titled sections. Empty sections are dropped, so `groups`
-    /// is empty exactly when the query matches nothing.
+    /// The parsed search query — the book-name filter plus an optional
+    /// chapter / verse deep-link target. Drives `groups`, `deepLinkResult`,
+    /// and `autoExpandedBookId`.
+    ///
+    /// Memoized on the query string: parsing scans the 66-book catalog, and
+    /// `parsed` is read once per book row via `isBookExpanded` (~130× per
+    /// keystroke render), so re-parsing each time is wasted work. The cache is
+    /// `@ObservationIgnored` because it's derived state, not a source of truth
+    /// — but the getter still reads the observed `query`, so every downstream
+    /// reader keeps its observation dependency on the query and re-renders when
+    /// it changes.
+    @ObservationIgnored private var cachedParseInput: String?
+    @ObservationIgnored private var cachedParse = BibleSearchQuery(bookNameQuery: "", resolved: nil)
+    private var parsed: BibleSearchQuery {
+        if cachedParseInput != query {
+            cachedParseInput = query
+            cachedParse = BibleSearchQueryParser.parse(query, in: catalog)
+        }
+        return cachedParse
+    }
+
+    /// A resolved chapter / verse range when the query named one (e.g.
+    /// `"1 Peter 2:5-6"`), else `nil`. Non-nil makes the picker show a single
+    /// deep-link row in place of the book list.
+    public var deepLinkResult: BibleSearchResult? { parsed.resolved }
+
+    /// The book-name portion the list is actually filtered by — the whole query
+    /// unless a trailing chapter was typed (`"XYZ 5"` filters by `"XYZ"`). Drives
+    /// the empty-state copy so it names the real filter, not the raw query.
+    public var bookNameFilter: String { parsed.bookNameQuery }
+
+    /// The single book the picker should auto-expand: set when the query is a
+    /// book-only search that filters the list down to exactly one book, so its
+    /// chapter grid opens without a tap. `nil` while a deep-link is resolved
+    /// (the row replaces the list) or whenever zero or many books match.
+    public var autoExpandedBookId: String? {
+        guard deepLinkResult == nil else { return nil }
+        let books = groups.flatMap(\.books)
+        return books.count == 1 ? books.first?.id : nil
+    }
+
+    /// Whether `bookId`'s chapter grid should be shown.
+    ///
+    /// Auto-expansion is *exclusive*: while the query uniquely resolves to one
+    /// book, only that book reports expanded (unless the user has tapped to
+    /// collapse it), so a different `expandedBookId` left over from the reader's
+    /// position can never render a second open grid. Without a unique match the
+    /// manual `expandedBookId` governs.
+    public func isBookExpanded(_ bookId: String) -> Bool {
+        if let autoExpandedBookId {
+            return bookId == autoExpandedBookId && bookId != autoCollapsedBookId
+        }
+        return bookId == expandedBookId
+    }
+
+    /// The books to display, filtered by the query's book-name part and
+    /// ordered by `order`, split into titled sections. Empty sections are
+    /// dropped, so `groups` is empty exactly when the book filter matches
+    /// nothing. When the query resolves to a chapter / verse the picker shows
+    /// `deepLinkResult` instead, so `groups` is not consulted then.
     public var groups: [BibleBookGroup] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        let trimmed = parsed.bookNameQuery.trimmingCharacters(in: .whitespaces)
 
         var books = catalog.books
         if order == .alphabetical {
@@ -120,8 +191,9 @@ public final class BibleBookSheetViewModel {
         ].filter { !$0.books.isEmpty }
     }
 
-    /// `false` only when the current query filters every book away.
-    public var hasResults: Bool { !groups.isEmpty }
+    /// `false` only when the query neither resolves to a deep-link nor leaves
+    /// any book in the filtered list.
+    public var hasResults: Bool { deepLinkResult != nil || !groups.isEmpty }
 
     /// Where the picker should anchor on first appear; `nil` when no
     /// `currentPosition` was supplied (the sheet stays at the top).
@@ -134,10 +206,19 @@ public final class BibleBookSheetViewModel {
         return .bookRow(bookId: position.bookId)
     }
 
-    /// Open the given book's chapter grid, or close it if it is already the
-    /// expanded one — only one book is ever expanded at a time.
+    /// Open the given book's chapter grid, or close it if it is already shown
+    /// — only one book is ever expanded at a time. Works whether the book is
+    /// open because the user expanded it or because the query auto-expanded it:
+    /// collapsing an auto-expanded book records the suppression so the tap
+    /// actually closes the grid (see ``autoCollapsedBookId``).
     public func toggleExpansion(bookId: String) {
-        expandedBookId = (expandedBookId == bookId) ? nil : bookId
+        if isBookExpanded(bookId) {
+            if expandedBookId == bookId { expandedBookId = nil }
+            if bookId == autoExpandedBookId { autoCollapsedBookId = bookId }
+        } else {
+            expandedBookId = bookId
+            autoCollapsedBookId = nil
+        }
     }
 
     /// Reset the search field to empty, restoring the full book list.

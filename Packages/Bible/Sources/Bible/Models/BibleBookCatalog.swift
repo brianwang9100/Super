@@ -18,6 +18,35 @@ public struct BibleBookCatalog: Sendable {
         books.first { $0.id == bookId }
     }
 
+    /// Resolve a book-name candidate to its summary, whitespace-insensitively.
+    ///
+    /// Match order: exact 3-letter id (case-insensitive), then exact display
+    /// name with whitespace stripped, then a unique whitespace-stripped prefix
+    /// of the display name. Whitespace stripping lets `"1Cor"` resolve to
+    /// `"1 Corinthians"` without an abbreviation table; the uniqueness check
+    /// rejects ambiguous shorthands (`"J"` matches eight books, so `nil`).
+    /// Returns `nil` for an empty candidate or any ambiguous prefix.
+    ///
+    /// Shared by `BibleCitationParser` (strict citations) and
+    /// `BibleSearchQueryParser` (the picker's progressive search) so the two
+    /// can't drift on how a book name resolves.
+    public func resolve(bookName candidate: String) -> BibleBookSummary? {
+        let needle = candidate.lowercased().filter { !$0.isWhitespace }
+        guard !needle.isEmpty else { return nil }
+
+        for book in books {
+            let strippedName = book.name.lowercased().filter { !$0.isWhitespace }
+            if needle == book.id.lowercased() || needle == strippedName {
+                return book
+            }
+        }
+
+        let prefixMatches = books.filter { book in
+            book.name.lowercased().filter { !$0.isWhitespace }.hasPrefix(needle)
+        }
+        return prefixMatches.count == 1 ? prefixMatches[0] : nil
+    }
+
     /// The position one chapter away from `position` in `direction`, or
     /// `nil` at the two ends of the canon.
     ///

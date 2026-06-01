@@ -302,6 +302,18 @@ public final class BibleScreenViewModel {
         // like a manual nav.
         pendingScrollVerse = verseStart
         applyCurrentChapter()
+        // The catalog bounds chapters but not per-chapter verse counts, so a
+        // reference past a chapter's last verse (e.g. "Revelation 22:22", which
+        // has 21) reaches here. Now that the chapter is loaded, drop any
+        // pre-selected verses it doesn't actually contain — otherwise an
+        // all-out-of-range selection would light up the action bar with nothing
+        // highlighted and make Copy / Share silent no-ops.
+        if !selectedVerses.isEmpty {
+            selectedVerses.formIntersection(verseTextsByNumber().keys)
+            if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
+                pendingScrollVerse = selectedVerses.min()
+            }
+        }
         persist()
         bookSheet = nil
     }

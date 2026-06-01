@@ -399,6 +399,14 @@ public struct BibleScreen: View {
                     viewModel.selectChapter(bookId: bookId, chapterNumber: chapterNumber)
                 }
             },
+            onSelectVerseRange: { bookId, chapterNumber, verseStart, verseEnd in
+                withAnimation(motion.animation) {
+                    viewModel.openReference(
+                        bookId: bookId, chapterNumber: chapterNumber,
+                        verseStart: verseStart, verseEnd: verseEnd
+                    )
+                }
+            },
             onClose: { withAnimation(motion.animation) { viewModel.dismissBookSheet() } },
             onPresentBookAnnotations: { bookId in
                 withAnimation(motion.animation) { viewModel.dismissBookSheet() }
