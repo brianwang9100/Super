@@ -194,4 +194,49 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["target", "bookId"]
         )
     }
+
+    migrator.registerMigration("v5_annotationCategory") { db in
+        // Replace the free-form `kind` (text/reference) flag with a semantic
+        // `category` (Int-backed `BibleAnnotationCategory`) that is the single
+        // source of truth for both card ordering and rendering.
+        //
+        // Destructive by design: pre-existing annotation rows were generated
+        // before the category distinction existed, so there is no recoverable
+        // semantic category to backfill. Annotations are cheap, local-only,
+        // and regenerated on next view, so we drop and rebuild the table
+        // rather than invent a sentinel "uncategorized" bucket.
+        try db.execute(sql: "DROP TABLE bibleAnnotation")
+        try db.create(table: "bibleAnnotation") { t in
+            t.primaryKey("id", .text)
+            t.column("target", .text).notNull()
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer)
+            t.column("verseStart", .integer)
+            t.column("verseEnd", .integer)
+            // CHECK guards the `BibleAnnotationCategory` raw-value range:
+            // an out-of-range integer (a corrupt write, a direct DB edit, a
+            // future sync payload from a newer build) is rejected at insert
+            // time rather than throwing in GRDB's row decoder on read — where
+            // `@Query` would swallow it as `defaultValue: []` and blank every
+            // card. Widen this bound in lockstep when a category is added.
+            t.column("category", .integer).notNull().check { $0 >= 1 && $0 <= 5 }
+            t.column("title", .text).notNull()
+            t.column("body", .text).notNull()
+            t.column("source", .text).notNull()
+            t.column("modelId", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+        }
+        // Recreate the two indexes dropped with the table — see v3 for the
+        // access patterns each one serves.
+        try db.create(
+            index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
+            on: "bibleAnnotation",
+            columns: ["bookId", "chapterNumber", "verseEnd"]
+        )
+        try db.create(
+            index: "bibleAnnotation_on_target_bookId",
+            on: "bibleAnnotation",
+            columns: ["target", "bookId"]
+        )
+    }
 }

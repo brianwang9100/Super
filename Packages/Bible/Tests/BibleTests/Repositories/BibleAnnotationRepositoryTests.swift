@@ -24,7 +24,7 @@ struct BibleAnnotationRepositoryTests {
         verseEnd: Int = 30,
         title: String = "Card",
         body: String = "Body",
-        kind: BibleAnnotationKind = .text,
+        category: BibleAnnotationCategory = .summary,
         createdAt: Date? = nil
     ) -> BibleAnnotationRecord {
         BibleAnnotationRecord(
@@ -34,7 +34,7 @@ struct BibleAnnotationRepositoryTests {
             chapterNumber: chapter,
             verseStart: verseStart,
             verseEnd: verseEnd,
-            kind: kind,
+            category: category,
             title: title,
             body: body,
             source: .user,
@@ -64,12 +64,37 @@ struct BibleAnnotationRepositoryTests {
         #expect(listed.map(\.id) == ["a", "b"])
     }
 
+    @Test("list returns rows in canonical category order, not creation order")
+    func listOrdersByCategory() async throws {
+        let (repository, _) = try makeFixture()
+        // Insert with category reversed relative to createdAt, so a
+        // creation-time sort would return them backwards. `list()` must
+        // match the sheet's `@Query` order: author → … → reference.
+        let rows = [
+            verseRecord(id: "ref", category: .reference, createdAt: t0.addingTimeInterval(40)),
+            verseRecord(id: "clar", category: .clarification, createdAt: t0.addingTimeInterval(30)),
+            verseRecord(id: "hist", category: .historical, createdAt: t0.addingTimeInterval(20)),
+            verseRecord(id: "sum", category: .summary, createdAt: t0.addingTimeInterval(10)),
+            verseRecord(id: "auth", category: .author, createdAt: t0),
+        ]
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30, inserting: rows
+        )
+        let listed = try await repository.list(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30
+        )
+        #expect(listed.map(\.category) == [.author, .summary, .historical, .clarification, .reference])
+        #expect(listed.map(\.id) == ["auth", "sum", "hist", "clar", "ref"])
+    }
+
     @Test("book-target rows have nil chapter and verse columns")
     func insertBookGroup() async throws {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "bp", target: .book, bookId: "ROM",
-            kind: .text, title: "Prologue", body: "Long letter.",
+            category: .author, title: "Prologue", body: "Long letter.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(
@@ -92,7 +117,7 @@ struct BibleAnnotationRepositoryTests {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
-            kind: .text, title: "Summary", body: "Life in the Spirit.",
+            category: .summary, title: "Summary", body: "Life in the Spirit.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(
@@ -110,9 +135,12 @@ struct BibleAnnotationRepositoryTests {
 
     // MARK: - Ordering
 
-    @Test("rows in a target group are listed by (createdAt ASC, id ASC)")
+    @Test("rows of equal category sort by createdAt then id")
     func listOrdering() async throws {
         let (repository, _) = try makeFixture()
+        // All rows share the default `.summary` category, so the category
+        // key is a no-op here and the secondary keys decide; cross-category
+        // ordering is covered by `listOrdersByCategory`.
         let later = t0.addingTimeInterval(60)
         let rows = [
             verseRecord(id: "c", createdAt: later),

@@ -35,6 +35,7 @@ struct AnnotationBlock: View {
         case reference(label: String, target: BibleCitationParser.ParsedCitation?)
     }
 
+    let category: BibleAnnotationCategory
     let title: String
     let content: Content
     let provenance: String
@@ -49,6 +50,7 @@ struct AnnotationBlock: View {
     @State private var showDeleteConfirmation: Bool = false
 
     init(
+        category: BibleAnnotationCategory,
         title: String,
         content: Content,
         provenance: String,
@@ -56,6 +58,7 @@ struct AnnotationBlock: View {
         onDelete: @escaping () -> Void,
         onOpenReference: @escaping (BibleCitationParser.ParsedCitation) -> Void
     ) {
+        self.category = category
         self.title = title
         self.content = content
         self.provenance = provenance
@@ -93,8 +96,29 @@ struct AnnotationBlock: View {
         }
     }
 
+    /// The category glyph at the card's top-left: a single accent-tinted
+    /// rounded square shared by every category (no per-category color). The
+    /// `accentSoft` fill + `accent` glyph mirror the design canvas
+    /// `CategoryBadge`.
+    private var categoryBadge: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(theme.accentSoft)
+            .frame(width: 26, height: 26)
+            .overlay(
+                Image(systemName: category.iconSystemName)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(theme.accent)
+            )
+            // Collapse to one labelled element: the default `.ignore` hides
+            // the decorative glyph, so VoiceOver reads "Author" rather than
+            // the SF Symbol's own name on top of the category label.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(category.displayName)
+    }
+
     private var header: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: 9) {
+            categoryBadge
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .tracking(0.7)

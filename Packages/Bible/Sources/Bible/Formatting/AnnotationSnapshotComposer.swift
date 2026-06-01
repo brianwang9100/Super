@@ -6,7 +6,7 @@ import Foundation
 /// The LLM (Large Language Model) sees this block verbatim when the user
 /// taps "Add to chat" or "Add all to chat" on a popover card. The format
 /// is intentionally plain markdown — no embedded links, no per-card kebab
-/// affordances, no model-id footer. Reference-kind cards render as their
+/// affordances, no model-id footer. Reference-category cards render as their
 /// citation string (`"John 1:14"`) so the model sees a clean
 /// natural-language reference; the citation-as-link rendering is purely a
 /// UI affordance inside the popover and has no place in the chat context.
@@ -29,7 +29,10 @@ public enum AnnotationSnapshotComposer {
 
     /// Multi-card snapshot, used by the popover-level "Add all to chat"
     /// action. Cards are emitted in the order they appear in the input —
-    /// callers pass records already sorted by `(createdAt ASC, id ASC)`.
+    /// callers pass records already sorted by
+    /// `(category ASC, createdAt ASC, id ASC)` (what `list(...)` and the
+    /// `@Query` paths return), so the LLM sees the same card order the user
+    /// does.
     ///
     /// Format: each card rendered as in `compose(annotation:)`, separated
     /// by a blank line. Result has a trailing newline for the same reason
