@@ -394,9 +394,12 @@ struct BibleChapterReader: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 title
                 // The two glyphs cluster tightly together; their frames hug
-                // their ink (see AnnotationBubble / NoteGlyph), so this spacing
-                // is the real visible gap between them.
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                // their ink (see AnnotationBubble / NoteGlyph). `.center`
+                // rather than `.firstTextBaseline` because both children are
+                // Canvas icons with no real text baseline — centering aligns
+                // the two equal-height glyphs deterministically instead of
+                // relying on SwiftUI's synthesized-baseline fallback.
+                HStack(alignment: .center, spacing: 3) {
                     chapterAnnotationBubble
                     chapterNoteGlyph
                 }
@@ -427,7 +430,10 @@ struct BibleChapterReader: View {
                 }
             } label: {
                 AnnotationBubble(state: state, size: 20)
-                    .padding(6)
+                    // No horizontal padding so the icon→icon gap matches the
+                    // verse trailers' tight 3pt; vertical padding alone grows
+                    // the tap target to the 44pt HIG minimum height.
+                    .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -457,7 +463,10 @@ struct BibleChapterReader: View {
                 onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: glyphState, size: 20)
-                    .padding(6)
+                    // No horizontal padding so the icon→icon gap matches the
+                    // verse trailers' tight 3pt; vertical padding alone grows
+                    // the tap target to the 44pt HIG minimum height.
+                    .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
