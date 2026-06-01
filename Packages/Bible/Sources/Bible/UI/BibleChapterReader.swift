@@ -379,12 +379,10 @@ struct BibleChapterReader: View {
         // host wired. Stable order — annotation bubble first, note glyph
         // second — mirroring `VerseTrailers` and the verse-end stacks below.
         if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 14) {
                 title
-                // The two glyphs cluster tightly together; their frames hug
-                // their ink (see AnnotationBubble / NoteGlyph), so this spacing
-                // is the real visible gap between them.
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                // .center, not .firstTextBaseline: Canvas icons have no text baseline.
+                HStack(alignment: .center, spacing: 7) {
                     chapterAnnotationBubble
                     chapterNoteGlyph
                 }
@@ -414,8 +412,9 @@ struct BibleChapterReader: View {
                 case .generating: break
                 }
             } label: {
-                AnnotationBubble(state: state, size: 20)
-                    .padding(6)
+                AnnotationBubble(state: state, size: 24)
+                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -444,8 +443,9 @@ struct BibleChapterReader: View {
             Button {
                 onNoteGlyphTap(spec)
             } label: {
-                NoteGlyph(state: glyphState, size: 20)
-                    .padding(6)
+                NoteGlyph(state: glyphState, size: 24)
+                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

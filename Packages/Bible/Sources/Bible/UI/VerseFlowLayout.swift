@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The outcome of a greedy line-wrap: each item's top-left origin within the
-/// flow and the total size the wrapped rows occupy.
+/// The outcome of a greedy line-wrap: each item's placement origin within the
+/// flow (top-leading anchor, vertically centred within its row) and the total
+/// size the wrapped rows occupy.
 struct VerseFlowResult: Equatable {
     let origins: [CGPoint]
     let size: CGSize
@@ -89,18 +90,32 @@ struct VerseFlowLayout: Layout {
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
         var widestRow: CGFloat = 0
+        var rowStart = 0
+
+        // Drop each item in the just-finished row to the row's vertical centre,
+        // so a shorter item (a trailing glyph beside taller verse text) sits
+        // mid-line instead of pinned to the top. Same-height items (plain
+        // words) get a zero offset, leaving word-only rows untouched.
+        func centreRow(end: Int) {
+            for i in rowStart..<end {
+                origins[i].y += (rowHeight - itemSizes[i].height) / 2
+            }
+        }
 
         for size in itemSizes {
             if x > 0, x + size.width > maxWidth {
+                centreRow(end: origins.count)
                 widestRow = max(widestRow, x)
                 x = 0
                 y += rowHeight + lineSpacing
                 rowHeight = 0
+                rowStart = origins.count
             }
             origins.append(CGPoint(x: x, y: y))
             x += size.width
             rowHeight = max(rowHeight, size.height)
         }
+        centreRow(end: origins.count)
         widestRow = max(widestRow, x)
 
         return VerseFlowResult(
