@@ -33,6 +33,10 @@ import Testing
 @Suite("SettingsMemoryPane snapshots", .serialized)
 @MainActor
 struct SettingsMemoryPaneSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     private static let frame = CGSize(width: 402, height: 874)
     private static let appInfo = SuperAppInfo(bundleName: "Super", version: "0.3.1", build: "1")
 
