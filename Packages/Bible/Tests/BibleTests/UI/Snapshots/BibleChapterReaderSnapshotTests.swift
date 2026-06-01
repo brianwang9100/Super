@@ -153,8 +153,7 @@ struct BibleChapterReaderSnapshotTests {
                 onClearSelection: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
-                onNoteGlyphTap: { _ in },
-                onRequestChapterNote: { _ in }
+                onNoteGlyphTap: { _ in }
             )
         }
         .frame(width: 402, height: 760)

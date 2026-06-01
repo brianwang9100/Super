@@ -52,7 +52,6 @@ struct BibleChapterReader: View {
     private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
-    private let onRequestChapterNote: ((BibleNoteTargetSpec) -> Void)?
 
     /// Verse the user was reading just before the action sheet appeared.
     /// Set when the sheet first measures (`bottomOverlayInset` becomes
@@ -96,12 +95,11 @@ struct BibleChapterReader: View {
     ///   - chapterDispatchStatus: the chapter target's in-flight dispatch
     ///     status, or `nil` when none. A `.running` status renders the
     ///     chapter bubble in its generating state.
-    ///   - onNoteGlyphTap: tap on a *filled* note glyph (a verse trailer or
-    ///     the chapter title) — presents the note list sheet for the target.
+    ///   - onNoteGlyphTap: tap on a note glyph (a verse trailer or the chapter
+    ///     title), filled or outline — presents the note list sheet for the
+    ///     target. The user composes from the list's `+`; an empty range opens
+    ///     to the list's empty state rather than auto-opening the editor.
     ///     `nil` suppresses note glyphs (preview / driver host).
-    ///   - onRequestChapterNote: tap on the chapter title's *outline* note
-    ///     glyph — composes a new chapter-level note. `nil` suppresses the
-    ///     outline glyph's compose action.
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -122,8 +120,7 @@ struct BibleChapterReader: View {
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil,
-        onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
-        onRequestChapterNote: ((BibleNoteTargetSpec) -> Void)? = nil
+        onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -157,7 +154,6 @@ struct BibleChapterReader: View {
         self.onRequestChapterAnnotation = onRequestChapterAnnotation
         self.chapterDispatchStatus = chapterDispatchStatus
         self.onNoteGlyphTap = onNoteGlyphTap
-        self.onRequestChapterNote = onRequestChapterNote
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -439,11 +435,12 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// The chapter-title note glyph — filled (notes exist) → tapping opens the
-    /// list, outline (none yet) → tapping composes. Notes have no generating
-    /// state (writes land synchronously through the editor), so it's a plain
-    /// two-state glyph unlike the annotation bubble. `EmptyView` when no note
-    /// host is wired.
+    /// The chapter-title note glyph — tapping always opens the note list for
+    /// the chapter (the empty state prompts the user to compose from the `+`).
+    /// Renders filled when notes exist, outline when none yet. Notes have no
+    /// generating state (writes land synchronously through the editor), so it's
+    /// a plain two-state glyph unlike the annotation bubble. `EmptyView` when no
+    /// note host is wired.
     @ViewBuilder
     private var chapterNoteGlyph: some View {
         if let onNoteGlyphTap {
@@ -452,21 +449,13 @@ struct BibleChapterReader: View {
             )
             let glyphState: NoteGlyph.GlyphState = hasChapterNote ? .filled : .outline
             Button {
-                if hasChapterNote {
-                    onNoteGlyphTap(spec)
-                } else {
-                    onRequestChapterNote?(spec)
-                }
+                onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: glyphState, size: 20)
                     .padding(6)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // An outline glyph with no compose callback wired (preview /
-            // driver host) is a dead control — disable it rather than render a
-            // silent no-op tap. The live screen always wires the callback.
-            .disabled(!hasChapterNote && onRequestChapterNote == nil)
             .accessibilityLabel(Self.chapterNoteGlyphLabel(hasNote: hasChapterNote))
         }
     }
@@ -483,7 +472,7 @@ struct BibleChapterReader: View {
     /// VoiceOver label for the chapter-title note glyph, keyed to whether the
     /// chapter already carries notes.
     static func chapterNoteGlyphLabel(hasNote: Bool) -> String {
-        hasNote ? "View chapter notes" : "Add a chapter note"
+        hasNote ? "View chapter notes" : "Open chapter notes"
     }
 
     /// Height of the shell's minimized chat-pill clearance the reader

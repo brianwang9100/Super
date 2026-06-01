@@ -258,7 +258,6 @@ struct BibleBookSheetSnapshotTests {
             onPresentBookAnnotations: { _ in },
             onRequestBookAnnotations: { _ in },
             onPresentBookNotes: { _ in },
-            onRequestBookNote: { _ in },
             generatingBookIds: generatingBookIds
         )
     }
