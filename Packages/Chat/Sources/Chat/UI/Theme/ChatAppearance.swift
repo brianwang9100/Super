@@ -41,12 +41,6 @@ public struct ChatAppearance: Sendable, Equatable {
     /// (see ``UserBubble`` for the pattern).
     public var bodyFontSize: CGFloat { 17 * fontScale }
 
-    /// SwiftUI `Font` matching `bodyFontSize`. Convenience for views that
-    /// explicitly want a fixed (non-Dynamic-Type) body font scaled only
-    /// by `fontScale`. For Dynamic-Type-responsive scaling on top of
-    /// `fontScale`, use a local `@ScaledMetric` instead.
-    public var bodyFont: Font { .system(size: bodyFontSize) }
-
     /// Paragraph line-spacing as an em multiplier passed to MarkdownUI's
     /// `relativeLineSpacing`. Resolves against `bodyFontSize`, so the
     /// gap grows in both absolute and relative terms as the slider

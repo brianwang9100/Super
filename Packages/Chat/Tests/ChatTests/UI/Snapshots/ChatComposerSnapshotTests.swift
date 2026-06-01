@@ -257,6 +257,7 @@ struct ChatComposerSnapshotTests {
         )
         .superTheme(.make(.light))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_font_scale_max_light", function: function)
     }
@@ -279,6 +280,7 @@ struct ChatComposerSnapshotTests {
         )
         .superTheme(.make(.dark))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_font_scale_max_dark", function: function)
     }
@@ -301,6 +303,7 @@ struct ChatComposerSnapshotTests {
         )
         .superTheme(.make(.sepia))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_font_scale_max_sepia", function: function)
     }
@@ -325,6 +328,7 @@ struct ChatComposerSnapshotTests {
         )
         .superTheme(.make(.light))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
+        .superTypography(.make(.serif, fontScale: 1.20))
         .dynamicTypeSize(.xxLarge)
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_font_scale_max_light_xxl", function: function)

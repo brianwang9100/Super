@@ -27,6 +27,7 @@ struct SettingsMemoryPane: View {
     @FocusState private var focusedId: String?
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -50,7 +51,7 @@ struct SettingsMemoryPane: View {
                     pendingClearAll = true
                 } label: {
                     Text("Clear All")
-                        .font(.system(.subheadline, weight: .medium))
+                        .font(typography.font(.subheadline, weight: .medium))
                         .foregroundStyle(theme.errorAccent)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 12)
@@ -72,7 +73,7 @@ struct SettingsMemoryPane: View {
 
     private var preamble: some View {
         Text("Memory lets me remember things across conversations. I'll add entries automatically as we talk; you can edit or delete them here.")
-            .font(.system(.caption))
+            .font(typography.font(.caption))
             .foregroundStyle(theme.inkFaint)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -90,7 +91,7 @@ struct SettingsMemoryPane: View {
                 // UX — the user dismisses the keyboard by tapping
                 // outside.
                 TextField("Memory text", text: $draft, axis: .vertical)
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
                     .focused($focusedId, equals: memory.id)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -99,7 +100,7 @@ struct SettingsMemoryPane: View {
                     }
             } else {
                 Text(memory.text)
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -111,7 +112,7 @@ struct SettingsMemoryPane: View {
                 Task { await viewModel.deleteMemory(id: memory.id) }
             } label: {
                 Image(systemName: "trash")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(typography.font(size: 14, weight: .regular))
                     .foregroundStyle(theme.inkFaint)
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
@@ -135,10 +136,10 @@ struct SettingsMemoryPane: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Text("No memories yet")
-                .font(.system(.subheadline))
+                .font(typography.font(.subheadline))
                 .foregroundStyle(theme.inkSoft)
             Text("Tell me a preference (\u{201C}I prefer metric units\u{201D}) and I'll save it here.")
-                .font(.system(.caption))
+                .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
                 .multilineTextAlignment(.center)
         }

@@ -10,6 +10,14 @@ import Testing
 /// Each scenario embeds the sheet inside a fixed-size container that
 /// mimics the iPhone 17 chat surface so the bottom-sheet inset + scrim
 /// composition matches what ships in production.
+///
+/// Note on the Dynamic Type XXL companions: post-`SuperTypography`, settings
+/// text resolves through `typography.font(_ role:)` (system path, `relativeTo:
+/// nil` per decision ④), so OS Dynamic Type does not enlarge it. The XXL
+/// baselines are therefore byte-identical to their default-DT siblings and
+/// act as fixed-chrome sentinels — a diff flags an accidental reintroduction
+/// of Dynamic Type scaling to settings chrome. The app font-scale slider is
+/// the axis these panes respond to.
 @Suite("SettingsSheet snapshots", .serialized)
 @MainActor
 struct SettingsSheetSnapshotTests {
@@ -885,6 +893,11 @@ private struct SettingsSheetSnapshotHarness: View {
                 initialModelDetailContextWindowError: initialModelDetailContextWindowError
             )
         }
+        // Mirror the production composition root (`AppShell`), which builds
+        // `.superTypography` from the persisted settings. Without this the
+        // panes would render with the environment-default typography and a
+        // future font-scale variant would silently snapshot the wrong scale.
+        .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
     }
 }
 

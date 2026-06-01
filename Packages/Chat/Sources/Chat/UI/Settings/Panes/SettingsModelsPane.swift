@@ -11,6 +11,7 @@ struct SettingsModelsPane: View {
     @Bindable var viewModel: SettingsViewModel
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,17 +40,20 @@ struct SettingsModelsPane: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(theme.accentSoft)
                         Text(model.monogram.uppercased())
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            // Fixed 36×36 tile: pin relativeTo: nil so the monogram
+                            // doesn't pick up Dynamic Type (mono()'s .caption2 default
+                            // would scale it under the serif identity) and overflow.
+                            .font(typography.mono(13, relativeTo: nil, weight: .semibold))
                             .foregroundStyle(theme.accent)
                     }
                     .frame(width: 36, height: 36)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.name)
-                            .font(.system(.subheadline).weight(.medium))
+                            .font(typography.font(.subheadline, weight: .medium))
                             .foregroundStyle(theme.ink)
                         Text(subtitle(for: model))
-                            .font(.system(.caption, design: .monospaced))
+                            .font(typography.mono(12, relativeTo: .caption))
                             .foregroundStyle(isAvailable ? theme.inkFaint : theme.errorInk)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -136,7 +140,7 @@ struct SettingsModelsPane: View {
             HStack(spacing: 6) {
                 PlusIcon(size: 14)
                 Text("Add model endpoint")
-                    .font(.system(.subheadline))
+                    .font(typography.font(.subheadline))
             }
             .foregroundStyle(theme.inkSoft)
             .frame(maxWidth: .infinity)

@@ -11,11 +11,12 @@ struct UserBubble: View {
     /// an ordinary text message.
     var references: [VerseReferencePillModel] = []
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
-    /// Base body size, declared via `@ScaledMetric` so the rendered
-    /// point size composes Dynamic Type with the chat font-scale knob —
-    /// at XXL the user bubble grows beyond plain markdown body, matching
-    /// the pre-`ChatAppearance` behavior.
+    /// Base body size, declared via `@ScaledMetric` so the bubble text
+    /// composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so this metric is how the view opts into Dynamic Type.
     @ScaledMetric(relativeTo: .subheadline) private var basePoint: CGFloat = 17
 
     var body: some View {
@@ -35,7 +36,7 @@ struct UserBubble: View {
 
     private var textBubble: some View {
         Text(text)
-            .font(.system(size: basePoint * appearance.fontScale))
+            .font(typography.font(size: basePoint))
             .lineSpacing(2)
             .foregroundStyle(theme.bubbleInk)
             .padding(.horizontal, 14)

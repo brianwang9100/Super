@@ -16,6 +16,7 @@ public struct ContextMeter: View {
     }
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private var fillRatio: Double {
         guard maxTokens > 0 else { return 0 }
@@ -39,7 +40,7 @@ public struct ContextMeter: View {
                     .frame(width: 26 * fillRatio, height: 3)
             }
             Text(labelText)
-                .font(.custom("JetBrainsMono-Regular", size: 10.5, relativeTo: .caption2))
+                .font(typography.mono(10.5))
                 .foregroundStyle(theme.inkFaint)
         }
         .padding(.trailing, 4)

@@ -34,9 +34,12 @@ public struct ChatsScreen: View {
     private let injectedEventBus: SuperEventBus?
     private var eventBus: SuperEventBus? { injectedEventBus ?? environmentEventBus }
     @Environment(\.superTheme) private var theme
-    @Environment(\.superFontScale) private var fontScale
-    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 36
-    @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 11
+    @Environment(\.superTypography) private var typography
+    /// Search-field base size, declared via `@ScaledMetric` so the
+    /// system-font input composes OS Dynamic Type on top of the app
+    /// font-scale that `SuperTypography` folds in. The "Chats" title and
+    /// the result-count line are brand serif / mono roles that carry
+    /// Dynamic Type through their own `relativeTo`.
     @ScaledMetric(relativeTo: .subheadline) private var searchInputSize: CGFloat = 14
 
     /// Bottom inset that clears the shell's minimized "Chat with Super"
@@ -106,7 +109,7 @@ public struct ChatsScreen: View {
 
     private var header: some View {
         Text("Chats")
-            .font(.custom("InstrumentSerif-Italic", size: titleSize * fontScale))
+            .font(typography.display(36))
             .foregroundStyle(theme.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -117,7 +120,7 @@ public struct ChatsScreen: View {
     /// non-UI suites) can't see it.
     @ViewBuilder private var searchTextField: some View {
         let field = TextField("Search chats", text: $searchText)
-            .font(.system(size: searchInputSize * fontScale))
+            .font(typography.font(size: searchInputSize))
             .foregroundStyle(theme.ink)
             .autocorrectionDisabled()
             .submitLabel(.search)
@@ -131,7 +134,7 @@ public struct ChatsScreen: View {
     private var searchField: some View {
         HStack(spacing: 9) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
+                .font(typography.font(size: 14, weight: .medium))
                 .foregroundStyle(theme.inkFaint)
             searchTextField
             if searchText.isEmpty == false {
@@ -139,7 +142,7 @@ public struct ChatsScreen: View {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(typography.font(size: 14))
                         .foregroundStyle(theme.inkMute)
                 }
                 .buttonStyle(.plain)
@@ -162,7 +165,7 @@ public struct ChatsScreen: View {
         let count = filteredConversations.count
         let label = count == 1 ? "1 match" : "\(count) matches"
         return Text(label)
-            .font(.system(size: captionSize * fontScale, design: .monospaced))
+            .font(typography.mono(11, relativeTo: .footnote))
             .tracking(0.5)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,7 +215,7 @@ public struct ChatsScreen: View {
     private var addButton: some View {
         Button(action: _startNewChat) {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
+                .font(typography.font(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 // 36×36 mirrors the shell's hamburger button; the 4pt
                 // top offset puts it on the same baseline (safe-area

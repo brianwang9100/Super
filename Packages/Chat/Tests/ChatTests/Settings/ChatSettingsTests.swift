@@ -136,6 +136,7 @@ struct ChatSettingsStoreTests {
         let store = ChatSettingsStore(repository: repo)
 
         try await store.setTheme(.dark)
+        try await store.setTypography(.system)
         try await store.setUserPersonalization("custom")
         try await store.setDefaultVerbosity(.verbose)
         try await store.setFontScale(1.10)
@@ -145,6 +146,7 @@ struct ChatSettingsStoreTests {
 
         let settings = await store.load()
         #expect(settings.themeId == .dark)
+        #expect(settings.typographyID == .system)
         #expect(settings.userPersonalization == "custom")
         #expect(settings.defaultVerbosity == .verbose)
         #expect(settings.fontScale == 1.10)

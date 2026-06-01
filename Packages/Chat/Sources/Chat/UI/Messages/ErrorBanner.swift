@@ -7,17 +7,18 @@ struct ErrorBanner: View {
     let banner: MessageList.ErrorState
     let onRetry: () -> Void
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         HStack(spacing: 10) {
             Text(banner.message)
-                .font(.system(.footnote))
+                .font(typography.font(.footnote))
                 .foregroundStyle(theme.errorInk)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let label = banner.actionLabel, let action = banner.action {
                 Button(action: action) {
                     Text(label)
-                        .font(.system(.caption).weight(.medium))
+                        .font(typography.font(.caption, weight: .medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -29,9 +30,9 @@ struct ErrorBanner: View {
                 Button(action: onRetry) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(.caption2).weight(.semibold))
+                            .font(typography.font(.caption2, weight: .semibold))
                         Text("Retry")
-                            .font(.system(.caption).weight(.medium))
+                            .font(typography.font(.caption, weight: .medium))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
