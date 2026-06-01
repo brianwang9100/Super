@@ -50,6 +50,17 @@ public struct DebugLLMProvider: LLMProvider {
                 let messageID = "debug-\(UUID().uuidString)"
                 continuation.yield(.messageStart(id: messageID, model: model.id))
 
+                // A user message containing "search" drives the web-search
+                // script (`.searchStarted` → text → `.citations`) so the
+                // sources pill + citation sink are exercisable in the
+                // simulator with no key or network. Mirrors the event shape a
+                // real native adapter emits.
+                if Self.lastUserText(messages).localizedCaseInsensitiveContains("search") {
+                    await Self.streamSearch(into: continuation, messages: messages)
+                    continuation.finish()
+                    return
+                }
+
                 let canned = Self.pickResponse()
                 do {
                     // Pre-stream pause so the "Waiting" spark UI is
@@ -210,6 +221,77 @@ public struct DebugLLMProvider: LLMProvider {
             """
         ),
     ]
+
+    // MARK: - Web-search script
+
+    /// Canned answer + sources for the search script. The text reads like a
+    /// grounded reply so the pill renders under a realistic message.
+    private static let searchAnswer = """
+    Based on the latest reporting, the rover confirmed subsurface water ice \
+    in Jezero crater and relayed fresh imagery this week. Sources below.
+    """
+
+    private static let debugCitations: [SourceCitation] = [
+        SourceCitation(
+            id: "https://www.nasa.gov/mars-rover#0",
+            title: "Perseverance confirms subsurface water ice",
+            url: URL(string: "https://www.nasa.gov/mars-rover")!
+        ),
+        SourceCitation(
+            id: "https://www.space.com/rover-update#1",
+            title: "Mars rover relays new imagery from Jezero crater",
+            url: URL(string: "https://www.space.com/rover-update")!
+        ),
+        SourceCitation(
+            id: "https://www.scientificamerican.com/mars#2",
+            title: "What the new Mars findings mean for the search for life",
+            url: URL(string: "https://www.scientificamerican.com/mars")!
+        ),
+    ]
+
+    /// Emit the `searchStarted → text → citations → messageComplete` sequence.
+    /// Errors (cancellation) surface as `.error` then a terminal
+    /// `.messageComplete`, matching the real providers' stream contract.
+    private static func streamSearch(
+        into continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation,
+        messages: [LLMMessage]
+    ) async {
+        do {
+            try await sleep(milliseconds: Int.random(in: 150...500))
+            continuation.yield(.searchStarted(query: "latest mars rover news"))
+            try await sleep(milliseconds: Int.random(in: 250...600))
+
+            continuation.yield(.contentBlockStart(index: 0, type: .text))
+            for chunk in tokenChunks(of: searchAnswer) {
+                try Task.checkCancellation()
+                continuation.yield(.textDelta(index: 0, text: chunk))
+                try await sleep(milliseconds: Int.random(in: 15...60))
+            }
+            continuation.yield(.contentBlockStop(index: 0))
+
+            continuation.yield(.citations(debugCitations))
+            continuation.yield(.messageComplete(usage: TokenUsage(
+                inputTokens: messages.reduce(0) { $0 + approxTokens(of: $1) },
+                outputTokens: searchAnswer.count / 4
+            )))
+        } catch is CancellationError {
+            continuation.yield(.error(.cancelled))
+            continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+        } catch {
+            continuation.yield(.error(.requestFailed(error.localizedDescription)))
+            continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+        }
+    }
+
+    /// The most recent user message's flattened text, used for trigger
+    /// detection. Empty when there is no user turn.
+    private static func lastUserText(_ messages: [LLMMessage]) -> String {
+        guard let last = messages.last(where: { $0.role == .user }) else { return "" }
+        return last.content.compactMap { block in
+            if case .text(let value) = block { return value }
+            return nil
+        }.joined(separator: " ")
+    }
 
     // MARK: - Helpers
 

@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import Testing
 @testable import Chat
@@ -28,7 +29,7 @@ struct ChatScreenViewModelProjectionTests {
         } else {
             Issue.record("expected user bubble")
         }
-        if case .assistantText(let id, let thinking, let durationMs, let text, let calls) = items[1] {
+        if case .assistantText(let id, let thinking, let durationMs, let text, let calls, _) = items[1] {
             #expect(id == "a1")
             #expect(thinking == nil)
             #expect(durationMs == nil)
@@ -57,7 +58,7 @@ struct ChatScreenViewModelProjectionTests {
             checkpoint: nil
         )
         #expect(items.count == 1)
-        guard case .assistantText(_, let thinking, let durationMs, let text, _) = items[0] else {
+        guard case .assistantText(_, let thinking, let durationMs, let text, _, _) = items[0] else {
             Issue.record("expected assistant row")
             return
         }
@@ -92,7 +93,7 @@ struct ChatScreenViewModelProjectionTests {
         // the tool call. The tool result MessageRecord is folded in, not
         // rendered as a separate row.
         #expect(items.count == 2)
-        guard case .assistantText(_, _, _, _, let calls) = items[1] else {
+        guard case .assistantText(_, _, _, _, let calls, _) = items[1] else {
             Issue.record("expected assistant row at index 1")
             return
         }
@@ -100,6 +101,89 @@ struct ChatScreenViewModelProjectionTests {
         #expect(calls[0].toolName == "time.now")
         #expect(calls[0].status == .success)
         #expect(calls[0].resultText == "It is 3pm.")
+    }
+
+    @Test("assistant web-search citations project onto the row as source pills")
+    func sourceCitationsProject() {
+        let attachments = MessageAttachments(sources: [
+            SourceCitation(
+                id: "https://www.nasa.gov/mars#0",
+                title: "NASA: Mars Rover",
+                url: URL(string: "https://www.nasa.gov/mars")!
+            ),
+            // No title → pill falls back to the host; leading www. stripped.
+            SourceCitation(
+                id: "https://space.com/rover#1",
+                title: "",
+                url: URL(string: "https://space.com/rover")!
+            ),
+        ])
+        let items = ChatScreenViewModel.project(
+            messages: [
+                MessageRecord(
+                    id: "a1", conversationId: "c", role: .assistant,
+                    content: "The rover found water ice.", createdAt: now,
+                    attachmentsJSON: MessageRecord.encode(attachments)
+                ),
+            ],
+            toolCalls: [],
+            checkpoint: nil
+        )
+        guard case .assistantText(_, _, _, _, _, let sources) = items[0] else {
+            Issue.record("expected assistant row")
+            return
+        }
+        #expect(sources.count == 2)
+        #expect(sources[0].id == "https://www.nasa.gov/mars#0")
+        #expect(sources[0].host == "nasa.gov")           // leading www. stripped
+        #expect(sources[0].title == "NASA: Mars Rover")
+        #expect(sources[1].host == "space.com")
+        // A titleless source collapses to "" so the pill renders host-only,
+        // rather than a redundant host + "space.com" title pair.
+        #expect(sources[1].title == "")
+        #expect(sources[1].url == URL(string: "https://space.com/rover")!)
+    }
+
+    @Test("a citation whose title merely repeats its host collapses to a host-only pill")
+    func titleEqualToHostCollapses() {
+        let attachments = MessageAttachments(sources: [
+            // Title equals the www-prefixed host — redundant, should collapse.
+            SourceCitation(id: "1", title: "www.example.com", url: URL(string: "https://www.example.com/page")!),
+            // Title differs only in case from the host — must still collapse.
+            SourceCitation(id: "2", title: "Space.com", url: URL(string: "https://space.com/x")!),
+        ])
+        let items = ChatScreenViewModel.project(
+            messages: [
+                MessageRecord(
+                    id: "a1", conversationId: "c", role: .assistant, content: "ans",
+                    createdAt: now, attachmentsJSON: MessageRecord.encode(attachments)
+                ),
+            ],
+            toolCalls: [], checkpoint: nil
+        )
+        guard case .assistantText(_, _, _, _, _, let sources) = items[0] else {
+            Issue.record("expected assistant row"); return
+        }
+        #expect(sources[0].host == "example.com")
+        #expect(sources[0].title == "")
+        #expect(sources[1].host == "space.com")
+        #expect(sources[1].title == "")          // case-insensitive collapse
+    }
+
+    @Test("assistant row with no attachments projects no source pills")
+    func noAttachmentsProjectsNoSources() {
+        let items = ChatScreenViewModel.project(
+            messages: [
+                MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "hi", createdAt: now),
+            ],
+            toolCalls: [],
+            checkpoint: nil
+        )
+        guard case .assistantText(_, _, _, _, _, let sources) = items[0] else {
+            Issue.record("expected assistant row")
+            return
+        }
+        #expect(sources.isEmpty)
     }
 
     @Test("compaction banner inserted after the cutoff message")
@@ -222,7 +306,7 @@ struct ChatScreenViewModelProjectionTests {
             ToolCallRecord(id: "t2", messageId: "a1", conversationId: "c", toolName: "x.boom", parameters: "{}", status: .failed, createdAt: now),
         ]
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: toolCalls, checkpoint: nil)
-        guard case .assistantText(_, _, _, _, let calls) = items[0] else {
+        guard case .assistantText(_, _, _, _, let calls, _) = items[0] else {
             Issue.record("expected assistant row")
             return
         }

@@ -856,6 +856,49 @@ struct SettingsViewModelTests {
         #expect(await registry.provider(id: "m1") != nil)
     }
 
+    @Test("updateModel re-registers an .openAIResponses provider across an edit")
+    func updateModelReregistersOpenAIResponsesProvider() async {
+        // The PR3a `hasProviderAdapter` flip makes `.openAIResponses` rows
+        // newly eligible for the unregister + re-register cycle. Pin it: after
+        // an edit the row stays registered, built through `makeLLMProvider` as
+        // an `OpenAIResponsesLLMProvider` (not silently dropped the way a
+        // not-yet-buildable native kind would be).
+        let registry = LLMProviderRegistry()
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "resp1",
+                name: "GPT-5.1 (search)",
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "gpt-5.1",
+                createdAt: Date(),
+                kind: .openAIResponses,
+                supportsThinking: false,
+                maxContextTokens: 200_000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            llmProviderRegistry: registry,
+            httpClient: StubHTTPClient()
+        )
+
+        await vm.updateModel(
+            id: "resp1",
+            name: "GPT-5.1 renamed",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.1",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 200_000
+        )
+
+        let provider = await registry.provider(id: "resp1")
+        #expect(provider is OpenAIResponsesLLMProvider)
+    }
+
     @Test("loadModels projects searchBackend onto the ModelRow")
     func loadModelsProjectsSearchBackend() async {
         // The Add-Model native-search UI (next PR) reads `searchBackend` off

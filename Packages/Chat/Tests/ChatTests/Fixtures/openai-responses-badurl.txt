@@ -1,0 +1,18 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_b","model":"gpt-5.1","usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"See sources."}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","item_id":"msg_1","annotation":{"type":"url_citation","url":"https://good.example.com/a","title":"Good source"}}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","item_id":"msg_1","annotation":{"type":"url_citation","url":"","title":"Unusable"}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_b","usage":{"input_tokens":3,"output_tokens":2}}}
+

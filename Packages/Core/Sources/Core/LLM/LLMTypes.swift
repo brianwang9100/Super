@@ -95,7 +95,8 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     case geminiNative
     /// Native OpenAI Responses API (`/v1/responses`) adapter (`web_search`
     /// tool + `url_citation` annotations). Distinct from the
-    /// `.openAICompatible` Chat Completions path. Adapter lands in a later PR.
+    /// `.openAICompatible` Chat Completions path. Implemented by
+    /// `OpenAIResponsesLLMProvider` (web-search PR3a).
     case openAIResponses
     #if DEBUG
     /// Development-only fake provider that streams canned markdown
@@ -109,24 +110,26 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
 
     /// Whether the running binary can construct a live `LLMProvider` for
     /// this kind. `true` for kinds with a shipped adapter
-    /// (`.openAICompatible`, `.appleFoundation`, and `.debug` in DEBUG);
-    /// **`false` for the native-search kinds until their adapters ship** —
+    /// (`.openAICompatible`, `.appleFoundation`, `.openAIResponses`, and
+    /// `.debug` in DEBUG); **`false` for the native-search kinds whose
+    /// adapters haven't shipped yet** (`.anthropicNative`, `.geminiNative`) —
     /// the catalog already advertises `nativeSearchAdapter`, and a row can
     /// carry a native `kind` before the adapter exists, so callers gate on
     /// this rather than assuming every persisted kind is buildable.
     ///
     /// Distinct from "is this kind decodable in this binary" (which the
-    /// repository's `knownKindRequest` covers): a native kind decodes fine
-    /// but has no provider to register, so a row carrying it must not claim
-    /// the active-provider slot (`selected()`), must not trigger an
-    /// unregister-without-re-register on edit, and must not be classified by
-    /// URL in the edit pane. Flip the relevant arm to `true` in the PR that
-    /// lands that adapter.
+    /// repository's `knownKindRequest` covers): a not-yet-built native kind
+    /// decodes fine but has no provider to register, so a row carrying it
+    /// must not claim the active-provider slot (`selected()`), must not
+    /// trigger an unregister-without-re-register on edit, and must not be
+    /// classified by URL in the edit pane. Flip the relevant arm to `true`
+    /// in the PR that lands that adapter — `.openAIResponses` flipped when
+    /// `OpenAIResponsesLLMProvider` shipped (web-search PR3a).
     public var hasProviderAdapter: Bool {
         switch self {
-        case .openAICompatible, .appleFoundation:
+        case .openAICompatible, .appleFoundation, .openAIResponses:
             return true
-        case .anthropicNative, .geminiNative, .openAIResponses:
+        case .anthropicNative, .geminiNative:
             return false
         #if DEBUG
         case .debug:

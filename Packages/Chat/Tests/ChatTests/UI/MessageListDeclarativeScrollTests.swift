@@ -475,7 +475,7 @@ struct MessageListDeclarativeScrollTests {
             thinking: nil,
             thinkingDurationMs: nil,
             text: String(repeating: token, count: repeatCount),
-            toolCalls: []
+            toolCalls: [], sources: []
         )
     }
 
@@ -495,7 +495,7 @@ struct MessageListDeclarativeScrollTests {
                 thinking: thinking,
                 thinkingDurationMs: 1_200,
                 text: String(repeating: "assistant reply ", count: 16),
-                toolCalls: []
+                toolCalls: [], sources: []
             )
         }
     }

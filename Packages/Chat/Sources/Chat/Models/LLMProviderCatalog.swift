@@ -143,13 +143,14 @@ public enum LLMProviderCatalog {
     /// OpenAI Responses API base (`/responses` appended by the adapter).
     /// ⚠️ Byte-for-byte identical to the OpenAI compat entry's
     /// `defaultBaseURL` — the Responses API and Chat Completions API share
-    /// `/v1`, so a distinct constant can't disambiguate them. When native
-    /// rows become persistable (the Add-Model native option, next PR),
-    /// `SettingsModelDetailPane.init` must classify rows by `row.kind`
-    /// *before* its URL-match-against-`defaultBaseURL` branch — otherwise an
-    /// `.openAIResponses` row URL-matches the compat "openai" entry and the
-    /// edit pane opens in the wrong (compat) mode. Latent until then: no
-    /// native-kind row can be created today.
+    /// `/v1`, so a distinct constant can't disambiguate them.
+    /// `SettingsModelDetailPane.resolveEditProvider` therefore classifies
+    /// `.openAIResponses` rows by `kind` *before* its URL-match branch (and
+    /// independent of `hasProviderAdapter`, which flipped `true` when the
+    /// adapter shipped) — otherwise such a row would URL-match the compat
+    /// "openai" entry and open the edit pane in the wrong (compat) mode. No
+    /// native-kind row can be *created* yet (the Add-Model native option ships
+    /// with PR5), so this is currently exercised only by tests.
     public static let openAIResponsesBaseURL = URL(string: "https://api.openai.com/v1")!
 
     /// All providers in dropdown order. Apple first so on-device

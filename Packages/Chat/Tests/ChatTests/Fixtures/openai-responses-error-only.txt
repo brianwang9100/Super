@@ -1,0 +1,6 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_eo","model":"gpt-5.1","usage":null}}
+
+event: response.error
+data: {"type":"response.error","code":"server_error","message":"boom"}
+

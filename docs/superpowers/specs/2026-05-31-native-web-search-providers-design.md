@@ -372,6 +372,18 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ## 11a. Carried-forward review items from PR1/PR2 (must address in adapter PRs)
 
+> **Status update (web-search PR3a, OpenAI-first).** The native adapters are
+> being delivered one provider per PR, **OpenAI Responses first** (it's the
+> lowest-risk — no encrypted round-trip, no mandatory WebView), then Anthropic
+> (PR3b), then Gemini (PR3c). PR3a shipped `OpenAIResponsesLLMProvider` +
+> reducer + wire types + offline SSE fixtures, the shared `makeLLMProvider`
+> factory (collapsing the `hydrateProviders`/`registerProvider` switches so they
+> can't drift), the `SourceCitationsPill` + transcript projection, and the
+> `DebugLLMProvider` search seam. It flipped **only** `.openAIResponses
+> .hasProviderAdapter → true`; `.anthropicNative`/`.geminiNative` stay `false`
+> until PR3b/PR3c. The `.openAIResponses`-specific items below are marked
+> **DONE (PR3a)**; the Anthropic/Gemini-specific ones remain open.
+
 From PR1:
 
 - **Gemini suggestions-HTML turn attribution (PR3c).** In a tool loop, Gemini can
@@ -395,9 +407,12 @@ separate cleanup needed. Each fix has a regression test:
   `SettingsViewModel.updateModel` now guards `registry.unregister(id:)` on
   `updated.kind.hasProviderAdapter`, so it only unregisters when
   `registerProvider` will actually re-register. (`updateModelKeepsNativeKindProviderRegistered`.)
-  PR3a still must replace the native `break` in `registerProvider` with real
-  construction — once `hasProviderAdapter` flips, the unregister/re-register cycle
-  resumes automatically.
+  **DONE (PR3a):** the native `break` in `registerProvider` is gone — both
+  `registerProvider` and `hydrateProviders` now route through the shared
+  `makeLLMProvider` factory, which builds a real `OpenAIResponsesLLMProvider` for
+  `.openAIResponses`. With its flag flipped, the unregister/re-register cycle
+  resumes automatically for that kind; `.anthropicNative`/`.geminiNative` still
+  return `nil` from the factory (and log the hydration skip) until PR3b/PR3c.
 - **`SettingsModelDetailPane` URL-match misclassifies `.openAIResponses` rows —
   FIXED.** Classification is extracted to the testable
   `SettingsModelDetailPane.resolveEditProvider(kind:modelId:baseURL:)`, which
@@ -406,22 +421,21 @@ separate cleanup needed. Each fix has a regression test:
   `"openai"` entry. (`resolveEditProviderNativeKindByKind` +
   `resolveEditProviderCompatStillMatchesByURL`.) PR3a maps native kinds to their own
   native provider entries here instead of the current Custom fallback.
-  - **⚠️ PR3a regression hazard — the kind-before-URL guard must be preserved
-    explicitly.** Today `resolveEditProvider` short-circuits native kinds via the
-    `!kind.hasProviderAdapter` guard *before* the URL-match branch runs. When PR3a
-    flips `.openAIResponses.hasProviderAdapter` to `true`, that guard lifts and the
-    URL-match branch runs again — and because `.openAIResponses` shares
-    `https://api.openai.com/v1` with the compat `"openai"` entry, it will re-match
-    the wrong (compat) provider and reopen the edit pane in compat mode. PR3a **must**
-    add an explicit native-kind→native-entry dispatch *before* the URL match (not
-    rely on the now-lifted `hasProviderAdapter` guard) and ship a
-    `resolveEditProvider` test that pins an `.openAIResponses` row to its native
-    entry with `hasProviderAdapter == true`. A **tripwire test now exists**
-    (`resolveEditProviderNeverMisfilesOpenAIResponsesToCompat`): it asserts an
-    `.openAIResponses` row never resolves to the compat `"openai"` provider id —
-    an invariant that holds today (Custom) and after a correct PR3a (native entry),
-    but goes red the moment the flag flips without the dispatch fix, mechanically
-    forcing PR3a to address it. A `⚠️` comment at the guard site points back here.
+  - **⚠️ PR3a regression hazard — kind-before-URL guard — DONE (PR3a).**
+    `resolveEditProvider` previously short-circuited native kinds via the
+    `!kind.hasProviderAdapter` guard. PR3a flipped `.openAIResponses
+    .hasProviderAdapter → true`, which would have lifted that guard and let the
+    URL-match branch re-match the compat `"openai"` entry (shared
+    `https://api.openai.com/v1`). **Fixed:** the guard was replaced with an
+    explicit `switch kind { case .anthropicNative, .geminiNative,
+    .openAIResponses: return Custom … }` that classifies the native kinds
+    *before* the URL match, **independent of `hasProviderAdapter`** — so the flip
+    can't reopen the collision. The tripwire
+    (`resolveEditProviderNeverMisfilesOpenAIResponsesToCompat`) stays green, and
+    `resolveEditProviderNativeKindByKind` now additionally asserts
+    `LLMProviderKind.openAIResponses.hasProviderAdapter` to pin the post-flip
+    state. (Custom is still the resolution target until the Add-Model native edit
+    UI ships in PR5, which will map native kinds to their own entries here.)
   - **`updateModel` honors the edited Base URL for native kinds (PR2 hardening).**
     Because native rows route through the Custom pane (editable URL field), the
     `nextBaseURL` switch now persists the caller's URL for native kinds rather than
@@ -465,16 +479,16 @@ separate cleanup needed. Each fix has a regression test:
     is harmless under the partial unique index. PR3a's adapter flip removes the case
     entirely (the row becomes buildable and selectable). No fix needed in PR2; noted
     for the downgrade story.
-- **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
-  value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
-  Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*
-  typed in PR2 because the value set isn't closed yet: it holds `"native"` now and
-  will also hold the standalone-provider ids (`"tavily"`/`"brave"`) Phase 2 adds, so
-  an enum coined now would have to be widened — and persisted rows migrated against —
-  once those land. PR3a builds the read/write path that actually branches on this
-  value (adapter instantiation in `hydrateProviders`/`registerProvider`), which is
-  the right place to introduce a `SearchBackend` type + GRDB codec and retire the
-  literal across all layers in one move.
+- **`searchBackend: String?` magic literal `"native"` — STILL DEFERRED (re-scoped
+  past PR3a-OpenAI).** PR3a does *not* branch on `searchBackend`: hydration and
+  registration dispatch purely on `record.kind` (the kind already encodes
+  native-vs-compat, resolved at add-time), so the factory never reads the string.
+  The value set also isn't closed yet — it holds `"native"` today and gains the
+  standalone-provider ids (`"tavily"`/`"brave"`) in Phase 2. The right place to
+  introduce a typed `SearchBackend` + GRDB codec is the PR that first *branches* on
+  the value: the **PR5 Add-Model native option** (which writes it) or Phase 2's
+  standalone wiring. Coining the enum now would still have to be widened + migrated
+  once those land, so it stays an untyped `String?` for PR3a.
 
 ## 11. Open questions / risks (need human decision)
 

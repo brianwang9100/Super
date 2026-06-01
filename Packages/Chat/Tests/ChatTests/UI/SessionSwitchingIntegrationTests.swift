@@ -139,7 +139,7 @@ struct SessionSwitchingIntegrationTests {
         #expect(vm2.isStreaming == false)
         #expect(vm2.streamingTail == nil)
         let lastAssistantContent: String? = vm2.items.reversed().compactMap { item -> String? in
-            if case .assistantText(_, _, _, let text, _) = item, !text.isEmpty {
+            if case .assistantText(_, _, _, let text, _, _) = item, !text.isEmpty {
                 return text
             }
             return nil

@@ -99,10 +99,48 @@ struct AssistantMessageSnapshotTests {
         )
     }
 
+    @Test("grounded answer with the sources pill below the text (light)")
+    func withSourcesLight() {
+        verify(isStreaming: false, theme: .light, sources: Self.sampleSources, name: "assistant_with_sources_light")
+    }
+
+    @Test("grounded answer with the sources pill below the text (dark)")
+    func withSourcesDark() {
+        verify(isStreaming: false, theme: .dark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
+    }
+
+    @Test("grounded answer with the sources pill below the text (sepia)")
+    func withSourcesSepia() {
+        verify(isStreaming: false, theme: .sepia, sources: Self.sampleSources, name: "assistant_with_sources_sepia")
+    }
+
+    @Test("grounded answer with the sources pill, Dynamic Type XXL")
+    func withSourcesXXL() {
+        // Sub-pixel-tolerant: the XXL variant renders the pill's small text at
+        // a large scale on a `.sizeThatFits` (variable-height) canvas, the most
+        // antialiasing-fragile combination in this suite. The baseline matches
+        // exactly locally on CI's trio; this absorbs only the cross-runner
+        // antialiasing drift the default exact compare flags (a structural
+        // regression > ~3% perceptual still fails). See AGENTS.md §Testing 5.
+        verify(
+            isStreaming: false, theme: .light, dynamicType: .xxLarge,
+            sources: Self.sampleSources, precision: 0.99, perceptualPrecision: 0.97,
+            name: "assistant_with_sources_light_xxl"
+        )
+    }
+
+    private static let sampleSources: [SourceCitationPillModel] = [
+        SourceCitationPillModel(id: "1", title: "Perseverance confirms subsurface water ice", host: "nasa.gov", url: URL(string: "https://www.nasa.gov/mars")!),
+        SourceCitationPillModel(id: "2", title: "Mars rover relays new imagery", host: "space.com", url: URL(string: "https://www.space.com/rover")!),
+    ]
+
     private func verify(
         isStreaming: Bool,
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
+        sources: [SourceCitationPillModel] = [],
+        precision: Float = 1,
+        perceptualPrecision: Float = 1,
         name: String,
         function: String = #function
     ) {
@@ -111,6 +149,7 @@ struct AssistantMessageSnapshotTests {
             thinkingDurationMs: nil,
             text: "Sure — here's a short reply.",
             toolCalls: [],
+            sources: sources,
             verbosity: .simple,
             isStreaming: isStreaming
         )
@@ -123,7 +162,7 @@ struct AssistantMessageSnapshotTests {
 
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .sizeThatFits),
+            as: .image(precision: precision, perceptualPrecision: perceptualPrecision, layout: .sizeThatFits),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
