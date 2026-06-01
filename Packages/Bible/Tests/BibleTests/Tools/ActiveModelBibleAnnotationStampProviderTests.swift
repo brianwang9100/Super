@@ -9,14 +9,16 @@ import Testing
 @Suite("ActiveModelBibleAnnotationStampProvider")
 struct ActiveModelBibleAnnotationStampProviderTests {
     @Test("stamps the active provider's first model id")
-    func stampsActiveModelID() async {
+    func stampsActiveModelID() async throws {
         let registry = LLMProviderRegistry()
         await registry.register(StubLLMProvider(
             id: "gemini",
             models: [LLMModel(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash")]
         ))
         // Explicit, not relying on register's first-provider auto-activation.
-        try? await registry.setActive(id: "gemini")
+        // Bare `try` so a provider-id mismatch fails the test instead of
+        // silently falling back to whatever was auto-activated.
+        try await registry.setActive(id: "gemini")
         let provider = ActiveModelBibleAnnotationStampProvider(registry: registry)
 
         let stamp = await provider.stamp()
@@ -37,9 +39,13 @@ struct ActiveModelBibleAnnotationStampProviderTests {
     }
 
     @Test("falls back to an empty model id when the active provider advertises no models")
-    func emptyWhenActiveProviderHasNoModels() async {
+    func emptyWhenActiveProviderHasNoModels() async throws {
         let registry = LLMProviderRegistry()
         await registry.register(StubLLMProvider(id: "empty", models: []))
+        // Explicit `setActive` pins *this* branch — an active provider that
+        // advertises no models — distinct from `emptyWhenNoActiveProvider`'s
+        // no-provider-at-all branch, which otherwise asserts the same output.
+        try await registry.setActive(id: "empty")
         let provider = ActiveModelBibleAnnotationStampProvider(registry: registry)
 
         let stamp = await provider.stamp()
@@ -49,14 +55,15 @@ struct ActiveModelBibleAnnotationStampProviderTests {
     }
 
     @Test("forwards the configured source")
-    func forwardsSource() async {
+    func forwardsSource() async throws {
         let registry = LLMProviderRegistry()
         await registry.register(StubLLMProvider(
             id: "openai",
             models: [LLMModel(id: "gpt-4o-mini", displayName: "GPT-4o mini")]
         ))
         // Explicit, not relying on register's first-provider auto-activation.
-        try? await registry.setActive(id: "openai")
+        // Bare `try` so a provider-id mismatch fails the test.
+        try await registry.setActive(id: "openai")
         let provider = ActiveModelBibleAnnotationStampProvider(
             registry: registry,
             source: .userBulk
