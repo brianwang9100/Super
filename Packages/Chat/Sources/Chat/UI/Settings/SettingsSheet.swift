@@ -117,11 +117,10 @@ public struct SettingsSheet: View {
     public var body: some View {
         sheetSurface
             .accessibilityAction(.escape) { close() }
-            .task(id: isPresented) {
-                if isPresented {
-                    await viewModel.load()
-                }
-            }
+            // The native `.sheet` creates this view fresh on each presentation,
+            // so a plain `.task` loads exactly once per present (and cancels on
+            // dismiss when the view tears down) — no `id:` gate needed.
+            .task { await viewModel.load() }
             // Apply the read-only database context only when the host wired
             // one — snapshot tests and previews pass nil and fall through to
             // each `@Query` request's defaultValue. The `databaseContext`
