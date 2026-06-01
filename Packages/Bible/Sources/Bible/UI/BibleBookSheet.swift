@@ -86,7 +86,7 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
-    @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 20
 
     /// Required content + callbacks come first per the AGENTS.md
     /// "Default parameter values" rule; the lone `bottomInset` default
@@ -327,7 +327,7 @@ struct BibleBookSheet: View {
                 // The two glyphs cluster tightly together; their frames hug
                 // their ink (see AnnotationBubble / NoteGlyph), so this spacing
                 // is the real visible gap between them.
-                HStack(spacing: 3) {
+                HStack(spacing: 7) {
                     annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
                     noteGlyph(for: book.id, hasNotes: hasNotes)
                 }
@@ -360,7 +360,8 @@ struct BibleBookSheet: View {
             }
         } label: {
             AnnotationBubble(state: state, size: bubbleSize)
-                .frame(width: 30, height: 30)
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the icon→icon gap.
+                .frame(height: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -388,7 +389,8 @@ struct BibleBookSheet: View {
             onPresentBookNotes(bookId)
         } label: {
             NoteGlyph(state: glyphState, size: bubbleSize)
-                .frame(width: 30, height: 30)
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the icon→icon gap.
+                .frame(height: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
