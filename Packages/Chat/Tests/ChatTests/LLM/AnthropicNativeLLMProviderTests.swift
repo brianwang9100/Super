@@ -426,6 +426,11 @@ struct AnthropicNativeLLMProviderTests {
         // web_search_tool_result precedes the text.
         #expect(assistantContent[0]["type"] as? String == "web_search_tool_result")
         #expect(assistantContent[1]["type"] as? String == "text")
+        // The synthetic tool_use_id is deterministic (FNV-1a over the result
+        // URLs) so the payload is reproducible — see the adapter's stableHash.
+        let toolUseID = try #require(assistantContent[0]["tool_use_id"] as? String)
+        #expect(toolUseID.hasPrefix("srvtoolu_"))
+        #expect(toolUseID != "srvtoolu_")
         let results = try #require(assistantContent[0]["content"] as? [[String: Any]])
         #expect(results[0]["type"] as? String == "web_search_result")
         #expect(results[0]["url"] as? String == "https://www.nasa.gov/mars")

@@ -314,12 +314,19 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             case .user, .assistant:
                 let role = message.role == .assistant ? "assistant" : "user"
                 var blocks: [AnthropicContentBlock] = []
-                // Replayed web-search results first — they must precede the text
-                // that cites them on the wire.
-                for block in message.content {
-                    if case .searchResult(let sources) = block,
-                       let resultBlock = Self.webSearchToolResultBlock(for: sources) {
-                        blocks.append(resultBlock)
+                // Replayed web-search results are an assistant-only, server-emitted
+                // concept and must precede the text that cites them on the wire.
+                // Guard on the role so the invariant is structural rather than
+                // relying on `ContextAssembler` being the only caller — a stray
+                // `.searchResult` on a user message would otherwise serialize a
+                // `web_search_tool_result` at the user position, which the API
+                // rejects. (Same posture as the assistant-only tool-call guard below.)
+                if message.role == .assistant {
+                    for block in message.content {
+                        if case .searchResult(let sources) = block,
+                           let resultBlock = Self.webSearchToolResultBlock(for: sources) {
+                            blocks.append(resultBlock)
+                        }
                     }
                 }
                 let texts = message.content.compactMap { block -> String? in
@@ -365,9 +372,27 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             )
         }
         guard !echoes.isEmpty else { return nil }
-        // Synthetic id: the original `server_tool_use` id isn't persisted. See
-        // the `translate` ⚠️ note — unverified until the search path is live.
-        return .webSearchToolResult(toolUseID: "srvtoolu_replay", results: echoes)
+        // Synthetic id: the original `server_tool_use` id isn't persisted, so
+        // derive a *stable, deterministic* one from the result set (not Swift's
+        // per-run-randomized `hashValue`, which would make the request payload
+        // irreproducible). This also keeps replayed turns from colliding on a
+        // shared constant should Anthropic ever enforce conversation-wide
+        // `tool_use_id` uniqueness. ⚠️ See the `translate` note — the replay
+        // shape itself is unverified until the search path is live (PR4).
+        let seed = echoes.map(\.url).joined(separator: "|")
+        return .webSearchToolResult(toolUseID: "srvtoolu_\(Self.stableHash(seed))", results: echoes)
+    }
+
+    /// Deterministic FNV-1a hash → base-36 string. Used to mint a reproducible
+    /// synthetic `tool_use_id` for replayed search results; `hashValue` is
+    /// per-run-randomized and unsuitable for a wire payload.
+    private static func stableHash(_ string: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return String(hash, radix: 36)
     }
 
     /// Translate advertised tools into Anthropic tools. The
