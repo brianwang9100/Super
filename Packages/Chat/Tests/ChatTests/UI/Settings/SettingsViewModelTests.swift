@@ -728,6 +728,94 @@ struct SettingsViewModelTests {
         #expect(saved?.searchBackend == "native")
     }
 
+    @Test("updateModel does not unregister a native-kind provider it can't re-register")
+    func updateModelKeepsNativeKindProviderRegistered() async {
+        // Regression for the unregister-then-break trap: `updateModel`
+        // rebuilds the record (preserving `existing.kind`), then unregisters
+        // the old provider and calls `registerProvider`. For a native-search
+        // kind, `registerProvider` is a no-op (no adapter yet) — so an
+        // unconditional unregister would strip a provider that was registered
+        // at hydration time and leave nothing behind. The `hasProviderAdapter`
+        // guard must skip the unregister so the provider survives the edit.
+        let registry = LLMProviderRegistry()
+        // Stand in for the (future) native provider registered at hydration.
+        let provider = FakeLLMProvider(
+            id: "m1",
+            model: LLMModel(id: "claude-opus-4-7", displayName: "Opus")
+        )
+        await registry.register(provider)
+        #expect(await registry.provider(id: "m1") != nil)
+
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Opus (native search)",
+                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "claude-opus-4-7",
+                createdAt: Date(),
+                kind: .anthropicNative,
+                supportsThinking: true,
+                maxContextTokens: 1_000_000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo, llmProviderRegistry: registry)
+
+        await vm.updateModel(
+            id: "m1",
+            name: "Opus (renamed)",
+            baseURL: URL(string: "https://api.anthropic.com/v1")!,
+            modelId: "claude-opus-4-7",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 1_000_000
+        )
+
+        // The provider must still be registered — the edit didn't strip it.
+        #expect(await registry.provider(id: "m1") != nil)
+    }
+
+    @Test("updateModel re-registers an openAICompatible provider across an edit")
+    func updateModelReregistersBuildableProvider() async {
+        // Counterpart to the native-kind test: for a buildable kind the
+        // guard still allows the normal unregister + re-register cycle, so a
+        // provider remains registered (under a possibly-rebuilt instance).
+        let registry = LLMProviderRegistry()
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "GPT",
+                baseURL: URL(string: "https://api.example.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "gpt-5.5",
+                createdAt: Date(),
+                kind: .openAICompatible,
+                supportsThinking: false,
+                maxContextTokens: 8000,
+                isSelected: false
+            ),
+        ])
+        let vm = makeViewModel(
+            modelRepository: modelRepo,
+            llmProviderRegistry: registry,
+            httpClient: StubHTTPClient()
+        )
+
+        await vm.updateModel(
+            id: "m1",
+            name: "GPT renamed",
+            baseURL: URL(string: "https://api.example.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "",
+            supportsThinking: false,
+            maxContextTokens: 8000
+        )
+
+        #expect(await registry.provider(id: "m1") != nil)
+    }
+
     @Test("loadModels projects searchBackend onto the ModelRow")
     func loadModelsProjectsSearchBackend() async {
         // The Add-Model native-search UI (next PR) reads `searchBackend` off
@@ -898,6 +986,8 @@ struct SettingsViewModelTests {
         userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
         memoryRepository: (any MemoryRepository)? = nil,
+        llmProviderRegistry: LLMProviderRegistry? = nil,
+        httpClient: (any HTTPClient)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
     ) -> SettingsViewModel {
         // The availability default is *deliberately* a fixed unavailable
@@ -916,6 +1006,8 @@ struct SettingsViewModelTests {
             userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
             memoryRepository: memoryRepository,
+            llmProviderRegistry: llmProviderRegistry,
+            httpClient: httpClient,
             appleFoundationAvailability: appleFoundationAvailability
         )
     }
@@ -1007,6 +1099,16 @@ private final class StubConversationRepository: ConversationRepository, @uncheck
         rows[idx] = updated
     }
     func hardDelete(id: String) async throws { rows.removeAll { $0.id == id } }
+}
+
+/// Minimal `HTTPClient` so `registerProvider` can build an
+/// `OpenAICompatibleLLMProvider` in tests that exercise the registry path.
+/// Never actually streamed in these tests (the provider is registered, not
+/// invoked), so it yields an empty body.
+private struct StubHTTPClient: HTTPClient {
+    func stream(_ request: URLRequest) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
 }
 
 private struct StaticExecutor: ToolExecutor {

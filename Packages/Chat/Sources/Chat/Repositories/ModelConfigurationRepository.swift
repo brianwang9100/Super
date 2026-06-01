@@ -89,7 +89,7 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func selected() async throws -> ModelConfigurationRecord? {
         try await queue.read { db in
-            try Self.knownKindRequest
+            try Self.buildableKindRequest
                 .filter(Column("isSelected") == true)
                 .fetchOne(db)
         }
@@ -107,6 +107,21 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     /// unless a future migration cleans it up.
     private static var knownKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
         let kinds = LLMProviderKind.allCases.map(\.rawValue)
+        return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
+    }
+
+    /// Like `knownKindRequest`, but further restricted to kinds the running
+    /// binary can actually build a provider for (`hasProviderAdapter`). The
+    /// native-search kinds (`.anthropicNative` etc.) decode fine but have no
+    /// adapter yet, so a row carrying one must not be returned as the
+    /// `selected()` model: hydration would skip it, `setActive` would throw
+    /// `unknownProvider`, the throw would be swallowed, and the registry
+    /// would be left with no active provider. Filtering them out of
+    /// `selected()` instead lets the first-registered fallback fire cleanly.
+    /// `all()`/`fetch(id:)` keep using `knownKindRequest` so such a row is
+    /// still visible/editable in the Models list — it just can't be active.
+    private static var buildableKindRequest: QueryInterfaceRequest<ModelConfigurationRecord> {
+        let kinds = LLMProviderKind.allCases.filter { $0.hasProviderAdapter }.map(\.rawValue)
         return ModelConfigurationRecord.filter(kinds.contains(Column("kind")))
     }
 

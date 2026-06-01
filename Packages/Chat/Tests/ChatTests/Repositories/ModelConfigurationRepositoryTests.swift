@@ -68,6 +68,43 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await repo.selected()?.id == "b")
     }
 
+    @Test("selected() excludes a native-kind row whose adapter hasn't shipped")
+    func selectedExcludesUnbuildableNativeKind() async throws {
+        // A native-search kind decodes fine (it's in `allCases`) but has no
+        // provider adapter yet. If `selected()` returned it, hydration would
+        // skip the row, `setActive` would throw `unknownProvider`, the throw
+        // would be swallowed, and the registry would be left with no active
+        // provider. So `selected()` filters it out — the row stays visible in
+        // `all()` (editable in the Models list) but can't claim the active
+        // slot, letting the first-registered fallback fire cleanly.
+        let (repo, _) = try makeRepo()
+        try await repo.save(makeRecord(
+            id: "native", kind: .anthropicNative, apiKeyRef: "kn", isSelected: true
+        ))
+
+        #expect(try await repo.selected() == nil)
+        // …but it remains visible/editable in the list.
+        #expect(try await repo.all().map(\.id) == ["native"])
+        #expect(try await repo.fetch(id: "native")?.kind == .anthropicNative)
+    }
+
+    @Test("selected() still returns a buildable row alongside a native one")
+    func selectedReturnsBuildableRowDespiteNativeSibling() async throws {
+        let (repo, _) = try makeRepo()
+        // Only one row may be selected (partial unique index), so the native
+        // sibling is unselected here; the point is that a buildable selected
+        // row is unaffected by the new filter.
+        try await repo.save(makeRecord(
+            id: "native", kind: .geminiNative, apiKeyRef: "kn", createdOffset: 0
+        ))
+        try await repo.save(makeRecord(
+            id: "compat", kind: .openAICompatible, apiKeyRef: "kc",
+            isSelected: true, createdOffset: 60
+        ))
+
+        #expect(try await repo.selected()?.id == "compat")
+    }
+
     @Test func setSelectedThrowsForUnknownID() async throws {
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(id: "a", apiKeyRef: "ka"))

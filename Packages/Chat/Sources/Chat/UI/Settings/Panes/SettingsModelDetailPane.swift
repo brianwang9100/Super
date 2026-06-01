@@ -109,29 +109,13 @@ struct SettingsModelDetailPane: View {
             // `gpt-5.5` at a local proxy) must stay classified as
             // Custom or Save would silently overwrite their URL with
             // the catalog default.
-            let resolvedProviderID: String
-            let resolvedCatalogID: String
-            if row.kind == .appleFoundation {
-                resolvedProviderID = LLMProviderCatalog.appleProviderID
-                resolvedCatalogID = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)?
-                    .models.first?.id ?? row.modelId
-            } else if let match = LLMProviderCatalog.model(forModelId: row.modelId),
-                      Self.urlsMatchIgnoringTrailingSlash(match.provider.defaultBaseURL, row.baseURL) {
-                // Trailing-slash tolerant comparison: a row persisted
-                // as `https://api.anthropic.com/v1/openai` must still
-                // match the catalog's `…/openai/` entry. Without this
-                // the edit pane opens in Custom mode and Save
-                // re-persists the slash-mismatched URL — drift
-                // becomes self-perpetuating. `URL.standardized` does
-                // NOT strip trailing slashes (RFC-3986 leaves them
-                // semantically significant), so we normalise the
-                // suffix ourselves.
-                resolvedProviderID = match.provider.id
-                resolvedCatalogID = match.model.id
-            } else {
-                resolvedProviderID = LLMProviderCatalog.customProviderID
-                resolvedCatalogID = ""
-            }
+            let resolved = Self.resolveEditProvider(
+                kind: row.kind,
+                modelId: row.modelId,
+                baseURL: row.baseURL
+            )
+            let resolvedProviderID = resolved.providerID
+            let resolvedCatalogID = resolved.catalogID
             _providerID = State(initialValue: resolvedProviderID)
             _modelCatalogID = State(initialValue: resolvedCatalogID)
             // Auto-heal the name if the row arrives with an empty
@@ -771,6 +755,52 @@ struct SettingsModelDetailPane: View {
         maxContextText = String(entry.maxContextTokens)
         supportsThinking = entry.supportsThinking
         contextWindowError = nil
+    }
+
+    /// Resolve which Add-Model "Provider" the edit form should open in for
+    /// an existing row, plus the catalog model id to preselect. Extracted
+    /// from `init` so the classification is unit-testable without standing
+    /// up the whole view.
+    ///
+    /// Order matters:
+    /// 1. **`.appleFoundation`** → the Apple entry (resolves by kind; legacy
+    ///    AFM rows with an off-catalog `modelId` still get the canonical
+    ///    `system-default` cap-check).
+    /// 2. **Native-search kinds** (`.anthropicNative`/`.geminiNative`/
+    ///    `.openAIResponses`) → classify **by kind, before any URL match**.
+    ///    Their persisted `baseURL` (e.g. `api.openai.com/v1` for Responses)
+    ///    is byte-identical to a compat entry's `defaultBaseURL`, so a
+    ///    URL-first match would misfile an `.openAIResponses` row as the
+    ///    `"openai"` compat provider and open it in compat-edit mode — where
+    ///    a model-id change on Save could overwrite the native wire id. Until
+    ///    the native edit UI ships these resolve to Custom (visible, fully
+    ///    editable, never auto-reclassified by URL); the adapter PR maps them
+    ///    to their own native provider entries here.
+    /// 3. **OpenAI-compat** → must match BOTH the catalog model id AND the
+    ///    catalog base URL (trailing-slash tolerant); otherwise Custom, so a
+    ///    user who points a catalog wire id at their own proxy isn't
+    ///    reclassified and re-URL'd on Save.
+    static func resolveEditProvider(
+        kind: LLMProviderKind,
+        modelId: String,
+        baseURL: URL?
+    ) -> (providerID: String, catalogID: String) {
+        if kind == .appleFoundation {
+            let catalogID = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)?
+                .models.first?.id ?? modelId
+            return (LLMProviderCatalog.appleProviderID, catalogID)
+        }
+        if !kind.hasProviderAdapter {
+            // Native-search kind without a shipped adapter: classify by kind,
+            // never by URL (see the URL-collision note above). Custom keeps
+            // the row fully editable and prevents a URL-driven reclassify.
+            return (LLMProviderCatalog.customProviderID, "")
+        }
+        if let match = LLMProviderCatalog.model(forModelId: modelId),
+           Self.urlsMatchIgnoringTrailingSlash(match.provider.defaultBaseURL, baseURL) {
+            return (match.provider.id, match.model.id)
+        }
+        return (LLMProviderCatalog.customProviderID, "")
     }
 
     /// Trailing-slash tolerant URL comparison. Treats `…/path` and

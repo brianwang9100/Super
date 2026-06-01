@@ -642,7 +642,17 @@ public final class SettingsViewModel {
             } else {
                 resolvedKey = nil
             }
-            await llmProviderRegistry?.unregister(id: id)
+            // Only unregister the old provider when we'll actually
+            // re-register a replacement. `registerProvider` is a no-op for
+            // kinds whose adapter hasn't shipped (the native-search kinds);
+            // unconditionally unregistering first would strip a provider
+            // registered at hydration time and leave nothing in its place,
+            // silently killing chat for that row until app restart. Gate on
+            // the same condition `registerProvider` uses so the two can't
+            // disagree.
+            if updated.kind.hasProviderAdapter {
+                await llmProviderRegistry?.unregister(id: id)
+            }
             await registerProvider(for: updated, apiKey: resolvedKey)
             await loadModels()
             onModelsChanged?()

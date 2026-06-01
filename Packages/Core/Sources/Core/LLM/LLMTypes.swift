@@ -106,6 +106,34 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// seed/registration call sites compile into Release builds.
     case debug
     #endif
+
+    /// Whether the running binary can construct a live `LLMProvider` for
+    /// this kind. `true` for kinds with a shipped adapter
+    /// (`.openAICompatible`, `.appleFoundation`, and `.debug` in DEBUG);
+    /// **`false` for the native-search kinds until their adapters ship** —
+    /// the catalog already advertises `nativeSearchAdapter`, and a row can
+    /// carry a native `kind` before the adapter exists, so callers gate on
+    /// this rather than assuming every persisted kind is buildable.
+    ///
+    /// Distinct from "is this kind decodable in this binary" (which the
+    /// repository's `knownKindRequest` covers): a native kind decodes fine
+    /// but has no provider to register, so a row carrying it must not claim
+    /// the active-provider slot (`selected()`), must not trigger an
+    /// unregister-without-re-register on edit, and must not be classified by
+    /// URL in the edit pane. Flip the relevant arm to `true` in the PR that
+    /// lands that adapter.
+    public var hasProviderAdapter: Bool {
+        switch self {
+        case .openAICompatible, .appleFoundation:
+            return true
+        case .anthropicNative, .geminiNative, .openAIResponses:
+            return false
+        #if DEBUG
+        case .debug:
+            return true
+        #endif
+        }
+    }
 }
 
 /// Persisted user-facing configuration for a model + endpoint + key triple.

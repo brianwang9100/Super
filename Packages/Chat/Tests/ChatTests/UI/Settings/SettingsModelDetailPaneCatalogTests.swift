@@ -184,6 +184,64 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(!SettingsModelDetailPane.urlsMatchIgnoringTrailingSlash(canonical, nil))
     }
 
+    // MARK: - Edit-mode provider resolution
+
+    @Test("resolveEditProvider classifies a native-kind row by kind, not URL")
+    func resolveEditProviderNativeKindByKind() {
+        // An `.openAIResponses` row's baseURL (api.openai.com/v1) is
+        // byte-identical to the OpenAI compat entry's defaultBaseURL. A
+        // URL-first match would misfile it as the "openai" compat provider
+        // and open compat-edit mode. The kind-first guard must resolve it to
+        // Custom (fully editable, never URL-reclassified) until the native
+        // edit UI ships.
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAIResponses,
+            modelId: "gpt-5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.customProviderID)
+        #expect(resolved.catalogID == "")
+    }
+
+    @Test("resolveEditProvider keeps the compat URL-match for an .openAICompatible row")
+    func resolveEditProviderCompatStillMatchesByURL() {
+        // The same wire id + the catalog base URL on an .openAICompatible
+        // row must still resolve to the built-in provider — the kind-first
+        // guard only diverts the native kinds.
+        let entry = LLMProviderCatalog.entry(forID: "openai")
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAICompatible,
+            modelId: "gpt-5.5",
+            baseURL: entry?.defaultBaseURL
+        )
+        #expect(resolved.providerID == "openai")
+        #expect(resolved.catalogID == "gpt-5.5")
+    }
+
+    @Test("resolveEditProvider resolves an .appleFoundation row by kind")
+    func resolveEditProviderApple() {
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .appleFoundation,
+            modelId: "legacy-afm-id",   // off-catalog id still maps to Apple
+            baseURL: nil
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.appleProviderID)
+        #expect(resolved.catalogID == "system-default")
+    }
+
+    @Test("resolveEditProvider falls back to Custom for an off-catalog compat row")
+    func resolveEditProviderCustomFallback() {
+        // A catalog wire id pointed at a user's own proxy must stay Custom so
+        // Save doesn't re-URL it to the catalog default.
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAICompatible,
+            modelId: "gpt-5.5",
+            baseURL: URL(string: "https://my-proxy.local/v1")
+        )
+        #expect(resolved.providerID == LLMProviderCatalog.customProviderID)
+        #expect(resolved.catalogID == "")
+    }
+
     // MARK: - Create-flow seeds
 
     @Test("Apple seeds the on-device AFM shape (no URL, system-default model)")

@@ -384,32 +384,35 @@ From PR1:
   id, derive `id` from the full URL string (not just host) so a SwiftUI `ForEach`
   keyed on `id` can't collide. The sources pill must key on this.
 
-From PR2 (#138) — all latent today because no native-kind row can be persisted
-until the Add-Model native option ships; each **must** be handled in the same PR
-that makes native rows persistable (PR3a / the Add-Model PR), not deferred past it:
+From PR2 (#138) — these were flagged as latent native-kind hazards and have been
+**defensively fixed in PR2 itself**, gated on the new
+`LLMProviderKind.hasProviderAdapter` flag (native kinds report `false` until their
+adapters ship). When PR3a lands an adapter it flips the relevant arm of that flag
+to `true` and the guards below automatically start allowing the native path — no
+separate cleanup needed. Each fix has a regression test:
 
-- **`updateModel` unregister-then-`break` drops the provider (PR3a).**
-  `SettingsViewModel.updateModel` calls `registry.unregister(id:)` unconditionally,
-  then `registerProvider`'s native arm `break`s without re-registering. Once a
-  native row exists, editing it mid-session permanently removes its provider from
-  the live registry until app restart. Fix: replace the native `break` with real
-  provider construction **and** guard the `unregister` call on `existing.kind` so
-  it only runs for kinds `registerProvider` will re-register. Ship a test that
-  edits a registered native-kind row and asserts the provider is still registered.
-- **`SettingsModelDetailPane` URL-match misclassifies `.openAIResponses` rows
-  (PR3a / Add-Model PR).** Because `openAIResponsesBaseURL` == the compat
-  `defaultBaseURL` (`/v1`), the pane's URL-match branch opens an `.openAIResponses`
-  row in compat-edit mode, and a model-ID change on save can overwrite the native
-  wire model ID. Fix: classify by `row.kind` (native kinds → native-edit mode)
-  **before** the URL-match branch in `SettingsModelDetailPane.init`. Documented on
-  the `openAIResponsesBaseURL` constant.
-- **`demoteUnknownKindSelections` doesn't demote native-kind rows (PR3a / Add-Model
-  PR).** Native kinds are in `LLMProviderKind.allCases`, so a selected native-kind
-  row survives demotion, is returned by `selected()`, is skipped by hydration, and
-  `setActive` silently fails → empty registry. PR2 added a warning log at the skip
-  site; the durable fix is a demotion predicate that demotes native-kind selections
-  while their adapters aren't registered, so the first-registered fallback fires
-  cleanly instead of leaving the unexplained empty-state banner.
+- **`updateModel` unregister-then-`break` drops the provider — FIXED.**
+  `SettingsViewModel.updateModel` now guards `registry.unregister(id:)` on
+  `updated.kind.hasProviderAdapter`, so it only unregisters when
+  `registerProvider` will actually re-register. (`updateModelKeepsNativeKindProviderRegistered`.)
+  PR3a still must replace the native `break` in `registerProvider` with real
+  construction — once `hasProviderAdapter` flips, the unregister/re-register cycle
+  resumes automatically.
+- **`SettingsModelDetailPane` URL-match misclassifies `.openAIResponses` rows —
+  FIXED.** Classification is extracted to the testable
+  `SettingsModelDetailPane.resolveEditProvider(kind:modelId:baseURL:)`, which
+  classifies native (non-`hasProviderAdapter`) kinds **by kind, before** the
+  URL-match branch — so an `.openAIResponses` row no longer URL-matches the compat
+  `"openai"` entry. (`resolveEditProviderNativeKindByKind` +
+  `resolveEditProviderCompatStillMatchesByURL`.) PR3a maps native kinds to their own
+  native provider entries here instead of the current Custom fallback.
+- **`selected()` returned an unbuildable native-kind row → empty registry — FIXED.**
+  `selected()` now filters through `buildableKindRequest` (kinds with
+  `hasProviderAdapter`), so a native-only-selected DB returns `nil` and the
+  first-registered fallback fires cleanly instead of `setActive` swallowing
+  `unknownProvider`. The row stays visible/editable via `all()`/`fetch(id:)`.
+  (`selectedExcludesUnbuildableNativeKind` + `selectedReturnsBuildableRowDespiteNativeSibling`.)
+  PR2 also keeps the warning log at the hydration skip site.
 
 ## 11. Open questions / risks (need human decision)
 
