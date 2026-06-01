@@ -42,6 +42,7 @@ public struct ModelPill: View {
     }
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private var current: Option? {
         if let selectedId, let match = options.first(where: { $0.id == selectedId }) {
@@ -60,7 +61,7 @@ public struct ModelPill: View {
                         Text(option.displayName)
                         Spacer()
                         Text("\(option.maxContextTokens / 1000)K")
-                            .font(.system(.caption2, design: .monospaced))
+                            .font(typography.mono(11, relativeTo: .caption2))
                     }
                 }
             }
@@ -89,6 +90,7 @@ public struct ModelPill: View {
 struct FooterPillLabel: View {
     let text: String
     let theme: SuperTheme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         // The pill body uses `.caption2` (11pt at default DT) so the pill
@@ -96,10 +98,10 @@ struct FooterPillLabel: View {
         // size — it's decorative and would look broken at XXL.
         HStack(spacing: 4) {
             Text(text)
-                .font(.system(.caption2))
+                .font(typography.font(.caption2))
                 .foregroundStyle(theme.inkSoft)
             Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
+                .font(typography.font(size: 9, weight: .semibold))
                 .foregroundStyle(theme.inkFaint)
         }
         .padding(.horizontal, 8)

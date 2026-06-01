@@ -19,19 +19,26 @@ struct ChatsEmptyState: View {
 
     let mode: Mode
 
-    @ScaledMetric(relativeTo: .title2) private var headlineSize: CGFloat = 22
-    @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 13
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
+    /// Caption base size, declared via `@ScaledMetric` so the system-font
+    /// caption composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The headline is a brand-serif `display`
+    /// role, which carries Dynamic Type through its own `relativeTo`.
+    @ScaledMetric(relativeTo: .footnote) private var captionSize: CGFloat = 13
 
     var body: some View {
         VStack(spacing: 6) {
             Text(headline)
-                .font(.system(size: headlineSize * fontScale, design: .serif).italic())
+                .font(typography.display(22, relativeTo: .title2))
+                // Under the system identity display() is upright system serif;
+                // .italic() supplies the slant the brand face bakes in (matches
+                // SidebarDrawer.wordmarkHeader / SettingsAboutPane).
+                .italic()
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
             caption
-                .font(.system(size: captionSize * fontScale))
+                .font(typography.font(size: captionSize))
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 20)

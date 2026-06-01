@@ -84,6 +84,11 @@ struct AppShell: View {
     @State private var bootstrapError: String?
     @State private var theme: SuperTheme = .make(.light)
     @State private var appearance: ChatAppearance = .default
+    /// Active typography (brand serif faces + folded-in font scale).
+    /// Rebuilt alongside `theme`/`appearance` from settings at load and on
+    /// font-scale / typography-id changes; injected at the same composition
+    /// boundaries as `.superTheme`/`.superFontScale`.
+    @State private var typography: SuperTypography = .make(SuperTypography.Identifier.serif)
     @State private var sidebarOpen: Bool = false
     @State private var settingsOpen: Bool = false
     @State private var activeConversationId: String?
@@ -188,6 +193,7 @@ struct AppShell: View {
                 registry: registry,
                 theme: theme,
                 appearance: appearance,
+                typography: typography,
                 chatState: chatState,
                 chatProgress: chatProgress,
                 chatSemiProgress: chatSemiProgress,
@@ -205,6 +211,7 @@ struct AppShell: View {
                 composerIsFocused: $composerIsFocused,
                 theme: theme,
                 appearance: appearance,
+                typography: typography,
                 onManageModels: { openSettings(initialPane: .models) },
                 onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) },
                 onProgressChange: { chatProgress = $0 },
@@ -219,6 +226,7 @@ struct AppShell: View {
                 activeAppletID: registry.activeID,
                 theme: theme,
                 appearance: appearance,
+                typography: typography,
                 onSelectConversation: { id in
                     Task { await selectConversation(id: id) }
                 },
@@ -276,7 +284,8 @@ struct AppShell: View {
                 // yet" even when memories exist.
                 makeDatabaseContext: { .readOnly { dependencies.chatDatabase.queue } },
                 theme: theme,
-                appearance: appearance
+                appearance: appearance,
+                typography: typography
             )
         }
         .task {
@@ -290,8 +299,20 @@ struct AppShell: View {
             if let newId { theme = .make(newId) }
         }
         .onChange(of: settingsViewModel?.settings.fontScale) { _, newScale in
-            guard let newScale else { return }
+            // A non-nil `newScale` implies the same optional chain's
+            // `settingsViewModel` is non-nil, so unwrap it directly rather
+            // than threading a dead `?? .serif` fallback through `typographyID`.
+            guard let newScale, let settingsViewModel else { return }
             appearance = ChatAppearance(fontScale: newScale)
+            typography = .make(settingsViewModel.settings.typographyID, fontScale: newScale)
+        }
+        .onChange(of: settingsViewModel?.settings.typographyID) { _, newID in
+            // Read fontScale from the source of truth (settings), not the
+            // derived `appearance` @State — keeps this handler independent of
+            // onChange delivery order when both keys change in one update, and
+            // mirrors the fontScale handler above.
+            guard let newID, let settingsViewModel else { return }
+            typography = .make(newID, fontScale: settingsViewModel.settings.fontScale)
         }
         .onChange(of: settingsViewModel?.models) { _, _ in
             // Refresh the composer's model picker whenever Settings adds,
@@ -551,6 +572,7 @@ struct AppShell: View {
             settingsViewModel = settings
             theme = .make(settings.settings.themeId)
             appearance = ChatAppearance(fontScale: settings.settings.fontScale)
+            typography = .make(settings.settings.typographyID, fontScale: settings.settings.fontScale)
 
             await rebuildChatViewModel(for: conversation)
             await sidebar.refresh()
@@ -842,6 +864,7 @@ private struct BackdropLayer: View {
     let registry: AppletRegistry
     let theme: SuperTheme
     let appearance: ChatAppearance
+    let typography: SuperTypography
     let chatState: ChatPresentationState
     let chatProgress: Double
     let chatSemiProgress: Double
@@ -902,6 +925,7 @@ private struct BackdropLayer: View {
             activeApplet.rootView()
                 .superTheme(theme)
                 .superFontScale(appearance.fontScale)
+                .superTypography(typography)
                 .opacity(backdropOpacity)
                 .allowsHitTesting(backdropHitTestingEnabled)
                 .overlay {
@@ -943,6 +967,7 @@ private struct ChatLayer: View {
     let composerIsFocused: FocusState<Bool>.Binding
     let theme: SuperTheme
     let appearance: ChatAppearance
+    let typography: SuperTypography
     let onManageModels: () -> Void
     let onAddModelRequested: @MainActor @Sendable () -> Void
     let onProgressChange: (Double) -> Void
@@ -972,6 +997,7 @@ private struct ChatLayer: View {
                 )
                 .superTheme(theme)
                 .chatAppearance(appearance)
+                .superTypography(typography)
                 .onPreferenceChange(ChatProgressPreferenceKey.self) { newValue in
                     onProgressChange(newValue)
                 }
@@ -1029,6 +1055,7 @@ private struct SidebarLayer: View {
     let activeAppletID: String?
     let theme: SuperTheme
     let appearance: ChatAppearance
+    let typography: SuperTypography
     let onSelectConversation: (String) -> Void
     let onNewChat: () -> Void
     let onOpenSettings: () -> Void
@@ -1051,6 +1078,7 @@ private struct SidebarLayer: View {
             )
             .superTheme(theme)
             .chatAppearance(appearance)
+            .superTypography(typography)
         }
     }
 }
@@ -1073,6 +1101,7 @@ private struct SettingsLayer: View {
     let makeDatabaseContext: () -> DatabaseContext
     let theme: SuperTheme
     let appearance: ChatAppearance
+    let typography: SuperTypography
 
     var body: some View {
         if let settingsViewModel {
@@ -1083,6 +1112,7 @@ private struct SettingsLayer: View {
             )
             .superTheme(theme)
             .chatAppearance(appearance)
+            .superTypography(typography)
         }
     }
 }

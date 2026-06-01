@@ -9,6 +9,12 @@ public struct ChatSettings: Sendable, Equatable {
     /// Visual theme. Drives `SuperTheme.make(_:)` selection.
     /// Wired live: `ChatHostView` rebuilds its theme on change.
     public var themeId: ThemeID
+    /// Active typography identity. Drives `SuperTypography.make(_:)`
+    /// selection — the brand serif face set vs. the system fallback.
+    /// Wired live: `AppShell` rebuilds typography on change. No
+    /// user-facing picker yet; the key exists so swapping the brand
+    /// face app-wide is a one-value change.
+    public var typographyID: TypographyID
     /// Free-form user "about me" text — preferences, name, tone notes
     /// the assistant should keep in mind. Injected as the
     /// `## User personalization` section at the *end* of the leading
@@ -67,6 +73,7 @@ public struct ChatSettings: Sendable, Equatable {
     /// empty.
     public static let `default` = ChatSettings(
         themeId: .light,
+        typographyID: .serif,
         userPersonalization: "",
         defaultVerbosity: .simple,
         fontScale: 1.0,
@@ -77,6 +84,7 @@ public struct ChatSettings: Sendable, Equatable {
 
     public init(
         themeId: ThemeID,
+        typographyID: TypographyID,
         userPersonalization: String,
         defaultVerbosity: ChatVerbosity,
         fontScale: Double,
@@ -85,6 +93,7 @@ public struct ChatSettings: Sendable, Equatable {
         lastSelectedModelId: String? = nil
     ) {
         self.themeId = themeId
+        self.typographyID = typographyID
         self.userPersonalization = userPersonalization
         self.defaultVerbosity = defaultVerbosity
         self.fontScale = ChatSettings.clampFontScale(fontScale)
@@ -100,6 +109,16 @@ public struct ChatSettings: Sendable, Equatable {
         case light
         case dark
         case sepia
+    }
+
+    /// Mirror of `SuperTypography.Identifier`. Re-declared (rather than
+    /// typealiased) for the same reason as `ThemeID`: persistence string
+    /// values stay stable even if the Core enum gains a case the store
+    /// doesn't recognize yet. Bridged to `SuperTypography` via
+    /// `SuperTypography.make(_:fontScale:)` in `SettingsSheet`.
+    public enum TypographyID: String, Sendable, Equatable, CaseIterable, Codable {
+        case serif
+        case system
     }
 
     static func clampFontScale(_ value: Double) -> Double {

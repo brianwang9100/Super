@@ -12,6 +12,7 @@ struct SettingsRootPane: View {
     let viewModel: SettingsViewModel
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(spacing: 0) {
@@ -88,7 +89,7 @@ struct SettingsRootPane: View {
 
     private var accountChip: some View {
         Text(viewModel.accountEmail)
-            .font(.system(.subheadline))
+            .font(typography.font(.subheadline))
             .foregroundStyle(theme.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)

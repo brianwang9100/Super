@@ -16,6 +16,7 @@ struct CodeBlock: View {
     let superTheme: SuperTheme
 
     @Environment(\.pasteboardClient) private var pasteboard
+    @Environment(\.superTypography) private var typography
     @State private var copyController = CodeBlockCopyController(pasteboard: SystemPasteboardClient())
 
     var body: some View {
@@ -44,7 +45,7 @@ struct CodeBlock: View {
     private var header: some View {
         HStack {
             Text(language?.lowercased() ?? "text")
-                .font(.system(.caption2, design: .monospaced))
+                .font(typography.mono(11, relativeTo: .caption2))
                 .tracking(0.3)
                 .foregroundStyle(superTheme.codeForeground.opacity(0.7))
             Spacer(minLength: 0)
@@ -69,9 +70,9 @@ struct CodeBlock: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(.caption2).weight(.semibold))
+                    .font(typography.font(.caption2, weight: .semibold))
                 Text(copied ? "copied" : "copy")
-                    .font(.system(.caption2))
+                    .font(typography.font(.caption2))
             }
             .foregroundStyle(superTheme.codeForeground.opacity(0.7))
         }
@@ -88,7 +89,7 @@ struct CodeBlock: View {
         ScrollView(.horizontal, showsIndicators: false) {
             SplashHighlighter
                 .highlight(code, language: language, palette: .from(superTheme))
-                .font(.system(.caption, design: .monospaced))
+                .font(typography.mono(12, relativeTo: .caption))
                 .lineSpacing(2)
                 .textSelection(.enabled)
                 .padding(.horizontal, 14)

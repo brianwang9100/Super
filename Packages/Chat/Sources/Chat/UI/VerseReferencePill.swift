@@ -27,25 +27,25 @@ struct VerseReferencePill: View {
     let onRemove: (() -> Void)?
 
     @Environment(\.superTheme) private var theme
-    @Environment(\.chatAppearance) private var appearance
-    /// Base chip text size, declared via `@ScaledMetric` so it composes
-    /// Dynamic Type with the chat font-scale knob, like `UserBubble`.
+    @Environment(\.superTypography) private var typography
+    /// Base chip text size, declared via `@ScaledMetric` so the pill
+    /// composes OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so this metric is how the view opts into Dynamic Type.
     @ScaledMetric(relativeTo: .caption) private var basePoint: CGFloat = 12
-
-    private var pointSize: CGFloat { basePoint * appearance.fontScale }
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "book.closed.fill")
-                .font(.system(size: pointSize * 0.85))
+                .font(typography.font(size: basePoint * 0.85))
             Text(label)
-                .font(.system(size: pointSize, weight: .medium))
+                .font(typography.font(size: basePoint, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
-                        .font(.system(size: pointSize * 0.8, weight: .bold))
+                        .font(typography.font(size: basePoint * 0.8, weight: .bold))
                         .padding(2)
                 }
                 .buttonStyle(.plain)

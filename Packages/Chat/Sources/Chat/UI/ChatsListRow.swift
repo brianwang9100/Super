@@ -22,27 +22,31 @@ struct ChatsListRow: View {
     /// `.openConversationRequested(id:)` on the shared event bus.
     let onTap: () -> Void
 
+    @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
+    /// Row title + subtitle base sizes, declared via `@ScaledMetric` so
+    /// they compose OS Dynamic Type on top of the app font-scale that
+    /// `SuperTypography` folds in. The typography system path ignores
+    /// `relativeTo`, so these metrics are how the row opts into Dynamic Type.
     @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 15
     @ScaledMetric(relativeTo: .caption) private var subtitleSize: CGFloat = 11.5
-    @Environment(\.superFontScale) private var fontScale
-    @Environment(\.superTheme) private var theme
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: titleSize * fontScale).weight(.medium))
+                        .font(typography.font(size: titleSize, weight: .medium))
                         .foregroundStyle(theme.ink)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Text(RelativeTimeFormatter.format(updatedAt, now: now))
-                        .font(.system(size: subtitleSize * fontScale))
+                        .font(typography.font(size: subtitleSize))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(typography.font(size: 13, weight: .medium))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.vertical, 13)

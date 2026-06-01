@@ -55,6 +55,7 @@ struct ChatHeaderSnapshotTests {
         let view = ChatHeader(title: "New chat")
             .superTheme(.make(.light))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_font_scale_max_light")
     }
@@ -68,6 +69,7 @@ struct ChatHeaderSnapshotTests {
         let view = ChatHeader(title: "New chat")
             .superTheme(.make(.dark))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_font_scale_max_dark")
     }
@@ -82,6 +84,7 @@ struct ChatHeaderSnapshotTests {
         let view = ChatHeader(title: "New chat")
             .superTheme(.make(.sepia))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_font_scale_max_sepia")
     }
@@ -98,6 +101,7 @@ struct ChatHeaderSnapshotTests {
         let view = ChatHeader(title: "New chat")
             .superTheme(.make(.light))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
+            .superTypography(.make(.serif, fontScale: 1.20))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_font_scale_max_light_xxl")

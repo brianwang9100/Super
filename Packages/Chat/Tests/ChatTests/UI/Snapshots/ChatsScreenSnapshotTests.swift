@@ -123,6 +123,7 @@ struct ChatsScreenSnapshotTests {
             .background(SuperTheme.make(theme).background)
             .superTheme(.make(theme))
             .superFontScale(fontScale)
+            .superTypography(.make(.serif, fontScale: fontScale))
             .dynamicTypeSize(dynamicType)
 
         let failure = verifySnapshot(

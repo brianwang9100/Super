@@ -10,6 +10,7 @@ struct StreamingTail: View {
     let tail: MessageList.StreamingState
     let verbosity: ChatVerbosity
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
 
     /// The spark spins for the entire duration of the turn so the user
@@ -28,7 +29,7 @@ struct StreamingTail: View {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.mini)
                     Text("Compacting…")
-                        .font(.system(.caption))
+                        .font(typography.font(.caption))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .padding(.vertical, 6)

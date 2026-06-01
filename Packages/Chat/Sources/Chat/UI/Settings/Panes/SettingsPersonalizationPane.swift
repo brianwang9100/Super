@@ -17,11 +17,12 @@ struct SettingsPersonalizationPane: View {
     @FocusState private var isFocused: Bool
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $draft)
-                .font(.system(.subheadline))
+                .font(typography.font(.subheadline))
                 .lineSpacing(4)
                 .scrollContentBackground(.hidden)
                 .focused($isFocused)
@@ -46,7 +47,7 @@ struct SettingsPersonalizationPane: View {
                 }
 
             Text("Tell Super about yourself — your name, preferences, or anything you'd like the assistant to keep in mind.")
-                .font(.system(.caption))
+                .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
         }
         .padding(16)

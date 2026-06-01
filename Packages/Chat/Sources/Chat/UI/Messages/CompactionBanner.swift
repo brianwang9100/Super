@@ -7,6 +7,7 @@ import SwiftUI
 struct CompactionBanner: View {
     let summary: String
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @State private var isExpanded: Bool
 
     init(summary: String, initiallyExpanded: Bool = false) {
@@ -19,7 +20,7 @@ struct CompactionBanner: View {
             HStack(spacing: 8) {
                 line
                 Text("COMPACTED")
-                    .font(.system(.caption2).weight(.medium))
+                    .font(typography.font(.caption2, weight: .medium))
                     .tracking(0.6)
                     .foregroundStyle(theme.inkFaint)
                 line
@@ -32,7 +33,7 @@ struct CompactionBanner: View {
                         .lineLimit(isExpanded ? nil : 3)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text(isExpanded ? "Show less" : "Show more")
-                        .font(.system(.caption2).weight(.medium))
+                        .font(typography.font(.caption2, weight: .medium))
                         .foregroundStyle(theme.inkSoft)
                 }
                 .padding(.horizontal, 10)

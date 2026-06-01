@@ -7,22 +7,23 @@ struct SettingsAboutPane: View {
     let viewModel: SettingsViewModel
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         VStack(spacing: 0) {
             Text(viewModel.appInfo.bundleName)
-                .font(.system(size: 56, weight: .regular, design: .serif))
+                .font(typography.display(56, relativeTo: nil))
                 .italic()
                 .foregroundStyle(theme.ink)
                 .padding(.bottom, 10)
 
             Text("v\(viewModel.appInfo.version) · build \(viewModel.appInfo.build)")
-                .font(.system(.caption, design: .monospaced))
+                .font(typography.mono(12, relativeTo: .caption))
                 .tracking(0.5)
                 .foregroundStyle(theme.inkFaint)
 
             Text("A personal chat app. Your chats stay on device.")
-                .font(.system(.subheadline))
+                .font(typography.font(.subheadline))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
