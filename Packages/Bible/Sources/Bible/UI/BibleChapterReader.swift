@@ -393,12 +393,7 @@ struct BibleChapterReader: View {
         if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 title
-                // The two glyphs cluster tightly together; their frames hug
-                // their ink (see AnnotationBubble / NoteGlyph). `.center`
-                // rather than `.firstTextBaseline` because both children are
-                // Canvas icons with no real text baseline — centering aligns
-                // the two equal-height glyphs deterministically instead of
-                // relying on SwiftUI's synthesized-baseline fallback.
+                // .center, not .firstTextBaseline: Canvas icons have no text baseline.
                 HStack(alignment: .center, spacing: 3) {
                     chapterAnnotationBubble
                     chapterNoteGlyph
@@ -430,9 +425,7 @@ struct BibleChapterReader: View {
                 }
             } label: {
                 AnnotationBubble(state: state, size: 20)
-                    // No horizontal padding so the icon→icon gap matches the
-                    // verse trailers' tight 3pt; vertical padding alone grows
-                    // the tap target to the 44pt HIG minimum height.
+                    // No horizontal padding keeps the gap at 3pt; vertical-only reaches the 44pt HIG tap height.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
@@ -463,9 +456,7 @@ struct BibleChapterReader: View {
                 onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: glyphState, size: 20)
-                    // No horizontal padding so the icon→icon gap matches the
-                    // verse trailers' tight 3pt; vertical padding alone grows
-                    // the tap target to the 44pt HIG minimum height.
+                    // No horizontal padding keeps the gap at 3pt; vertical-only reaches the 44pt HIG tap height.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }

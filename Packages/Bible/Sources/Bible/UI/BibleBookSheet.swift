@@ -367,10 +367,7 @@ struct BibleBookSheet: View {
             }
         } label: {
             AnnotationBubble(state: state, size: bubbleSize)
-                // Height-only frame for the tap target; leaving width free lets
-                // the glyph sit at its ink width so the icon→icon gap matches
-                // the verse trailers' tight 3pt rather than centring in a wide
-                // square that re-introduces side-bearing.
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the gap past the verses' 3pt.
                 .frame(height: 30)
                 .contentShape(Rectangle())
         }
@@ -399,10 +396,7 @@ struct BibleBookSheet: View {
             onPresentBookNotes(bookId)
         } label: {
             NoteGlyph(state: glyphState, size: bubbleSize)
-                // Height-only frame for the tap target; leaving width free lets
-                // the glyph sit at its ink width so the icon→icon gap matches
-                // the verse trailers' tight 3pt rather than centring in a wide
-                // square that re-introduces side-bearing.
+                // Height-only frame: a fixed width re-introduces side-bearing and widens the gap past the verses' 3pt.
                 .frame(height: 30)
                 .contentShape(Rectangle())
         }
