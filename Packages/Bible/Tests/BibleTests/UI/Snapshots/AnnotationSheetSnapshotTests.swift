@@ -58,26 +58,29 @@ struct AnnotationSheetSnapshotTests {
             )),
     ]
 
+    // In canonical category order (summary → historical → clarification →
+    // references), matching what the sheet's query feeds in production; the
+    // run of reference cards exercises the scroll overflow.
     private static let eightCards: [AnnotationSheet.Card] = {
         let jhn = BiblePosition(bookId: "JHN", chapterNumber: 1)
         let eph = BiblePosition(bookId: "EPH", chapterNumber: 1)
         return [
-            ref(id: "1", title: "Cross-reference", label: "John 1:14",
-                target: BibleCitationParser.ParsedCitation(position: jhn, verseStart: 14, verseEnd: 14)),
-            ref(id: "2", title: "Cross-reference", label: "Ephesians 1:11",
-                target: BibleCitationParser.ParsedCitation(position: eph, verseStart: 11, verseEnd: 11)),
+            text(id: "7", category: .summary, title: "Parallel",
+                 body: "First Peter 1:2 echoes the same chain: chosen, sanctified, sprinkled — the same logic with different verbs."),
             text(id: "3", category: .historical, title: "In context",
                  body: "\"All things\" includes the suffering Paul names in v18–25 — creation's groaning, the believer's weakness in prayer, even persecution."),
             text(id: "4", category: .clarification, title: "Greek note",
                  body: "συνεργεῖ (synergei) — \"works together with.\" The grammar leaves room for God as the actor, or for the things themselves as cooperating under His hand."),
+            ref(id: "1", title: "Cross-reference", label: "John 1:14",
+                target: BibleCitationParser.ParsedCitation(position: jhn, verseStart: 14, verseEnd: 14)),
+            ref(id: "2", title: "Cross-reference", label: "Ephesians 1:11",
+                target: BibleCitationParser.ParsedCitation(position: eph, verseStart: 11, verseEnd: 11)),
             ref(id: "5", title: "Parse failed", label: "John 14, verse twelve", target: nil),
             ref(id: "6", title: "See also", label: "Romans 8:39",
                 target: BibleCitationParser.ParsedCitation(
                     position: BiblePosition(bookId: "ROM", chapterNumber: 8),
                     verseStart: 39, verseEnd: 39
                 )),
-            text(id: "7", category: .summary, title: "Parallel",
-                 body: "First Peter 1:2 echoes the same chain: chosen, sanctified, sprinkled — the same logic with different verbs."),
             ref(id: "8", title: "Cross-reference", label: "2 Timothy 1:9",
                 target: BibleCitationParser.ParsedCitation(
                     position: BiblePosition(bookId: "2TI", chapterNumber: 1),

@@ -76,7 +76,7 @@ struct ChapterAnnotationsRequestTests {
         #expect(rows.isEmpty)
     }
 
-    @Test("rows ordered by (createdAt ASC, id ASC)")
+    @Test("rows of equal category order by (createdAt ASC, id ASC)")
     func ordering() async throws {
         let (repository, database) = try makeFixture()
         let later = t0.addingTimeInterval(60)
@@ -105,5 +105,34 @@ struct ChapterAnnotationsRequestTests {
         )
         let rows = try fetch(database, book: "ROM", chapter: 8)
         #expect(rows.map(\.id) == ["a", "b", "c"])
+    }
+
+    @Test("rows sort by canonical category order, not by creation time")
+    func ordersByCategory() async throws {
+        let (repository, database) = try makeFixture()
+        // Insert with category reversed relative to createdAt; the category
+        // key must win so the live chapter renderer's @Query feed follows
+        // author → … → reference.
+        func card(_ id: String, _ category: BibleAnnotationCategory, _ createdAt: Date) -> BibleAnnotationRecord {
+            BibleAnnotationRecord(
+                id: id, target: .verse, bookId: "ROM",
+                chapterNumber: 8, verseStart: 28, verseEnd: 30,
+                category: category, title: id, body: ".",
+                source: .user, modelId: "m", createdAt: createdAt
+            )
+        }
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
+            inserting: [
+                card("ref", .reference, t0.addingTimeInterval(40)),
+                card("clar", .clarification, t0.addingTimeInterval(30)),
+                card("hist", .historical, t0.addingTimeInterval(20)),
+                card("sum", .summary, t0.addingTimeInterval(10)),
+                card("auth", .author, t0),
+            ]
+        )
+        let rows = try fetch(database, book: "ROM", chapter: 8)
+        #expect(rows.map(\.category) == [.author, .summary, .historical, .clarification, .reference])
+        #expect(rows.map(\.id) == ["auth", "sum", "hist", "clar", "ref"])
     }
 }
