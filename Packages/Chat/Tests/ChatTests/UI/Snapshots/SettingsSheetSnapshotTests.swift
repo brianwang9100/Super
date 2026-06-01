@@ -249,6 +249,14 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    @Test("models pane with a native-web-search row (sepia)")
+    func modelsPaneWithNativeSearchSepia() async {
+        await verifyModelsPaneWithNativeSearch(
+            theme: .sepia,
+            name: "settings_models_native_search_sepia"
+        )
+    }
+
     private func verifyModelsPaneWithNativeSearch(
         theme: SuperTheme.Identifier,
         name: String,
