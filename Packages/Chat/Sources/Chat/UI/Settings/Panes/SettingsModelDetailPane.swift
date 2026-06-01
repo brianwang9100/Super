@@ -790,22 +790,31 @@ struct SettingsModelDetailPane: View {
                 .models.first?.id ?? modelId
             return (LLMProviderCatalog.appleProviderID, catalogID)
         }
-        if !kind.hasProviderAdapter {
-            // Native-search kind without a shipped adapter: classify by kind,
-            // never by URL (see the URL-collision note above). Custom keeps
-            // the row fully editable and prevents a URL-driven reclassify.
+        switch kind {
+        case .anthropicNative, .geminiNative, .openAIResponses:
+            // Native-search kinds: classify by kind, **never by URL** — and
+            // do it here, before the URL-match branch, *independent of*
+            // `hasProviderAdapter`. This is deliberate: `.openAIResponses`
+            // now has a shipped adapter (`hasProviderAdapter == true`) yet its
+            // persisted `baseURL` (`https://api.openai.com/v1`) is
+            // byte-identical to the compat "openai" entry's `defaultBaseURL`,
+            // so a URL-first match would misfile it as the compat provider and
+            // reopen it in compat-edit mode (where a model-id change on Save
+            // could overwrite the native wire id). Resolving by kind keeps that
+            // from happening regardless of the flag's value — the tripwire test
+            // `resolveEditProviderNeverMisfilesOpenAIResponsesToCompat` pins it.
             //
-            // ⚠️ PR3a hazard: when an adapter ships and `hasProviderAdapter`
-            // flips to `true` for its kind, this guard stops short-circuiting
-            // and the URL-match branch below runs again. `.openAIResponses`
-            // shares `https://api.openai.com/v1` with the compat "openai"
-            // entry, so it would re-match the wrong provider. PR3a MUST add an
-            // explicit native-kind → native-entry dispatch here *before* the
-            // URL match, plus a `resolveEditProvider` test pinning an
-            // `.openAIResponses` row with `hasProviderAdapter == true`. No
-            // current test catches that regression once the flag flips.
-            // (Tracked in spec §11a.)
+            // Custom is the safe target until the native Add-Model edit UI
+            // ships (web-search PR5): the row stays fully visible/editable and
+            // is never URL-reclassified. PR5 maps these to their own native
+            // provider entries here.
             return (LLMProviderCatalog.customProviderID, "")
+        case .openAICompatible, .appleFoundation:
+            break
+        #if DEBUG
+        case .debug:
+            break
+        #endif
         }
         if let match = LLMProviderCatalog.model(forModelId: modelId),
            Self.urlsMatchIgnoringTrailingSlash(match.provider.defaultBaseURL, baseURL) {

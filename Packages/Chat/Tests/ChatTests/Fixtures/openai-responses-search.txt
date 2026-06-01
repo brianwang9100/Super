@@ -1,0 +1,33 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_search","model":"gpt-5.1","usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"in_progress","action":{"type":"search","query":"latest mars rover news"}}}
+
+event: response.web_search_call.in_progress
+data: {"type":"response.web_search_call.in_progress","output_index":0,"item_id":"ws_1"}
+
+event: response.web_search_call.searching
+data: {"type":"response.web_search_call.searching","output_index":0,"item_id":"ws_1"}
+
+event: response.web_search_call.completed
+data: {"type":"response.web_search_call.completed","output_index":0,"item_id":"ws_1"}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_1","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"The rover "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"found water ice."}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","item_id":"msg_1","annotation":{"type":"url_citation","url":"https://www.nasa.gov/mars-rover","title":"NASA: Mars Rover","start_index":0,"end_index":9}}
+
+event: response.output_text.annotation.added
+data: {"type":"response.output_text.annotation.added","item_id":"msg_1","annotation":{"type":"url_citation","url":"https://www.space.com/rover-update","title":"","start_index":10,"end_index":25}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_search","usage":{"input_tokens":120,"output_tokens":40}}}
+

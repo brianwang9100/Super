@@ -99,10 +99,26 @@ struct AssistantMessageSnapshotTests {
         )
     }
 
+    @Test("grounded answer with the sources pill below the text (light)")
+    func withSourcesLight() {
+        verify(isStreaming: false, theme: .light, sources: Self.sampleSources, name: "assistant_with_sources_light")
+    }
+
+    @Test("grounded answer with the sources pill below the text (dark)")
+    func withSourcesDark() {
+        verify(isStreaming: false, theme: .dark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
+    }
+
+    private static let sampleSources: [SourceCitationPillModel] = [
+        SourceCitationPillModel(id: "1", title: "Perseverance confirms subsurface water ice", host: "nasa.gov", url: URL(string: "https://www.nasa.gov/mars")!),
+        SourceCitationPillModel(id: "2", title: "Mars rover relays new imagery", host: "space.com", url: URL(string: "https://www.space.com/rover")!),
+    ]
+
     private func verify(
         isStreaming: Bool,
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
+        sources: [SourceCitationPillModel] = [],
         name: String,
         function: String = #function
     ) {
@@ -111,6 +127,7 @@ struct AssistantMessageSnapshotTests {
             thinkingDurationMs: nil,
             text: "Sure — here's a short reply.",
             toolCalls: [],
+            sources: sources,
             verbosity: .simple,
             isStreaming: isStreaming
         )

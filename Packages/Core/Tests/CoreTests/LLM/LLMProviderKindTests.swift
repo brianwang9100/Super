@@ -10,16 +10,17 @@ struct LLMProviderKindTests {
     func shippedAdaptersAreBuildable() {
         #expect(LLMProviderKind.openAICompatible.hasProviderAdapter)
         #expect(LLMProviderKind.appleFoundation.hasProviderAdapter)
+        // `.openAIResponses` shipped its adapter in web-search PR3a.
+        #expect(LLMProviderKind.openAIResponses.hasProviderAdapter)
         #if DEBUG
         #expect(LLMProviderKind.debug.hasProviderAdapter)
         #endif
     }
 
-    @Test("native-search kinds report false until their adapters ship")
+    @Test("native-search kinds without a shipped adapter report false")
     func nativeKindsAreNotYetBuildable() {
         #expect(!LLMProviderKind.anthropicNative.hasProviderAdapter)
         #expect(!LLMProviderKind.geminiNative.hasProviderAdapter)
-        #expect(!LLMProviderKind.openAIResponses.hasProviderAdapter)
     }
 
     /// Every case is covered by the switch (no `default`), so a newly added

@@ -27,14 +27,15 @@ public struct MessageList: View {
             thinking: String?,
             thinkingDurationMs: Int?,
             text: String,
-            toolCalls: [ToolCallItem]
+            toolCalls: [ToolCallItem],
+            sources: [SourceCitationPillModel]
         )
         case compactionBanner(id: String, summary: String)
 
         public var id: String {
             switch self {
             case .userBubble(let id, _, _),
-                 .assistantText(let id, _, _, _, _),
+                 .assistantText(let id, _, _, _, _, _),
                  .compactionBanner(let id, _):
                 return id
             }
@@ -510,12 +511,13 @@ public struct MessageList: View {
         switch item {
         case .userBubble(_, let text, let references):
             UserBubble(text: text, references: references)
-        case .assistantText(let id, let thinking, let thinkingDurationMs, let text, let toolCalls):
+        case .assistantText(let id, let thinking, let thinkingDurationMs, let text, let toolCalls, let sources):
             AssistantMessage(
                 thinking: thinking,
                 thinkingDurationMs: thinkingDurationMs,
                 text: text,
                 toolCalls: toolCalls,
+                sources: sources,
                 verbosity: verbosity,
                 isStreaming: isStreaming,
                 onCopyTapped: { onCopyTapped(text) },

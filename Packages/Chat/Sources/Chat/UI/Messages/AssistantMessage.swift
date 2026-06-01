@@ -8,6 +8,9 @@ struct AssistantMessage: View {
     let thinkingDurationMs: Int?
     let text: String
     let toolCalls: [MessageList.ToolCallItem]
+    /// Web sources this turn cited (native or standalone search). Rendered as
+    /// the collapsible "N sources" pill below the answer; empty hides it.
+    var sources: [SourceCitationPillModel] = []
     let verbosity: ChatVerbosity
     /// Disables Regenerate while a turn is mid-stream. Copy stays
     /// enabled — copying text from an older response during a new one
@@ -71,6 +74,11 @@ struct AssistantMessage: View {
                         disabled: isStreaming
                     )
                 }
+            }
+            // Citations sit below the answer (and its action row), mirroring
+            // the way a grounded reply reads: claim first, sources after.
+            if !sources.isEmpty {
+                SourceCitationsPill(sources: sources)
             }
         }
         .padding(.vertical, appearance.assistantRowVerticalPadding)

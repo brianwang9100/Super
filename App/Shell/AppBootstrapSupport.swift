@@ -87,58 +87,41 @@ enum AppBootstrapSupport {
         let http = URLSessionHTTPClient()
         let ordered = configurations.sorted { $0.createdAt < $1.createdAt }
         for record in ordered {
-            switch record.kind {
-            case .openAICompatible:
-                let apiKey: String?
-                if let ref = record.apiKeyRef {
-                    apiKey = try? await repository.loadAPIKey(ref: ref)
-                } else {
-                    apiKey = nil
-                }
-                let provider = OpenAICompatibleLLMProvider(
-                    configuration: record.configuration,
-                    apiKey: apiKey,
-                    http: http
-                )
+            let apiKey: String?
+            if let ref = record.apiKeyRef {
+                apiKey = try? await repository.loadAPIKey(ref: ref)
+            } else {
+                apiKey = nil
+            }
+            // Single per-kind dispatch shared with `SettingsViewModel
+            // .registerProvider` via `makeLLMProvider`, so the launch path and
+            // the Settings path can't drift on which kinds are buildable.
+            if let provider = makeLLMProvider(
+                for: record,
+                apiKey: apiKey,
+                http: http,
+                toolRegistry: toolRegistry,
+                appleFoundationAvailability: appleFoundationAvailability
+            ) {
                 await registry.register(provider)
-            case .appleFoundation:
-                // `id` must match the record UUID — `setActive(id:)` looks providers
-                // up by this value; a static fallback would silently fail to promote
-                // the seeded `isSelected = true` row to active.
-                guard appleFoundationAvailability.isAvailable else { continue }
-                let provider = AppleFoundationLLMProvider(
-                    id: record.id,
-                    availability: appleFoundationAvailability,
-                    toolRegistry: toolRegistry
-                )
-                await registry.register(provider)
-            case .anthropicNative, .geminiNative, .openAIResponses:
-                // Native-search adapters land in a later PR; until then no
-                // persisted row *should* carry a native `kind` (the Add-Model
-                // native-search option ships with the adapters), so skip.
-                // (`continue` here vs. `break` in `SettingsViewModel`'s
-                // non-looping `registerProvider` switch — same intent:
-                // register nothing for this row.)
-                //
-                // This invariant is unguarded at the schema level. A DB
-                // written by a *future* binary (or synced from one) could
-                // carry a native-kind row. If it's also the selected row,
+            } else if !record.kind.hasProviderAdapter {
+                // A native-search kind whose adapter hasn't shipped yet
+                // (`.anthropicNative`/`.geminiNative`). No persisted row
+                // *should* carry one until the Add-Model native option ships
+                // with that adapter, but a DB written by a *future* binary
+                // (or synced from one) could. If it's also the selected row,
                 // `selected()` filters it out (native kinds lack a buildable
                 // adapter, so `buildableKindRequest` excludes them), so the
                 // `setActive` below never sees a native id and the
-                // first-registered fallback takes over cleanly. Log here
-                // anyway so the hydration skip is diagnosable in the field
-                // rather than presenting as a mute "no model configured".
-                // When the adapters land, this arm must construct the real
-                // provider atomically in the same PR as the Add-Model native
-                // option.
+                // first-registered fallback takes over cleanly. Log here so the
+                // skip is diagnosable in the field rather than presenting as a
+                // mute "no model configured".
                 bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
-                continue
-            #if DEBUG
-            case .debug:
-                await registry.register(DebugLLMProvider(id: record.id))
-            #endif
             }
+            // A `nil` for an `.appleFoundation` row on an AFM-ineligible device
+            // is the silent expected path (the factory gated it); `selected()`
+            // still returns it since AFM is buildable, and the throw below is
+            // swallowed.
         }
 
         if let selectedId = try await repository.selected()?.id {
