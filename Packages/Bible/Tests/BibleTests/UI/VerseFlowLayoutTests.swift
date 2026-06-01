@@ -14,14 +14,16 @@ struct VerseFlowLayoutTests {
         #expect(result.size.height == 0)
     }
 
-    @Test("items that fit share one row, the tallest setting the row height")
+    @Test("items that fit share one row, the tallest sets the height, shorter items centre vertically")
     func singleRow() {
         let result = VerseFlowLayout.flow(
             itemSizes: [CGSize(width: 30, height: 10), CGSize(width: 40, height: 12)],
             maxWidth: 100,
             lineSpacing: 5
         )
-        #expect(result.origins == [CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 0)])
+        // Row height is 12 (the taller item); the 10-tall item drops by
+        // (12 - 10) / 2 = 1 so it sits centred on the line, not pinned to the top.
+        #expect(result.origins == [CGPoint(x: 0, y: 1), CGPoint(x: 30, y: 0)])
         #expect(result.size.height == 12)
     }
 

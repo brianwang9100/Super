@@ -72,6 +72,15 @@ struct AnnotationBubble: View {
             switch state {
             case .filled:
                 context.fill(path, with: .color(theme.accent))
+                // Stroke in the fill colour too: a stroke straddles the path
+                // (extends ~half its width beyond the edge), so the outlined
+                // states read slightly larger than a fill-only shape. Matching
+                // the stroke here keeps filled and empty bubbles the same size.
+                context.stroke(
+                    path,
+                    with: .color(theme.accent),
+                    style: StrokeStyle(lineWidth: 1.6 * scale, lineCap: .round, lineJoin: .round)
+                )
             case .empty, .generating:
                 context.stroke(
                     path,

@@ -86,7 +86,7 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
-    @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 20
 
     /// Required content + callbacks come first per the AGENTS.md
     /// "Default parameter values" rule; the lone `bottomInset` default
@@ -334,7 +334,7 @@ struct BibleBookSheet: View {
                 // The two glyphs cluster tightly together; their frames hug
                 // their ink (see AnnotationBubble / NoteGlyph), so this spacing
                 // is the real visible gap between them.
-                HStack(spacing: 3) {
+                HStack(spacing: 7) {
                     annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
                     noteGlyph(for: book.id, hasNotes: hasNotes)
                 }

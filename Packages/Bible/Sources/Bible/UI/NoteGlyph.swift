@@ -65,6 +65,12 @@ struct NoteGlyph: View {
             switch state {
             case .filled:
                 context.fill(page, with: .color(theme.accent))
+                // Stroke the page in the fill colour too: a stroke straddles
+                // the path (extends ~half its width beyond the edge), so the
+                // outlined state reads slightly larger than a fill-only shape.
+                // Matching the stroke keeps filled and outline glyphs the same
+                // size.
+                context.stroke(page, with: .color(theme.accent), style: stroke(scale: scale))
                 // Crease + rules knocked into the page in accentInk so the
                 // glyph still reads as a written note at body-trailing size.
                 context.stroke(

@@ -53,7 +53,7 @@ struct BibleParagraphBlock: View {
     /// driver views without a sheet host).
     let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
     @Environment(\.superTheme) private var theme
-    @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
 
     var body: some View {
         switch paragraph {
@@ -182,7 +182,7 @@ struct BibleParagraphBlock: View {
                 onAnnotationBubbleTap(spec)
             } label: {
                 AnnotationBubble(state: .filled, size: trailingBubbleSize)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 3)
                     .padding(.vertical, 1)
                     .contentShape(Rectangle())
             }
@@ -193,7 +193,7 @@ struct BibleParagraphBlock: View {
             // preview / driver view show the bubble without wiring a
             // sheet path.
             AnnotationBubble(state: .filled, size: trailingBubbleSize)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 3)
         }
     }
 
@@ -223,7 +223,7 @@ struct BibleParagraphBlock: View {
                 onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: .filled, size: trailingBubbleSize)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 3)
                     .padding(.vertical, 1)
                     .contentShape(Rectangle())
             }
@@ -233,7 +233,7 @@ struct BibleParagraphBlock: View {
             // No tap host — render the glyph as a decoration only, matching
             // the bubble's preview / driver fallback.
             NoteGlyph(state: .filled, size: trailingBubbleSize)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 3)
         }
     }
 
