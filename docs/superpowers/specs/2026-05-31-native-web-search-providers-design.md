@@ -383,6 +383,28 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 > .hasProviderAdapter → true`; `.anthropicNative`/`.geminiNative` stay `false`
 > until PR3b/PR3c. The `.openAIResponses`-specific items below are marked
 > **DONE (PR3a)**; the Anthropic/Gemini-specific ones remain open.
+>
+> **Status update (web-search PR3b, Anthropic).** PR3b shipped
+> `AnthropicNativeLLMProvider` + `AnthropicStreamReducer` + `AnthropicWireTypes`
+> + offline SSE fixtures, the new `LLMContent.searchResult([SourceCitation])`
+> carrier (§4.3) with the `ContextAssembler` round-trip that reattaches stored
+> Anthropic echoes (gated on `providerEcho != nil`), the `makeLLMProvider`
+> Anthropic arm, and flipped `.anthropicNative.hasProviderAdapter → true`. Only
+> `.geminiNative` stays `false` (PR3c). **Tool version decision:** ships the
+> **stable `web_search_20250305`** (constant `AnthropicWebSearch.toolType`), NOT
+> §0 #3's `web_search_20260209` — the newer version is model-gated (excludes
+> Haiku) and requires the server-side **code-execution tool** appended alongside
+> (an extra capability we don't want on the public App Store target, and whose
+> exact dated type string the spec never supplied / we can't verify offline). It
+> is a one-line bump when the search path is live-testable (PR4) and gating is
+> enforced (PR5). **Unverified-until-live (no live API in unit tests; the search
+> sentinel isn't wired until PR4):** the extended-thinking request shape
+> (`thinking` + temperature-omission + budget) and the encrypted round-trip
+> replay shape (the synthetic `web_search_tool_result` `tool_use_id`, and whether
+> a matching `server_tool_use` block must also be replayed). Both are
+> covered by serialization-shape unit tests now and flagged in the adapter docs
+> for live validation in PR4. The Anthropic-specific items below are now
+> **DONE (PR3b)**.
 
 From PR1:
 

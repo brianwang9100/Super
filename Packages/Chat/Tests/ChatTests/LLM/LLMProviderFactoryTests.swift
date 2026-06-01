@@ -54,9 +54,15 @@ struct LLMProviderFactoryTests {
         #expect(provider is OpenAICompatibleLLMProvider)
     }
 
+    @Test("builds an AnthropicNativeLLMProvider for an .anthropicNative row")
+    func buildsAnthropicProvider() {
+        let provider = make(record(kind: .anthropicNative))
+        #expect(provider is AnthropicNativeLLMProvider)
+        #expect(provider?.id == "row-anthropicNative")
+    }
+
     @Test("returns nil for native kinds whose adapter has not shipped")
     func returnsNilForUnbuiltNativeKinds() {
-        #expect(make(record(kind: .anthropicNative)) == nil)
         #expect(make(record(kind: .geminiNative)) == nil)
     }
 
@@ -67,6 +73,7 @@ struct LLMProviderFactoryTests {
         // preconditionFailure (which would crash on every launch).
         #expect(make(record(kind: .openAIResponses, baseURL: nil)) == nil)
         #expect(make(record(kind: .openAICompatible, baseURL: nil)) == nil)
+        #expect(make(record(kind: .anthropicNative, baseURL: nil)) == nil)
     }
 
     @Test("returns nil for HTTP-backed kinds when no client is supplied")
