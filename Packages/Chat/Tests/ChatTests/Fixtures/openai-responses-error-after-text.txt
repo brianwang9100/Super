@@ -1,0 +1,15 @@
+event: response.created
+data: {"type":"response.created","response":{"id":"resp_eat","model":"gpt-5.1","usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","status":"in_progress"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"Partial answer"}
+
+event: response.error
+data: {"type":"response.error","code":"server_error","message":"boom"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"id":"resp_eat","usage":{"input_tokens":4,"output_tokens":2}}}
+

@@ -1129,7 +1129,8 @@ public final class ChatScreenViewModel {
                     thinking: message.thinkingContent,
                     thinkingDurationMs: message.thinkingDurationMs,
                     text: message.content,
-                    toolCalls: calls
+                    toolCalls: calls,
+                    sources: (message.attachments?.sources ?? []).map(Self.sourcePill)
                 ))
             case .system:
                 // System rows are not rendered in the transcript today —
@@ -1150,6 +1151,29 @@ public final class ChatScreenViewModel {
         // tail so the user still sees that compaction happened.
         emitBannerIfArmed()
         return items
+    }
+
+    /// Project a Core `SourceCitation` into the UI-local pill model. Derives
+    /// the display host from the URL (leading `www.` stripped) and treats a
+    /// title that merely repeats the host (or is empty) as "no title", so the
+    /// pill renders a single host line instead of a redundant host+title pair.
+    private nonisolated static func sourcePill(_ citation: SourceCitation) -> SourceCitationPillModel {
+        let rawHost = citation.url.host() ?? ""
+        let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
+        let displayHost = host.isEmpty ? citation.url.absoluteString : host
+        let trimmedTitle = citation.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Case-insensitive: a title like "Space.com" must still collapse
+        // against host "space.com".
+        let isRedundant = trimmedTitle.isEmpty
+            || trimmedTitle.caseInsensitiveCompare(rawHost) == .orderedSame
+            || trimmedTitle.caseInsensitiveCompare(host) == .orderedSame
+        let title = isRedundant ? "" : trimmedTitle
+        return SourceCitationPillModel(
+            id: citation.id,
+            title: title,
+            host: displayHost,
+            url: citation.url
+        )
     }
 
     private nonisolated static func mapStatus(_ status: ToolCallStatus) -> MessageList.ToolCallItem.Status {

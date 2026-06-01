@@ -687,42 +687,23 @@ public final class SettingsViewModel {
     }
 
     /// Build a fresh provider for `record` and register it with the live
-    /// registry. Kind-dispatches: `.openAICompatible` rows go through
-    /// `OpenAICompatibleLLMProvider`; `.appleFoundation` rows go through
-    /// `AppleFoundationLLMProvider` (skipped when AFM is unavailable, so
-    /// the launch-path and Settings-path agree on the gate). No-op when
-    /// no registry was injected (tests and previews don't wire it).
+    /// registry. The per-kind dispatch is shared with the launch path
+    /// (`AppBootstrapSupport.hydrateProviders`) through `makeLLMProvider`, so
+    /// the two can't drift on which kinds are buildable: `.openAICompatible`
+    /// and `.openAIResponses` need the injected HTTP client; `.appleFoundation`
+    /// is skipped when AFM is unavailable; native-search kinds without a
+    /// shipped adapter build nothing. No-op when no registry was injected
+    /// (tests and previews don't wire one).
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
-        switch record.kind {
-        case .openAICompatible:
-            guard let http = httpClient else { return }
-            let provider = OpenAICompatibleLLMProvider(
-                configuration: record.configuration,
-                apiKey: apiKey,
-                http: http
-            )
-            await registry.register(provider)
-        case .appleFoundation:
-            guard appleFoundationAvailability.isAvailable else { return }
-            let provider = AppleFoundationLLMProvider(
-                id: record.id,
-                availability: appleFoundationAvailability,
-                toolRegistry: toolRegistry
-            )
-            await registry.register(provider)
-        case .anthropicNative, .geminiNative, .openAIResponses:
-            // Native-search adapters land in a later PR. No row can carry
-            // a native `kind` yet (the Add-Model native-search option ships
-            // alongside the adapters), so this arm is unreachable today;
-            // when the adapters arrive, this and `hydrateProviders` collapse
-            // into one shared provider factory.
-            break
-        #if DEBUG
-        case .debug:
-            await registry.register(DebugLLMProvider(id: record.id))
-        #endif
-        }
+        guard let provider = makeLLMProvider(
+            for: record,
+            apiKey: apiKey,
+            http: httpClient,
+            toolRegistry: toolRegistry,
+            appleFoundationAvailability: appleFoundationAvailability
+        ) else { return }
+        await registry.register(provider)
     }
 
     /// Look up a row by id without re-fetching. The detail pane uses this

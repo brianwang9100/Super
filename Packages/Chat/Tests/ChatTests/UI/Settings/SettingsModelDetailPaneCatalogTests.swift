@@ -207,6 +207,11 @@ struct SettingsModelDetailPaneCatalogTests {
         // and open compat-edit mode. The kind-first guard must resolve it to
         // Custom (fully editable, never URL-reclassified) until the native
         // edit UI ships.
+        // PR3a flipped `.openAIResponses.hasProviderAdapter` to `true`; the
+        // kind-first classification must hold *despite* that (it no longer
+        // relies on the flag), so pin the precondition the §11a hazard warned
+        // about: a buildable native kind that still must not URL-match compat.
+        #expect(LLMProviderKind.openAIResponses.hasProviderAdapter)
         let resolved = SettingsModelDetailPane.resolveEditProvider(
             kind: .openAIResponses,
             modelId: "gpt-5.5",
