@@ -12,6 +12,11 @@ struct SettingsHeader: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Title base size. The Settings top bar is chrome (a fixed-height,
+    /// single-line nav bar), so the title must stay off the font-scale slider —
+    /// `tracksFontScale: false` keeps it scoped to the pane's reading content
+    /// below, while `@ScaledMetric` still composes OS Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 17
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,7 +32,7 @@ struct SettingsHeader: View {
             .accessibilityLabel(isRoot ? "Close settings" : "Back")
 
             Text(title)
-                .font(typography.font(.body, weight: .semibold))
+                .font(typography.font(size: titleSize, weight: .semibold, tracksFontScale: false))
                 .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity)
                 .lineLimit(1)

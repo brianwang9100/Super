@@ -319,12 +319,14 @@ private struct ChatRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     /// Row title base size, declared via `@ScaledMetric` so it composes OS
-    /// Dynamic Type. The title intentionally does **not** track the chat
-    /// font-scale slider — it's drawer chrome, not reading content, so the
-    /// slider stays scoped to the message list. `tracksFontScale: false` on the
-    /// `typography.font(size:)` call is what keeps the slider out while the
-    /// `@ScaledMetric` base still carries OS Dynamic Type.
-    @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 17
+    /// Dynamic Type. Anchored to `.body` because the 17 pt base matches that
+    /// text style's default size (so it scales at the same rate as the
+    /// `.body`-anchored nav chrome above it). The title intentionally does
+    /// **not** track the chat font-scale slider — it's drawer chrome, not
+    /// reading content, so the slider stays scoped to the message list.
+    /// `tracksFontScale: false` keeps the slider out while the `@ScaledMetric`
+    /// base still carries OS Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
         Button(action: onSelect) {
@@ -369,8 +371,12 @@ private struct SeeAllChatsRow: View {
     /// Dynamic Type. Like `ChatRow`, the title intentionally does **not** track
     /// the chat font-scale slider — it's drawer chrome, so `tracksFontScale:
     /// false` keeps the slider scoped to the message list while `@ScaledMetric`
-    /// preserves OS Dynamic Type.
+    /// preserves OS Dynamic Type. Anchored to `.subheadline` (15 pt base).
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
+    /// Trailing chevron base size. Also `@ScaledMetric` so it grows with the
+    /// title under OS Dynamic Type (a fixed 11 pt glyph would look undersized
+    /// next to scaled-up text), while staying off the font-scale slider.
+    @ScaledMetric(relativeTo: .caption2) private var chevronSize: CGFloat = 11
 
     var body: some View {
         Button(action: onTap) {
@@ -381,7 +387,7 @@ private struct SeeAllChatsRow: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(typography.font(size: 11, weight: .medium, tracksFontScale: false))
+                    .font(typography.font(size: chevronSize, weight: .medium, tracksFontScale: false))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.horizontal, 14)

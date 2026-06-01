@@ -150,46 +150,47 @@ struct SidebarDrawerSnapshotTests {
     /// font-scale slider is scoped to the message list, so the drawer chrome
     /// (wordmark, version mark, "New Chat", applet rows, "CHATS" label, and
     /// chat rows) renders at fixed sizes regardless of the slider. Every chrome
-    /// surface routes through `typography.*` with `tracksFontScale: false`, so
-    /// even though the harness injects `fontScale: 1.20`, the rendered drawer
-    /// matches a `fontScale == 1.0` drawer. (OS Dynamic Type is a separate axis
-    /// the chrome still honors via its `@ScaledMetric` bases.)
+    /// surface routes through `typography.*` with `tracksFontScale: false`.
+    ///
+    /// Rather than keep a private baseline (which could be re-recorded to pass —
+    /// exactly how the original regression slipped through), this asserts the
+    /// invariant *directly*: it renders the drawer at `fontScale: 1.20` and
+    /// compares against the **`fontScale == 1.0` populated baseline** owned by
+    /// ``openPopulated``. If any chrome surface scaled with the slider, the
+    /// 1.20 render would diverge from the 1.0 baseline and fail here — and the
+    /// shared baseline can't be silently re-recorded without also breaking the
+    /// 1.0 test that owns it. (OS Dynamic Type is a separate axis the chrome
+    /// still honors via its `@ScaledMetric` bases; both renders are at the
+    /// default content-size category, so they're byte-identical.)
     @Test("font scale max — drawer chrome stays fixed under max slider")
     func fontScaleMaxChromeFixed() {
-        verifyFontScaleMax(
-            theme: .light,
-            name: "sidebar_font_scale_max_light"
-        )
+        verifyFontScaleMax(theme: .light, baseline: "sidebar_open_populated_light", baselineFunction: "openPopulated")
     }
 
     /// Dark-theme counterpart to ``fontScaleMaxChromeFixed`` — completes the
-    /// `light/dark/sepia` matrix for the fixed-chrome baseline.
+    /// `light/dark/sepia` matrix, comparing against ``openPopulatedDark``'s
+    /// `fontScale == 1.0` baseline.
     @Test("font scale max — drawer chrome stays fixed under max slider (dark)")
     func fontScaleMaxChromeFixedDark() {
-        verifyFontScaleMax(
-            theme: .dark,
-            name: "sidebar_font_scale_max_dark"
-        )
+        verifyFontScaleMax(theme: .dark, baseline: "sidebar_open_populated_dark", baselineFunction: "openPopulatedDark")
     }
 
-    /// Sepia-theme counterpart to ``fontScaleMaxChromeFixed`` — completes the
-    /// warm palette for the fixed-chrome baseline.
+    /// Sepia-theme counterpart to ``fontScaleMaxChromeFixed`` — compares against
+    /// ``openPopulatedSepia``'s `fontScale == 1.0` baseline.
     @Test("font scale max — drawer chrome stays fixed under max slider (sepia)")
     func fontScaleMaxChromeFixedSepia() {
-        verifyFontScaleMax(
-            theme: .sepia,
-            name: "sidebar_font_scale_max_sepia"
-        )
+        verifyFontScaleMax(theme: .sepia, baseline: "sidebar_open_populated_sepia", baselineFunction: "openPopulatedSepia")
     }
 
     /// Renders the drawer with the font-scale slider pinned to its maximum
-    /// (`fontScale == 1.20`). With the slider-independence invariant restored,
-    /// the chrome is expected to render at its fixed base sizes — the baseline
-    /// is byte-identical to a `fontScale == 1.0` drawer.
+    /// (`fontScale == 1.20`) and compares against the `fontScale == 1.0`
+    /// populated baseline identified by `baseline` + `baselineFunction` (the
+    /// snapshot file `<baselineFunction>.<baseline>.png`). A pass *is* the
+    /// slider-independence proof: identical pixels to the unscaled drawer.
     private func verifyFontScaleMax(
         theme: SuperTheme.Identifier,
-        name: String,
-        function: String = #function
+        baseline: String,
+        baselineFunction: String
     ) {
         let viewModel = SidebarViewModel(
             conversationRepository: NoopConversationRepository(),
@@ -212,7 +213,9 @@ struct SidebarDrawerSnapshotTests {
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: Self.frame.width, height: Self.frame.height)
-        recordOrCompare(view: view, name: name, function: function)
+        // Compare against openPopulated's fontScale == 1.0 baseline by passing
+        // its function name explicitly — the slider-max render must match it.
+        recordOrCompare(view: view, name: baseline, function: baselineFunction)
     }
 
     private func verify(
