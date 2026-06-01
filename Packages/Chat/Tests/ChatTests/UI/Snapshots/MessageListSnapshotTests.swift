@@ -705,7 +705,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(theme))
             .chatAppearance(ChatAppearance(fontScale: fontScale))
-            .superTypography(.make(.serif, fontScale: CGFloat(fontScale)))
+            .superTypography(.make(.serif, fontScale: fontScale))
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: name, function: function)
     }
