@@ -109,6 +109,10 @@ struct AnnotationBlock: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(theme.accent)
             )
+            // Collapse to one labelled element: the default `.ignore` hides
+            // the decorative glyph, so VoiceOver reads "Author" rather than
+            // the SF Symbol's own name on top of the category label.
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(category.displayName)
     }
 

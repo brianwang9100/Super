@@ -135,9 +135,12 @@ struct BibleAnnotationRepositoryTests {
 
     // MARK: - Ordering
 
-    @Test("rows in a target group are listed by (createdAt ASC, id ASC)")
+    @Test("rows of equal category sort by createdAt then id")
     func listOrdering() async throws {
         let (repository, _) = try makeFixture()
+        // All rows share the default `.summary` category, so the category
+        // key is a no-op here and the secondary keys decide; cross-category
+        // ordering is covered by `listOrdersByCategory`.
         let later = t0.addingTimeInterval(60)
         let rows = [
             verseRecord(id: "c", createdAt: later),

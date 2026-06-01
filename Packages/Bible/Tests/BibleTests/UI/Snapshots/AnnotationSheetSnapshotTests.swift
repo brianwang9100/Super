@@ -200,6 +200,12 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .sepia, cards: Self.categoryCards, height: 760, name: "category_cards_sepia")
     }
 
+    @Test("per-category cards reflow their prose bodies at Dynamic Type XXL")
+    func categoryCardsLightXXL() {
+        verify(theme: .light, cards: Self.categoryCards, dynamicType: .xxLarge,
+               height: 1180, name: "category_cards_light_xxl")
+    }
+
     @Test("three cards render at Dynamic Type XXL")
     func threeCardsLightXXL() {
         verify(
