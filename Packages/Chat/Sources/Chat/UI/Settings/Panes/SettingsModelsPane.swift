@@ -40,10 +40,12 @@ struct SettingsModelsPane: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(theme.accentSoft)
                         Text(model.monogram.uppercased())
-                            // Fixed 36×36 tile: pin relativeTo: nil so the monogram
-                            // doesn't pick up Dynamic Type (mono()'s .caption2 default
-                            // would scale it under the serif identity) and overflow.
-                            .font(typography.mono(13, relativeTo: nil, weight: .semibold))
+                            // Fixed 36×36 tile: the monogram must not scale on
+                            // either axis or it overflows. relativeTo: nil drops
+                            // OS Dynamic Type; tracksFontScale: false drops the
+                            // app font-scale slider (relativeTo: nil alone left
+                            // the slider folding in, which still overflowed).
+                            .font(typography.mono(13, relativeTo: nil, weight: .semibold, tracksFontScale: false))
                             .foregroundStyle(theme.accent)
                     }
                     .frame(width: 36, height: 36)

@@ -39,6 +39,27 @@ struct SuperTypographyTests {
         #expect(sys.spec(size: 17, relativeTo: nil, weight: nil, design: .default).size == 25.5)
     }
 
+    @Test("tracksFontScale: false renders at the base size, ignoring the slider")
+    func tracksFontScaleOptOut() {
+        // Chrome and fixed brand marks opt out of the app font-scale slider —
+        // the resolved size is the base size, not size * fontScale, on both the
+        // brand-face and system-face paths.
+        let serif = SuperTypography.make(.serif, fontScale: 2)
+        #expect(serif.spec(size: 20, relativeTo: nil, weight: nil, design: .serif,
+                           tracksFontScale: false).size == 20)
+        // Opting out of the slider does not touch the OS Dynamic Type anchor —
+        // a brand face still carries relativeTo.
+        #expect(serif.spec(size: 11, relativeTo: .caption2, weight: nil, design: .monospaced,
+                           tracksFontScale: false)
+            == .init(face: "JetBrainsMono-Regular", size: 11, relativeTo: .caption2, weight: nil, design: .monospaced))
+
+        let sys = SuperTypography.make(.system, fontScale: 1.5)
+        #expect(sys.spec(size: 17, relativeTo: nil, weight: nil, design: .default,
+                         tracksFontScale: false).size == 17)
+        // Default (true) still folds — the opt-out is explicit, not the norm.
+        #expect(sys.spec(size: 17, relativeTo: nil, weight: nil, design: .default).size == 25.5)
+    }
+
     @Test("system path drops relativeTo so it matches the literal .system call")
     func systemDropsRelativeTo() {
         // Even if a caller passes an anchor, the system branch ignores it —

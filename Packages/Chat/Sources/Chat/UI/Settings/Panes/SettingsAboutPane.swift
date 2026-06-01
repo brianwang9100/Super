@@ -12,7 +12,11 @@ struct SettingsAboutPane: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(viewModel.appInfo.bundleName)
-                .font(typography.display(56, relativeTo: nil))
+                // Fixed brand wordmark: pinned off the font-scale slider
+                // (tracksFontScale: false) so a 56pt mark doesn't balloon at
+                // max slider. The version/description below it are content and
+                // scale with the slider like the rest of the pane.
+                .font(typography.display(56, relativeTo: nil, tracksFontScale: false))
                 .italic()
                 .foregroundStyle(theme.ink)
                 .padding(.bottom, 10)
