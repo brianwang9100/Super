@@ -455,6 +455,16 @@ separate cleanup needed. Each fix has a regression test:
   selection survives. The in-tree `StubModelRepository` mirrors the guard.
   (`setSelectedRefusesUnbuildableNativeKind`.) No production caller exists yet (the
   model-picker selection path is future work), so this is defensive for when it lands.
+  - **Downgrade residue (tracked, low impact).** Because the guard throws *before*
+    the demote, a native-kind `isSelected = 1` row written by a newer binary stays
+    selected-on-disk after a downgrade until something clears it. It's invisible
+    (`selected()` filters it, the UI never shows it as active) and **self-resolving**:
+    the next `insertIfEmpty` sees zero buildable rows, demotes the native row via
+    `demoteUnselectableSelections`, and seeds AFM into the slot; if a buildable row
+    already exists, the first-registered fallback covers hydration and the stray flag
+    is harmless under the partial unique index. PR3a's adapter flip removes the case
+    entirely (the row becomes buildable and selectable). No fix needed in PR2; noted
+    for the downgrade story.
 - **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
   value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
   Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*

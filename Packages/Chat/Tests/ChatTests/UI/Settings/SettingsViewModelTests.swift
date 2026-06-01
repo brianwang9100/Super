@@ -1103,8 +1103,22 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     func insertIfEmpty(
         make: @Sendable () -> ModelConfigurationRecord
     ) async throws -> ModelConfigurationRecord? {
-        guard rows.isEmpty else { return nil }
+        // Mirror production's `buildableKindRequest` empty-check: "empty"
+        // means no row this binary can build a provider for, so a table
+        // holding only native-kind rows still seeds (keeps the user a
+        // recoverable model). A plain `rows.isEmpty` would diverge.
+        guard !rows.contains(where: { $0.kind.hasProviderAdapter }) else { return nil }
         let record = make()
+        // Mirror `demoteUnselectableSelections`: free the selection slot from
+        // any non-buildable selected row before inserting a selected seed.
+        if record.isSelected {
+            rows = rows.map {
+                guard $0.isSelected, !$0.kind.hasProviderAdapter else { return $0 }
+                var copy = $0
+                copy.isSelected = false
+                return copy
+            }
+        }
         rows.append(record)
         return record
     }
