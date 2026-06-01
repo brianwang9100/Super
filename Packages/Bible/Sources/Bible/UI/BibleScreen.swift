@@ -298,7 +298,10 @@ public struct BibleScreen: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.background)
         }
-        .sheet(isPresented: translationSheetBinding) {
+        // Carries `onDismiss: runPendingSheetHandoff` like the other sheets for
+        // consistency: no translation row queues a hand-off today, but matching
+        // the deferral wiring keeps a future one from silently dropping it.
+        .sheet(isPresented: translationSheetBinding, onDismiss: runPendingSheetHandoff) {
             translationPicker
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { newHeight in
                     translationSheetHeight = newHeight
