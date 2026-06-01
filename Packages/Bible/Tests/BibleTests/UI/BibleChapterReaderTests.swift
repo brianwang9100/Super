@@ -19,53 +19,44 @@ struct BibleChapterReaderTests {
     }
 }
 
-/// Unit tests for the action-sheet appear / dismiss predicate that
-/// decides when the reader should run a paired scroll. The three branches
-/// — `.appearing`, `.dismissing`, and "no scroll" — are covered without
-/// standing up the reader's SwiftUI host.
-@Suite("BibleChapterReader.sheetTransition")
+/// Unit tests for the action-sheet appear / dismiss predicate that decides
+/// when the reader runs its paired selection scroll. Only entering or leaving
+/// `.selection` scrolls; transitions that don't touch `.selection` (so
+/// narration's own follow-scroll stays the sole driver) return `nil`. The
+/// same-to-same no-op path (`.selection` → `.selection`) is deliberately
+/// covered here too. Covered without standing up the reader's SwiftUI host.
+@Suite("BibleChapterReader.selectionSheetTransition")
 @MainActor
 struct BibleChapterSheetTransitionTests {
-    @Test("inset growing from zero is classified as appearing")
-    func appearingOnInsetGrowFromZero() {
-        #expect(BibleChapterReader.sheetTransition(oldInset: 0, newInset: 224) == .appearing)
+    @Test("opening the action sheet from no sheet is appearing")
+    func appearingFromNil() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: .selection) == .appearing)
     }
 
-    @Test("inset shrinking to zero is classified as dismissing")
-    func dismissingOnInsetShrinkToZero() {
-        #expect(BibleChapterReader.sheetTransition(oldInset: 224, newInset: 0) == .dismissing)
+    @Test("closing the action sheet to no sheet is dismissing")
+    func dismissingToNil() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: nil) == .dismissing)
     }
 
-    @Test("mid-show remeasurement between two non-zero values does not scroll")
-    func nilOnNonZeroRemeasurement() {
-        #expect(BibleChapterReader.sheetTransition(oldInset: 24, newInset: 224) == nil)
+    @Test("narration stepping over the action sheet does not scroll")
+    func nilWhenNarrationTakesOver() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: .narration) == nil)
     }
 
-    @Test("a zero-to-zero spurious change does not scroll")
-    func nilOnZeroToZero() {
-        #expect(BibleChapterReader.sheetTransition(oldInset: 0, newInset: 0) == nil)
-    }
-}
-
-/// Unit tests for the gate deciding whether a `bottomOverlayInset` change
-/// should drive the paired selection scroll. Only the action sheet does;
-/// the narration card reserves inset space silently so its own follow-scroll
-/// stays the sole driver.
-@Suite("BibleChapterReader.shouldRunSelectionScroll")
-@MainActor
-struct BibleChapterSelectionScrollGateTests {
-    @Test("the action sheet runs the paired selection scroll")
-    func runsForSelection() {
-        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: .selection) == true)
+    @Test("returning to the action sheet after narration does not scroll")
+    func nilWhenSelectionReturnsFromNarration() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .narration, newKind: .selection) == nil)
     }
 
-    @Test("the narration card does not run the paired selection scroll")
-    func skipsForNarration() {
-        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: .narration) == false)
+    @Test("narration presenting or dismissing without a selection does not scroll")
+    func nilForNarrationOnly() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: .narration) == nil)
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .narration, newKind: nil) == nil)
     }
 
-    @Test("no overlay does not run the paired selection scroll")
-    func skipsForNoOverlay() {
-        #expect(BibleChapterReader.shouldRunSelectionScroll(kind: nil) == false)
+    @Test("a no-op change does not scroll")
+    func nilForNoChange() {
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: nil) == nil)
+        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: .selection) == nil)
     }
 }

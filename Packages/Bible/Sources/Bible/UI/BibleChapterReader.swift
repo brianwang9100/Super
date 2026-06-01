@@ -41,7 +41,6 @@ struct BibleChapterReader: View {
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
-    private let bottomOverlayInset: CGFloat
     private let bottomOverlayKind: BibleBottomOverlayKind?
     private let onTapVerse: (Int) -> Void
     private let onPrevious: () -> Void
@@ -53,10 +52,10 @@ struct BibleChapterReader: View {
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
 
-    /// Verse the user was reading just before the action sheet appeared.
-    /// Set when the sheet first measures (`bottomOverlayInset` becomes
-    /// non-zero) and consumed on dismiss to scroll the reader back to the
-    /// same vertical anchor. `nil` while no sheet is up.
+    /// Verse the user was reading just before the action sheet appeared. Set
+    /// when the action sheet appears (`bottomOverlayKind` becomes `.selection`)
+    /// and consumed on dismiss to scroll the reader back to the same vertical
+    /// anchor. `nil` while no action sheet is up.
     @State private var preSheetSelectedVerse: Int? = nil
 
     /// - Parameters:
@@ -69,15 +68,11 @@ struct BibleChapterReader: View {
     ///     scroll offset stable as the narrator advances. Honored when
     ///     the user has selected verses — the spec disables auto-scroll
     ///     so the reader stays anchored to whatever the user is reading.
-    ///   - bottomOverlayInset: extra space appended below the chat-pill
-    ///     reserve when an applet-owned bottom overlay (the verse-selection
-    ///     action sheet or the narration transport card) is visible. Lets
-    ///     the last verses scroll above the overlay instead of falling
-    ///     behind it.
-    ///   - bottomOverlayKind: which overlay is driving `bottomOverlayInset`.
-    ///     The paired selection auto-scroll runs only for `.selection`; a
-    ///     `.narration` inset reserves space without triggering it, so
-    ///     narration's own follow-scroll stays the sole scroll driver.
+    ///   - bottomOverlayKind: which bottom sheet is presented over the reader.
+    ///     The paired selection auto-scroll runs only for `.selection` (lifting
+    ///     the just-selected verse clear of the action sheet); `.narration`
+    ///     leaves narration's own follow-scroll the sole driver. The sheets
+    ///     float above the reader, so this no longer drives a content inset.
     ///   - onClearSelection: invoked when a tap lands on the column but misses
     ///     every verse word.
     ///   - pendingScrollVerse: verse number to scroll to on appear and on
@@ -110,7 +105,6 @@ struct BibleChapterReader: View {
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
-        bottomOverlayInset: CGFloat = 0,
         bottomOverlayKind: BibleBottomOverlayKind? = nil,
         onTapVerse: @escaping (Int) -> Void,
         onPrevious: @escaping () -> Void,
@@ -143,7 +137,6 @@ struct BibleChapterReader: View {
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
-        self.bottomOverlayInset = bottomOverlayInset
         self.bottomOverlayKind = bottomOverlayKind
         self.onTapVerse = onTapVerse
         self.onPrevious = onPrevious
@@ -270,10 +263,7 @@ struct BibleChapterReader: View {
 
                     // Bottom inset so the chat overlay's minimized pill doesn't
                     // obscure the footer — mirrors the shell's chat-pill reserve.
-                    // `bottomOverlayInset` adds the action sheet's height on top
-                    // when verses are selected, letting the last verses scroll
-                    // clear of the sheet instead of vanishing behind it.
-                    Color.clear.frame(height: Self.chatPillHeight + bottomOverlayInset)
+                    Color.clear.frame(height: Self.chatPillHeight)
                 }
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
@@ -290,14 +280,12 @@ struct BibleChapterReader: View {
             // it; on dismiss the reader scrolls back to that same verse at
             // `y = 0.65` (two-thirds down), which approximates the verse's
             // pre-sheet vertical position so the chapter visually returns
-            // to where the user was reading. Gated to the action sheet: the
-            // narration card feeds the same inset to reserve space, but its
-            // own current-verse follow-scroll is the sole scroll driver, so a
-            // paired selection scroll here would fight it.
-            .onChange(of: bottomOverlayInset) { oldInset, newInset in
-                guard Self.shouldRunSelectionScroll(kind: bottomOverlayKind) else { return }
+            // to where the user was reading. Gated to the action sheet
+            // (`.selection`): the narration card has its own current-verse
+            // follow-scroll, so a paired selection scroll here would fight it.
+            .onChange(of: bottomOverlayKind) { oldKind, newKind in
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.3)
-                switch Self.sheetTransition(oldInset: oldInset, newInset: newInset) {
+                switch Self.selectionSheetTransition(oldKind: oldKind, newKind: newKind) {
                 case .appearing:
                     guard let verse = selectedVerses.min() else { return }
                     preSheetSelectedVerse = verse
@@ -481,11 +469,8 @@ struct BibleChapterReader: View {
     }
 
     /// Height of the shell's minimized chat-pill clearance the reader
-    /// always reserves at the bottom of its scroll content. Surfaced as a
-    /// constant so the screen-level inset math (`actionSheetHeight +
-    /// bottomReserve - chatPillHeight`) and the picker sheets'
-    /// `bottomInset:` arguments stay locked to the same number — change it
-    /// here, not in four places.
+    /// always reserves at the bottom of its scroll content, so the chapter
+    /// footer settles above the pill rather than behind it.
     static let chatPillHeight: CGFloat = 76
 
     /// Decide whether a narration advance should auto-scroll. Factored
@@ -495,33 +480,31 @@ struct BibleChapterReader: View {
         !suppressed
     }
 
-    /// Whether a `bottomOverlayInset` change should drive the paired
-    /// selection auto-scroll. Only the verse-selection action sheet does;
-    /// the narration card reserves inset space without scrolling, leaving
-    /// its own follow-scroll the sole driver. Factored out so a unit test
-    /// can cover the gate without a SwiftUI host.
-    static func shouldRunSelectionScroll(kind: BibleBottomOverlayKind?) -> Bool {
-        kind == .selection
-    }
-
-    /// Sheet appear / dismiss is the only `bottomOverlayInset` change that
-    /// drives a scroll — a mid-show remeasurement (Dynamic Type rotation,
-    /// locale swap) changes the inset between two non-zero values and must
-    /// not re-scroll, otherwise the chapter jolts under the user. Factored
-    /// out as a pure predicate so a unit test can cover the three branches
+    /// Classifies a change in which bottom sheet is presented, driving the
+    /// paired selection scroll. The scroll only runs for the *bare* appear and
+    /// dismiss of the verse-selection action sheet — `nil → .selection` is
+    /// `.appearing`, `.selection → nil` is `.dismissing`. Any transition
+    /// involving `.narration` (a selection→narration hand-off, or narration on
+    /// its own) returns `nil`: narration owns scrolling while it plays, and
+    /// scrolling on the swap would jolt the chapter. This matches the pre-native
+    /// behavior, where the inset only crossed zero on a true appear / dismiss.
+    /// Factored out as a pure predicate so a unit test can cover the branches
     /// without standing up a SwiftUI host.
-    static func sheetTransition(oldInset: CGFloat, newInset: CGFloat) -> BibleSheetTransition? {
-        if oldInset == 0, newInset > 0 { return .appearing }
-        if oldInset > 0, newInset == 0 { return .dismissing }
+    static func selectionSheetTransition(
+        oldKind: BibleBottomOverlayKind?,
+        newKind: BibleBottomOverlayKind?
+    ) -> BibleSheetTransition? {
+        if oldKind == nil, newKind == .selection { return .appearing }
+        if oldKind == .selection, newKind == nil { return .dismissing }
         return nil
     }
 }
 
-/// Classifies a change in the action-sheet inset so the reader knows when
-/// to scroll the selected verse into view (`.appearing`) and when to
-/// restore the user to their pre-sheet anchor (`.dismissing`). A `nil`
-/// return from `BibleChapterReader.sheetTransition(…)` means the inset
-/// changed but neither edge was crossed, and no scroll should fire.
+/// Classifies a change in the presented bottom sheet so the reader knows when
+/// to scroll the selected verse into view (`.appearing`) and when to restore
+/// the user to their pre-sheet anchor (`.dismissing`). A `nil` return from
+/// `BibleChapterReader.selectionSheetTransition(…)` means the action sheet was
+/// neither entered nor left, and no scroll should fire.
 enum BibleSheetTransition {
     case appearing
     case dismissing

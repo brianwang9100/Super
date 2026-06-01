@@ -15,10 +15,18 @@ import Testing
 /// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
 /// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
 /// arrow and a footer card drop out. The selection state shows the citation
-/// pill, the solid selection underline, and the action sheet together; the
-/// highlighted state shows verses painted in three persisted colours; the
-/// toast state covers the chat "coming soon" stub. The unavailable state
-/// covers the "chapter unavailable" fallback.
+/// pill and the solid selection underline; the narration state shows the
+/// active verse underlined; the highlighted state shows verses painted in
+/// three persisted colours; the toast state covers the chat "coming soon"
+/// stub. The unavailable state covers the "chapter unavailable" fallback.
+///
+/// The bottom sheets (action sheet, narration card, book / translation
+/// pickers) present as native `.sheet`s, which `swift-snapshot-testing` can't
+/// capture in its single layout pass — these suites therefore snapshot only
+/// the reader-side decorations a selection / narration produces. The sheet
+/// content itself is covered directly by `BibleActionSheetSnapshotTests`,
+/// `NarrationTransportSheetSnapshotTests`, `BibleBookSheetSnapshotTests`, and
+/// `BibleTranslationSheetSnapshotTests`.
 @Suite("BibleScreen snapshots")
 @MainActor
 struct BibleScreenSnapshotTests {
@@ -80,18 +88,7 @@ struct BibleScreenSnapshotTests {
         verify(await unavailableScreen(), theme: .dark, name: "unavailable_dark")
     }
 
-    @Test("the book picker renders over the reader in the light theme")
-    func bookSheetOpenLight() async {
-        let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
-            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
-        )
-        await viewModel.load()
-        viewModel.presentBookSheet()
-        verify(BibleScreen(viewModel: viewModel), theme: .light, name: "book_sheet_open_light")
-    }
-
-    @Test("selected verses show the citation pill, highlights, and action sheet")
+    @Test("selected verses show the citation pill and the selection underline")
     func selectionActiveLight() async {
         verify(await selectionScreen(), theme: .light, name: "selection_active_light")
     }
@@ -122,42 +119,6 @@ struct BibleScreenSnapshotTests {
     func selectionActiveSepiaXXL() async {
         verify(await selectionScreen(), theme: .sepia, dynamicType: .xxLarge,
                name: "selection_active_sepia_xxl")
-    }
-
-    @Test("a verse near the viewport bottom is lifted above the action sheet")
-    func selectionLiftedAboveSheetLight() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .light,
-               name: "selection_lifted_above_sheet_light")
-    }
-
-    @Test("the lifted-above-sheet state renders in the dark theme")
-    func selectionLiftedAboveSheetDark() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .dark,
-               name: "selection_lifted_above_sheet_dark")
-    }
-
-    @Test("the lifted-above-sheet state renders in the sepia theme")
-    func selectionLiftedAboveSheetSepia() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .sepia,
-               name: "selection_lifted_above_sheet_sepia")
-    }
-
-    @Test("the lifted-above-sheet state renders in the light theme at Dynamic Type XXL")
-    func selectionLiftedAboveSheetLightXXL() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .light, dynamicType: .xxLarge,
-               name: "selection_lifted_above_sheet_light_xxl")
-    }
-
-    @Test("the lifted-above-sheet state renders in the dark theme at Dynamic Type XXL")
-    func selectionLiftedAboveSheetDarkXXL() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .dark, dynamicType: .xxLarge,
-               name: "selection_lifted_above_sheet_dark_xxl")
-    }
-
-    @Test("the lifted-above-sheet state renders in the sepia theme at Dynamic Type XXL")
-    func selectionLiftedAboveSheetSepiaXXL() async {
-        verify(await selectionLiftedAboveSheetScreen(), theme: .sepia, dynamicType: .xxLarge,
-               name: "selection_lifted_above_sheet_sepia_xxl")
     }
 
     @Test("the chat stub raises the coming-soon toast over the reader")
@@ -307,72 +268,57 @@ struct BibleScreenSnapshotTests {
 
     // MARK: - Narration overlay
 
-    @Test("the narration card sits over the populated reader with the active verse underlined")
+    @Test("narration underlines the active verse in the reader (light)")
     func narratingLight() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .light, name: "narrating_light")
     }
 
-    @Test("the narration card renders over the populated reader in the dark theme")
+    @Test("the active-verse underline renders in the dark theme")
     func narratingDark() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .dark, name: "narrating_dark")
     }
 
-    @Test("the narration card renders over the populated reader in the sepia theme")
+    @Test("the active-verse underline renders in the sepia theme")
     func narratingSepia() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .sepia, name: "narrating_sepia")
     }
 
-    @Test("the narration card renders over the populated reader at Dynamic Type XXL")
+    @Test("the active-verse underline renders at Dynamic Type XXL")
     func narratingLightXXL() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .light, dynamicType: .xxLarge,
                name: "narrating_light_xxl")
     }
 
-    @Test("the narration card renders at Dynamic Type XXL in the dark theme")
+    @Test("the active-verse underline renders at Dynamic Type XXL in the dark theme")
     func narratingDarkXXL() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .dark, dynamicType: .xxLarge,
                name: "narrating_dark_xxl")
     }
 
-    @Test("the narration card renders at Dynamic Type XXL in the sepia theme")
+    @Test("the active-verse underline renders at Dynamic Type XXL in the sepia theme")
     func narratingSepiaXXL() async {
         verify(await narratingScreen(currentVerse: 4),
                theme: .sepia, dynamicType: .xxLarge,
                name: "narrating_sepia_xxl")
     }
 
-    @Test("the narration card takes precedence over the selection action sheet")
-    func narratingWithSelectionLight() async {
-        // When the user starts Narrate over a selection, the card and
-        // the action sheet would both want to anchor at the bottom.
-        // `BibleScreen.bottomOverlay` resolves that by showing only
-        // the card while it's visible — this snapshot is the visual
-        // guard that the action sheet doesn't leak through underneath.
-        verify(await narratingScreen(currentVerse: 5, selecting: [3, 5, 7]),
-               theme: .light, name: "narrating_with_selection_light")
-    }
-
     /// A `BibleScreen` whose narration controller is driven into
     /// `.speaking` on `currentVerse`. The fake service lets the test
     /// hold the controller in that state for the snapshot without
-    /// invoking the real `AVSpeechSynthesizer`. When `selecting` is
-    /// non-empty, those verses are toggled into the selection before
-    /// `startNarration` runs — exercises the selection-aware narration
-    /// path and the card-over-action-sheet precedence.
+    /// invoking the real `AVSpeechSynthesizer`. The transport card itself
+    /// presents as a native `.sheet` (not captured here); this snapshot
+    /// covers the reader-side active-verse underline.
     ///
     /// Drives the `.started` event via `NarrationController
     /// ._simulateEvent(_:)` rather than the fake's `AsyncStream` so the
     /// state transition is deterministic, per root AGENTS.md §
     /// Testing.2.
-    private func narratingScreen(
-        currentVerse: Int,
-        selecting verses: [Int] = []
-    ) async -> BibleScreen {
+    private func narratingScreen(currentVerse: Int) async -> BibleScreen {
         let service = FakeNarrationService()
         let narration = NarrationController(service: service)
         let viewModel = BibleScreenViewModel(
@@ -381,7 +327,6 @@ struct BibleScreenSnapshotTests {
             narration: narration
         )
         await viewModel.load()
-        for verse in verses { viewModel.toggleVerse(verse) }
         viewModel.startNarration()
         narration._simulateEvent(.started(verseNumber: currentVerse))
         return BibleScreen(viewModel: viewModel)
@@ -405,30 +350,6 @@ struct BibleScreenSnapshotTests {
         )
         await viewModel.load()
         for verse in [4, 5, 6, 9] { viewModel.toggleVerse(verse) }
-        return BibleScreen(viewModel: viewModel)
-    }
-
-    /// A `BibleScreen` on 1 Peter 2 with verse 9 selected — a verse that
-    /// in the live app would otherwise be covered by the action sheet.
-    ///
-    /// Scope of what this snapshot captures: the action sheet rendering
-    /// for a single-verse selection (citation, highlight row, action
-    /// row), including the inset reserve growing under the sheet. The
-    /// paired scroll-to-anchor that lifts the verse to `y=0.35` is
-    /// driven by `.onChange(of: bottomOverlayInset)`; the
-    /// `swift-snapshot-testing` strategy runs a single layout pass, so
-    /// the post-scroll state isn't captured here (verified empirically:
-    /// `await Task.yield()` before return does not change the output).
-    /// The scroll predicate is unit-tested in
-    /// `BibleChapterSheetTransitionTests` and the visual lift is
-    /// verified manually on simulator — see PR #111 description.
-    private func selectionLiftedAboveSheetScreen() async -> BibleScreen {
-        let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
-            initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
-        )
-        await viewModel.load()
-        viewModel.toggleVerse(9)
         return BibleScreen(viewModel: viewModel)
     }
 
