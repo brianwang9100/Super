@@ -86,6 +86,13 @@ public enum BibleSearchQueryParser {
             return BibleSearchQuery(bookNameQuery: leftRaw, resolved: nil)
         }
 
+        // `resolve` matches on a unique *prefix* of the book name, whereas the
+        // picker filters its book list by *substring* (`localizedCaseInsensitiveContains`).
+        // The two agree for any reference typed from the start of a book name —
+        // the only way to reach the picker. A mid-word fragment plus a chapter
+        // (e.g. "lomon 8") substring-matches one book and auto-expands its grid
+        // but won't prefix-resolve here, so it yields no deep-link row; that's
+        // an acceptable, effectively unreachable corner rather than a bug.
         guard let book = catalog.resolve(bookName: bookPart),
               (1...book.chapterCount).contains(chapterNumber) else {
             // Chapter typed, but the book is ambiguous or the chapter is out of

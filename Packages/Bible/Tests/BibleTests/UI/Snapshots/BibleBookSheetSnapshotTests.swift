@@ -67,6 +67,24 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter 2"), theme: .light, name: "chapter_deep_link_light")
     }
 
+    @Test("the chapter jump row renders in the dark theme")
+    func chapterDeepLinkDark() {
+        verify(sheet(query: "1 Peter 2"), theme: .dark, name: "chapter_deep_link_dark")
+    }
+
+    @Test("the chapter jump row renders in the sepia theme")
+    func chapterDeepLinkSepia() {
+        verify(sheet(query: "1 Peter 2"), theme: .sepia, name: "chapter_deep_link_sepia")
+    }
+
+    @Test("the chapter jump row renders at Dynamic Type XXL")
+    func chapterDeepLinkLightXXL() {
+        verify(
+            sheet(query: "1 Peter 2"),
+            theme: .light, dynamicType: .xxLarge, name: "chapter_deep_link_light_xxl"
+        )
+    }
+
     @Test("a verse-range query shows the verse jump row in the light theme")
     func verseDeepLinkLight() {
         verify(sheet(query: "1 Peter 2:5-6"), theme: .light, name: "verse_deep_link_light")
