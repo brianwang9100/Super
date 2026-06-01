@@ -66,6 +66,15 @@ public struct SidebarDrawer: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Base sizes for the drawer's *system-font* nav chrome — "New Chat", the
+    /// applet-rail names, and the "CHATS" section label. Declared via
+    /// `@ScaledMetric` so the chrome composes OS Dynamic Type, then rendered
+    /// through `typography.font(size:tracksFontScale: false)` so it stays
+    /// independent of the chat font-scale slider (drawer chrome, not reading
+    /// content). The brand-face wordmark + version mark carry their own axes
+    /// directly in `wordmarkHeader`.
+    @ScaledMetric(relativeTo: .body) private var navLabelSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 11
 
     private let drawerWidth: CGFloat = 300
 
@@ -189,13 +198,18 @@ public struct SidebarDrawer: View {
 
     private var wordmarkHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // Wordmark + version mark are drawer chrome: tracksFontScale: false
+            // keeps them off the chat font-scale slider. The wordmark is a
+            // fixed brand mark (relativeTo: nil — no Dynamic Type either); the
+            // version caption keeps its .caption2 anchor so it still honors OS
+            // Dynamic Type.
             Text(appInfo.bundleName)
-                .font(typography.display(36, relativeTo: nil))
+                .font(typography.display(36, relativeTo: nil, tracksFontScale: false))
                 .italic()
                 .lineLimit(1)
                 .foregroundStyle(theme.ink)
             Text("v\(appInfo.version) · personal")
-                .font(typography.mono(11, relativeTo: .caption2))
+                .font(typography.mono(11, relativeTo: .caption2, tracksFontScale: false))
                 .tracking(0.3)
                 .foregroundStyle(theme.inkFaint)
         }
@@ -212,7 +226,7 @@ public struct SidebarDrawer: View {
                 NewChatIcon(size: 20)
                     .foregroundStyle(theme.accentInk)
                 Text("New Chat")
-                    .font(typography.font(.body, weight: .medium))
+                    .font(typography.font(size: navLabelSize, weight: .medium, tracksFontScale: false))
                     .foregroundStyle(theme.accentInk)
                 Spacer(minLength: 0)
             }
@@ -240,7 +254,7 @@ public struct SidebarDrawer: View {
                 applet.iconView(size: 20)
                     .foregroundStyle(isActive ? theme.accent : theme.inkSoft)
                 Text(applet.displayName)
-                    .font(typography.font(.body, weight: isActive ? .medium : .regular))
+                    .font(typography.font(size: navLabelSize, weight: isActive ? .medium : .regular, tracksFontScale: false))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                 Spacer(minLength: 0)
             }
@@ -258,7 +272,7 @@ public struct SidebarDrawer: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(typography.font(.caption2, weight: .medium))
+            .font(typography.font(size: sectionLabelSize, weight: .medium, tracksFontScale: false))
             .tracking(1)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -304,10 +318,12 @@ private struct ChatRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Row title base size, declared via `@ScaledMetric` so it composes
-    /// OS Dynamic Type on top of the app font-scale that `SuperTypography`
-    /// folds in. The typography system path ignores `relativeTo`, so this
-    /// metric is how the row opts into Dynamic Type.
+    /// Row title base size, declared via `@ScaledMetric` so it composes OS
+    /// Dynamic Type. The title intentionally does **not** track the chat
+    /// font-scale slider — it's drawer chrome, not reading content, so the
+    /// slider stays scoped to the message list. `tracksFontScale: false` on the
+    /// `typography.font(size:)` call is what keeps the slider out while the
+    /// `@ScaledMetric` base still carries OS Dynamic Type.
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
@@ -319,7 +335,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(typography.font(size: rowTitleBase, weight: isActive ? .medium : .regular))
+                    .font(typography.font(size: rowTitleBase, weight: isActive ? .medium : .regular, tracksFontScale: false))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -349,22 +365,23 @@ private struct SeeAllChatsRow: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    /// Row title base size, declared via `@ScaledMetric` so it composes
-    /// OS Dynamic Type on top of the app font-scale that `SuperTypography`
-    /// folds in. The typography system path ignores `relativeTo`, so this
-    /// metric is how the row opts into Dynamic Type.
+    /// Row title base size, declared via `@ScaledMetric` so it composes OS
+    /// Dynamic Type. Like `ChatRow`, the title intentionally does **not** track
+    /// the chat font-scale slider — it's drawer chrome, so `tracksFontScale:
+    /// false` keeps the slider scoped to the message list while `@ScaledMetric`
+    /// preserves OS Dynamic Type.
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 Text("See all chats…")
-                    .font(typography.font(size: rowTitleBase))
+                    .font(typography.font(size: rowTitleBase, tracksFontScale: false))
                     .foregroundStyle(theme.inkSoft)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(typography.font(size: 11, weight: .medium))
+                    .font(typography.font(size: 11, weight: .medium, tracksFontScale: false))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.horizontal, 14)
