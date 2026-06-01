@@ -223,6 +223,68 @@ struct SettingsSheetSnapshotTests {
     }
     #endif
 
+    // Coverage for the native-web-search arms in
+    // `SettingsModelsPane.isModelAvailable(for:)` and `subtitle(for:)`
+    // (PR2 review). A `.anthropicNative` row folds into the same
+    // `.openAICompatible` arm: always available, "Nk ctx · endpoint"
+    // subtitle. The row carries `searchBackend: "native"` and a non-shim
+    // `endpoint` (api.anthropic.com/v1, not /openai/) so a regression that
+    // mis-routes a native kind — e.g. to the AFM arm (would gate
+    // availability on AFM + swap the subtitle) — is caught. Light + dark
+    // covers the theme branches; the card layout is already pinned at
+    // Dynamic Type XXL by `modelsPaneWithAFMXXL`.
+    @Test("models pane with a native-web-search row")
+    func modelsPaneWithNativeSearch() async {
+        await verifyModelsPaneWithNativeSearch(
+            theme: .light,
+            name: "settings_models_native_search_light"
+        )
+    }
+
+    @Test("models pane with a native-web-search row (dark)")
+    func modelsPaneWithNativeSearchDark() async {
+        await verifyModelsPaneWithNativeSearch(
+            theme: .dark,
+            name: "settings_models_native_search_dark"
+        )
+    }
+
+    private func verifyModelsPaneWithNativeSearch(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels + [
+                .init(
+                    id: "opus-native",
+                    name: "Opus 4.7 (native search)",
+                    monogram: "ON",
+                    endpoint: "api.anthropic.com/v1",
+                    maxContextTokens: 1_000_000,
+                    isEnabled: true,
+                    kind: .anthropicNative,
+                    baseURL: URL(string: "https://api.anthropic.com/v1"),
+                    modelId: "claude-opus-4-7",
+                    supportsThinking: true,
+                    hasAPIKey: true,
+                    searchBackend: "native"
+                ),
+            ],
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     private func verifyModelsPaneWithAFM(
         theme: SuperTheme.Identifier,
         availability: AppleFoundationAvailability,

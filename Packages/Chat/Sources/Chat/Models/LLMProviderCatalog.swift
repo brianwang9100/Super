@@ -84,10 +84,17 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
         // The two native-search fields are a unit: an adapter is useless
         // without its base URL and vice versa. Enforce the pairing at
         // construction so a mistyped catalog entry (or any future caller)
-        // fails loudly here rather than silently producing a half-configured
-        // entry that `supportsNativeSearch` reports as capable. The catalog
-        // is a compile-time constant, so this fires in tests/at launch, not
-        // in the field.
+        // fails loudly rather than silently producing a half-configured
+        // entry that `supportsNativeSearch` reports as capable.
+        //
+        // `precondition` (unlike `assert`) fires in **both** Debug and
+        // Release — a mismatched entry would crash at first access to
+        // `LLMProviderCatalog.all`. That's the intended behavior: the pair
+        // is compile-time-constant data, so a violation is a programmer
+        // error that should never ship. `nativeSearchFieldsArePaired` in
+        // `SettingsModelDetailPaneCatalogTests` is the first line of defense
+        // (catches a bad entry in CI before release); this is the
+        // belt-and-suspenders backstop.
         precondition(
             (nativeSearchAdapter == nil) == (nativeSearchBaseURL == nil),
             "nativeSearchAdapter and nativeSearchBaseURL must both be set or both be nil"

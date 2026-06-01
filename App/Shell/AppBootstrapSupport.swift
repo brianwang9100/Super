@@ -1,6 +1,12 @@
 import Chat
 import Core
 import Foundation
+import os
+
+/// Bootstrap-path diagnostics. File-scoped so the static helpers below and
+/// any future bootstrap telemetry share one `Logger` under the
+/// `app-bootstrap` category.
+private let bootstrapLog = Logger(subsystem: "com.brianwang.Super", category: "app-bootstrap")
 
 /// Bootstrap utilities shared by both `SuperOSAppBootstrap` and
 /// `SuperBibleAppBootstrap`. The applet roster and per-applet briefing
@@ -108,11 +114,21 @@ enum AppBootstrapSupport {
                 await registry.register(provider)
             case .anthropicNative, .geminiNative, .openAIResponses:
                 // Native-search adapters land in a later PR; until then no
-                // persisted row can carry a native `kind` (the Add-Model
+                // persisted row *should* carry a native `kind` (the Add-Model
                 // native-search option ships with the adapters), so skip.
                 // (`continue` here vs. `break` in `SettingsViewModel`'s
                 // non-looping `registerProvider` switch — same intent:
                 // register nothing for this row.)
+                //
+                // This invariant is unguarded at the schema level. A DB
+                // written by a *future* binary (or synced from one) could
+                // carry a native-kind row; if it's also the selected row,
+                // the `setActive` below silently fails (see its comment).
+                // Log so that state is diagnosable in the field rather than
+                // presenting as a mute "no model configured". When the
+                // adapters land, this arm must construct the real provider
+                // atomically in the same PR as the Add-Model native option.
+                bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
                 continue
             #if DEBUG
             case .debug:
@@ -122,11 +138,19 @@ enum AppBootstrapSupport {
         }
 
         if let selectedId = try await repository.selected()?.id {
-            // The only failure mode is `unknownProvider`, which can only
-            // happen if the selected row's kind was unavailable (AFM on
-            // an ineligible device) and skipped above. The
-            // first-registered fallback (or "no provider" empty state)
-            // is the right behavior in that case.
+            // `setActive` throws `unknownProvider` when the selected row was
+            // skipped above and never registered. Two skip paths reach here:
+            //   1. An `.appleFoundation` row on an AFM-ineligible device.
+            //   2. A native-kind row (`.anthropicNative`/`.geminiNative`/
+            //      `.openAIResponses`) — these aren't demoted by
+            //      `demoteUnknownKindSelections` (their kinds are in
+            //      `allCases`), so `selected()` returns them, but the loop
+            //      above skips registration until the adapters ship.
+            // In both cases the first-registered fallback (or the "no
+            // provider" empty state) is the right behavior, so the throw is
+            // swallowed — but case 2 is logged at the skip site above so an
+            // empty registry from a stray native-kind selection is
+            // diagnosable rather than mute.
             try? await registry.setActive(id: selectedId)
         }
     }
