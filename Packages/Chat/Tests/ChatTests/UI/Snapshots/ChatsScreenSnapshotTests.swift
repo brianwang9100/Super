@@ -67,9 +67,9 @@ struct ChatsScreenSnapshotTests {
 
     @Test("populated, xSmall Dynamic Type")
     func populatedXSmallDynamicType() async throws {
-        // xSmall Dynamic Type collapses the title/subtitle size delta to
-        // zero (both render at 12pt) — this baseline documents that weight
-        // (.medium) and color (ink vs inkFaint) keep the lines distinguishable.
+        // At xSmall Dynamic Type the title and subtitle sizes converge, so
+        // this baseline guards that weight (.medium) and color (ink vs
+        // inkFaint) keep the two lines distinguishable.
         try await verify(
             theme: .light,
             dynamicType: .xSmall,
