@@ -66,10 +66,19 @@ public func makeLLMProvider(
             availability: appleFoundationAvailability,
             toolRegistry: toolRegistry
         )
-    case .anthropicNative, .geminiNative:
-        // Adapters land in web-search PR3b (Anthropic) / PR3c (Gemini). Until
-        // then these are unbuildable (`hasProviderAdapter == false`); the
-        // caller logs the skip.
+    case .anthropicNative:
+        // Same nil-`baseURL` guard as the other network kinds: the flip to
+        // `hasProviderAdapter == true` routes these rows here, so a nil
+        // `baseURL` must skip rather than hit the init's `preconditionFailure`.
+        guard let http, record.configuration.baseURL != nil else { return nil }
+        return AnthropicNativeLLMProvider(
+            configuration: record.configuration,
+            apiKey: apiKey,
+            http: http
+        )
+    case .geminiNative:
+        // Adapter lands in web-search PR3c. Until then this is unbuildable
+        // (`hasProviderAdapter == false`); the caller logs the skip.
         return nil
     #if DEBUG
     case .debug:

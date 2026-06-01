@@ -79,13 +79,13 @@ struct ModelConfigurationRepositoryTests {
         // slot, letting the first-registered fallback fire cleanly.
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(
-            id: "native", kind: .anthropicNative, apiKeyRef: "kn", isSelected: true
+            id: "native", kind: .geminiNative, apiKeyRef: "kn", isSelected: true
         ))
 
         #expect(try await repo.selected() == nil)
         // …but it remains visible/editable in the list.
         #expect(try await repo.all().map(\.id) == ["native"])
-        #expect(try await repo.fetch(id: "native")?.kind == .anthropicNative)
+        #expect(try await repo.fetch(id: "native")?.kind == .geminiNative)
     }
 
     @Test("selected() still returns a buildable row alongside a native one")
@@ -123,11 +123,11 @@ struct ModelConfigurationRepositoryTests {
     @Test func setSelectedRefusesUnbuildableNativeKind() async throws {
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(id: "compat", kind: .openAICompatible, apiKeyRef: "kc", isSelected: true))
-        try await repo.save(makeRecord(id: "native", kind: .anthropicNative, apiKeyRef: "kn"))
+        try await repo.save(makeRecord(id: "native", kind: .geminiNative, apiKeyRef: "kn"))
 
         await #expect(
             throws: ModelConfigurationRepositoryError.unselectableKind(
-                id: "native", kind: LLMProviderKind.anthropicNative.rawValue
+                id: "native", kind: LLMProviderKind.geminiNative.rawValue
             )
         ) {
             try await repo.setSelected(id: "native")
@@ -355,7 +355,7 @@ struct ModelConfigurationRepositoryTests {
     @Test func insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists() async throws {
         let (repo, _, _) = try makeRepoExposingQueue()
         try await repo.save(
-            makeRecord(id: "native", kind: .anthropicNative, apiKeyRef: "kn")
+            makeRecord(id: "native", kind: .geminiNative, apiKeyRef: "kn")
         )
 
         let seeded = try await repo.insertIfEmpty {
@@ -379,7 +379,7 @@ struct ModelConfigurationRepositoryTests {
     @Test func insertIfEmptyDemotesSelectedNativeRowBeforeSeeding() async throws {
         let (repo, queue, _) = try makeRepoExposingQueue()
         try await repo.save(
-            makeRecord(id: "native-selected", kind: .anthropicNative, apiKeyRef: "kn", isSelected: true)
+            makeRecord(id: "native-selected", kind: .geminiNative, apiKeyRef: "kn", isSelected: true)
         )
 
         let seeded = try await repo.insertIfEmpty {

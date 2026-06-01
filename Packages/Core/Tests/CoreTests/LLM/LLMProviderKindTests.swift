@@ -12,6 +12,8 @@ struct LLMProviderKindTests {
         #expect(LLMProviderKind.appleFoundation.hasProviderAdapter)
         // `.openAIResponses` shipped its adapter in web-search PR3a.
         #expect(LLMProviderKind.openAIResponses.hasProviderAdapter)
+        // `.anthropicNative` shipped its adapter in web-search PR3b.
+        #expect(LLMProviderKind.anthropicNative.hasProviderAdapter)
         #if DEBUG
         #expect(LLMProviderKind.debug.hasProviderAdapter)
         #endif
@@ -19,7 +21,7 @@ struct LLMProviderKindTests {
 
     @Test("native-search kinds without a shipped adapter report false")
     func nativeKindsAreNotYetBuildable() {
-        #expect(!LLMProviderKind.anthropicNative.hasProviderAdapter)
+        // `.geminiNative` adapter lands in web-search PR3c.
         #expect(!LLMProviderKind.geminiNative.hasProviderAdapter)
     }
 

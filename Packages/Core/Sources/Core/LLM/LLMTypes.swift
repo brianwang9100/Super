@@ -19,6 +19,14 @@ public enum LLMContent: Sendable, Equatable {
     /// payload encodes/decodes through `Codable` in one hop.
     case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseID: String, content: String, isError: Bool)
+    /// Echoed prior-turn web-search results, replayed verbatim so providers
+    /// that require it (Anthropic) keep earlier citations valid across turns.
+    /// Carries the opaque per-result/per-citation echo blobs in each
+    /// `SourceCitation.providerEcho`. Providers that don't need it ignore the
+    /// block — only the Anthropic adapter re-serializes it (into a synthetic
+    /// `web_search_tool_result` content block). Reconstructed by
+    /// `ContextAssembler` from the stored `MessageAttachments.sources`.
+    case searchResult([SourceCitation])
 }
 
 /// One message in a chat with an LLM (Large Language Model). Always carries
@@ -86,8 +94,7 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// Native Anthropic Messages API (`/v1/messages`) adapter. Selected at
     /// add-time when a model opts into native web search; the OpenAI-compat
     /// shim can't carry Anthropic's `web_search` server tool or citations.
-    /// The adapter itself lands in a later PR — see the native-web-search
-    /// design spec.
+    /// Implemented by `AnthropicNativeLLMProvider` (web-search PR3b).
     case anthropicNative
     /// Native Gemini `generateContent` adapter (`google_search` grounding).
     /// Distinct from the `.openAICompatible` Google shim. Adapter lands in
@@ -110,9 +117,10 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
 
     /// Whether the running binary can construct a live `LLMProvider` for
     /// this kind. `true` for kinds with a shipped adapter
-    /// (`.openAICompatible`, `.appleFoundation`, `.openAIResponses`, and
-    /// `.debug` in DEBUG); **`false` for the native-search kinds whose
-    /// adapters haven't shipped yet** (`.anthropicNative`, `.geminiNative`) —
+    /// (`.openAICompatible`, `.appleFoundation`, `.openAIResponses`,
+    /// `.anthropicNative`, and `.debug` in DEBUG); **`false` for the
+    /// native-search kinds whose
+    /// adapters haven't shipped yet** (`.geminiNative`) —
     /// the catalog already advertises `nativeSearchAdapter`, and a row can
     /// carry a native `kind` before the adapter exists, so callers gate on
     /// this rather than assuming every persisted kind is buildable.
@@ -124,12 +132,13 @@ public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable 
     /// trigger an unregister-without-re-register on edit, and must not be
     /// classified by URL in the edit pane. Flip the relevant arm to `true`
     /// in the PR that lands that adapter — `.openAIResponses` flipped when
-    /// `OpenAIResponsesLLMProvider` shipped (web-search PR3a).
+    /// `OpenAIResponsesLLMProvider` shipped (web-search PR3a),
+    /// `.anthropicNative` when `AnthropicNativeLLMProvider` shipped (PR3b).
     public var hasProviderAdapter: Bool {
         switch self {
-        case .openAICompatible, .appleFoundation, .openAIResponses:
+        case .openAICompatible, .appleFoundation, .openAIResponses, .anthropicNative:
             return true
-        case .anthropicNative, .geminiNative:
+        case .geminiNative:
             return false
         #if DEBUG
         case .debug:

@@ -30,6 +30,17 @@ extension TokenEstimator {
                     total += estimate(JSONStringifier.string(for: input))
                 case .toolResult(_, let content, _):
                     total += estimate(content)
+                case .searchResult(let sources):
+                    // Replayed search results are re-serialized into the
+                    // provider request (Anthropic), so they consume budget:
+                    // count each citation's title + snippet. The opaque
+                    // encrypted echo is provider-side weight we can't size
+                    // here, so this is a floor, not an exact count — safe for
+                    // a budget meter that already overshoots.
+                    for source in sources {
+                        total += estimate(source.title)
+                        if let snippet = source.snippet { total += estimate(snippet) }
+                    }
                 }
             }
         }

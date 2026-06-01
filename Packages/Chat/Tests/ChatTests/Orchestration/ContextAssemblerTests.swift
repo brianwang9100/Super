@@ -60,6 +60,70 @@ struct ContextAssemblerTests {
         #expect(assembly.messages.map(\.role) == [.user, .assistant, .user])
     }
 
+    @Test func assistantSourcesWithProviderEchoProjectAsLeadingSearchResultBlock() throws {
+        // The encrypted round-trip: a prior assistant turn's stored citations
+        // (carrying an Anthropic `providerEcho`) reattach as a `.searchResult`
+        // block placed before the text, so the Anthropic adapter can replay the
+        // encrypted echo on the next turn.
+        let assembler = ContextAssembler()
+        let cited = SourceCitation(
+            id: "c1",
+            title: "NASA",
+            url: URL(string: "https://nasa.gov/mars")!,
+            snippet: "ice",
+            providerEcho: ProviderEcho(kind: "anthropic.web_search", encryptedContent: "ENC", encryptedIndex: "IDX")
+        )
+        let assistant = MessageRecord(
+            id: "a1",
+            conversationId: "conv-1",
+            role: .assistant,
+            content: "Found ice.",
+            createdAt: baseDate,
+            attachmentsJSON: MessageRecord.encode(MessageAttachments(sources: [cited]))
+        )
+
+        let assembly = try assembler.assemble(
+            messages: [assistant], toolCalls: [], checkpoint: nil, model: makeModel()
+        )
+        let assistantMessage = try #require(assembly.messages.first { $0.role == .assistant })
+        #expect(assistantMessage.content.count == 2)
+        guard case .searchResult(let sources) = assistantMessage.content[0] else {
+            Issue.record("expected a leading .searchResult block")
+            return
+        }
+        #expect(sources.first?.providerEcho?.encryptedContent == "ENC")
+        guard case .text(let text) = assistantMessage.content[1] else {
+            Issue.record("expected a trailing .text block")
+            return
+        }
+        #expect(text == "Found ice.")
+    }
+
+    @Test func assistantSourcesWithoutProviderEchoDoNotProjectSearchResult() throws {
+        // Citations lacking an echo (OpenAI/Gemini/standalone) carry nothing to
+        // round-trip, so no `.searchResult` block is emitted — only the text.
+        let assembler = ContextAssembler()
+        let foreign = SourceCitation(id: "c1", title: "T", url: URL(string: "https://example.com/a")!)
+        let assistant = MessageRecord(
+            id: "a1",
+            conversationId: "conv-1",
+            role: .assistant,
+            content: "answer",
+            createdAt: baseDate,
+            attachmentsJSON: MessageRecord.encode(MessageAttachments(sources: [foreign]))
+        )
+
+        let assembly = try assembler.assemble(
+            messages: [assistant], toolCalls: [], checkpoint: nil, model: makeModel()
+        )
+        let assistantMessage = try #require(assembly.messages.first { $0.role == .assistant })
+        #expect(assistantMessage.content.count == 1)
+        guard case .text = assistantMessage.content[0] else {
+            Issue.record("expected only a .text block")
+            return
+        }
+    }
+
     @Test func liveCheckpointPrependsSummaryAndDropsCoveredMessages() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
