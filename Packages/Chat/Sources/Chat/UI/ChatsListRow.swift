@@ -29,7 +29,8 @@ struct ChatsListRow: View {
     /// `SuperTypography` folds in. The typography system path ignores
     /// `relativeTo`, so these metrics are how the row opts into Dynamic Type.
     @ScaledMetric(relativeTo: .subheadline) private var titleSize: CGFloat = 15
-    @ScaledMetric(relativeTo: .caption) private var subtitleSize: CGFloat = 11.5
+    // Subtitle anchored to .footnote (13pt default); weight + color carry the hierarchy when sizes converge at small Dynamic Type.
+    @ScaledMetric(relativeTo: .footnote) private var subtitleSize: CGFloat = 13
 
     var body: some View {
         Button(action: onTap) {

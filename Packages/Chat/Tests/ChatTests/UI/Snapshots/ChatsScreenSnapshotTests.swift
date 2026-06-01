@@ -8,8 +8,11 @@ import Testing
 @testable import Chat
 
 /// Pixel-stable snapshots of `ChatsScreen` across themes (light/dark/sepia),
-/// the Dynamic Type XXL variant, the populated list with relative-time
-/// subtitles, and the two search-active states (matches + no matches).
+/// the Dynamic Type XXL and xSmall variants, the populated list with
+/// relative-time subtitles, and the two search-active states (matches +
+/// no matches). The xSmall variant guards the title/subtitle hierarchy at
+/// the small end of the range, where their sizes converge and weight +
+/// color must carry the distinction.
 ///
 /// Conversation fixtures span the relative-time buckets the design calls
 /// out — "just now" through "3 mo ago" — so the rows exercise every
@@ -59,6 +62,18 @@ struct ChatsScreenSnapshotTests {
             fontScale: 1.5,
             dynamicType: .accessibility3,
             name: "chats_populated_light_xxl"
+        )
+    }
+
+    @Test("populated, xSmall Dynamic Type")
+    func populatedXSmallDynamicType() async throws {
+        // At xSmall Dynamic Type the title and subtitle sizes converge, so
+        // this baseline guards that weight (.medium) and color (ink vs
+        // inkFaint) keep the two lines distinguishable.
+        try await verify(
+            theme: .light,
+            dynamicType: .xSmall,
+            name: "chats_populated_light_xsmall"
         )
     }
 
