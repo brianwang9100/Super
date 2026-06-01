@@ -73,14 +73,30 @@ jobs:
             - Architecture: no cross-applet imports, event-bus for
               cross-applet communication.
 
+            Surface EVERY finding in this one review. Assume you get a
+            single pass: do not hold a finding back for a later round, and
+            do not dribble the same class of nit (e.g. a missing snapshot
+            theme variant) across rounds — list every instance at once.
+
             Posting the review:
             - For specific concerns on specific lines: use the
               mcp__github_inline_comment__create_inline_comment tool.
+              Prefix non-blocking suggestions with "nit:".
             - End with a single summary comment via
-              mcp__github__add_issue_comment containing one of:
-              APPROVE / COMMENT / REQUEST_CHANGES, plus a 2-3 sentence
-              rationale. Link to the specific AGENTS.md rule when
-              citing one. Be terse.
+              mcp__github__add_issue_comment whose FIRST line is exactly one
+              of two words — APPROVE or REQUEST_CHANGES — followed by a 2-3
+              sentence rationale. Never COMMENT: a non-committal verdict
+              stalls the merge queue without demanding anything.
+                - REQUEST_CHANGES only for what MUST change before merge:
+                  correctness / concurrency bugs, data loss, security
+                  issues, or a clear AGENTS.md violation. If you would not
+                  block a teammate's merge over it, it is not
+                  REQUEST_CHANGES.
+                - APPROVE otherwise. Non-blocking suggestions (style, extra
+                  coverage, naming, optional refactors) still APPROVE — leave
+                  them as "nit:" inline comments the author can take or
+                  leave.
+              Link to the specific AGENTS.md rule when citing one. Be terse.
           # The action auto-detects "agent" mode for generic pull_request
           # events, which doesn't pre-allowlist any tools. We have to spell
           # out everything Claude needs:
