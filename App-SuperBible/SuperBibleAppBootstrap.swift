@@ -123,8 +123,18 @@ enum SuperBibleAppBootstrap {
         //   2. `attach(to:)` below, once the shared `SuperEventBus` exists,
         //      so the applet's `BibleReferenceInbox` receives Chat-side
         //      verse-citation taps.
+        // Constructed here (rather than after the AFM seed below) so the
+        // annotation tool can be registered with a model-aware stamp
+        // provider that captures it. `hydrateProviders` still runs later;
+        // the stamp provider reads the active model lazily at
+        // tool-execution time, long after hydration.
+        let llmProviderRegistry = LLMProviderRegistry()
+
         let bibleApplet = BibleApplet()
-        await bibleApplet.registerAnnotationTool(in: toolRegistry)
+        await bibleApplet.registerAnnotationTool(
+            in: toolRegistry,
+            stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
+        )
         await bibleApplet.registerNoteTool(in: toolRegistry)
 
         // Best-effort AFM seed, same shape as SuperOS — skipped on
@@ -144,7 +154,6 @@ enum SuperBibleAppBootstrap {
             }
         }
 
-        let llmProviderRegistry = LLMProviderRegistry()
         #if DEBUG
         do {
             try await AppBootstrapSupport.seedDebugModelIfNeeded(repository: modelConfigRepo)
@@ -238,7 +247,10 @@ enum SuperBibleAppBootstrap {
         // dispatcher subscribes to `bibleAnnotateRequested` on the
         // same bus the Bible UI publishes on.
         let bibleAnnotateRegistry = ToolRegistry()
-        await bibleApplet.registerAnnotationTool(in: bibleAnnotateRegistry)
+        await bibleApplet.registerAnnotationTool(
+            in: bibleAnnotateRegistry,
+            stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
+        )
         let bibleAnnotateDispatcher = BibleAnnotateDispatcher(
             conversationRepository: conversationRepo,
             messageRepository: messageRepo,

@@ -31,9 +31,9 @@ public struct AnnotateBibleTool: ToolExecutor {
 
     public init(
         repository: any BibleAnnotationRepository,
+        stampProvider: any BibleAnnotationStampProvider,
         clock: any Clock = SystemClock(),
-        ids: any IDGenerator = UUIDGenerator(),
-        stampProvider: any BibleAnnotationStampProvider = DefaultBibleAnnotationStampProvider()
+        ids: any IDGenerator = UUIDGenerator()
     ) {
         self.repository = repository
         self.clock = clock
@@ -122,17 +122,17 @@ public struct AnnotateBibleTool: ToolExecutor {
     /// The composition root calls this in each app's bootstrap.
     public static func registration(
         repository: any BibleAnnotationRepository,
+        stampProvider: any BibleAnnotationStampProvider,
         clock: any Clock = SystemClock(),
-        ids: any IDGenerator = UUIDGenerator(),
-        stampProvider: any BibleAnnotationStampProvider = DefaultBibleAnnotationStampProvider()
+        ids: any IDGenerator = UUIDGenerator()
     ) -> ToolRegistration {
         ToolRegistration(
             tool: descriptor,
             execution: .local(AnnotateBibleTool(
                 repository: repository,
+                stampProvider: stampProvider,
                 clock: clock,
-                ids: ids,
-                stampProvider: stampProvider
+                ids: ids
             )),
             isEnabled: true
         )
@@ -146,7 +146,7 @@ public struct AnnotateBibleTool: ToolExecutor {
             return Self.errorResult(validation.message)
         }
 
-        let stamp = stampProvider.stamp()
+        let stamp = await stampProvider.stamp()
         let now = clock.now()
         let records = parsed.entries.map { entry in
             BibleAnnotationRecord(
