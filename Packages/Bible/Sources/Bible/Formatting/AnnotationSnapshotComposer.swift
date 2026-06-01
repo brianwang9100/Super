@@ -29,7 +29,10 @@ public enum AnnotationSnapshotComposer {
 
     /// Multi-card snapshot, used by the popover-level "Add all to chat"
     /// action. Cards are emitted in the order they appear in the input —
-    /// callers pass records already sorted by `(createdAt ASC, id ASC)`.
+    /// callers pass records already sorted by
+    /// `(category ASC, createdAt ASC, id ASC)` (what `list(...)` and the
+    /// `@Query` paths return), so the LLM sees the same card order the user
+    /// does.
     ///
     /// Format: each card rendered as in `compose(annotation:)`, separated
     /// by a blank line. Result has a trailing newline for the same reason

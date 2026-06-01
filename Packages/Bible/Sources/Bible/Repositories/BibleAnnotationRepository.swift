@@ -17,8 +17,10 @@ import Foundation
 /// per-card "Delete this card" calls `deleteOne(id:)`, and a future
 /// manual-edit feature gets its own typed method when it lands.
 public protocol BibleAnnotationRepository: Sendable {
-    /// All annotation rows in a target group, ordered for stable display
-    /// (`createdAt ASC, id ASC`).
+    /// All annotation rows in a target group, in canonical display order
+    /// (`category ASC, createdAt ASC, id ASC`) — the same order the
+    /// reactive `@Query` paths use, so the chat-injection snapshot matches
+    /// what the user sees in the sheet.
     func list(
         target: BibleAnnotationTarget,
         bookId: String,
