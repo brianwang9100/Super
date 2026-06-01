@@ -69,6 +69,23 @@ fontScale-folding accessor. Exact diff applied & validated during #136:
 `@ScaledMetric(relativeTo: .subheadline) rowTitleBase` stays — it carries OS Dynamic Type
 without the app slider, which is the desired behavior.
 
+### Also in scope: OS Dynamic Type lost on the sidebar nav chrome
+
+Separate from the *slider* regression above, the migration also dropped **OS Dynamic
+Type** on the sidebar's primary navigation chrome. `newChatButton` ("New Chat"),
+`appletRow` (applet-rail names), and `sectionLabel` ("CHATS") moved from
+`.font(.system(.body))` / `.font(.system(.caption2))` (text styles that scale with the OS
+accessibility text-size setting) to `typography.font(.body)` / `typography.font(.caption2)`,
+which resolve through the system-font path with `relativeTo: nil` (decision ④) — i.e.
+fixed point size, no OS Dynamic Type.
+
+Consequence: at large accessibility sizes these nav items stay fixed while the chat-row
+titles below them *do* grow (the rows carry their own `@ScaledMetric rowTitleBase`), so the
+nav chrome ends up visually smaller than the row list. The follow-up's "extend
+`@ScaledMetric` coverage to chrome" work should give these three surfaces their own
+`@ScaledMetric` base (fed into `typography.font(size:)`) the same way the 8 PR-B content
+views were handled — so they regain OS Dynamic Type without the chat slider.
+
 ### Open design question for the wordmark + mono labels
 
 The rows are clean to fix because they use the **system** face. The wordmark

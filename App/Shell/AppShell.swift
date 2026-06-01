@@ -299,9 +299,12 @@ struct AppShell: View {
             if let newId { theme = .make(newId) }
         }
         .onChange(of: settingsViewModel?.settings.fontScale) { _, newScale in
-            guard let newScale else { return }
+            // A non-nil `newScale` implies the same optional chain's
+            // `settingsViewModel` is non-nil, so unwrap it directly rather
+            // than threading a dead `?? .serif` fallback through `typographyID`.
+            guard let newScale, let settingsViewModel else { return }
             appearance = ChatAppearance(fontScale: newScale)
-            typography = .make(settingsViewModel?.settings.typographyID ?? .serif, fontScale: newScale)
+            typography = .make(settingsViewModel.settings.typographyID, fontScale: newScale)
         }
         .onChange(of: settingsViewModel?.settings.typographyID) { _, newID in
             guard let newID else { return }

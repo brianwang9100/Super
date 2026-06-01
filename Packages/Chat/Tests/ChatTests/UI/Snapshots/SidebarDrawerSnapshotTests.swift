@@ -155,6 +155,9 @@ struct SidebarDrawerSnapshotTests {
     /// (scaled) behavior; restoring the slider-independent invariant is
     /// specced in
     /// `superpowers/specs/2026-05-31-supertypography-sidebar-fontscale-invariant.md`.
+    /// When that fix lands, these three `sidebar_font_scale_max_*` baselines
+    /// re-record (the rows shrink back to fixed) — that diff is *expected*,
+    /// not a mistake.
     @Test("font scale max — sidebar scales with slider (known regression, see spec)")
     func fontScaleMaxRowsScale() {
         verifyFontScaleMax(
