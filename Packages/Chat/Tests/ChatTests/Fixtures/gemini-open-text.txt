@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"partial answer"}]}}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":0},"modelVersion":"gemini-2.5-pro","responseId":"resp_open"}
+

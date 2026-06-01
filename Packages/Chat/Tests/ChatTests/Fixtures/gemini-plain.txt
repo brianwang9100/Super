@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]}}],"modelVersion":"gemini-2.5-pro","responseId":"resp_plain"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":" world!"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3},"modelVersion":"gemini-2.5-pro","responseId":"resp_plain"}
+
