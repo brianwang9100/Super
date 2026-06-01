@@ -128,6 +128,38 @@ struct BibleScreenViewModelNotesTests {
         #expect(viewModel.presentedNoteList == nil)
     }
 
+    // MARK: - selectionNoteSpec (side-effect-free capture)
+
+    @Test("selectionNoteSpec is nil with nothing selected")
+    func selectionSpecNilWhenEmpty() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        #expect(viewModel.selectionNoteSpec == nil)
+    }
+
+    @Test("selectionNoteSpec bounds a gapped selection to min…max without clearing it")
+    func selectionSpecBoundsGappedSelectionWithoutSideEffects() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        // Gapped (16, 18) collapses to the bounding span 16–18, and — unlike
+        // composeNoteForSelection — reading the spec must not clear the
+        // selection (the action sheet captures it, then dismisses itself).
+        viewModel.toggleVerse(18)
+        viewModel.toggleVerse(16)
+        #expect(viewModel.selectionNoteSpec
+            == .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 16, verseEnd: 18))
+        #expect(viewModel.selectedVerses == [16, 18])
+    }
+
+    @Test("selectionNoteSpec collapses a single verse to a zero-width range")
+    func selectionSpecSingleVerse() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(28)
+        #expect(viewModel.selectionNoteSpec
+            == .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 28))
+    }
+
     // MARK: - CRUD
 
     @Test("createNote inserts a trimmed user note with the spec's position")

@@ -931,16 +931,25 @@ public final class BibleScreenViewModel {
     /// annotation. Clears the selection like every other action-sheet action.
     /// A no-op with nothing selected.
     public func composeNoteForSelection() {
+        guard let spec = selectionNoteSpec else { return }
+        clearSelection()
+        composeNote(for: spec)
+    }
+
+    /// The note target spec for the current verse selection — its bounding span
+    /// (`min…max`), or `nil` when nothing is selected. Exposed without side
+    /// effects so the action sheet can capture it, dismiss itself, and present
+    /// the editor from the sheet's `onDismiss` (avoiding a two-sheet race);
+    /// `composeNoteForSelection()` reuses it for the clear-and-present path.
+    public var selectionNoteSpec: BibleNoteTargetSpec? {
         let verses = selectedVerses.sorted()
-        guard let first = verses.first, let last = verses.last else { return }
-        let spec = BibleNoteTargetSpec.verseRange(
+        guard let first = verses.first, let last = verses.last else { return nil }
+        return .verseRange(
             bookId: position.bookId,
             chapterNumber: position.chapterNumber,
             verseStart: first,
             verseEnd: last
         )
-        clearSelection()
-        composeNote(for: spec)
     }
 
     /// Close the note list sheet (drag-down or programmatic).

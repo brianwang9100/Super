@@ -103,8 +103,7 @@ struct NarrationTransportSheetSnapshotTests {
             controller: controller,
             citation: "Song of Solomon 6:\(currentVerse) (WEB)",
             onStop: {},
-            onRestart: {},
-            onDismiss: {}
+            onRestart: {}
         )
         // The card is rendered inside a container with 12pt horizontal
         // padding on the production screen, so account for that here so

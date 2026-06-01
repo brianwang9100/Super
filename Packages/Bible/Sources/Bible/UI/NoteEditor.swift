@@ -69,7 +69,6 @@ struct NoteEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            grabber
             toolbar
             Rectangle()
                 .fill(theme.borderFaint)
@@ -80,6 +79,9 @@ struct NoteEditor: View {
                 deleteSection
             }
         }
+        // Top clearance for the system drag indicator now that the native
+        // `.sheet` supplies it in place of the removed custom grabber.
+        .padding(.top, 10)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
                 .fill(theme.background)
@@ -95,16 +97,6 @@ struct NoteEditor: View {
         } message: {
             Text("This can't be undone.")
         }
-    }
-
-    private var grabber: some View {
-        Capsule()
-            .fill(theme.inkMute)
-            .frame(width: 36, height: 4)
-            .opacity(0.45)
-            .padding(.top, 8)
-            .padding(.bottom, 2)
-            .accessibilityHidden(true)
     }
 
     private var toolbar: some View {
