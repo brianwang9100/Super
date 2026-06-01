@@ -93,38 +93,17 @@ public enum BibleCitationParser {
         return (bookPart, chapter)
     }
 
-    /// Resolve a book name candidate against the catalog.
-    ///
-    /// Match order: exact match against the 3-letter id (case-insensitive),
-    /// exact match against the display name with whitespace stripped, then
-    /// unique whitespace-stripped prefix match against the display name.
-    /// Whitespace stripping lets `"1Cor"` resolve to `"1 Corinthians"`
-    /// without a separate abbreviation table; uniqueness on the prefix
-    /// rejects ambiguous shorthands (`"J"` matches John, Jonah, Joshua,
-    /// James, Jeremiah, Judges, Jude, Joel — eight books, so nil).
+    /// Resolve a book name candidate against the catalog, then bound the
+    /// chapter. Book resolution (exact id / exact name / unique prefix,
+    /// whitespace-insensitive) lives on ``BibleBookCatalog/resolve(bookName:)``
+    /// so this parser and the picker's search parser share one rulebook.
     private static func matchBook(
         _ name: String,
         chapterNumber: Int,
         in catalog: BibleBookCatalog
     ) -> BiblePosition? {
-        let candidate = name.lowercased().filter { !$0.isWhitespace }
-        guard !candidate.isEmpty else { return nil }
-
-        for book in catalog.books {
-            let bookId = book.id.lowercased()
-            let bookName = book.name.lowercased().filter { !$0.isWhitespace }
-            if candidate == bookId || candidate == bookName {
-                return chapterPosition(for: book, chapterNumber: chapterNumber)
-            }
-        }
-
-        let prefixMatches = catalog.books.filter { book in
-            book.name.lowercased().filter { !$0.isWhitespace }.hasPrefix(candidate)
-        }
-        if prefixMatches.count == 1 {
-            return chapterPosition(for: prefixMatches[0], chapterNumber: chapterNumber)
-        }
-        return nil
+        guard let book = catalog.resolve(bookName: name) else { return nil }
+        return chapterPosition(for: book, chapterNumber: chapterNumber)
     }
 
     private static func chapterPosition(

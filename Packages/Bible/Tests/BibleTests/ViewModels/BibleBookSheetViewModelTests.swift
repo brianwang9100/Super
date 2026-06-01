@@ -173,4 +173,131 @@ struct BibleBookSheetViewModelTests {
         viewModel.clearQuery()
         #expect(viewModel.query.isEmpty)
     }
+
+    // MARK: - Reference-aware search
+
+    @Test("a book-plus-chapter query resolves to a chapter deep-link")
+    func queryResolvesChapter() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter 2"
+        #expect(
+            viewModel.deepLinkResult
+                == .chapter(bookId: "1PE", bookName: "1 Peter", chapterNumber: 2)
+        )
+    }
+
+    @Test("a book chapter:verse query resolves to a verse-range deep-link")
+    func queryResolvesVerseRange() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter 2:5-6"
+        #expect(
+            viewModel.deepLinkResult
+                == .verseRange(
+                    bookId: "1PE", bookName: "1 Peter", chapterNumber: 2, verseStart: 5, verseEnd: 6
+                )
+        )
+    }
+
+    @Test("a book-only query does not resolve a deep-link")
+    func bookOnlyQueryHasNoDeepLink() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter"
+        #expect(viewModel.deepLinkResult == nil)
+    }
+
+    @Test("a chapter on an ambiguous book filters the list by the book part")
+    func ambiguousBookChapterFiltersList() {
+        let viewModel = makeViewModel()
+        viewModel.query = "Peter 2"
+        #expect(viewModel.deepLinkResult == nil)
+        #expect(viewModel.groups.flatMap(\.books).map(\.id) == ["1PE", "2PE"])
+    }
+
+    @Test("a query matching exactly one book auto-expands it")
+    func uniqueMatchAutoExpands() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter"
+        #expect(viewModel.autoExpandedBookId == "1PE")
+        #expect(viewModel.isBookExpanded("1PE"))
+    }
+
+    @Test("a user tap collapses an auto-expanded book")
+    func tapCollapsesAutoExpandedBook() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        #expect(viewModel.isBookExpanded("1PE"))   // auto-expanded by the unique match
+        viewModel.toggleExpansion(bookId: "1PE")   // tap to collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        #expect(viewModel.autoExpandedBookId == "1PE")  // still the unique match, just suppressed
+    }
+
+    @Test("re-tapping a collapsed auto-expanded book re-opens it")
+    func reTapReopensAutoExpandedBook() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        viewModel.toggleExpansion(bookId: "1PE")   // collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        viewModel.toggleExpansion(bookId: "1PE")   // re-open
+        #expect(viewModel.isBookExpanded("1PE"))
+    }
+
+    @Test("editing the query re-auto-expands a previously collapsed book")
+    func queryChangeClearsCollapseSuppression() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "1 Peter"
+        viewModel.toggleExpansion(bookId: "1PE")   // collapse
+        #expect(viewModel.isBookExpanded("1PE") == false)
+        viewModel.query = "1 Pete"                 // a new (still-unique) query
+        #expect(viewModel.isBookExpanded("1PE"))   // re-auto-expanded from scratch
+    }
+
+    @Test("a unique match expands only the matched book, not the position book")
+    func uniqueMatchDoesNotDoubleExpand() {
+        // Open on John (its grid expands on open), then search for a different
+        // unique match. Only the matched book should report expanded — the
+        // position book must not render a second open grid.
+        let viewModel = makeViewModel(
+            currentPosition: BiblePosition(bookId: "JHN", chapterNumber: 3)
+        )
+        #expect(viewModel.isBookExpanded("JHN"))
+        viewModel.query = "Romans"
+        #expect(viewModel.isBookExpanded("ROM"))
+        #expect(viewModel.isBookExpanded("JHN") == false)
+    }
+
+    @Test("the empty-state filter reflects the book-name part of the query")
+    func bookNameFilterDropsChapter() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "Nonesuch 5"
+        #expect(viewModel.groups.isEmpty)            // nothing matches "Nonesuch"
+        #expect(viewModel.bookNameFilter == "Nonesuch")
+    }
+
+    @Test("a query matching several books auto-expands none")
+    func multiMatchDoesNotAutoExpand() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        viewModel.query = "Peter"
+        #expect(viewModel.autoExpandedBookId == nil)
+        #expect(viewModel.isBookExpanded("1PE") == false)
+    }
+
+    @Test("an empty query auto-expands nothing")
+    func emptyQueryDoesNotAutoExpand() {
+        let viewModel = makeViewModel(currentPosition: nil)
+        #expect(viewModel.autoExpandedBookId == nil)
+    }
+
+    @Test("a resolved deep-link suppresses auto-expansion")
+    func deepLinkSuppressesAutoExpand() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter 2"
+        #expect(viewModel.autoExpandedBookId == nil)
+    }
+
+    @Test("a deep-link query still reports results even with the list hidden")
+    func deepLinkCountsAsResults() {
+        let viewModel = makeViewModel()
+        viewModel.query = "1 Peter 2:5"
+        #expect(viewModel.hasResults)
+    }
 }

@@ -844,6 +844,28 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.position == BibleScreenViewModel.defaultPosition)
     }
 
+    @Test("openReference drops pre-selected verses past the chapter's last verse")
+    func openReferenceDropsOutOfRangeVerses() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        // Revelation 22 has 21 verses; 22 is past the end.
+        viewModel.openReference(bookId: "REV", chapterNumber: 22, verseStart: 22, verseEnd: 22)
+
+        #expect(viewModel.position == BiblePosition(bookId: "REV", chapterNumber: 22))
+        #expect(viewModel.selectedVerses.isEmpty)            // no ghost selection
+        #expect(viewModel.selectionCitation == nil)          // action bar stays off
+    }
+
+    @Test("openReference clamps a partly-out-of-range range to the real verses")
+    func openReferenceClampsPartlyOutOfRange() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        // Revelation 22:20-23 → only 20 and 21 exist.
+        viewModel.openReference(bookId: "REV", chapterNumber: 22, verseStart: 20, verseEnd: 23)
+
+        #expect(viewModel.selectedVerses == [20, 21])
+    }
+
     @Test("openReference persists the new position")
     func openReferencePersistsNewPosition() async throws {
         let repository = GRDBBibleReadingPositionRepository(
