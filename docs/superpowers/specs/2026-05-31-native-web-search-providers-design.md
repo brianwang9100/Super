@@ -413,6 +413,16 @@ separate cleanup needed. Each fix has a regression test:
   `unknownProvider`. The row stays visible/editable via `all()`/`fetch(id:)`.
   (`selectedExcludesUnbuildableNativeKind` + `selectedReturnsBuildableRowDespiteNativeSibling`.)
   PR2 also keeps the warning log at the hydration skip site.
+- **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
+  value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
+  Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*
+  typed in PR2 because the value set isn't closed yet: it holds `"native"` now and
+  will also hold the standalone-provider ids (`"tavily"`/`"brave"`) Phase 2 adds, so
+  an enum coined now would have to be widened — and persisted rows migrated against —
+  once those land. PR3a builds the read/write path that actually branches on this
+  value (adapter instantiation in `hydrateProviders`/`registerProvider`), which is
+  the right place to introduce a `SearchBackend` type + GRDB codec and retire the
+  literal across all layers in one move.
 
 ## 11. Open questions / risks (need human decision)
 
