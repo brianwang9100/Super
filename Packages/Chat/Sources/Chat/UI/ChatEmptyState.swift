@@ -35,6 +35,10 @@ public struct ChatEmptyState: View {
                 .padding(.bottom, 18)
             Text(greeting)
                 .font(typography.display(26, relativeTo: .title))
+                // System identity resolves display() to an upright system serif;
+                // .italic() restores the slant the brand face bakes in (no-op
+                // under the serif identity, matching wordmarkHeader).
+                .italic()
                 .tracking(-0.26)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)

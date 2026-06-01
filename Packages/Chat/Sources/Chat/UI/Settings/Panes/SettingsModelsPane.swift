@@ -40,7 +40,10 @@ struct SettingsModelsPane: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(theme.accentSoft)
                         Text(model.monogram.uppercased())
-                            .font(typography.mono(13, weight: .semibold))
+                            // Fixed 36×36 tile: pin relativeTo: nil so the monogram
+                            // doesn't pick up Dynamic Type (mono()'s .caption2 default
+                            // would scale it under the serif identity) and overflow.
+                            .font(typography.mono(13, relativeTo: nil, weight: .semibold))
                             .foregroundStyle(theme.accent)
                     }
                     .frame(width: 36, height: 36)

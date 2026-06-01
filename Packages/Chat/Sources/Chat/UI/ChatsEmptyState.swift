@@ -31,6 +31,10 @@ struct ChatsEmptyState: View {
         VStack(spacing: 6) {
             Text(headline)
                 .font(typography.display(22, relativeTo: .title2))
+                // Under the system identity display() is upright system serif;
+                // .italic() supplies the slant the brand face bakes in (matches
+                // SidebarDrawer.wordmarkHeader / SettingsAboutPane).
+                .italic()
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
             caption
