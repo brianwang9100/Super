@@ -146,7 +146,7 @@ public struct AnnotateBibleTool: ToolExecutor {
             return Self.errorResult(validation.message)
         }
 
-        let stamp = stampProvider.stamp()
+        let stamp = await stampProvider.stamp()
         let now = clock.now()
         let records = parsed.entries.map { entry in
             BibleAnnotationRecord(

@@ -303,5 +303,5 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
 private struct FakeStampProvider: BibleAnnotationStampProvider {
     let fixedStamp: BibleAnnotationStamp
     init(stamp: BibleAnnotationStamp) { self.fixedStamp = stamp }
-    func stamp() -> BibleAnnotationStamp { fixedStamp }
+    func stamp() async -> BibleAnnotationStamp { fixedStamp }
 }
