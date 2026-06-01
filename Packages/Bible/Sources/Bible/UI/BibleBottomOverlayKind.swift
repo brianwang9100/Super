@@ -13,5 +13,8 @@ enum BibleBottomOverlayKind: Equatable, Identifiable {
     /// The audio-narration transport card (`NarrationTransportSheet`).
     case narration
 
+    /// Identity is the case itself: same case ⇒ same id (no-op), different
+    /// case ⇒ different id (re-present). `ID == Self` needs only `Equatable`,
+    /// so there's no `Hashable` conformance to maintain here.
     var id: Self { self }
 }

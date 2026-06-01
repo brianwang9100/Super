@@ -28,6 +28,9 @@ public struct BibleScreen: View {
     /// native sheet sizes to its content (and tracks Dynamic Type) rather than
     /// a hard-coded height. Defaults to a sensible first-paint height; the
     /// `.onGeometryChange` seam at the sheet snaps it to the real content size.
+    /// When tuning these defaults, prefer one slightly too large over too small:
+    /// an over-tall first paint contracts to fit on the next pass, whereas a
+    /// too-short one clips content for a frame.
     @State private var actionSheetHeight: CGFloat = 280
 
     /// Measured intrinsic height of the narration transport card content — the
@@ -92,6 +95,8 @@ public struct BibleScreen: View {
         Binding(
             get: { activeOverlayKind },
             set: { newValue in
+                // `.sheet(item:)` only writes `nil` here (the user drag-dismissed);
+                // non-nil writes are SwiftUI-internal, so there's nothing to do.
                 guard newValue == nil else { return }
                 if viewModel.isNarrationSheetPresented {
                     viewModel.dismissNarrationSheet()
@@ -267,6 +272,9 @@ public struct BibleScreen: View {
         // sheet re-presenting (rather than two `.sheet` modifiers racing). Both
         // keep the page readable behind them via `presentationBackgroundInteraction`.
         .sheet(item: bottomSheetBinding, onDismiss: runPendingSheetHandoff) { kind in
+            // Resolve the compact detent height once so the detent and the
+            // background-interaction cutoff are provably the same value.
+            let height = compactSheetHeight(for: kind)
             bottomSheetContent(kind)
                 // Measure the card's intrinsic height and feed it back into the
                 // compact detent so the sheet sizes to content (and grows with
@@ -279,11 +287,9 @@ public struct BibleScreen: View {
                     case .narration: narrationSheetHeight = newHeight
                     }
                 }
-                .presentationDetents([.height(compactSheetHeight(for: kind))])
+                .presentationDetents([.height(height)])
                 .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(
-                    .enabled(upThrough: .height(compactSheetHeight(for: kind)))
-                )
+                .presentationBackgroundInteraction(.enabled(upThrough: .height(height)))
                 .presentationBackground(theme.background)
         }
         .sheet(item: bookSheetBinding, onDismiss: runPendingSheetHandoff) { sheetViewModel in

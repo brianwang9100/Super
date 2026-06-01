@@ -22,8 +22,9 @@ struct BibleChapterReaderTests {
 /// Unit tests for the action-sheet appear / dismiss predicate that decides
 /// when the reader runs its paired selection scroll. Only entering or leaving
 /// `.selection` scrolls; transitions that don't touch `.selection` (so
-/// narration's own follow-scroll stays the sole driver) return `nil`. Covered
-/// without standing up the reader's SwiftUI host.
+/// narration's own follow-scroll stays the sole driver) return `nil`. The
+/// same-to-same no-op path (`.selection` → `.selection`) is deliberately
+/// covered here too. Covered without standing up the reader's SwiftUI host.
 @Suite("BibleChapterReader.selectionSheetTransition")
 @MainActor
 struct BibleChapterSheetTransitionTests {
