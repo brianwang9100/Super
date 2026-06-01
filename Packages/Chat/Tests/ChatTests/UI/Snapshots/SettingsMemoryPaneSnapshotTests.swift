@@ -11,8 +11,14 @@ import Testing
 /// pane reached from the gear affordance on the Memory row.
 ///
 /// Three core states (empty, populated light, populated dark) plus a
-/// Dynamic Type XXL variant on the populated case so the inline-edit
-/// hit area survives the largest accessibility size. All scenarios
+/// Dynamic Type XXL variant on the populated case. Post-`SuperTypography`
+/// that variant is a *fixed-chrome* sentinel, not a reflow check: settings
+/// text resolves through `typography.font(_ role:)`, whose system path
+/// passes `relativeTo: nil` (decision ④), so OS Dynamic Type does not
+/// enlarge it — the XXL baseline is byte-identical to the default render,
+/// and a diff would flag an accidental reintroduction of Dynamic Type
+/// scaling to settings chrome. The app font-scale slider, not OS Dynamic
+/// Type, is the axis settings panes respond to. All scenarios
 /// wire a fully-migrated in-memory `ChatDatabase` so the pane's
 /// `@Query` resolves through the real `MemoriesRequest` — recording
 /// against the request's `defaultValue` would mask binding regressions.
@@ -176,6 +182,11 @@ private struct SettingsSheetSnapshotHarness: View {
                 databaseContext: databaseContext
             )
         }
+        // Mirror the production composition root (`AppShell`), which builds
+        // `.superTypography` from the persisted settings. Without this the
+        // panes would render with the environment-default typography and a
+        // future font-scale variant would silently snapshot the wrong scale.
+        .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
     }
 }
 
