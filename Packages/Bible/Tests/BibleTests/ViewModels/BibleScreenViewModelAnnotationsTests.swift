@@ -201,14 +201,14 @@ struct BibleScreenViewModelAnnotationsTests {
     func citationBook() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        #expect(viewModel.citationLabel(for: .book(bookId: "ROM")) == "Romans")
+        #expect(viewModel.citationLabel(for: BibleAnnotationTargetSpec.book(bookId: "ROM")) == "Romans")
     }
 
     @Test("citationLabel for chapter joins book and chapter")
     func citationChapter() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        #expect(viewModel.citationLabel(for: .chapter(bookId: "ROM", chapterNumber: 8)) == "Romans 8")
+        #expect(viewModel.citationLabel(for: BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)) == "Romans 8")
     }
 
     @Test("citationLabel for a multi-verse range uses a dash")

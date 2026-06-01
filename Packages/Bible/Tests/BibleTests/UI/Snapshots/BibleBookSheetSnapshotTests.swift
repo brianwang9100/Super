@@ -200,6 +200,42 @@ struct BibleBookSheetSnapshotTests {
         )
     }
 
+    @Test("the picker renders a filled note glyph for books with a book-level note")
+    func noteFilledLight() async throws {
+        try await verifyNoteFilled(theme: .light, name: "note_filled_light")
+    }
+
+    @Test("the filled note glyph renders in the dark theme")
+    func noteFilledDark() async throws {
+        try await verifyNoteFilled(theme: .dark, name: "note_filled_dark")
+    }
+
+    @Test("the filled note glyph renders in the sepia theme")
+    func noteFilledSepia() async throws {
+        try await verifyNoteFilled(theme: .sepia, name: "note_filled_sepia")
+    }
+
+    /// Seed a single book-level note on Genesis (the always-visible expanded
+    /// row) so its note glyph renders `.filled`, locking the filled-glyph
+    /// layout alongside the still-outline glyphs on every other row. Verse- and
+    /// chapter-level notes deliberately do *not* fill the book glyph, so a
+    /// book-level row is the only thing that exercises `.filled` here.
+    private func verifyNoteFilled(
+        theme themeID: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleNoteRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repository.insert(BibleNoteRecord(
+            id: "gen-book", target: .book, bookId: "GEN",
+            body: "Origins — creation, fall, the patriarchs.",
+            source: .user, createdAt: now, updatedAt: now
+        ))
+        verifyWithDatabase(sheet(), database: database, theme: themeID, name: name, function: function)
+    }
+
     /// A `BibleBookSheet` opened on the given current position (defaulting
     /// to Genesis 1, which keeps the existing baselines stable), in the
     /// given order with the given query applied.
@@ -221,6 +257,8 @@ struct BibleBookSheetSnapshotTests {
             onClose: {},
             onPresentBookAnnotations: { _ in },
             onRequestBookAnnotations: { _ in },
+            onPresentBookNotes: { _ in },
+            onRequestBookNote: { _ in },
             generatingBookIds: generatingBookIds
         )
     }

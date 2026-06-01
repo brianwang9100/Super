@@ -24,6 +24,9 @@ struct BibleActionSheet: View {
     /// Invoked when the "Annotate" tile is tapped — routes the selection
     /// through the view-model's disclaimer-gated generation flow.
     let onAnnotate: () -> Void
+    /// Invoked when the "Add note" tile is tapped — composes a user note on
+    /// the selection's bounding range through the view model.
+    let onAddNote: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -90,6 +93,9 @@ struct BibleActionSheet: View {
         HStack(spacing: 4) {
             actionButton(label: "Annotate", accent: true, action: onAnnotate) {
                 AnnotationBubble(state: .filled, size: 18)
+            }
+            actionButton(label: "Add note", accent: true, action: onAddNote) {
+                NoteGlyph(state: .filled, size: 18)
             }
             actionButton(label: "Add to chat", accent: true, action: onAddToChat) {
                 sfIcon("paperplane.fill", accent: true)

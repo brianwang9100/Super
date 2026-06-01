@@ -67,7 +67,12 @@ public struct BibleApplet: MiniApplet {
             DatabaseContext.readOnly { db.queue }
         }
         self.annotationRepository = database.map { GRDBBibleAnnotationRepository(database: $0) }
-        self.noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
+        // One note repository instance shared by the `bible.note` tool
+        // (`registerNoteTool`) and the view model's note CRUD — both point at
+        // the same `bible.sqlite` queue, so a single instance avoids a latent
+        // divergence if the repository ever gains instance-level state.
+        let noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
+        self.noteRepository = noteRepository
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -79,7 +84,8 @@ public struct BibleApplet: MiniApplet {
         let viewModel = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
             positionRepository: database.map { GRDBBibleReadingPositionRepository(database: $0) },
-            highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) }
+            highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
+            noteRepository: noteRepository
         )
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)

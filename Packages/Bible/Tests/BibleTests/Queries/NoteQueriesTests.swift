@@ -116,10 +116,18 @@ struct NoteQueriesTests {
 
     // MARK: - BookNotesExistenceRequest
 
-    @Test("BookNotesExistenceRequest returns bookIds with any note at any level")
-    func existenceAcrossLevels() async throws {
+    @Test("BookNotesExistenceRequest returns only books with a book-level note")
+    func existenceBookLevelOnly() async throws {
         let (repository, database) = try makeFixture()
+        // JHN has only a verse-level note → excluded (its verse glyph carries
+        // it; the book glyph stays outline so its tap composes a book note).
         try await repository.insert(verseNote(id: "v", bookId: "JHN"))
+        // A chapter-level note also doesn't count toward the book glyph.
+        try await repository.insert(BibleNoteRecord(
+            id: "luk-ch", target: .chapter, bookId: "LUK", chapterNumber: 4,
+            body: ".", source: .user, createdAt: t0, updatedAt: t0
+        ))
+        // ROM has a genuine book-level note → included.
         try await repository.insert(BibleNoteRecord(
             id: "rom", target: .book, bookId: "ROM",
             body: ".", source: .user, createdAt: t0, updatedAt: t0
@@ -127,7 +135,7 @@ struct NoteQueriesTests {
         let ids = try await database.queue.read { db in
             try BookNotesExistenceRequest().fetch(db)
         }
-        #expect(ids == ["JHN", "ROM"])
+        #expect(ids == ["ROM"])
     }
 
     @Test("BookNotesExistenceRequest is empty on a fresh database")
