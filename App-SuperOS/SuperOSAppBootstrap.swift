@@ -143,8 +143,18 @@ enum SuperOSAppBootstrap {
         //      reference (it's a class), so attaching the locally-held
         //      value before the struct is moved into `AppletRegistry` is
         //      sufficient for every copy.
+        // Constructed here (rather than after the AFM seed below) so the
+        // annotation tool can be registered with a model-aware stamp
+        // provider that captures it. `hydrateProviders` still runs later;
+        // the stamp provider reads the active model lazily at
+        // tool-execution time, long after hydration.
+        let llmProviderRegistry = LLMProviderRegistry()
+
         let bibleApplet = BibleApplet()
-        await bibleApplet.registerAnnotationTool(in: toolRegistry)
+        await bibleApplet.registerAnnotationTool(
+            in: toolRegistry,
+            stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
+        )
         await bibleApplet.registerNoteTool(in: toolRegistry)
 
         // Best-effort: seed an AFM row for fresh installs so Chat opens
@@ -166,7 +176,6 @@ enum SuperOSAppBootstrap {
             }
         }
 
-        let llmProviderRegistry = LLMProviderRegistry()
         #if DEBUG
         // Swallow seed failures: a transient GRDB error here (WAL
         // contention, full disk) should *not* crash bootstrap on a
@@ -292,7 +301,10 @@ enum SuperOSAppBootstrap {
         // so the transient session can't reach for any other tool.
         // Mirrors the SuperBible bootstrap's identical wiring.
         let bibleAnnotateRegistry = ToolRegistry()
-        await bibleApplet.registerAnnotationTool(in: bibleAnnotateRegistry)
+        await bibleApplet.registerAnnotationTool(
+            in: bibleAnnotateRegistry,
+            stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
+        )
         let bibleAnnotateDispatcher = BibleAnnotateDispatcher(
             conversationRepository: conversationRepo,
             messageRepository: messageRepo,
