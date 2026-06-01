@@ -91,8 +91,18 @@ private struct SuggestionsWebView: UIViewRepresentable {
         SuggestionsWebCoordinator(measuredHeight: $measuredHeight, onOpenURL: onOpenURL)
     }
 
+    /// Configuration with web-content JavaScript disabled: the suggestion chips
+    /// are plain anchors, so no page script needs to run. The host's
+    /// `evaluateJavaScript` height probe is app-initiated and unaffected. This is
+    /// defense-in-depth — a BYOK-configured proxy can't inject runnable script.
+    static func configuration() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = false
+        return config
+    }
+
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let webView = WKWebView(frame: .zero, configuration: SuggestionsWebView.configuration())
         webView.navigationDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -124,8 +134,15 @@ private struct SuggestionsWebView: NSViewRepresentable {
         SuggestionsWebCoordinator(measuredHeight: $measuredHeight, onOpenURL: onOpenURL)
     }
 
+    /// Configuration with web-content JavaScript disabled (see the iOS host).
+    static func configuration() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = false
+        return config
+    }
+
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        let webView = WKWebView(frame: .zero, configuration: SuggestionsWebView.configuration())
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.load(html, into: webView)
@@ -144,7 +161,10 @@ private struct SuggestionsWebView: NSViewRepresentable {
 #if canImport(UIKit) || canImport(AppKit)
 /// Shared navigation delegate: measures the rendered height after load and
 /// applies ``GeminiSearchSuggestions/decide(navigationType:url:isInitialLoad:)``
-/// to every navigation.
+/// to every navigation. `@MainActor` so the compiler enforces that its
+/// `WKWebView` + `Binding` access stays on the main actor (the delegate
+/// callbacks already arrive there).
+@MainActor
 final class SuggestionsWebCoordinator: NSObject, WKNavigationDelegate {
     private let measuredHeight: Binding<CGFloat>
     var onOpenURL: (URL) -> Void
