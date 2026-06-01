@@ -5,7 +5,11 @@ open design question below resolved to **Option 2** (full drawer-wide restoratio
 new `tracksFontScale: false` knob added to `SuperTypography` — a cleaner path than the
 `.system(size:)` bypass this spec originally sketched, because the chrome stays routed
 through the typography accessors. The local font-rendering blocker (documented at the end)
-was worked around with the record-via-CI technique. Retained for historical context.
+was worked around by **harvesting the CI-rendered PNGs**: CI runs snapshots in compare mode,
+so the three relabeled tests fail against the old baselines and the freshly-rendered
+fixed-chrome images are attached to the run's `.xcresult` (`failure_*`); those are extracted
+and committed as the new baselines, after which CI re-runs green. (CI never records/commits
+baselines itself — it only compares.) Retained for historical context.
 
 ## The regression
 
