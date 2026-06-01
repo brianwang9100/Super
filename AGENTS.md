@@ -79,6 +79,8 @@ Type scales along **two independent axes**, one knob each:
 
 Rule of thumb: **reading content** scales with the slider (the default, `tracksFontScale: true`). **Chrome, fixed-size containers, and brand wordmarks** must pass `tracksFontScale: false` so the slider stays scoped to reading content — and pair it with a `@ScaledMetric` base when the chrome should still honor OS Dynamic Type (see `SidebarDrawer`'s `navLabelSize` / `rowTitleBase` for the canonical pattern). The two axes compose: drawer chrome wants OS Dynamic Type **on**, slider **off**.
 
+Where a nav-bar-shaped title falls is the one judgment call, so it's settled here: a **page/sheet title that labels the content you're reading is content** and scales (e.g. `SettingsHeader`'s centered title keeps the default `font(.body)` — do **not** pin it). The **persistent navigation rail and brand marks are chrome** and stay pinned (`SidebarDrawer`'s rows, `CHATS` label, wordmark, monogram). This is a deliberate asymmetry — the Settings sheet title grows with the slider while the sidebar rows don't — not an inconsistency to "fix".
+
 Snapshot implication: a slider-independent surface's `*_font_scale_max_*` baseline must render at the fixed base sizes (byte-identical to a `fontScale == 1.0` drawer) — never re-record it at the scaled size to "make the test pass". That re-record-to-pass is exactly how the original sidebar slider-independence regression slipped through.
 
 ## Swift Concurrency & Type Policy
