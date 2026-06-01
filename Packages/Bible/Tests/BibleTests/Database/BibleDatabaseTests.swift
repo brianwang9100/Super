@@ -110,6 +110,33 @@ struct BibleDatabaseTests {
         }
     }
 
+    @Test("an out-of-range category that reaches a row fails the read closed, not corrupt")
+    func outOfRangeCategoryFailsClosedOnRead() throws {
+        let database = try BibleDatabase.makeInMemory()
+        // The v5 CHECK makes this unreachable from the app's own writes, so
+        // bypass it to simulate a value arriving another way (a future sync
+        // payload, a manual DB edit). The enum's synthesized decoder rejects
+        // the unknown raw value, so the whole fetch throws rather than
+        // surfacing a half-decoded row — in the live app this is what makes
+        // `@Query` fall back to `defaultValue: []` (cards blank closed) rather
+        // than crash or render corrupt data.
+        try database.queue.write { db in
+            try db.execute(sql: "PRAGMA ignore_check_constraints = ON")
+            try db.execute(
+                sql: """
+                INSERT INTO bibleAnnotation
+                (id, target, bookId, category, title, body, source, modelId, createdAt)
+                VALUES ('bad', 'book', 'ROM', 99, 't', 'b', 'user', 'm', '2026-01-01 00:00:00.000')
+                """
+            )
+        }
+        #expect(throws: (any Error).self) {
+            try database.queue.read { db in
+                try BibleAnnotationRecord.fetchAll(db)
+            }
+        }
+    }
+
     @Test("v3 indexes the annotation table for chapter and book lookups")
     func v3CreatesAnnotationIndexes() throws {
         let database = try BibleDatabase.makeInMemory()

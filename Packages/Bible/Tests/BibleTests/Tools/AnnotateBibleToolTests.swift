@@ -63,6 +63,9 @@ struct AnnotateBibleToolTests {
         #expect(inserts[0].createdAt == t0)
         #expect(inserts[1].category == .reference)
         #expect(inserts[1].body == "Heb 4:15")
+        // Entries are staggered 1 ms apart in emission order so same-category
+        // siblings keep their order via `createdAt` rather than UUID `id`.
+        #expect(inserts[1].createdAt == t0.addingTimeInterval(0.001))
     }
 
     @Test("book-target call has no chapter or verse columns set")

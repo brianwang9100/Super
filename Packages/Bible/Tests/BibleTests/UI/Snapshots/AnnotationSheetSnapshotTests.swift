@@ -188,6 +188,16 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .light, cards: Self.eightCards, name: "eight_cards_light")
     }
 
+    @Test("eight cards overflow in the dark theme")
+    func eightCardsDark() {
+        verify(theme: .dark, cards: Self.eightCards, name: "eight_cards_dark")
+    }
+
+    @Test("eight cards overflow in the sepia theme")
+    func eightCardsSepia() {
+        verify(theme: .sepia, cards: Self.eightCards, name: "eight_cards_sepia")
+    }
+
     @Test("one card per category renders every badge glyph in light")
     func categoryCardsLight() {
         verify(theme: .light, cards: Self.categoryCards, height: 760, name: "category_cards_light")
