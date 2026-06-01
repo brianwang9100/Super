@@ -129,6 +129,10 @@ struct OpenAIResponsesStreamReducer {
             events.append(contentsOf: closeOut())
 
         case "response.error", "error":
+            // Honor the messageStart-first contract even when the error lands
+            // before any content (e.g. an auth/rate-limit rejection from the
+            // routing layer before a response object exists).
+            ensureMessageStart(into: &events)
             events.append(.error(.providerError(
                 code: event.code ?? "error",
                 message: event.message ?? "OpenAI Responses stream error"
@@ -149,6 +153,17 @@ struct OpenAIResponsesStreamReducer {
     /// after `response.completed` already drove the close.
     mutating func finish() -> [LLMStreamEvent] {
         closeOut()
+    }
+
+    /// Flush the deferred `.messageStart` if it hasn't been emitted yet, and
+    /// nothing else. The provider calls this before yielding a thrown-error
+    /// `.error` so an early transport/encoding failure still honors the
+    /// messageStart-first contract; `finish()` then just emits the terminal
+    /// `.messageComplete`. A no-op once a start has already been emitted.
+    mutating func flushPendingStart() -> [LLMStreamEvent] {
+        var events: [LLMStreamEvent] = []
+        ensureMessageStart(into: &events)
+        return events
     }
 
     /// Emit close events + `.messageComplete` exactly once. Both the

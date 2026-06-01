@@ -102,7 +102,15 @@ struct SourceCitationsPill: View {
 
     private func sourceRow(_ source: SourceCitationPillModel) -> some View {
         Button {
-            openURL(source.url)
+            // Only follow web URLs. Citation URLs come from the provider's
+            // response, and a BYOK setup can point at any Responses-compatible
+            // proxy — a compromised one could inject a custom-scheme URL
+            // (`app://`, `tel:`, `file://`) that `openURL` would hand to a
+            // registered handler. Restrict to http(s).
+            let scheme = source.url.scheme?.lowercased()
+            if scheme == "https" || scheme == "http" {
+                openURL(source.url)
+            }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "globe")

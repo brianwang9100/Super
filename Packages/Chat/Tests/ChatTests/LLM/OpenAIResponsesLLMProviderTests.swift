@@ -148,6 +148,34 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 15, outputTokens: 8)))
     }
 
+    // MARK: - Error ordering (messageStart-first contract)
+
+    @Test func sseErrorBeforeAnyContentStillEmitsMessageStartFirst() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-error"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
+        ))
+        // Contract: `.messageStart` precedes any other event, even when the
+        // provider rejects the turn before a response object exists.
+        #expect(events.map(Self.kind) == ["messageStart", "error", "messageComplete"])
+        if case .error(.providerError(let code, _)) = events[1] {
+            #expect(code == "rate_limit_exceeded")
+        } else {
+            Issue.record("expected providerError, got \(events[1])")
+        }
+    }
+
+    @Test func transportFailureBeforeAnySSEStillEmitsMessageStartFirst() async throws {
+        // No chunks; the stream finishes by throwing a transport error before
+        // any SSE frame arrives — the catch path must flush messageStart first.
+        let http = FakeHTTPClient(error: HTTPError.badStatus(401))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
+        ))
+        #expect(events.map(Self.kind) == ["messageStart", "error", "messageComplete"])
+        #expect(events[1] == .error(.unauthorized))
+    }
+
     // MARK: - Request shape
 
     @Test func requestTargetsResponsesEndpointWithBearerAuth() async throws {

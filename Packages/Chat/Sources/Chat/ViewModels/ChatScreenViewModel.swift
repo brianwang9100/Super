@@ -1162,7 +1162,12 @@ public final class ChatScreenViewModel {
         let host = rawHost.hasPrefix("www.") ? String(rawHost.dropFirst(4)) : rawHost
         let displayHost = host.isEmpty ? citation.url.absoluteString : host
         let trimmedTitle = citation.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = (trimmedTitle.isEmpty || trimmedTitle == rawHost || trimmedTitle == host) ? "" : trimmedTitle
+        // Case-insensitive: a title like "Space.com" must still collapse
+        // against host "space.com".
+        let isRedundant = trimmedTitle.isEmpty
+            || trimmedTitle.caseInsensitiveCompare(rawHost) == .orderedSame
+            || trimmedTitle.caseInsensitiveCompare(host) == .orderedSame
+        let title = isRedundant ? "" : trimmedTitle
         return SourceCitationPillModel(
             id: citation.id,
             title: title,

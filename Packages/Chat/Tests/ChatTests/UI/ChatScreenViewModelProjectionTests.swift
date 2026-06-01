@@ -149,6 +149,8 @@ struct ChatScreenViewModelProjectionTests {
         let attachments = MessageAttachments(sources: [
             // Title equals the www-prefixed host — redundant, should collapse.
             SourceCitation(id: "1", title: "www.example.com", url: URL(string: "https://www.example.com/page")!),
+            // Title differs only in case from the host — must still collapse.
+            SourceCitation(id: "2", title: "Space.com", url: URL(string: "https://space.com/x")!),
         ])
         let items = ChatScreenViewModel.project(
             messages: [
@@ -164,6 +166,8 @@ struct ChatScreenViewModelProjectionTests {
         }
         #expect(sources[0].host == "example.com")
         #expect(sources[0].title == "")
+        #expect(sources[1].host == "space.com")
+        #expect(sources[1].title == "")          // case-insensitive collapse
     }
 
     @Test("assistant row with no attachments projects no source pills")

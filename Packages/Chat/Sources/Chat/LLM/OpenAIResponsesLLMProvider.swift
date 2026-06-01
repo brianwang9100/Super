@@ -131,6 +131,13 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                         }
                     }
                 } catch {
+                    // Honor the messageStart-first contract: if the failure
+                    // landed before any SSE arrived, flush the deferred start
+                    // before the error. `finish()` below then only emits the
+                    // terminal `.messageComplete`.
+                    for event in reducer.flushPendingStart() {
+                        continuation.yield(event)
+                    }
                     continuation.yield(.error(mapToLLMError(error)))
                 }
 
