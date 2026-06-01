@@ -230,9 +230,10 @@ struct SettingsSheetSnapshotTests {
     // subtitle. The row carries `searchBackend: "native"` and a non-shim
     // `endpoint` (api.anthropic.com/v1, not /openai/) so a regression that
     // mis-routes a native kind — e.g. to the AFM arm (would gate
-    // availability on AFM + swap the subtitle) — is caught. Light + dark
-    // covers the theme branches; the card layout is already pinned at
-    // Dynamic Type XXL by `modelsPaneWithAFMXXL`.
+    // availability on AFM + swap the subtitle) — is caught. Light / dark /
+    // sepia covers the theme branches (the AGENTS.md §3 minimum matrix);
+    // the card layout is already pinned at Dynamic Type XXL by
+    // `modelsPaneWithAFMXXL`.
     @Test("models pane with a native-web-search row")
     func modelsPaneWithNativeSearch() async {
         await verifyModelsPaneWithNativeSearch(
