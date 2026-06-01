@@ -58,6 +58,7 @@ struct BibleActionSheetSnapshotTests {
                 onAddToChat: {},
                 onNewChat: {},
                 onAnnotate: {},
+                onAddNote: {},
                 onClose: {}
             )
         }

@@ -24,6 +24,13 @@ struct BibleChapterReader: View {
     /// the chapter's text. `BookAnnotationsExistenceRequest` (the
     /// book-picker badge feed) is held separately by the picker.
     @Query<ChapterAnnotationsRequest> private var annotations: [BibleAnnotationRecord]
+    /// Note rows for the on-screen chapter. Drives the chapter-title note
+    /// glyph (any row with target `.chapter`) and the per-verse trailing note
+    /// glyphs (rows with target `.verse`, grouped by `verseEnd`). Writes from
+    /// the editor or an in-chat `bible.note` tool call flow back through this
+    /// `@Query` and repaint without re-rendering the chapter's text — the
+    /// same reactive contract the annotation feed above follows.
+    @Query<ChapterNotesRequest> private var notes: [BibleNoteRecord]
 
     private let chapter: BibleChapter
     private let bookId: String
@@ -44,6 +51,8 @@ struct BibleChapterReader: View {
     private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
     private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
+    private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
+    private let onRequestChapterNote: ((BibleNoteTargetSpec) -> Void)?
 
     /// Verse the user was reading just before the action sheet appeared.
     /// Set when the sheet first measures (`bottomOverlayInset` becomes
@@ -87,6 +96,12 @@ struct BibleChapterReader: View {
     ///   - chapterDispatchStatus: the chapter target's in-flight dispatch
     ///     status, or `nil` when none. A `.running` status renders the
     ///     chapter bubble in its generating state.
+    ///   - onNoteGlyphTap: tap on a *filled* note glyph (a verse trailer or
+    ///     the chapter title) — presents the note list sheet for the target.
+    ///     `nil` suppresses note glyphs (preview / driver host).
+    ///   - onRequestChapterNote: tap on the chapter title's *outline* note
+    ///     glyph — composes a new chapter-level note. `nil` suppresses the
+    ///     outline glyph's compose action.
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -106,13 +121,19 @@ struct BibleChapterReader: View {
         onConsumeScroll: @escaping () -> Void = {},
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
-        chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil
+        chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil,
+        onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
+        onRequestChapterNote: ((BibleNoteTargetSpec) -> Void)? = nil
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
             chapterNumber: chapter.number
         ))
         _annotations = Query(constant: ChapterAnnotationsRequest(
+            bookId: bookId,
+            chapterNumber: chapter.number
+        ))
+        _notes = Query(constant: ChapterNotesRequest(
             bookId: bookId,
             chapterNumber: chapter.number
         ))
@@ -135,6 +156,8 @@ struct BibleChapterReader: View {
         self.onAnnotationBubbleTap = onAnnotationBubbleTap
         self.onRequestChapterAnnotation = onRequestChapterAnnotation
         self.chapterDispatchStatus = chapterDispatchStatus
+        self.onNoteGlyphTap = onNoteGlyphTap
+        self.onRequestChapterNote = onRequestChapterNote
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -180,6 +203,40 @@ struct BibleChapterReader: View {
         annotations.contains { $0.target == .chapter }
     }
 
+    /// Verse-target note specs keyed by `verseEnd`, each value the
+    /// deduplicated list of ranges that hold at least one note ending at that
+    /// verse. Drives the trailing note glyphs a paragraph renders after the
+    /// annotation bubbles. Distinct ranges sharing a `verseEnd` (e.g. 16-18
+    /// and 18-18) produce separate glyphs in stable insertion order — the
+    /// same grouping `annotationsByVerseEnd` uses, so the two glyph systems
+    /// stack identically.
+    private var notesByVerseEnd: [Int: [BibleNoteTargetSpec]] {
+        var map: [Int: [BibleNoteTargetSpec]] = [:]
+        var seen: Set<String> = []
+        for record in notes {
+            guard record.target == .verse,
+                  let start = record.verseStart,
+                  let end = record.verseEnd else { continue }
+            let spec = BibleNoteTargetSpec.verseRange(
+                bookId: bookId,
+                chapterNumber: chapter.number,
+                verseStart: start,
+                verseEnd: end
+            )
+            if seen.insert(spec.id).inserted {
+                map[end, default: []].append(spec)
+            }
+        }
+        return map
+    }
+
+    /// `true` when at least one row attaches to the on-screen chapter as a
+    /// `.chapter`-target note — flips the chapter-title note glyph from
+    /// outline (compose) to filled (open the list).
+    private var hasChapterNote: Bool {
+        notes.contains { $0.target == .chapter }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -189,6 +246,7 @@ struct BibleChapterReader: View {
 
                     let highlightsByVerse = highlightsByVerse
                     let annotationsByVerseEnd = annotationsByVerseEnd
+                    let notesByVerseEnd = notesByVerseEnd
                     let numberedEarlier = VerseTokenizer.priorlyNumberedVerses(chapter.paragraphs)
                     let verseEndsByParagraph = VerseTokenizer.verseEndsByParagraph(chapter.paragraphs)
                     ForEach(Array(chapter.paragraphs.enumerated()), id: \.offset) { index, paragraph in
@@ -199,9 +257,11 @@ struct BibleChapterReader: View {
                             numberedEarlier: numberedEarlier[index],
                             verseEndsHere: verseEndsByParagraph[index],
                             annotationsByVerseEnd: annotationsByVerseEnd,
+                            notesByVerseEnd: notesByVerseEnd,
                             currentNarratingVerse: currentNarratingVerse,
                             onTapVerse: onTapVerse,
-                            onAnnotationBubbleTap: onAnnotationBubbleTap
+                            onAnnotationBubbleTap: onAnnotationBubbleTap,
+                            onNoteGlyphTap: onNoteGlyphTap
                         )
                     }
 
@@ -331,6 +391,26 @@ struct BibleChapterReader: View {
             .font(.system(.largeTitle, design: .serif))
             .italic()
             .foregroundStyle(theme.ink)
+        // The trailing glyph cluster appears when either glyph system has a
+        // host wired. Stable order — annotation bubble first, note glyph
+        // second — mirroring `VerseTrailers` and the verse-end stacks below.
+        if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                title
+                chapterAnnotationBubble
+                chapterNoteGlyph
+            }
+        } else {
+            title
+        }
+    }
+
+    /// The chapter-title annotation bubble — empty (no rows) → tapping
+    /// generates, generating (dispatch in flight) → disabled, filled (rows
+    /// exist) → tapping presents the popover. `EmptyView` when no annotation
+    /// host is wired (preview / driver view).
+    @ViewBuilder
+    private var chapterAnnotationBubble: some View {
         if let onAnnotationBubbleTap {
             let spec = BibleAnnotationTargetSpec.chapter(
                 bookId: bookId, chapterNumber: chapter.number
@@ -338,29 +418,56 @@ struct BibleChapterReader: View {
             let state = AnnotationBubble.state(
                 hasAnnotation: hasChapterAnnotation, isGenerating: isChapterGenerating
             )
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                title
-                Button {
-                    switch state {
-                    case .filled: onAnnotationBubbleTap(spec)
-                    case .empty: onRequestChapterAnnotation?(spec)
-                    case .generating: break
-                    }
-                } label: {
-                    AnnotationBubble(state: state, size: 20)
-                        .padding(6)
-                        .contentShape(Rectangle())
+            Button {
+                switch state {
+                case .filled: onAnnotationBubbleTap(spec)
+                case .empty: onRequestChapterAnnotation?(spec)
+                case .generating: break
                 }
-                .buttonStyle(.plain)
-                // `.generating` is non-interactive; an `.empty` bubble with no
-                // generate callback wired (preview / driver host) would be a
-                // dead control, so disable it rather than render a tap that
-                // silently no-ops. The live screen always wires the callback.
-                .disabled(state == .generating || (state == .empty && onRequestChapterAnnotation == nil))
-                .accessibilityLabel(Self.chapterBubbleLabel(for: state))
+            } label: {
+                AnnotationBubble(state: state, size: 20)
+                    .padding(6)
+                    .contentShape(Rectangle())
             }
-        } else {
-            title
+            .buttonStyle(.plain)
+            // `.generating` is non-interactive; an `.empty` bubble with no
+            // generate callback wired (preview / driver host) would be a
+            // dead control, so disable it rather than render a tap that
+            // silently no-ops. The live screen always wires the callback.
+            .disabled(state == .generating || (state == .empty && onRequestChapterAnnotation == nil))
+            .accessibilityLabel(Self.chapterBubbleLabel(for: state))
+        }
+    }
+
+    /// The chapter-title note glyph — filled (notes exist) → tapping opens the
+    /// list, outline (none yet) → tapping composes. Notes have no generating
+    /// state (writes land synchronously through the editor), so it's a plain
+    /// two-state glyph unlike the annotation bubble. `EmptyView` when no note
+    /// host is wired.
+    @ViewBuilder
+    private var chapterNoteGlyph: some View {
+        if let onNoteGlyphTap {
+            let spec = BibleNoteTargetSpec.chapter(
+                bookId: bookId, chapterNumber: chapter.number
+            )
+            let glyphState: NoteGlyph.GlyphState = hasChapterNote ? .filled : .outline
+            Button {
+                if hasChapterNote {
+                    onNoteGlyphTap(spec)
+                } else {
+                    onRequestChapterNote?(spec)
+                }
+            } label: {
+                NoteGlyph(state: glyphState, size: 20)
+                    .padding(6)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // An outline glyph with no compose callback wired (preview /
+            // driver host) is a dead control — disable it rather than render a
+            // silent no-op tap. The live screen always wires the callback.
+            .disabled(!hasChapterNote && onRequestChapterNote == nil)
+            .accessibilityLabel(Self.chapterNoteGlyphLabel(hasNote: hasChapterNote))
         }
     }
 
@@ -371,6 +478,12 @@ struct BibleChapterReader: View {
         case .empty: return "Generate chapter annotations"
         case .generating: return "Generating chapter annotations"
         }
+    }
+
+    /// VoiceOver label for the chapter-title note glyph, keyed to whether the
+    /// chapter already carries notes.
+    static func chapterNoteGlyphLabel(hasNote: Bool) -> String {
+        hasNote ? "View chapter notes" : "Add a chapter note"
     }
 
     /// Height of the shell's minimized chat-pill clearance the reader

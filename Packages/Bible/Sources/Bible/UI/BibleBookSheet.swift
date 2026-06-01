@@ -46,6 +46,11 @@ struct BibleBookSheet: View {
     /// `.book(bookId)` target (which the view model routes through its
     /// disclaimer gate).
     let onRequestBookAnnotations: (_ bookId: String) -> Void
+    /// Tap on a *filled* note glyph — present the note list sheet for the
+    /// `.book(bookId)` target.
+    let onPresentBookNotes: (_ bookId: String) -> Void
+    /// Tap on an *outline* note glyph — compose a new book-level note.
+    let onRequestBookNote: (_ bookId: String) -> Void
     /// Book ids whose `.book`-target generation is in flight. A book in
     /// this set renders its bubble in the generating state (disabled),
     /// surfacing dispatches triggered from chat or a prior picker visit.
@@ -57,6 +62,16 @@ struct BibleBookSheet: View {
     /// empty bubbles. The default-value-on-failure `[]` matches that —
     /// failing safe to "no annotations" never misleads the user.
     @Query<BookAnnotationsExistenceRequest> private var booksWithAnnotations: Set<String>
+
+    /// Books with at least one *book-level* note (`target == .book`). Switches
+    /// each row's note glyph between `.filled` and `.outline`. Scoped to
+    /// book-level so the glyph's fill matches what its tap opens
+    /// (`NotesForRangeRequest(target: .book, …)`); verse/chapter notes surface
+    /// on their own glyphs in the reader. Reactive like the annotation set
+    /// above, so a book note written from the reader or chat repaints the
+    /// picker. `[]` on failure → all-outline, which reads as "no notes yet"
+    /// rather than misleading the user.
+    @Query<BookNotesExistenceRequest> private var booksWithNotes: Set<String>
 
     // Font sizes and the chapter cell height are carried as scaled metrics
     // so the picker tracks Dynamic Type — the design's fixed point sizes,
@@ -84,6 +99,8 @@ struct BibleBookSheet: View {
         onClose: @escaping () -> Void,
         onPresentBookAnnotations: @escaping (_ bookId: String) -> Void,
         onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
+        onPresentBookNotes: @escaping (_ bookId: String) -> Void,
+        onRequestBookNote: @escaping (_ bookId: String) -> Void,
         generatingBookIds: Set<String> = [],
         bottomInset: CGFloat = 0
     ) {
@@ -95,9 +112,12 @@ struct BibleBookSheet: View {
         self.onClose = onClose
         self.onPresentBookAnnotations = onPresentBookAnnotations
         self.onRequestBookAnnotations = onRequestBookAnnotations
+        self.onPresentBookNotes = onPresentBookNotes
+        self.onRequestBookNote = onRequestBookNote
         self.generatingBookIds = generatingBookIds
         self.bottomInset = bottomInset
         self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
+        self._booksWithNotes = Query(constant: BookNotesExistenceRequest())
     }
 
     var body: some View {
@@ -288,6 +308,7 @@ struct BibleBookSheet: View {
         let isExpanded = viewModel.isBookExpanded(book.id)
         let isCurrent = book.id == currentBookId
         let hasAnnotations = booksWithAnnotations.contains(book.id)
+        let hasNotes = booksWithNotes.contains(book.id)
 
         VStack(alignment: .leading, spacing: 0) {
             // Row layout: a tappable name area (expansion toggle) flush
@@ -310,6 +331,7 @@ struct BibleBookSheet: View {
                 .buttonStyle(.plain)
 
                 annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
+                noteGlyph(for: book.id, hasNotes: hasNotes)
 
                 Text("\(book.chapterCount)")
                     .font(.system(size: countSize, design: .monospaced))
@@ -353,6 +375,32 @@ struct BibleBookSheet: View {
         case .empty: return "Generate annotations for this book"
         case .generating: return "Generating annotations for this book"
         }
+    }
+
+    /// The book row's note glyph — filled (the book carries ≥1 *book-level*
+    /// note) → tapping opens the book-level list, outline (none yet) → tapping
+    /// composes a book-level note. Carved out as its own tap target so it never
+    /// expands the book or fires the annotation bubble.
+    private func noteGlyph(for bookId: String, hasNotes: Bool) -> some View {
+        let glyphState: NoteGlyph.GlyphState = hasNotes ? .filled : .outline
+        return Button {
+            if hasNotes {
+                onPresentBookNotes(bookId)
+            } else {
+                onRequestBookNote(bookId)
+            }
+        } label: {
+            NoteGlyph(state: glyphState, size: bubbleSize)
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Self.bookNoteGlyphLabel(hasNotes: hasNotes))
+    }
+
+    /// VoiceOver label for a book's note glyph, keyed to whether it has notes.
+    static func bookNoteGlyphLabel(hasNotes: Bool) -> String {
+        hasNotes ? "View notes for this book" : "Add a note to this book"
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
@@ -450,7 +498,9 @@ struct BibleBookSheet: View {
         onSelectVerseRange: { _, _, _, _ in },
         onClose: {},
         onPresentBookAnnotations: { _ in },
-        onRequestBookAnnotations: { _ in }
+        onRequestBookAnnotations: { _ in },
+        onPresentBookNotes: { _ in },
+        onRequestBookNote: { _ in }
     )
     .superTheme(.make(.light))
 }

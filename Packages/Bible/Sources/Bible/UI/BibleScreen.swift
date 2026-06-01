@@ -195,6 +195,24 @@ public struct BibleScreen: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.hidden)
         }
+        .sheet(item: $viewModel.presentedNoteList) { presentation in
+            NoteListSheetContainer(
+                spec: presentation.spec,
+                citation: viewModel.citationLabel(for: presentation.spec),
+                autoCompose: presentation.autoCompose,
+                onCreate: { body in
+                    viewModel.createNote(target: presentation.spec, body: body)
+                },
+                onUpdate: { id, body in
+                    viewModel.updateNote(id: id, body: body)
+                },
+                onDelete: { id in
+                    viewModel.deleteNote(id: id)
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.hidden)
+        }
     }
 
     /// Hand the current verse selection to the Chat composer over the
@@ -341,6 +359,7 @@ public struct BibleScreen: View {
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onAnnotate: { handleAnnotateSelection() },
+                onAddNote: { withAnimation(motion.animation) { viewModel.composeNoteForSelection() } },
                 onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
             // Measured before the bottomReserve padding so we capture the
@@ -420,6 +439,16 @@ public struct BibleScreen: View {
                 withAnimation(motion.animation) { viewModel.dismissBookSheet() }
                 viewModel.triggerAnnotationGeneration(for: .book(bookId: bookId))
             },
+            onPresentBookNotes: { bookId in
+                // Dismiss the picker first so the note list sheet lands on the
+                // bare reader, mirroring the annotation paths above.
+                withAnimation(motion.animation) { viewModel.dismissBookSheet() }
+                viewModel.presentNoteList(for: .book(bookId: bookId))
+            },
+            onRequestBookNote: { bookId in
+                withAnimation(motion.animation) { viewModel.dismissBookSheet() }
+                viewModel.composeNote(for: .book(bookId: bookId))
+            },
             // Books with an in-flight `.book`-target dispatch — their
             // bubbles render generating. Reading the view model's status
             // map here keeps the picker reactive as dispatches start and
@@ -476,7 +505,13 @@ public struct BibleScreen: View {
                         bookId: viewModel.position.bookId,
                         chapterNumber: viewModel.position.chapterNumber
                     )
-                )
+                ),
+                onNoteGlyphTap: { spec in
+                    withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
+                },
+                onRequestChapterNote: { spec in
+                    withAnimation(motion.animation) { viewModel.composeNote(for: spec) }
+                }
             )
             // A fresh identity per chapter resets the scroll offset to the
             // top and re-subscribes the highlight `@Query` when the reader

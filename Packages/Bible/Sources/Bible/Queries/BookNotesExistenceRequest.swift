@@ -7,18 +7,23 @@ import Combine
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing which books carry at least one note row.
+/// GRDBQuery request observing which books carry at least one **book-level**
+/// note row.
 ///
-/// Returns the set of `bookId`s with one or more notes at *any* target level —
-/// book, chapter, or verse. The book picker renders each row's note glyph as
-/// filled when its `bookId` is in this set, outline otherwise. Using a set
-/// keeps row-membership tests O(1) for the picker without per-row queries.
+/// Returns the set of `bookId`s with one or more notes whose `target` is
+/// `.book` — *not* chapter- or verse-scoped notes. The book picker renders
+/// each row's note glyph as filled when its `bookId` is in this set, outline
+/// otherwise. Scoping to book-target rows keeps the glyph honest: tapping a
+/// filled glyph opens `NotesForRangeRequest(target: .book, …)`, which lists
+/// exactly the book-level notes — so the glyph's fill state matches what the
+/// tap reveals. (Chapter- and verse-level notes surface on their own glyphs in
+/// the reader; a book whose only notes are verse-level shows an *outline* book
+/// glyph, whose tap composes a new book-level note.) Using a set keeps
+/// row-membership tests O(1) for the picker without per-row queries.
 ///
-/// The `bibleNote_on_bookId_chapterNumber_verseEnd` index — whose leading
-/// column is `bookId` — lets SQLite satisfy this `SELECT DISTINCT bookId`
-/// with an index scan rather than a full table scan. (The `(target, bookId)`
-/// index does not help here: its leading column is `target`, and there is no
-/// `target` filter to seek on.)
+/// The `bibleNote_on_target_bookId` index — leading column `target` — lets
+/// SQLite seek straight to the `target = 'book'` rows and satisfy the
+/// `SELECT DISTINCT bookId` from that slice, per the design's index plan.
 public struct BookNotesExistenceRequest: ValueObservationQueryable {
     public static var defaultValue: Set<String> { [] }
 
@@ -26,6 +31,7 @@ public struct BookNotesExistenceRequest: ValueObservationQueryable {
 
     public func fetch(_ db: Database) throws -> Set<String> {
         let ids = try BibleNoteRecord
+            .filter(Column("target") == BibleNoteTarget.book.rawValue)
             .select(Column("bookId"), as: String.self)
             .distinct()
             .fetchAll(db)
