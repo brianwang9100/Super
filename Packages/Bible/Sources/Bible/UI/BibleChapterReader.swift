@@ -393,8 +393,13 @@ struct BibleChapterReader: View {
         if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 title
-                chapterAnnotationBubble
-                chapterNoteGlyph
+                // The two glyphs cluster tightly together; their frames hug
+                // their ink (see AnnotationBubble / NoteGlyph), so this spacing
+                // is the real visible gap between them.
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    chapterAnnotationBubble
+                    chapterNoteGlyph
+                }
             }
         } else {
             title

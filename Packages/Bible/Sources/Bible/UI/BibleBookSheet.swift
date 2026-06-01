@@ -80,6 +80,10 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .subheadline) private var mediumSize: CGFloat = 14
     @ScaledMetric(relativeTo: .footnote) private var controlSize: CGFloat = 13
     @ScaledMetric(relativeTo: .caption) private var countSize: CGFloat = 11
+    /// Fixed width for the trailing chapter count, sized for the widest value
+    /// (Psalms = 150, three monospaced digits) so single- and double-digit
+    /// counts don't shift the glyph cluster's trailing alignment.
+    @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 16
@@ -327,12 +331,18 @@ struct BibleBookSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
-                noteGlyph(for: book.id, hasNotes: hasNotes)
+                // The two glyphs cluster tightly together; their frames hug
+                // their ink (see AnnotationBubble / NoteGlyph), so this spacing
+                // is the real visible gap between them.
+                HStack(spacing: 3) {
+                    annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
+                    noteGlyph(for: book.id, hasNotes: hasNotes)
+                }
 
                 Text("\(book.chapterCount)")
                     .font(.system(size: countSize, design: .monospaced))
                     .foregroundStyle(theme.inkFaint)
+                    .frame(width: countWidth, alignment: .trailing)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
