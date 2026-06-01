@@ -46,11 +46,10 @@ struct BibleBookSheet: View {
     /// `.book(bookId)` target (which the view model routes through its
     /// disclaimer gate).
     let onRequestBookAnnotations: (_ bookId: String) -> Void
-    /// Tap on a *filled* note glyph — present the note list sheet for the
-    /// `.book(bookId)` target.
+    /// Tap on a note glyph (filled or outline) — present the note list sheet
+    /// for the `.book(bookId)` target. The user composes from the list's `+`;
+    /// an empty book opens to the list's empty state, not straight to the editor.
     let onPresentBookNotes: (_ bookId: String) -> Void
-    /// Tap on an *outline* note glyph — compose a new book-level note.
-    let onRequestBookNote: (_ bookId: String) -> Void
     /// Book ids whose `.book`-target generation is in flight. A book in
     /// this set renders its bubble in the generating state (disabled),
     /// surfacing dispatches triggered from chat or a prior picker visit.
@@ -100,7 +99,6 @@ struct BibleBookSheet: View {
         onPresentBookAnnotations: @escaping (_ bookId: String) -> Void,
         onRequestBookAnnotations: @escaping (_ bookId: String) -> Void,
         onPresentBookNotes: @escaping (_ bookId: String) -> Void,
-        onRequestBookNote: @escaping (_ bookId: String) -> Void,
         generatingBookIds: Set<String> = [],
         bottomInset: CGFloat = 0
     ) {
@@ -113,7 +111,6 @@ struct BibleBookSheet: View {
         self.onPresentBookAnnotations = onPresentBookAnnotations
         self.onRequestBookAnnotations = onRequestBookAnnotations
         self.onPresentBookNotes = onPresentBookNotes
-        self.onRequestBookNote = onRequestBookNote
         self.generatingBookIds = generatingBookIds
         self.bottomInset = bottomInset
         self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
@@ -377,18 +374,15 @@ struct BibleBookSheet: View {
         }
     }
 
-    /// The book row's note glyph — filled (the book carries ≥1 *book-level*
-    /// note) → tapping opens the book-level list, outline (none yet) → tapping
-    /// composes a book-level note. Carved out as its own tap target so it never
-    /// expands the book or fires the annotation bubble.
+    /// The book row's note glyph — tapping always opens the book-level note
+    /// list (the empty state prompts the user to compose from the `+`). Renders
+    /// filled when the book carries ≥1 *book-level* note, outline when none yet.
+    /// Carved out as its own tap target so it never expands the book or fires
+    /// the annotation bubble.
     private func noteGlyph(for bookId: String, hasNotes: Bool) -> some View {
         let glyphState: NoteGlyph.GlyphState = hasNotes ? .filled : .outline
         return Button {
-            if hasNotes {
-                onPresentBookNotes(bookId)
-            } else {
-                onRequestBookNote(bookId)
-            }
+            onPresentBookNotes(bookId)
         } label: {
             NoteGlyph(state: glyphState, size: bubbleSize)
                 .frame(width: 30, height: 30)
@@ -400,7 +394,7 @@ struct BibleBookSheet: View {
 
     /// VoiceOver label for a book's note glyph, keyed to whether it has notes.
     static func bookNoteGlyphLabel(hasNotes: Bool) -> String {
-        hasNotes ? "View notes for this book" : "Add a note to this book"
+        hasNotes ? "View notes for this book" : "Notes for this book"
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
@@ -499,8 +493,7 @@ struct BibleBookSheet: View {
         onClose: {},
         onPresentBookAnnotations: { _ in },
         onRequestBookAnnotations: { _ in },
-        onPresentBookNotes: { _ in },
-        onRequestBookNote: { _ in }
+        onPresentBookNotes: { _ in }
     )
     .superTheme(.make(.light))
 }
