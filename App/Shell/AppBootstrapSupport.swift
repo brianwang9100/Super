@@ -122,12 +122,16 @@ enum AppBootstrapSupport {
                 //
                 // This invariant is unguarded at the schema level. A DB
                 // written by a *future* binary (or synced from one) could
-                // carry a native-kind row; if it's also the selected row,
-                // the `setActive` below silently fails (see its comment).
-                // Log so that state is diagnosable in the field rather than
-                // presenting as a mute "no model configured". When the
-                // adapters land, this arm must construct the real provider
-                // atomically in the same PR as the Add-Model native option.
+                // carry a native-kind row. If it's also the selected row,
+                // `selected()` filters it out (native kinds lack a buildable
+                // adapter, so `buildableKindRequest` excludes them), so the
+                // `setActive` below never sees a native id and the
+                // first-registered fallback takes over cleanly. Log here
+                // anyway so the hydration skip is diagnosable in the field
+                // rather than presenting as a mute "no model configured".
+                // When the adapters land, this arm must construct the real
+                // provider atomically in the same PR as the Add-Model native
+                // option.
                 bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
                 continue
             #if DEBUG
@@ -139,18 +143,20 @@ enum AppBootstrapSupport {
 
         if let selectedId = try await repository.selected()?.id {
             // `setActive` throws `unknownProvider` when the selected row was
-            // skipped above and never registered. Two skip paths reach here:
-            //   1. An `.appleFoundation` row on an AFM-ineligible device.
-            //   2. A native-kind row (`.anthropicNative`/`.geminiNative`/
-            //      `.openAIResponses`) — these aren't demoted by
-            //      `demoteUnknownKindSelections` (their kinds are in
-            //      `allCases`), so `selected()` returns them, but the loop
-            //      above skips registration until the adapters ship.
-            // In both cases the first-registered fallback (or the "no
-            // provider" empty state) is the right behavior, so the throw is
-            // swallowed — but case 2 is logged at the skip site above so an
-            // empty registry from a stray native-kind selection is
-            // diagnosable rather than mute.
+            // skipped above and never registered. The one path that reaches
+            // here is an `.appleFoundation` row on an AFM-ineligible device:
+            // AFM has a buildable adapter, so `selected()`'s
+            // `buildableKindRequest` still returns it even though the loop
+            // above skipped registration. The first-registered fallback (or
+            // the "no provider" empty state) is the right behavior, so the
+            // throw is swallowed.
+            //
+            // Native-kind rows do NOT reach here: `selected()` excludes them
+            // (native kinds lack `hasProviderAdapter`, so
+            // `buildableKindRequest` filters them out), so a native-only
+            // selection returns nil / the next buildable row rather than a
+            // native id. The hydration-loop skip is still logged above for
+            // field diagnosability.
             try? await registry.setActive(id: selectedId)
         }
     }

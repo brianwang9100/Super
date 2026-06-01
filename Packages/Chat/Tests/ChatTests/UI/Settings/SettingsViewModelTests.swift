@@ -777,6 +777,46 @@ struct SettingsViewModelTests {
         #expect(await registry.provider(id: "m1") != nil)
     }
 
+    @Test("updateModel persists an edited Base URL for a native-kind row")
+    func updateModelHonorsEditedURLForNativeKind() async {
+        // Regression for the silent-URL-discard trap: `resolveEditProvider`
+        // routes native-kind rows through the Custom edit pane, which renders
+        // an *editable* Base URL field. If `updateModel`'s `nextBaseURL`
+        // switch preserved `existing.baseURL` for native kinds, a user edit
+        // would be accepted in the UI and silently dropped on save. The
+        // switch must honor the caller's URL so what the field shows is what
+        // gets persisted. Preserving `existing.baseURL` here fails this test.
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1",
+                name: "Opus (native search)",
+                baseURL: URL(string: "https://api.anthropic.com/v1")!,
+                apiKeyRef: "ref-1",
+                modelId: "claude-opus-4-7",
+                createdAt: Date(),
+                kind: .anthropicNative,
+                supportsThinking: true,
+                maxContextTokens: 1_000_000,
+                isSelected: false,
+                searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+
+        await vm.updateModel(
+            id: "m1",
+            name: "Opus (native search)",
+            baseURL: URL(string: "https://api.anthropic.com/v2")!,
+            modelId: "claude-opus-4-7",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 1_000_000
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.baseURL == URL(string: "https://api.anthropic.com/v2")!)
+    }
+
     @Test("updateModel re-registers an openAICompatible provider across an edit")
     func updateModelReregistersBuildableProvider() async {
         // Counterpart to the native-kind test: for a buildable kind the
@@ -1046,7 +1086,15 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
 
     func all() async throws -> [ModelConfigurationRecord] { rows }
     func fetch(id: String) async throws -> ModelConfigurationRecord? { rows.first { $0.id == id } }
-    func selected() async throws -> ModelConfigurationRecord? { rows.first(where: \.isSelected) }
+    /// Mirrors `GRDBModelConfigurationRepository.selected()`, which filters
+    /// the selection through `buildableKindRequest` — a selected row whose
+    /// kind has no shipped adapter (the native-search kinds) is excluded so
+    /// hydration's `setActive` never sees an unbuildable id. Keeping the stub
+    /// in step avoids a future `isSelected: true` native-row test validating
+    /// against behavior production doesn't have.
+    func selected() async throws -> ModelConfigurationRecord? {
+        rows.first { $0.isSelected && $0.kind.hasProviderAdapter }
+    }
     func save(_ record: ModelConfigurationRecord) async throws {
         if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }

@@ -603,12 +603,17 @@ public final class SettingsViewModel {
             // "preserve existing."
             let nextBaseURL: URL?
             switch existing.kind {
-            case .openAICompatible:
+            case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
+                // openAICompatible and the native-search kinds all surface an
+                // *editable* Base URL field in the edit pane — native kinds
+                // route through the Custom pane (`resolveEditProvider`) until
+                // PR3a gives them their own read-only catalog entry. While the
+                // field is editable, honor the caller's URL rather than
+                // silently discarding a user edit; `nil` means "no
+                // field-driven change," so fall back to the persisted value.
                 nextBaseURL = baseURL ?? existing.baseURL
-            case .appleFoundation, .anthropicNative, .geminiNative, .openAIResponses:
-                // AFM has no URL; native-search rows resolve their baseURL
-                // from the catalog at add-time, not from a user-editable
-                // field. Either way, preserve whatever was persisted.
+            case .appleFoundation:
+                // AFM has no URL field; preserve whatever was persisted (nil).
                 nextBaseURL = existing.baseURL
             #if DEBUG
             case .debug:

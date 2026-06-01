@@ -406,6 +406,24 @@ separate cleanup needed. Each fix has a regression test:
   `"openai"` entry. (`resolveEditProviderNativeKindByKind` +
   `resolveEditProviderCompatStillMatchesByURL`.) PR3a maps native kinds to their own
   native provider entries here instead of the current Custom fallback.
+  - **⚠️ PR3a regression hazard — the kind-before-URL guard must be preserved
+    explicitly.** Today `resolveEditProvider` short-circuits native kinds via the
+    `!kind.hasProviderAdapter` guard *before* the URL-match branch runs. When PR3a
+    flips `.openAIResponses.hasProviderAdapter` to `true`, that guard lifts and the
+    URL-match branch runs again — and because `.openAIResponses` shares
+    `https://api.openai.com/v1` with the compat `"openai"` entry, it will re-match
+    the wrong (compat) provider and reopen the edit pane in compat mode. PR3a **must**
+    add an explicit native-kind→native-entry dispatch *before* the URL match (not
+    rely on the now-lifted `hasProviderAdapter` guard) and ship a
+    `resolveEditProvider` test that pins an `.openAIResponses` row to its native
+    entry with `hasProviderAdapter == true`. No existing test covers this once the
+    flag flips, so it's a silent regression without that addition.
+  - **`updateModel` honors the edited Base URL for native kinds (PR2 hardening).**
+    Because native rows route through the Custom pane (editable URL field), the
+    `nextBaseURL` switch now persists the caller's URL for native kinds rather than
+    silently discarding it. (`updateModelHonorsEditedURLForNativeKind`.) When PR3a
+    gives native kinds their own read-only catalog entry, revisit whether the field
+    should be read-only instead.
 - **`selected()` returned an unbuildable native-kind row → empty registry — FIXED.**
   `selected()` now filters through `buildableKindRequest` (kinds with
   `hasProviderAdapter`), so a native-only-selected DB returns `nil` and the
