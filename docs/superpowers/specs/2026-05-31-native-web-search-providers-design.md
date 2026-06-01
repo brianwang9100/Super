@@ -416,8 +416,12 @@ separate cleanup needed. Each fix has a regression test:
     add an explicit native-kind→native-entry dispatch *before* the URL match (not
     rely on the now-lifted `hasProviderAdapter` guard) and ship a
     `resolveEditProvider` test that pins an `.openAIResponses` row to its native
-    entry with `hasProviderAdapter == true`. No existing test covers this once the
-    flag flips, so it's a silent regression without that addition.
+    entry with `hasProviderAdapter == true`. A **tripwire test now exists**
+    (`resolveEditProviderNeverMisfilesOpenAIResponsesToCompat`): it asserts an
+    `.openAIResponses` row never resolves to the compat `"openai"` provider id —
+    an invariant that holds today (Custom) and after a correct PR3a (native entry),
+    but goes red the moment the flag flips without the dispatch fix, mechanically
+    forcing PR3a to address it. A `⚠️` comment at the guard site points back here.
   - **`updateModel` honors the edited Base URL for native kinds (PR2 hardening).**
     Because native rows route through the Custom pane (editable URL field), the
     `nextBaseURL` switch now persists the caller's URL for native kinds rather than
@@ -443,6 +447,14 @@ separate cleanup needed. Each fix has a regression test:
   UNIQUE-violate. (`insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists`,
   `insertIfEmptyDemotesSelectedNativeRowBeforeSeeding`,
   `insertDebugIfMissingTakesSelectionWhenOnlyNativeKindRowIsSelected`.)
+- **`setSelected(id:)` could select an unbuildable native row → no active model — FIXED.**
+  `selected()` filters native kinds, but `setSelected` didn't — selecting a native id
+  would demote every other row and then yield `nil` from `selected()`. `setSelected`
+  now guards on `record.kind.hasProviderAdapter` and throws
+  `ModelConfigurationRepositoryError.unselectableKind` *before* the demote, so the prior
+  selection survives. The in-tree `StubModelRepository` mirrors the guard.
+  (`setSelectedRefusesUnbuildableNativeKind`.) No production caller exists yet (the
+  model-picker selection path is future work), so this is defensive for when it lands.
 - **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
   value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
   Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*

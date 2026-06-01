@@ -114,6 +114,30 @@ struct ModelConfigurationRepositoryTests {
         }
     }
 
+    /// `setSelected` must refuse a native-kind row the binary can't build a
+    /// provider for. Without the guard the demote would run, clear the prior
+    /// selection, and then `selected()` would return nil (native kinds are
+    /// filtered out) — no active model, no error. The guard throws *before*
+    /// the demote so the existing selection survives. Regression for the
+    /// `setSelected`/`selected()` filter mismatch on PR #138.
+    @Test func setSelectedRefusesUnbuildableNativeKind() async throws {
+        let (repo, _) = try makeRepo()
+        try await repo.save(makeRecord(id: "compat", kind: .openAICompatible, apiKeyRef: "kc", isSelected: true))
+        try await repo.save(makeRecord(id: "native", kind: .anthropicNative, apiKeyRef: "kn"))
+
+        await #expect(
+            throws: ModelConfigurationRepositoryError.unselectableKind(
+                id: "native", kind: LLMProviderKind.anthropicNative.rawValue
+            )
+        ) {
+            try await repo.setSelected(id: "native")
+        }
+
+        // The prior selection is intact — the demote never ran.
+        #expect(try await repo.selected()?.id == "compat")
+        #expect(try await repo.all().filter(\.isSelected).map(\.id) == ["compat"])
+    }
+
     @Test func deleteAlsoRemovesKeychainEntry() async throws {
         let (repo, keychain) = try makeRepo()
         try await repo.storeAPIKey("sk-secret", ref: "ka")

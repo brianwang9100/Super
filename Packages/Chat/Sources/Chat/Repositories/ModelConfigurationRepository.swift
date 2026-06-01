@@ -6,6 +6,12 @@ import GRDB
 public enum ModelConfigurationRepositoryError: Error, Sendable, Equatable {
     /// `setSelected(id:)` referenced a row that doesn't exist.
     case unknownModel(id: String)
+    /// `setSelected(id:)` referenced a row whose `kind` the running binary
+    /// can't build a provider for (a native-search kind with no shipped
+    /// adapter). Selecting it would demote every other row and then make
+    /// `selected()` return nil — leaving no active model. The repository
+    /// refuses instead of wedging the app.
+    case unselectableKind(id: String, kind: String)
 }
 
 /// Persistence boundary for `ModelConfigurationRecord` plus the matching
@@ -220,8 +226,20 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func setSelected(id: String) async throws {
         try await queue.write { db in
-            guard try ModelConfigurationRecord.fetchOne(db, key: id) != nil else {
+            guard let record = try ModelConfigurationRecord.fetchOne(db, key: id) else {
                 throw ModelConfigurationRepositoryError.unknownModel(id: id)
+            }
+            // Refuse to select a row this binary can't surface as the active
+            // model. `selected()` filters non-buildable kinds (the native-
+            // search kinds) through `buildableKindRequest`, so selecting one
+            // here would demote every other row and then yield nil from
+            // `selected()` — no active model, no error. Guard before the
+            // demote so the prior selection is left intact. Consistent with
+            // the seed paths' buildable-kind checks.
+            guard record.kind.hasProviderAdapter else {
+                throw ModelConfigurationRepositoryError.unselectableKind(
+                    id: id, kind: record.kind.rawValue
+                )
             }
             try ModelConfigurationRecord
                 .filter(Column("isSelected") == true)

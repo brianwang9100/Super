@@ -216,6 +216,28 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(resolved.catalogID == "")
     }
 
+    /// PR3a tripwire. The `!kind.hasProviderAdapter` short-circuit is the
+    /// only thing keeping an `.openAIResponses` row off the compat "openai"
+    /// entry today (they share `https://api.openai.com/v1`). When PR3a flips
+    /// `.openAIResponses.hasProviderAdapter` to `true`, that short-circuit
+    /// lifts and the URL-match branch runs — and unless PR3a *also* adds an
+    /// explicit native-kind dispatch, it will re-match "openai". This
+    /// invariant ("an `.openAIResponses` row never resolves to the compat
+    /// 'openai' provider") holds now (it resolves to Custom) and must keep
+    /// holding after PR3a (it should resolve to a dedicated native entry).
+    /// The ONLY way it resolves to "openai" is the regression — so this test
+    /// goes red the moment the flag flips without the dispatch fix, mechanically
+    /// forcing PR3a to address it rather than relying on the §11a prose.
+    @Test("resolveEditProvider never resolves an .openAIResponses row to the compat openai entry")
+    func resolveEditProviderNeverMisfilesOpenAIResponsesToCompat() {
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .openAIResponses,
+            modelId: "gpt-5.5",                                   // a real openai catalog id
+            baseURL: URL(string: "https://api.openai.com/v1")    // URL-matches the compat entry
+        )
+        #expect(resolved.providerID != "openai")
+    }
+
     @Test("resolveEditProvider keeps the compat URL-match for an .openAICompatible row")
     func resolveEditProviderCompatStillMatchesByURL() {
         // The same wire id + the catalog base URL on an .openAICompatible

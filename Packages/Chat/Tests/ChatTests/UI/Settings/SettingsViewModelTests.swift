@@ -1112,7 +1112,24 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         rows.removeAll { $0.id == id }
         storedKeys[id] = nil
     }
-    func setSelected(id: String) async throws {}
+    func setSelected(id: String) async throws {
+        // Mirror production's guard: refuse to select a row the binary can't
+        // build a provider for, so a test exercising this path validates
+        // against the same contract as `GRDBModelConfigurationRepository`.
+        guard let row = rows.first(where: { $0.id == id }) else {
+            throw ModelConfigurationRepositoryError.unknownModel(id: id)
+        }
+        guard row.kind.hasProviderAdapter else {
+            throw ModelConfigurationRepositoryError.unselectableKind(
+                id: id, kind: row.kind.rawValue
+            )
+        }
+        rows = rows.map {
+            var copy = $0
+            copy.isSelected = ($0.id == id)
+            return copy
+        }
+    }
     func storeAPIKey(_ key: String, ref: String) async throws {
         if let error = storeAPIKeyError { throw error }
         storedKeys[ref] = key
