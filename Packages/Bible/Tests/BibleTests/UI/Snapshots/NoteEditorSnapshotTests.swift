@@ -33,6 +33,14 @@ struct NoteEditorSnapshotTests {
         verify(theme: .sepia, mode: .create, initialText: "", name: "create_sepia")
     }
 
+    @Test("populated create state enables Save without a Delete section")
+    func createPopulatedLight() {
+        // Create mode with text typed: Save flips to enabled (accent) and
+        // no Delete section appears (that's edit-only). Distinct from both
+        // the empty-create and the edit states.
+        verify(theme: .light, mode: .create, initialText: Self.editBody, name: "create_populated_light")
+    }
+
     @Test("prefilled edit state renders in the light theme")
     func editLight() {
         verify(theme: .light, mode: .edit, initialText: Self.editBody, name: "edit_light")

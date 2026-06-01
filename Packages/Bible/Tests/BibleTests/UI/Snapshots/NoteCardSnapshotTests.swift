@@ -39,6 +39,16 @@ struct NoteCardSnapshotTests {
         verify(theme: .light, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_light")
     }
 
+    @Test("assistant note shows the provenance footer in the dark theme")
+    func assistantDark() {
+        verify(theme: .dark, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_dark")
+    }
+
+    @Test("assistant note shows the provenance footer in the sepia theme")
+    func assistantSepia() {
+        verify(theme: .sepia, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_sepia")
+    }
+
     @Test("a long body clamps to four lines with an ellipsis")
     func longBodyLight() {
         verify(theme: .light, date: "May 20, 2026", text: Self.longBody, author: nil, height: 180, name: "long_body_light")

@@ -53,7 +53,7 @@ struct NoteEditor: View {
         initialText: String = "",
         onSave: @escaping (String) -> Void,
         onCancel: @escaping () -> Void,
-        onDelete: @escaping () -> Void = {}
+        onDelete: @escaping () -> Void
     ) {
         self.citation = citation
         self.mode = mode
@@ -117,7 +117,11 @@ struct NoteEditor: View {
                     .accessibilityLabel("Cancel")
                 Spacer()
                 circleButton(symbol: "checkmark", accent: true, enabled: canSave) {
-                    onSave(text)
+                    // `canSave` gates on the trimmed value; forward the
+                    // trimmed text too so a body of only whitespace can't be
+                    // saved past the guard and leading/trailing space isn't
+                    // persisted.
+                    onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 .accessibilityLabel("Save note")
                 .disabled(!canSave)

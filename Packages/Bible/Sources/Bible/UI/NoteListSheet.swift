@@ -139,10 +139,15 @@ struct NoteListSheet: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(accessibilityLabel(for: item))
+                .accessibilityHint("Opens the note for editing")
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                // `allowsFullSwipe: false` so a full swipe reveals the Delete
+                // action rather than firing it — deletion always takes a
+                // deliberate tap on the revealed button (no one-gesture,
+                // no-undo data loss), symmetric with the editor's path.
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
                         onDelete(item.id)
                     } label: {
@@ -186,8 +191,8 @@ struct NoteListSheet: View {
 
     private func accessibilityLabel(for item: Item) -> String {
         if let author = item.author {
-            return "Note written by \(author) on \(item.dateWritten). Tap to edit."
+            return "Note written by \(author) on \(item.dateWritten)"
         }
-        return "Note from \(item.dateWritten). Tap to edit."
+        return "Note from \(item.dateWritten)"
     }
 }

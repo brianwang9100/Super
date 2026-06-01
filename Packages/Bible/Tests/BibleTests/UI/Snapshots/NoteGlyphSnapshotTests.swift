@@ -33,6 +33,16 @@ struct NoteGlyphSnapshotTests {
         verify(theme: .light, state: .outline, name: "outline_light")
     }
 
+    @Test("outline glyph renders in the dark theme")
+    func outlineDark() {
+        verify(theme: .dark, state: .outline, name: "outline_dark")
+    }
+
+    @Test("outline glyph renders in the sepia theme")
+    func outlineSepia() {
+        verify(theme: .sepia, state: .outline, name: "outline_sepia")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         state: NoteGlyph.GlyphState,
