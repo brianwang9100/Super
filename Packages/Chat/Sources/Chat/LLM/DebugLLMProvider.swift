@@ -249,13 +249,29 @@ public struct DebugLLMProvider: LLMProvider {
         ),
     ]
 
+    /// Sample Google Search-Suggestions HTML for the "gemini" search trigger,
+    /// exercising the always-visible `GeminiSearchSuggestionsView` strip without
+    /// a real grounded response. A minimal stand-in for Gemini's
+    /// `searchEntryPoint.renderedContent` (the real payload is richer styled
+    /// HTML); rendered unmodified by the strip just like the live one.
+    private static let debugSuggestionsHTML = """
+    <html><head><style>.c{font-family:-apple-system;font-size:14px;\
+    display:inline-block;padding:6px 12px;border:1px solid #ddd;\
+    border-radius:16px;margin:2px;color:#1a73e8;text-decoration:none}</style></head>\
+    <body><a class="c" href="https://www.google.com/search?q=mars+rover+news">mars rover news</a>\
+    <a class="c" href="https://www.google.com/search?q=jezero+crater+water">jezero crater water</a></body></html>
+    """
+
     /// Emit the `searchStarted → text → citations → messageComplete` sequence.
-    /// Errors (cancellation) surface as `.error` then a terminal
+    /// When the user text mentions "gemini" it additionally emits
+    /// `.searchSuggestionsHTML` so the mandatory Suggestions strip is
+    /// exercisable. Errors (cancellation) surface as `.error` then a terminal
     /// `.messageComplete`, matching the real providers' stream contract.
     private static func streamSearch(
         into continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation,
         messages: [LLMMessage]
     ) async {
+        let emitsSuggestions = lastUserText(messages).localizedCaseInsensitiveContains("gemini")
         do {
             try await sleep(milliseconds: Int.random(in: 150...500))
             continuation.yield(.searchStarted(query: "latest mars rover news"))
@@ -270,6 +286,9 @@ public struct DebugLLMProvider: LLMProvider {
             continuation.yield(.contentBlockStop(index: 0))
 
             continuation.yield(.citations(debugCitations))
+            if emitsSuggestions {
+                continuation.yield(.searchSuggestionsHTML(debugSuggestionsHTML))
+            }
             continuation.yield(.messageComplete(usage: TokenUsage(
                 inputTokens: messages.reduce(0) { $0 + approxTokens(of: $1) },
                 outputTokens: searchAnswer.count / 4

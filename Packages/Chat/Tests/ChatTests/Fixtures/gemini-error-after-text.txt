@@ -1,0 +1,4 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"partial"}]}}],"modelVersion":"gemini-2.5-pro","responseId":"resp_eat"}
+
+data: {"error":{"code":500,"message":"boom","status":"INTERNAL"}}
+

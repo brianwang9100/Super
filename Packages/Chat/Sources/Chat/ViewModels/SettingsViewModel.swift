@@ -647,18 +647,26 @@ public final class SettingsViewModel {
             } else {
                 resolvedKey = nil
             }
-            // Only unregister the old provider when we'll actually
-            // re-register a replacement. `registerProvider` is a no-op for
-            // kinds whose adapter hasn't shipped (the native-search kinds);
-            // unconditionally unregistering first would strip a provider
-            // registered at hydration time and leave nothing in its place,
-            // silently killing chat for that row until app restart. Gate on
-            // the same condition `registerProvider` uses so the two can't
-            // disagree.
-            if updated.kind.hasProviderAdapter {
-                await llmProviderRegistry?.unregister(id: id)
+            // Build the replacement first; only swap when we actually have one
+            // to register, so an edit never unregisters a working provider and
+            // leaves nothing in its place (which would silently kill chat for
+            // that row until restart). Building first makes the unregister
+            // condition *exactly* what registration would do — no
+            // `hasProviderAdapter` proxy that could drift from `makeLLMProvider`
+            // (a kind can be buildable-by-kind yet yield no provider when the
+            // row is missing its HTTP client or base URL, or AFM is
+            // unavailable). The add paths still go through `registerProvider`.
+            if let registry = llmProviderRegistry,
+               let replacement = makeLLMProvider(
+                   for: updated,
+                   apiKey: resolvedKey,
+                   http: httpClient,
+                   toolRegistry: toolRegistry,
+                   appleFoundationAvailability: appleFoundationAvailability
+               ) {
+                await registry.unregister(id: id)
+                await registry.register(replacement)
             }
-            await registerProvider(for: updated, apiKey: resolvedKey)
             await loadModels()
             onModelsChanged?()
         } catch {
