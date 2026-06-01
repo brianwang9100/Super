@@ -431,6 +431,18 @@ separate cleanup needed. Each fix has a regression test:
   `unknownProvider`. The row stays visible/editable via `all()`/`fetch(id:)`.
   (`selectedExcludesUnbuildableNativeKind` + `selectedReturnsBuildableRowDespiteNativeSibling`.)
   PR2 also keeps the warning log at the hydration skip site.
+- **Seed paths must match `selected()`'s buildable filter — FIXED.** Once `selected()`
+  moved to `buildableKindRequest`, the seed paths had to follow or a native-kind row
+  could wedge the app empty: `insertIfEmpty`'s empty-check and `insertDebugIfMissing`'s
+  selected-check now both count through `buildableKindRequest`, so a DB carrying only a
+  native row still seeds AFM (recoverable model) and a selected native row doesn't block
+  the debug seed from claiming selection. The demote helper was generalized
+  (`demoteUnknownKindSelections` → `demoteUnselectableSelections`, filtering
+  `!buildableKindRawValues.contains(kind)`) so it also frees the partial-unique slot held
+  by a *native* selected row before a selected seed inserts — otherwise the seed would
+  UNIQUE-violate. (`insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists`,
+  `insertIfEmptyDemotesSelectedNativeRowBeforeSeeding`,
+  `insertDebugIfMissingTakesSelectionWhenOnlyNativeKindRowIsSelected`.)
 - **`searchBackend: String?` magic literal `"native"` — DEFERRED to PR3a.** The
   value is currently an untyped `String?` threaded through Core (`ModelConfiguration`),
   Chat (`ModelConfigurationRecord`, `ModelRow`), and tests. It is intentionally *not*

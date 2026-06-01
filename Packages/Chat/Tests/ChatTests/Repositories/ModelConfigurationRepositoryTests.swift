@@ -321,6 +321,56 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await repo.selected()?.id == "seeded")
     }
 
+    /// A native-search kind decodes fine (it's in `allCases`) but has no
+    /// shipped adapter, so `selected()` filters it out via
+    /// `buildableKindRequest`. `insertIfEmpty`'s empty-check must use the
+    /// *same* filter — otherwise a DB carrying only a native-kind row looks
+    /// non-empty, the AFM seed no-ops, and the registry ends up empty with no
+    /// recoverable model. Regression for the seed/`selected()` filter
+    /// mismatch on PR #138.
+    @Test func insertIfEmptySeedsWhenOnlyUnbuildableNativeRowExists() async throws {
+        let (repo, _, _) = try makeRepoExposingQueue()
+        try await repo.save(
+            makeRecord(id: "native", kind: .anthropicNative, apiKeyRef: "kn")
+        )
+
+        let seeded = try await repo.insertIfEmpty {
+            self.makeRecord(id: "seeded", kind: .openAICompatible, apiKeyRef: "ks", isSelected: true)
+        }
+
+        // The native row doesn't count toward emptiness (it isn't buildable),
+        // so the seed runs and becomes the recoverable active model.
+        #expect(seeded?.id == "seeded")
+        #expect(try await repo.selected()?.id == "seeded")
+        // Both rows physically coexist — the native row stays visible/editable.
+        #expect(try await repo.all().map(\.id).sorted() == ["native", "seeded"])
+    }
+
+    /// When a selected native-kind row holds the partial-unique slot,
+    /// `insertIfEmpty` must demote it before inserting a selected seed —
+    /// `demoteUnselectableSelections` now covers native kinds (not just
+    /// truly-unknown ones), so the seed lands without a UNIQUE violation and
+    /// `selected()` reports the buildable seed instead of nil. Regression for
+    /// the blocking seed/`selected()` mismatch on PR #138.
+    @Test func insertIfEmptyDemotesSelectedNativeRowBeforeSeeding() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        try await repo.save(
+            makeRecord(id: "native-selected", kind: .anthropicNative, apiKeyRef: "kn", isSelected: true)
+        )
+
+        let seeded = try await repo.insertIfEmpty {
+            self.makeRecord(id: "seeded", apiKeyRef: "ks", isSelected: true)
+        }
+
+        // The seed lands without UNIQUE-violating against the selected native row.
+        #expect(seeded?.id == "seeded")
+        // The native row is demoted; the seed holds the selection slot.
+        #expect(try await rawIsSelected(queue: queue, id: "native-selected") == false)
+        #expect(try await rawIsSelected(queue: queue, id: "seeded") == true)
+        // `selected()` reports the buildable seed — not nil.
+        #expect(try await repo.selected()?.id == "seeded")
+    }
+
     #if DEBUG
     /// `insertDebugIfMissing` must use the filtered selection check so
     /// the debug row claims the selection slot when no recognised row
@@ -345,6 +395,33 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await rawIsSelected(queue: queue, id: "future-selected") == false)
         #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == true)
         // `selected()` now reports the debug row.
+        #expect(try await repo.selected()?.id == "debug-canned")
+    }
+
+    /// Sibling of the unknown-kind case: a selected *native* kind row is
+    /// also unbuildable, so `insertDebugIfMissing`'s `hasBuildableSelected`
+    /// check must report no active selection and let the debug row claim it.
+    /// Regression for the seed/`selected()` filter mismatch on PR #138.
+    @Test func insertDebugIfMissingTakesSelectionWhenOnlyNativeKindRowIsSelected() async throws {
+        let (repo, queue, _) = try makeRepoExposingQueue()
+        try await repo.save(
+            makeRecord(id: "native-selected", kind: .geminiNative, apiKeyRef: "kn", isSelected: true)
+        )
+
+        let inserted = try await repo.insertDebugIfMissing { shouldSelect in
+            self.makeRecord(
+                id: "debug-canned",
+                kind: .debug,
+                baseURL: nil,
+                apiKeyRef: nil,
+                isSelected: shouldSelect
+            )
+        }
+
+        #expect(inserted?.id == "debug-canned")
+        // The native row is demoted; the debug row holds selection.
+        #expect(try await rawIsSelected(queue: queue, id: "native-selected") == false)
+        #expect(try await rawIsSelected(queue: queue, id: "debug-canned") == true)
         #expect(try await repo.selected()?.id == "debug-canned")
     }
 

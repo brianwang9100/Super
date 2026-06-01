@@ -794,6 +794,17 @@ struct SettingsModelDetailPane: View {
             // Native-search kind without a shipped adapter: classify by kind,
             // never by URL (see the URL-collision note above). Custom keeps
             // the row fully editable and prevents a URL-driven reclassify.
+            //
+            // ⚠️ PR3a hazard: when an adapter ships and `hasProviderAdapter`
+            // flips to `true` for its kind, this guard stops short-circuiting
+            // and the URL-match branch below runs again. `.openAIResponses`
+            // shares `https://api.openai.com/v1` with the compat "openai"
+            // entry, so it would re-match the wrong provider. PR3a MUST add an
+            // explicit native-kind → native-entry dispatch here *before* the
+            // URL match, plus a `resolveEditProvider` test pinning an
+            // `.openAIResponses` row with `hasProviderAdapter == true`. No
+            // current test catches that regression once the flag flips.
+            // (Tracked in spec §11a.)
             return (LLMProviderCatalog.customProviderID, "")
         }
         if let match = LLMProviderCatalog.model(forModelId: modelId),

@@ -111,6 +111,19 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(google.supportsNativeSearch)
     }
 
+    /// The OpenAI compat (`defaultBaseURL`) and native (`nativeSearchBaseURL`)
+    /// base URLs are byte-identical — both are `https://api.openai.com/v1`.
+    /// That collision is the whole reason `resolveEditProvider` classifies
+    /// `.openAIResponses` rows by kind before URL-matching. Pin the equality
+    /// so a future edit that diverges one constant (and would quietly defuse
+    /// the collision the kind-first guard exists to handle) trips here and
+    /// forces the §11a PR3a note to be revisited.
+    @Test("OpenAI compat and native base URLs are intentionally identical")
+    func openAICompatAndNativeBaseURLsCollide() throws {
+        let openai = try #require(LLMProviderCatalog.entry(forID: "openai"))
+        #expect(openai.defaultBaseURL == openai.nativeSearchBaseURL)
+    }
+
     @Test("Providers without a native adapter expose nil + supportsNativeSearch == false")
     func providersWithoutNativeSearch() {
         for id in [LLMProviderCatalog.appleProviderID, "xai", LLMProviderCatalog.customProviderID] {
