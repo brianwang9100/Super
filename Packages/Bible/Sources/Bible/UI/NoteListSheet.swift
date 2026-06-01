@@ -144,9 +144,11 @@ struct NoteListSheet: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14))
                 // `allowsFullSwipe: false` so a full swipe reveals the Delete
-                // action rather than firing it — deletion always takes a
-                // deliberate tap on the revealed button (no one-gesture,
-                // no-undo data loss), symmetric with the editor's path.
+                // action instead of firing on the swipe itself — deletion
+                // takes a deliberate tap on the revealed button, not a single
+                // gesture. This is the lighter, list-conventional path; the
+                // editor's in-place delete adds a `.confirmationDialog` on top
+                // (the two paths are intentionally not identical).
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
                         onDelete(item.id)
@@ -190,9 +192,10 @@ struct NoteListSheet: View {
     }
 
     private func accessibilityLabel(for item: Item) -> String {
-        if let author = item.author {
-            return "Note written by \(author) on \(item.dateWritten)"
-        }
-        return "Note from \(item.dateWritten)"
+        // Include the note body so VoiceOver users hear the content, not
+        // just "Note from <date>" — the row's whole purpose is the text.
+        let origin = item.author.map { "Note written by \($0) on \(item.dateWritten)" }
+            ?? "Note from \(item.dateWritten)"
+        return "\(origin): \(item.text)"
     }
 }

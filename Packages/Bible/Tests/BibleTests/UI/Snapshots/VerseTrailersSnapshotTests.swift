@@ -33,9 +33,29 @@ struct VerseTrailersSnapshotTests {
         verify(theme: .light, hasAnnotation: false, hasNote: true, name: "note_only_light")
     }
 
+    @Test("note glyph alone collapses the annotation slot, dark")
+    func noteOnlyDark() {
+        verify(theme: .dark, hasAnnotation: false, hasNote: true, name: "note_only_dark")
+    }
+
+    @Test("note glyph alone collapses the annotation slot, sepia")
+    func noteOnlySepia() {
+        verify(theme: .sepia, hasAnnotation: false, hasNote: true, name: "note_only_sepia")
+    }
+
     @Test("annotation bubble alone collapses the note slot")
     func annotationOnlyLight() {
         verify(theme: .light, hasAnnotation: true, hasNote: false, name: "annotation_only_light")
+    }
+
+    @Test("annotation bubble alone collapses the note slot, dark")
+    func annotationOnlyDark() {
+        verify(theme: .dark, hasAnnotation: true, hasNote: false, name: "annotation_only_dark")
+    }
+
+    @Test("annotation bubble alone collapses the note slot, sepia")
+    func annotationOnlySepia() {
+        verify(theme: .sepia, hasAnnotation: true, hasNote: false, name: "annotation_only_sepia")
     }
 
     private func verify(

@@ -58,6 +58,16 @@ struct NoteListSheetSnapshotTests {
         verify(theme: .light, items: [Self.many[1]], name: "one_light")
     }
 
+    @Test("a single note renders the singular subtitle in the dark theme")
+    func oneDark() {
+        verify(theme: .dark, items: [Self.many[1]], name: "one_dark")
+    }
+
+    @Test("a single note renders the singular subtitle in the sepia theme")
+    func oneSepia() {
+        verify(theme: .sepia, items: [Self.many[1]], name: "one_sepia")
+    }
+
     @Test("many notes scroll in the light theme")
     func manyLight() {
         verify(theme: .light, items: Self.many, name: "many_light")

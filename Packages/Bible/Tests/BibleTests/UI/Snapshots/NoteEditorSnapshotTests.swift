@@ -41,6 +41,16 @@ struct NoteEditorSnapshotTests {
         verify(theme: .light, mode: .create, initialText: Self.editBody, name: "create_populated_light")
     }
 
+    @Test("populated create state renders in the dark theme")
+    func createPopulatedDark() {
+        verify(theme: .dark, mode: .create, initialText: Self.editBody, name: "create_populated_dark")
+    }
+
+    @Test("populated create state renders in the sepia theme")
+    func createPopulatedSepia() {
+        verify(theme: .sepia, mode: .create, initialText: Self.editBody, name: "create_populated_sepia")
+    }
+
     @Test("prefilled edit state renders in the light theme")
     func editLight() {
         verify(theme: .light, mode: .edit, initialText: Self.editBody, name: "edit_light")
