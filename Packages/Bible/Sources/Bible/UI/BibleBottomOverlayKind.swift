@@ -14,7 +14,8 @@ enum BibleBottomOverlayKind: Equatable, Identifiable {
     case narration
 
     /// Identity is the case itself: same case ⇒ same id (no-op), different
-    /// case ⇒ different id (re-present). `ID == Self` needs only `Equatable`,
-    /// so there's no `Hashable` conformance to maintain here.
+    /// case ⇒ different id (re-present). `Identifiable` requires `ID: Hashable`;
+    /// since this enum has no associated values, `Hashable` (and `Equatable`)
+    /// is synthesized automatically, so `ID == Self` satisfies it for free.
     var id: Self { self }
 }
