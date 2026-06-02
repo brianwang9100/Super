@@ -31,7 +31,6 @@ struct AppShellDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
-    let accountEmail: String
     /// Per-target cold-launch defaults. SuperOS passes `.standard`
     /// (chat opens expanded over last-used applet). SuperBible passes
     /// `AppShellLaunchBehavior(initialChatState: .minimized)` so Bible
