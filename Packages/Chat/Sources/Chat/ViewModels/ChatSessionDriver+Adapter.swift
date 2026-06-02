@@ -40,4 +40,12 @@ public struct LiveChatSessionDriver: ChatSessionDriver {
     public func cancel() async {
         await session.cancel()
     }
+
+    public func confirmToolCall(id: String) async {
+        await session.confirmToolCall(id: id)
+    }
+
+    public func skipToolCall(id: String) async {
+        await session.skipToolCall(id: id)
+    }
 }

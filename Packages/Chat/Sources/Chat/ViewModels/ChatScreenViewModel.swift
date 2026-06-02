@@ -470,6 +470,25 @@ public final class ChatScreenViewModel {
         }
     }
 
+    /// Approve the parked `request_web_search` proposal (inline confirm
+    /// row's "Search" button). Resumes the suspended turn with native
+    /// search enabled. Fire-and-forget: the resulting search + answer
+    /// stream back through the already-attached event stream.
+    public func confirmSearch(id: String) {
+        Task { [driver] in
+            await driver.confirmToolCall(id: id)
+        }
+    }
+
+    /// Decline the parked `request_web_search` proposal (inline confirm
+    /// row's "Skip" button). Resumes the turn so the model answers without
+    /// searching.
+    public func skipSearch(id: String) {
+        Task { [driver] in
+            await driver.skipToolCall(id: id)
+        }
+    }
+
     /// User tapped Copy on an assistant message: flip the pill state on
     /// and schedule its auto-dismissal. A fresh tap mid-dwell cancels the
     /// prior dismissal `Task` and restarts the timer — without the cancel
@@ -846,6 +865,13 @@ public final class ChatScreenViewModel {
             appendStreamingThinking(chunk)
         case .toolCallStarted, .toolCallCompleted, .toolCallFailed:
             await refreshTranscript()
+        case .toolCallAwaitingConfirmation:
+            // The parked proposal is persisted with status
+            // `.awaitingConfirmation`; project it from GRDB so the inline
+            // confirm row renders. The session stays suspended until the
+            // user taps Search/Skip (→ `confirmSearch`/`skipSearch`).
+            await refreshTranscript()
+            AccessibilityNotification.Announcement("Web search needs your approval").post()
         case .assistantMessageSaved(let assistantMessage):
             // Drain any buffered coalescer characters into the visible
             // tail before clearing — keeps the overlay byte-for-byte
@@ -1179,8 +1205,10 @@ public final class ChatScreenViewModel {
 
     private nonisolated static func mapStatus(_ status: ToolCallStatus) -> MessageList.ToolCallItem.Status {
         switch status {
-        case .pending, .executing, .awaitingConfirmation:
+        case .pending, .executing:
             return .running
+        case .awaitingConfirmation:
+            return .awaitingConfirmation
         case .success:
             return .success
         case .failed, .cancelled:
@@ -1235,6 +1263,16 @@ public protocol ChatSessionDriver: Sendable {
     /// cancels the underlying work (so view-model swaps don't abort
     /// streams), so an explicit cancel hook is needed.
     func cancel() async
+
+    /// Approve a parked `request_web_search` proposal so the session
+    /// re-issues the turn with native web search enabled. Driven by the
+    /// inline confirm row's "Search" button.
+    func confirmToolCall(id: String) async
+
+    /// Decline a parked `request_web_search` proposal so the session
+    /// answers without searching. Driven by the inline confirm row's
+    /// "Skip" button.
+    func skipToolCall(id: String) async
 }
 
 /// Default ``VoiceInputService`` used when no controller is injected

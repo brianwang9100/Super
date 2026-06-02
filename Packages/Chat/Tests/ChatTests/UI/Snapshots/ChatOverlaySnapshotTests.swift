@@ -270,6 +270,8 @@ private struct OverlayNoopDriver: ChatSessionDriver {
         return (nil, stream)
     }
     func cancel() async {}
+    func confirmToolCall(id: String) async {}
+    func skipToolCall(id: String) async {}
 }
 
 private actor OverlayMessageRepository: MessageRepository {

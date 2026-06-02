@@ -165,6 +165,7 @@ struct ChatSessionCompactionTests {
             case .textDelta: return "text"
             case .thinkingDelta: return "thinking"
             case .toolCallStarted: return "toolStarted"
+            case .toolCallAwaitingConfirmation: return "toolAwaitingConfirmation"
             case .toolCallCompleted: return "toolCompleted"
             case .toolCallFailed: return "toolFailed"
             case .assistantMessageSaved: return "assistantSaved"

@@ -372,6 +372,60 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ## 11a. Carried-forward review items from PR1/PR2 (must address in adapter PRs)
 
+> **Status update (web-search PR4, native cost gate).** PR4 wires the
+> `__native_web_search__` sentinel (recognized by all three adapters since
+> PR3a–c but never injected until now) and lands the **"Ask before each
+> search" cost gate**, default ON. Shipped:
+> - **`NativeWebSearch` proposal surface** — a `request_web_search(query,
+>   reason)` client tool + the sentinel as a buildable `LLMTool` + a
+>   `nativeBackendValue` constant + `usesNativeSearch(_:)`.
+> - **Detection without a new `stream`/`send` parameter** — `searchBackend`
+>   now rides `LLMModel` (Core); the native adapters stamp it from their
+>   `ModelConfiguration`, so `runTurnLoop` reads `model.searchBackend` off
+>   the model it already holds (§7.3's "encode intent in `tools`" is realized
+>   as: read the model, then append the sentinel/proposal). Resolves §11 open
+>   question on how the session learns a model is native-search.
+> - **Generic confirmation machinery** — `ChatEvent
+>   .toolCallAwaitingConfirmation`, `ChatSession.confirmToolCall(id:)` /
+>   `skipToolCall(id:)` (suspending `runTurnLoop` on a continuation, with a
+>   cancellation handler that resumes it on turn cancel), driven through the
+>   existing `ToolCallStatus.awaitingConfirmation`. Threaded through
+>   `ChatSessionDriver` + `LiveChatSessionDriver` + `LazyConversationDriver` +
+>   the view model (`confirmSearch`/`skipSearch`). Built generic (any tool can
+>   opt into the pause) so the standalone engine + destructive tools reuse it.
+> - **Gate turn-loop logic** — gate ON: advertise the proposal (no sentinel);
+>   on approve re-issue with the sentinel (proposal dropped); on skip, write a
+>   decline tool result and stop offering search for the rest of the loop (a
+>   `searchDeclined` flag prevents a re-propose cycle); gate OFF: sentinel from
+>   turn 1. Both flags reset per `send(...)`, so the gate prompts again for
+>   every new user message (matches §0 #2: prompt before EVERY search,
+>   per-user-turn granularity).
+> - **Inline confirm UI** — `SearchConfirmationRow` (approve/skip prompt +
+>   post-decision compact summary) routed in `AssistantMessage` so the internal
+>   `request_web_search` name/JSON never leaks into a generic tool card.
+>   Snapshot-tested (awaiting × light/dark/sepia + XXL, searched, skipped). A
+>   `.awaitingConfirmation` badge was added to the generic `ToolCallBlock` for a
+>   future destructive tool that parks there.
+> - **System prompt** — `ContextAssembler.formatWebSearchBlock(model:)`, a
+>   stable native-search-only block (economy + cite). The "propose and don't
+>   answer yet" mechanic lives in the proposal tool's own description so it's
+>   correct in both gate states.
+> - **`DebugLLMProvider`** honors the proposal/sentinel so the gate is
+>   exercisable in the simulator (a "search" message with the proposal tool
+>   present emits a `request_web_search` call; with the sentinel it streams the
+>   grounded answer + citations).
+>
+> **Carried-forward from PR4 (for the fast-follow Search settings pane):** the
+> `webSearch.askBeforeSearching` `SettingRecord` read/write + the Settings
+> **Search pane** that flips it are **deferred** — there's no writer yet, so
+> `ChatSession`/`ChatSessionStore` default the gate ON (with a
+> `setAskBeforeSearching(_:)` fan-out already in place). The pane PR wires the
+> persisted read at bootstrap + the toggle UI. **Unverified-until-live:** the
+> real provider behavior on the re-issued (approved) turn — that each adapter,
+> given the sentinel + the synthetic approval tool result in history, actually
+> performs the server search and grounds the answer — is covered by mocked
+> `ChatSession` tests now and flagged for live validation alongside PR5.
+>
 > **Status update (web-search PR3a, OpenAI-first).** The native adapters are
 > being delivered one provider per PR, **OpenAI Responses first** (it's the
 > lowest-risk — no encrypted round-trip, no mandatory WebView), then Anthropic

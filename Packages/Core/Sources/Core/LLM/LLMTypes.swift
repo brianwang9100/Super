@@ -56,19 +56,31 @@ public struct LLMModel: Sendable, Equatable, Hashable {
     public let supportsThinking: Bool
     public let supportsTools: Bool
     public let maxContextTokens: Int
+    /// Web-search engine the user selected for this model, carried over
+    /// from its `ModelConfiguration.searchBackend`: `"native"` (the
+    /// provider's own server-side search, set only for native `kind`s), a
+    /// standalone search-provider id, or `nil` for no web search. A native
+    /// provider stamps this from its configuration so the value rides the
+    /// model the chat session is already handed via `send(...)` — the turn
+    /// loop reads it to decide per-turn search wiring without any new
+    /// `stream(...)`/`send(...)` parameter. Defaults to `nil` for the
+    /// non-search providers (OpenAI-compat, Apple Foundation, debug).
+    public let searchBackend: String?
 
     public init(
         id: String,
         displayName: String,
         supportsThinking: Bool = false,
         supportsTools: Bool = true,
-        maxContextTokens: Int = 8_192
+        maxContextTokens: Int = 8_192,
+        searchBackend: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.supportsThinking = supportsThinking
         self.supportsTools = supportsTools
         self.maxContextTokens = maxContextTokens
+        self.searchBackend = searchBackend
     }
 }
 
