@@ -58,6 +58,13 @@ public struct SuperTheme: Sendable, Equatable {
     public let border: Color
     public let borderFaint: Color
 
+    /// Low-alpha tint biasing the frosted Liquid Glass on chrome and sheets
+    /// toward this theme's character — most load-bearing for Sepia, whose
+    /// warmth the system glass (which only tracks light/dark) would otherwise
+    /// drop. The alpha is deliberately low: the tint nudges the glass, it does
+    /// not paint it. Read by `superGlassButton`/`superGlassSurface`.
+    public let glassTint: Color
+
     // Code
     public let codeBackground: Color
     public let codeForeground: Color
@@ -106,6 +113,7 @@ public struct SuperTheme: Sendable, Equatable {
             accentDark:        OKLCH(0.32,  0.100, h).color,
             border:            OKLCH(0.88,  0.012, 180).color,
             borderFaint:       OKLCH(0.92,  0.010, 180).color,
+            glassTint:         OKLCH(0.97,  0.015, 150, alpha: 0.18).color,
             codeBackground:    OKLCH(0.32,  0.015, 200).color,
             codeForeground:    OKLCH(0.94,  0.010, 180).color,
             codeInlineBackground: OKLCH(0.92, 0.025, 150).color,
@@ -139,6 +147,7 @@ public struct SuperTheme: Sendable, Equatable {
             accentDark:        OKLCH(0.62, 0.10,  h).color,
             border:            OKLCH(0.32, 0.025, 155).color,
             borderFaint:       OKLCH(0.27, 0.022, 155).color,
+            glassTint:         OKLCH(0.30, 0.025, 155, alpha: 0.22).color,
             codeBackground:    OKLCH(0.14, 0.018, 155).color,
             codeForeground:    OKLCH(0.90, 0.020, 150).color,
             codeInlineBackground: OKLCH(0.30, 0.035, 155).color,
@@ -172,6 +181,7 @@ public struct SuperTheme: Sendable, Equatable {
             accentDark:        OKLCH(0.40, 0.13,  h).color,
             border:            OKLCH(0.85, 0.025, 70).color,
             borderFaint:       OKLCH(0.90, 0.020, 70).color,
+            glassTint:         OKLCH(0.92, 0.055, 80, alpha: 0.25).color,
             codeBackground:    OKLCH(0.30, 0.025, 60).color,
             codeForeground:    OKLCH(0.94, 0.020, 70).color,
             codeInlineBackground: OKLCH(0.90, 0.035, 70).color,

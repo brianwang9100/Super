@@ -10,10 +10,10 @@ import SwiftUI
 /// the pill's content can grow or shrink without shifting them. When verses
 /// are selected (`selectionCitation` is non-`nil`) the arrows step out and
 /// the centre slot becomes a citation pill with a clear control. The
-/// trailing slot is a green sparkles `Menu` while narration is idle (Add to
+/// trailing slot is a sparkles `Menu` while narration is idle (Add to
 /// chat / Start a new chat / Narrate); while narration is speaking or paused
-/// the same 36pt green circle stays, the sparkles glyph swaps for a speaker
-/// glyph, and tapping it toggles the transport card. The live verse citation
+/// the same 44pt Liquid Glass circle stays, the sparkles glyph swaps for a
+/// speaker glyph, and tapping it toggles the transport card. The live verse citation
 /// is intentionally not shown here — it lives in the transport card's header
 /// so the nav bar stays a stable, fixed-width row of three circles.
 /// The sidebar entry point is the shell's own floating hamburger, so this
@@ -54,43 +54,49 @@ struct BibleNavBar: View {
     let onTapNarrationPill: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Balances the trailing `+` so the centre group stays centered;
-            // the shell's floating hamburger sits over this gap.
-            Color.clear.frame(width: 36, height: 36)
+        // A single `GlassEffectContainer` so the row's Liquid Glass elements
+        // (arrows, centre pill, trailing control) share one backdrop sample
+        // and blend coherently rather than each compositing in isolation.
+        GlassEffectContainer {
+            HStack(spacing: 8) {
+                // Balances the trailing control so the centre group stays
+                // centered; the shell's floating hamburger sits over this gap
+                // and matches its 44pt size.
+                Color.clear.frame(width: 44, height: 44)
 
-            // Arrows pin to the edge controls (hamburger / plus) rather than
-            // to the pill, so chapter / book / translation length never
-            // shifts their position. In selection mode the arrows step out
-            // and the citation pill takes the full centre slot.
-            if selectionCitation == nil {
-                circleButton(systemImage: "chevron.left", action: onPrevious)
-                    .disabled(!canStepBackward)
-                    .opacity(canStepBackward ? 1 : 0.35)
-                    .accessibilityLabel("Previous chapter")
-            }
+                // Arrows pin to the edge controls (hamburger / plus) rather than
+                // to the pill, so chapter / book / translation length never
+                // shifts their position. In selection mode the arrows step out
+                // and the citation pill takes the full centre slot.
+                if selectionCitation == nil {
+                    circleButton(systemImage: "chevron.left", action: onPrevious)
+                        .disabled(!canStepBackward)
+                        .opacity(canStepBackward ? 1 : 0.35)
+                        .accessibilityLabel("Previous chapter")
+                }
 
-            Group {
-                if let selectionCitation {
-                    selectionPill(selectionCitation)
-                } else {
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        pill
-                        Spacer(minLength: 0)
+                Group {
+                    if let selectionCitation {
+                        selectionPill(selectionCitation)
+                    } else {
+                        HStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            pill
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
-            }
-            .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
 
-            if selectionCitation == nil {
-                circleButton(systemImage: "chevron.right", action: onNext)
-                    .disabled(!canStepForward)
-                    .opacity(canStepForward ? 1 : 0.35)
-                    .accessibilityLabel("Next chapter")
-            }
+                if selectionCitation == nil {
+                    circleButton(systemImage: "chevron.right", action: onNext)
+                        .disabled(!canStepForward)
+                        .opacity(canStepForward ? 1 : 0.35)
+                        .accessibilityLabel("Next chapter")
+                }
 
-            trailingControl
+                trailingControl
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 4)
@@ -108,7 +114,7 @@ struct BibleNavBar: View {
     }
 
     /// The book / translation pill — two segments split by a hairline,
-    /// matching the 36pt height of the circular nav buttons. The book
+    /// matching the 44pt height of the circular nav buttons. The book
     /// segment opens the book picker; the translation segment opens the
     /// translation picker.
     private var pill: some View {
@@ -155,10 +161,8 @@ struct BibleNavBar: View {
             .layoutPriority(1)
             .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
-        .frame(height: 36)
-        .background(Capsule().fill(theme.backgroundRaised))
-        .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+        .frame(height: 44)
+        .superGlassSurface(in: Capsule())
     }
 
     /// The selection-mode centre group: the verse citation with a clear
@@ -171,28 +175,29 @@ struct BibleNavBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
+            // A plain glyph rather than its own glass chip — nesting glass
+            // inside the pill's glass reads muddy, so the clear control sits
+            // directly on the pill surface with a roomy tap target.
             Button(action: onClearSelection) {
                 Image(systemName: "xmark")
                     .font(typography.font(size: 9, weight: .bold))
                     .foregroundStyle(theme.inkSoft)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(theme.backgroundSunken))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Clear selection")
         }
         .padding(.leading, 14)
-        .padding(.trailing, 4)
-        .frame(height: 36)
-        .background(Capsule().fill(theme.backgroundRaised))
-        .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+        .padding(.trailing, 6)
+        .frame(height: 44)
+        .superGlassSurface(in: Capsule())
     }
 
     /// The trailing-edge control. Switches between the idle sparkles
     /// menu (Add to chat / Start a new chat / Narrate) and the speaker
     /// button that toggles the transport card while narration runs. Same
-    /// 36pt green circle in both cases — only the glyph and the tap
+    /// 44pt Liquid Glass circle in both cases — only the glyph and the tap
     /// handler change, so the bar's geometry stays put. The red
     /// selection dot appears on both forms; the menu's chat actions
     /// remain selection-aware while narration runs.
@@ -219,13 +224,10 @@ struct BibleNavBar: View {
             }
         } label: {
             Image(systemName: "sparkles")
-                .font(typography.font(size: 16, weight: .semibold))
-                .foregroundStyle(theme.accentInk)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(theme.accent))
-                // Soft lift shadow matches the other 36pt nav-bar
-                // circles added in PR #76.
-                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+                .font(typography.font(size: 17, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
                 .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
         .menuStyle(.borderlessButton)
@@ -240,13 +242,10 @@ struct BibleNavBar: View {
     private var narrationButton: some View {
         Button(action: onTapNarrationPill) {
             Image(systemName: "speaker.wave.2.fill")
-                .font(typography.font(size: 15, weight: .semibold))
-                .foregroundStyle(theme.accentInk)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(theme.accent))
-                // Same soft lift as the sparkles button so the trailing
-                // slot's silhouette doesn't change when narration starts.
-                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+                .font(typography.font(size: 16, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
                 .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
         .buttonStyle(.plain)
@@ -279,12 +278,10 @@ struct BibleNavBar: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(typography.font(size: 15, weight: .medium))
+                .font(typography.font(size: 16, weight: .medium))
                 .foregroundStyle(theme.ink)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(theme.backgroundRaised))
-                .overlay(Circle().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 1)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
     }

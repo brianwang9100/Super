@@ -216,14 +216,13 @@ public struct ChatsScreen: View {
         Button(action: _startNewChat) {
             Image(systemName: "plus")
                 .font(typography.font(size: 18, weight: .semibold))
-                .foregroundStyle(theme.accentInk)
-                // 36×36 mirrors the shell's hamburger button; the 4pt
-                // top offset puts it on the same baseline (safe-area
-                // top + 4). Same modifier chain as `TodoScreen.addButton`.
-                .frame(width: 36, height: 36)
-                .background(theme.accent)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+                .foregroundStyle(theme.ink)
+                // 44×44 mirrors the shell's hamburger button so the two share a
+                // baseline. The accent fill is gone — this is plain Liquid Glass
+                // like the rest of the nav chrome; glass supplies its own edge
+                // and elevation (no fill or shadow of its own).
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
