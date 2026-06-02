@@ -63,6 +63,14 @@ public actor ChatSession {
     /// script, anything pre-M-memory).
     private let memoryRepository: (any MemoryRepository)?
 
+    /// Client-side web-search fulfiller for non-native (`searchBackend ==
+    /// "debug"`) models. `nil` in Release (and most fixtures): a stray mock
+    /// backend then resolves as a declined search rather than crashing. In
+    /// DEBUG the host injects `DebugWebSearchFulfiller`, and tests inject a
+    /// fake — so the mock branch in `runTurnLoop` is plain, testable code
+    /// rather than `#if DEBUG`.
+    private let webSearchFulfiller: (any WebSearchFulfilling)?
+
     /// Auto-compaction toggle. M9 wires this to `SettingRecord(key:
     /// "autoCompactEnabled")`. When false the session never invokes
     /// `Compactor` automatically, even above the threshold; `/compact`
@@ -97,6 +105,13 @@ public actor ChatSession {
     /// `cancelPendingConfirmation(id:)` (turn cancellation). Empty between
     /// gated searches.
     private var pendingConfirmations: [String: CheckedContinuation<Bool, Error>] = [:]
+
+    /// Canned sources/suggestions stashed by `fulfillMockSearch(_:)` on the
+    /// proposal turn, drained onto the *next* assistant message (the model's
+    /// grounded answer) in `streamOneTurn` — mirroring where a native
+    /// provider's `.citations` land. Empty between mock searches.
+    private var pendingMockSources: [SourceCitation] = []
+    private var pendingMockSuggestionsHTML: String?
 
     /// Chat-assistant base prompt, loaded once at app launch from
     /// `Resources/DefaultSystemPrompt.md`. Hidden from the user; owned by
@@ -220,7 +235,8 @@ public actor ChatSession {
         chatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
-        memoryRepository: (any MemoryRepository)? = nil
+        memoryRepository: (any MemoryRepository)? = nil,
+        webSearchFulfiller: (any WebSearchFulfilling)? = nil
     ) {
         self.conversationId = conversationId
         self.messageRepository = messageRepository
@@ -240,6 +256,7 @@ public actor ChatSession {
         self.appletBriefings = appletBriefings
         self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
+        self.webSearchFulfiller = webSearchFulfiller
     }
 
     /// Update the auto-compaction policy at runtime. M9's settings pane
@@ -590,35 +607,51 @@ public actor ChatSession {
         provider: LLMProvider
     ) async throws {
         let nativeSearch = NativeWebSearch.usesNativeSearch(model)
+        let mockSearch = NativeWebSearch.usesMockSearch(model)
         // Search-gate state for this user message's loop:
-        //  - `searchApproved` → the user approved; subsequent turns run with
-        //    native search enabled directly (proposal dropped) so the model
-        //    searches and answers in one pass.
+        //  - `searchApproved` → the search resolved positively. For native,
+        //    subsequent turns run with the sentinel directly (proposal
+        //    dropped) so the model searches and answers in one pass; for
+        //    mock, it just stops re-advertising the proposal (the search was
+        //    fulfilled in-process).
         //  - `searchDeclined` → the user skipped; stop offering search for the
         //    rest of this loop so the model can't re-propose in a cycle.
         // Both reset on the next `send(...)` (a fresh loop), so the gate
         // prompts again for every new user message.
         var searchApproved = false
         var searchDeclined = false
+        // Clear any client-mock search stash from a prior user turn. Normally
+        // `streamOneTurn` drains it onto the grounded answer, but if that turn
+        // throws (LLM/stream error) before the drain, the stash would survive
+        // and leak its canned sources onto an unrelated later turn (a Retry, or
+        // the next message). Resetting at each turn-loop entry guarantees a
+        // fresh user turn always starts clean.
+        pendingMockSources = []
+        pendingMockSuggestionsHTML = nil
         while true {
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
             var tools = await toolRegistry.enabledTools(for: provider)
-            // Per-turn search wiring, native-search models only:
-            //  - gate OFF, or already approved → append the sentinel so the
-            //    adapter attaches its own server search tool.
-            //  - gate ON and undecided → advertise the proposal tool so the
-            //    model must ask first (no sentinel → no server search).
-            //  - gate ON and declined → neither, so the model answers without
+            // Per-turn search wiring:
+            //  - native, gate OFF / already approved → append the sentinel so
+            //    the adapter attaches its own server search tool.
+            //  - native, gate ON and undecided → advertise the proposal tool
+            //    so the model must ask first (no sentinel → no server search).
+            //  - mock (any gate state) → advertise the proposal tool until the
+            //    search resolves; never a sentinel (no real provider search).
+            //  - declined / resolved → neither, so the model answers without
             //    search.
-            let gateActive = nativeSearch && askBeforeSearching && !searchApproved && !searchDeclined
+            let nativeProposalActive = nativeSearch && askBeforeSearching && !searchApproved && !searchDeclined
+            let mockProposalActive = mockSearch && !searchApproved && !searchDeclined
             if nativeSearch {
                 if !askBeforeSearching || searchApproved {
                     tools.append(NativeWebSearch.sentinelTool)
                 } else if !searchDeclined {
                     tools.append(NativeWebSearch.proposalTool)
                 }
+            } else if mockProposalActive {
+                tools.append(NativeWebSearch.proposalTool)
             }
             let toolCalls = try await streamOneTurn(
                 provider: provider,
@@ -630,44 +663,58 @@ public actor ChatSession {
             if toolCalls.isEmpty { return }
 
             // Intercept a web-search proposal — a client-side gate tool that
-            // is never executed through ToolRegistry. Park it for approval,
-            // write its tool result, then loop: an approval re-issues the
-            // turn with the sentinel attached. Any real tools the model
-            // requested alongside it still execute normally.
-            if gateActive,
+            // is never executed through ToolRegistry. For native, an approval
+            // re-issues the turn with the sentinel; for mock, the search is
+            // fulfilled in-process by the injected `WebSearchFulfilling`. Any
+            // real tools the model requested alongside it still execute.
+            if nativeProposalActive || mockProposalActive,
                let proposal = toolCalls.first(where: { $0.toolName == NativeWebSearch.proposalToolName }) {
                 let approved: Bool
-                do {
-                    approved = try await awaitSearchDecision(for: proposal)
-                } catch {
-                    // The turn was cancelled while the proposal was parked.
-                    // Still write a (declined) tool result before unwinding so
-                    // the persisted `tool_use` isn't left orphaned — a
-                    // `tool_use` with no matching `tool_result` is replayed on
-                    // the next turn's history and rejected by the provider,
-                    // wedging the conversation. The write must be shielded from
-                    // the turn's cancellation: GRDB's async `write` throws
-                    // `CancellationError` up front on an already-cancelled task,
-                    // so an inline `await` here would no-op. An unstructured
-                    // `Task` does not inherit cancellation, so its writes run to
-                    // completion; we await its result before rethrowing.
-                    await Task { [self] in
-                        try? await resolveProposal(proposal, approved: false)
-                    }.value
-                    throw error
+                if askBeforeSearching {
+                    do {
+                        approved = try await awaitSearchDecision(for: proposal)
+                    } catch {
+                        // The turn was cancelled while the proposal was parked.
+                        // Still write a (declined) tool result before unwinding so
+                        // the persisted `tool_use` isn't left orphaned — a
+                        // `tool_use` with no matching `tool_result` is replayed on
+                        // the next turn's history and rejected by the provider,
+                        // wedging the conversation. The write must be shielded from
+                        // the turn's cancellation: GRDB's async `write` throws
+                        // `CancellationError` up front on an already-cancelled task,
+                        // so an inline `await` here would no-op. An unstructured
+                        // `Task` does not inherit cancellation, so its writes run to
+                        // completion; we await its result before rethrowing.
+                        await Task { [self] in
+                            try? await resolveProposal(proposal, approved: false)
+                        }.value
+                        throw error
+                    }
+                } else {
+                    // Mock search with the gate off: no prompt, auto-approve.
+                    // (Native gate-off never reaches here — it advertises the
+                    // sentinel, not the proposal tool.)
+                    approved = true
                 }
                 if approved { searchApproved = true } else { searchDeclined = true }
-                // Success path (user tapped Approve or Skip): unlike the
-                // cancelled-while-parked branch above, this write is *not*
-                // cancellation-shielded. If the turn is cancelled in the
-                // narrow window between the continuation resuming and this
-                // write committing, GRDB throws at its first async hop and
-                // the `tool_use` is left without a matching `tool_result`.
-                // The window is sub-millisecond (the user would have to
-                // cancel almost simultaneously with their tap) and
-                // `executeToolCalls` carries the identical exposure, so this
-                // is a known, accepted trade-off rather than a regression.
-                try await resolveProposal(proposal, approved: approved)
+                // Success path (user tapped Approve/Skip, or gate-off
+                // auto-approve): unlike the cancelled-while-parked branch
+                // above, these writes are *not* cancellation-shielded. If the
+                // turn is cancelled in the narrow window between the
+                // continuation resuming and the write committing, GRDB throws
+                // at its first async hop and the `tool_use` is left without a
+                // matching `tool_result`. The window is sub-millisecond and
+                // `executeToolCalls` carries the identical exposure, so this is
+                // a known, accepted trade-off rather than a regression.
+                if mockSearch {
+                    if approved {
+                        try await fulfillMockSearch(proposal)
+                    } else {
+                        try await resolveProposal(proposal, approved: false)
+                    }
+                } else {
+                    try await resolveProposal(proposal, approved: approved)
+                }
                 let others = toolCalls.filter { $0.id != proposal.id }
                 if !others.isEmpty { try await executeToolCalls(others) }
                 continue
@@ -725,6 +772,47 @@ public actor ChatSession {
         try await toolCallRepository.updateStatus(
             id: record.id,
             status: approved ? .success : .cancelled,
+            result: encodeJSON(result),
+            completedAt: clock.now()
+        )
+        let updated = try await refreshed(record)
+        let toolResultMessage = MessageRecord(
+            id: idGenerator.nextID(),
+            conversationId: conversationId,
+            role: .tool,
+            content: result.content,
+            toolCallId: record.id,
+            createdAt: clock.now(),
+            tokenCount: nil
+        )
+        try await messageRepository.save(toolResultMessage)
+        broadcast(.toolCallCompleted(updated, result))
+    }
+
+    /// Fulfill an approved `request_web_search` proposal *client-side* for a
+    /// mock-backend model: run the injected `WebSearchFulfilling`, write its
+    /// findings as the tool result so the model grounds its next turn, and
+    /// stash the canned sources/suggestions for `streamOneTurn` to attach to
+    /// that grounded answer. With no fulfiller wired (Release, or a stray
+    /// `"debug"` row) this degrades to a declined search rather than
+    /// fabricating sources. Mirrors `resolveProposal`'s persistence shape.
+    private func fulfillMockSearch(_ record: ToolCallRecord) async throws {
+        guard let webSearchFulfiller else {
+            try await resolveProposal(record, approved: false)
+            return
+        }
+        let query = NativeWebSearch.proposedQuery(fromParametersJSON: record.parameters)
+        let outcome = await webSearchFulfiller.search(query: query)
+
+        // Stash onto the *next* assistant message (the grounded answer),
+        // matching where native `.citations` land — not this proposal turn.
+        pendingMockSources = outcome.sources
+        pendingMockSuggestionsHTML = outcome.searchSuggestionsHTML
+
+        let result = ToolResult(toolID: record.toolName, content: outcome.findings, isError: false)
+        try await toolCallRepository.updateStatus(
+            id: record.id,
+            status: .success,
             result: encodeJSON(result),
             completedAt: clock.now()
         )
@@ -963,6 +1051,22 @@ public actor ChatSession {
         let accumulatedText = liveTurn?.accumulatedText ?? ""
         let accumulatedThinking = liveTurn?.accumulatedThinking ?? ""
         let thinkingStartedAt = liveTurn?.thinkingStartedAt
+
+        // Drain client-mock search results stashed by `fulfillMockSearch` on
+        // the prior loop iteration onto *this* assistant message — the model's
+        // grounded answer — mirroring where a native provider's `.citations`
+        // land. Dedup against any stream citations with the same shared key.
+        if !pendingMockSources.isEmpty || pendingMockSuggestionsHTML != nil {
+            for cite in pendingMockSources {
+                let key = Self.citationDedupeKey(cite.url)
+                if !accumulatedSources.contains(where: { Self.citationDedupeKey($0.url) == key }) {
+                    accumulatedSources.append(cite)
+                }
+            }
+            if searchSuggestionsHTML == nil { searchSuggestionsHTML = pendingMockSuggestionsHTML }
+            pendingMockSources = []
+            pendingMockSuggestionsHTML = nil
+        }
 
         // Skip empty turns — the LLM yielded `.messageComplete` without
         // any text or tool calls. Persisting an empty assistant row would

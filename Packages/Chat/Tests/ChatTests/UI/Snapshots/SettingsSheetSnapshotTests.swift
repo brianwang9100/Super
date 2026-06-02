@@ -86,6 +86,36 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
+    /// `sampleModels` plus a native-web-search OpenAI row (kind
+    /// `.openAIResponses`, `searchBackend: "native"`). Edited, it resolves to
+    /// the OpenAI provider with the "Web search" picker showing "Native
+    /// (OpenAI)" — the headline state of this PR's picker.
+    private static let sampleModelsWithNativeOpenAI: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "openai-native", name: "GPT-5.5", monogram: "G5",
+            endpoint: "api.openai.com/v1", maxContextTokens: 1_000_000, isEnabled: true,
+            kind: .openAIResponses,
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5", supportsThinking: true, hasAPIKey: true,
+            searchBackend: "native"
+        ),
+    ]
+
+    #if DEBUG
+    /// `sampleModels` plus a debug row wired to the client-mock search backend
+    /// (`searchBackend: "debug"`). Edited, the "Web search" picker shows
+    /// "Debug (mock)". DEBUG-only (the case + option are compiled out of
+    /// Release).
+    private static let sampleModelsWithDebugSearch: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "debug-mock-search", name: "Debug (mock search)", monogram: "DB",
+            endpoint: "", maxContextTokens: DebugLLMProvider.maxContextTokens, isEnabled: true,
+            kind: .debug, baseURL: nil, modelId: DebugLLMProvider.modelID,
+            supportsThinking: true, hasAPIKey: false, searchBackend: "debug"
+        ),
+    ]
+    #endif
+
     // `ToolRow.name`/`summary` carry the user-facing display name + short
     // description (resolved from `LLMTool.displayName`/`summary`), never the
     // LLM-facing tool prompt. Two enabled tools so `SettingsRootPane`'s
@@ -700,6 +730,91 @@ struct SettingsSheetSnapshotTests {
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_model_detail_edit_light_xxl", function: function)
+    }
+
+    // MARK: - Web-search backend picker (model detail)
+
+    @Test("model detail edit — native web search selected (light)")
+    func modelDetailNativeSearch() async {
+        await verifyModelDetailEdit(
+            theme: .light, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            name: "settings_model_detail_native_search_light"
+        )
+    }
+
+    @Test("model detail edit — native web search selected (dark)")
+    func modelDetailNativeSearchDark() async {
+        await verifyModelDetailEdit(
+            theme: .dark, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            name: "settings_model_detail_native_search_dark"
+        )
+    }
+
+    // Sepia completes the light/dark/sepia matrix for the picker's headline
+    // (native) state per AGENTS.md §Testing.3.
+    @Test("model detail edit — native web search selected (sepia)")
+    func modelDetailNativeSearchSepia() async {
+        await verifyModelDetailEdit(
+            theme: .sepia, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            name: "settings_model_detail_native_search_sepia"
+        )
+    }
+
+    // Dynamic Type XXL covers the new "Web search" row's text reflow.
+    @Test("dynamic type XXL on model detail edit — native web search selected")
+    func modelDetailNativeSearchXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithNativeOpenAI,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "openai-native")
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_model_detail_native_search_light_xxl", function: function)
+    }
+
+    #if DEBUG
+    @Test("model detail edit — debug mock search selected (light)")
+    func modelDetailDebugSearch() async {
+        await verifyModelDetailEdit(
+            theme: .light, models: Self.sampleModelsWithDebugSearch, id: "debug-mock-search",
+            name: "settings_model_detail_debug_search_light"
+        )
+    }
+    #endif
+
+    /// Drive the model-detail pane in edit mode over an arbitrary `models`
+    /// fixture + row id — used by the web-search picker snapshots, which need
+    /// rows (native / debug-backed) that aren't in the default `sampleModels`.
+    private func verifyModelDetailEdit(
+        theme: SuperTheme.Identifier,
+        models: [SettingsViewModel.ModelRow],
+        id: String,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: models,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: id)
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     @Test("personalization pane")

@@ -28,16 +28,18 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
     public var isSelected: Bool
     public var createdAt: Date
     /// Selected web-search engine: `"native"` (provider's own server-side
-    /// search, paired with a native `kind`), a standalone search-provider
-    /// id, or `nil` for no web search. Nullable column added by the
-    /// `v6_searchBackend` migration; old rows decode as `nil`.
+    /// search, paired with a native `kind`), `"debug"` (the DEBUG client-side
+    /// mock backend — canned results via `DebugWebSearchFulfiller`, works on
+    /// any model), a standalone search-provider id, or `nil` for no web
+    /// search. Nullable column added by the `v6_searchBackend` migration; old
+    /// rows decode as `nil`.
     ///
     /// The `"native"` ⇒ native-`kind` pairing is an **add-time invariant**
-    /// established when the Add-Model flow resolves `kind`/`baseURL` from the
-    /// catalog's `nativeSearchAdapter`/`nativeSearchBaseURL` (a later PR);
-    /// it is not enforced by this type. No row can carry that pairing yet —
-    /// the native register arms in `hydrateProviders`/`registerProvider` are
-    /// unreachable until then.
+    /// established by the Add-Model web-search picker, which resolves
+    /// `kind`/`baseURL` from the catalog's
+    /// `nativeSearchAdapter`/`nativeSearchBaseURL`; it is not enforced by this
+    /// type. `"debug"` leaves the `kind` as `.openAICompatible` (or `.debug`
+    /// for the seeded mock row) — the mock backend rides any provider.
     public var searchBackend: String?
 
     public init(

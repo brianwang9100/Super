@@ -63,8 +63,9 @@ public struct LLMModel: Sendable, Equatable, Hashable {
     /// provider stamps this from its configuration so the value rides the
     /// model the chat session is already handed via `send(...)` — the turn
     /// loop reads it to decide per-turn search wiring without any new
-    /// `stream(...)`/`send(...)` parameter. Defaults to `nil` for the
-    /// non-search providers (OpenAI-compat, Apple Foundation, debug).
+    /// `stream(...)`/`send(...)` parameter. The OpenAI-compat provider also
+    /// stamps it so a non-native model can carry the DEBUG `"debug"` mock
+    /// backend; Apple Foundation leaves it `nil`.
     public let searchBackend: String?
 
     public init(

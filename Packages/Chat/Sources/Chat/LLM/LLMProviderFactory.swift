@@ -98,7 +98,10 @@ public func makeLLMProvider(
         case DebugNoteLLMProvider.modelID:
             return DebugNoteLLMProvider(id: record.id)
         default:
-            return DebugLLMProvider(id: record.id)
+            // Carry the row's search backend so a seeded "Debug (mock
+            // search)" row (`searchBackend == "debug"`) drives the
+            // client-mock search path end-to-end in the simulator.
+            return DebugLLMProvider(id: record.id, searchBackend: record.searchBackend)
         }
     #endif
     }

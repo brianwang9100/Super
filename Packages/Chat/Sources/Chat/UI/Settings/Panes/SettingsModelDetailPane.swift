@@ -44,6 +44,11 @@ struct SettingsModelDetailPane: View {
     @State private var apiKey: String
     @State private var supportsThinking: Bool
     @State private var maxContextText: String
+    /// Selected web-search backend value persisted to
+    /// `ModelConfigurationRecord.searchBackend`: `"native"`, `"debug"`
+    /// (DEBUG mock), or `nil` (off). The picker resolves the row's `kind`
+    /// and base URL from this at save time.
+    @State private var searchBackend: String?
     @State private var showingDeleteConfirm: Bool = false
     /// `true` while `apiKey` holds the synthetic bullets we seeded to
     /// signal "a key is stored" — flips to `false` the first time the
@@ -138,6 +143,7 @@ struct SettingsModelDetailPane: View {
             _modelId = State(initialValue: row.modelId)
             _supportsThinking = State(initialValue: row.supportsThinking)
             _maxContextText = State(initialValue: String(row.maxContextTokens))
+            _searchBackend = State(initialValue: row.searchBackend)
             let seedDots = row.hasAPIKey
             _apiKey = State(initialValue: seedDots ? Self.apiKeyPlaceholderDots : "")
             _apiKeyIsPlaceholder = State(initialValue: seedDots)
@@ -153,6 +159,7 @@ struct SettingsModelDetailPane: View {
             _modelId = State(initialValue: seeded.modelId)
             _supportsThinking = State(initialValue: seeded.supportsThinking)
             _maxContextText = State(initialValue: seeded.maxContextText)
+            _searchBackend = State(initialValue: nil)
             _apiKey = State(initialValue: "")
             _apiKeyIsPlaceholder = State(initialValue: false)
         }
@@ -246,6 +253,65 @@ struct SettingsModelDetailPane: View {
     /// for consistency (the entry is the only option).
     private var showsModelDropdown: Bool { !isCustom }
 
+    // MARK: - Web search backend picker
+
+    /// One option in the "Web search" picker. `value` is the persisted
+    /// `searchBackend` (nil = off).
+    private struct SearchBackendOption: Identifiable {
+        let value: String?
+        let label: String
+        var id: String { value ?? "__off__" }
+    }
+
+    /// Options for the current provider: always Off; `Native (<Provider>)`
+    /// when the provider has a native adapter; `Debug (mock)` in DEBUG so the
+    /// client-mock backend can be exercised against any model.
+    private var searchBackendOptions: [SearchBackendOption] {
+        var options = [SearchBackendOption(value: nil, label: "Off")]
+        if currentProvider.supportsNativeSearch {
+            options.append(SearchBackendOption(value: "native", label: "Native (\(currentProvider.displayName))"))
+        }
+        #if DEBUG
+        options.append(SearchBackendOption(value: "debug", label: "Debug (mock)"))
+        #endif
+        return options
+    }
+
+    /// Current picker label, falling back to "Off" if the stored value isn't
+    /// offered by this provider (e.g. a native row whose provider lost its
+    /// adapter).
+    private var searchBackendLabel: String {
+        searchBackendOptions.first { $0.value == searchBackend }?.label ?? "Off"
+    }
+
+    /// Show the picker only when there's a real choice — hidden for Apple
+    /// (on-device, no network search) and for providers that, in this build,
+    /// offer nothing beyond "Off" (e.g. xAI/Custom in Release).
+    private var showsSearchPicker: Bool {
+        !isApple && searchBackendOptions.count > 1
+    }
+
+    /// Resolve the `(kind, baseURL, searchBackend)` the picked backend
+    /// implies. Native swaps in the catalog's native adapter + native base
+    /// URL; off/debug keep the provider's compat kind + the passed
+    /// `compatBaseURL`.
+    ///
+    /// `compatBaseURL` is intentionally ignored on the native branch: native is
+    /// only offered for built-in providers (`supportsNativeSearch`), whose Base
+    /// URL field is hidden (`showsBaseURLField == isCustom`), so there's no
+    /// user-typed URL to honor — Custom never exposes a native option.
+    private func resolvedSearchSelection(
+        compatBaseURL: URL
+    ) -> (kind: LLMProviderKind, baseURL: URL, searchBackend: String?) {
+        if searchBackend == "native",
+           let adapter = currentProvider.nativeSearchAdapter,
+           let nativeURL = currentProvider.nativeSearchBaseURL {
+            return (adapter, nativeURL, "native")
+        }
+        let backend: String? = (searchBackend == "debug") ? "debug" : nil
+        return (currentProvider.kind, compatBaseURL, backend)
+    }
+
     /// Header text rendered above the form in edit mode when the row
     /// resolves to a built-in provider+model. Nil for Custom (no
     /// header — full editable form) and for unknown configs.
@@ -330,14 +396,17 @@ struct SettingsModelDetailPane: View {
                     placeholder: "200000",
                     text: $maxContextText,
                     keyboard: .numberPad,
-                    borderBottom: showsThinkingToggle,
+                    borderBottom: showsThinkingToggle || showsSearchPicker,
                     monospaced: true
                 )
                 if let errorMessage = contextWindowError {
                     contextWindowErrorRow(errorMessage)
                 }
                 if showsThinkingToggle {
-                    toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: false)
+                    toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: showsSearchPicker)
+                }
+                if showsSearchPicker {
+                    searchBackendPickerRow(borderBottom: false)
                 }
             }
             .padding(.top, 16)
@@ -443,6 +512,20 @@ struct SettingsModelDetailPane: View {
             ForEach(currentProvider.models) { model in
                 Button(action: { applyModelSelection(model.id) }) {
                     Text(model.displayName)
+                }
+            }
+        }
+    }
+
+    /// "Web search" picker row. Rendered inside the main field group (not
+    /// the create-mode picker section) so it shows in both create and edit —
+    /// editing a model is the main way to turn native search on/off.
+    @ViewBuilder
+    private func searchBackendPickerRow(borderBottom: Bool) -> some View {
+        pickerRow(label: "Web search", value: searchBackendLabel, borderBottom: borderBottom) {
+            ForEach(searchBackendOptions) { option in
+                Button(action: { searchBackend = option.value }) {
+                    Text(option.label)
                 }
             }
         }
@@ -737,6 +820,9 @@ struct SettingsModelDetailPane: View {
         modelId = seeded.modelId
         maxContextText = seeded.maxContextText
         supportsThinking = seeded.supportsThinking
+        // Reset to Off — native availability is provider-specific, so a
+        // "native" choice can't carry across a provider swap.
+        searchBackend = nil
         apiKey = ""
         apiKeyIsPlaceholder = false
         contextWindowError = nil
@@ -793,22 +879,22 @@ struct SettingsModelDetailPane: View {
         }
         switch kind {
         case .anthropicNative, .geminiNative, .openAIResponses:
-            // Native-search kinds: classify by kind, **never by URL** — and
-            // do it here, before the URL-match branch, *independent of*
-            // `hasProviderAdapter`. This is deliberate: `.openAIResponses`
-            // now has a shipped adapter (`hasProviderAdapter == true`) yet its
-            // persisted `baseURL` (`https://api.openai.com/v1`) is
-            // byte-identical to the compat "openai" entry's `defaultBaseURL`,
-            // so a URL-first match would misfile it as the compat provider and
-            // reopen it in compat-edit mode (where a model-id change on Save
-            // could overwrite the native wire id). Resolving by kind keeps that
-            // from happening regardless of the flag's value — the tripwire test
-            // `resolveEditProviderNeverMisfilesOpenAIResponsesToCompat` pins it.
-            //
-            // Custom is the safe target until the native Add-Model edit UI
-            // ships (web-search PR5): the row stays fully visible/editable and
-            // is never URL-reclassified. PR5 maps these to their own native
-            // provider entries here.
+            // Native-search row: map back to the provider entry that *declares*
+            // this native adapter (`nativeSearchAdapter == kind`), matching the
+            // model id within it. Classify by kind, **never by URL** — the
+            // native base URL (`https://api.openai.com/v1`) is byte-identical to
+            // the compat "openai" entry's `defaultBaseURL`, so a URL-first match
+            // couldn't tell the two apart. This is what makes editing a native
+            // model open in its real provider (e.g. OpenAI) with the Web search
+            // picker showing "Native (…)"; the picker then round-trips the
+            // native `kind`/base URL on Save. Falls back to Custom only if the
+            // catalog has no entry for this adapter (catalog drift).
+            for entry in LLMProviderCatalog.all where entry.nativeSearchAdapter == kind {
+                for model in entry.models where model.id == modelId {
+                    return (entry.id, model.id)
+                }
+                return (entry.id, "")
+            }
             return (LLMProviderCatalog.customProviderID, "")
         case .openAICompatible, .appleFoundation:
             break
@@ -1006,25 +1092,35 @@ struct SettingsModelDetailPane: View {
         // the stored Keychain entry alone. Without this guard the
         // bullets would be persisted as the literal API key on save.
         let keyForSave = apiKeyIsPlaceholder ? "" : apiKey
+        // Resolve the web-search backend into the persisted (kind, baseURL):
+        // native swaps in the catalog's native adapter + base URL; off/debug
+        // keep the compat kind + `url`. When the picker isn't shown, leave the
+        // existing backend untouched on edit (pass nil = preserve).
+        let resolved = resolvedSearchSelection(compatBaseURL: url)
+        let updateSelection: (kind: LLMProviderKind, searchBackend: String?)? =
+            showsSearchPicker ? (kind: resolved.kind, searchBackend: resolved.searchBackend) : nil
         Task {
             if let editingId {
                 await viewModel.updateModel(
                     id: editingId,
                     name: trimmedName,
-                    baseURL: url,
+                    baseURL: resolved.baseURL,
                     modelId: trimmedModelId,
                     apiKey: keyForSave,
                     supportsThinking: supportsThinking,
-                    maxContextTokens: maxCtx
+                    maxContextTokens: maxCtx,
+                    searchSelection: updateSelection
                 )
             } else {
                 await viewModel.createModel(
                     name: trimmedName,
-                    baseURL: url,
+                    baseURL: resolved.baseURL,
                     modelId: trimmedModelId,
                     apiKey: keyForSave,
                     supportsThinking: supportsThinking,
-                    maxContextTokens: maxCtx
+                    maxContextTokens: maxCtx,
+                    kind: resolved.kind,
+                    searchBackend: resolved.searchBackend
                 )
             }
             // Only pop on success — a non-nil error keeps the pane up
