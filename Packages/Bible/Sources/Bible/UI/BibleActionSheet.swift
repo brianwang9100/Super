@@ -2,11 +2,13 @@ import Core
 import SwiftUI
 
 /// The bottom sheet shown while verses are selected: the passage citation, a
-/// highlight-colour row, and the Copy / Share / chat actions.
+/// highlight-colour row, and two action rows split by a hairline divider — the
+/// AI row (Annotate, Add note, Add to chat, New chat) over the plain-text row
+/// (Copy, Share).
 ///
-/// The highlight row, Copy, and Share are all live: a swatch paints the
-/// selected verses, the dashed circle clears them. The two chat actions stand
-/// in for the deferred hand-off and raise a "coming soon" toast.
+/// Everything here is live: a swatch paints the selected verses, the dashed
+/// circle clears them, and each action row tile fires its callback (the chat
+/// rows hand the selection off through the event bus).
 struct BibleActionSheet: View {
     @Environment(\.superTheme) private var theme
 
@@ -32,11 +34,8 @@ struct BibleActionSheet: View {
         VStack(spacing: 0) {
             header
             highlightRow
-            Rectangle()
-                .fill(theme.borderFaint)
-                .frame(height: 0.5)
-                .padding(.horizontal, 2)
-            actionRow
+            divider
+            actionRows
         }
         // The card is now a native `.sheet` (the system supplies the drag bar,
         // rounded surface, and drag-to-dismiss). These insets are the content
@@ -94,7 +93,32 @@ struct BibleActionSheet: View {
         .padding(.bottom, 10)
     }
 
-    private var actionRow: some View {
+    /// Hairline separator reused between the highlight row and the actions, and
+    /// between the two action rows, so all three bands read as one surface.
+    private var divider: some View {
+        Rectangle()
+            .fill(theme.borderFaint)
+            .frame(height: 1)
+            .padding(.horizontal, 2)
+    }
+
+    /// The AI row over the plain-text row, split by the same hairline divider.
+    /// The padding around the second divider mirrors the gaps around the first
+    /// (≈10pt above, ≈12pt below, once each tile's own 4pt inset is counted) so
+    /// both separators sit in identical breathing room.
+    private var actionRows: some View {
+        VStack(spacing: 0) {
+            aiActionRow
+                .padding(.bottom, 6)
+            divider
+            nonAiActionRow
+                .padding(.top, 8)
+        }
+        .padding(.top, 8)
+    }
+
+    /// The accent-tinted AI actions, four tiles across.
+    private var aiActionRow: some View {
         HStack(spacing: 4) {
             actionButton(label: "Annotate", accent: true, action: onAnnotate) {
                 AnnotationBubble(state: .filled, size: 18)
@@ -108,6 +132,14 @@ struct BibleActionSheet: View {
             actionButton(label: "New chat", accent: true, action: onNewChat) {
                 sfIcon("bubble.left.and.bubble.right.fill", accent: true)
             }
+        }
+    }
+
+    /// The plain-text actions. Copy and Share keep the same 1/4 tile width as
+    /// the AI row above and stay left-aligned via two hidden placeholder tiles,
+    /// so the two tiles line up under the first two AI tiles.
+    private var nonAiActionRow: some View {
+        HStack(spacing: 4) {
             actionButton(label: "Copy", accent: false, action: onCopy) {
                 sfIcon("doc.on.doc", accent: false)
             }
@@ -117,8 +149,23 @@ struct BibleActionSheet: View {
                 }
             }
             .buttonStyle(.plain)
+            // Two hidden tiles fill the trailing 1/4 columns so Copy/Share keep
+            // the AI row's tile width and stay left-aligned. Hidden tiles (not
+            // Spacer/Color.clear) mirror a real tile's footprint exactly, so the
+            // row can't stretch the sheet vertically.
+            actionPlaceholderTile
+            actionPlaceholderTile
         }
-        .padding(.top, 8)
+    }
+
+    /// An invisible stand-in with a real tile's footprint, used to pad the
+    /// plain-text row out to the AI row's four columns.
+    private var actionPlaceholderTile: some View {
+        actionTile(label: "Copy", accent: false) {
+            sfIcon("doc.on.doc", accent: false)
+        }
+        .hidden()
+        .accessibilityHidden(true)
     }
 
     private func sfIcon(_ symbol: String, accent: Bool) -> some View {

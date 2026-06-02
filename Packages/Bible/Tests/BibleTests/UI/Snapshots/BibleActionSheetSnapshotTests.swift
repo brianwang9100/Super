@@ -7,9 +7,10 @@ import Testing
 
 /// Snapshots of `BibleActionSheet` — the selection action sheet across the
 /// three themes and for both a single-verse and a multi-range citation. The
-/// sheet's own type sizes are fixed, but a Dynamic Type XXL variant is
-/// recorded per root `AGENTS.md` §Testing — it guards against a future font
-/// change reflowing the swatch / action rows.
+/// sheet stacks the AI action row over the plain-text (Copy/Share) row, split
+/// by a hairline divider. The sheet's own type sizes are fixed, but a Dynamic
+/// Type XXL variant is recorded per root `AGENTS.md` §Testing — it guards
+/// against a future font change reflowing the swatch / action rows.
 @Suite("BibleActionSheet snapshots")
 @MainActor
 struct BibleActionSheetSnapshotTests {
@@ -61,13 +62,13 @@ struct BibleActionSheetSnapshotTests {
                 onAddNote: {}
             )
         }
-        .frame(width: 402, height: 260)
+        .frame(width: 402, height: 330)
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 260)),
+            as: .image(layout: .fixed(width: 402, height: 330)),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
