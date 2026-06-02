@@ -762,8 +762,11 @@ struct SettingsSheetSnapshotTests {
     }
 
     // Search pane — the two key states are the cost gate ON (default) and
-    // OFF, each across light / dark / sepia, plus an XXL variant pinning the
-    // multi-line footnote's reflow.
+    // OFF, each across light / dark / sepia, plus an XXL fixed-chrome
+    // sentinel (see the suite note: settings text scales with the in-app
+    // font-scale slider, not OS Dynamic Type, so the XXL baseline is
+    // intentionally byte-identical to `searchPaneOnLight` and a diff would
+    // flag an accidental reintroduction of Dynamic Type scaling here).
     @Test("search pane, gate on, light")
     func searchPaneOnLight() async {
         await verify(theme: .light, pane: .search, name: "settings_search_on_light")
