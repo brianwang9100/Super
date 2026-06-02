@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Collapsible tool-call card: header with tool name + status, expanded
-/// body with INPUT and RESULT panels in monospace. `.verbose` opens by
-/// default; `.simple` and `.thinking` keep it collapsed behind the chip.
+/// Collapsible tool-call card: header with the tool's friendly display name +
+/// status, expanded body with the technical function name plus INPUT and
+/// RESULT panels in monospace. `.verbose` opens by default; `.simple` and
+/// `.thinking` keep it collapsed behind the chip.
 struct ToolCallBlock: View {
     let call: MessageList.ToolCallItem
     let verbosity: ChatVerbosity
@@ -32,8 +33,8 @@ struct ToolCallBlock: View {
                     Image(systemName: "wrench.and.screwdriver")
                         .font(typography.font(.caption))
                         .foregroundStyle(theme.inkSoft)
-                    Text(call.toolName)
-                        .font(typography.mono(12, relativeTo: .caption))
+                    Text(call.toolDisplayName)
+                        .font(typography.font(.caption))
                         .foregroundStyle(theme.ink)
                     statusBadge
                     Spacer(minLength: 0)
@@ -50,6 +51,15 @@ struct ToolCallBlock: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
+                    // Surface the technical function name here (it's hidden
+                    // from the header, which shows the friendly display name)
+                    // so the actual tool the model invoked stays inspectable.
+                    if call.toolName != call.toolDisplayName {
+                        sectionLabel("FUNCTION")
+                        Text(call.toolName)
+                            .font(typography.mono(11, relativeTo: .caption2))
+                            .foregroundStyle(theme.inkSoft)
+                    }
                     sectionLabel("INPUT")
                     monospaceBlock(call.parametersJSON)
                     if let result = call.resultText {

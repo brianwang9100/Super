@@ -86,15 +86,22 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
+    // `ToolRow.name`/`summary` carry the user-facing display name + short
+    // description (resolved from `LLMTool.displayName`/`summary`), never the
+    // LLM-facing tool prompt. Two enabled tools so `SettingsRootPane`'s
+    // "N enabled" value stays "2 enabled".
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
-        .init(id: "time.now", name: "Current time", summary: "Returns the current local time in ISO-8601.", isEnabled: true),
-        // Memory is enabled in the snapshot so the gear affordance
-        // (visible only when both enabled AND configurable) renders;
-        // disabling it would hide the very thing this snapshot covers.
+        .init(id: "bible.annotate", name: "Bible annotations", summary: "Adds study annotation cards to a passage.", isEnabled: true),
+        // Disabled so the *enabled* count stays at 2 (leaving SettingsRootPane's
+        // "N enabled" Tools-row value and its baselines unchanged), and to show
+        // the toggle's off state in the snapshot.
+        .init(id: "time.now", name: "Current time", summary: "Reports the current date and time.", isEnabled: false),
+        // Memory is enabled so the gear affordance (visible only when both
+        // enabled AND configurable) renders.
         .init(
             id: MemoryTool.toolID,
             name: "Memory",
-            summary: "Lets me remember preferences across conversations.",
+            summary: "Remembers your preferences across conversations.",
             isEnabled: true,
             configPane: .memory
         ),
@@ -754,6 +761,42 @@ struct SettingsSheetSnapshotTests {
     @Test("tools pane")
     func toolsPane() async {
         await verify(theme: .light, pane: .tools, name: "settings_tools_light")
+    }
+
+    @Test("tools pane in dark")
+    func toolsPaneDark() async {
+        await verify(
+            theme: .dark, pane: .tools, name: "settings_tools_dark",
+            settings: Self.settings(themeId: .dark)
+        )
+    }
+
+    @Test("tools pane in sepia")
+    func toolsPaneSepia() async {
+        await verify(
+            theme: .sepia, pane: .tools, name: "settings_tools_sepia",
+            settings: Self.settings(themeId: .sepia)
+        )
+    }
+
+    @Test("dynamic type XXL on tools pane")
+    func toolsPaneXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .tools
+        )
+        .superTheme(.make(.light))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_tools_light_xxl", function: function)
     }
 
     @Test("compaction pane")

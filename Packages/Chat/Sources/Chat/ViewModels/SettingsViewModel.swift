@@ -306,8 +306,11 @@ public final class SettingsViewModel {
         tools = registrations.map { reg in
             ToolRow(
                 id: reg.tool.id,
-                name: reg.tool.name,
-                summary: reg.tool.description,
+                // User-facing label, never the LLM-facing `description`. Fall
+                // back to the technical `name` when a tool ships no friendly
+                // copy.
+                name: reg.tool.displayName ?? reg.tool.name,
+                summary: reg.tool.summary ?? "",
                 isEnabled: reg.isEnabled,
                 configPane: Self.configPane(forToolID: reg.tool.id)
             )

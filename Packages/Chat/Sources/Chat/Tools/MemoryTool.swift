@@ -96,7 +96,9 @@ public struct MemoryTool: ToolExecutor {
                 isRequired: false
             ),
         ],
-        appletId: MemoryTool.appletID
+        appletId: MemoryTool.appletID,
+        displayName: "Memory",
+        summary: "Remembers your preferences across conversations."
     )
 
     /// Convenience that builds a `ToolRegistration` for a ready-to-use

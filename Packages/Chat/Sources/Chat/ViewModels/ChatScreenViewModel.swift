@@ -139,6 +139,11 @@ public final class ChatScreenViewModel {
     /// without cross-applet wiring keep working.
     private let referenceInbox: ChatReferenceInbox?
 
+    /// Tool function-name → friendly display name, resolved from the tool
+    /// registry at the composition root. Used to label tool-call cards in the
+    /// transcript; an unmapped name falls back to itself.
+    private let toolDisplayNames: [String: String]
+
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
     /// Decouples the per-SSE delta rate from the rate at which
@@ -190,7 +195,8 @@ public final class ChatScreenViewModel {
         conversationRepository: (any ConversationRepository)? = nil,
         titleGenerator: TitleGenerator? = nil,
         voice: VoiceInputController? = nil,
-        referenceInbox: ChatReferenceInbox? = nil
+        referenceInbox: ChatReferenceInbox? = nil,
+        toolDisplayNames: [String: String] = [:]
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -201,6 +207,7 @@ public final class ChatScreenViewModel {
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
         self.referenceInbox = referenceInbox
+        self.toolDisplayNames = toolDisplayNames
         self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
@@ -1084,7 +1091,8 @@ public final class ChatScreenViewModel {
             self.items = Self.project(
                 messages: messages,
                 toolCalls: toolCalls,
-                checkpoint: checkpoint
+                checkpoint: checkpoint,
+                toolDisplayNames: toolDisplayNames
             )
             self.usedTokens = messages.reduce(0) { $0 + ($1.tokenCount ?? 0) }
         } catch {
@@ -1110,7 +1118,8 @@ public final class ChatScreenViewModel {
     public nonisolated static func project(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
-        checkpoint: CompactionCheckpointRecord?
+        checkpoint: CompactionCheckpointRecord?,
+        toolDisplayNames: [String: String] = [:]
     ) -> [MessageList.Item] {
         var items: [MessageList.Item] = []
         let toolCallsByMessage = Dictionary(grouping: toolCalls, by: \.messageId)
@@ -1145,6 +1154,7 @@ public final class ChatScreenViewModel {
                     MessageList.ToolCallItem(
                         id: call.id,
                         toolName: call.toolName,
+                        toolDisplayName: toolDisplayNames[call.toolName] ?? call.toolName,
                         parametersJSON: call.parameters,
                         resultText: toolResults[call.id],
                         status: Self.mapStatus(call.status)

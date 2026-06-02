@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Tools pane. Not in `settings.jsx` — designed to match the same visual
-/// language. One grouped card with one row per registered tool: name +
-/// faint-ink description + trailing toggle.
+/// language. One grouped card with one row per registered tool: friendly
+/// name + short user-facing summary + trailing toggle.
 struct SettingsToolsPane: View {
     @Bindable var viewModel: SettingsViewModel
 
@@ -35,10 +35,12 @@ struct SettingsToolsPane: View {
                 Text(tool.name)
                     .font(typography.font(.subheadline))
                     .foregroundStyle(theme.ink)
-                Text(tool.summary)
-                    .font(typography.font(.caption))
-                    .foregroundStyle(theme.inkFaint)
-                    .lineLimit(2)
+                if !tool.summary.isEmpty {
+                    Text(tool.summary)
+                        .font(typography.font(.caption))
+                        .foregroundStyle(theme.inkFaint)
+                        .lineLimit(2)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
