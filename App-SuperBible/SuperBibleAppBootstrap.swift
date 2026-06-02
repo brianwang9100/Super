@@ -214,6 +214,14 @@ enum SuperBibleAppBootstrap {
         // otherwise return Chat's generic `DefaultSystemPrompt.md`.
         let chatBriefing = SuperBibleSystemPromptLoader.load()
 
+        // DEBUG-only: mock-search backend fulfiller so the seeded "Debug
+        // (mock search)" model exercises the full search flow with no key.
+        #if DEBUG
+        let webSearchFulfiller: (any WebSearchFulfilling)? = DebugWebSearchFulfiller()
+        #else
+        let webSearchFulfiller: (any WebSearchFulfilling)? = nil
+        #endif
+
         let chatSessionStore = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
@@ -227,7 +235,8 @@ enum SuperBibleAppBootstrap {
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: initialSettings.userPersonalization,
-            memoryRepository: memoryRepository
+            memoryRepository: memoryRepository,
+            webSearchFulfiller: webSearchFulfiller
         )
 
         // Single shared event bus — created here (not inline in the

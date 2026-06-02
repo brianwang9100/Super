@@ -579,6 +579,139 @@ struct SettingsViewModelTests {
         #expect(modelRepo.storedKeys[saved?.apiKeyRef ?? ""] == "sk-test")
     }
 
+    @Test("createModel persists the picker-resolved native kind + searchBackend")
+    func createModelNativeBackend() async {
+        let modelRepo = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.createModel(
+            name: "GPT-5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "sk-test",
+            supportsThinking: true,
+            maxContextTokens: 200_000,
+            kind: .openAIResponses,
+            searchBackend: "native"
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.kind == .openAIResponses)
+        #expect(saved?.searchBackend == "native")
+    }
+
+    @Test("createModel persists the debug mock backend on a compat kind")
+    func createModelDebugBackend() async {
+        let modelRepo = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.createModel(
+            name: "Mock",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "sk-test",
+            supportsThinking: false,
+            maxContextTokens: 200_000,
+            searchBackend: "debug"
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.kind == .openAICompatible)
+        #expect(saved?.searchBackend == "debug")
+    }
+
+    @Test("updateModel searchSelection swaps a compat row to a native kind + backend")
+    func updateModelSearchSelectionNative() async {
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1", name: "GPT 5.5",
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                apiKeyRef: "ref-1", modelId: "gpt-5.5", createdAt: Date(),
+                kind: .openAICompatible, supportsThinking: true,
+                maxContextTokens: 200_000, isSelected: true
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "m1",
+            name: "GPT 5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 200_000,
+            searchSelection: (kind: .openAIResponses, searchBackend: "native")
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.kind == .openAIResponses)
+        #expect(saved?.searchBackend == "native")
+    }
+
+    @Test("updateModel searchSelection Off swaps a native row back to compat")
+    func updateModelSearchSelectionOff() async {
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1", name: "GPT 5.5",
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                apiKeyRef: "ref-1", modelId: "gpt-5.5", createdAt: Date(),
+                kind: .openAIResponses, supportsThinking: true,
+                maxContextTokens: 200_000, isSelected: true, searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "m1",
+            name: "GPT 5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 200_000,
+            searchSelection: (kind: .openAICompatible, searchBackend: nil)
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.kind == .openAICompatible)
+        #expect(saved?.searchBackend == nil)
+    }
+
+    @Test("updateModel with no searchSelection preserves the row's kind + searchBackend")
+    func updateModelPreservesSearchWhenUnset() async {
+        let modelRepo = StubModelRepository(rows: [
+            .init(
+                id: "m1", name: "GPT 5.5",
+                baseURL: URL(string: "https://api.openai.com/v1")!,
+                apiKeyRef: "ref-1", modelId: "gpt-5.5", createdAt: Date(),
+                kind: .openAIResponses, supportsThinking: true,
+                maxContextTokens: 200_000, isSelected: true, searchBackend: "native"
+            ),
+        ])
+        let vm = makeViewModel(modelRepository: modelRepo)
+        await vm.load()
+
+        await vm.updateModel(
+            id: "m1",
+            name: "Renamed",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            modelId: "gpt-5.5",
+            apiKey: "",
+            supportsThinking: true,
+            maxContextTokens: 200_000
+        )
+
+        let saved = modelRepo.rows.first
+        #expect(saved?.name == "Renamed")
+        #expect(saved?.kind == .openAIResponses)
+        #expect(saved?.searchBackend == "native")
+    }
+
     @Test("createModel surfaces repository failures via modelEditError")
     func createModelSurfacesFailures() async {
         // Regression test for the silent-catch bug: a Keychain failure
