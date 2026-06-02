@@ -220,6 +220,7 @@ public struct ChatOverlay: View {
         ChatScreen(
             viewModel: viewModel,
             progress: metrics.progress,
+            topSafeAreaInset: geo.safeAreaInsets.top,
             composerIsFocused: externalComposerIsFocused,
             onManageModels: onManageModels,
             onSurfaceTapped: { surfaceTapped() },
