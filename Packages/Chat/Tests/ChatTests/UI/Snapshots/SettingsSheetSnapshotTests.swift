@@ -856,7 +856,6 @@ struct SettingsSheetSnapshotTests {
         // pixel-comparison. Tests that exercise AFM-specific rendering
         // pass an explicit availability.
         SettingsViewModel(
-            accountEmail: "brianwang9100@gmail.com",
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
             modelRepository: NoopModelRepository(),

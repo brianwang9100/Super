@@ -1082,7 +1082,6 @@ struct SettingsViewModelTests {
         // exercise the AFM-available code path should pass
         // `appleFoundationAvailability: .available` explicitly.
         SettingsViewModel(
-            accountEmail: "test@example.com",
             appInfo: Self.appInfo,
             settingRepository: settingRepository,
             modelRepository: modelRepository,

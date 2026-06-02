@@ -368,8 +368,6 @@ The Settings modal is a **bottom sheet**: slides up from the bottom, anchored 40
 ┌─────────────────────────────────┐
 │ ×            Settings           │
 ├─────────────────────────────────┤
-│  brianwang9100@gmail.com       │ ← account chip
-├─────────────────────────────────┤
 │ ⬢ Models              4 configured › │
 │ 🌙 Theme              Light  › │
 ├─────────────────────────────────┤

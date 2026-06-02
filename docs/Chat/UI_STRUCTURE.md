@@ -165,8 +165,6 @@ Row-leading icons (`ModelsIcon`, `ThemeIcon`, `PromptIcon`, `VerbosityIcon`, `Ap
 
 ```
 SettingsRootPane                        (.../Panes/SettingsRootPane.swift)
-├── accountChip                         ⟵ email pill
-│
 ├── SettingsGroup                       ⟵ "Configured" group
 │   ├── Models       → .models          "N configured"
 │   └── Theme        → .theme           current theme name
@@ -185,7 +183,7 @@ SettingsRootPane                        (.../Panes/SettingsRootPane.swift)
 
 **View model:** `SettingsViewModel` (`Chat/ViewModels/SettingsViewModel.swift`).
 
-Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, account chrome (email + app version), and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`) on the same call, so the sheet is always in sync with what's on disk.
+Owns: the persisted `ChatSettings` snapshot, the configured-models list (`ModelRow`), the registered-tools list (`ToolRow`), the conversation count, the app version chrome, and the navigation path. Every mutation writes through to the underlying repository (`SettingRepository`, `ModelConfigurationRepository`, `GRDBToolEnablementRepository`) on the same call, so the sheet is always in sync with what's on disk.
 
 ---
 

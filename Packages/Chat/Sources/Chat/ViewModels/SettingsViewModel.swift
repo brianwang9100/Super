@@ -142,10 +142,6 @@ public final class SettingsViewModel {
     /// `viewModel.openPane(.modelDetail(id: nil))`.
     public var navigationPath: [SettingsSheet.Pane] = []
 
-    /// Account email shown in the chip at the top of the root pane.
-    /// Hardcoded to the user identity for MVP.
-    public let accountEmail: String
-
     /// Bundle metadata surfaced in the About pane and the root pane row.
     /// Injected so snapshot tests get a stable string instead of the host
     /// bundle's actual version.
@@ -198,7 +194,6 @@ public final class SettingsViewModel {
     public let appleFoundationAvailability: AppleFoundationAvailability
 
     public init(
-        accountEmail: String,
         appInfo: SuperAppInfo,
         settingRepository: any SettingRepository,
         modelRepository: any ModelConfigurationRepository,
@@ -213,7 +208,6 @@ public final class SettingsViewModel {
             SystemLanguageModel.default.availability
         )
     ) {
-        self.accountEmail = accountEmail
         self.appInfo = appInfo
         self.store = ChatSettingsStore(repository: settingRepository)
         self.modelRepository = modelRepository

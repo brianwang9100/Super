@@ -150,7 +150,6 @@ struct SettingsMemoryPaneSnapshotTests {
 
     private func makeViewModel(memoryRepository: any MemoryRepository) -> SettingsViewModel {
         SettingsViewModel(
-            accountEmail: "brianwang9100@gmail.com",
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
             modelRepository: NoopModelRepository(),

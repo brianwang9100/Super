@@ -75,7 +75,6 @@ struct SuperOSAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
-            accountEmail: "brianwang9100@gmail.com",
             // SuperOS keeps the standard launch policy: chat opens
             // expanded over the user's last-used applet (restored by
             // `UserDefaults` lookup further down in `bootstrap()`).

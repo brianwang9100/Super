@@ -84,25 +84,6 @@ struct CheckIconShape: Shape {
 
 // MARK: - Row-leading icon shapes (mirrors `iconFor` in settings.jsx)
 
-/// Profile icon (head + shoulders) — used by the account chip when shown
-/// as an avatar (the actual chip in MVP renders as a plain text card).
-struct ProfileIconShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let r = 4.0 / 24 * rect.width
-        let c = sscale(CGPoint(x: 12, y: 8), in: rect)
-        p.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
-        // Shoulders arc — match the SVG's "M4 21 a 8 8 0 0 1 16 0" by
-        // approximating with a quad curve through the apex.
-        let left = sscale(CGPoint(x: 4, y: 21), in: rect)
-        let right = sscale(CGPoint(x: 20, y: 21), in: rect)
-        let apex = sscale(CGPoint(x: 12, y: 13.5), in: rect)
-        p.move(to: left)
-        p.addQuadCurve(to: right, control: apex)
-        return p
-    }
-}
-
 /// Diamond/cube — Models pane.
 struct ModelsIconShape: Shape {
     func path(in rect: CGRect) -> Path {
