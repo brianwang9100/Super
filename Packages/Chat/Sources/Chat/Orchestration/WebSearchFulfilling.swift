@@ -4,7 +4,7 @@ import Foundation
 /// Result of a client-side (non-native) web search: the model-readable
 /// findings plus the citations to surface, mirroring what a native provider
 /// streams as `.citations` (and optionally `.searchSuggestionsHTML`).
-public struct MockSearchResult: Sendable, Equatable {
+public struct WebSearchResult: Sendable, Equatable {
     /// Text fed back to the model as the search tool's result so it can
     /// ground its answer. Reads like a short findings summary.
     public let findings: String
@@ -39,6 +39,6 @@ public struct MockSearchResult: Sendable, Equatable {
 public protocol WebSearchFulfilling: Sendable {
     /// Run the search for `query` and return the findings + citations to
     /// surface. Non-throwing: a fulfiller folds any failure into an
-    /// empty/error `MockSearchResult` so the turn loop always gets a result.
-    func search(query: String) async -> MockSearchResult
+    /// empty/error `WebSearchResult` so the turn loop always gets a result.
+    func search(query: String) async -> WebSearchResult
 }

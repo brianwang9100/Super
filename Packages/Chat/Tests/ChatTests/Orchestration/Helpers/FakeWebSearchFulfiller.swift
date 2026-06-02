@@ -4,18 +4,18 @@ import Foundation
 @testable import Chat
 
 /// Records every `search(query:)` call and returns a scripted
-/// `MockSearchResult`, so `ChatSession`'s client-mock search path is testable
+/// `WebSearchResult`, so `ChatSession`'s client-mock search path is testable
 /// without `#if DEBUG` / `DebugWebSearchFulfiller`. Mirrors the other
 /// `Fake*` orchestration doubles.
 actor FakeWebSearchFulfiller: WebSearchFulfilling {
-    private let result: MockSearchResult
+    private let result: WebSearchResult
     private var queries: [String] = []
 
-    init(result: MockSearchResult) {
+    init(result: WebSearchResult) {
         self.result = result
     }
 
-    func search(query: String) async -> MockSearchResult {
+    func search(query: String) async -> WebSearchResult {
         queries.append(query)
         return result
     }
