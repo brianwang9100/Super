@@ -111,7 +111,7 @@ struct BibleActionSheet: View {
             aiActionRow
                 .padding(.bottom, 6)
             divider
-            nonAiActionRow
+            plainTextActionRow
                 .padding(.top, 8)
         }
         .padding(.top, 8)
@@ -138,7 +138,7 @@ struct BibleActionSheet: View {
     /// The plain-text actions. Copy and Share keep the same 1/4 tile width as
     /// the AI row above and stay left-aligned via two hidden placeholder tiles,
     /// so the two tiles line up under the first two AI tiles.
-    private var nonAiActionRow: some View {
+    private var plainTextActionRow: some View {
         HStack(spacing: 4) {
             actionButton(label: "Copy", accent: false, action: onCopy) {
                 sfIcon("doc.on.doc", accent: false)
@@ -158,11 +158,12 @@ struct BibleActionSheet: View {
         }
     }
 
-    /// An invisible stand-in with a real tile's footprint, used to pad the
-    /// plain-text row out to the AI row's four columns.
+    /// An invisible stand-in occupying one tile column — a clear icon plus a
+    /// blank label matching a real tile's footprint — used to pad the plain-text
+    /// row out to the AI row's four columns so Copy/Share keep the AI tile width.
     private var actionPlaceholderTile: some View {
-        actionTile(label: "Copy", accent: false) {
-            sfIcon("doc.on.doc", accent: false)
+        actionTile(label: " ", accent: false) {
+            Color.clear.frame(width: 18, height: 18)
         }
         .hidden()
         .accessibilityHidden(true)
