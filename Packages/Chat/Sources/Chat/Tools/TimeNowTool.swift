@@ -67,7 +67,9 @@ public struct TimeNowTool: ToolExecutor {
                 isRequired: false
             ),
         ],
-        appletId: TimeNowTool.appletID
+        appletId: TimeNowTool.appletID,
+        displayName: "Current time",
+        summary: "Reports the current date and time."
     )
 
     /// Convenience that builds a `ToolRegistration` for a ready-to-use

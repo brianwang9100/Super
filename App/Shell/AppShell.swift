@@ -636,6 +636,13 @@ struct AppShell: View {
             persisted: persistedModelId,
             available: providerModels
         )
+        // Friendly tool labels for the transcript's tool-call cards. Built
+        // here because the registry has every applet's tools registered; the
+        // Chat package can't statically see other applets' descriptors.
+        let toolDisplayNames = await dependencies.toolRegistry.allRegistrations()
+            .reduce(into: [String: String]()) { map, registration in
+                map[registration.tool.name] = registration.tool.displayName ?? registration.tool.name
+            }
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -649,7 +656,8 @@ struct AppShell: View {
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
             voice: voice,
-            referenceInbox: referenceInbox
+            referenceInbox: referenceInbox,
+            toolDisplayNames: toolDisplayNames
         )
         let registry = dependencies.llmProviderRegistry
         // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.

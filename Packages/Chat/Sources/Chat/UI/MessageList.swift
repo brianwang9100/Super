@@ -57,7 +57,13 @@ public struct MessageList: View {
             case failed
         }
         public let id: String
+        /// Technical function name the LLM called (e.g. `bible.annotate`).
+        /// The header uses `toolDisplayName`; this surfaces in the card's
+        /// expanded detail only when it differs from the display name.
         public let toolName: String
+        /// Friendly, user-facing label resolved from the tool registry, with
+        /// a fallback to `toolName` for tools no longer registered.
+        public let toolDisplayName: String
         public let parametersJSON: String
         public let resultText: String?
         public let status: Status
@@ -65,12 +71,14 @@ public struct MessageList: View {
         public init(
             id: String,
             toolName: String,
+            toolDisplayName: String,
             parametersJSON: String,
             resultText: String?,
             status: Status
         ) {
             self.id = id
             self.toolName = toolName
+            self.toolDisplayName = toolDisplayName
             self.parametersJSON = parametersJSON
             self.resultText = resultText
             self.status = status

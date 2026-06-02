@@ -103,6 +103,34 @@ struct ChatScreenViewModelProjectionTests {
         #expect(calls[0].resultText == "It is 3pm.")
     }
 
+    @Test("toolDisplayNames maps the technical name to a friendly label; unmapped falls back")
+    func toolDisplayNameResolves() {
+        let messages: [MessageRecord] = [
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
+        ]
+        let toolCalls: [ToolCallRecord] = [
+            ToolCallRecord(id: "tc1", messageId: "a1", conversationId: "c", toolName: "time.now", parameters: "{}", result: nil, status: .executing, createdAt: now, completedAt: nil),
+            ToolCallRecord(id: "tc2", messageId: "a1", conversationId: "c", toolName: "mystery.tool", parameters: "{}", result: nil, status: .executing, createdAt: now, completedAt: nil),
+        ]
+
+        let items = ChatScreenViewModel.project(
+            messages: messages,
+            toolCalls: toolCalls,
+            checkpoint: nil,
+            toolDisplayNames: ["time.now": "Current time"]
+        )
+        guard case .assistantText(_, _, _, _, let calls, _, _) = items[0] else {
+            Issue.record("expected assistant row")
+            return
+        }
+        #expect(calls.count == 2)
+        // Mapped: technical `toolName` resolves to the friendly display name…
+        #expect(calls[0].toolName == "time.now")
+        #expect(calls[0].toolDisplayName == "Current time")
+        // …and an unmapped tool falls back to its technical name.
+        #expect(calls[1].toolDisplayName == "mystery.tool")
+    }
+
     @Test("assistant web-search citations project onto the row as source pills")
     func sourceCitationsProject() {
         let attachments = MessageAttachments(sources: [
