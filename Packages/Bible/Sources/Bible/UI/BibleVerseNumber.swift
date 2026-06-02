@@ -8,10 +8,16 @@ import SwiftUI
 struct BibleVerseNumber {
     let number: Int
 
-    /// - Parameter color: resolved foreground (the theme's faint ink).
-    func text(color: Color) -> Text {
+    /// - Parameters:
+    ///   - color: resolved foreground (the theme's faint ink).
+    ///   - font: the resolved marker font. Passed in rather than read from the
+    ///     environment so this type stays a pure `Text`-vending value; the
+    ///     caller (`BibleParagraphBlock`) resolves it through `SuperTypography`
+    ///     so the number scales with the app font-scale slider and OS Dynamic
+    ///     Type alongside the verse words it precedes.
+    func text(color: Color, font: Font) -> Text {
         Text("\(number)")
-            .font(.caption2)
+            .font(font)
             .foregroundStyle(color)
             .baselineOffset(4)
     }

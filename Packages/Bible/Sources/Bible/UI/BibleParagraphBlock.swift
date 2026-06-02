@@ -53,13 +53,19 @@ struct BibleParagraphBlock: View {
     /// driver views without a sheet host).
     let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
+    /// Section-heading base point, declared via `@ScaledMetric` so the heading
+    /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
+    /// folds in — the dual-axis pattern. Base 22 == `.title2` at the default
+    /// content-size category, preserving the pre-migration size.
+    @ScaledMetric(relativeTo: .title2) private var headingSize: CGFloat = 22
 
     var body: some View {
         switch paragraph {
         case .heading(let title):
             Text(title)
-                .font(.system(.title2, design: .serif))
+                .font(typography.font(size: headingSize, design: .serif))
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -270,6 +276,14 @@ private struct VerseWord: View {
     let isPoetry: Bool
     let theme: SuperTheme
     let onTap: (Int) -> Void
+    @Environment(\.superTypography) private var typography
+    /// Verse-word base point, declared via `@ScaledMetric` so reading text
+    /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
+    /// folds in. Base 17 == `.body`, the pre-migration size.
+    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = 17
+    /// Raised verse-marker base point. Base 11 == `.caption2`, the
+    /// pre-migration size; tracks the same two axes as the word it precedes.
+    @ScaledMetric(relativeTo: .caption2) private var verseNumberSize: CGFloat = 11
 
     var body: some View {
         if token.isVerseStart {
@@ -344,12 +358,13 @@ private struct VerseWord: View {
     /// once. A trailing space is baked in so the word's cell — and the
     /// `underlineRule` drawn under it — extends to meet the next word.
     private var styledText: Text {
+        let wordFont = typography.font(size: verseBodySize)
         let word = Text(token.word + " ")
-            .font(isPoetry ? .body.italic() : .body)
+            .font(isPoetry ? wordFont.italic() : wordFont)
             .foregroundStyle(theme.ink)
         guard token.showsVerseNumber else { return word }
         let number = BibleVerseNumber(number: token.verseNumber)
-            .text(color: theme.inkFaint)
+            .text(color: theme.inkFaint, font: typography.font(size: verseNumberSize))
         return number + Text(" ") + word
     }
 

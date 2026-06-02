@@ -83,7 +83,16 @@ edit the face strings in `make(.serif)` — one place, whole app. A `"typography
 - **PR C:** Migrate all Todo views (re-pointing the earlier title work), re-record.
 - **PR D:** Migrate all Bible views + the **Bible fontScale fix** (Bible currently ignores
   the app font slider; threading `SuperTypography` makes it respect it) + a new Bible snapshot
-  font-registration helper, re-record.
+  font-registration helper, re-record. **Split into D1 (reader surface) + D2 (chrome/sheets):**
+  - **PR D1 (done):** the reader surface only — chapter title (now brand serif, `.italic()`
+    dropped per *Resolution invariants*), section headings, verse words + raised verse numbers,
+    nav bar, and prev/next footer. Added `SnapshotFontRegistration` to Bible (mirrors Chat's),
+    wired into the two reader-driver suites, re-recorded `BibleChapterReader` + `BibleScreen`
+    baselines, and added a `populated_font_scale_max` (1.2×) variant proving the slider scales
+    the whole reader. The other 18 Bible snapshot suites were byte-identical (system-sans sites
+    resolve identically at 1.0×), confirming the migration's blast radius is reader-only.
+  - **PR D2 (deferred):** the remaining Bible chrome — book/translation/action/narration sheets,
+    annotation + note surfaces, attach toast. Same migration rule.
 
 ## Snapshot strategy
 
