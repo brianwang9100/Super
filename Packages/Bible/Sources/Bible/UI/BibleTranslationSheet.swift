@@ -6,6 +6,7 @@ import SwiftUI
 /// the sheet; the active translation's row is tinted and checked.
 struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// The translation currently in use — its row renders as active.
     let current: BibleTranslation
@@ -40,11 +41,11 @@ struct BibleTranslationSheet: View {
     private var header: some View {
         HStack {
             Text("Translation")
-                .font(.system(size: 16, weight: .semibold))
+                .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(theme.ink)
             Spacer()
             Button("Done", action: onClose)
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .foregroundStyle(theme.inkFaint)
                 .buttonStyle(.plain)
         }
@@ -59,7 +60,7 @@ struct BibleTranslationSheet: View {
         } label: {
             HStack(spacing: 14) {
                 Text(translation.rawValue)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(typography.font(size: 12, weight: .semibold, design: .monospaced))
                     .tracking(0.5)
                     .foregroundStyle(isActive ? theme.accentInk : theme.inkSoft)
                     .frame(width: 44, height: 44)
@@ -70,10 +71,10 @@ struct BibleTranslationSheet: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(translation.rawValue)
-                        .font(.system(size: 15, weight: isActive ? .semibold : .medium))
+                        .font(typography.font(size: 15, weight: isActive ? .semibold : .medium))
                         .foregroundStyle(isActive ? theme.accent : theme.ink)
                     Text(translation.name)
-                        .font(.system(size: 13))
+                        .font(typography.font(size: 13))
                         .foregroundStyle(theme.inkFaint)
                 }
 
@@ -81,7 +82,7 @@ struct BibleTranslationSheet: View {
 
                 if isActive {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(typography.font(size: 13, weight: .bold))
                         .foregroundStyle(theme.accent)
                 }
             }

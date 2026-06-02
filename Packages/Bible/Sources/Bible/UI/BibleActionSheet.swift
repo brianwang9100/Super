@@ -11,6 +11,7 @@ import SwiftUI
 /// rows hand the selection off through the event bus).
 struct BibleActionSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// The selection citation shown in the sheet header, e.g. `"1 Peter 2:9"`.
     let citation: String
@@ -49,7 +50,7 @@ struct BibleActionSheet: View {
     private var header: some View {
         HStack {
             Text(citation)
-                .font(.system(size: 13, weight: .semibold))
+                .font(typography.font(size: 13, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
             Spacer()
@@ -61,7 +62,7 @@ struct BibleActionSheet: View {
     private var highlightRow: some View {
         HStack(spacing: 8) {
             Text("HIGHLIGHT")
-                .font(.system(size: 9.5, weight: .medium))
+                .font(typography.font(size: 9.5, weight: .medium))
                 .tracking(0.6)
                 .foregroundStyle(theme.inkFaint)
             Spacer()
@@ -82,7 +83,7 @@ struct BibleActionSheet: View {
                     .frame(width: 28, height: 28)
                     .overlay {
                         Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(typography.font(size: 11, weight: .bold))
                             .foregroundStyle(theme.inkFaint)
                     }
             }
@@ -171,7 +172,7 @@ struct BibleActionSheet: View {
 
     private func sfIcon(_ symbol: String, accent: Bool) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: 16, weight: .medium))
+            .font(typography.font(size: 16, weight: .medium))
             .foregroundStyle(accent ? theme.accent : theme.ink)
     }
 
@@ -200,7 +201,7 @@ struct BibleActionSheet: View {
                         .fill(accent ? theme.accentSoft : theme.backgroundSunken)
                 )
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(typography.font(size: 11, weight: .medium))
                 .foregroundStyle(accent ? theme.accent : theme.ink)
         }
         .frame(maxWidth: .infinity)

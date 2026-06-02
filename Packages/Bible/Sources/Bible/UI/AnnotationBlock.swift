@@ -23,6 +23,7 @@ import SwiftUI
 /// side effects go through the three injected callbacks.
 struct AnnotationBlock: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Card body content. The reference case carries both the display
     /// label (what to show) and the parsed citation target (where to
@@ -106,7 +107,7 @@ struct AnnotationBlock: View {
             .frame(width: 26, height: 26)
             .overlay(
                 Image(systemName: category.iconSystemName)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(typography.font(size: 14, weight: .medium))
                     .foregroundStyle(theme.accent)
             )
             // Collapse to one labelled element: the default `.ignore` hides
@@ -120,7 +121,7 @@ struct AnnotationBlock: View {
         HStack(alignment: .center, spacing: 9) {
             categoryBadge
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(typography.font(size: 10, weight: .medium, design: .monospaced))
                 .tracking(0.7)
                 .foregroundStyle(theme.inkFaint)
                 .lineLimit(1)
@@ -134,7 +135,7 @@ struct AnnotationBlock: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(typography.font(size: 14, weight: .medium))
                     .foregroundStyle(theme.inkFaint)
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
@@ -149,7 +150,7 @@ struct AnnotationBlock: View {
         switch content {
         case .text(let markdown):
             Text(attributed(from: markdown))
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .lineSpacing(2)
                 .foregroundStyle(theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -160,9 +161,9 @@ struct AnnotationBlock: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(label)
-                        .font(.system(size: 13.5, weight: .medium))
+                        .font(typography.font(size: 13.5, weight: .medium))
                     Image(systemName: "arrow.up.forward")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(typography.font(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(theme.accent)
                 .padding(.horizontal, 12)
@@ -174,7 +175,7 @@ struct AnnotationBlock: View {
             .accessibilityLabel("Open \(label)")
         case .reference(let label, .none):
             Text(label)
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .foregroundStyle(theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -182,7 +183,7 @@ struct AnnotationBlock: View {
 
     private var footer: some View {
         Text(provenance)
-            .font(.system(size: 10, weight: .regular, design: .monospaced))
+            .font(typography.font(size: 10, weight: .regular, design: .monospaced))
             .tracking(0.3)
             .foregroundStyle(theme.inkMute)
             .lineLimit(1)

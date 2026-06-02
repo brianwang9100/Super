@@ -21,6 +21,12 @@ import Testing
 @Suite("AnnotationSheetContainer snapshots")
 @MainActor
 struct AnnotationSheetContainerSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
     private static let spec = BibleAnnotationTargetSpec.verseRange(
         bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30

@@ -31,8 +31,17 @@ import UIKit
 /// discoverable by feel, same as on those devices.
 struct NarrationTransportSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.openURL) private var openURL
     @Bindable var controller: NarrationController
+    // Base point sizes for the card's text styles, carried as scaled metrics
+    // so each composes OS Dynamic Type (via the metric) on top of the app
+    // font-scale slider (folded in by `SuperTypography`). Bases match the
+    // semantic styles they replace: .caption2 == 11, .headline == 17,
+    // .footnote == 13 at the default content-size category.
+    @ScaledMetric(relativeTo: .caption2) private var eyebrowSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .footnote) private var chipSize: CGFloat = 13
     /// Short citation of what's being narrated — shown as the card's
     /// title line under the `NOW NARRATING` label (e.g.
     /// `"1 Peter 2:5"`). Updates as narration advances; the caller
@@ -96,17 +105,17 @@ struct NarrationTransportSheet: View {
             decorativeBadge
             VStack(alignment: .leading, spacing: 2) {
                 Text("NOW NARRATING")
-                    // Relative text style so Dynamic Type scales the
-                    // eyebrow with the citation underneath rather than
-                    // freezing it at 10pt regardless of user setting.
-                    .font(.caption2.weight(.semibold))
+                    // Scaled-metric base so Dynamic Type scales the eyebrow
+                    // with the citation underneath rather than freezing it,
+                    // and the app font-scale slider moves it too.
+                    .font(typography.font(size: eyebrowSize, weight: .semibold))
                     .tracking(0.8)
                     .foregroundStyle(theme.inkSoft)
                 Text(citation)
-                    // `.headline` is the same nominal 17pt + semibold
-                    // as the prior absolute, but scales with Dynamic
-                    // Type so accessibility users see a larger title.
-                    .font(.headline)
+                    // 17pt semibold (== `.headline`) over a scaled-metric
+                    // base, so it scales with both Dynamic Type and the app
+                    // font-scale slider.
+                    .font(typography.font(size: titleSize, weight: .semibold))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -123,7 +132,7 @@ struct NarrationTransportSheet: View {
     /// down" from the nav.
     private var decorativeBadge: some View {
         Image(systemName: "speaker.wave.2.fill")
-            .font(.system(size: 18, weight: .semibold))
+            .font(typography.font(size: 18, weight: .semibold))
             .foregroundStyle(theme.accent)
             .frame(width: 44, height: 44)
             .background(
@@ -136,7 +145,7 @@ struct NarrationTransportSheet: View {
     private var stopButton: some View {
         Button(action: onStop) {
             Image(systemName: "stop.fill")
-                .font(.system(size: 13, weight: .bold))
+                .font(typography.font(size: 13, weight: .bold))
                 .foregroundStyle(theme.ink)
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(theme.backgroundSunken))
@@ -196,7 +205,7 @@ struct NarrationTransportSheet: View {
             }
         } label: {
             Image(systemName: glyph)
-                .font(.system(size: 22, weight: .bold))
+                .font(typography.font(size: 22, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 56, height: 56)
                 .background(Circle().fill(theme.accent))
@@ -212,7 +221,7 @@ struct NarrationTransportSheet: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
+                .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
                 .background(Circle().fill(theme.backgroundSunken))
@@ -301,16 +310,16 @@ struct NarrationTransportSheet: View {
     private func dropdownChip(label: String, value: String) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.footnote)
+                .font(typography.font(size: chipSize))
                 .foregroundStyle(theme.inkSoft)
             Spacer(minLength: 8)
             Text(value)
-                .font(.footnote.weight(.semibold))
+                .font(typography.font(size: chipSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
+                .font(typography.font(size: 9, weight: .semibold))
                 .foregroundStyle(theme.inkSoft)
         }
         .padding(.horizontal, 14)

@@ -91,8 +91,22 @@ edit the face strings in `make(.serif)` — one place, whole app. A `"typography
     baselines, and added a `populated_font_scale_max` (1.2×) variant proving the slider scales
     the whole reader. The other 18 Bible snapshot suites were byte-identical (system-sans sites
     resolve identically at 1.0×), confirming the migration's blast radius is reader-only.
-  - **PR D2 (deferred):** the remaining Bible chrome — book/translation/action/narration sheets,
-    annotation + note surfaces, attach toast. Same migration rule.
+  - **PR D2 (done):** the remaining Bible chrome — book/translation/action/narration sheets,
+    annotation + note surfaces, attach toast, and the `BibleScreen` "Chapter unavailable" fallback.
+    Mechanical migration: plain `.system(size:)` → `typography.font(size:)` (byte-identical at
+    1.0×); `design: .monospaced` sites now resolve the brand **JetBrains Mono** (date stamps,
+    verse/note counts, section labels, provenance) and `design: .serif` sites the brand
+    **Instrument Serif** (the disclaimer title, the note-list citation, the unavailable fallback);
+    `NarrationTransportSheet`'s semantic `.headline`/`.footnote`/`.caption2` styles moved to
+    `@ScaledMetric` bases fed through `typography.font(size:)` (byte-identical at default Dynamic
+    Type; a sub-pixel shift at DT XXL, the documented metric tradeoff). Added the
+    `SnapshotFontRegistration` `init()` to the 10 chrome suites that now render a brand face;
+    re-recorded those + the 2 `BibleScreen` `unavailable_*` baselines. The sans-only suites
+    (action sheet, attach toast, glyphs, verse trailers) stayed byte-identical, confirming the
+    blast radius is exactly the mono/serif surfaces.
+
+This completes the SuperTypography migration: every shipping surface (Core splash, Chat, Todo,
+the Bible reader, and the Bible chrome) now resolves its faces through `SuperTypography`.
 
 ## Snapshot strategy
 

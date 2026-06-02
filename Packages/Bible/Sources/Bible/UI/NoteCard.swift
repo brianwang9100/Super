@@ -19,6 +19,7 @@ import SwiftUI
 /// same rename rationale `AnnotationBlock.Content` follows.
 struct NoteCard: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Pre-formatted "date written", e.g. `"May 24, 2026"`. Uppercased
     /// for display here. The caller formats it because date formatting
@@ -49,12 +50,12 @@ struct NoteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(dateWritten.uppercased())
-                .font(.system(size: dateSize, weight: .medium, design: .monospaced))
+                .font(typography.font(size: dateSize, weight: .medium, design: .monospaced))
                 .tracking(0.6)
                 .foregroundStyle(theme.inkFaint)
                 .lineLimit(1)
             Text(text)
-                .font(.system(size: bodySize))
+                .font(typography.font(size: bodySize))
                 .lineSpacing(3)
                 .foregroundStyle(theme.ink)
                 .lineLimit(lineLimit)
@@ -80,10 +81,10 @@ struct NoteCard: View {
     private func provenance(author: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "sparkles")
-                .font(.system(size: sparkleSize, weight: .medium))
+                .font(typography.font(size: sparkleSize, weight: .medium))
                 .foregroundStyle(theme.inkMute)
             Text("Written by \(author)")
-                .font(.system(size: provenanceSize, weight: .regular, design: .monospaced))
+                .font(typography.font(size: provenanceSize, weight: .regular, design: .monospaced))
                 .tracking(0.4)
                 .foregroundStyle(theme.inkMute)
                 .lineLimit(1)

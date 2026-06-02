@@ -13,6 +13,12 @@ import Testing
 @Suite("AnnotationBlock snapshots")
 @MainActor
 struct AnnotationBlockSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let shortBody = "Paul, writing from prison in Rome around 60 AD. Romans is the longest of his letters and the most systematic."
 
     private static let longBody = """

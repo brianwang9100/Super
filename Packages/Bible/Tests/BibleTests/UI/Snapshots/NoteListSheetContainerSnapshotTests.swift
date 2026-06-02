@@ -26,6 +26,12 @@ import Testing
 @Suite("NoteListSheetContainer snapshots")
 @MainActor
 struct NoteListSheetContainerSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let now = Date(timeIntervalSince1970: 1_700_000_000)
     private static let spec = BibleNoteTargetSpec.verseRange(
         bookId: "JHN", chapterNumber: 3, verseStart: 16, verseEnd: 18
