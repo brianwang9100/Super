@@ -1,9 +1,10 @@
+import Core
 import SwiftUI
 
-/// Top bar of the Settings sheet. Mirrors the `Header` block in
-/// `settings.jsx`: leading 32pt circular button (back chevron on sub-panes,
-/// close X on the root pane), centered semibold title, hidden 32pt spacer
-/// on the trailing edge that keeps the title visually centered.
+/// Top bar of the Settings sheet: leading 44pt circular Liquid Glass button
+/// (back chevron on sub-panes, close X on the root pane), centered semibold
+/// title, and a hidden 44pt spacer on the trailing edge that keeps the title
+/// visually centered.
 struct SettingsHeader: View {
     let title: String
     let isRoot: Bool
@@ -56,13 +57,8 @@ struct SettingsHeader: View {
     ) -> some View {
         Button(action: action) {
             content()
-                .frame(width: 32, height: 32)
-                .background(
-                    Circle().fill(theme.backgroundRaised)
-                )
-                .overlay(
-                    Circle().strokeBorder(theme.borderFaint, lineWidth: 1)
-                )
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
     }
