@@ -12,6 +12,10 @@ import Testing
 @Suite("MessageList snapshots", .serialized)
 @MainActor
 struct MessageListSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     private let items: [MessageList.Item] = [
         .userBubble(id: "u1", text: "What's the time in Tokyo?", references: []),
         .assistantText(

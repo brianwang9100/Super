@@ -12,6 +12,10 @@ import Testing
 @Suite("VerseReferencePill snapshots")
 @MainActor
 struct VerseReferencePillSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     private func host<V: View>(_ view: V, theme: SuperTheme.Identifier) -> some View {
         view
             .padding(12)

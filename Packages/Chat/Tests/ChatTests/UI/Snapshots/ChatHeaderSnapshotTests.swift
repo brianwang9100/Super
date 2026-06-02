@@ -11,6 +11,10 @@ import Testing
 @Suite("ChatHeader snapshots", .serialized)
 @MainActor
 struct ChatHeaderSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     @Test("light theme")
     func lightTheme() {
         verify(theme: .light, name: "header_light")

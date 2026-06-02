@@ -12,6 +12,10 @@ import Testing
 @Suite("UserBubble verse-pill snapshots")
 @MainActor
 struct UserBubbleSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     private func pill(_ id: String, _ label: String) -> VerseReferencePillModel {
         VerseReferencePillModel(id: id, label: label)
     }
