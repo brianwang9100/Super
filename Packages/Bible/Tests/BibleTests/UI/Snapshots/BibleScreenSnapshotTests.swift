@@ -30,6 +30,12 @@ import Testing
 @Suite("BibleScreen snapshots")
 @MainActor
 struct BibleScreenSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so the chapter
+    /// title and section headings resolve their brand serif instead of baking
+    /// the system fallback — and so this suite stays order-independent (font
+    /// registration is process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("1 Peter 2 renders in the light theme")
     func populatedLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
@@ -64,6 +70,24 @@ struct BibleScreenSnapshotTests {
     func populatedSepiaXXL() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
                theme: .sepia, dynamicType: .xxLarge, name: "populated_sepia_xxl")
+    }
+
+    @Test("1 Peter 2 scales with the app font-scale slider at max in the light theme")
+    func populatedFontScaleMaxLight() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .light, fontScale: 1.2, name: "populated_font_scale_max_light")
+    }
+
+    @Test("1 Peter 2 scales with the app font-scale slider at max in the dark theme")
+    func populatedFontScaleMaxDark() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .dark, fontScale: 1.2, name: "populated_font_scale_max_dark")
+    }
+
+    @Test("1 Peter 2 scales with the app font-scale slider at max in the sepia theme")
+    func populatedFontScaleMaxSepia() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .sepia, fontScale: 1.2, name: "populated_font_scale_max_sepia")
     }
 
     @Test("Genesis 1 disables the previous arrow and drops the previous footer card")
@@ -403,11 +427,13 @@ struct BibleScreenSnapshotTests {
         _ screen: some View,
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
+        fontScale: CGFloat = 1,
         name: String,
         function: String = #function
     ) {
         let view = screen
             .superTheme(.make(theme))
+            .superTypography(.make(.serif, fontScale: fontScale))
             .dynamicTypeSize(dynamicType)
             .frame(width: 402, height: 760)
 

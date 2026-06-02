@@ -13,6 +13,7 @@ import SwiftUI
 /// on-screen position.
 struct BibleChapterReader: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query<ChapterHighlightsRequest> private var highlights: [BibleHighlightRecord]
     /// Annotation rows for the on-screen chapter. Drives both the
@@ -371,9 +372,13 @@ struct BibleChapterReader: View {
     /// tapping presents the popover.
     @ViewBuilder
     private var chapterTitle: some View {
+        // The brand display face (Instrument Serif Italic) is inherently
+        // italic, so no `.italic()` modifier is needed — matching the
+        // sidebar wordmark's `display(_:)` usage. `relativeTo: .largeTitle`
+        // carries OS Dynamic Type on the custom face; `SuperTypography` folds
+        // in the app font-scale slider, so the title scales on both axes.
         let title = Text("\(bookName) \(chapter.number)")
-            .font(.system(.largeTitle, design: .serif))
-            .italic()
+            .font(typography.display(34, relativeTo: .largeTitle))
             .foregroundStyle(theme.ink)
         // The trailing glyph cluster appears when either glyph system has a
         // host wired. Stable order — annotation bubble first, note glyph
