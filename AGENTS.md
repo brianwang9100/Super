@@ -85,6 +85,20 @@ Rule of thumb: **everything scales with the slider** (the default, `tracksFontSc
 
 Snapshot implication: because almost every surface now tracks the slider, a view's `*_font_scale_max_*` baseline renders at the **scaled** size — re-record it when the view legitimately changes, but never re-record a `fontScale == 1.0` baseline to "make a test pass" (identity at 1.0× means it must stay byte-identical). For the rare `tracksFontScale: false` brand mark, the `*_font_scale_max_*` baseline must still be byte-identical to its `1.0×` render.
 
+## Theming & Controls
+
+Glass and chrome resolve through `SuperGlass` (`Packages/Core/Sources/Core/Theme/SuperGlass.swift`), the single owner of how Super adopts iOS 26 Liquid Glass — the companion to `SuperTypography` (faces) and `SuperTheme` (color). Route every glass surface through its helpers; never call `.glassEffect(...)` directly at a call site (that hard-codes the tint and skips the snapshot solid-fallback).
+
+- **Buttons and controls use interactive glass.** Apply **`superGlassButton(in:)`** to tappable chrome (nav buttons, toolbar controls). It renders `Glass.regular.tint(theme.glassTint).interactive()` so the control reacts to touch, and re-asserts the full `shape` as the `contentShape` (glass otherwise collapses the hit region to the glyph — the bug that broke the hamburger). Drop any pre-existing fill + border + drop-shadow first; glass supplies its own edge and elevation. `SettingsHeader`'s 44pt circular leading button is the canonical control.
+- **Passive inline glass surfaces use `superGlassSurface(in:)`** — the frosted `.regular`, non-interactive variant (nav pills, selection pills) so inner segment buttons keep their own taps. Never clear glass over text.
+
+### Sheets
+
+Sheets are **native `.sheet`** (system-presented), never a custom overlay — the system supplies the drag indicator, scrim, and detent behavior. (This is about *presentation*; turning the Chat transcript itself into a sheet was tried and rejected — that decision stands and isn't reopened by this rule.)
+
+- **Consistent nav bar + navigation button.** Every sheet opens with a top chrome bar carrying a leading circular `superGlassButton` (close `✕` at the root, back chevron on pushed sub-panes) and a centered title. `SettingsHeader` is the reference; match its structure (leading button, centered title, hidden trailing spacer to keep the title centered). Multi-pane sheets drive navigation with a `NavigationStack` (see `SettingsSheet`) so pushes get the native left-to-right transition.
+- **Background is Super theme color, not glass.** The sheet's content panel fills with the active theme's `background` (or `backgroundRaised`) — a full-bleed glass sheet is too distracting behind reading/editing content. Glass stays on the *controls* (the nav button), not the panel.
+
 ## Swift Concurrency & Type Policy
 
 ### Structs for data, classes for identity
