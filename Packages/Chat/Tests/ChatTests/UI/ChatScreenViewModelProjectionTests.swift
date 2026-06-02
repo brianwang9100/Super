@@ -338,4 +338,29 @@ struct ChatScreenViewModelProjectionTests {
         #expect(calls[0].status == .running)
         #expect(calls[1].status == .failed)
     }
+
+    @Test("an awaiting-confirmation proposal projects with the awaitingConfirmation status")
+    func awaitingConfirmationStatusSurfaces() {
+        // The native web-search proposal parks at `.awaitingConfirmation`;
+        // the projection must preserve that (not collapse it to running) so
+        // the inline confirm row renders its approve/skip prompt.
+        let messages: [MessageRecord] = [
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
+        ]
+        let toolCalls: [ToolCallRecord] = [
+            ToolCallRecord(
+                id: "t1", messageId: "a1", conversationId: "c",
+                toolName: NativeWebSearch.proposalToolName,
+                parameters: #"{"query":"mars news","reason":"current events"}"#,
+                status: .awaitingConfirmation, createdAt: now
+            ),
+        ]
+        let items = ChatScreenViewModel.project(messages: messages, toolCalls: toolCalls, checkpoint: nil)
+        guard case .assistantText(_, _, _, _, let calls, _, _) = items[0] else {
+            Issue.record("expected assistant row")
+            return
+        }
+        #expect(calls[0].status == .awaitingConfirmation)
+        #expect(calls[0].toolName == NativeWebSearch.proposalToolName)
+    }
 }

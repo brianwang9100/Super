@@ -51,11 +51,25 @@ public struct DebugLLMProvider: LLMProvider {
                 continuation.yield(.messageStart(id: messageID, model: model.id))
 
                 // A user message containing "search" drives the web-search
-                // script (`.searchStarted` → text → `.citations`) so the
-                // sources pill + citation sink are exercisable in the
+                // script so the sources pill + citation sink (and, with a
+                // native-search model, the cost gate) are exercisable in the
                 // simulator with no key or network. Mirrors the event shape a
                 // real native adapter emits.
                 if Self.lastUserText(messages).localizedCaseInsensitiveContains("search") {
+                    let hasProposalTool = tools.contains { $0.name == NativeWebSearch.proposalToolName }
+                    if hasProposalTool {
+                        // Cost gate is ON: propose a search instead of running
+                        // it, so `ChatSession` parks it for approval. After the
+                        // user approves, the re-issued turn arrives with the
+                        // sentinel (not the proposal) and falls through to
+                        // `streamSearch` below.
+                        Self.emitSearchProposal(into: continuation, model: model, messages: messages)
+                        continuation.finish()
+                        return
+                    }
+                    // Gate OFF / approved re-issue (sentinel present), or a
+                    // non-native debug model typing "search" (neither tool):
+                    // stream the grounded answer + citations directly.
                     await Self.streamSearch(into: continuation, messages: messages)
                     continuation.finish()
                     return
@@ -261,6 +275,34 @@ public struct DebugLLMProvider: LLMProvider {
     <body><a class="c" href="https://www.google.com/search?q=mars+rover+news">mars rover news</a>\
     <a class="c" href="https://www.google.com/search?q=jezero+crater+water">jezero crater water</a></body></html>
     """
+
+    /// Emit a single `request_web_search` tool call so the cost gate's
+    /// approve/skip flow is exercisable in the simulator. No deltas, no
+    /// answer text — just the proposal block + a terminal `.messageComplete`,
+    /// matching the "propose and don't answer yet" contract a real native
+    /// model follows when the gate is on.
+    private static func emitSearchProposal(
+        into continuation: AsyncThrowingStream<LLMStreamEvent, Error>.Continuation,
+        model: LLMModel,
+        messages: [LLMMessage]
+    ) {
+        let input: JSONValue = .object([
+            NativeWebSearch.proposalQueryParameter: .string("latest mars rover news"),
+            NativeWebSearch.proposalReasonParameter: .string(
+                "The question is about current events beyond my training knowledge."
+            )
+        ])
+        continuation.yield(.toolUse(
+            index: 0,
+            id: "debug-search-\(UUID().uuidString)",
+            name: NativeWebSearch.proposalToolName,
+            input: input
+        ))
+        continuation.yield(.messageComplete(usage: TokenUsage(
+            inputTokens: messages.reduce(0) { $0 + approxTokens(of: $1) },
+            outputTokens: 0
+        )))
+    }
 
     /// Emit the `searchStarted → text → citations → messageComplete` sequence.
     /// When the user text mentions "gemini" it additionally emits

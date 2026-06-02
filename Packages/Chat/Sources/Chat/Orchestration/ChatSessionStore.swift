@@ -26,6 +26,10 @@ public actor ChatSessionStore {
     /// Same mutability rationale as `autoCompactEnabled`.
     private var autoCompactThreshold: Double
     private let manualCompactMinThreshold: Double
+    /// Current native web-search cost-gate toggle ("Ask before each
+    /// search"). Mutable so a Settings change fans out to active sessions
+    /// and seeds sessions created afterward — see `setAskBeforeSearching(_:)`.
+    private var askBeforeSearching: Bool
     /// Chat-assistant base prompt. Constructor-time state — the Chat
     /// applet author owns its content; no runtime setter.
     private let chatBriefing: String
@@ -57,6 +61,7 @@ public actor ChatSessionStore {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
+        askBeforeSearching: Bool = true,
         chatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
@@ -74,6 +79,7 @@ public actor ChatSessionStore {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
+        self.askBeforeSearching = askBeforeSearching
         self.chatBriefing = chatBriefing
         self.appletBriefings = appletBriefings
         self.currentUserPersonalization = userPersonalization
@@ -99,6 +105,7 @@ public actor ChatSessionStore {
             autoCompactEnabled: autoCompactEnabled,
             autoCompactThreshold: autoCompactThreshold,
             manualCompactMinThreshold: manualCompactMinThreshold,
+            askBeforeSearching: askBeforeSearching,
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: currentUserPersonalization,
@@ -160,6 +167,23 @@ public actor ChatSessionStore {
                 return
             }
             await session.setAutoCompactPolicy(enabled: enabled, threshold: threshold)
+        }
+    }
+
+    /// Push a new native web-search cost-gate toggle to every active session
+    /// and remember it as the default for sessions created later. The
+    /// Settings → Search pane calls this after persisting the toggle. No-ops
+    /// when unchanged. Concurrency rationale mirrors `setAutoCompactPolicy`:
+    /// the per-session `await` suspends the actor, a racing call interleaves,
+    /// and the intra-loop guard against the live value bails out once
+    /// superseded — last write wins.
+    public func setAskBeforeSearching(_ enabled: Bool) async {
+        guard enabled != askBeforeSearching else { return }
+        askBeforeSearching = enabled
+        let snapshot = sessions
+        for (_, session) in snapshot {
+            guard askBeforeSearching == enabled else { return }
+            await session.setAskBeforeSearching(enabled)
         }
     }
 

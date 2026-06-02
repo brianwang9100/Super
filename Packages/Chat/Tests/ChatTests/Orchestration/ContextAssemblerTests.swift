@@ -60,6 +60,46 @@ struct ContextAssemblerTests {
         #expect(assembly.messages.map(\.role) == [.user, .assistant, .user])
     }
 
+    @Test func webSearchBlockPresentOnlyForNativeSearchModels() {
+        // Native-search model gets the guidance block; non-native gets nil so
+        // its prompt is byte-identical to before this feature.
+        let native = LLMModel(id: "n", displayName: "N", searchBackend: "native")
+        let plain = LLMModel(id: "p", displayName: "P", searchBackend: nil)
+        let block = ContextAssembler.formatWebSearchBlock(model: native)
+        #expect(block?.contains("## Web search") == true)
+        #expect(block?.contains("cite") == true)
+        #expect(ContextAssembler.formatWebSearchBlock(model: plain) == nil)
+    }
+
+    @Test func nativeSearchModelPromptCarriesWebSearchSystemRow() throws {
+        let assembler = ContextAssembler()
+        let native = LLMModel(
+            id: "native", displayName: "Native", maxContextTokens: 1_000, searchBackend: "native"
+        )
+        let assembly = try assembler.assemble(
+            messages: [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)],
+            toolCalls: [],
+            checkpoint: nil,
+            model: native
+        )
+        // A leading `.system` row carries the web-search guidance; a
+        // non-native model never adds one.
+        func mentionsWebSearch(_ message: LLMMessage) -> Bool {
+            message.content.contains {
+                if case .text(let body) = $0 { return body.contains("## Web search") }
+                return false
+            }
+        }
+        #expect(assembly.messages.contains { $0.role == .system && mentionsWebSearch($0) })
+        let plainAssembly = try assembler.assemble(
+            messages: [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)],
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel()
+        )
+        #expect(!plainAssembly.messages.contains(where: mentionsWebSearch))
+    }
+
     @Test func assistantSourcesWithProviderEchoProjectAsLeadingSearchResultBlock() throws {
         // The encrypted round-trip: a prior assistant turn's stored citations
         // (carrying an Anthropic `providerEcho`) reattach as a `.searchResult`

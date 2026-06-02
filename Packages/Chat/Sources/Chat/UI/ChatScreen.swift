@@ -608,7 +608,9 @@ public struct ChatScreen: View {
                 onContentTap: onContentTap,
                 isStreaming: viewModel.isStreaming,
                 onCopyTapped: onCopyTapped,
-                onRegenerateTapped: onRegenerateTapped
+                onRegenerateTapped: onRegenerateTapped,
+                onConfirmSearch: { viewModel.confirmSearch(id: $0) },
+                onSkipSearch: { viewModel.skipSearch(id: $0) }
             )
         }
     }

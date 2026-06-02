@@ -32,6 +32,15 @@ public enum ChatEvent: Sendable, Equatable {
     /// pending action card immediately.
     case toolCallStarted(ToolCallRecord)
 
+    /// A tool call is paused awaiting the user's approval. Record is
+    /// persisted with status `.awaitingConfirmation`. The session suspends
+    /// the turn until the view model calls `confirmToolCall(id:)` or
+    /// `skipToolCall(id:)`. Used by the native web-search cost gate: the
+    /// model's `request_web_search` proposal parks here so the user can
+    /// approve (run the search) or skip (answer without it) before any
+    /// billable search runs.
+    case toolCallAwaitingConfirmation(ToolCallRecord)
+
     /// Tool finished successfully. Record is already updated to `.success`
     /// in the database, and a `MessageRecord` with the result has also been
     /// persisted (role `.tool`) so the LLM's next turn sees it in history.

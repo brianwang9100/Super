@@ -186,6 +186,42 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.error == nil)
     }
 
+    @Test("confirmSearch routes the tool-call id to the driver")
+    func confirmSearchRoutesToDriver() async {
+        let driver = RecordingDriver()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel.confirmSearch(id: "tc-search")
+        await driver.waitForSearchDecision()
+        #expect(await driver.confirmedToolCallIDs == ["tc-search"])
+        #expect(await driver.skippedToolCallIDs.isEmpty)
+    }
+
+    @Test("skipSearch routes the tool-call id to the driver")
+    func skipSearchRoutesToDriver() async {
+        let driver = RecordingDriver()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [model]
+        )
+        viewModel.skipSearch(id: "tc-search")
+        await driver.waitForSearchDecision()
+        #expect(await driver.skippedToolCallIDs == ["tc-search"])
+        #expect(await driver.confirmedToolCallIDs.isEmpty)
+    }
+
     @Test("retry while a stream is in flight is a silent no-op")
     func retryWhileStreamingIsANoOp() async {
         // Defensive: a double-tap on the Retry pill (or a tap during the
@@ -1934,6 +1970,9 @@ private actor HangingSubscribeDriver: ChatSessionDriver {
 
     func cancel() async { cancelInvocationCount += 1 }
 
+    func confirmToolCall(id: String) async {}
+    func skipToolCall(id: String) async {}
+
     /// Test-facing seam: finish all open subscribe streams so the view
     /// model's `consume(stream:)` task can complete and the test exits
     /// cleanly without leaking suspended tasks.
@@ -2026,6 +2065,9 @@ private actor ScriptedDriver: ChatSessionDriver {
         cancelInvocationCount += 1
     }
 
+    func confirmToolCall(id: String) async {}
+    func skipToolCall(id: String) async {}
+
     func cancelCount() -> Int { cancelInvocationCount }
 
     private func markFinished() {
@@ -2084,6 +2126,23 @@ private actor RecordingDriver: ChatSessionDriver {
 
     func cancel() async {}
 
+    private(set) var confirmedToolCallIDs: [String] = []
+    private(set) var skippedToolCallIDs: [String] = []
+
+    private var searchDecisionWaiter: CheckedContinuation<Void, Never>?
+
+    func confirmToolCall(id: String) async {
+        confirmedToolCallIDs.append(id)
+        searchDecisionWaiter?.resume()
+        searchDecisionWaiter = nil
+    }
+
+    func skipToolCall(id: String) async {
+        skippedToolCallIDs.append(id)
+        searchDecisionWaiter?.resume()
+        searchDecisionWaiter = nil
+    }
+
     /// Await the first `send(...)`; returns immediately if it already ran.
     func waitForSend() async {
         guard sentText.isEmpty else { return }
@@ -2094,6 +2153,14 @@ private actor RecordingDriver: ChatSessionDriver {
     func waitForRetry() async {
         guard retryInvocations == 0 else { return }
         await withCheckedContinuation { retryWaiter = $0 }
+    }
+
+    /// Await the first confirm/skip decision; returns immediately if one
+    /// already arrived. Lets the confirm/skip routing test drain the view
+    /// model's fire-and-forget `Task` without polling.
+    func waitForSearchDecision() async {
+        guard confirmedToolCallIDs.isEmpty, skippedToolCallIDs.isEmpty else { return }
+        await withCheckedContinuation { searchDecisionWaiter = $0 }
     }
 }
 

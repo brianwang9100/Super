@@ -188,6 +188,8 @@ private struct NoopDriver: ChatSessionDriver {
         (nil, AsyncStream { $0.finish() })
     }
     func cancel() async {}
+    func confirmToolCall(id: String) async {}
+    func skipToolCall(id: String) async {}
 }
 
 private actor NoopMessageRepository: MessageRepository {

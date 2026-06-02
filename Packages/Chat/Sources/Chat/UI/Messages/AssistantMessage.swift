@@ -29,6 +29,11 @@ struct AssistantMessage: View {
     /// confirmation dialog before actually trimming the transcript and
     /// re-streaming.
     var onRegenerateRequested: () -> Void = {}
+    /// Fired with the parked `request_web_search` tool-call id when the user
+    /// approves the inline search prompt ("Search").
+    var onConfirmSearch: (String) -> Void = { _ in }
+    /// Fired with the parked tool-call id when the user declines ("Skip").
+    var onSkipSearch: (String) -> Void = { _ in }
     @Environment(\.superTheme) private var theme
     @Environment(\.chatAppearance) private var appearance
 
@@ -47,11 +52,21 @@ struct AssistantMessage: View {
                 )
             }
             ForEach(toolCalls) { call in
+                // The native web-search proposal renders its own inline
+                // approve/skip prompt (and post-decision summary) instead of
+                // the generic card — the internal `request_web_search` name +
+                // JSON args would otherwise leak into the transcript.
+                if call.toolName == NativeWebSearch.proposalToolName {
+                    SearchConfirmationRow(
+                        call: call,
+                        onSearch: { onConfirmSearch(call.id) },
+                        onSkip: { onSkipSearch(call.id) }
+                    )
                 // Successful `memory` calls collapse into the friendlier
                 // inline pill — the verbose tool-call card is overkill
                 // for a one-line preference write. Failures still hit
                 // the generic card so the error surface stays consistent.
-                if call.toolName == MemoryTool.toolID, call.status == .success {
+                } else if call.toolName == MemoryTool.toolID, call.status == .success {
                     MemoryUpdatedPill(call: call)
                 } else {
                     ToolCallBlock(call: call, verbosity: verbosity)
