@@ -27,6 +27,7 @@ struct MessageListSnapshotTests {
                 .init(
                     id: "t1",
                     toolName: "time.now",
+                    toolDisplayName: "Current time",
                     parametersJSON: "{\"timezone\":\"Asia/Tokyo\"}",
                     resultText: "Current time: Saturday, April 25, 2026 at 9:47:00 AM JST",
                     status: .success

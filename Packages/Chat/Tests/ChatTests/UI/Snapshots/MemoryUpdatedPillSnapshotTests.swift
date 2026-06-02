@@ -129,6 +129,7 @@ struct MemoryUpdatedPillSnapshotTests {
         let call = MessageList.ToolCallItem(
             id: "tc-1",
             toolName: MemoryTool.toolID,
+            toolDisplayName: "Memory",
             parametersJSON: parametersJSON,
             resultText: "Memory \(op.rawValue) mem-1: \(text ?? "")",
             status: .success

@@ -118,7 +118,9 @@ public struct NoteBibleTool: ToolExecutor {
                 isRequired: false
             ),
         ],
-        appletId: NoteBibleTool.appletID
+        appletId: NoteBibleTool.appletID,
+        displayName: "Bible notes",
+        summary: "Saves free-text notes on a passage."
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.

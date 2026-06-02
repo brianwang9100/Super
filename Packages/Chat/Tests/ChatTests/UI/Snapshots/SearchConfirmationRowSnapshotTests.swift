@@ -26,6 +26,7 @@ struct SearchConfirmationRowSnapshotTests {
         MessageList.ToolCallItem(
             id: "tc-search",
             toolName: NativeWebSearch.proposalToolName,
+            toolDisplayName: NativeWebSearch.proposalToolName,
             parametersJSON: #"{"query":"latest mars rover findings","reason":"This is about current events beyond my training knowledge."}"#,
             resultText: nil,
             status: status

@@ -124,7 +124,9 @@ public struct AnnotateBibleTool: ToolExecutor {
                 isRequired: true
             ),
         ],
-        appletId: AnnotateBibleTool.appletID
+        appletId: AnnotateBibleTool.appletID,
+        displayName: "Bible annotations",
+        summary: "Adds study annotation cards to a passage."
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.

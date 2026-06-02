@@ -23,39 +23,93 @@ struct ToolCallBlockSnapshotTests {
         MessageList.ToolCallItem(
             id: "tc-1",
             toolName: "home.unlockDoor",
+            // No registered descriptor → display name falls back to the
+            // technical name (header renders it in the regular caption font).
+            toolDisplayName: "home.unlockDoor",
             parametersJSON: #"{"door":"front"}"#,
             resultText: nil,
             status: .awaitingConfirmation
         )
     }
 
+    /// A tool whose friendly `toolDisplayName` differs from its technical
+    /// `toolName` — the header shows the friendly name and the expanded body
+    /// surfaces the technical name under `FUNCTION` (the
+    /// `toolName != toolDisplayName` branch in `ToolCallBlock`). The
+    /// `awaiting*` fixtures set the two equal, so they never exercise it.
+    private func renamedCall() -> MessageList.ToolCallItem {
+        MessageList.ToolCallItem(
+            id: "tc-2",
+            toolName: "home.unlockDoor",
+            toolDisplayName: "Unlock door",
+            parametersJSON: #"{"door":"front"}"#,
+            resultText: nil,
+            status: .success
+        )
+    }
+
     @Test("awaiting confirmation badge, light")
     func awaitingLight() {
-        verify(theme: .light, name: "toolcall_awaiting_light")
+        verify(call: awaitingCall(), theme: .light, name: "toolcall_awaiting_light")
     }
 
     @Test("awaiting confirmation badge, dark")
     func awaitingDark() {
-        verify(theme: .dark, name: "toolcall_awaiting_dark")
+        verify(call: awaitingCall(), theme: .dark, name: "toolcall_awaiting_dark")
     }
 
     @Test("awaiting confirmation badge, sepia")
     func awaitingSepia() {
-        verify(theme: .sepia, name: "toolcall_awaiting_sepia")
+        verify(call: awaitingCall(), theme: .sepia, name: "toolcall_awaiting_sepia")
     }
 
-    private func verify(theme: SuperTheme.Identifier, name: String, function: String = #function) {
+    // FUNCTION-detail card across the light / dark / sepia × default Dynamic
+    // Type matrix (AGENTS.md §3), plus an XXL variant for the extra row's
+    // reflow. Taller frame than the awaiting cards: this card adds the
+    // FUNCTION row above INPUT.
+    @Test("friendly display name surfaces the FUNCTION detail, light")
+    func functionDetailLight() {
+        verify(call: renamedCall(), theme: .light, name: "toolcall_function_detail_light", height: 180)
+    }
+
+    @Test("friendly display name surfaces the FUNCTION detail, dark")
+    func functionDetailDark() {
+        verify(call: renamedCall(), theme: .dark, name: "toolcall_function_detail_dark", height: 180)
+    }
+
+    @Test("friendly display name surfaces the FUNCTION detail, sepia")
+    func functionDetailSepia() {
+        verify(call: renamedCall(), theme: .sepia, name: "toolcall_function_detail_sepia", height: 180)
+    }
+
+    @Test("dynamic type XXL on the FUNCTION detail card")
+    func functionDetailXXL() {
+        verify(
+            call: renamedCall(), theme: .light, name: "toolcall_function_detail_light_xxl",
+            height: 300, dynamicType: .xxLarge
+        )
+    }
+
+    private func verify(
+        call: MessageList.ToolCallItem,
+        theme: SuperTheme.Identifier,
+        name: String,
+        height: CGFloat = 140,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) {
         // `.verbose` so the card is expanded and the INPUT panel + badge both
         // render in the frame.
-        let view = ToolCallBlock(call: awaitingCall(), verbosity: .verbose)
+        let view = ToolCallBlock(call: call, verbosity: .verbose)
             .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicType)
             .padding(.horizontal, 12)
             .padding(.vertical, 16)
-            .frame(width: 402, height: 140)
+            .frame(width: 402, height: height)
 
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 140)),
+            as: .image(layout: .fixed(width: 402, height: height)),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function

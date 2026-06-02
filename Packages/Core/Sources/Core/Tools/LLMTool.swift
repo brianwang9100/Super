@@ -10,10 +10,19 @@ import Foundation
 public struct LLMTool: Sendable, Equatable, Identifiable {
     public let id: String
     public let name: String
+    /// LLM-facing tool prompt: tells the model when and how to call the tool.
+    /// This is system-prompt text, **not** user-facing copy — never surface it
+    /// in the UI. Human-readable labels live in `displayName` / `summary`.
     public let description: String
     public let category: LLMToolCategory
     public let parameters: [LLMToolParameter]
     public let appletId: String
+    /// Friendly, user-facing title (e.g. "Bible annotations"). `nil` falls back
+    /// to `name`. Shown in the Tools settings list and the chat tool-call card.
+    public let displayName: String?
+    /// One-line, user-readable description of what the tool does. `nil` hides
+    /// the subtitle. Distinct from `description`, which is the LLM prompt.
+    public let summary: String?
 
     public init(
         id: String,
@@ -21,7 +30,9 @@ public struct LLMTool: Sendable, Equatable, Identifiable {
         description: String,
         category: LLMToolCategory,
         parameters: [LLMToolParameter],
-        appletId: String
+        appletId: String,
+        displayName: String? = nil,
+        summary: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -29,6 +40,8 @@ public struct LLMTool: Sendable, Equatable, Identifiable {
         self.category = category
         self.parameters = parameters
         self.appletId = appletId
+        self.displayName = displayName
+        self.summary = summary
     }
 }
 
