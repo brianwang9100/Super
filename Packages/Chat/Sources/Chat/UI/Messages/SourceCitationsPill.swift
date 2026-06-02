@@ -33,11 +33,8 @@ struct SourceCitationsPill: View {
     let sources: [SourceCitationPillModel]
     @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
-    @Environment(\.chatAppearance) private var appearance
+    @Environment(\.superTypography) private var typography
     @Environment(\.openURL) private var openURL
-    /// Base chip text size, scaled by Dynamic Type and the chat font-scale
-    /// knob, like `VerseReferencePill`.
-    @ScaledMetric(relativeTo: .caption) private var basePoint: CGFloat = 12
 
     /// Production initializer — pill starts collapsed; user taps to expand.
     init(sources: [SourceCitationPillModel]) {
@@ -53,26 +50,26 @@ struct SourceCitationsPill: View {
         self._isExpanded = State(initialValue: _isExpanded)
     }
 
-    private var pointSize: CGFloat { basePoint * appearance.fontScale }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             header
             if isExpanded {
-                ForEach(sources) { source in
-                    sourceRow(source)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sources) { source in
+                        sourceRow(source)
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(theme.backgroundSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(theme.borderFaint, lineWidth: 1)
         )
     }
@@ -81,18 +78,24 @@ struct SourceCitationsPill: View {
         Button {
             isExpanded.toggle()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: pointSize * 0.95))
-                    .foregroundStyle(theme.inkFaint)
-                Text(countLabel)
-                    .font(.system(size: pointSize, weight: .medium))
+            HStack(spacing: 8) {
+                // Arrow-up-right (external-link glyph): the rows open sources
+                // in the browser. The "Web search" operation is announced by
+                // the separate `WebSearchCallCell` above the answer.
+                Image(systemName: "arrow.up.right")
+                    .font(typography.font(.subheadline))
                     .foregroundStyle(theme.inkSoft)
+                Text(countLabel)
+                    .font(typography.font(.subheadline, weight: .medium))
+                    .foregroundStyle(theme.ink)
                 Spacer(minLength: 0)
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: pointSize * 0.8))
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(typography.font(.caption, weight: .semibold))
                     .foregroundStyle(theme.inkFaint)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -116,11 +119,11 @@ struct SourceCitationsPill: View {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "globe")
-                    .font(.system(size: pointSize * 0.9))
+                    .font(typography.font(.footnote))
                     .foregroundStyle(theme.inkFaint)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(source.host)
-                        .font(.system(size: pointSize * 0.92, weight: .semibold))
+                        .font(typography.font(.subheadline, weight: .semibold))
                         .foregroundStyle(theme.inkSoft)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -128,7 +131,7 @@ struct SourceCitationsPill: View {
                     // its host (projection collapses a host-equal title to "").
                     if !source.title.isEmpty {
                         Text(source.title)
-                            .font(.system(size: pointSize * 0.92))
+                            .font(typography.font(.footnote))
                             .foregroundStyle(theme.inkFaint)
                             .lineLimit(2)
                     }

@@ -75,6 +75,32 @@ struct MessageAttachmentsTests {
         #expect(decoded?.references.isEmpty == true)
     }
 
+    @Test("Round-trips the web-search query + system metadata")
+    func roundTripsSearchMetadata() throws {
+        let attachments = MessageAttachments(
+            sources: [SourceCitation(id: "s1", title: "T", url: URL(string: "https://e.com")!)],
+            searchQuery: "mars rover news",
+            searchSystem: "Debug (mock)"
+        )
+        let json = MessageRecord.encode(attachments)
+        let record = MessageRecord(
+            id: "m1", conversationId: "c1", role: .assistant,
+            content: "hi", createdAt: Date(), attachmentsJSON: json
+        )
+        let decoded = record.attachments
+        #expect(decoded?.searchQuery == "mars rover news")
+        #expect(decoded?.searchSystem == "Debug (mock)")
+    }
+
+    @Test("Search-metadata-only attachments are non-empty and persist")
+    func searchMetadataOnlyPersists() {
+        // A turn could carry a query/system without sources (a search that
+        // returned nothing); the metadata alone must keep the sidecar non-empty.
+        let attachments = MessageAttachments(searchQuery: "q", searchSystem: "Native search")
+        #expect(attachments.isEmpty == false)
+        #expect(MessageRecord.encode(attachments) != nil)
+    }
+
     @Test("Sources-only attachments are non-empty and persist")
     func sourcesOnlyPersists() {
         let attachments = MessageAttachments(sources: [
