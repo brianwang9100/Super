@@ -20,6 +20,10 @@ import Testing
 @Suite("CompactionBanner snapshots", .serialized)
 @MainActor
 struct CompactionBannerSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     /// A summary long enough to overflow the 3-line collapsed cap so the
     /// truncation + expand affordance is exercised. Mirrors the 3–8
     /// sentence shape `Compactor`'s summarization prompt asks for.

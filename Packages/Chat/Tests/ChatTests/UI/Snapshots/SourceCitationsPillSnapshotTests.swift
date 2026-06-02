@@ -20,6 +20,10 @@ import Testing
 @Suite("SourceCitationsPill snapshots", .serialized)
 @MainActor
 struct SourceCitationsPillSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     private static let threeSources: [SourceCitationPillModel] = [
         SourceCitationPillModel(
             id: "1", title: "Perseverance finds organic molecules in Jezero crater",

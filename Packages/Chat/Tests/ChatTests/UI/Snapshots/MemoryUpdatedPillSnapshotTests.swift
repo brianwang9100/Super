@@ -29,6 +29,10 @@ import Testing
 @Suite("MemoryUpdatedPill snapshots", .serialized)
 @MainActor
 struct MemoryUpdatedPillSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
     @Test("collapsed save in light")
     func collapsedSaveLight() {
         verify(

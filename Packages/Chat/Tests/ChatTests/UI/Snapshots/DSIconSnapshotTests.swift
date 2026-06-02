@@ -17,6 +17,10 @@ import UIKit
 @Suite("DSIcon catalog snapshots")
 @MainActor
 struct DSIconSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so this suite
+    /// is order-independent in the shared test process (the xctest host never
+    /// runs the app's font registration). See SnapshotFontRegistration.
+    init() { SnapshotFontRegistration.ensureRegistered() }
 
     /// Every `DSIcon` case resolves to a loadable template asset in
     /// Chat's `Icons.xcassets`. Failure here is almost always one of:
