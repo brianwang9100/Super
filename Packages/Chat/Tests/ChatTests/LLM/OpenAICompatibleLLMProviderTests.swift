@@ -44,6 +44,45 @@ struct OpenAICompatibleLLMProviderTests {
         return events
     }
 
+    /// The configuration's `searchBackend` must reach the vended `LLMModel` —
+    /// the turn loop reads `model.searchBackend` to drive the client-mock
+    /// ("debug") search path on an otherwise-ordinary OpenAI-compat model.
+    /// Regression: the convenience init previously dropped it (left nil).
+    @Test func convenienceInitStampsSearchBackendOntoVendedModel() async throws {
+        let configuration = ModelConfiguration(
+            id: "cfg-1",
+            kind: .openAICompatible,
+            name: "Mock-backed model",
+            baseURL: baseURL,
+            apiKeyRef: nil,
+            modelID: "gpt-4o-mini",
+            searchBackend: "debug"
+        )
+        let provider = OpenAICompatibleLLMProvider(
+            configuration: configuration,
+            apiKey: "sk-test",
+            http: FakeHTTPClient(chunks: [])
+        )
+        #expect(provider.supportedModels.first?.searchBackend == "debug")
+    }
+
+    @Test func convenienceInitLeavesSearchBackendNilWhenUnset() async throws {
+        let configuration = ModelConfiguration(
+            id: "cfg-2",
+            kind: .openAICompatible,
+            name: "Plain model",
+            baseURL: baseURL,
+            apiKeyRef: nil,
+            modelID: "gpt-4o-mini"
+        )
+        let provider = OpenAICompatibleLLMProvider(
+            configuration: configuration,
+            apiKey: nil,
+            http: FakeHTTPClient(chunks: [])
+        )
+        #expect(provider.supportedModels.first?.searchBackend == nil)
+    }
+
     private func errorEvents(_ events: [LLMStreamEvent]) -> [LLMError] {
         events.compactMap { event in
             if case .error(let error) = event { return error }

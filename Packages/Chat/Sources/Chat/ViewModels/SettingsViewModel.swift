@@ -498,7 +498,7 @@ public final class SettingsViewModel {
     /// Persist a new `.appleFoundation` row, register the live AFM
     /// provider (when the launch-time availability snapshot says AFM is
     /// usable), and refresh the in-memory list. Mirrors
-    /// ``createModel(name:baseURL:modelId:apiKey:supportsThinking:maxContextTokens:idGenerator:now:)``
+    /// ``createModel(name:baseURL:modelId:apiKey:supportsThinking:maxContextTokens:kind:searchBackend:idGenerator:now:)``
     /// for the openAI-compatible kind, but skips the Keychain write (AFM
     /// rows have no API key) and force-sets the shape Apple's on-device
     /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
@@ -548,6 +548,8 @@ public final class SettingsViewModel {
         apiKey: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
+        kind: LLMProviderKind = .openAICompatible,
+        searchBackend: String? = nil,
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date()
     ) async {
@@ -563,10 +565,15 @@ public final class SettingsViewModel {
                 apiKeyRef: ref,
                 modelId: modelId,
                 createdAt: now,
-                kind: .openAICompatible,
+                // The picked web-search backend resolves the persisted kind:
+                // native → the catalog's native adapter (e.g. `.openAIResponses`);
+                // off / debug → `.openAICompatible`. The pane computes both from
+                // the selected catalog entry.
+                kind: kind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
-                isSelected: false
+                isSelected: false,
+                searchBackend: searchBackend
             )
             try await modelRepository.save(record)
             await registerProvider(for: record, apiKey: apiKey)
@@ -590,6 +597,12 @@ public final class SettingsViewModel {
     /// Same error-surface contract as `createModel(...)`: on failure
     /// sets ``modelEditError`` and the pane stays open so the user can
     /// retry. On success ``modelEditError`` is nil.
+    /// - Parameter searchSelection: The resolved `(kind, searchBackend)` the
+    ///   web-search picker produced. `nil` (the default) preserves the row's
+    ///   existing kind *and* search backend — keeping every non-search edit
+    ///   path unchanged. When non-nil, both are rewritten: flipping Off↔Native
+    ///   swaps the persisted `kind` (and base URL, supplied via `baseURL`) so
+    ///   `makeLLMProvider` rebuilds the row as the native adapter or back.
     public func updateModel(
         id: String,
         name: String,
@@ -597,7 +610,8 @@ public final class SettingsViewModel {
         modelId: String,
         apiKey: String,
         supportsThinking: Bool,
-        maxContextTokens: Int
+        maxContextTokens: Int,
+        searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil
     ) async {
         modelEditError = nil
         do {
@@ -609,6 +623,10 @@ public final class SettingsViewModel {
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
             }
+            // Target kind/backend: the picker's resolved pair when supplied,
+            // else preserve what's on disk (every non-search edit).
+            let targetKind = searchSelection?.kind ?? existing.kind
+            let targetSearchBackend = searchSelection.map(\.searchBackend) ?? existing.searchBackend
             // Preserve existing `baseURL` for non-openAICompatible kinds.
             // For openAICompatible the caller passes the new URL (or
             // nil if it wasn't a field-driven change — in which case
@@ -618,7 +636,7 @@ public final class SettingsViewModel {
             // gets revisited rather than silently defaulting to
             // "preserve existing."
             let nextBaseURL: URL?
-            switch existing.kind {
+            switch targetKind {
             case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
                 // openAICompatible and the native-search kinds all surface an
                 // *editable* Base URL field in the edit pane — native kinds
@@ -645,14 +663,13 @@ public final class SettingsViewModel {
                 apiKeyRef: existing.apiKeyRef,
                 modelId: modelId,
                 createdAt: existing.createdAt,
-                kind: existing.kind,
+                kind: targetKind,
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
                 isSelected: existing.isSelected,
-                // Preserve the stored search backend — this edit path
-                // rebuilds the whole record from form fields, so omitting
-                // it would silently reset the row to "no web search".
-                searchBackend: existing.searchBackend
+                // Resolved by the web-search picker (or preserved when the
+                // edit didn't touch search) — see `searchSelection`.
+                searchBackend: targetSearchBackend
             )
             try await modelRepository.save(updated)
             let resolvedKey: String?

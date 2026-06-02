@@ -87,7 +87,13 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
             displayName: configuration.name,
             supportsThinking: configuration.supportsThinking,
             supportsTools: true,
-            maxContextTokens: configuration.maxContextTokens
+            maxContextTokens: configuration.maxContextTokens,
+            // Carry the row's search backend onto the vended model so the
+            // turn loop sees `model.searchBackend` for a non-native model
+            // (e.g. the DEBUG "debug" mock backend). The native adapters
+            // stamp this from their own configurations; this path is the
+            // one that was missing it.
+            searchBackend: configuration.searchBackend
         )
         self.init(
             id: configuration.id,

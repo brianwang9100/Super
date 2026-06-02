@@ -20,6 +20,14 @@ public struct DebugLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (canned responses)"
 
+    /// Search backend stamped onto the vended `LLMModel`, carried from the
+    /// seeded row's `ModelConfiguration.searchBackend`. When this is
+    /// `"debug"` (`NativeWebSearch.mockBackendValue`) the turn loop drives the
+    /// client-mock search path (cost gate → confirm → `DebugWebSearchFulfiller`)
+    /// — letting the seeded "Debug (mock search)" row exercise that path in
+    /// the simulator with no key. `nil` for the plain canned-stream row.
+    public let searchBackend: String?
+
     /// Stable model id used by the seeded `ModelConfigurationRecord`.
     public static let modelID = "debug-default"
     public static let modelDisplayName = "Debug stream"
@@ -31,12 +39,14 @@ public struct DebugLLMProvider: LLMProvider {
             displayName: Self.modelDisplayName,
             supportsThinking: true,
             supportsTools: false,
-            maxContextTokens: Self.maxContextTokens
+            maxContextTokens: Self.maxContextTokens,
+            searchBackend: searchBackend
         )]
     }
 
-    public init(id: String) {
+    public init(id: String, searchBackend: String? = nil) {
         self.id = id
+        self.searchBackend = searchBackend
     }
 
     public func stream(
@@ -237,44 +247,10 @@ public struct DebugLLMProvider: LLMProvider {
     ]
 
     // MARK: - Web-search script
-
-    /// Canned answer + sources for the search script. The text reads like a
-    /// grounded reply so the pill renders under a realistic message.
-    private static let searchAnswer = """
-    Based on the latest reporting, the rover confirmed subsurface water ice \
-    in Jezero crater and relayed fresh imagery this week. Sources below.
-    """
-
-    private static let debugCitations: [SourceCitation] = [
-        SourceCitation(
-            id: "https://www.nasa.gov/mars-rover#0",
-            title: "Perseverance confirms subsurface water ice",
-            url: URL(string: "https://www.nasa.gov/mars-rover")!
-        ),
-        SourceCitation(
-            id: "https://www.space.com/rover-update#1",
-            title: "Mars rover relays new imagery from Jezero crater",
-            url: URL(string: "https://www.space.com/rover-update")!
-        ),
-        SourceCitation(
-            id: "https://www.scientificamerican.com/mars#2",
-            title: "What the new Mars findings mean for the search for life",
-            url: URL(string: "https://www.scientificamerican.com/mars")!
-        ),
-    ]
-
-    /// Sample Google Search-Suggestions HTML for the "gemini" search trigger,
-    /// exercising the always-visible `GeminiSearchSuggestionsView` strip without
-    /// a real grounded response. A minimal stand-in for Gemini's
-    /// `searchEntryPoint.renderedContent` (the real payload is richer styled
-    /// HTML); rendered unmodified by the strip just like the live one.
-    private static let debugSuggestionsHTML = """
-    <html><head><style>.c{font-family:-apple-system;font-size:14px;\
-    display:inline-block;padding:6px 12px;border:1px solid #ddd;\
-    border-radius:16px;margin:2px;color:#1a73e8;text-decoration:none}</style></head>\
-    <body><a class="c" href="https://www.google.com/search?q=mars+rover+news">mars rover news</a>\
-    <a class="c" href="https://www.google.com/search?q=jezero+crater+water">jezero crater water</a></body></html>
-    """
+    //
+    // Canned answer / sources / suggestions live in the shared
+    // `DebugSearchFixture` so this provider and `DebugWebSearchFulfiller`
+    // render the same data.
 
     /// Emit a single `request_web_search` tool call so the cost gate's
     /// approve/skip flow is exercisable in the simulator. No deltas, no
@@ -320,20 +296,20 @@ public struct DebugLLMProvider: LLMProvider {
             try await sleep(milliseconds: Int.random(in: 250...600))
 
             continuation.yield(.contentBlockStart(index: 0, type: .text))
-            for chunk in tokenChunks(of: searchAnswer) {
+            for chunk in tokenChunks(of: DebugSearchFixture.findings) {
                 try Task.checkCancellation()
                 continuation.yield(.textDelta(index: 0, text: chunk))
                 try await sleep(milliseconds: Int.random(in: 15...60))
             }
             continuation.yield(.contentBlockStop(index: 0))
 
-            continuation.yield(.citations(debugCitations))
+            continuation.yield(.citations(DebugSearchFixture.citations))
             if emitsSuggestions {
-                continuation.yield(.searchSuggestionsHTML(debugSuggestionsHTML))
+                continuation.yield(.searchSuggestionsHTML(DebugSearchFixture.suggestionsHTML))
             }
             continuation.yield(.messageComplete(usage: TokenUsage(
                 inputTokens: messages.reduce(0) { $0 + approxTokens(of: $1) },
-                outputTokens: searchAnswer.count / 4
+                outputTokens: DebugSearchFixture.findings.count / 4
             )))
         } catch is CancellationError {
             continuation.yield(.error(.cancelled))

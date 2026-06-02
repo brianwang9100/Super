@@ -37,6 +37,22 @@ enum NativeWebSearch {
         model.searchBackend == nativeBackendValue
     }
 
+    /// `searchBackend` value selecting the DEBUG client-side mock backend —
+    /// canned search results fulfilled in-process by a `WebSearchFulfilling`
+    /// rather than the model's own provider. Lets the full search flow (cost
+    /// gate → confirm row → sources pill) run against *any* model with no
+    /// real search calls. Only ever set on a model in DEBUG builds, but the
+    /// constant lives here (not behind `#if DEBUG`) so the turn-loop branch
+    /// that reads it is plain, testable production code.
+    static let mockBackendValue = "debug"
+
+    /// Whether the active model opted into the client-side mock search
+    /// backend. Mutually exclusive with ``usesNativeSearch(_:)`` — a model
+    /// carries one `searchBackend` value.
+    static func usesMockSearch(_ model: LLMModel) -> Bool {
+        model.searchBackend == mockBackendValue
+    }
+
     // MARK: - Sentinel (search active this turn)
 
     /// Reserved tool name flagging "enable native web search this turn". The

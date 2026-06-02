@@ -45,6 +45,11 @@ public actor ChatSessionStore {
     /// (test fixtures, the live-LLM script). See ``ChatSession``'s
     /// `memoryRepository` for the per-session contract.
     private let memoryRepository: (any MemoryRepository)?
+    /// Client-side web-search fulfiller handed to each session it constructs.
+    /// `nil` in Release and most fixtures; in DEBUG the host injects
+    /// `DebugWebSearchFulfiller` so the `"debug"` mock backend works in the
+    /// simulator. Constructor-time state — no runtime setter.
+    private let webSearchFulfiller: (any WebSearchFulfilling)?
 
     private var sessions: [String: ChatSession] = [:]
 
@@ -65,7 +70,8 @@ public actor ChatSessionStore {
         chatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
-        memoryRepository: (any MemoryRepository)? = nil
+        memoryRepository: (any MemoryRepository)? = nil,
+        webSearchFulfiller: (any WebSearchFulfilling)? = nil
     ) {
         self.messageRepository = messageRepository
         self.toolCallRepository = toolCallRepository
@@ -84,6 +90,7 @@ public actor ChatSessionStore {
         self.appletBriefings = appletBriefings
         self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
+        self.webSearchFulfiller = webSearchFulfiller
     }
 
     /// Get-or-create the session for a conversation. Subsequent calls with
@@ -109,7 +116,8 @@ public actor ChatSessionStore {
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: currentUserPersonalization,
-            memoryRepository: memoryRepository
+            memoryRepository: memoryRepository,
+            webSearchFulfiller: webSearchFulfiller
         )
         sessions[conversationId] = session
         return session

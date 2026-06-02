@@ -270,6 +270,14 @@ enum SuperOSAppBootstrap {
         // the App target's bundle, which doesn't ship the markdown.
         let chatBriefing = ChatBriefing.load()
 
+        // DEBUG-only: mock-search backend fulfiller so the seeded "Debug
+        // (mock search)" model exercises the full search flow with no key.
+        #if DEBUG
+        let webSearchFulfiller: (any WebSearchFulfilling)? = DebugWebSearchFulfiller()
+        #else
+        let webSearchFulfiller: (any WebSearchFulfilling)? = nil
+        #endif
+
         let chatSessionStore = ChatSessionStore(
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
@@ -283,7 +291,8 @@ enum SuperOSAppBootstrap {
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: initialSettings.userPersonalization,
-            memoryRepository: memoryRepository
+            memoryRepository: memoryRepository,
+            webSearchFulfiller: webSearchFulfiller
         )
 
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)

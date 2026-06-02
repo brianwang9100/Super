@@ -225,6 +225,32 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
+        // Canned-stream provider wired to the client-mock search backend so
+        // the full web-search flow (cost gate → confirm → sources pill →
+        // Gemini suggestions on a "gemini" query) is exercisable in the
+        // simulator with no key. Same `DebugLLMProvider` as "Debug (canned)";
+        // the only difference is `searchBackend: "debug"`, which routes search
+        // through `DebugWebSearchFulfiller`. Never auto-selected.
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-mock-search", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-mock-search",
+                name: "Debug (mock search)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: true,
+                maxContextTokens: DebugLLMProvider.maxContextTokens,
+                isSelected: false,
+                // Literal mirrors `NativeWebSearch.mockBackendValue` (internal
+                // to the Chat module, so unreachable here); a Chat unit test
+                // pins the two equal.
+                searchBackend: "debug"
+            )
+        }
     }
     #endif
 }
