@@ -12,6 +12,12 @@ import Testing
 @Suite("AnnotationSheet snapshots")
 @MainActor
 struct AnnotationSheetSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let citation = "Romans 8:28-30"
 
     // In canonical category order (author → summary → historical), matching

@@ -20,6 +20,7 @@ import SwiftUI
 /// `bible.annotate` tool, the event bus, and the chapter navigator.
 struct AnnotationSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// One card to render. The `body` carries the same shape
     /// `AnnotationBlock` consumes; the parent does any markdown
@@ -131,10 +132,10 @@ struct AnnotationSheet: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(citation)
-                .font(.system(size: 17, weight: .semibold))
+                .font(typography.font(size: 17, weight: .semibold))
                 .foregroundStyle(theme.ink)
             Text("ANNOTATIONS")
-                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                .font(typography.font(size: 9.5, weight: .medium, design: .monospaced))
                 .tracking(0.6)
                 .foregroundStyle(theme.inkFaint)
             Spacer()
@@ -147,7 +148,7 @@ struct AnnotationSheet: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(typography.font(size: 14, weight: .medium))
                     .foregroundStyle(theme.inkSoft)
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(theme.backgroundSunken))
@@ -206,7 +207,7 @@ struct AnnotationSheet: View {
         VStack(spacing: 10) {
             AnnotationBubble(state: .generating, size: 28)
             Text("Generating annotations…")
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 220)
@@ -223,7 +224,7 @@ struct AnnotationSheet: View {
             VStack(spacing: 10) {
                 AnnotationBubble(state: .empty, size: 28)
                 Text("No annotations yet. Tap to generate.")
-                    .font(.system(size: 14))
+                    .font(typography.font(size: 14))
                     .foregroundStyle(theme.inkSoft)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 220)
@@ -243,13 +244,13 @@ struct AnnotationSheet: View {
         VStack(spacing: 12) {
             AnnotationBubble(state: .empty, size: 28)
             Text(message)
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 260)
             Button(action: onRetry) {
                 Text("Try again")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(typography.font(size: 14, weight: .medium))
                     .foregroundStyle(theme.ink)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)

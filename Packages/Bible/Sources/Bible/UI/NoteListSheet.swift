@@ -18,6 +18,7 @@ import SwiftUI
 /// the repository, and (for compose) the editor's create path.
 struct NoteListSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// One projected note row. The container maps each `BibleNoteRecord`
     /// into an `Item`, formatting the date and deriving the assistant
@@ -91,19 +92,19 @@ struct NoteListSheet: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(citation)
-                    .font(.system(size: citationSize, weight: .semibold, design: .serif))
+                    .font(typography.font(size: citationSize, weight: .semibold, design: .serif))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text("\(items.count) \(items.count == 1 ? "Note" : "Notes")")
-                    .font(.system(size: countSize, weight: .medium, design: .monospaced))
+                    .font(typography.font(size: countSize, weight: .medium, design: .monospaced))
                     .tracking(0.6)
                     .foregroundStyle(theme.inkFaint)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: onCompose) {
                 Image(systemName: "plus")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(typography.font(size: 17, weight: .semibold))
                     .foregroundStyle(theme.accentInk)
                     .frame(width: 34, height: 34)
                     .background(Circle().fill(theme.accent))
@@ -169,10 +170,10 @@ struct NoteListSheet: View {
                 .frame(width: 64, height: 64)
                 .overlay { NoteGlyph(state: .outline, size: 30) }
             Text("No notes yet")
-                .font(.system(size: 16, weight: .semibold))
+                .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(theme.ink)
             Text("Tap + to write the first note on this passage.")
-                .font(.system(size: 14))
+                .font(typography.font(size: 14))
                 .lineSpacing(2)
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
