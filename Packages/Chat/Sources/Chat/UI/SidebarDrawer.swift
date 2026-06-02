@@ -69,10 +69,10 @@ public struct SidebarDrawer: View {
     /// Base sizes for the drawer's *system-font* nav chrome — "New Chat", the
     /// applet-rail names, and the "CHATS" section label. Declared via
     /// `@ScaledMetric` so the chrome composes OS Dynamic Type, then rendered
-    /// through `typography.font(size:tracksFontScale: false)` so it stays
-    /// independent of the chat font-scale slider (drawer chrome, not reading
-    /// content). The brand-face wordmark + version mark carry their own axes
-    /// directly in `wordmarkHeader`.
+    /// through `typography.font(size:)` (default `tracksFontScale: true`) so it
+    /// also tracks the app font-scale slider — the slider is a global size
+    /// control, so the drawer scales on both axes. The brand-face wordmark +
+    /// version mark carry their own axes directly in `wordmarkHeader`.
     @ScaledMetric(relativeTo: .body) private var navLabelSize: CGFloat = 17
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 11
 
@@ -198,18 +198,18 @@ public struct SidebarDrawer: View {
 
     private var wordmarkHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Wordmark + version mark are drawer chrome: tracksFontScale: false
-            // keeps them off the chat font-scale slider. The wordmark is a
-            // fixed brand mark (relativeTo: nil — no Dynamic Type either); the
-            // version caption keeps its .caption2 anchor so it still honors OS
-            // Dynamic Type.
+            // Wordmark + version mark track the app font-scale slider along
+            // with the rest of the drawer (the slider is a global size
+            // control). The wordmark stays `relativeTo: nil` — a brand mark
+            // that grows with the slider but not OS Dynamic Type; the version
+            // caption keeps its .caption2 anchor so it honors both axes.
             Text(appInfo.bundleName)
-                .font(typography.display(36, relativeTo: nil, tracksFontScale: false))
+                .font(typography.display(36, relativeTo: nil))
                 .italic()
                 .lineLimit(1)
                 .foregroundStyle(theme.ink)
             Text("v\(appInfo.version) · personal")
-                .font(typography.mono(11, relativeTo: .caption2, tracksFontScale: false))
+                .font(typography.mono(11, relativeTo: .caption2))
                 .tracking(0.3)
                 .foregroundStyle(theme.inkFaint)
         }
@@ -226,7 +226,7 @@ public struct SidebarDrawer: View {
                 NewChatIcon(size: 20)
                     .foregroundStyle(theme.accentInk)
                 Text("New Chat")
-                    .font(typography.font(size: navLabelSize, weight: .medium, tracksFontScale: false))
+                    .font(typography.font(size: navLabelSize, weight: .medium))
                     .foregroundStyle(theme.accentInk)
                 Spacer(minLength: 0)
             }
@@ -254,7 +254,7 @@ public struct SidebarDrawer: View {
                 applet.iconView(size: 20)
                     .foregroundStyle(isActive ? theme.accent : theme.inkSoft)
                 Text(applet.displayName)
-                    .font(typography.font(size: navLabelSize, weight: isActive ? .medium : .regular, tracksFontScale: false))
+                    .font(typography.font(size: navLabelSize, weight: isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                 Spacer(minLength: 0)
             }
@@ -272,7 +272,7 @@ public struct SidebarDrawer: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text.uppercased())
-            .font(typography.font(size: sectionLabelSize, weight: .medium, tracksFontScale: false))
+            .font(typography.font(size: sectionLabelSize, weight: .medium))
             .tracking(1)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,11 +321,11 @@ private struct ChatRow: View {
     /// Row title base size, declared via `@ScaledMetric` so it composes OS
     /// Dynamic Type. Anchored to `.body` because the 17 pt base matches that
     /// text style's default size (so it scales at the same rate as the
-    /// `.body`-anchored nav chrome above it). The title intentionally does
-    /// **not** track the chat font-scale slider — it's drawer chrome, not
-    /// reading content, so the slider stays scoped to the message list.
-    /// `tracksFontScale: false` keeps the slider out while the `@ScaledMetric`
-    /// base still carries OS Dynamic Type.
+    /// `.body`-anchored nav chrome above it). Rendered through
+    /// `typography.font(size:)` (default `tracksFontScale: true`) so the title
+    /// also tracks the app font-scale slider — the slider is a global size
+    /// control, so the `@ScaledMetric` base (OS Dynamic Type) and the slider
+    /// compose.
     @ScaledMetric(relativeTo: .body) private var rowTitleBase: CGFloat = 17
 
     var body: some View {
@@ -337,7 +337,7 @@ private struct ChatRow: View {
                         .foregroundStyle(theme.accent)
                 }
                 Text(chat.title)
-                    .font(typography.font(size: rowTitleBase, weight: isActive ? .medium : .regular, tracksFontScale: false))
+                    .font(typography.font(size: rowTitleBase, weight: isActive ? .medium : .regular))
                     .foregroundStyle(isActive ? theme.accent : theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -368,26 +368,26 @@ private struct SeeAllChatsRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     /// Row title base size, declared via `@ScaledMetric` so it composes OS
-    /// Dynamic Type. Like `ChatRow`, the title intentionally does **not** track
-    /// the chat font-scale slider — it's drawer chrome, so `tracksFontScale:
-    /// false` keeps the slider scoped to the message list while `@ScaledMetric`
-    /// preserves OS Dynamic Type. Anchored to `.subheadline` (15 pt base).
+    /// Dynamic Type. Like `ChatRow`, it's rendered through
+    /// `typography.font(size:)` (default `tracksFontScale: true`) so it tracks
+    /// the app font-scale slider too — both axes compose. Anchored to
+    /// `.subheadline` (15 pt base).
     @ScaledMetric(relativeTo: .subheadline) private var rowTitleBase: CGFloat = 15
     /// Trailing chevron base size. Also `@ScaledMetric` so it grows with the
     /// title under OS Dynamic Type (a fixed 11 pt glyph would look undersized
-    /// next to scaled-up text), while staying off the font-scale slider.
+    /// next to scaled-up text), and tracks the slider alongside the title.
     @ScaledMetric(relativeTo: .caption2) private var chevronSize: CGFloat = 11
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 10) {
                 Text("See all chats…")
-                    .font(typography.font(size: rowTitleBase, tracksFontScale: false))
+                    .font(typography.font(size: rowTitleBase))
                     .foregroundStyle(theme.inkSoft)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(typography.font(size: chevronSize, weight: .medium, tracksFontScale: false))
+                    .font(typography.font(size: chevronSize, weight: .medium))
                     .foregroundStyle(theme.inkMute)
             }
             .padding(.horizontal, 14)

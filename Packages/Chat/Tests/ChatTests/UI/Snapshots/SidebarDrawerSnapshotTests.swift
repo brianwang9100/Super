@@ -147,54 +147,43 @@ struct SidebarDrawerSnapshotTests {
         recordOrCompare(view: view, name: "sidebar_open_populated_light_xxl", function: function)
     }
 
-    /// Drawer chrome stays fixed under the max font-scale slider
-    /// (`fontScale == 1.20`).
+    /// Drawer scales with the max font-scale slider (`fontScale == 1.20`).
     ///
-    /// The sidebar drawer is deliberately *slider-independent*: the chat
-    /// font-scale slider is scoped to the message list, so the drawer chrome
-    /// (wordmark, version mark, "New Chat", applet rows, "CHATS" label, and
-    /// chat rows) renders at fixed sizes regardless of the slider. Every chrome
-    /// surface routes through `typography.*` with `tracksFontScale: false`.
-    ///
-    /// Rather than keep a private baseline (which could be re-recorded to pass —
-    /// exactly how the original regression slipped through), this asserts the
-    /// invariant *directly*: it renders the drawer at `fontScale: 1.20` and
-    /// compares against the **`fontScale == 1.0` populated baseline** owned by
-    /// ``openPopulated``. If any chrome surface scaled with the slider, the
-    /// 1.20 render would diverge from the 1.0 baseline and fail here — and the
-    /// shared baseline can't be silently re-recorded without also breaking the
-    /// 1.0 test that owns it. (OS Dynamic Type is a separate axis the chrome
-    /// still honors via its `@ScaledMetric` bases; both renders are at the
-    /// default content-size category, so they're byte-identical.)
-    @Test("font scale max — drawer chrome stays fixed under max slider")
-    func fontScaleMaxChromeFixed() {
-        verifyFontScaleMax(theme: .light, baseline: "sidebar_open_populated_light", baselineFunction: "openPopulatedLight")
+    /// The font-scale slider is a **global size control**, so the whole sidebar
+    /// drawer — wordmark, version mark, "New Chat", applet rows, "CHATS" label,
+    /// and chat rows — grows with it (every surface routes through `typography.*`
+    /// at the default `tracksFontScale: true`). This records a dedicated
+    /// `sidebar_font_scale_max_<theme>` baseline showing the scaled-up drawer;
+    /// it must differ from the `fontScale == 1.0` populated baseline. OS Dynamic
+    /// Type is the separate second axis the drawer also honors via its
+    /// `@ScaledMetric` bases; this render is at the default content-size category.
+    @Test("font scale max — drawer scales with slider")
+    func fontScaleMaxRowsScale() {
+        verifyFontScaleMax(theme: .light, name: "sidebar_font_scale_max_light")
     }
 
-    /// Dark-theme counterpart to ``fontScaleMaxChromeFixed`` — completes the
-    /// `light/dark/sepia` matrix, comparing against ``openPopulatedDark``'s
-    /// `fontScale == 1.0` baseline.
-    @Test("font scale max — drawer chrome stays fixed under max slider (dark)")
-    func fontScaleMaxChromeFixedDark() {
-        verifyFontScaleMax(theme: .dark, baseline: "sidebar_open_populated_dark", baselineFunction: "openPopulatedDark")
+    /// Dark-theme counterpart to ``fontScaleMaxRowsScale`` — completes the
+    /// `light/dark/sepia` matrix with its own scaled baseline.
+    @Test("font scale max — drawer scales with slider (dark)")
+    func fontScaleMaxRowsScaleDark() {
+        verifyFontScaleMax(theme: .dark, name: "sidebar_font_scale_max_dark")
     }
 
-    /// Sepia-theme counterpart to ``fontScaleMaxChromeFixed`` — compares against
-    /// ``openPopulatedSepia``'s `fontScale == 1.0` baseline.
-    @Test("font scale max — drawer chrome stays fixed under max slider (sepia)")
-    func fontScaleMaxChromeFixedSepia() {
-        verifyFontScaleMax(theme: .sepia, baseline: "sidebar_open_populated_sepia", baselineFunction: "openPopulatedSepia")
+    /// Sepia-theme counterpart to ``fontScaleMaxRowsScale``.
+    @Test("font scale max — drawer scales with slider (sepia)")
+    func fontScaleMaxRowsScaleSepia() {
+        verifyFontScaleMax(theme: .sepia, name: "sidebar_font_scale_max_sepia")
     }
 
     /// Renders the drawer with the font-scale slider pinned to its maximum
-    /// (`fontScale == 1.20`) and compares against the `fontScale == 1.0`
-    /// populated baseline identified by `baseline` + `baselineFunction` (the
-    /// snapshot file `<baselineFunction>.<baseline>.png`). A pass *is* the
-    /// slider-independence proof: identical pixels to the unscaled drawer.
+    /// (`fontScale == 1.20`) and records/compares against a dedicated
+    /// `name` baseline (the snapshot file `<function>.<name>.png`). The drawer
+    /// scales globally, so this baseline shows the enlarged drawer — distinct
+    /// from the unscaled `fontScale == 1.0` populated baseline.
     private func verifyFontScaleMax(
         theme: SuperTheme.Identifier,
-        baseline: String,
-        baselineFunction: String
+        name: String,
+        function: String = #function
     ) {
         let viewModel = SidebarViewModel(
             conversationRepository: NoopConversationRepository(),
@@ -217,9 +206,9 @@ struct SidebarDrawerSnapshotTests {
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: Self.frame.width, height: Self.frame.height)
-        // Compare against openPopulated's fontScale == 1.0 baseline by passing
-        // its function name explicitly — the slider-max render must match it.
-        recordOrCompare(view: view, name: baseline, function: baselineFunction)
+        // Dedicated scaled baseline — the drawer grows with the slider, so this
+        // must differ from the fontScale == 1.0 populated baseline.
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     private func verify(
