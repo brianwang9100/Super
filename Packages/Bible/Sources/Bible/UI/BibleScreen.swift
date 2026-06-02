@@ -15,6 +15,10 @@ import SwiftUI
 /// ``NarrationController`` through ``NarrationTransportSheet``.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
+    /// Base point for the "Chapter unavailable" fallback (== `.headline`),
+    /// over a scaled metric so it tracks both Dynamic Type and the slider.
+    @ScaledMetric(relativeTo: .headline) private var unavailableSize: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     /// Cross-applet event bus, injected by the shell. `nil` in previews
@@ -593,7 +597,7 @@ public struct BibleScreen: View {
             BibleAppletIcon(size: 40)
                 .foregroundStyle(theme.inkFaint)
             Text("Chapter unavailable")
-                .font(.system(.headline, design: .serif))
+                .font(typography.font(size: unavailableSize, weight: .semibold, design: .serif))
                 .foregroundStyle(theme.inkSoft)
         }
         .padding(28)

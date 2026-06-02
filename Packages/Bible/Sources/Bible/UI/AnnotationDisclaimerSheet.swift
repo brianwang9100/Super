@@ -15,6 +15,7 @@ import SwiftUI
 /// so it lives inline here rather than as an inputable string.
 struct AnnotationDisclaimerSheet: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Extra bottom padding so the button clears the shell's minimized
     /// chat pill; `0` in standalone (snapshot) contexts.
@@ -35,7 +36,7 @@ struct AnnotationDisclaimerSheet: View {
                 .padding(.top, 4)
                 .padding(.bottom, 16)
             Text("About AI annotations")
-                .font(.system(size: 24, weight: .semibold, design: .serif))
+                .font(typography.font(size: 24, weight: .semibold, design: .serif))
                 .foregroundStyle(theme.ink)
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 10)
@@ -67,7 +68,7 @@ struct AnnotationDisclaimerSheet: View {
 
     private func paragraph(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 14.5))
+            .font(typography.font(size: 14.5))
             .lineSpacing(3)
             .foregroundStyle(theme.inkSoft)
             .multilineTextAlignment(.center)
@@ -78,7 +79,7 @@ struct AnnotationDisclaimerSheet: View {
     private var gotItButton: some View {
         Button(action: onGotIt) {
             Text("Got it")
-                .font(.system(size: 15, weight: .semibold))
+                .font(typography.font(size: 15, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

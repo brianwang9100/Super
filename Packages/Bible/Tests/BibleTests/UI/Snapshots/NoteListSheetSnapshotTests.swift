@@ -12,6 +12,12 @@ import Testing
 @Suite("NoteListSheet snapshots")
 @MainActor
 struct NoteListSheetSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let citation = "John 3:16–18"
 
     private static let many: [NoteListSheet.Item] = [

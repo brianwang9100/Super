@@ -14,6 +14,12 @@ import Testing
 @Suite("NoteEditor snapshots")
 @MainActor
 struct NoteEditorSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private static let citation = "John 3:16–18"
 
     private static let editBody = "This is the hinge of the whole gospel. \"God so loved the world\" — the love comes first, before anything is asked of us. Come back here when belief starts to feel like effort."

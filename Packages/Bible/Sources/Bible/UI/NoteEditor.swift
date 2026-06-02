@@ -23,6 +23,7 @@ import SwiftUI
 /// the callbacks to the repository + sheet dismissal.
 struct NoteEditor: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Whether the editor is composing a new note or revising an existing
     /// one. `edit` adds the Delete affordance; `create` shows the
@@ -102,7 +103,7 @@ struct NoteEditor: View {
     private var toolbar: some View {
         ZStack {
             Text(mode == .edit ? "Edit note" : "New note")
-                .font(.system(size: titleSize, weight: .semibold))
+                .font(typography.font(size: titleSize, weight: .semibold))
                 .foregroundStyle(theme.ink)
             HStack {
                 circleButton(symbol: "xmark", accent: false, enabled: true, action: onCancel)
@@ -132,7 +133,7 @@ struct NoteEditor: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
+                .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(symbolColor(accent: accent, enabled: enabled))
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(fillColor(accent: accent, enabled: enabled)))
@@ -154,7 +155,7 @@ struct NoteEditor: View {
 
     private var caption: some View {
         Text("On \(citation)".uppercased())
-            .font(.system(size: captionSize, weight: .medium, design: .monospaced))
+            .font(typography.font(size: captionSize, weight: .medium, design: .monospaced))
             .tracking(0.8)
             .foregroundStyle(theme.inkFaint)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -166,7 +167,7 @@ struct NoteEditor: View {
         ZStack(alignment: .topLeading) {
             if text.isEmpty {
                 Text("Write a note on this passage…")
-                    .font(.system(size: entrySize))
+                    .font(typography.font(size: entrySize))
                     .foregroundStyle(theme.inkFaint)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
@@ -176,7 +177,7 @@ struct NoteEditor: View {
                     .accessibilityHidden(true)
             }
             TextEditor(text: $text)
-                .font(.system(size: entrySize))
+                .font(typography.font(size: entrySize))
                 .lineSpacing(4)
                 .foregroundStyle(theme.ink)
                 .tint(theme.accent)
@@ -198,9 +199,9 @@ struct NoteEditor: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "trash")
-                        .font(.system(size: titleSize, weight: .medium))
+                        .font(typography.font(size: titleSize, weight: .medium))
                     Text("Delete note")
-                        .font(.system(size: titleSize, weight: .semibold))
+                        .font(typography.font(size: titleSize, weight: .semibold))
                 }
                 .foregroundStyle(theme.errorAccent)
                 .frame(maxWidth: .infinity)

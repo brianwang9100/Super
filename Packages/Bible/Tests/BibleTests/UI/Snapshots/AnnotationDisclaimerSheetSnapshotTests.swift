@@ -11,6 +11,12 @@ import Testing
 @Suite("AnnotationDisclaimerSheet snapshots")
 @MainActor
 struct AnnotationDisclaimerSheetSnapshotTests {
+    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
+    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// fallback, and so this suite stays order-independent (registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("disclaimer renders in the light theme")
     func light() {
         verify(theme: .light, name: "light")
