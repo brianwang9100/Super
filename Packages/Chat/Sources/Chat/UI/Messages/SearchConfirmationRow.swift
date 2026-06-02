@@ -19,20 +19,26 @@ struct SearchConfirmationRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    private var query: String {
-        NativeWebSearch.proposedQuery(fromParametersJSON: call.parametersJSON)
-    }
-
-    private var reason: String {
-        NativeWebSearch.proposedReason(fromParametersJSON: call.parametersJSON)
+    /// Decoded once per render and threaded into the subviews — the proposal
+    /// JSON is parsed a single time instead of once per `query`/`reason` read.
+    private var fields: (query: String, reason: String) {
+        NativeWebSearch.proposedFields(fromParametersJSON: call.parametersJSON)
     }
 
     var body: some View {
         switch call.status {
         case .awaitingConfirmation, .running:
-            prompt
+            // `.running` is the brief window after `.toolCallStarted` but
+            // before `awaitSearchDecision` flips the status to
+            // `.awaitingConfirmation` and stores the continuation. We render
+            // the same prompt so the buttons don't flicker in; a tap landing
+            // in that sub-millisecond window routes to `confirmToolCall`/
+            // `skipToolCall`, which no-op until the continuation exists — the
+            // user simply taps again once it's parked. Harmless, not a dropped
+            // action of consequence.
+            prompt(fields: fields)
         case .success:
-            summary(icon: "magnifyingglass", text: searchedSummaryText, tint: theme.inkSoft)
+            summary(icon: "magnifyingglass", text: searchedSummaryText(query: fields.query), tint: theme.inkSoft)
         case .failed:
             summary(icon: "minus.circle", text: "Web search skipped.", tint: theme.inkFaint)
         }
@@ -40,8 +46,10 @@ struct SearchConfirmationRow: View {
 
     // MARK: - Awaiting decision
 
-    private var prompt: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func prompt(fields: (query: String, reason: String)) -> some View {
+        let query = fields.query
+        let reason = fields.reason
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(typography.font(.caption))
@@ -106,7 +114,7 @@ struct SearchConfirmationRow: View {
 
     // MARK: - Resolved summary
 
-    private var searchedSummaryText: String {
+    private func searchedSummaryText(query: String) -> String {
         query.isEmpty ? "Searched the web." : "Searched the web for “\(query)”."
     }
 

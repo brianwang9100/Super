@@ -59,9 +59,29 @@ struct SearchConfirmationRowSnapshotTests {
         verify(status: .success, theme: .light, height: 80, name: "search_confirm_searched_light")
     }
 
+    @Test("resolved searched, dark")
+    func searchedDark() {
+        verify(status: .success, theme: .dark, height: 80, name: "search_confirm_searched_dark")
+    }
+
+    @Test("resolved searched, sepia")
+    func searchedSepia() {
+        verify(status: .success, theme: .sepia, height: 80, name: "search_confirm_searched_sepia")
+    }
+
     @Test("resolved skipped, light")
     func skippedLight() {
         verify(status: .failed, theme: .light, height: 80, name: "search_confirm_skipped_light")
+    }
+
+    @Test("resolved skipped, dark")
+    func skippedDark() {
+        verify(status: .failed, theme: .dark, height: 80, name: "search_confirm_skipped_dark")
+    }
+
+    @Test("resolved skipped, sepia")
+    func skippedSepia() {
+        verify(status: .failed, theme: .sepia, height: 80, name: "search_confirm_skipped_sepia")
     }
 
     private func verify(

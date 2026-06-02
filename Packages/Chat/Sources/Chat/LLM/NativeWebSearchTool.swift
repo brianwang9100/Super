@@ -123,21 +123,28 @@ enum NativeWebSearch {
     /// stored parameters JSON for display in the confirm prompt. Returns an
     /// empty string when the model omitted it (the gate still renders).
     static func proposedQuery(fromParametersJSON json: String) -> String {
-        proposalString(named: proposalQueryParameter, fromParametersJSON: json)
+        proposedFields(fromParametersJSON: json).query
     }
 
     /// Pull the model's one-sentence reason out of a parked call's stored
     /// parameters JSON. Empty when absent.
     static func proposedReason(fromParametersJSON json: String) -> String {
-        proposalString(named: proposalReasonParameter, fromParametersJSON: json)
+        proposedFields(fromParametersJSON: json).reason
     }
 
-    private static func proposalString(named name: String, fromParametersJSON json: String) -> String {
+    /// Decode both proposal fields in a single pass. The confirm row reads
+    /// query + reason together every render, so this avoids parsing the JSON
+    /// twice. Missing/malformed fields come back as empty strings (the gate
+    /// still renders) rather than throwing.
+    static func proposedFields(fromParametersJSON json: String) -> (query: String, reason: String) {
         guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(json.utf8)),
-              case .object(let dict) = value,
-              case .string(let string)? = dict[name] else {
+              case .object(let dict) = value else {
+            return ("", "")
+        }
+        func string(_ name: String) -> String {
+            if case .string(let value)? = dict[name] { return value }
             return ""
         }
-        return string
+        return (string(proposalQueryParameter), string(proposalReasonParameter))
     }
 }
