@@ -421,7 +421,12 @@ public struct ChatScreen: View {
         // expansion to dissolve the seam where the surface meets the
         // status-bar strip. A top-aligned overlay (it extends *above* the
         // surface via `ignoresSafeArea`, so it can't sit behind the
-        // opaque surface as a background would).
+        // opaque surface as a background would). Applied *after* `.mask`,
+        // so it renders at full width regardless of `panelHorizontalInset`
+        // — that's safe because `topEdgeFadeOpacity` (band 0.95 → 1.0)
+        // only becomes non-zero once `panelHorizontalInset` (band
+        // 0.9 → 1.0) has already collapsed to < 1pt, so the inset crop and
+        // the fade never visibly overlap. Don't move this above `.mask`.
         .overlay(alignment: .top) { topEdgeFade }
         // Route `super://bible/verse?...` link taps from the rendered
         // transcript through the cross-applet event bus. Non-Bible URLs

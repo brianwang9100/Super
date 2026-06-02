@@ -66,6 +66,11 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .dark, name: "screen_populated_dark")
     }
 
+    @Test("populated transcript in sepia theme")
+    func populatedSepia() {
+        verifyPopulated(theme: .sepia, name: "screen_populated_sepia")
+    }
+
     @Test("no-model error banner over empty state, light")
     func noModelErrorLight() {
         verifyNoModelError(theme: .light, name: "screen_no_model_error_light")
