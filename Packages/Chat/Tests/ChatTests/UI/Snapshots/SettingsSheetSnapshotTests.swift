@@ -761,6 +761,63 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .compaction, name: "settings_compaction_light")
     }
 
+    // Search pane — the two key states are the cost gate ON (default) and
+    // OFF, each across light / dark / sepia, plus an XXL fixed-chrome
+    // sentinel (see the suite note: settings text scales with the in-app
+    // font-scale slider, not OS Dynamic Type, so the XXL baseline is
+    // intentionally byte-identical to `searchPaneOnLight` and a diff would
+    // flag an accidental reintroduction of Dynamic Type scaling here).
+    @Test("search pane, gate on, light")
+    func searchPaneOnLight() async {
+        await verify(theme: .light, pane: .search, name: "settings_search_on_light")
+    }
+
+    @Test("search pane, gate on, dark")
+    func searchPaneOnDark() async {
+        await verify(theme: .dark, pane: .search, name: "settings_search_on_dark")
+    }
+
+    @Test("search pane, gate on, sepia")
+    func searchPaneOnSepia() async {
+        await verify(theme: .sepia, pane: .search, name: "settings_search_on_sepia")
+    }
+
+    @Test("search pane, gate off, light")
+    func searchPaneOffLight() async {
+        await verify(
+            theme: .light, pane: .search, name: "settings_search_off_light",
+            settings: Self.settings(askBeforeSearching: false)
+        )
+    }
+
+    @Test("search pane, gate off, dark")
+    func searchPaneOffDark() async {
+        await verify(
+            theme: .dark, pane: .search, name: "settings_search_off_dark",
+            settings: Self.settings(askBeforeSearching: false)
+        )
+    }
+
+    @Test("search pane, gate off, sepia")
+    func searchPaneOffSepia() async {
+        await verify(
+            theme: .sepia, pane: .search, name: "settings_search_off_sepia",
+            settings: Self.settings(askBeforeSearching: false)
+        )
+    }
+
+    @Test("search pane, dynamic type XXL")
+    func searchPaneXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(settings: .default)
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .search)
+            .superTheme(.make(.light))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_search_on_light_xxl", function: function)
+    }
+
     @Test("data pane")
     func dataPane() async {
         await verify(theme: .light, pane: .data, name: "settings_data_light")
@@ -804,6 +861,14 @@ struct SettingsSheetSnapshotTests {
     private static func settings(themeId: ChatSettings.ThemeID) -> ChatSettings {
         var settings = ChatSettings.default
         settings.themeId = themeId
+        return settings
+    }
+
+    /// `ChatSettings.default` with the web-search cost gate overridden —
+    /// used by the Search-pane variants to capture the toggle-off state.
+    private static func settings(askBeforeSearching: Bool) -> ChatSettings {
+        var settings = ChatSettings.default
+        settings.askBeforeSearching = askBeforeSearching
         return settings
     }
 
@@ -863,6 +928,7 @@ struct SettingsSheetSnapshotTests {
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
+            webSearchPolicyReceiver: FakeWebSearchPolicyReceiver(),
             appleFoundationAvailability: appleFoundationAvailability
         )
     }

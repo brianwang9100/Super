@@ -223,6 +223,7 @@ enum SuperBibleAppBootstrap {
             compactor: compactor,
             autoCompactEnabled: initialSettings.autoCompactEnabled,
             autoCompactThreshold: initialSettings.autoCompactThreshold,
+            askBeforeSearching: initialSettings.askBeforeSearching,
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: initialSettings.userPersonalization,

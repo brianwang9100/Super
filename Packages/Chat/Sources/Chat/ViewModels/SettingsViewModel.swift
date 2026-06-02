@@ -175,6 +175,13 @@ public final class SettingsViewModel {
     /// diverged from running sessions until the next app launch.
     private let autoCompactPolicyReceiver: any AutoCompactPolicyReceiver
 
+    /// Receiver that runtime-pushes the web-search cost-gate toggle into
+    /// orchestration (production: `ChatSessionStore`). Same required-non-
+    /// optional rationale as `autoCompactPolicyReceiver` — a silently-
+    /// dropped toggle would leave the persisted value diverged from
+    /// running sessions until the next app launch.
+    private let webSearchPolicyReceiver: any WebSearchPolicyReceiver
+
     /// Optional notification fired after the models list changes via
     /// `createModel`/`updateModel`/`deleteModel`. The host wires this so
     /// the chat surface picks up newly added providers without an app
@@ -201,6 +208,7 @@ public final class SettingsViewModel {
         toolRegistry: ToolRegistry,
         userPersonalizationReceiver: any UserPersonalizationReceiver,
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
+        webSearchPolicyReceiver: any WebSearchPolicyReceiver,
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
@@ -217,6 +225,7 @@ public final class SettingsViewModel {
         self.llmProviderRegistry = llmProviderRegistry
         self.userPersonalizationReceiver = userPersonalizationReceiver
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
+        self.webSearchPolicyReceiver = webSearchPolicyReceiver
         self.httpClient = httpClient
         self.appleFoundationAvailability = appleFoundationAvailability
     }
@@ -374,6 +383,16 @@ public final class SettingsViewModel {
             enabled: settings.autoCompactEnabled,
             threshold: settings.autoCompactThreshold
         )
+    }
+
+    public func setAskBeforeSearching(_ value: Bool) async {
+        settings.askBeforeSearching = value
+        try? await store.setAskBeforeSearching(value)
+        // Fan out to every active `ChatSession` so a long-running
+        // conversation picks up the new gate on its next turn — otherwise
+        // the persisted value would diverge from running sessions until
+        // the user restarted the app.
+        await webSearchPolicyReceiver.setAskBeforeSearching(value)
     }
 
     public func setModelEnabled(id: String, enabled: Bool) async {
