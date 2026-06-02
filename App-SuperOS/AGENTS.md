@@ -37,9 +37,9 @@ These complement the root [`../AGENTS.md`](../AGENTS.md). When the root rules an
 
 Per the root `AGENTS.md` § Backend: SuperOS proxies all LLM API calls through `super-server/`. API keys never live on device. SuperBible is the exception — it issues BYOK calls directly. Do not introduce direct-to-provider transport in SuperOS.
 
-### Hard-coded founder email is fine
+### No account UI
 
-Settings → account row uses the hard-coded `brianwang9100@gmail.com`. The single-user MVP doesn't ship account flows. SuperBible passes `""` instead; do not collapse the two by reading shared global state. (The sidebar no longer renders an identity capsule — see the SidebarDrawer footer.)
+Settings has no account row or identity capsule — the single-user MVP doesn't ship account flows, so `accountEmail` and the Settings account chip were removed from both targets (the `SettingsViewModel` no longer takes the parameter). Real identity will arrive with Sign in with Apple per the SuperBible fork spec §7; reintroduce account UI deliberately then rather than re-adding a hard-coded address.
 
 ## Testing expectations
 

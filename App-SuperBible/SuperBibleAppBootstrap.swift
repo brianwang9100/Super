@@ -53,9 +53,6 @@ struct SuperBibleAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
-            // Real identity arrives with SB-M3+ Sign in with Apple per
-            // the fork spec §7.
-            accountEmail: "",
             // SuperBible diverges from SuperOS: every cold launch opens to
             // Bible with the chat overlay as a pill. The applet override
             // is enforced separately in `bootstrap()` (UserDefaults skip

@@ -2,7 +2,7 @@ import Core
 import SwiftUI
 
 /// Root pane of the Settings sheet. Mirrors the root layout in
-/// `settings.jsx`: account chip · Models/Appearance group · System Prompt /
+/// `settings.jsx`: Models/Appearance group · System Prompt /
 /// Verbosity / Tools / Compaction group · Data / About group.
 ///
 /// Row taps push panes via the view model's navigation helper so the
@@ -11,15 +11,8 @@ import SwiftUI
 struct SettingsRootPane: View {
     let viewModel: SettingsViewModel
 
-    @Environment(\.superTheme) private var theme
-    @Environment(\.superTypography) private var typography
-
     var body: some View {
         VStack(spacing: 0) {
-            accountChip
-                .padding(.top, 12)
-                .padding(.bottom, 14)
-
             SettingsGroup {
                 SettingsRow(
                     icon: AnyView(ModelsIcon()),
@@ -81,28 +74,11 @@ struct SettingsRootPane: View {
 
             Spacer(minLength: 12)
         }
+        .padding(.top, 12)
     }
 
     private var themeName: String {
         SuperTheme.make(viewModel.settings.themeId).displayName
-    }
-
-    private var accountChip: some View {
-        Text(viewModel.accountEmail)
-            .font(typography.font(.subheadline))
-            .foregroundStyle(theme.ink)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(theme.backgroundRaised)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(theme.borderFaint, lineWidth: 1)
-            )
-            .padding(.horizontal, 16)
     }
 
     private var aboutVersion: String {

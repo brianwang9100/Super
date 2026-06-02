@@ -555,7 +555,6 @@ struct AppShell: View {
             }
             // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
             let settings = SettingsViewModel(
-                accountEmail: dependencies.accountEmail,
                 appInfo: appInfo,
                 settingRepository: dependencies.settingRepository,
                 modelRepository: dependencies.modelConfigurationRepository,
