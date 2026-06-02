@@ -7,6 +7,7 @@ import SwiftUI
 /// the previous card is absent, at Revelation's final chapter the next one.
 struct BibleChapterFooter: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     let previousLabel: String?
     let nextLabel: String?
@@ -36,21 +37,21 @@ struct BibleChapterFooter: View {
             HStack(spacing: 10) {
                 if isPrevious {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(typography.font(size: 12, weight: .semibold))
                 }
                 VStack(alignment: alignment, spacing: 2) {
                     Text(kicker.uppercased())
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(typography.font(size: 9.5, weight: .medium))
                         .tracking(0.6)
                         .foregroundStyle(theme.inkFaint)
                     Text(label)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(typography.font(size: 13, weight: .medium))
                         .foregroundStyle(theme.ink)
                 }
                 .frame(maxWidth: .infinity, alignment: isPrevious ? .leading : .trailing)
                 if !isPrevious {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(typography.font(size: 12, weight: .semibold))
                 }
             }
             .foregroundStyle(theme.inkSoft)

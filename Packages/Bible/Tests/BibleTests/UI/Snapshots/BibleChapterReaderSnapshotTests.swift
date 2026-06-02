@@ -24,6 +24,12 @@ import Testing
 @Suite("BibleChapterReader snapshots")
 @MainActor
 struct BibleChapterReaderSnapshotTests {
+    /// Register Core's bundled brand fonts before any render so the chapter
+    /// title's brand serif resolves instead of baking the system fallback —
+    /// and so this suite is order-independent (font registration is
+    /// process-global; see `SnapshotFontRegistration`).
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("the chapter title shows the generating bubble in the light theme")
     func chapterGeneratingLight() throws {
         try verify(theme: .light, name: "chapter_generating_light")

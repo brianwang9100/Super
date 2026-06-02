@@ -28,6 +28,7 @@ struct BibleNavBar: View {
     }
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     let bookName: String
     let chapterNumber: Int
@@ -114,7 +115,7 @@ struct BibleNavBar: View {
         HStack(spacing: 0) {
             Button(action: onPill) {
                 Text("\(bookName) \(chapterNumber)")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(typography.font(size: 15, weight: .medium))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -139,12 +140,12 @@ struct BibleNavBar: View {
                     Text(translation.rawValue)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(typography.font(size: 9, weight: .semibold))
                 }
                 // The translation code is short and never truncates, even
                 // when the book segment is scaling down to fit.
                 .fixedSize(horizontal: true, vertical: false)
-                .font(.system(size: 13, weight: .medium))
+                .font(typography.font(size: 13, weight: .medium))
                 .foregroundStyle(theme.inkSoft)
                 .padding(.horizontal, 9)
                 .frame(maxHeight: .infinity)
@@ -165,14 +166,14 @@ struct BibleNavBar: View {
     private func selectionPill(_ citation: String) -> some View {
         HStack(spacing: 8) {
             Text(citation)
-                .font(.system(size: 13, weight: .semibold))
+                .font(typography.font(size: 13, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
             Button(action: onClearSelection) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(typography.font(size: 9, weight: .bold))
                     .foregroundStyle(theme.inkSoft)
                     .frame(width: 22, height: 22)
                     .background(Circle().fill(theme.backgroundSunken))
@@ -218,7 +219,7 @@ struct BibleNavBar: View {
             }
         } label: {
             Image(systemName: "sparkles")
-                .font(.system(size: 16, weight: .semibold))
+                .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.accent))
@@ -239,7 +240,7 @@ struct BibleNavBar: View {
     private var narrationButton: some View {
         Button(action: onTapNarrationPill) {
             Image(systemName: "speaker.wave.2.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(typography.font(size: 15, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.accent))
@@ -278,7 +279,7 @@ struct BibleNavBar: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .medium))
+                .font(typography.font(size: 15, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .frame(width: 36, height: 36)
                 .background(Circle().fill(theme.backgroundRaised))
