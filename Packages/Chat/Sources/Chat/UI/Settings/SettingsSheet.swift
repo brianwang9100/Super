@@ -2,10 +2,9 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// Modal Settings sheet. Mirrors `SettingsModal` from `settings.jsx`:
-/// 25%-black scrim + a bottom-sheet that slides up to a 40pt top inset
-/// with a 22pt top-corner radius. Reduce Motion swaps the slide for an
-/// opacity fade.
+/// Modal Settings sheet, presented as a native `.sheet` by the app shell
+/// (the system supplies the scrim, drag bar, rounded surface, and slide /
+/// drag-to-dismiss). This view is the sheet's content.
 ///
 /// Sub-pane navigation lives on `SettingsViewModel.navigationPath` and is
 /// driven by a `NavigationStack` — pushes get the native left-to-right
@@ -53,8 +52,8 @@ public struct SettingsSheet: View {
         }
     }
 
-    /// Two-way binding controlling visibility. The sheet flips it to
-    /// `false` whenever the user taps the scrim or the close button.
+    /// Two-way binding controlling visibility. The close button flips it to
+    /// `false`; the native sheet also flips it on a drag-down dismiss.
     @Binding public var isPresented: Bool
 
     /// Shared state owner. The host owns the instance so the sheet keeps
@@ -70,7 +69,6 @@ public struct SettingsSheet: View {
     public let databaseContext: DatabaseContext?
 
     @Environment(\.superTheme) private var theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
         isPresented: Binding<Bool>,
@@ -117,42 +115,27 @@ public struct SettingsSheet: View {
     private var initialModelDetailContextWindowError: String?
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
-            if isPresented {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { close() }
-                    .transition(.opacity)
-                    .accessibilityHidden(true)
-
-                sheetSurface
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom))
-                    .accessibilityAddTraits(.isModal)
-                    .accessibilityAction(.escape) { close() }
-            }
-        }
-        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .timingCurve(0.32, 0.72, 0, 1, duration: 0.30), value: isPresented)
-        .task(id: isPresented) {
-            if isPresented {
-                await viewModel.load()
-            }
-        }
-        // Apply the read-only database context only when the host wired
-        // one — snapshot tests and previews pass nil and fall through to
-        // each `@Query` request's defaultValue. The `databaseContext`
-        // ViewModifier requires a value, so we apply a no-op pass through
-        // an inline overload when nil.
-        .modifier(OptionalDatabaseContextModifier(context: databaseContext))
+        sheetSurface
+            .accessibilityAction(.escape) { close() }
+            // The native `.sheet` creates this view fresh on each presentation,
+            // so a plain `.task` loads exactly once per present (and cancels on
+            // dismiss when the view tears down) — no `id:` gate needed.
+            .task { await viewModel.load() }
+            // Apply the read-only database context only when the host wired
+            // one — snapshot tests and previews pass nil and fall through to
+            // each `@Query` request's defaultValue. The `databaseContext`
+            // ViewModifier requires a value, so we apply a no-op pass through
+            // an inline overload when nil.
+            .modifier(OptionalDatabaseContextModifier(context: databaseContext))
     }
 
     private func close() {
+        // Flipping the binding dismisses the native sheet; the host's
+        // `.sheet(onDismiss:)` calls `popToRoot()` — the single reset site that
+        // covers both this close-button path and a drag-down dismiss, so the
+        // nav stack isn't reset twice (and the deep pane stays visible through
+        // the dismiss animation rather than snapping to root first).
         isPresented = false
-        // Reset the nav stack so re-presenting the sheet always lands on
-        // root. The sheet subtree is removed when `isPresented` flips, so
-        // resetting the shared view-model state here is what produces the
-        // React `useEffect(...)` reset behavior.
-        viewModel.popToRoot()
     }
 
     private var currentPane: Pane {
@@ -187,16 +170,10 @@ public struct SettingsSheet: View {
                 }
             }
         }
+        // Top room for the system drag indicator; the native sheet supplies the
+        // rounded surface, scrim, and elevation the custom chrome used to draw.
+        .padding(.top, 8)
         .background(theme.background)
-        .clipShape(
-            UnevenRoundedRectangle(
-                cornerRadii: .init(topLeading: 22, topTrailing: 22),
-                style: .continuous
-            )
-        )
-        .padding(.top, 40)
-        .ignoresSafeArea(edges: .bottom)
-        .shadow(color: Color.black.opacity(0.15), radius: 30, x: 0, y: -8)
     }
 
     @ViewBuilder

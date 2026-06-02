@@ -6,10 +6,11 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `SettingsSheet` across themes and panes.
-/// Each scenario embeds the sheet inside a fixed-size container that
-/// mimics the iPhone 17 chat surface so the bottom-sheet inset + scrim
-/// composition matches what ships in production.
+/// Pixel-stable snapshots of `SettingsSheet`'s content across themes and
+/// panes. The sheet now presents via a native `.sheet` (the system owns the
+/// scrim, drag bar, and rounded surface), so each scenario renders the sheet
+/// content on a fixed-size neutral container — the presentation chrome is the
+/// system's and out of scope for these content snapshots.
 ///
 /// Note on the Dynamic Type XXL companions: post-`SuperTypography`, settings
 /// text resolves through `typography.font(_ role:)` (system path, `relativeTo:

@@ -268,6 +268,12 @@ struct AppShell: View {
                     }
                 }
             )
+        }
+        // Settings presents as a native `.sheet` at the `.large` detent. Both
+        // dismiss paths — the close button and a drag-down — only flip
+        // `settingsOpen`, so `onDismiss` is the single site that resets the
+        // nav stack to root, after the dismiss animation finishes.
+        .sheet(isPresented: $settingsOpen, onDismiss: { settingsViewModel?.popToRoot() }) {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
@@ -287,6 +293,9 @@ struct AppShell: View {
                 appearance: appearance,
                 typography: typography
             )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.background)
         }
         .task {
             await ensureViewModel()
@@ -1083,9 +1092,10 @@ private struct SidebarLayer: View {
     }
 }
 
-/// Settings sheet layer. Body only renders content when
-/// `settingsViewModel` is wired; `SettingsSheet` itself early-returns
-/// on `isPresented == false`.
+/// Settings sheet layer — the content of the shell's native `.sheet`, so
+/// it's only instantiated while the sheet is presented (the system owns the
+/// present / dismiss lifecycle now). Body only renders content once
+/// `settingsViewModel` is wired.
 ///
 /// `makeDatabaseContext` is a factory closure (not a stored value) so
 /// the `.readOnly { ... }` allocation is skipped during the bootstrap
