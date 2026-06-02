@@ -93,6 +93,7 @@ struct BibleChapterReaderSnapshotTests {
         }
         .frame(width: 402, height: 760)
         .superTheme(theme)
+        .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
         let failure = verifySnapshot(
@@ -164,6 +165,7 @@ struct BibleChapterReaderSnapshotTests {
         }
         .frame(width: 402, height: 760)
         .superTheme(theme)
+        .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
         let failure = verifySnapshot(
