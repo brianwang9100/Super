@@ -357,6 +357,8 @@ private struct NoopDriver: ChatSessionDriver {
     }
 
     func cancel() async {}
+    func confirmToolCall(id: String) async {}
+    func skipToolCall(id: String) async {}
 }
 
 private actor SnapshotMessageRepository: MessageRepository {

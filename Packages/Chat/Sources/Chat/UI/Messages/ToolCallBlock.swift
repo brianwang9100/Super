@@ -86,6 +86,18 @@ struct ToolCallBlock: View {
                     .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
             }
+        case .awaitingConfirmation:
+            // Generic tool path — the native-search proposal renders its own
+            // approve/skip row (`SearchConfirmationRow`) and never reaches
+            // here, but a future destructive tool parked for approval would.
+            HStack(spacing: 4) {
+                Image(systemName: "hourglass")
+                    .font(typography.font(.caption2))
+                    .foregroundStyle(theme.inkFaint)
+                Text("awaiting approval")
+                    .font(typography.font(.caption2))
+                    .foregroundStyle(theme.inkFaint)
+            }
         case .success:
             HStack(spacing: 4) {
                 Image(systemName: "checkmark")

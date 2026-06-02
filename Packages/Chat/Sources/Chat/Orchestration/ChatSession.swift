@@ -82,6 +82,22 @@ public actor ChatSession {
     /// `ChatSettings.defaultManualCompactMinThreshold` (0.30).
     private let manualCompactMinThreshold: Double
 
+    /// Native web-search cost gate. When `true` (the default), a
+    /// native-search model must *propose* each search via
+    /// `request_web_search` and wait for the user to approve it before any
+    /// billable search runs; when `false`, native search is enabled
+    /// directly from turn one with no prompt. Only affects models whose
+    /// `searchBackend == "native"`. Mutable so a Settings toggle fans out
+    /// to a long-running session via `setAskBeforeSearching(_:)`.
+    private var askBeforeSearching: Bool
+
+    /// In-flight `request_web_search` proposals keyed by tool-call id, each
+    /// holding the continuation `runTurnLoop` is suspended on. Resolved by
+    /// `confirmToolCall(id:)`/`skipToolCall(id:)` (user decision) or
+    /// `cancelPendingConfirmation(id:)` (turn cancellation). Empty between
+    /// gated searches.
+    private var pendingConfirmations: [String: CheckedContinuation<Bool, Error>] = [:]
+
     /// Chat-assistant base prompt, loaded once at app launch from
     /// `Resources/DefaultSystemPrompt.md`. Hidden from the user; owned by
     /// the Chat applet author. Rendered under a `## Chat assistant`
@@ -200,6 +216,7 @@ public actor ChatSession {
         autoCompactEnabled: Bool = true,
         autoCompactThreshold: Double = ChatSettings.defaultAutoCompactThreshold,
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
+        askBeforeSearching: Bool = true,
         chatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
@@ -218,6 +235,7 @@ public actor ChatSession {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = autoCompactThreshold
         self.manualCompactMinThreshold = manualCompactMinThreshold
+        self.askBeforeSearching = askBeforeSearching
         self.chatBriefing = chatBriefing
         self.appletBriefings = appletBriefings
         self.currentUserPersonalization = userPersonalization
@@ -231,6 +249,44 @@ public actor ChatSession {
     public func setAutoCompactPolicy(enabled: Bool, threshold: Double) {
         self.autoCompactEnabled = enabled
         self.autoCompactThreshold = threshold
+    }
+
+    /// Update the native web-search cost-gate policy at runtime. The
+    /// Settings → Search pane calls this (via `ChatSessionStore`) so a
+    /// long-running session picks up the toggle on its next turn. Does not
+    /// affect a search proposal already parked at `.awaitingConfirmation` —
+    /// that one still waits for the user's explicit decision.
+    public func setAskBeforeSearching(_ enabled: Bool) {
+        self.askBeforeSearching = enabled
+    }
+
+    /// Approve a parked `request_web_search` proposal so the turn loop
+    /// re-issues with native search enabled. No-ops if the id isn't
+    /// awaiting confirmation (already resolved, cancelled, or never parked),
+    /// so a double-tap or a stale UID is harmless.
+    public func confirmToolCall(id: String) {
+        if let continuation = pendingConfirmations.removeValue(forKey: id) {
+            continuation.resume(returning: true)
+        }
+    }
+
+    /// Decline a parked `request_web_search` proposal so the turn loop
+    /// continues without search. Same idempotent no-op contract as
+    /// `confirmToolCall(id:)`.
+    public func skipToolCall(id: String) {
+        if let continuation = pendingConfirmations.removeValue(forKey: id) {
+            continuation.resume(returning: false)
+        }
+    }
+
+    /// Resolve a parked proposal as cancelled (turn cancellation) by
+    /// throwing `CancellationError` into the suspended `runTurnLoop`. Routed
+    /// through the same registry so confirm/skip/cancel can't double-resume
+    /// one continuation.
+    private func cancelPendingConfirmation(id: String) {
+        if let continuation = pendingConfirmations.removeValue(forKey: id) {
+            continuation.resume(throwing: CancellationError())
+        }
     }
 
     /// Update the user personalization text at runtime. The Settings UI
@@ -533,21 +589,147 @@ public actor ChatSession {
         temperature: Double,
         provider: LLMProvider
     ) async throws {
+        let nativeSearch = NativeWebSearch.usesNativeSearch(model)
+        // Search-gate state for this user message's loop:
+        //  - `searchApproved` → the user approved; subsequent turns run with
+        //    native search enabled directly (proposal dropped) so the model
+        //    searches and answers in one pass.
+        //  - `searchDeclined` → the user skipped; stop offering search for the
+        //    rest of this loop so the model can't re-propose in a cycle.
+        // Both reset on the next `send(...)` (a fresh loop), so the gate
+        // prompts again for every new user message.
+        var searchApproved = false
+        var searchDeclined = false
         while true {
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
-            let enabledTools = await toolRegistry.enabledTools(for: provider)
+            var tools = await toolRegistry.enabledTools(for: provider)
+            // Per-turn search wiring, native-search models only:
+            //  - gate OFF, or already approved → append the sentinel so the
+            //    adapter attaches its own server search tool.
+            //  - gate ON and undecided → advertise the proposal tool so the
+            //    model must ask first (no sentinel → no server search).
+            //  - gate ON and declined → neither, so the model answers without
+            //    search.
+            let gateActive = nativeSearch && askBeforeSearching && !searchApproved && !searchDeclined
+            if nativeSearch {
+                if !askBeforeSearching || searchApproved {
+                    tools.append(NativeWebSearch.sentinelTool)
+                } else if !searchDeclined {
+                    tools.append(NativeWebSearch.proposalTool)
+                }
+            }
             let toolCalls = try await streamOneTurn(
                 provider: provider,
                 messages: history,
                 model: model,
-                tools: enabledTools,
+                tools: tools,
                 temperature: temperature
             )
             if toolCalls.isEmpty { return }
+
+            // Intercept a web-search proposal — a client-side gate tool that
+            // is never executed through ToolRegistry. Park it for approval,
+            // write its tool result, then loop: an approval re-issues the
+            // turn with the sentinel attached. Any real tools the model
+            // requested alongside it still execute normally.
+            if gateActive,
+               let proposal = toolCalls.first(where: { $0.toolName == NativeWebSearch.proposalToolName }) {
+                let approved: Bool
+                do {
+                    approved = try await awaitSearchDecision(for: proposal)
+                } catch {
+                    // The turn was cancelled while the proposal was parked.
+                    // Still write a (declined) tool result before unwinding so
+                    // the persisted `tool_use` isn't left orphaned — a
+                    // `tool_use` with no matching `tool_result` is replayed on
+                    // the next turn's history and rejected by the provider,
+                    // wedging the conversation. The write must be shielded from
+                    // the turn's cancellation: GRDB's async `write` throws
+                    // `CancellationError` up front on an already-cancelled task,
+                    // so an inline `await` here would no-op. An unstructured
+                    // `Task` does not inherit cancellation, so its writes run to
+                    // completion; we await its result before rethrowing.
+                    await Task { [self] in
+                        try? await resolveProposal(proposal, approved: false)
+                    }.value
+                    throw error
+                }
+                if approved { searchApproved = true } else { searchDeclined = true }
+                try await resolveProposal(proposal, approved: approved)
+                let others = toolCalls.filter { $0.id != proposal.id }
+                if !others.isEmpty { try await executeToolCalls(others) }
+                continue
+            }
+
             try await executeToolCalls(toolCalls)
         }
+    }
+
+    /// Park a `request_web_search` proposal at `.awaitingConfirmation`,
+    /// broadcast the event that drives the inline confirm row, and suspend
+    /// the turn until the user decides. Returns `true` to run the search,
+    /// `false` to skip it. Throws `CancellationError` if the turn is
+    /// cancelled while waiting — `cancelPendingConfirmation(id:)`, invoked
+    /// from the cancellation handler, resumes the continuation. The
+    /// actor's serialized execution closes the store-vs-cancel race: the
+    /// cancel hop can't run until this method has suspended (and thus stored
+    /// the continuation), so it always finds the entry to resolve.
+    private func awaitSearchDecision(for record: ToolCallRecord) async throws -> Bool {
+        try await toolCallRepository.updateStatus(
+            id: record.id,
+            status: .awaitingConfirmation,
+            result: nil,
+            completedAt: nil
+        )
+        let parked = try await refreshed(record)
+        broadcast(.toolCallAwaitingConfirmation(parked))
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // A cancellation that landed before we suspended must not
+                // orphan the continuation — bail immediately.
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                pendingConfirmations[record.id] = continuation
+            }
+        } onCancel: {
+            Task { await self.cancelPendingConfirmation(id: record.id) }
+        }
+    }
+
+    /// Write the tool result for a resolved `request_web_search` proposal so
+    /// the next turn's rebuilt history is well-formed — every `tool_use`
+    /// needs a matching `tool_result`. Approved → status `.success` + a
+    /// "search now and cite" result; declined → status `.cancelled` + an
+    /// "answer from your own knowledge" result. Both persist a role-`.tool`
+    /// `MessageRecord` and broadcast `.toolCallCompleted` so the inline
+    /// confirm row settles.
+    private func resolveProposal(_ record: ToolCallRecord, approved: Bool) async throws {
+        let content = approved
+            ? "Web search approved. Search now and ground your answer in the results, citing them."
+            : "User declined web search. Answer from your own knowledge, and say so if you are unsure."
+        let result = ToolResult(toolID: record.toolName, content: content, isError: false)
+        try await toolCallRepository.updateStatus(
+            id: record.id,
+            status: approved ? .success : .cancelled,
+            result: encodeJSON(result),
+            completedAt: clock.now()
+        )
+        let updated = try await refreshed(record)
+        let toolResultMessage = MessageRecord(
+            id: idGenerator.nextID(),
+            conversationId: conversationId,
+            role: .tool,
+            content: result.content,
+            toolCallId: record.id,
+            createdAt: clock.now(),
+            tokenCount: nil
+        )
+        try await messageRepository.save(toolResultMessage)
+        broadcast(.toolCallCompleted(updated, result))
     }
 
     /// Project the on-disk records back into the LLM-facing message shape

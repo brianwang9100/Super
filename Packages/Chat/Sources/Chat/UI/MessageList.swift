@@ -46,10 +46,13 @@ public struct MessageList: View {
     /// Inline tool-call presentation rendered under an assistant message.
     /// `status` mirrors `ToolCallStatus` minus the values the UI does not
     /// surface explicitly today (`pending` and `executing` collapse to
-    /// `running`; `awaitingConfirmation` is treated as running for now).
+    /// `running`; `cancelled` collapses to `failed`). `awaitingConfirmation`
+    /// is surfaced so the native web-search proposal can render its inline
+    /// approve/skip prompt (and a future destructive tool its own).
     public struct ToolCallItem: Identifiable, Sendable, Equatable {
         public enum Status: Sendable, Equatable {
             case running
+            case awaitingConfirmation
             case success
             case failed
         }
@@ -107,6 +110,13 @@ public struct MessageList: View {
     /// Regenerate. ``ChatScreen`` stages a confirmation dialog before
     /// trimming the transcript.
     public let onRegenerateTapped: (String) -> Void
+    /// Fired with the parked `request_web_search` tool-call id when the user
+    /// approves the inline search prompt. Routed to the view model's
+    /// `confirmSearch(id:)`.
+    public let onConfirmSearch: (String) -> Void
+    /// Fired with the parked tool-call id when the user declines the inline
+    /// search prompt. Routed to the view model's `skipSearch(id:)`.
+    public let onSkipSearch: (String) -> Void
 
     /// State for the live streaming overlay rendered as ``StreamingTail``.
     public struct StreamingState: Sendable, Equatable {
@@ -210,7 +220,9 @@ public struct MessageList: View {
         onContentTap: @escaping () -> Void = {},
         isStreaming: Bool = false,
         onCopyTapped: @escaping (String) -> Void = { _ in },
-        onRegenerateTapped: @escaping (String) -> Void = { _ in }
+        onRegenerateTapped: @escaping (String) -> Void = { _ in },
+        onConfirmSearch: @escaping (String) -> Void = { _ in },
+        onSkipSearch: @escaping (String) -> Void = { _ in }
     ) {
         self.items = items
         self.streamingTail = streamingTail
@@ -221,6 +233,8 @@ public struct MessageList: View {
         self.isStreaming = isStreaming
         self.onCopyTapped = onCopyTapped
         self.onRegenerateTapped = onRegenerateTapped
+        self.onConfirmSearch = onConfirmSearch
+        self.onSkipSearch = onSkipSearch
     }
 
     @Environment(\.superTheme) private var theme
@@ -523,7 +537,9 @@ public struct MessageList: View {
                 verbosity: verbosity,
                 isStreaming: isStreaming,
                 onCopyTapped: { onCopyTapped(text) },
-                onRegenerateRequested: { onRegenerateTapped(id) }
+                onRegenerateRequested: { onRegenerateTapped(id) },
+                onConfirmSearch: onConfirmSearch,
+                onSkipSearch: onSkipSearch
             )
         case .compactionBanner(_, let summary):
             CompactionBanner(summary: summary)

@@ -70,4 +70,12 @@ actor LazyConversationDriver: ChatSessionDriver {
     func cancel() async {
         await inner.cancel()
     }
+
+    func confirmToolCall(id: String) async {
+        await inner.confirmToolCall(id: id)
+    }
+
+    func skipToolCall(id: String) async {
+        await inner.skipToolCall(id: id)
+    }
 }

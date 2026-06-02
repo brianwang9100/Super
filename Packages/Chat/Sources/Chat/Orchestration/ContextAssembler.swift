@@ -121,6 +121,14 @@ public struct ContextAssembler: Sendable {
         if let memoriesBlock = Self.formatMemoriesBlock(memories) {
             prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
         }
+        // Native-search guidance sits ahead of the volatile memories block
+        // (it depends only on the model, so it's stable across turns and
+        // cache-friendly there) and behind the leading briefing. Absent for
+        // non-search models, so the prompt is byte-identical to before for
+        // them.
+        if let webSearchBlock = Self.formatWebSearchBlock(model: model) {
+            prompt.insert(LLMMessage(role: .system, text: webSearchBlock), at: 0)
+        }
         if let leadingBlock = Self.formatLeadingSystemBlock(
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
@@ -175,6 +183,30 @@ public struct ContextAssembler: Sendable {
         }
         guard !sections.isEmpty else { return nil }
         return sections.joined(separator: "\n\n")
+    }
+
+    /// Native web-search guidance, injected only for models whose
+    /// `searchBackend == "native"` (`nil` for every other model, so their
+    /// prompt is unchanged). Teaches economy (search only for current /
+    /// post-training / fast-changing facts, one well-formed query),
+    /// grounding, and that searches may need the user's approval. The exact
+    /// "call `request_web_search` and don't answer yet" mechanic lives in
+    /// the proposal tool's own description (`NativeWebSearch.proposalTool`),
+    /// so it stays correct whether or not the cost gate is on.
+    static func formatWebSearchBlock(model: LLMModel) -> String? {
+        guard NativeWebSearch.usesNativeSearch(model) else { return nil }
+        return """
+        ## Web search
+
+        You can search the web for current, recent, or fast-changing facts \
+        that fall outside your training knowledge. Search only when the \
+        answer genuinely depends on such information or the user explicitly \
+        asks — prefer your own knowledge for stable facts, and use a single \
+        well-formed query. A search may require the user's approval and costs \
+        money, so be economical: don't search for things you already know. \
+        When you do use web results, ground your claims in them and cite the \
+        sources you relied on.
+        """
     }
 
     /// Format the bulleted "What I remember about you" block, or `nil`

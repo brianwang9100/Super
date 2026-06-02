@@ -83,7 +83,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
             displayName: configuration.name,
             supportsThinking: configuration.supportsThinking,
             supportsTools: true,
-            maxContextTokens: configuration.maxContextTokens
+            maxContextTokens: configuration.maxContextTokens,
+            searchBackend: configuration.searchBackend
         )
         self.init(
             id: configuration.id,
