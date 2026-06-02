@@ -52,8 +52,8 @@ public struct SettingsSheet: View {
         }
     }
 
-    /// Two-way binding controlling visibility. The sheet flips it to
-    /// `false` whenever the user taps the scrim or the close button.
+    /// Two-way binding controlling visibility. The close button flips it to
+    /// `false`; the native sheet also flips it on a drag-down dismiss.
     @Binding public var isPresented: Bool
 
     /// Shared state owner. The host owns the instance so the sheet keeps
