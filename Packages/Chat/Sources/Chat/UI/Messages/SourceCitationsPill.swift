@@ -33,6 +33,7 @@ struct SourceCitationsPill: View {
     let sources: [SourceCitationPillModel]
     @State private var isExpanded: Bool
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
     @Environment(\.openURL) private var openURL
     /// Base chip text size, scaled by Dynamic Type and the chat font-scale
@@ -83,14 +84,14 @@ struct SourceCitationsPill: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: pointSize * 0.95))
+                    .font(typography.font(size: pointSize * 0.95, tracksFontScale: false))
                     .foregroundStyle(theme.inkFaint)
                 Text(countLabel)
-                    .font(.system(size: pointSize, weight: .medium))
+                    .font(typography.font(size: pointSize, weight: .medium, tracksFontScale: false))
                     .foregroundStyle(theme.inkSoft)
                 Spacer(minLength: 0)
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: pointSize * 0.8))
+                    .font(typography.font(size: pointSize * 0.8, tracksFontScale: false))
                     .foregroundStyle(theme.inkFaint)
             }
             .contentShape(Rectangle())
@@ -116,11 +117,11 @@ struct SourceCitationsPill: View {
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "globe")
-                    .font(.system(size: pointSize * 0.9))
+                    .font(typography.font(size: pointSize * 0.9, tracksFontScale: false))
                     .foregroundStyle(theme.inkFaint)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(source.host)
-                        .font(.system(size: pointSize * 0.92, weight: .semibold))
+                        .font(typography.font(size: pointSize * 0.92, weight: .semibold, tracksFontScale: false))
                         .foregroundStyle(theme.inkSoft)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -128,7 +129,7 @@ struct SourceCitationsPill: View {
                     // its host (projection collapses a host-equal title to "").
                     if !source.title.isEmpty {
                         Text(source.title)
-                            .font(.system(size: pointSize * 0.92))
+                            .font(typography.font(size: pointSize * 0.92, tracksFontScale: false))
                             .foregroundStyle(theme.inkFaint)
                             .lineLimit(2)
                     }

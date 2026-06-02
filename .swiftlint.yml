@@ -58,6 +58,32 @@ opt_in_rules:
   - toggle_bool
   - prefer_self_type_over_type_of_self
 
+custom_rules:
+  # Brand typography contract: every font resolves through SuperTypography
+  # (`typography.display/font/mono`), never a hand-written `.font(.system…)`,
+  # `.font(.custom…)`, or bare `Font.system/.custom`. Routing through the one
+  # owner keeps the brand-face swap and the font-scale axes centralized — a
+  # raw `.system`/`.custom` call silently opts out of both. See the Typography
+  # section in AGENTS.md and `Packages/Core/.../Theme/SuperTypography.swift`.
+  #
+  # The regex requires `.font(` to be *immediately* followed by `.system`/
+  # `.custom`, so the legitimate `typography.font(size:)` accessor never trips
+  # it. `match_kinds` keeps the match to real code (doc-comment mentions of the
+  # banned forms don't false-positive). `excluded` exempts the sole sanctioned
+  # caller — SuperTypography itself — plus the test targets, whose snapshot
+  # reference grids are fixtures, not product surfaces.
+  super_typography_only:
+    name: "Use SuperTypography"
+    regex: '\.font\(\s*\.(system|custom)|\bFont\s*\.\s*(system|custom)|\bFont\(\s*\.system'
+    match_kinds:
+      - identifier
+      - keyword
+    message: "Route fonts through SuperTypography (@Environment(\\.superTypography) → typography.display/font/mono). Raw .font(.system…), .font(.custom…), and Font.system/.custom are banned everywhere except SuperTypography.swift."
+    severity: error
+    excluded:
+      - ".*/Theme/SuperTypography\\.swift"
+      - ".*/Tests/.*"
+
 analyzer_rules:
   - unused_import
 
