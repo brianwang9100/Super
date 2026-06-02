@@ -14,7 +14,7 @@ import Testing
 @Suite("ChatSession mock search")
 struct ChatSessionMockSearchTests {
 
-    private static let canned = MockSearchResult(
+    private static let canned = WebSearchResult(
         findings: "Canned findings about Mars.",
         sources: [
             SourceCitation(id: "https://nasa.gov/x#0", title: "NASA", url: URL(string: "https://nasa.gov/x")!),
