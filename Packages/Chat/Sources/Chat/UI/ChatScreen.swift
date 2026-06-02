@@ -73,10 +73,19 @@ public struct ChatScreen: View {
     /// construct it without threading a binding through.
     private let externalComposerIsFocused: FocusState<Bool>.Binding?
 
+    /// Device top safe-area inset (status bar / Dynamic Island height),
+    /// forwarded from `ChatOverlay`'s geometry. Drives the height of the
+    /// top-edge fade so its opaque portion covers exactly the status-bar
+    /// strip the chat surface doesn't otherwise paint. Defaults to 0 so
+    /// previews and snapshot fixtures (which render in a fixed frame with
+    /// no safe area) construct it without threading geometry through.
+    private let topSafeAreaInset: CGFloat
+
     @MainActor
     public init(
         viewModel: ChatScreenViewModel,
         progress: Double = 1,
+        topSafeAreaInset: CGFloat = 0,
         composerIsFocused: FocusState<Bool>.Binding? = nil,
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
@@ -88,6 +97,7 @@ public struct ChatScreen: View {
     ) {
         self.viewModel = viewModel
         self.progress = progress
+        self.topSafeAreaInset = topSafeAreaInset
         self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onSurfaceTapped = onSurfaceTapped
@@ -185,12 +195,29 @@ public struct ChatScreen: View {
         Self.smoothstep(progress, from: 0, to: 0.1)
     }
 
-    /// Rounded-rect surround corner radius. 24pt at pill (matches the
-    /// prior `MinimizedChatPill` radius) interpolating to 0 at full
-    /// expansion. The surround itself is invisible at both extremes so
-    /// only the mid-range values are visually load-bearing.
+    /// Rounded-rect surround corner radius. Holds the full 24pt pill radius
+    /// (matching the prior `MinimizedChatPill` radius) across the entire
+    /// floating range — pill through semi-expanded — so the panel reads as
+    /// a rounded card the whole way, then collapses to 0 only in the final
+    /// expansion band (0.9 → 1.0), in sync with `panelSurroundOpacity`'s
+    /// fade-out and `bottomSafeAreaFillOpacity`'s fade-in, so the corners
+    /// flatten exactly as the panel becomes the full-screen surface. The
+    /// earlier linear `lerp(progress, 24, 0)` left the floating panel with
+    /// near-square (~3.5pt) corners at the semi-expanded anchor.
     private var panelCornerRadius: CGFloat {
-        Self.lerp(progress, 24, 0)
+        24 * (1 - Self.smoothstep(progress, from: 0.9, to: 1.0))
+    }
+
+    /// Horizontal inset that narrows the floating panel by 6pt on each
+    /// side while it floats, collapsing to 0 only in the final expansion
+    /// band (0.9 → 1.0) so the surface widens flush to the screen edges
+    /// exactly as it becomes the full-screen surface — same band as
+    /// `panelCornerRadius`, so the card's corners flatten and its sides
+    /// reach the edges in one motion. The 6pt margin reveals a sliver of
+    /// the backdrop behind the panel, reinforcing the floating-card read
+    /// through the whole transition.
+    private var panelHorizontalInset: CGFloat {
+        6 * (1 - Self.smoothstep(progress, from: 0.9, to: 1.0))
     }
 
     /// Fade in the home-indicator background extension only as the chat
@@ -199,6 +226,52 @@ public struct ChatScreen: View {
     /// the applet").
     private var bottomSafeAreaFillOpacity: Double {
         Self.smoothstep(progress, from: 0.95, to: 1.0)
+    }
+
+    /// Length of the soft tail below the status-bar strip over which the
+    /// top-edge fade dissolves into the transcript. The fade is solid
+    /// `theme.background` through the safe-area inset (covering the strip
+    /// the surface doesn't paint), then ramps to transparent across this
+    /// tail. Taller tail = gentler, more seamless top transition. Bump
+    /// this to soften the seam further.
+    private static let topEdgeFadeTail: CGFloat = 40
+
+    /// Fade in the top status-bar extension only as the chat fills the
+    /// screen — mirrors `bottomSafeAreaFillOpacity` so the top and bottom
+    /// safe-area treatments appear together at full expansion and stay
+    /// absent while the panel floats (where the backdrop should show
+    /// through the unsafe areas).
+    private var topEdgeFadeOpacity: Double {
+        Self.smoothstep(progress, from: 0.95, to: 1.0)
+    }
+
+    /// Top status-bar fade. The chat surface lays out within the safe
+    /// area, so at full expansion the status-bar strip above it would
+    /// otherwise show the dimmed applet backdrop, leaving a seam at the
+    /// safe-area line. This paints `theme.background` solidly through the
+    /// strip and then dissolves it into the transcript over
+    /// ``topEdgeFadeTail`` — a gradient rather than a hard fill so the
+    /// transition reads as seamless rather than a butt-joint. Sits behind
+    /// the header/handle (drawn as a background) so it never washes out
+    /// the title.
+    @ViewBuilder
+    private var topEdgeFade: some View {
+        let total = topSafeAreaInset + Self.topEdgeFadeTail
+        let solidFraction = total > 0 ? topSafeAreaInset / total : 0
+        LinearGradient(
+            stops: [
+                .init(color: theme.background, location: 0),
+                .init(color: theme.background, location: solidFraction),
+                .init(color: theme.background.opacity(0), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(maxWidth: .infinity)
+        .frame(height: total)
+        .opacity(topEdgeFadeOpacity)
+        .allowsHitTesting(false)
+        .ignoresSafeArea(.container, edges: .top)
     }
 
     /// Title shown in the Regenerate confirmation dialog. Switches between
@@ -318,18 +391,38 @@ public struct ChatScreen: View {
                 .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
         }
         .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
+        // Crop the panel to a floating-card width with a mask rather than
+        // by padding the content: the content stays laid out at full width
+        // (no text reflow during the transition) and only the *visible*
+        // region narrows by `panelHorizontalInset` on each side. The mask's
+        // corner radius and inset both collapse over 0.9 → 1.0, so the card
+        // squares off and widens flush to the screen edges in one motion as
+        // it becomes the full-screen surface. A mask (not `clipShape`)
+        // because the crop is purely cosmetic — hit-testing stays on the
+        // full-width surface.
+        .mask {
+            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+                .padding(.horizontal, panelHorizontalInset)
+        }
         .overlay {
             // Stroke border around the panel surround. Fades in/out with
             // the rest of the panel so it doesn't ring the screen at full
-            // expansion.
+            // expansion. Inset to match the mask so it traces the floating
+            // card's edge, not the full-width bounds.
             RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
                 .strokeBorder(theme.borderFaint, lineWidth: 1)
+                .padding(.horizontal, panelHorizontalInset)
                 .opacity(panelSurroundOpacity)
         }
         .shadow(color: Color.black.opacity(0.18 * panelSurroundOpacity), radius: 12, x: 0, y: 12)
         .shadow(color: Color.black.opacity(0.12 * panelSurroundOpacity), radius: 30, x: 0, y: 30)
         .background(homeIndicatorFill)
+        // Top status-bar fade, painted into the top unsafe area at full
+        // expansion to dissolve the seam where the surface meets the
+        // status-bar strip. A top-aligned overlay (it extends *above* the
+        // surface via `ignoresSafeArea`, so it can't sit behind the
+        // opaque surface as a background would).
+        .overlay(alignment: .top) { topEdgeFade }
         // Route `super://bible/verse?...` link taps from the rendered
         // transcript through the cross-applet event bus. Non-Bible URLs
         // (e.g. plain `https://` links) fall through to the system
@@ -616,12 +709,6 @@ public struct ChatScreen: View {
     }
 
     // MARK: - Math helpers
-
-    /// Linear interpolation between `a` and `b` by `t` (clamped to [0, 1]).
-    private static func lerp(_ t: Double, _ a: CGFloat, _ b: CGFloat) -> CGFloat {
-        let clamped = min(1, max(0, t))
-        return a + (b - a) * CGFloat(clamped)
-    }
 
     /// Hermite (3t² − 2t³) smoothstep mapping `value` from `[from, to]`
     /// onto `[0, 1]`. Outside that band the result clamps. Used to fade
