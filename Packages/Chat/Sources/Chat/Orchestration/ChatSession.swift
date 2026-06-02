@@ -657,6 +657,16 @@ public actor ChatSession {
                     throw error
                 }
                 if approved { searchApproved = true } else { searchDeclined = true }
+                // Success path (user tapped Approve or Skip): unlike the
+                // cancelled-while-parked branch above, this write is *not*
+                // cancellation-shielded. If the turn is cancelled in the
+                // narrow window between the continuation resuming and this
+                // write committing, GRDB throws at its first async hop and
+                // the `tool_use` is left without a matching `tool_result`.
+                // The window is sub-millisecond (the user would have to
+                // cancel almost simultaneously with their tap) and
+                // `executeToolCalls` carries the identical exposure, so this
+                // is a known, accepted trade-off rather than a regression.
                 try await resolveProposal(proposal, approved: approved)
                 let others = toolCalls.filter { $0.id != proposal.id }
                 if !others.isEmpty { try await executeToolCalls(others) }

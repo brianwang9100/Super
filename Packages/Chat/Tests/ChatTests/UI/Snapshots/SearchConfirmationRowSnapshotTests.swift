@@ -9,7 +9,8 @@ import Testing
 /// prompt rendered under an assistant turn. The awaiting state pins the
 /// query/reason card + Search/Skip buttons across light / dark / sepia and a
 /// Dynamic Type XXL reflow case; the resolved states pin the compact
-/// "searched" / "skipped" summaries the row collapses to after a decision.
+/// "searched" / "skipped" summaries the row collapses to after a decision,
+/// each across light / dark / sepia plus an XXL reflow variant.
 ///
 /// `.serialized` for the same TOCTOU reason as the other snapshot suites
 /// (parallel writes race on the `__Snapshots__/` PNGs, not on code under
@@ -82,6 +83,26 @@ struct SearchConfirmationRowSnapshotTests {
     @Test("resolved skipped, sepia")
     func skippedSepia() {
         verify(status: .failed, theme: .sepia, height: 80, name: "search_confirm_skipped_sepia")
+    }
+
+    // The resolved summaries are single-line in the steady case, but the
+    // "searched" summary embeds an arbitrary model-generated query that can
+    // wrap at XXL. Pin both resolved states at XXL so a long query's reflow
+    // is captured rather than silently regressing.
+    @Test("resolved searched, dynamic type XXL")
+    func searchedXXL() {
+        verify(
+            status: .success, theme: .light, dynamicType: .xxLarge, height: 140,
+            name: "search_confirm_searched_light_xxl"
+        )
+    }
+
+    @Test("resolved skipped, dynamic type XXL")
+    func skippedXXL() {
+        verify(
+            status: .failed, theme: .light, dynamicType: .xxLarge, height: 140,
+            name: "search_confirm_skipped_light_xxl"
+        )
     }
 
     private func verify(

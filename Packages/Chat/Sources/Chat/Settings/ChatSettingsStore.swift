@@ -45,7 +45,9 @@ public struct ChatSettingsStore: Sendable {
                 ?? ChatSettings.default.autoCompactEnabled,
             autoCompactThreshold: raw[Keys.autoCompactThreshold].flatMap(Double.init)
                 ?? ChatSettings.default.autoCompactThreshold,
-            lastSelectedModelId: raw[Keys.lastSelectedModelId]
+            lastSelectedModelId: raw[Keys.lastSelectedModelId],
+            askBeforeSearching: raw[Keys.webSearchAskBeforeSearching].flatMap(Self.decodeBool)
+                ?? ChatSettings.default.askBeforeSearching
         )
     }
 
@@ -130,6 +132,10 @@ public struct ChatSettingsStore: Sendable {
         try await repository.set(Keys.autoCompactThreshold, value: String(ChatSettings.clampThreshold(value)))
     }
 
+    public func setAskBeforeSearching(_ value: Bool) async throws {
+        try await repository.set(Keys.webSearchAskBeforeSearching, value: value ? "true" : "false")
+    }
+
     /// Persists the upstream `LLMModel.id` the user just activated so the
     /// next new chat opens on the same model. Stale ids (the model has
     /// since been deleted) are tolerated at read time — the shell falls
@@ -187,6 +193,9 @@ public struct ChatSettingsStore: Sendable {
         /// `LLMModel.id` of the model most recently activated in the
         /// composer pill. Bootstraps the initial pick of every new chat.
         public static let lastSelectedModelId = "lastSelectedModel.id"
+        /// `"true"` / `"false"`. Whether the native web-search cost gate
+        /// prompts before each search. Defaults to `"true"` when absent.
+        public static let webSearchAskBeforeSearching = "webSearch.askBeforeSearching"
         /// Per-model enabled flag. Keyed by `id` so each row stays
         /// independent of the others.
         public static func modelEnabled(id: String) -> String {

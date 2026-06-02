@@ -156,6 +156,25 @@ struct SettingsViewModelTests {
         #expect(calls.last?.threshold == 0.62)
     }
 
+    @Test("setAskBeforeSearching persists and forwards the gate into the receiver")
+    func setAskBeforeSearchingForwardsGate() async {
+        // Same rationale as the auto-compact fan-out tests: without this
+        // assertion a refactor that drops the receiver call would compile,
+        // persist the toggle to disk, and leave every running session stuck
+        // on the old gate until app restart.
+        let repo = InMemorySettingRepository()
+        let receiver = FakeWebSearchPolicyReceiver()
+        let vm = makeViewModel(settingRepository: repo, webSearchPolicyReceiver: receiver)
+        await vm.setAskBeforeSearching(false)
+
+        #expect(vm.settings.askBeforeSearching == false)
+        let calls = await receiver.received()
+        #expect(calls == [false])
+        // Persisted under the canonical key so the value survives relaunch.
+        let stored = try? await repo.get(ChatSettingsStore.Keys.webSearchAskBeforeSearching)
+        #expect(stored == "false")
+    }
+
     @Test("setModelEnabled mutates the in-memory row and persists per-model flag")
     func setModelEnabled() async {
         let settingRepo = InMemorySettingRepository()
@@ -1070,6 +1089,7 @@ struct SettingsViewModelTests {
         toolRegistry: ToolRegistry = ToolRegistry(),
         userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
+        webSearchPolicyReceiver: any WebSearchPolicyReceiver = FakeWebSearchPolicyReceiver(),
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
@@ -1089,6 +1109,7 @@ struct SettingsViewModelTests {
             toolRegistry: toolRegistry,
             userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
+            webSearchPolicyReceiver: webSearchPolicyReceiver,
             memoryRepository: memoryRepository,
             llmProviderRegistry: llmProviderRegistry,
             httpClient: httpClient,

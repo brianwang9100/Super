@@ -372,6 +372,33 @@ PR 1 is the hard dependency for all. 3a/3b/3c are mutually independent (parallel
 
 ## 11a. Carried-forward review items from PR1/PR2 (must address in adapter PRs)
 
+> **Status update (web-search Search-pane, fast-follow to PR4).** Wires the
+> user-facing writer the PR4 gate was missing. Shipped:
+> - **Persistence** — `ChatSettings.askBeforeSearching` (default `true`) +
+>   `ChatSettingsStore` `Keys.webSearchAskBeforeSearching`
+>   (`"webSearch.askBeforeSearching"`) read in `load()` and a
+>   `setAskBeforeSearching(_:)` writer. The bootstraps now seed
+>   `ChatSessionStore(askBeforeSearching: initialSettings.askBeforeSearching)`
+>   so a persisted OFF survives relaunch (was hardcoded ON before).
+> - **Fan-out seam** — `WebSearchPolicyReceiver` protocol (mirrors
+>   `AutoCompactPolicyReceiver`; `ChatSessionStore` conforms via its existing
+>   `setAskBeforeSearching`). `SettingsViewModel` gains the required receiver +
+>   `setAskBeforeSearching(_:)` (persist + fan out to live sessions). Wired in
+>   `AppShell` to `dependencies.chatSessionStore`.
+> - **UI** — `SettingsSearchPane` (the "Ask before each search" toggle + a
+>   cost/BYOK footnote), a `.search` case in `SettingsSheet.Pane`, a "Search"
+>   row in `SettingsRootPane` (magnifying-glass `SearchIcon`, value
+>   "Ask first" / "Automatic"). Snapshots: pane on/off × light/dark/sepia + XXL;
+>   root pane re-recorded for the new row.
+> - **Deferred PR4 nits folded in** — `ToolCallBlock` badge → "Awaiting approval"
+>   (sentence case, with rationale comment + snapshot re-record); XXL snapshots
+>   for `SearchConfirmationRow`'s resolved searched/skipped summaries; a
+>   doc-comment on the success-path `resolveProposal` cancel-window (same known
+>   exposure as `executeToolCalls`).
+>
+> Remaining: **Phase 2 = standalone Tavily/Brave**, which expands this same
+> Search pane with per-provider key entry + a max-results control.
+
 > **Status update (web-search PR4, native cost gate).** PR4 wires the
 > `__native_web_search__` sentinel (recognized by all three adapters since
 > PR3a–c but never injected until now) and lands the **"Ask before each

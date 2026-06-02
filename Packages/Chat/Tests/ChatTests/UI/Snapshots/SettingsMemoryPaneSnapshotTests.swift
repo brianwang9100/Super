@@ -157,6 +157,7 @@ struct SettingsMemoryPaneSnapshotTests {
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
+            webSearchPolicyReceiver: FakeWebSearchPolicyReceiver(),
             memoryRepository: memoryRepository
         )
     }

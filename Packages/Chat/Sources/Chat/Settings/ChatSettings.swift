@@ -51,6 +51,14 @@ public struct ChatSettings: Sendable, Equatable {
     /// `nil` until the first chat has been opened and the initial pick
     /// has been persisted; subsequent launches always read a populated value.
     public var lastSelectedModelId: String?
+    /// Native web-search cost gate. When `true` (the default), a model's
+    /// web-search request is surfaced as an inline confirm prompt
+    /// ("Search the web?") before any search runs — searches cost money,
+    /// so the user approves each one. When `false`, searches run without
+    /// prompting. Wired live: edits in Settings → Search are pushed to
+    /// active `ChatSession`s via the `WebSearchPolicyReceiver` seam so a
+    /// long-running conversation picks up the new value on its next turn.
+    public var askBeforeSearching: Bool
 
     /// Factory default for `autoCompactThreshold` — the fraction of
     /// `model.maxContextTokens` at which background auto-compaction fires.
@@ -79,7 +87,8 @@ public struct ChatSettings: Sendable, Equatable {
         fontScale: 1.0,
         autoCompactEnabled: true,
         autoCompactThreshold: defaultAutoCompactThreshold,
-        lastSelectedModelId: nil
+        lastSelectedModelId: nil,
+        askBeforeSearching: true
     )
 
     public init(
@@ -90,7 +99,8 @@ public struct ChatSettings: Sendable, Equatable {
         fontScale: Double,
         autoCompactEnabled: Bool,
         autoCompactThreshold: Double,
-        lastSelectedModelId: String? = nil
+        lastSelectedModelId: String? = nil,
+        askBeforeSearching: Bool = true
     ) {
         self.themeId = themeId
         self.typographyID = typographyID
@@ -100,6 +110,7 @@ public struct ChatSettings: Sendable, Equatable {
         self.autoCompactEnabled = autoCompactEnabled
         self.autoCompactThreshold = ChatSettings.clampThreshold(autoCompactThreshold)
         self.lastSelectedModelId = lastSelectedModelId
+        self.askBeforeSearching = askBeforeSearching
     }
 
     /// Mirror of `SuperTheme.Identifier`. Re-declared (rather than typealiased)

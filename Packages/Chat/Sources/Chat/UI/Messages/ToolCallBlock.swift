@@ -94,7 +94,11 @@ struct ToolCallBlock: View {
                 Image(systemName: "hourglass")
                     .font(typography.font(.caption2))
                     .foregroundStyle(theme.inkFaint)
-                Text("awaiting approval")
+                // Sentence case (vs. the lowercase `running`/`done`/`failed`
+                // siblings): this is the one badge that demands user action,
+                // and VoiceOver reads the raw string — "Awaiting approval"
+                // announces more cleanly than the passive lowercase form.
+                Text("Awaiting approval")
                     .font(typography.font(.caption2))
                     .foregroundStyle(theme.inkFaint)
             }

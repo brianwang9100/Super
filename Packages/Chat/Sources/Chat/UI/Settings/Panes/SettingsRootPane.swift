@@ -51,8 +51,14 @@ struct SettingsRootPane: View {
                     icon: AnyView(CompactionIcon()),
                     label: "Compaction",
                     value: viewModel.settings.autoCompactEnabled ? "Auto" : "Manual",
-                    borderBottom: false,
                     action: { viewModel.openPane(.compaction) }
+                )
+                SettingsRow(
+                    icon: AnyView(SearchIcon()),
+                    label: "Search",
+                    value: viewModel.settings.askBeforeSearching ? "Ask first" : "Automatic",
+                    borderBottom: false,
+                    action: { viewModel.openPane(.search) }
                 )
             }
 

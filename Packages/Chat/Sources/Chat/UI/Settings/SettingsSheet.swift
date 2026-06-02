@@ -32,6 +32,10 @@ public struct SettingsSheet: View {
         /// affordance on the Memory row in `.tools`.
         case memory
         case compaction
+        /// Global web-search preferences — currently the native cost-gate
+        /// toggle ("Ask before each search"). Phase 2 expands this pane
+        /// with standalone search-provider config + keys.
+        case search
         case data
         case about
 
@@ -46,6 +50,7 @@ public struct SettingsSheet: View {
             case .tools: return "Tools"
             case .memory: return "Memory"
             case .compaction: return "Compaction"
+            case .search: return "Search"
             case .data: return "Data"
             case .about: return "About"
             }
@@ -202,6 +207,8 @@ public struct SettingsSheet: View {
             SettingsMemoryPane(viewModel: viewModel)
         case .compaction:
             SettingsCompactionPane(viewModel: viewModel)
+        case .search:
+            SettingsSearchPane(viewModel: viewModel)
         case .data:
             SettingsDataPane(viewModel: viewModel)
         case .about:

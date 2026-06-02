@@ -562,6 +562,7 @@ struct AppShell: View {
                 toolRegistry: dependencies.toolRegistry,
                 userPersonalizationReceiver: dependencies.chatSessionStore,
                 autoCompactPolicyReceiver: dependencies.chatSessionStore,
+                webSearchPolicyReceiver: dependencies.chatSessionStore,
                 // Required for SettingsMemoryPane edit/delete/clear-all
                 // to reach the GRDB store. Optional in the type so test
                 // fixtures can construct the VM without one — production

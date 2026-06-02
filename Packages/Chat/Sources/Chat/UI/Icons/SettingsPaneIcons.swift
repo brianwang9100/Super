@@ -247,6 +247,21 @@ struct DataIconShape: Shape {
     }
 }
 
+/// Magnifying glass — Search pane. Lens circle centered at (11,11) with a
+/// short diagonal handle, mirroring the inline web-search affordance's
+/// `magnifyingglass` glyph in the settings-icon stroke language.
+struct SearchIconShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let center = sscale(CGPoint(x: 11, y: 11), in: rect)
+        let r = 6.0 / 24 * rect.width
+        p.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
+        smove(&p, CGPoint(x: 15.5, y: 15.5), in: rect)
+        sline(&p, CGPoint(x: 20, y: 20), in: rect)
+        return p
+    }
+}
+
 /// Info circle — About pane.
 struct AboutIconShape: Shape {
     func path(in rect: CGRect) -> Path {
@@ -361,6 +376,14 @@ struct DataIcon: View {
     init(size: CGFloat = 22) { self.size = size }
     var body: some View {
         StrokedGlyph(shape: DataIconShape(), size: size, lineWidth: 1.5)
+    }
+}
+
+struct SearchIcon: View {
+    let size: CGFloat
+    init(size: CGFloat = 22) { self.size = size }
+    var body: some View {
+        StrokedGlyph(shape: SearchIconShape(), size: size, lineWidth: 1.5)
     }
 }
 

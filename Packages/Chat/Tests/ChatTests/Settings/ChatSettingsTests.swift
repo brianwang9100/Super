@@ -130,6 +130,23 @@ struct ChatSettingsStoreTests {
         #expect(settings.lastSelectedModelId == "claude-opus-4-7")
     }
 
+    @Test("askBeforeSearching defaults to true when no row is stored")
+    func askBeforeSearchingDefaultsTrue() async {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+        #expect(settings.askBeforeSearching == true)
+    }
+
+    @Test("setAskBeforeSearching round-trips through load")
+    func askBeforeSearchingRoundTrip() async throws {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        try await store.setAskBeforeSearching(false)
+        let settings = await store.load()
+        #expect(settings.askBeforeSearching == false)
+    }
+
     @Test("set* round-trips do not disturb other persisted fields")
     func roundTripIndependence() async throws {
         let repo = InMemorySettingRepository()
@@ -143,6 +160,7 @@ struct ChatSettingsStoreTests {
         try await store.setAutoCompactEnabled(false)
         try await store.setAutoCompactThreshold(0.75)
         try await store.setLastSelectedModelId("gpt-4o")
+        try await store.setAskBeforeSearching(false)
 
         let settings = await store.load()
         #expect(settings.themeId == .dark)
@@ -153,6 +171,7 @@ struct ChatSettingsStoreTests {
         #expect(settings.autoCompactEnabled == false)
         #expect(settings.autoCompactThreshold == 0.75)
         #expect(settings.lastSelectedModelId == "gpt-4o")
+        #expect(settings.askBeforeSearching == false)
     }
 }
 
