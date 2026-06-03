@@ -175,11 +175,12 @@ public struct ChatScreen: View {
         progress <= ChatPresentationState.editorInteractiveThreshold
     }
 
-    /// Surround opacity: rounded-rect panel background + stroke + shadow
-    /// that make the chat read as a floating panel in semi-expanded mode.
-    /// Hidden in pill mode (composer's own capsule shadow takes over) and
-    /// in fully-expanded mode (chat fills the screen, no floating
-    /// effect).
+    /// Surround opacity: the floating panel's border stroke + drop shadows
+    /// (the `panelBackground` fill is now a flat `theme.background`, so this
+    /// only drives the card's edge + elevation) that make the chat read as a
+    /// floating panel in semi-expanded mode. Hidden in pill mode (the flat
+    /// composer sits directly on the applet) and in fully-expanded mode (chat
+    /// fills the screen, no floating effect).
     private var panelSurroundOpacity: Double {
         let fadeIn = Self.smoothstep(progress, from: 0, to: 0.1)
         let fadeOut = 1 - Self.smoothstep(progress, from: 0.9, to: 1.0)
