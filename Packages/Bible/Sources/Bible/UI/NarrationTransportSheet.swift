@@ -33,19 +33,19 @@ struct NarrationTransportSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.openURL) private var openURL
+
+    /// Declared once and shared by the nav bar and the presentation so the two
+    /// can't drift; a content-sized card kept over the readable reader.
+    private let sizing = SheetSizing.fitsContent
+
     @Bindable var controller: NarrationController
-    // Base point sizes for the card's text styles, carried as scaled metrics
-    // so each composes OS Dynamic Type (via the metric) on top of the app
-    // font-scale slider (folded in by `SuperTypography`). Bases match the
-    // semantic styles they replace: .caption2 == 11, .headline == 17,
-    // .footnote == 13 at the default content-size category.
-    @ScaledMetric(relativeTo: .caption2) private var eyebrowSize: CGFloat = 11
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 17
+    // Voice/Speed chip base size, a scaled metric so it composes OS Dynamic
+    // Type (via the metric) on top of the app font-scale slider (folded in by
+    // `SuperTypography`); base matches the `.footnote` style it replaces.
     @ScaledMetric(relativeTo: .footnote) private var chipSize: CGFloat = 13
-    /// Short citation of what's being narrated — shown as the card's
-    /// title line under the `NOW NARRATING` label (e.g.
-    /// `"1 Peter 2:5"`). Updates as narration advances; the caller
-    /// derives it from `BibleScreenViewModel.narrationCitation`.
+    /// Short citation of what's being narrated — shown as the nav-bar's
+    /// centered title (e.g. `"1 Peter 2:5"`). Updates as narration advances;
+    /// the caller derives it from `BibleScreenViewModel.narrationCitation`.
     let citation: String
     /// Invoked when the user taps Stop. The card does NOT auto-dismiss
     /// — typical wiring is `controller.stop()` and nothing else.
@@ -55,6 +55,9 @@ struct NarrationTransportSheet: View {
     /// Narrate flow the spark menu's `Narrate` entry triggers, so the
     /// user doesn't have to reopen the menu just to retry.
     let onRestart: () -> Void
+    /// Invoked by the nav-bar close button — dismisses the transport sheet.
+    /// Distinct from `onStop`, which only halts playback and keeps the card.
+    let onClose: () -> Void
 
     /// Locale-filtered voice list backed by the process-wide
     /// ``cachedVoices`` so the 100-300 ms
@@ -67,19 +70,23 @@ struct NarrationTransportSheet: View {
     @State private var voices: [VoiceOption] = NarrationTransportSheet.cachedVoices
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(spacing: 0) {
+            // The nav bar bakes its own 14pt horizontal inset; the transport
+            // content keeps its 18pt inset in the wrapper below.
             header
-            transportRow
-            Divider().background(theme.borderFaint)
-            controlsRow
+            VStack(alignment: .leading, spacing: 18) {
+                transportRow
+                Divider().background(theme.borderFaint)
+                controlsRow
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
         }
-        // The card is now a native `.sheet` (the system supplies the drag bar,
-        // rounded surface, and drag-to-dismiss). These insets are the content
-        // padding the retired `BibleSheetChromeModifier` used to provide; the
-        // extra top room clears the system drag indicator.
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
+        // The card is a native `.sheet` (the system supplies the drag bar,
+        // rounded surface, and drag-to-dismiss); this is just the bottom inset.
         .padding(.bottom, 16)
+        // Sized to content and kept over the still-readable reader.
+        .sheetPresentation(sizing, readableBackground: true, estimatedHeight: 360)
         .task {
             // First-open path only: `cachedVoices` was empty at view
             // construction, so do the 100-300 ms
@@ -100,55 +107,24 @@ struct NarrationTransportSheet: View {
 
     // MARK: Header
 
+    /// The unified sheet nav-bar: glass close (`X`) on the leading edge, the
+    /// live citation as the centered title, and the glass Stop button in the
+    /// trailing slot. The `NOW NARRATING` eyebrow and decorative speaker badge
+    /// are dropped — the citation title plus the transport controls already
+    /// read as "now playing".
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            decorativeBadge
-            VStack(alignment: .leading, spacing: 2) {
-                Text("NOW NARRATING")
-                    // Scaled-metric base so Dynamic Type scales the eyebrow
-                    // with the citation underneath rather than freezing it,
-                    // and the app font-scale slider moves it too.
-                    .font(typography.font(size: eyebrowSize, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(theme.inkSoft)
-                Text(citation)
-                    // 17pt semibold (== `.headline`) over a scaled-metric
-                    // base, so it scales with both Dynamic Type and the app
-                    // font-scale slider.
-                    .font(typography.font(size: titleSize, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        SheetNavBar(title: citation, sizing: sizing, onClose: onClose) {
             stopButton
         }
-        .accessibilityElement(children: .contain)
-    }
-
-    /// Pure decoration matching the mock — a soft-tinted rounded
-    /// square holding the speaker glyph. Mirrors the nav-bar speaker
-    /// button visually so the card reads as the same surface "expanded
-    /// down" from the nav.
-    private var decorativeBadge: some View {
-        Image(systemName: "speaker.wave.2.fill")
-            .font(typography.font(size: 18, weight: .semibold))
-            .foregroundStyle(theme.accent)
-            .frame(width: 44, height: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(theme.accent.opacity(0.14))
-            )
-            .accessibilityHidden(true)
     }
 
     private var stopButton: some View {
         Button(action: onStop) {
             Image(systemName: "stop.fill")
-                .font(typography.font(size: 13, weight: .bold))
+                .font(typography.font(size: 14, weight: .bold))
                 .foregroundStyle(theme.ink)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(theme.backgroundSunken))
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         // Disabled (and dimmed) when there's no active session to
@@ -206,9 +182,12 @@ struct NarrationTransportSheet: View {
         } label: {
             Image(systemName: glyph)
                 .font(typography.font(size: 22, weight: .bold))
-                .foregroundStyle(theme.accentInk)
+                .foregroundStyle(theme.ink)
+                // Prominent 56pt — the largest control in the card — but
+                // interactive Liquid Glass like the rest of the transport
+                // rather than an accent fill.
                 .frame(width: 56, height: 56)
-                .background(Circle().fill(theme.accent))
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -224,7 +203,7 @@ struct NarrationTransportSheet: View {
                 .font(typography.font(size: 16, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
-                .background(Circle().fill(theme.backgroundSunken))
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(controller.state == .idle)
@@ -325,10 +304,9 @@ struct NarrationTransportSheet: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(minHeight: 44)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(theme.backgroundSunken)
-        )
+        // Interactive glass — the whole chip is the menu/button trigger, so it
+        // gets the same press feedback as the transport circles.
+        .superGlassButton(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: Derived strings

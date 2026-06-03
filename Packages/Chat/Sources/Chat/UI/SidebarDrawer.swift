@@ -289,14 +289,15 @@ public struct SidebarDrawer: View {
                 close()
                 onOpenSettings()
             }) {
+                // Plain Liquid Glass like the rest of the nav chrome — glass
+                // supplies its own edge and elevation, so the accent fill and
+                // drop shadows are dropped and the glyph reads in `ink`.
                 Image(dsIcon: .settings)
                     .resizable()
                     .frame(width: 20, height: 20)
-                    .foregroundStyle(theme.accentInk)
+                    .foregroundStyle(theme.ink)
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(theme.accent))
-                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 2)
-                    .shadow(color: Color.black.opacity(0.10), radius: 6, x: 0, y: 6)
+                    .superGlassButton(in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Settings")

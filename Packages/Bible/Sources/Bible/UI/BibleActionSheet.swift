@@ -13,6 +13,10 @@ struct BibleActionSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
+    /// Declared once and shared by the nav bar and the presentation so the two
+    /// can't drift; a short content-sized card kept over the readable reader.
+    private let sizing = SheetSizing.fitsContent
+
     /// The selection citation shown in the sheet header, e.g. `"1 Peter 2:9"`.
     let citation: String
     /// The verse text + citation handed to the system share sheet.
@@ -30,33 +34,27 @@ struct BibleActionSheet: View {
     /// Invoked when the "Add note" tile is tapped — composes a user note on
     /// the selection's bounding range through the view model.
     let onAddNote: () -> Void
+    /// Invoked by the nav-bar close button — clears the selection, which
+    /// dismisses the sheet.
+    let onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            highlightRow
-            divider
-            actionRows
+            // The nav bar bakes its own 14pt horizontal inset, so it sits
+            // outside the content's 10pt inset rather than doubling it.
+            SheetNavBar(title: citation, sizing: sizing, onClose: onClose)
+            VStack(spacing: 0) {
+                highlightRow
+                divider
+                actionRows
+            }
+            .padding(.horizontal, 10)
         }
-        // The card is now a native `.sheet` (the system supplies the drag bar,
-        // rounded surface, and drag-to-dismiss). These insets are the content
-        // padding the retired `BibleSheetChromeModifier` used to provide; the
-        // extra top room clears the system drag indicator.
-        .padding(.horizontal, 10)
-        .padding(.top, 14)
+        // The card is a native `.sheet` (the system supplies the drag bar,
+        // rounded surface, and drag-to-dismiss); this is just the bottom inset.
         .padding(.bottom, 10)
-    }
-
-    private var header: some View {
-        HStack {
-            Text(citation)
-                .font(typography.font(size: 13, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-            Spacer()
-        }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 8)
+        // Sized to content and kept over the still-readable reader.
+        .sheetPresentation(sizing, readableBackground: true, estimatedHeight: 280)
     }
 
     private var highlightRow: some View {

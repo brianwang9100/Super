@@ -20,6 +20,10 @@ struct BibleBookSheet: View {
     @Environment(\.superTypography) private var typography
     @Bindable var viewModel: BibleBookSheetViewModel
 
+    /// Declared once and shared by the nav bar and the presentation so the two
+    /// can't drift; an expandable list sheet (`.medium`/`.large`).
+    private let sizing = SheetSizing.expandable
+
     /// The reader's current book / chapter — used to bold the matching row
     /// and mark the matching chapter cell.
     let currentBookId: String
@@ -77,7 +81,6 @@ struct BibleBookSheet: View {
     // so the picker tracks Dynamic Type — the design's fixed point sizes,
     // scaled relative to the nearest system text style.
     @ScaledMetric(relativeTo: .title3) private var bookNameSize: CGFloat = 18
-    @ScaledMetric(relativeTo: .headline) private var headerSize: CGFloat = 16
     @ScaledMetric(relativeTo: .subheadline) private var mediumSize: CGFloat = 14
     @ScaledMetric(relativeTo: .footnote) private var controlSize: CGFloat = 13
     @ScaledMetric(relativeTo: .caption) private var countSize: CGFloat = 11
@@ -129,36 +132,12 @@ struct BibleBookSheet: View {
             bookList
             orderToggle
         }
-        // Top clearance for the system drag indicator now that the native
-        // `.sheet` supplies it in place of the removed custom grabber.
-        .padding(.top, 10)
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
-                .fill(theme.background)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        // Detents + drag indicator + background, derived from `sizing`.
+        .sheetPresentation(sizing)
     }
 
     private var header: some View {
-        ZStack {
-            Text("Books")
-                .font(typography.font(size: headerSize, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            HStack {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(typography.font(size: controlSize, weight: .semibold))
-                        .foregroundStyle(theme.inkSoft)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(theme.backgroundSunken))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close")
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 10)
+        SheetNavBar(title: "Books", sizing: sizing, onClose: onClose)
     }
 
     private var searchField: some View {
@@ -183,8 +162,11 @@ struct BibleBookSheet: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 12).fill(theme.backgroundSunken))
+        // Taller bar (was 9) — a roomier, more tappable search field.
+        .padding(.vertical, 13)
+        // Interactive glass — the field still owns its own focus tap; the glass
+        // just adds the press response the rest of the sheet's controls have.
+        .superGlassButton(in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
     }
@@ -439,25 +421,31 @@ struct BibleBookSheet: View {
         Button {
             onSelectChapter(book.id, number)
         } label: {
-            Text("\(number)")
-                .font(typography.font(size: mediumSize, weight: isCurrent ? .semibold : .medium))
-                .foregroundStyle(isCurrent ? theme.backgroundRaised : theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
-                .frame(height: chapterCellHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(isCurrent ? theme.ink : theme.backgroundRaised)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(theme.borderFaint, lineWidth: isCurrent ? 0 : 0.5)
-                )
+            if isCurrent {
+                // The current chapter keeps a solid `ink` fill so it reads as
+                // selected against the interactive glass of the other cells.
+                chapterLabel(number, isCurrent: true)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(theme.ink))
+            } else {
+                chapterLabel(number, isCurrent: false)
+                    .superGlassButton(in: RoundedRectangle(cornerRadius: 10))
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(book.name) chapter \(number)")
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
+    }
+
+    /// The chapter number sized to fill a grid cell; the caller layers the
+    /// background (solid `ink` when selected, interactive glass otherwise).
+    private func chapterLabel(_ number: Int, isCurrent: Bool) -> some View {
+        Text("\(number)")
+            .font(typography.font(size: mediumSize, weight: isCurrent ? .semibold : .medium))
+            .foregroundStyle(isCurrent ? theme.backgroundRaised : theme.ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity)
+            .frame(height: chapterCellHeight)
     }
 
     private var orderToggle: some View {
