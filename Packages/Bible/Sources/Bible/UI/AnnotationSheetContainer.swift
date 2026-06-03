@@ -50,8 +50,8 @@ struct AnnotationSheetContainer: View {
     /// cards behind the spinner. `.failed` flips the *empty* layout to
     /// the error + retry button, but stays suppressed while `records`
     /// is non-empty (populated wins) — that regenerate-failure case
-    /// routes `onRegenerateFailed` instead, so the previous cards
-    /// reappear alongside a toast.
+    /// routes `onRegenerateFailed` instead, which clears the stale status
+    /// so the previous cards stay (no toast — the failure is silent).
     let dispatchStatus: BibleAnnotationDispatchStatus?
     let bottomInset: CGFloat
     /// Dismisses the sheet from the nav bar's leading close button.
@@ -73,12 +73,15 @@ struct AnnotationSheetContainer: View {
     /// Fired when a dispatch fails *while existing cards are on screen*
     /// (a regenerate, not a first generation). The sheet keeps showing
     /// the still-present previous cards — they were never deleted — so
-    /// this routes a toast + status-clear to the parent for feedback.
-    /// First-generation failures (no existing rows) skip this and render
-    /// the inline error + retry state instead. Production must always
-    /// supply it (`BibleScreen` does) — a `nil` here would leave a
-    /// regenerate failure on stale cards with a lingering `.failed`
-    /// status and no feedback. `nil` is for previews / driver views only.
+    /// this routes a status-clear to the parent (no toast: the failure is
+    /// silent, the cards stay). Clearing the lingering `.failed` status
+    /// also stops the sheet flipping to the inline error+retry layout if
+    /// the user later deletes the remaining cards. First-generation
+    /// failures (no existing rows) skip this and render the inline error +
+    /// retry state instead. Production must always supply it (`BibleScreen`
+    /// does) — a `nil` here would leave a regenerate failure on stale cards
+    /// with a lingering `.failed` status. `nil` is for previews / driver
+    /// views only.
     let onRegenerateFailed: (() -> Void)?
 
     @Query<BibleAnnotationsByTargetRequest> private var records: [BibleAnnotationRecord]
@@ -146,10 +149,10 @@ struct AnnotationSheetContainer: View {
         // A dispatch failed while cards are still on screen — a
         // regenerate, not a first generation. The sheet keeps rendering
         // the cards (populated wins over the error layout), so route a
-        // toast + status-clear to the parent rather than silently
-        // leaving the stale `.failed` status. First-generation failures
-        // (no cards) render the inline error + retry state instead, so
-        // we leave those alone. `initial: true` covers a sheet
+        // status-clear to the parent rather than leaving the stale
+        // `.failed` status (no toast — the failure is silent). First-
+        // generation failures (no cards) render the inline error + retry
+        // state instead, so we leave those alone. `initial: true` covers a sheet
         // re-opened onto an already-`.failed` status (dismissed mid
         // regenerate, failed in the background); reacting to the
         // combined `records`/status signal covers the `@Query`
@@ -160,9 +163,10 @@ struct AnnotationSheetContainer: View {
     }
 
     /// `true` while a dispatch has failed *and* cards are still on
-    /// screen — the regenerate-failure case the parent surfaces as a
-    /// toast. A first-generation failure (no rows) is `false` here and
-    /// renders the inline error + retry layout instead.
+    /// screen — the regenerate-failure case the parent clears the stale
+    /// status for (silently, no toast). A first-generation failure (no
+    /// rows) is `false` here and renders the inline error + retry layout
+    /// instead.
     private var hasRegenerateFailureWithCards: Bool {
         errorMessageFromStatus != nil && !records.isEmpty
     }

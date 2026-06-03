@@ -221,23 +221,27 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             }
         }
 
+        // A successful `bible.annotate` call wins over a trailing error.
+        // Once the tool ran cleanly the annotations are already written to
+        // the DB — the user sees the cards — so a later stream `.error` or a
+        // malformed *second* tool call must not flip the turn to `.failure`.
+        // Doing so would surface a spurious "couldn't regenerate" toast over
+        // freshly-written cards and, via the bulk generator seam, record a
+        // succeeded unit as a retryable failure. Only when no successful call
+        // happened do we report the captured failure (or the no-tool case).
+        // Zero new rows is still a valid success — the tool's `replace` may
+        // have cleared an existing set without inserting, or every entry
+        // collided; the sheet's reactive `@Query` decides whether cards show.
+        if toolWasCalled {
+            return .success(annotationCount: annotationCount)
+        }
         if let failure {
             return .failure(message: failure.message, classification: failure.classification)
         }
-        if !toolWasCalled {
-            return .failure(
-                message: "The model didn't call bible.annotate. Try again or pick a different model.",
-                classification: .retryable
-            )
-        }
-        // Tool was called successfully — zero new rows is a valid
-        // outcome (the tool's `replace` may have cleared an
-        // already-present set without inserting new ones, or all
-        // entries collided with existing rows). The Bible side reads
-        // `.success` as "stop showing the running indicator"; the
-        // sheet's reactive `@Query` is what determines whether cards
-        // appear.
-        return .success(annotationCount: annotationCount)
+        return .failure(
+            message: "The model didn't call bible.annotate. Try again or pick a different model.",
+            classification: .retryable
+        )
     }
 
     /// Resolve the model the active provider serves — the same model
