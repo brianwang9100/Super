@@ -27,25 +27,6 @@ public struct BibleScreen: View {
     @Environment(\.superEventBus) private var eventBus
     @Bindable private var viewModel: BibleScreenViewModel
 
-    /// Measured intrinsic height of the verse-selection action sheet content,
-    /// fed back into its compact `.height(_:)` presentation detent so the
-    /// native sheet sizes to its content (and tracks Dynamic Type) rather than
-    /// a hard-coded height. Defaults to a sensible first-paint height; the
-    /// `.onGeometryChange` seam at the sheet snaps it to the real content size.
-    /// When tuning these defaults, prefer one slightly too large over too small:
-    /// an over-tall first paint contracts to fit on the next pass, whereas a
-    /// too-short one clips content for a frame.
-    @State private var actionSheetHeight: CGFloat = 280
-
-    /// Measured intrinsic height of the narration transport card content — the
-    /// narration counterpart to `actionSheetHeight`, feeding its own compact
-    /// detent the same way.
-    @State private var narrationSheetHeight: CGFloat = 360
-
-    /// Measured intrinsic height of the translation picker content, feeding its
-    /// own compact detent the same way as the action / narration sheets.
-    @State private var translationSheetHeight: CGFloat = 320
-
     /// Work to run once the currently-presented sheet finishes dismissing.
     /// Presenting a second native sheet while the first is still dismissing is
     /// unreliable, so cross-sheet hand-offs — the book picker's annotation /
@@ -74,19 +55,6 @@ public struct BibleScreen: View {
         if viewModel.isNarrationSheetPresented { return .narration }
         if !viewModel.selectedVerses.isEmpty { return .selection }
         return nil
-    }
-
-    /// Room added below the measured sheet-content height when sizing the
-    /// compact detent, so the home-indicator safe area doesn't eat into the
-    /// content. `.height(_:)` detents specify the whole sheet height, which
-    /// includes that bottom inset.
-    private static let sheetBottomSafeAreaAllowance: CGFloat = 34
-
-    /// Compact detent height for the action / narration sheet, derived from the
-    /// measured content height plus the bottom safe-area allowance.
-    private func compactSheetHeight(for kind: BibleBottomOverlayKind) -> CGFloat {
-        let content = kind == .narration ? narrationSheetHeight : actionSheetHeight
-        return content + Self.sheetBottomSafeAreaAllowance
     }
 
     /// `.sheet(item:)` binding for the combined action / narration sheet. The
@@ -273,46 +241,21 @@ public struct BibleScreen: View {
         }
         // The verse-selection action sheet and the narration transport share a
         // single `.sheet(item:)` so a `.selection` → `.narration` swap is one
-        // sheet re-presenting (rather than two `.sheet` modifiers racing). Both
-        // keep the page readable behind them via `presentationBackgroundInteraction`.
+        // sheet re-presenting (rather than two `.sheet` modifiers racing). Each
+        // sheet view owns its own presentation (detents, drag indicator,
+        // background) via `.sheetPresentation(_:)`, so the call sites just
+        // supply content.
         .sheet(item: bottomSheetBinding, onDismiss: runPendingSheetHandoff) { kind in
-            // Resolve the compact detent height once so the detent and the
-            // background-interaction cutoff are provably the same value.
-            let height = compactSheetHeight(for: kind)
             bottomSheetContent(kind)
-                // Measure the card's intrinsic height and feed it back into the
-                // compact detent so the sheet sizes to content (and grows with
-                // Dynamic Type). The card is non-flexible, so its measured size
-                // is its ideal height regardless of the imposed detent — the
-                // feedback converges in one pass.
-                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { newHeight in
-                    switch kind {
-                    case .selection: actionSheetHeight = newHeight
-                    case .narration: narrationSheetHeight = newHeight
-                    }
-                }
-                .presentationDetents([.height(height)])
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled(upThrough: .height(height)))
-                .presentationBackground(theme.background)
         }
         .sheet(item: bookSheetBinding, onDismiss: runPendingSheetHandoff) { sheetViewModel in
             bookPicker(sheetViewModel)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(theme.background)
         }
         // Carries `onDismiss: runPendingSheetHandoff` like the other sheets for
         // consistency: no translation row queues a hand-off today, but matching
         // the deferral wiring keeps a future one from silently dropping it.
         .sheet(isPresented: translationSheetBinding, onDismiss: runPendingSheetHandoff) {
             translationPicker
-                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { newHeight in
-                    translationSheetHeight = newHeight
-                }
-                .presentationDetents([.height(translationSheetHeight + Self.sheetBottomSafeAreaAllowance)])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(theme.background)
         }
     }
 
@@ -330,7 +273,8 @@ public struct BibleScreen: View {
                 // Post-Stop the card stays open; tapping the big play
                 // button re-runs the same selection-aware Narrate flow
                 // the spark menu's `Narrate` entry triggers.
-                onRestart: { viewModel.startNarration() }
+                onRestart: { viewModel.startNarration() },
+                onClose: { viewModel.dismissNarrationSheet() }
             )
         case .selection:
             BibleActionSheet(
@@ -342,7 +286,8 @@ public struct BibleScreen: View {
                 onAddToChat: { addSelectionToChat(startNew: false) },
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onAnnotate: { handleAnnotateSelection() },
-                onAddNote: { handleAddNoteForSelection() }
+                onAddNote: { handleAddNoteForSelection() },
+                onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
             )
         }
     }
