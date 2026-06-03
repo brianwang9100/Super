@@ -368,6 +368,29 @@ public struct ChatScreen: View {
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
                 )
+                // Drag-anywhere on the transcript/empty-state content: a
+                // `UIPanGestureRecognizer` that scrolls the transcript until it
+                // hits an edge, then hands the same finger-drag off to resizing
+                // the overlay (down → collapse/dismiss, up → expand) — the
+                // nested-scroll → sheet-drag handoff. Reuses the very callbacks
+                // `ChatDragHandle` feeds, so the overlay can't tell which input
+                // drove the drag. Attached *here*, on `content` (a sibling of
+                // the composer), and *before* the `.safeAreaInset` composer
+                // below — so the composer's text field and footer stay fully
+                // interactive (a drag starting on the composer is never
+                // hijacked). No-op on macOS.
+                .overlayContentDrag(
+                    // Gate the handoff direction on how much room the overlay
+                    // has left to move: near the expanded top an up-drag scrolls
+                    // the content instead of no-op expanding; near the minimized
+                    // floor a down-drag scrolls instead of no-op collapsing.
+                    // `progress` is the settled anchor's progress when a drag
+                    // begins (no drag height in flight yet).
+                    canExpand: progress < 0.999,
+                    canCollapse: progress > 0.001,
+                    onChanged: { translation in onDragChanged?(translation) },
+                    onEnded: { translation, predicted in onDragEnded?(translation, predicted) }
+                )
                 // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
