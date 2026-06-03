@@ -38,9 +38,14 @@ public struct SettingsSheet: View {
         case search
         case data
         case about
+        /// A pane contributed by an applet (e.g. Bible's "Annotations"),
+        /// resolved against `\.appletSettingsContributions`. Carries its own
+        /// title so the header renders without the host knowing the applet.
+        case appletContributed(id: String, title: String)
 
         var title: String {
             switch self {
+            case .appletContributed(_, let title): return title
             case .root: return "Settings"
             case .models: return "Models"
             case .modelDetail(let id): return id == nil ? "Add Model" : "Edit Model"
@@ -74,6 +79,9 @@ public struct SettingsSheet: View {
     public let databaseContext: DatabaseContext?
 
     @Environment(\.superTheme) private var theme
+    /// Applet-contributed settings surfaces (e.g. Bible's Annotations pane),
+    /// injected by the composition root. Empty in previews/tests.
+    @Environment(\.appletSettingsContributions) private var appletContributions
 
     public init(
         isPresented: Binding<Bool>,
@@ -219,6 +227,12 @@ public struct SettingsSheet: View {
             SettingsDataPane(viewModel: viewModel)
         case .about:
             SettingsAboutPane(viewModel: viewModel)
+        case .appletContributed(let id, _):
+            if let contribution = appletContributions.first(where: { $0.id == id }) {
+                contribution.makeDestination()
+            } else {
+                EmptyView()
+            }
         }
     }
 }
