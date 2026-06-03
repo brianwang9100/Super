@@ -767,14 +767,15 @@ public final class BibleScreenViewModel {
         toast = "Couldn't delete the annotation."
     }
 
-    /// A regenerate failed while existing cards were on screen. Surface a
-    /// toast and clear the lingering `.failed` status so the sheet keeps
-    /// showing the still-present previous annotations (populated wins over
-    /// the inline error layout) instead of a stale error state. Routed
-    /// from `AnnotationSheetContainer.onRegenerateFailed`, which fires
-    /// only when the failed target still has rows.
-    public func presentRegenerateAnnotationFailedToast(for spec: BibleAnnotationTargetSpec) {
-        toast = "Couldn't regenerate annotations."
+    /// A regenerate failed while existing cards were on screen. Clear the
+    /// lingering `.failed` status so the sheet keeps showing the
+    /// still-present previous annotations (populated wins over the inline
+    /// error layout) and never flips to a stale error+retry state if the
+    /// user later deletes the remaining cards. Routed from
+    /// `AnnotationSheetContainer.onRegenerateFailed`, which fires only when
+    /// the failed target still has rows. Raises no toast by design — a
+    /// regenerate that fails over present cards is silent (the cards stay).
+    public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
         dispatchStatusByTarget.removeValue(forKey: spec)
     }
 
