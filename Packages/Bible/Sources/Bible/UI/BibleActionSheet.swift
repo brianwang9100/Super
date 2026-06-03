@@ -65,27 +65,27 @@ struct BibleActionSheet: View {
                 .foregroundStyle(theme.inkFaint)
             Spacer()
             ForEach(BibleHighlightColor.allCases) { color in
+                // Inert glass tinted with the colour it paints (so the swatch
+                // reads as that colour, not a faint dot); the clear content just
+                // sizes the circle. Press feel comes from the press style.
                 Button { onHighlight(color) } label: {
-                    Circle()
-                        .fill(color.swatch.color)
+                    Color.clear
                         .frame(width: 28, height: 28)
-                        .overlay(Circle().strokeBorder(theme.borderFaint, lineWidth: 0.5))
+                        .superGlassButton(in: Circle(), tint: color.swatch.color, interactive: false)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SuperPressButtonStyle())
                 .accessibilityLabel("Highlight \(color.displayName.lowercased())")
             }
+            // Plain theme glass (no tint); the xmark glyph carries the "clear"
+            // meaning now that glass owns the edge.
             Button(action: onClearHighlight) {
-                Circle()
-                    .strokeBorder(theme.border, style: StrokeStyle(lineWidth: 0.5, dash: [2.5]))
-                    .background(Circle().fill(theme.backgroundSunken))
+                Image(systemName: "xmark")
+                    .font(typography.font(size: 11, weight: .bold))
+                    .foregroundStyle(theme.inkFaint)
                     .frame(width: 28, height: 28)
-                    .overlay {
-                        Image(systemName: "xmark")
-                            .font(typography.font(size: 11, weight: .bold))
-                            .foregroundStyle(theme.inkFaint)
-                    }
+                    .superGlassButton(in: Circle(), interactive: false)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SuperPressButtonStyle())
             .accessibilityLabel("Clear highlight")
         }
         .padding(.horizontal, 4)
@@ -120,10 +120,10 @@ struct BibleActionSheet: View {
     private var aiActionRow: some View {
         HStack(spacing: 4) {
             actionButton(label: "Annotate", accent: true, action: onAnnotate) {
-                AnnotationBubble(state: .filled, size: 18)
+                AnnotationBubble(state: .filled, size: 22)
             }
             actionButton(label: "Add note", accent: true, action: onAddNote) {
-                NoteGlyph(state: .filled, size: 18)
+                NoteGlyph(state: .filled, size: 22)
             }
             actionButton(label: "Add to chat", accent: true, action: onAddToChat) {
                 sfIcon("paperplane.fill", accent: true)
@@ -142,12 +142,14 @@ struct BibleActionSheet: View {
             actionButton(label: "Copy", accent: false, action: onCopy) {
                 sfIcon("doc.on.doc", accent: false)
             }
-            ShareLink(item: shareText) {
-                actionTile(label: "Share", accent: false) {
-                    sfIcon("square.and.arrow.up", accent: false)
+            // Share goes through ShareLink, but wears the same glass tile + caption.
+            actionTile(label: "Share", accent: false) {
+                ShareLink(item: shareText) {
+                    tileGlassLabel(tint: nil) { sfIcon("square.and.arrow.up", accent: false) }
                 }
+                .buttonStyle(SuperPressButtonStyle())
+                .accessibilityLabel("Share")
             }
-            .buttonStyle(.plain)
             // Two hidden tiles fill the trailing 1/4 columns so Copy/Share keep
             // the AI row's tile width and stay left-aligned. Hidden tiles (not
             // Spacer/Color.clear) mirror a real tile's footprint exactly, so the
@@ -157,12 +159,12 @@ struct BibleActionSheet: View {
         }
     }
 
-    /// An invisible stand-in occupying one tile column — a clear icon plus a
-    /// blank label matching a real tile's footprint — used to pad the plain-text
-    /// row out to the AI row's four columns so Copy/Share keep the AI tile width.
+    /// An invisible stand-in occupying one tile column — a glass-sized button
+    /// plus a blank caption matching a real tile's footprint — used to pad the
+    /// plain-text row out to the AI row's four columns so Copy/Share keep width.
     private var actionPlaceholderTile: some View {
         actionTile(label: " ", accent: false) {
-            Color.clear.frame(width: 18, height: 18)
+            tileGlassLabel(tint: nil) { Color.clear.frame(width: 22, height: 22) }
         }
         .hidden()
         .accessibilityHidden(true)
@@ -170,40 +172,62 @@ struct BibleActionSheet: View {
 
     private func sfIcon(_ symbol: String, accent: Bool) -> some View {
         Image(systemName: symbol)
-            .font(typography.font(size: 16, weight: .medium))
+            .font(typography.font(size: 20, weight: .medium))
             .foregroundStyle(accent ? theme.accent : theme.ink)
     }
 
+    /// A `Button` whose glass surface fills the tile column, paired with a
+    /// caption beneath it. The press style scales just this glass (the label is
+    /// a separate caption), so the control shrinks from its own centre and
+    /// settles without the release glow interactive glass shows.
     private func actionButton<Icon: View>(
         label: String,
         accent: Bool,
         action: @escaping () -> Void,
         @ViewBuilder icon: () -> Icon
     ) -> some View {
-        Button(action: action) {
-            actionTile(label: label, accent: accent, icon: icon)
+        actionTile(label: label, accent: accent) {
+            Button(action: action) {
+                // AI tiles keep their grouping via a soft-accent glass tint;
+                // plain tiles use neutral theme glass.
+                tileGlassLabel(tint: accent ? theme.accentSoft : nil, icon: icon)
+            }
+            .buttonStyle(SuperPressButtonStyle())
+            .accessibilityLabel(label)
         }
-        .buttonStyle(.plain)
     }
 
-    private func actionTile<Icon: View>(
-        label: String,
-        accent: Bool,
+    /// The glass button's content: an icon centred in a column-wide, ~58pt-tall
+    /// inert-glass surface so the control reads as a proper button rather than
+    /// an icon chip.
+    private func tileGlassLabel<Icon: View>(
+        tint: Color?,
         @ViewBuilder icon: () -> Icon
     ) -> some View {
-        VStack(spacing: 6) {
-            icon()
-                .frame(width: 38, height: 38)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(accent ? theme.accentSoft : theme.backgroundSunken)
-                )
+        icon()
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .superGlassButton(in: RoundedRectangle(cornerRadius: 16), tint: tint, interactive: false)
+    }
+
+    /// A tile column: a glass control over its caption, sharing one width.
+    private func actionTile<Control: View>(
+        label: String,
+        accent: Bool,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        VStack(spacing: 8) {
+            control()
+            // Decorative caption — the control already carries the same string as
+            // its accessibilityLabel, so hide this from VoiceOver to avoid a
+            // duplicate element/announcement per tile.
             Text(label)
                 .font(typography.font(size: 11, weight: .medium))
                 .foregroundStyle(accent ? theme.accent : theme.ink)
+                .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 3)
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
     }
 }

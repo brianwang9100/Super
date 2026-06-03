@@ -22,6 +22,13 @@ public enum SuperMotion {
     /// is on so a vestibular-sensitive user never sees the overshoot.
     public static let reducedMotion: Animation = .easeInOut(duration: 0.2)
 
+    /// Button-press scale spring — a quick, lightly-damped settle used by
+    /// ``SuperPressButtonStyle`` for the press feedback on inert glass control
+    /// clusters (the Bible action sheet's swatches/tiles), where the built-in
+    /// `.interactive()` Liquid Glass glow reads as a flicker on release. Short
+    /// enough to feel immediate; just enough give to feel alive.
+    public static let press: Animation = .spring(response: 0.28, dampingFraction: 0.68)
+
     /// Returns the appropriate animation for the current motion
     /// preference. Callers pass the environment's
     /// `\.accessibilityReduceMotion` value; this enum stays

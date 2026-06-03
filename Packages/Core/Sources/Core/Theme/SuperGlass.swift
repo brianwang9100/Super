@@ -27,6 +27,15 @@ public struct GlassMorphID {
 /// the `glassTint` from the active `SuperTheme` biases that frosted material
 /// toward the theme's character.
 ///
+/// **Interactive vs. inert glass.** `Glass.interactive()` gives a free liquid
+/// press, but in a tight cluster of glass buttons it shows a brief glow flicker
+/// as each shape springs back on release (and Apple's `.buttonStyle(.glass)`
+/// only tints faintly, while `.glassProminent` flickers the same way). So for
+/// dense clusters — the Bible verse action sheet — pass `interactive: false`
+/// for a still, strongly-tinted surface and pair the button with
+/// ``SuperPressButtonStyle``, which supplies a clean centred press-scale and no
+/// glow. Standalone nav chrome keeps the default interactive glass.
+///
 /// **Hit-testing.** `.glassEffect` collapses the host view's hit region to its
 /// content's intrinsic size (the glyph), so a framed 44pt glass button would
 /// only respond to taps on the tiny glyph and ignore the rest of the circle
@@ -34,18 +43,37 @@ public struct GlassMorphID {
 /// the full `shape` as the control's `contentShape` so the whole button is
 /// tappable.
 public extension View {
-    /// Apply interactive theme-tinted glass to a tappable control, clipped to
-    /// `shape` (defaults to a circle for the standard round nav buttons).
-    /// Replaces the old fill + border + drop-shadow chrome — glass supplies its
-    /// own edge and elevation, so callers should drop those first. Restores the
-    /// full-`shape` hit region (see the type note above). Pass `morph` to give
-    /// the control a Liquid Glass identity so it morphs into a sibling sharing
-    /// the same id when it enters or leaves the hierarchy (see `GlassMorphID`).
+    /// Apply theme-tinted glass to a tappable control, clipped to `shape`
+    /// (defaults to a circle for the standard round nav buttons). Replaces the
+    /// old fill + border + drop-shadow chrome — glass supplies its own edge and
+    /// elevation, so callers should drop those first. Restores the full-`shape`
+    /// hit region (see the type note above).
+    ///
+    /// - Parameters:
+    ///   - tint: Biases the frosted material toward this colour instead of the
+    ///     theme's `glassTint` — used where the control *is* the colour (the
+    ///     Bible highlight swatches) or carries a grouping accent (the AI action
+    ///     tiles). `nil` keeps the standard theme tint.
+    ///   - interactive: Whether the glass reacts to touch with the built-in
+    ///     liquid press. Defaults to `true`. Pass `false` in a dense cluster
+    ///     where that press glow-flickers on release, and pair with
+    ///     ``SuperPressButtonStyle`` for the press feedback instead.
+    ///   - morph: Gives the control a Liquid Glass identity so it morphs into a
+    ///     sibling sharing the same id when it enters or leaves the hierarchy
+    ///     (see `GlassMorphID`). `nil` for a static control.
     func superGlassButton(
         in shape: some Shape = Circle(),
+        tint: Color? = nil,
+        interactive: Bool = true,
         morph: GlassMorphID? = nil
     ) -> some View {
-        modifier(SuperGlassModifier(shape: shape, interactive: true, morph: morph))
+        modifier(SuperGlassModifier(
+            shape: shape,
+            glassInteractive: interactive,
+            assertsHitRegion: true,
+            tint: tint,
+            morph: morph
+        ))
     }
 
     /// Apply theme-tinted glass to a passive *inline* surface — the nav bar's
@@ -58,7 +86,46 @@ public extension View {
         in shape: some Shape,
         morph: GlassMorphID? = nil
     ) -> some View {
-        modifier(SuperGlassModifier(shape: shape, interactive: false, morph: morph))
+        modifier(SuperGlassModifier(
+            shape: shape,
+            glassInteractive: false,
+            assertsHitRegion: false,
+            tint: nil,
+            morph: morph
+        ))
+    }
+}
+
+/// Press feedback for glass controls that opt out of the built-in
+/// `.interactive()` glass press — it scales the whole control on touch with
+/// ``SuperMotion/press`` and lets go cleanly, so a tight cluster of glass
+/// buttons (the Bible action sheet) stays satisfying to tap without the glow
+/// flicker the liquid press shows on release. Apply it to a `Button` whose
+/// label *is* the glass surface, so the scale stays centred on the control.
+/// Pair with `superGlassButton(in:tint:interactive: false)`.
+public struct SuperPressButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        // A nested View so the press animation can read `accessibilityReduceMotion`
+        // from the environment (a `ButtonStyle` itself can't hold @Environment).
+        PressScale(configuration: configuration)
+    }
+
+    private struct PressScale: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: ButtonStyleConfiguration
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed ? 0.9 : 1)
+                // Reduce Motion swaps the spring's overshoot for a flat crossfade,
+                // per the project's motion policy (see `SuperMotion`).
+                .animation(
+                    reduceMotion ? SuperMotion.reducedMotion : SuperMotion.press,
+                    value: configuration.isPressed
+                )
+        }
     }
 }
 
@@ -80,15 +147,26 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
     @Environment(\.superTheme) private var theme
 
     let shape: S
-    let interactive: Bool
+    /// Whether the glass itself reacts to touch (`.interactive()`). Independent
+    /// of `assertsHitRegion`: a button can host inert glass (no liquid press)
+    /// while still claiming the full-shape hit region.
+    let glassInteractive: Bool
+    /// Re-assert `shape` as the hit region. True for buttons (glass collapses it
+    /// to the glyph); false for passive surfaces, or they'd swallow their inner
+    /// controls' taps (e.g. the book/translation pill's two segments).
+    let assertsHitRegion: Bool
+    /// Overrides the theme's `glassTint` when non-nil (per-swatch colour, AI
+    /// accent); `nil` falls back to the theme tint so existing callers are
+    /// unchanged.
+    let tint: Color?
+    /// Liquid Glass morph identity, or `nil` for a static control.
     let morph: GlassMorphID?
+
+    private var resolvedTint: Color { tint ?? theme.glassTint }
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        // Buttons re-assert `shape` as the hit region (glass collapses it to the
-        // glyph); passive surfaces must not, or they'd swallow their own inner
-        // controls' taps (e.g. the book/translation pill's two segments).
-        if interactive {
+        if assertsHitRegion {
             glassed(content).contentShape(shape)
         } else {
             glassed(content)
@@ -98,18 +176,20 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
     @ViewBuilder
     private func glassed(_ content: Content) -> some View {
         if Self.usesSolidFallback {
-            // No `glassEffectID` here: it's meaningful only alongside a real
-            // glass effect inside a container, and the morph it drives is
-            // invisible to offscreen snapshots anyway.
+            // Stand-in fill tracks the tint so tinted callers (highlight
+            // swatches, accent AI tiles) stay visually distinct in snapshots;
+            // untinted callers keep the original raised fill byte-for-byte. No
+            // `glassEffectID` here: the morph it drives is invisible to
+            // offscreen snapshots anyway.
             content
-                .background(shape.fill(theme.backgroundRaised))
+                .background(shape.fill(tint ?? theme.backgroundRaised))
                 .overlay(shape.stroke(theme.borderFaint, lineWidth: 0.5))
         } else {
             morphed(
                 content.glassEffect(
-                    interactive
-                        ? Glass.regular.tint(theme.glassTint).interactive()
-                        : Glass.regular.tint(theme.glassTint),
+                    glassInteractive
+                        ? Glass.regular.tint(resolvedTint).interactive()
+                        : Glass.regular.tint(resolvedTint),
                     in: shape
                 )
             )
