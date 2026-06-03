@@ -203,7 +203,8 @@ struct AppShell: View {
                     withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                         chatState = .minimized
                     }
-                }
+                },
+                reduceMotion: reduceMotion
             )
             // `.equatable()` so a composer focus flip (which invalidates
             // this whole body) doesn't re-evaluate the backdrop and rebuild
@@ -874,14 +875,17 @@ private enum PendingNavigation: Equatable {
 /// Backdrop layer hosting the active mini-app's root view, plus the
 /// semi-expanded tap-target that collapses the chat back to minimized.
 ///
-/// Observes `registry`, `theme`, `appearance`, `chatState`, `chatProgress`,
-/// `chatSemiProgress`. Closure-typed inputs (`onBackdropTap`) are
-/// freshly allocated each `AppShell.body` render, so SwiftUI cannot prove
-/// input equality and *will* re-run this body on a composer focus flip
-/// — but it's a small body, far cheaper than the pre-extraction unified
-/// shell body. Stage 2 (typed-dispatch removal of
-/// `MiniApplet.rootView() -> AnyView`) will close the residual
-/// `activeApplet.rootView()` re-wrap cost that remains here.
+/// A pure function of its props (`activeApplet`/`activeAppletID`, the
+/// theme trio, `chatState`/`chatProgress`/`chatSemiProgress`,
+/// `reduceMotion`) with no `@State`/`@Environment`/`@Bindable` of its
+/// own, so it's safe to gate with `.equatable()` at the call site. That
+/// short-circuits the body — and the `activeApplet.rootView()` re-wrap —
+/// on a composer focus flip, which would otherwise invalidate the whole
+/// `AppShell.body` (the shell owns `@FocusState composerIsFocused`) and
+/// rebuild the hosted applet's view tree. Stage 2 (typed-dispatch removal
+/// of `MiniApplet.rootView() -> AnyView`) will close the residual re-wrap
+/// cost that remains when it *does* re-render (applet switch, theme
+/// change, drag).
 // Main-actor-isolated `Equatable` conformance: the struct is main-actor
 // isolated (it's a SwiftUI `View`), and SwiftUI's `.equatable()` diffing
 // calls `==` on the main actor, so isolating the conformance is sound and
@@ -903,30 +907,30 @@ private struct BackdropLayer: View, @MainActor Equatable {
     let chatProgress: Double
     let chatSemiProgress: Double
     let onBackdropTap: () -> Void
+    /// Threaded as a prop (not just captured inside `onBackdropTap`) so
+    /// the AGENTS.md "Reduce Motion must thread through" rule holds for the
+    /// backdrop's collapse animation: including it in `==` means a Reduce
+    /// Motion toggle fails the equality check, re-renders this layer, and
+    /// refreshes the captured-`reduceMotion` closure on the same update —
+    /// no stale-closure window.
+    let reduceMotion: Bool
 
-    /// Compare only the value inputs that change what the backdrop
-    /// renders; ignore `onBackdropTap` (a fresh closure every
-    /// `AppShell.body` eval, which is what otherwise forces this layer to
-    /// re-evaluate — and re-invoke `rootView()` — on every composer focus
-    /// flip) and `activeApplet` (keyed via `activeAppletID`). `theme.id`
-    /// is the cheap stable key mirroring how the shell builds themes via
-    /// `.make(id)`. `chatProgress`/`chatSemiProgress` stay in so the dim
-    /// keeps tracking a live drag.
+    /// Compare every value input that changes what the backdrop renders,
+    /// so SwiftUI's `.equatable()` only skips this body when none of them
+    /// moved. `onBackdropTap` is excluded — a fresh closure every
+    /// `AppShell.body` eval, and the sole reason an otherwise-unchanged
+    /// layer would re-render (and re-invoke `rootView()`) on a composer
+    /// focus flip; the one piece of state it captures, `reduceMotion`, is
+    /// instead threaded as a prop and compared below, so excluding the
+    /// closure costs no correctness. `activeApplet` is excluded too (keyed
+    /// via `activeAppletID`). `theme.id` is the cheap stable key mirroring
+    /// how the shell builds themes via `.make(id)`; `chatProgress`/
+    /// `chatSemiProgress` stay in so the dim keeps tracking a live drag.
     ///
-    /// Bound on excluding `onBackdropTap`: that closure captures
-    /// `AppShell`'s `reduceMotion`, so a Reduce Motion toggle while every
-    /// other prop is unchanged leaves the skipped layer holding a stale
-    /// closure. Observable only as a one-update-late animation curve if the
-    /// user taps the dimmed backdrop while semi-expanded before any other
-    /// state change, and self-correcting on the next `==`-failing update —
-    /// accepted as cosmetic.
-    ///
-    /// Paired with `.equatable()` at the call site so SwiftUI skips this
-    /// body when these inputs are unchanged. Safe because the applet-switch
-    /// re-render is driven by `AppShell.body` observing `registry.activeID`
-    /// (read for `SidebarLayer`), not by this layer reading the registry —
-    /// hence this view must stay a pure function of its props with no
-    /// `@State`/`@Environment`/`@Bindable` of its own.
+    /// Safe because the re-render on an applet switch is driven by
+    /// `AppShell.body` observing `registry.activeID` (read for
+    /// `SidebarLayer`), not by this layer reading the registry — hence this
+    /// view must stay a pure function of its props.
     static func == (lhs: BackdropLayer, rhs: BackdropLayer) -> Bool {
         lhs.activeAppletID == rhs.activeAppletID
             && lhs.theme.id == rhs.theme.id
@@ -935,6 +939,7 @@ private struct BackdropLayer: View, @MainActor Equatable {
             && lhs.chatState == rhs.chatState
             && lhs.chatProgress == rhs.chatProgress
             && lhs.chatSemiProgress == rhs.chatSemiProgress
+            && lhs.reduceMotion == rhs.reduceMotion
     }
 
     /// Opacity applied to the applet backdrop, interpolated continuously
