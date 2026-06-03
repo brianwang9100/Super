@@ -71,20 +71,30 @@ struct SheetNavBarSnapshotTests {
         verify(bar, theme: themeID, name: "navbar_trailing")
     }
 
-    @Test("subtitle sits centered under the title")
-    func subtitle() {
-        // Mirrors the annotation / note-list shape: a small centered caption
-        // under the title (the note count / "ANNOTATIONS" label) alongside a
-        // trailing control. Guards that the optional subtitle stacks under the
-        // title without pushing the trailing slot off-center.
-        let themeID = SuperTheme.Identifier.light
-        let bar = SheetNavBar(title: "1 Peter 2:1", subtitle: "1 Note", onClose: {}) {
-            Image(systemName: "plus")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(SuperTheme.make(themeID).ink)
-                .frame(width: 44, height: 44)
-        }
-        verify(bar, theme: themeID, name: "navbar_subtitle")
+    @Test("subtitle — light")
+    func subtitleLight() {
+        verify(subtitleBar(theme: .light), theme: .light, name: "navbar_subtitle_light")
+    }
+
+    @Test("subtitle — dark")
+    func subtitleDark() {
+        verify(subtitleBar(theme: .dark), theme: .dark, name: "navbar_subtitle_dark")
+    }
+
+    @Test("subtitle — sepia")
+    func subtitleSepia() {
+        verify(subtitleBar(theme: .sepia), theme: .sepia, name: "navbar_subtitle_sepia")
+    }
+
+    @Test("subtitle — font scale max grows the title and subtitle together")
+    func subtitleFontScaleMax() {
+        // The subtitle tracks the app font-scale slider just like the title, so
+        // the `1.20` maximum grows both. Locks that the caption scales *with*
+        // the title (not independently) — the live counterpart to the inert OS
+        // Dynamic Type axis the bar deliberately opts out of.
+        let view = chrome(subtitleBar(theme: .light), theme: .light)
+            .superTypography(.make(.serif, fontScale: 1.20))
+        record(view, named: "navbar_subtitle_font_scale_max_light", function: #function)
     }
 
     @Test("fitsContent pins the top inset to zero")
@@ -135,6 +145,18 @@ struct SheetNavBarSnapshotTests {
     }
 
     // MARK: - Helpers
+
+    /// The annotation / note-list shape: a title, a small centered caption
+    /// (note count / "ANNOTATIONS" label), and a trailing control. Built per
+    /// theme so the trailing glyph's ink matches the snapshot theme.
+    private func subtitleBar(theme themeID: SuperTheme.Identifier) -> SheetNavBar<some View> {
+        SheetNavBar(title: "1 Peter 2:1", subtitle: "1 Note", onClose: {}) {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(SuperTheme.make(themeID).ink)
+                .frame(width: 44, height: 44)
+        }
+    }
 
     /// Default case: the no-trailing convenience init under `theme`.
     private func verify(

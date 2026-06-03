@@ -101,6 +101,15 @@ public struct SheetNavBar<Trailing: View>: View {
                     // behind this bar. Like the title, it tracks the app
                     // font-scale slider but stays inert to OS Dynamic Type
                     // (`typography.font(size:)`, not `@ScaledMetric`).
+                    //
+                    // Deliberate tradeoff: `NoteListSheet`'s old "{n} Notes"
+                    // count used `@ScaledMetric(relativeTo: .caption2)` and so
+                    // grew with OS Dynamic Type. Unifying it here drops that —
+                    // by design, so the caption stays visually subordinate to a
+                    // title that is itself OS-DT-inert (a subtitle that scaled
+                    // with OS DT would outgrow the title above it at XXXL). Both
+                    // axes still compose via the slider, which scales the whole
+                    // bar together.
                     Text(subtitle)
                         .font(typography.font(size: 11, weight: .medium, design: .monospaced))
                         .tracking(0.6)
