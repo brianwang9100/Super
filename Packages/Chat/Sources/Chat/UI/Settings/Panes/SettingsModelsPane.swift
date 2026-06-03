@@ -15,17 +15,30 @@ struct SettingsModelsPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            sectionHeader("ALL MODELS")
+                .padding(.bottom, 8)
+
             ForEach(viewModel.models) { model in
                 modelCard(model)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 10)
             }
-            addModelButton
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 20)
+
+            titleSummarizationSection
+                .padding(.top, 12)
+                .padding(.bottom, 12)
         }
         .padding(.top, 8)
+    }
+
+    /// All-caps section label matching the title-summarization footer's
+    /// "CHAT TITLES" header. Aligned to the same 20pt leading inset.
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(typography.font(.caption2, weight: .semibold))
+            .foregroundStyle(theme.inkFaint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
     }
 
     private func modelCard(_ model: SettingsViewModel.ModelRow) -> some View {
@@ -137,25 +150,104 @@ struct SettingsModelsPane: View {
         }
     }
 
-    private var addModelButton: some View {
-        Button(action: { viewModel.openPane(.modelDetail(id: nil)) }) {
-            HStack(spacing: 6) {
-                PlusIcon(size: 14)
-                Text("Add model endpoint")
-                    .font(typography.font(.subheadline))
+    /// Footer: which model — if any — summarizes new chat titles, a knob
+    /// independent of the conversation's active model. The toggle is the
+    /// master on/off; when on, the radio list picks the summarizer from the
+    /// configured models. Apple Intelligence is the automatic default
+    /// (highlighted when the user hasn't made an explicit pick) and is shown
+    /// disabled when it's unavailable on this device. When off — or when the
+    /// resolved model is unavailable — titles fall back to the first message.
+    private var titleSummarizationSection: some View {
+        let isOn = viewModel.settings.summarizeTitlesEnabled
+        return VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("CHAT TITLES")
+
+            SettingsGroup {
+                titleToggleRow(showsDivider: isOn && !viewModel.models.isEmpty)
+                if isOn {
+                    ForEach(Array(viewModel.models.enumerated()), id: \.element.id) { index, model in
+                        titleModelRow(model, isLast: index == viewModel.models.count - 1)
+                    }
+                }
             }
-            .foregroundStyle(theme.inkSoft)
-            .frame(maxWidth: .infinity)
-            .padding(14)
-            .contentShape(Rectangle())
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(
-                        theme.border,
-                        style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                    )
+        }
+    }
+
+    private func titleToggleRow(showsDivider: Bool) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Summarize chat titles")
+                    .font(typography.font(.subheadline))
+                    .foregroundStyle(theme.ink)
+                Text("Name new chats with a short AI summary. Off uses the first message.")
+                    .font(typography.font(.caption))
+                    .foregroundStyle(theme.inkFaint)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsToggle(
+                isOn: Binding(
+                    get: { viewModel.settings.summarizeTitlesEnabled },
+                    set: { newValue in Task { await viewModel.setSummarizeTitlesEnabled(newValue) } }
+                ),
+                accessibilityLabel: "Summarize chat titles"
             )
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            if showsDivider { titleDivider }
+        }
     }
+
+    /// One radio row in the summarizer-model list. `nil` `titleModelId`
+    /// (automatic) highlights the Apple Foundation row; an explicit id
+    /// highlights the matching model. Unavailable rows (AFM when Apple
+    /// Intelligence is off) are dimmed and non-selectable.
+    private func titleModelRow(_ model: SettingsViewModel.ModelRow, isLast: Bool) -> some View {
+        let isAvailable = isModelAvailable(model)
+        let isSelected = isTitleModelSelected(model)
+        return Button(action: {
+            Task { await viewModel.setTitleModelId(model.modelId) }
+        }) {
+            HStack(spacing: 14) {
+                Text(model.name)
+                    .font(typography.font(.subheadline))
+                    .foregroundStyle(isAvailable ? theme.ink : theme.inkFaint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if isSelected {
+                    CheckIcon(size: 16)
+                        .foregroundStyle(isAvailable ? theme.accent : theme.inkFaint)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                if !isLast { titleDivider }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isAvailable)
+        .accessibilityLabel(model.name)
+        .accessibilityValue(isSelected ? "Selected" : "")
+    }
+
+    private var titleDivider: some View {
+        Rectangle()
+            .fill(theme.borderFaint)
+            .frame(height: 1)
+            .padding(.leading, 16)
+    }
+
+    /// Whether `model` is the current title summarizer. An explicit
+    /// `titleModelId` matches by `LLMModel.id`; the automatic default
+    /// (`nil`) highlights the Apple Foundation row.
+    private func isTitleModelSelected(_ model: SettingsViewModel.ModelRow) -> Bool {
+        if let id = viewModel.settings.titleModelId {
+            return model.modelId == id
+        }
+        return model.kind == .appleFoundation
+    }
+
 }

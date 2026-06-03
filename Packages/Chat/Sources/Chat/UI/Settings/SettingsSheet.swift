@@ -154,7 +154,13 @@ public struct SettingsSheet: View {
                 title: currentPane.title,
                 isRoot: currentPane == .root,
                 onBack: { viewModel.popPane() },
-                onClose: { close() }
+                onClose: { close() },
+                // The Models pane carries a trailing glass "+" that opens the
+                // add-model form, replacing the in-list dashed CTA.
+                trailingAction: currentPane == .models
+                    ? { viewModel.openPane(.modelDetail(id: nil)) }
+                    : nil,
+                trailingAccessibilityLabel: currentPane == .models ? "Add model endpoint" : nil
             )
             NavigationStack(path: $viewModel.navigationPath) {
                 ScrollView {

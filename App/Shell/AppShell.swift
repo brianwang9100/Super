@@ -628,7 +628,10 @@ struct AppShell: View {
         let providers = await dependencies.llmProviderRegistry.allProviders()
         let providerModels = providers.flatMap(\.supportedModels)
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
-        let titleGenerator = TitleGenerator(llmProviderRegistry: dependencies.llmProviderRegistry)
+        let titleGenerator = TitleGenerator(
+            llmProviderRegistry: dependencies.llmProviderRegistry,
+            settingsStore: ChatSettingsStore(repository: dependencies.settingRepository)
+        )
         let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
         // Use the persisted model id so the picker survives relaunch; stale ids fall back to first available.
         let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
@@ -698,10 +701,7 @@ struct AppShell: View {
         matching modelId: String,
         in registry: LLMProviderRegistry
     ) async {
-        let providers = await registry.allProviders()
-        guard let match = providers.first(where: {
-            $0.supportedModels.contains { $0.id == modelId }
-        }) else { return }
+        guard let match = await registry.provider(forModelId: modelId) else { return }
         try? await registry.setActive(id: match.id)
     }
 

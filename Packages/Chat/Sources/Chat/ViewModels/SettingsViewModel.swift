@@ -398,6 +398,23 @@ public final class SettingsViewModel {
         await webSearchPolicyReceiver.setAskBeforeSearching(value)
     }
 
+    /// Master on/off for headless chat-title summarization. The summarizer
+    /// model itself is `setTitleModelId`. No receiver fan-out needed — the
+    /// title path (`TitleGenerator`) reads the setting fresh on each call.
+    public func setSummarizeTitlesEnabled(_ value: Bool) async {
+        settings.summarizeTitlesEnabled = value
+        try? await store.setSummarizeTitlesEnabled(value)
+    }
+
+    /// Selects the model used to summarize chat titles. Pass `nil` for
+    /// "automatic" (resolves to the Apple Foundation Model when available).
+    /// Stores an `LLMModel.id` (`ModelRow.modelId`), consistent with how the
+    /// title path resolves the provider.
+    public func setTitleModelId(_ id: String?) async {
+        settings.titleModelId = id
+        try? await store.setTitleModelId(id)
+    }
+
     public func setModelEnabled(id: String, enabled: Bool) async {
         if let idx = models.firstIndex(where: { $0.id == id }) {
             models[idx].isEnabled = enabled

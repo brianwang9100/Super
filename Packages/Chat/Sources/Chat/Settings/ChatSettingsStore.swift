@@ -47,7 +47,10 @@ public struct ChatSettingsStore: Sendable {
                 ?? ChatSettings.default.autoCompactThreshold,
             lastSelectedModelId: raw[Keys.lastSelectedModelId],
             askBeforeSearching: raw[Keys.webSearchAskBeforeSearching].flatMap(Self.decodeBool)
-                ?? ChatSettings.default.askBeforeSearching
+                ?? ChatSettings.default.askBeforeSearching,
+            summarizeTitlesEnabled: raw[Keys.summarizeTitles].flatMap(Self.decodeBool)
+                ?? ChatSettings.default.summarizeTitlesEnabled,
+            titleModelId: raw[Keys.titleModelId]
         )
     }
 
@@ -136,6 +139,39 @@ public struct ChatSettingsStore: Sendable {
         try await repository.set(Keys.webSearchAskBeforeSearching, value: value ? "true" : "false")
     }
 
+    public func setSummarizeTitlesEnabled(_ value: Bool) async throws {
+        try await repository.set(Keys.summarizeTitles, value: value ? "true" : "false")
+    }
+
+    /// Persists the `LLMModel.id` of the chat-title summarizer. Passing
+    /// `nil` deletes the row, restoring the "automatic" default (resolves to
+    /// the Apple Foundation Model when available). A stale id (its model has
+    /// since been deleted) is tolerated at read time — `TitleGenerator`
+    /// resolves it to no titling rather than reverting to AFM.
+    public func setTitleModelId(_ id: String?) async throws {
+        if let id {
+            try await repository.set(Keys.titleModelId, value: id)
+        } else {
+            try await repository.delete(Keys.titleModelId)
+        }
+    }
+
+    /// Focused read for the headless title path — avoids running the full
+    /// `load()` (and its one-shot legacy migration) on every first exchange.
+    /// Defaults to `true` when the row is absent or unparseable.
+    public func isTitleSummarizationEnabled() async -> Bool {
+        guard let raw = try? await repository.get(Keys.summarizeTitles) else {
+            return ChatSettings.default.summarizeTitlesEnabled
+        }
+        return Self.decodeBool(raw) ?? ChatSettings.default.summarizeTitlesEnabled
+    }
+
+    /// Focused read for the headless title path. `nil` ⇒ "automatic"
+    /// (resolve to AFM if available). See `setTitleModelId`.
+    public func titleModelId() async -> String? {
+        try? await repository.get(Keys.titleModelId)
+    }
+
     /// Persists the upstream `LLMModel.id` the user just activated so the
     /// next new chat opens on the same model. Stale ids (the model has
     /// since been deleted) are tolerated at read time — the shell falls
@@ -196,6 +232,12 @@ public struct ChatSettingsStore: Sendable {
         /// `"true"` / `"false"`. Whether the native web-search cost gate
         /// prompts before each search. Defaults to `"true"` when absent.
         public static let webSearchAskBeforeSearching = "webSearch.askBeforeSearching"
+        /// `"true"` / `"false"`. Master on/off for headless chat-title
+        /// summarization. Defaults to `"true"` when absent.
+        public static let summarizeTitles = "titles.summarizeEnabled"
+        /// `LLMModel.id` of the chat-title summarizer, or absent for
+        /// "automatic" (resolves to the Apple Foundation Model when available).
+        public static let titleModelId = "titles.modelId"
         /// Per-model enabled flag. Keyed by `id` so each row stays
         /// independent of the others.
         public static func modelEnabled(id: String) -> String {

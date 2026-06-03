@@ -60,6 +60,23 @@ public actor LLMProviderRegistry {
         providers[id]
     }
 
+    /// The registered provider whose `supportedModels` include `modelId`
+    /// (the upstream model identifier, e.g. `claude-opus-4-7`), or nil when
+    /// no registered provider serves that model. Providers are keyed by
+    /// record UUID, so a model id requires a scan rather than a direct
+    /// lookup — used wherever a caller holds a model id and needs the
+    /// provider that can stream it (the composer's active-provider promotion,
+    /// the headless title summarizer).
+    ///
+    /// Scans in id-sorted order so the result is deterministic if two rows
+    /// ever expose the same model id (matching the prior `allProviders()`
+    /// scan this replaced).
+    public func provider(forModelId modelId: String) -> (any LLMProvider)? {
+        providers.values
+            .sorted { $0.id < $1.id }
+            .first { $0.supportedModels.contains { $0.id == modelId } }
+    }
+
     /// All providers sorted by id for stable enumeration in settings panes.
     public func allProviders() -> [any LLMProvider] {
         providers.values.sorted(by: { $0.id < $1.id })

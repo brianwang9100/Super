@@ -344,6 +344,76 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
+    // MARK: - Title-summarization footer
+
+    @Test("models pane title-summarization footer: off (no model list)")
+    func modelsPaneTitlingOff() async {
+        await verifyModelsPaneTitling(
+            theme: .light,
+            settings: Self.titleSettings(enabled: false),
+            name: "settings_models_titling_off_light"
+        )
+    }
+
+    @Test("models pane title-summarization footer: off (dark)")
+    func modelsPaneTitlingOffDark() async {
+        await verifyModelsPaneTitling(
+            theme: .dark,
+            settings: Self.titleSettings(enabled: false),
+            name: "settings_models_titling_off_dark"
+        )
+    }
+
+    @Test("models pane title-summarization footer: automatic default highlights the AFM row")
+    func modelsPaneTitlingAutomatic() async {
+        await verifyModelsPaneTitling(
+            theme: .light,
+            settings: Self.titleSettings(enabled: true, modelId: nil),
+            name: "settings_models_titling_automatic_light"
+        )
+    }
+
+    @Test("models pane title-summarization footer: an explicit model is selected")
+    func modelsPaneTitlingExplicitModel() async {
+        await verifyModelsPaneTitling(
+            theme: .light,
+            availability: .available,
+            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            name: "settings_models_titling_explicit_light"
+        )
+    }
+
+    /// `ChatSettings.default` with the two title-summarization knobs set.
+    private static func titleSettings(enabled: Bool, modelId: String? = nil) -> ChatSettings {
+        var settings = ChatSettings.default
+        settings.summarizeTitlesEnabled = enabled
+        settings.titleModelId = modelId
+        return settings
+    }
+
+    private func verifyModelsPaneTitling(
+        theme: SuperTheme.Identifier,
+        availability: AppleFoundationAvailability = .available,
+        settings: ChatSettings,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        viewModel._setSnapshotState(
+            settings: settings,
+            models: Self.sampleModelsWithAppleFoundation,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     private func verifyModelsPaneWithAFM(
         theme: SuperTheme.Identifier,
         availability: AppleFoundationAvailability,

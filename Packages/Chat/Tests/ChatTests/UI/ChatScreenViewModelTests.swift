@@ -35,6 +35,16 @@ struct ChatScreenViewModelTests {
         )
     }
 
+    /// Build a `TitleGenerator` whose summarizer setting selects the test
+    /// `model` (titling on), so the auto-title path resolves to the provider
+    /// registered in these fixtures rather than the automatic AFM default.
+    private func makeTitleGenerator(registry: LLMProviderRegistry) async -> TitleGenerator {
+        let store = ChatSettingsStore(repository: TitleSettingRepository())
+        try? await store.setSummarizeTitlesEnabled(true)
+        try? await store.setTitleModelId(model.id)
+        return TitleGenerator(llmProviderRegistry: registry, settingsStore: store)
+    }
+
     @Test("resolveInitialModelId returns the persisted id when it is in the available list")
     func resolveInitialModelIdReturnsPersistedWhenValid() {
         let a = makeModel(id: "model-a")
@@ -760,7 +770,7 @@ struct ChatScreenViewModelTests {
         ])
         let registry = LLMProviderRegistry()
         await registry.register(titleProvider)
-        let titleGen = TitleGenerator(llmProviderRegistry: registry)
+        let titleGen = await makeTitleGenerator(registry: registry)
 
         let firedTitles = TitleSpy()
         let viewModel = ChatScreenViewModel(
@@ -833,7 +843,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [model],
             conversationRepository: conversations,
-            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+            titleGenerator: await makeTitleGenerator(registry: registry)
         )
 
         viewModel.send("Hi")
@@ -878,7 +888,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [model],
             conversationRepository: conversations,
-            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+            titleGenerator: await makeTitleGenerator(registry: registry)
         )
 
         viewModel.send("Continue")
@@ -918,7 +928,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [model],
             conversationRepository: conversations,
-            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+            titleGenerator: await makeTitleGenerator(registry: registry)
         )
 
         viewModel.send("Hi")
@@ -965,7 +975,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [model],
             conversationRepository: conversations,
-            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+            titleGenerator: await makeTitleGenerator(registry: registry)
         )
 
         viewModel.send("Hi")
@@ -1046,7 +1056,7 @@ struct ChatScreenViewModelTests {
             checkpointRepository: StubCheckpointRepository(),
             availableModels: [model],
             conversationRepository: conversations,
-            titleGenerator: TitleGenerator(llmProviderRegistry: registry)
+            titleGenerator: await makeTitleGenerator(registry: registry)
         )
 
         viewModel.send("Plan a Lisbon trip with kids")
@@ -2355,4 +2365,15 @@ private actor StubCheckpointRepository: CompactionCheckpointRepository {
 
     /// Test helper: seed rows so a fixture can pin pre-existing checkpoints.
     func seed(_ records: [CompactionCheckpointRecord]) { rows = records }
+}
+
+/// In-memory `SettingRepository` backing the title-summarizer store in the
+/// auto-title fixtures.
+private actor TitleSettingRepository: SettingRepository {
+    private var storage: [String: String] = [:]
+
+    func get(_ key: String) async throws -> String? { storage[key] }
+    func set(_ key: String, value: String) async throws { storage[key] = value }
+    func delete(_ key: String) async throws { storage.removeValue(forKey: key) }
+    func all() async throws -> [String: String] { storage }
 }
