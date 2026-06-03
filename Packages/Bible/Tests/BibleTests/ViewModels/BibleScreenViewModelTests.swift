@@ -447,14 +447,17 @@ struct BibleScreenViewModelTests {
 
     // MARK: Highlights
 
-    @Test("applying a highlight paints every selected verse and clears the selection")
+    @Test("applying a highlight paints every selected verse and keeps the sheet open")
     func applyHighlightPaintsSelectedVerses() async throws {
         let (viewModel, database) = try makeHighlightingViewModel()
         await viewModel.load()                          // 1 Peter 2
         viewModel.toggleVerse(4)
         viewModel.toggleVerse(5)
         viewModel.applyHighlight(.green)
-        #expect(viewModel.selectedVerses.isEmpty, "applying a highlight leaves selection mode")
+        #expect(
+            viewModel.selectedVerses == [4, 5],
+            "applying a highlight keeps the selection so the action sheet stays open"
+        )
 
         await viewModel._waitForPendingHighlightWrite()
         let rows = try highlights(in: database)
@@ -470,9 +473,13 @@ struct BibleScreenViewModelTests {
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        viewModel.toggleVerse(9)
+        // The highlight path now keeps the selection, so verse 9 is still
+        // selected here — clear its highlight directly without re-toggling.
         viewModel.clearHighlight()
-        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(
+            viewModel.selectedVerses == [9],
+            "clearing a highlight keeps the selection so the action sheet stays open"
+        )
 
         await viewModel._waitForPendingHighlightWrite()
         #expect(try highlights(in: database).isEmpty)
@@ -487,9 +494,8 @@ struct BibleScreenViewModelTests {
         await viewModel._waitForPendingHighlightWrite()
         #expect(try highlights(in: database).map(\.verseNumber) == [9])
 
-        // Re-select the now-yellow verse and tap yellow again — the toggle
-        // reads the live colour and clears instead of re-painting.
-        viewModel.toggleVerse(9)
+        // Verse 9 is still selected (the sheet stayed open); tap yellow again —
+        // the toggle reads the live colour and clears instead of re-painting.
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
         #expect(try highlights(in: database).isEmpty)
@@ -503,7 +509,8 @@ struct BibleScreenViewModelTests {
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        viewModel.toggleVerse(9)
+        // Verse 9 is still selected (the sheet stayed open); tapping a different
+        // colour recolours it rather than clearing.
         viewModel.applyHighlight(.green)
         await viewModel._waitForPendingHighlightWrite()
 
@@ -521,9 +528,9 @@ struct BibleScreenViewModelTests {
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
 
-        // Select both and tap yellow — only verse 4 matches, so the tap
+        // Verse 4 is still selected (the sheet stayed open); add verse 5 so the
+        // selection is mixed, then tap yellow — only verse 4 matches, so the tap
         // paints both rather than clearing.
-        viewModel.toggleVerse(4)
         viewModel.toggleVerse(5)
         viewModel.applyHighlight(.yellow)
         await viewModel._waitForPendingHighlightWrite()
@@ -549,8 +556,8 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         viewModel.toggleVerse(9)
         viewModel.applyHighlight(.pink)
-        // The guard returns before clearing the selection, so the action
-        // sheet doesn't appear to have succeeded when it could not.
+        // The guard returns early without a store; the selection is untouched
+        // either way (the highlight path now always keeps the sheet open).
         #expect(viewModel.selectedVerses == [9])
     }
 
@@ -560,8 +567,8 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         viewModel.toggleVerse(9)
         viewModel.applyHighlight(.yellow)
-        // The selection clears synchronously; the toast must surface so the
-        // dismissed sheet doesn't read as a successful highlight.
+        // The write is fire-and-forget; the toast must surface so a failed
+        // write doesn't silently read as a successful highlight.
         await viewModel._waitForPendingHighlightWrite()
         #expect(viewModel.toast == "Couldn't save the highlight.")
     }
