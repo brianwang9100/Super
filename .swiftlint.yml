@@ -74,7 +74,7 @@ custom_rules:
   # reference grids are fixtures, not product surfaces.
   super_typography_only:
     name: "Use SuperTypography"
-    regex: '\.font\(\s*\.(system|custom)|\bFont\s*\.\s*(system|custom)|\bFont\(\s*\.system'
+    regex: '\.font\(\s*\.(system|custom)|\bFont\s*\.\s*(system|custom)'
     match_kinds:
       - identifier
       - keyword

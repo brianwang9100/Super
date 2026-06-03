@@ -54,6 +54,9 @@ struct SourceCitationsPill: View {
         self._isExpanded = State(initialValue: _isExpanded)
     }
 
+    // `pointSize` already incorporates `appearance.fontScale`, so every call
+    // site below passes `tracksFontScale: false` — letting `SuperTypography`
+    // fold in the global slider again would double-scale.
     private var pointSize: CGFloat { basePoint * appearance.fontScale }
 
     var body: some View {
