@@ -12,8 +12,8 @@ import SwiftUI
 /// When verses are selected (`selectionCitation` is non-`nil`) the arrows morph
 /// *into* the centre pill and the centre slot becomes a citation pill with a
 /// clear control — the arrows resolve toward the pill, not the outer islands. The
-/// trailing slot is a sparkles `Menu` while narration is idle (Add to
-/// chat / Start a new chat / Narrate); while narration is speaking or paused
+/// trailing slot is a sparkles `Menu` while narration is idle (Annotate / Add
+/// to chat / Start a new chat / Narrate); while narration is speaking or paused
 /// the same 44pt Liquid Glass circle stays, the sparkles glyph swaps for a
 /// speaker glyph, and tapping it toggles the transport card. The live verse citation
 /// is intentionally not shown here — it lives in the transport card's header
@@ -23,7 +23,10 @@ import SwiftUI
 struct BibleNavBar: View {
     /// Action chosen from the green sparkles dropdown menu — the screen
     /// dispatches each to its corresponding view-model / event-bus path.
+    /// `addToChat` / `newChat` / `annotate` are selection-aware: they act on
+    /// the selected verses when any are selected, else on the whole chapter.
     enum SparkMenuAction: Sendable, Equatable {
+        case annotate
         case addToChat
         case newChat
         case narrate
@@ -207,8 +210,8 @@ struct BibleNavBar: View {
     }
 
     /// The trailing-edge control. Switches between the idle sparkles
-    /// menu (Add to chat / Start a new chat / Narrate) and the speaker
-    /// button that toggles the transport card while narration runs. Same
+    /// menu (Annotate / Add to chat / Start a new chat / Narrate) and the
+    /// speaker button that toggles the transport card while narration runs. Same
     /// 44pt Liquid Glass circle in both cases — only the glyph and the tap
     /// handler change, so the bar's geometry stays put. The red
     /// selection dot appears on both forms; the menu's chat actions
@@ -225,6 +228,9 @@ struct BibleNavBar: View {
 
     private var sparkMenu: some View {
         Menu {
+            Button { onSparkMenuAction(.annotate) } label: {
+                Label("Annotate", systemImage: "text.bubble")
+            }
             Button { onSparkMenuAction(.addToChat) } label: {
                 Label("Add to chat", systemImage: "paperplane")
             }
