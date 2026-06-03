@@ -560,29 +560,22 @@ public struct ChatScreen: View {
             .accessibilityHint("Tap to expand the chat panel")
     }
 
-    /// Panel surround background: rounded-rect raised fill that sits
-    /// behind the chat content and fades in/out with `panelSurroundOpacity`.
-    /// In pill mode the composer's own capsule does the lifted-surface
-    /// duty so this layer hides; in expanded mode the chat-surface base
-    /// background handles the solid fill so this layer also hides.
+    /// Chat-surface background: a single `theme.background` fill — the same
+    /// color as the applet backdrop — so the overlay panel and the content read
+    /// as the same surface as the applet, not a lighter raised card. Fades in
+    /// with the panel (transparent in pill mode so the applet shows through);
+    /// the floating-card edge is carried by the border + shadow in `body`.
     @ViewBuilder
     private var panelBackground: some View {
-        ZStack {
-            // Chat-surface base background — fades in alongside the
-            // panel so pill mode lets the applet through, fully opaque
-            // by mid-drag onward. Doesn't extend past the safe area;
-            // see `homeIndicatorFill` for the at-full-expansion unsafe
-            // area cover.
-            theme.background.opacity(surfaceBackgroundOpacity)
-            // Panel surround — visible only when the chat reads as a
-            // floating panel. The corner radius is shared with the
-            // outer clipShape so the two layers stay aligned during
-            // the morph.
-            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
-                .fill(theme.backgroundRaised.opacity(0.95))
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
-                .opacity(panelSurroundOpacity)
-        }
+        // The chat surface — both the overlay panel and the content behind the
+        // transcript — is `theme.background`, the same color as the applet
+        // backdrop, so the chat reads as the same surface as the applet rather
+        // than a lighter raised card or a frosted overlay. Fades in alongside the
+        // panel so pill mode lets the applet through, fully opaque by mid-drag
+        // onward; the floating-card edge is carried by the border + shadow in
+        // `body`. Doesn't extend past the safe area; see `homeIndicatorFill` for
+        // the at-full-expansion unsafe-area cover.
+        theme.background.opacity(surfaceBackgroundOpacity)
     }
 
     /// Bottom-anchored extension that paints over the home-indicator's
