@@ -994,9 +994,11 @@ public final class ChatScreenViewModel {
     /// Kick off the auto-title call after the first usable assistant
     /// message lands. Skipped when a generator/repository wasn't injected
     /// (snapshot tests, previews), when the title is already set by the
-    /// user, when this view-model instance has already fired generation,
-    /// when the assistant message has no text yet (tool-only turn), or
-    /// when no model is active. Runs detached so the composer re-enables
+    /// user, when this view-model instance has already fired generation, or
+    /// when the assistant message has no text yet (tool-only turn). The
+    /// summarizer model is resolved inside `TitleGenerator` from settings —
+    /// independent of the conversation's active model — so this no longer
+    /// gates on `activeModel`. Runs detached so the composer re-enables
     /// without waiting on the title round-trip.
     private func maybeGenerateTitle(from assistantMessage: MessageRecord) {
         // We gate solely on `hasGeneratedTitle` (set true at init when
@@ -1006,8 +1008,7 @@ public final class ChatScreenViewModel {
         // the LLM-generated title to overwrite.
         guard !hasGeneratedTitle,
               let titleGenerator,
-              let conversationRepository,
-              let model = activeModel else { return }
+              let conversationRepository else { return }
         let assistantText = assistantMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !assistantText.isEmpty else { return }
         guard let userText = lastPersistedUserText() else { return }
@@ -1022,8 +1023,7 @@ public final class ChatScreenViewModel {
         titleTask = Task { [weak self] in
             let title = await titleGenerator.generate(
                 userText: userText,
-                assistantText: assistantText,
-                model: model
+                assistantText: assistantText
             )
             guard let self else { return }
             guard let title else {

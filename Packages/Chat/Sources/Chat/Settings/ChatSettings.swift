@@ -59,6 +59,20 @@ public struct ChatSettings: Sendable, Equatable {
     /// active `ChatSession`s via the `WebSearchPolicyReceiver` seam so a
     /// long-running conversation picks up the new value on its next turn.
     public var askBeforeSearching: Bool
+    /// Whether chat titles are auto-summarized by a headless LLM call after
+    /// the first exchange. When `false`, the title stays the truncated first
+    /// user message (see `ChatScreenViewModel.truncatedFallback`). Default
+    /// `true`. The *which model* knob is `titleModelId`; this is the master
+    /// on/off so the user can avoid the round-trip (and its cost) entirely.
+    public var summarizeTitlesEnabled: Bool
+    /// `LLMModel.id` of the model used to summarize chat titles, or `nil`
+    /// for "automatic" — which resolves to the Apple Foundation Model when
+    /// it's available, else no titling (truncated-message fallback). A
+    /// stored id that no longer maps to an available model (the model was
+    /// deleted) also resolves to none rather than reverting to AFM. Resolution
+    /// lives in `TitleGenerator.resolveTitleModel`. Independent of the chat's
+    /// active model — titling can use a different model than the conversation.
+    public var titleModelId: String?
 
     /// Factory default for `autoCompactThreshold` — the fraction of
     /// `model.maxContextTokens` at which background auto-compaction fires.
@@ -88,7 +102,9 @@ public struct ChatSettings: Sendable, Equatable {
         autoCompactEnabled: true,
         autoCompactThreshold: defaultAutoCompactThreshold,
         lastSelectedModelId: nil,
-        askBeforeSearching: true
+        askBeforeSearching: true,
+        summarizeTitlesEnabled: true,
+        titleModelId: nil
     )
 
     public init(
@@ -100,7 +116,9 @@ public struct ChatSettings: Sendable, Equatable {
         autoCompactEnabled: Bool,
         autoCompactThreshold: Double,
         lastSelectedModelId: String? = nil,
-        askBeforeSearching: Bool = true
+        askBeforeSearching: Bool = true,
+        summarizeTitlesEnabled: Bool = true,
+        titleModelId: String? = nil
     ) {
         self.themeId = themeId
         self.typographyID = typographyID
@@ -111,6 +129,8 @@ public struct ChatSettings: Sendable, Equatable {
         self.autoCompactThreshold = ChatSettings.clampThreshold(autoCompactThreshold)
         self.lastSelectedModelId = lastSelectedModelId
         self.askBeforeSearching = askBeforeSearching
+        self.summarizeTitlesEnabled = summarizeTitlesEnabled
+        self.titleModelId = titleModelId
     }
 
     /// Mirror of `SuperTheme.Identifier`. Re-declared (rather than typealiased)

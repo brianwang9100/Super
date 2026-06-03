@@ -147,6 +147,45 @@ struct ChatSettingsStoreTests {
         #expect(settings.askBeforeSearching == false)
     }
 
+    @Test("summarizeTitlesEnabled defaults to true; titleModelId nil when unset")
+    func titleSettingsDefaults() async {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+        #expect(settings.summarizeTitlesEnabled == true)
+        #expect(settings.titleModelId == nil)
+        // Focused getters used by the headless title path agree.
+        #expect(await store.isTitleSummarizationEnabled() == true)
+        #expect(await store.titleModelId() == nil)
+    }
+
+    @Test("title summarization settings round-trip through load and the focused getters")
+    func titleSettingsRoundTrip() async throws {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        try await store.setSummarizeTitlesEnabled(false)
+        try await store.setTitleModelId("system-default")
+
+        let settings = await store.load()
+        #expect(settings.summarizeTitlesEnabled == false)
+        #expect(settings.titleModelId == "system-default")
+        #expect(await store.isTitleSummarizationEnabled() == false)
+        #expect(await store.titleModelId() == "system-default")
+    }
+
+    @Test("setTitleModelId(nil) deletes the row, restoring the automatic default")
+    func titleModelIdClearsToAutomatic() async throws {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        try await store.setTitleModelId("gpt-4o")
+        #expect(await store.titleModelId() == "gpt-4o")
+
+        try await store.setTitleModelId(nil)
+        #expect(await store.titleModelId() == nil)
+        // The row is gone, not just empty.
+        #expect(try await repo.get(ChatSettingsStore.Keys.titleModelId) == nil)
+    }
+
     @Test("set* round-trips do not disturb other persisted fields")
     func roundTripIndependence() async throws {
         let repo = InMemorySettingRepository()
@@ -161,6 +200,8 @@ struct ChatSettingsStoreTests {
         try await store.setAutoCompactThreshold(0.75)
         try await store.setLastSelectedModelId("gpt-4o")
         try await store.setAskBeforeSearching(false)
+        try await store.setSummarizeTitlesEnabled(false)
+        try await store.setTitleModelId("system-default")
 
         let settings = await store.load()
         #expect(settings.themeId == .dark)
@@ -172,6 +213,8 @@ struct ChatSettingsStoreTests {
         #expect(settings.autoCompactThreshold == 0.75)
         #expect(settings.lastSelectedModelId == "gpt-4o")
         #expect(settings.askBeforeSearching == false)
+        #expect(settings.summarizeTitlesEnabled == false)
+        #expect(settings.titleModelId == "system-default")
     }
 }
 

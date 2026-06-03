@@ -72,6 +72,19 @@ struct LLMProviderRegistryTests {
         #expect(await registry.provider(id: "y") == nil)
     }
 
+    @Test func providerLookupByModelID() async {
+        func model(_ id: String) -> LLMModel {
+            LLMModel(id: id, displayName: id, supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        }
+        let registry = LLMProviderRegistry()
+        await registry.register(MockLLMProvider(id: "p1", supportedModels: [model("gpt-4o"), model("gpt-4o-mini")]))
+        await registry.register(MockLLMProvider(id: "p2", supportedModels: [model("system-default")]))
+
+        #expect(await registry.provider(forModelId: "gpt-4o-mini")?.id == "p1")
+        #expect(await registry.provider(forModelId: "system-default")?.id == "p2")
+        #expect(await registry.provider(forModelId: "missing") == nil)
+    }
+
     @Test func allProvidersReturnsSortedByID() async {
         let registry = LLMProviderRegistry()
         await registry.register(MockLLMProvider(id: "z"))
