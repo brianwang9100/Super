@@ -28,7 +28,7 @@ private let bibleAnnotateLog = Logger(
 /// turn terminates. Net chat-DB cost at rest: zero.
 @MainActor
 @Observable
-public final class BibleAnnotateDispatcher {
+public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     private let conversationRepository: any ConversationRepository
     private let messageRepository: any MessageRepository
     private let toolCallRepository: any ToolCallRepository
@@ -102,11 +102,14 @@ public final class BibleAnnotateDispatcher {
         // their LLM turns concurrently.
         Task { [weak self] in
             guard let self else { return }
-            let result = await self.dispatch(reference: reference)
+            let outcome = await self.generate(reference: reference)
             self.inFlightRequestIDs.remove(reference.id)
             await bus.publish(.bibleAnnotateCompleted(
                 requestId: reference.id,
-                result: result
+                // The bus / Bible UI only needs the message; flatten away the
+                // classification (used by the bulk runner) so the event payload
+                // is unchanged.
+                result: outcome.asResult
             ))
         }
         // Fire after the in-flight insert + dispatch spawn so a test
@@ -118,16 +121,16 @@ public final class BibleAnnotateDispatcher {
         for callback in callbacks { callback() }
     }
 
-    /// Run one headless dispatch end-to-end. Always awaits the
-    /// transient-conversation hard-delete before returning so the chat
-    /// DB is back to its prior state by the time the Bible side
-    /// receives the completion event.
-    private func dispatch(reference: RecordReference) async -> BibleAnnotateResult {
+    /// Run one headless generation end-to-end (the `BibleAnnotateGenerating`
+    /// requirement). Always awaits the transient-conversation hard-delete before
+    /// returning so the chat DB is back to its prior state by the time the
+    /// caller (the bus handler, or the bulk runner) sees the outcome.
+    public func generate(reference: RecordReference) async -> BibleAnnotateOutcome {
         let model: LLMModel
         do {
             model = try await resolveActiveModel()
         } catch {
-            return .failure(message: failureMessage(for: error))
+            return failureOutcome(for: error)
         }
 
         let conversationId = idGenerator.nextID()
@@ -142,7 +145,7 @@ public final class BibleAnnotateDispatcher {
         do {
             try await conversationRepository.save(conversation)
         } catch {
-            return .failure(message: failureMessage(for: error))
+            return failureOutcome(for: error)
         }
 
         let result = await runTurn(
@@ -162,13 +165,13 @@ public final class BibleAnnotateDispatcher {
     }
 
     /// Drive one `ChatSession.send(...)` turn and reduce its event
-    /// stream to a `BibleAnnotateResult`. Extracted so `dispatch` keeps
+    /// stream to a `BibleAnnotateOutcome`. Extracted so `generate` keeps
     /// a flat narrative: prep, turn, cleanup.
     private func runTurn(
         conversationId: String,
         model: LLMModel,
         reference: RecordReference
-    ) async -> BibleAnnotateResult {
+    ) async -> BibleAnnotateOutcome {
         let session = ChatSession(
             conversationId: conversationId,
             messageRepository: messageRepository,
@@ -190,14 +193,18 @@ public final class BibleAnnotateDispatcher {
 
         var annotationCount = 0
         var toolWasCalled = false
-        var failureMessage: String?
+        // A tool error / failed call is transient (retry the unit); an LLM
+        // stream error is classified by kind so the bulk runner can halt on
+        // fatal auth/quota. The message stays exactly what it was before so the
+        // flattened bus payload is unchanged.
+        var failure: (message: String, classification: BibleAnnotateFailure)?
 
         for await event in stream {
             switch event {
             case .toolCallCompleted(let record, let result):
                 guard record.toolName == Self.bibleAnnotateToolID else { continue }
                 if result.isError {
-                    failureMessage = result.content
+                    failure = (result.content, .retryable)
                 } else {
                     toolWasCalled = true
                     annotationCount += result.artifacts
@@ -206,19 +213,22 @@ public final class BibleAnnotateDispatcher {
                 }
             case .toolCallFailed(let record, let message):
                 guard record.toolName == Self.bibleAnnotateToolID else { continue }
-                failureMessage = message
+                failure = (message, .retryable)
             case .error(let llmError):
-                failureMessage = llmError.localizedDescription
+                failure = (llmError.localizedDescription, Self.classify(llmError))
             default:
                 break
             }
         }
 
-        if let message = failureMessage {
-            return .failure(message: message)
+        if let failure {
+            return .failure(message: failure.message, classification: failure.classification)
         }
         if !toolWasCalled {
-            return .failure(message: "The model didn't call bible.annotate. Try again or pick a different model.")
+            return .failure(
+                message: "The model didn't call bible.annotate. Try again or pick a different model.",
+                classification: .retryable
+            )
         }
         // Tool was called successfully — zero new rows is a valid
         // outcome (the tool's `replace` may have cleared an
@@ -258,6 +268,39 @@ public final class BibleAnnotateDispatcher {
             return "No LLM provider is configured. Add a model in Settings, then try again."
         default:
             return error.localizedDescription
+        }
+    }
+
+    /// Wrap a thrown prep/save error as a classified failure outcome. No active
+    /// provider is a fatal config error (`.fatalAuth`); a thrown `LLMError` is
+    /// classified by kind; anything else is treated as transient.
+    private func failureOutcome(for error: any Error) -> BibleAnnotateOutcome {
+        let classification: BibleAnnotateFailure
+        switch error {
+        case DispatchPrepError.noActiveProvider:
+            classification = .fatalAuth
+        case let llmError as LLMError:
+            classification = Self.classify(llmError)
+        default:
+            classification = .retryable
+        }
+        return .failure(message: failureMessage(for: error), classification: classification)
+    }
+
+    /// Classify an `LLMError` for the bulk runner's circuit breaker. Only
+    /// invalid-credentials and rate-limit/quota errors are fatal (retrying
+    /// can't fix them and they risk the wallet); everything else — transient
+    /// network/decoding failures, an unsupported model, a generic provider
+    /// error — is retryable, and a persistent retryable trips the run's
+    /// consecutive-failure breaker instead.
+    private static func classify(_ error: LLMError) -> BibleAnnotateFailure {
+        switch error {
+        case .unauthorized:
+            .fatalAuth
+        case .rateLimited:
+            .fatalQuota
+        case .unsupportedModel, .providerError, .decodingFailed, .requestFailed, .cancelled:
+            .retryable
         }
     }
 

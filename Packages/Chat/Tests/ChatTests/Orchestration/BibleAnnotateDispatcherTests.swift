@@ -323,6 +323,123 @@ struct BibleAnnotateDispatcherTests {
         #expect(lingering == nil)
     }
 
+    // MARK: - Failure classification
+
+    // The bus path flattens to `BibleAnnotateResult` (asserted in the tests
+    // above, proving zero behavior change); these call `generate(reference:)`
+    // directly to assert the richer `BibleAnnotateOutcome` classification the
+    // bulk runner's circuit breaker reads. `generate` runs the same dispatch
+    // the bus handler does.
+
+    private func classification(of outcome: BibleAnnotateOutcome) -> BibleAnnotateFailure? {
+        guard case .failure(_, let classification) = outcome else { return nil }
+        return classification
+    }
+
+    @Test("an unauthorized LLM error classifies as fatal auth")
+    func unauthorizedIsFatalAuth() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .error(LLMError.unauthorized),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-auth"))
+        #expect(classification(of: outcome) == .fatalAuth)
+    }
+
+    @Test("a rate-limit LLM error classifies as fatal quota")
+    func rateLimitedIsFatalQuota() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .error(LLMError.rateLimited),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-quota"))
+        #expect(classification(of: outcome) == .fatalQuota)
+    }
+
+    @Test("a transient request failure classifies as retryable")
+    func requestFailureIsRetryable() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .error(LLMError.requestFailed("timeout")),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-transient"))
+        #expect(classification(of: outcome) == .retryable)
+    }
+
+    @Test("a model that never calls the tool classifies as retryable")
+    func noToolCallIsRetryable() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Sure!"),
+                .messageComplete(usage: TokenUsage(inputTokens: 4, outputTokens: 2)),
+            ],
+        ])
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-notool"))
+        #expect(classification(of: outcome) == .retryable)
+    }
+
+    @Test("a tool call that returns an error classifies as retryable")
+    func toolErrorIsRetryable() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            // The session feeds the tool error back for a second turn.
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Sorry."),
+                .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+            ],
+        ])
+        // The tool itself reports a failure (e.g. a bad-arguments reject) —
+        // transient from the run's perspective, so the unit can be retried.
+        await setup.toolExecutor.setResult(ToolResult(
+            toolID: "bible.annotate",
+            content: "target arguments were invalid",
+            isError: true,
+            artifacts: []
+        ))
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-toolerr"))
+        #expect(classification(of: outcome) == .retryable)
+    }
+
+    @Test("no active provider classifies as fatal auth")
+    func noProviderIsFatalAuth() async throws {
+        let setup = try await makeSetup(scripts: [], registerProvider: false, seedSelectedModel: false)
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-noprovider"))
+        #expect(classification(of: outcome) == .fatalAuth)
+    }
+
+    @Test("a scripted tool call classifies as success with the artifact count")
+    func toolCallIsSuccess() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Done."),
+                .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+            ],
+        ])
+        let outcome = await setup.dispatcher.generate(reference: reference(id: "req-ok"))
+        #expect(outcome == .success(annotationCount: 2))
+    }
+
     @Test("a selection desynced from the active provider resolves the active provider's model, not a failure")
     func desyncedSelectionUsesActiveProviderModel() async throws {
         // Regression: the selected config row points at Apple Intelligence
