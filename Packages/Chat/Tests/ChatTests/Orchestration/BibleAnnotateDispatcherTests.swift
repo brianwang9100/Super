@@ -251,8 +251,7 @@ struct BibleAnnotateDispatcherTests {
         // on the *next* turn. The annotations exist, so the turn must be
         // reported `.success`, not `.failure` — otherwise the Bible sheet
         // shows the new cards *and* an error toast, and the bulk ledger
-        // records a succeeded unit as failed. Before the fix this returned
-        // `.failure`.
+        // records a succeeded unit as failed.
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
