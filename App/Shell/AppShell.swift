@@ -190,7 +190,8 @@ struct AppShell: View {
         // `BackdropLayer`.
         ZStack {
             BackdropLayer(
-                registry: registry,
+                activeApplet: registry.activeApplet,
+                activeAppletID: registry.activeID,
                 theme: theme,
                 appearance: appearance,
                 typography: typography,
@@ -202,8 +203,13 @@ struct AppShell: View {
                     withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
                         chatState = .minimized
                     }
-                }
+                },
+                reduceMotion: reduceMotion
             )
+            // `.equatable()` so a composer focus flip (which invalidates
+            // this whole body) doesn't re-evaluate the backdrop and rebuild
+            // the hosted applet's view tree. See `BackdropLayer.==`.
+            .equatable()
             ChatLayer(
                 viewModel: viewModel,
                 bootstrapError: bootstrapError,
@@ -869,16 +875,31 @@ private enum PendingNavigation: Equatable {
 /// Backdrop layer hosting the active mini-app's root view, plus the
 /// semi-expanded tap-target that collapses the chat back to minimized.
 ///
-/// Observes `registry`, `theme`, `appearance`, `chatState`, `chatProgress`,
-/// `chatSemiProgress`. Closure-typed inputs (`onBackdropTap`) are
-/// freshly allocated each `AppShell.body` render, so SwiftUI cannot prove
-/// input equality and *will* re-run this body on a composer focus flip
-/// — but it's a small body, far cheaper than the pre-extraction unified
-/// shell body. Stage 2 (typed-dispatch removal of
-/// `MiniApplet.rootView() -> AnyView`) will close the residual
-/// `activeApplet.rootView()` re-wrap cost that remains here.
-private struct BackdropLayer: View {
-    let registry: AppletRegistry
+/// A pure function of its props (`activeApplet`/`activeAppletID`, the
+/// theme trio, `chatState`/`chatProgress`/`chatSemiProgress`,
+/// `reduceMotion`) with no `@State`/`@Environment`/`@Bindable` of its
+/// own, so it's safe to gate with `.equatable()` at the call site. That
+/// short-circuits the body — and the `activeApplet.rootView()` re-wrap —
+/// on a composer focus flip, which would otherwise invalidate the whole
+/// `AppShell.body` (the shell owns `@FocusState composerIsFocused`) and
+/// rebuild the hosted applet's view tree. Stage 2 (typed-dispatch removal
+/// of `MiniApplet.rootView() -> AnyView`) will close the residual re-wrap
+/// cost that remains when it *does* re-render (applet switch, theme
+/// change, drag).
+// Main-actor-isolated `Equatable` conformance: the struct is main-actor
+// isolated (it's a SwiftUI `View`), and SwiftUI's `.equatable()` diffing
+// calls `==` on the main actor, so isolating the conformance is sound and
+// avoids the Swift 6 "conformance crosses into main-actor code" error.
+private struct BackdropLayer: View, @MainActor Equatable {
+    /// The active applet, used only to render its `rootView()`. Excluded
+    /// from `==` (compared indirectly via ``activeAppletID``) because the
+    /// existential isn't `Equatable` and the registry never swaps the
+    /// instance backing a given id.
+    let activeApplet: (any MiniApplet)?
+    /// Cheap, stable identity for the active applet — the value `==` keys
+    /// on so an applet switch (and only an applet switch) re-renders the
+    /// backdrop.
+    let activeAppletID: String?
     let theme: SuperTheme
     let appearance: ChatAppearance
     let typography: SuperTypography
@@ -886,6 +907,40 @@ private struct BackdropLayer: View {
     let chatProgress: Double
     let chatSemiProgress: Double
     let onBackdropTap: () -> Void
+    /// Threaded as a prop (not just captured inside `onBackdropTap`) so
+    /// the AGENTS.md "Reduce Motion must thread through" rule holds for the
+    /// backdrop's collapse animation: including it in `==` means a Reduce
+    /// Motion toggle fails the equality check, re-renders this layer, and
+    /// refreshes the captured-`reduceMotion` closure on the same update —
+    /// no stale-closure window.
+    let reduceMotion: Bool
+
+    /// Compare every value input that changes what the backdrop renders,
+    /// so SwiftUI's `.equatable()` only skips this body when none of them
+    /// moved. `onBackdropTap` is excluded — a fresh closure every
+    /// `AppShell.body` eval, and the sole reason an otherwise-unchanged
+    /// layer would re-render (and re-invoke `rootView()`) on a composer
+    /// focus flip; the one piece of state it captures, `reduceMotion`, is
+    /// instead threaded as a prop and compared below, so excluding the
+    /// closure costs no correctness. `activeApplet` is excluded too (keyed
+    /// via `activeAppletID`). `theme.id` is the cheap stable key mirroring
+    /// how the shell builds themes via `.make(id)`; `chatProgress`/
+    /// `chatSemiProgress` stay in so the dim keeps tracking a live drag.
+    ///
+    /// Safe because the re-render on an applet switch is driven by
+    /// `AppShell.body` observing `registry.activeID` (read for
+    /// `SidebarLayer`), not by this layer reading the registry — hence this
+    /// view must stay a pure function of its props.
+    static func == (lhs: BackdropLayer, rhs: BackdropLayer) -> Bool {
+        lhs.activeAppletID == rhs.activeAppletID
+            && lhs.theme.id == rhs.theme.id
+            && lhs.appearance == rhs.appearance
+            && lhs.typography == rhs.typography
+            && lhs.chatState == rhs.chatState
+            && lhs.chatProgress == rhs.chatProgress
+            && lhs.chatSemiProgress == rhs.chatSemiProgress
+            && lhs.reduceMotion == rhs.reduceMotion
+    }
 
     /// Opacity applied to the applet backdrop, interpolated continuously
     /// against `chatProgress` so the dim tracks the user's drag in
@@ -933,7 +988,7 @@ private struct BackdropLayer: View {
     }
 
     var body: some View {
-        if let activeApplet = registry.activeApplet {
+        if let activeApplet {
             // The rootView keeps the safe area so each applet can place
             // its own top chrome below the status bar / Dynamic Island
             // and clear the shell's floating hamburger. Applets fill
