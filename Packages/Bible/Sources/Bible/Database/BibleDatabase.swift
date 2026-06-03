@@ -239,4 +239,79 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["target", "bookId"]
         )
     }
+
+    migrator.registerMigration("v6_createBulkAnnotationLedger") { db in
+        // Durable ledger for the bulk-annotation runner. `bulkAnnotationRun`
+        // is one row per kicked-off job; `bulkAnnotationRunUnit` is one row per
+        // unit (a chapter, or a book prologue) with a cascading FK so deleting
+        // a run clears its units. Annotation *content* still lives in
+        // `bibleAnnotation` (stamped `source: .userBulk`) — this ledger only
+        // tracks run/unit progress so a run can resume, retry, and report.
+        try db.create(table: "bulkAnnotationRun") { t in
+            t.primaryKey("id", .text)
+            // BulkRunStatus: running | paused | completed | failed | cancelled.
+            t.column("status", .text).notNull()
+            // Model active at kickoff — stamped onto the rows the run produces.
+            t.column("modelId", .text).notNull()
+            // BulkRunHaltReason — set only when status == failed (circuit breaker).
+            t.column("haltReason", .text)
+            t.column("createdAt", .datetime).notNull()
+            t.column("updatedAt", .datetime).notNull()
+            // Set only on a terminal status — drives the Completed section and
+            // the 24 h sweep cutoff.
+            t.column("completedAt", .datetime)
+            // Invariant: completedAt is non-null exactly when the run is
+            // terminal (completed / failed / cancelled) and null while it's
+            // active (running / paused). Enforced at the schema so an engine
+            // bug — marking a run done without stamping completedAt, or vice
+            // versa — fails loudly at write rather than silently breaking the
+            // Completed section / 24 h sweep. SQLite can't ADD CONSTRAINT after
+            // the table ships, so it's declared up front; widen the status list
+            // in lockstep if a terminal status is added (cf. the category CHECK
+            // on bibleAnnotation).
+            t.check(sql: "(status IN ('completed', 'failed', 'cancelled')) = (completedAt IS NOT NULL)")
+        }
+        // "Is there an active run?" (status IN running|paused) and the
+        // Completed-section filter both restrict on status.
+        try db.create(
+            index: "bulkAnnotationRun_on_status",
+            on: "bulkAnnotationRun",
+            columns: ["status"]
+        )
+        // The 24 h sweep ranges on completedAt.
+        try db.create(
+            index: "bulkAnnotationRun_on_completedAt",
+            on: "bulkAnnotationRun",
+            columns: ["completedAt"]
+        )
+
+        try db.create(table: "bulkAnnotationRunUnit") { t in
+            t.primaryKey("id", .text)
+            t.column("runId", .text)
+                .notNull()
+                .references("bulkAnnotationRun", onDelete: .cascade)
+            // Stable run / queue order within the run.
+            t.column("ordinal", .integer).notNull()
+            // BulkRunUnitKind: chapter | bookPrologue.
+            t.column("kind", .text).notNull()
+            t.column("bookId", .text).notNull()
+            // Denormalized so a run renders its title without a catalog lookup.
+            t.column("bookName", .text).notNull()
+            // Null for bookPrologue units.
+            t.column("chapterNumber", .integer)
+            // BulkUnitState: queued | generating | done | failed.
+            t.column("state", .text).notNull()
+            t.column("attemptCount", .integer).notNull().defaults(to: 0)
+            t.column("producedCount", .integer).notNull().defaults(to: 0)
+            t.column("errorMessage", .text)
+            t.column("updatedAt", .datetime).notNull()
+        }
+        // Ordered per-run fetch — the engine and the snapshot read units by
+        // run in ordinal order.
+        try db.create(
+            index: "bulkAnnotationRunUnit_on_runId_ordinal",
+            on: "bulkAnnotationRunUnit",
+            columns: ["runId", "ordinal"]
+        )
+    }
 }
