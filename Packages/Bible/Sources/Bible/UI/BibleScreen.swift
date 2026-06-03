@@ -10,9 +10,9 @@ import SwiftUI
 /// asynchronously. Tapping verses drives the action sheet, whose chat
 /// actions publish the selection to the `SuperEventBus` for the Chat
 /// composer. The green sparkles menu in the top-right routes the same
-/// hand-off paths — selection-aware when verses are selected, whole-chapter
-/// otherwise — plus a Narrate (text-to-speech) entry that drives
-/// ``NarrationController`` through ``NarrationTransportSheet``.
+/// hand-off paths plus an Annotate entry — all selection-aware when verses
+/// are selected, whole-chapter otherwise — plus a Narrate (text-to-speech)
+/// entry that drives ``NarrationController`` through ``NarrationTransportSheet``.
 public struct BibleScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -330,10 +330,21 @@ public struct BibleScreen: View {
         }
     }
 
-    /// Dispatch a spark-menu action: selection-aware chat hand-off for
-    /// the two chat rows, and a Narrate session for the third.
+    /// Dispatch a spark-menu action: selection-aware annotation and chat
+    /// hand-off (selected verses when any are selected, else the whole
+    /// chapter), plus a Narrate session.
     private func handleSparkAction(_ action: BibleNavBar.SparkMenuAction) {
         switch action {
+        case .annotate:
+            if viewModel.selectedVerses.isEmpty {
+                // No sheet is up — trigger directly, mirroring the chapter
+                // reader's "generate" bubble. First run shows the disclaimer.
+                viewModel.triggerAnnotationGeneration(for: viewModel.currentChapterAnnotationSpec)
+            } else {
+                // The action sheet is up over the reader; reuse the tile path
+                // which dismisses it first, then fires one intent per range.
+                handleAnnotateSelection()
+            }
         case .addToChat:
             if viewModel.selectedVerses.isEmpty {
                 addCurrentChapterToChat(startNew: false)
@@ -517,10 +528,7 @@ public struct BibleScreen: View {
                     viewModel.triggerAnnotationGeneration(for: spec)
                 },
                 chapterDispatchStatus: viewModel.dispatchStatus(
-                    for: .chapter(
-                        bookId: viewModel.position.bookId,
-                        chapterNumber: viewModel.position.chapterNumber
-                    )
+                    for: viewModel.currentChapterAnnotationSpec
                 ),
                 onNoteGlyphTap: { spec in
                     withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }

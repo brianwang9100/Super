@@ -8,7 +8,7 @@ import Testing
 /// - disclaimer-gated `triggerAnnotationGeneration(for:)`
 /// - `acknowledgeAnnotationDisclaimer()` / `discardAnnotationDisclaimer()`
 /// - sheet presentation toggle
-/// - `selectedAnnotationRanges` contiguous-range derivation
+/// - `currentChapterAnnotationSpec` / `selectedAnnotationRanges` derivation
 /// - `citationLabel(for:)` formatting
 /// - `navigateToVerseReference(_:)` routing
 /// - `makeAnnotation{Card,Group}Reference(_:)`
@@ -193,6 +193,24 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(ranges.count == 2)
         #expect(ranges.contains(.verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 1, verseEnd: 2)))
         #expect(ranges.contains(.verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 5, verseEnd: 5)))
+    }
+
+    // MARK: - Current-chapter spec
+
+    @Test("currentChapterAnnotationSpec is the chapter target for the loaded position")
+    func currentChapterSpecReflectsPosition() async {
+        let viewModel = makeViewModel(at: BiblePosition(bookId: "ROM", chapterNumber: 8))
+        await viewModel.load()
+        // This is the spark menu's Annotate target when no verses are selected.
+        #expect(viewModel.currentChapterAnnotationSpec == .chapter(bookId: "ROM", chapterNumber: 8))
+    }
+
+    @Test("currentChapterAnnotationSpec tracks chapter stepping")
+    func currentChapterSpecTracksStepping() async {
+        let viewModel = makeViewModel(at: BiblePosition(bookId: "ROM", chapterNumber: 8))
+        await viewModel.load()
+        viewModel.stepChapter(.next)
+        #expect(viewModel.currentChapterAnnotationSpec == .chapter(bookId: "ROM", chapterNumber: 9))
     }
 
     // MARK: - Citation label

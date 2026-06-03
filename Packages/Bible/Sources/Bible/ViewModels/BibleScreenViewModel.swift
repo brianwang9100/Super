@@ -797,6 +797,14 @@ public final class BibleScreenViewModel {
         }
     }
 
+    /// The `.chapter` annotation target for the chapter currently on screen —
+    /// the spark menu's Annotate target when no verses are selected, and the
+    /// chapter reader's "generate" bubble target. Reflects the live `position`,
+    /// so it tracks chapter stepping.
+    public var currentChapterAnnotationSpec: BibleAnnotationTargetSpec {
+        .chapter(bookId: position.bookId, chapterNumber: position.chapterNumber)
+    }
+
     /// Annotation target specs for each contiguous range in the current
     /// verse selection. A single contiguous run produces one spec; a
     /// gapped selection (e.g. 1, 2, 5) produces multiple specs (1-2 and
