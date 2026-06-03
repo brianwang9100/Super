@@ -209,6 +209,7 @@ struct AnnotationSheetContainerSnapshotTests {
                 citation: "Romans 8:28-30",
                 catalog: .standard,
                 repository: repository,
+                onClose: {},
                 onRegenerate: {},
                 onAddAllToChat: { _ in },
                 onCardAddToChat: { _ in },

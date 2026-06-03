@@ -12,6 +12,8 @@ import UIKit
 ///   control (the book / translation / verse-action shape);
 /// - a trailing-control variant, to guard that the fixed 44pt trailing slot
 ///   keeps the title optically centered (narration's Stop shape);
+/// - a subtitle variant (the annotation / note-list shape), where a small
+///   centered caption stacks under the title beside a trailing control;
 /// - a `.fitsContent` variant, which pins the nav bar's top inset to 0 instead
 ///   of 14 — the one visible difference the sizing axis owns;
 /// - a long title, exercising `lineLimit(1)` + `minimumScaleFactor(0.8)`;
@@ -67,6 +69,22 @@ struct SheetNavBarSnapshotTests {
                 .frame(width: 44, height: 44)
         }
         verify(bar, theme: themeID, name: "navbar_trailing")
+    }
+
+    @Test("subtitle sits centered under the title")
+    func subtitle() {
+        // Mirrors the annotation / note-list shape: a small centered caption
+        // under the title (the note count / "ANNOTATIONS" label) alongside a
+        // trailing control. Guards that the optional subtitle stacks under the
+        // title without pushing the trailing slot off-center.
+        let themeID = SuperTheme.Identifier.light
+        let bar = SheetNavBar(title: "1 Peter 2:1", subtitle: "1 Note", onClose: {}) {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(SuperTheme.make(themeID).ink)
+                .frame(width: 44, height: 44)
+        }
+        verify(bar, theme: themeID, name: "navbar_subtitle")
     }
 
     @Test("fitsContent pins the top inset to zero")
