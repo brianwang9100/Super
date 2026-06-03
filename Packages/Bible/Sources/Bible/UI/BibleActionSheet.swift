@@ -53,8 +53,14 @@ struct BibleActionSheet: View {
         // The card is a native `.sheet` (the system supplies the drag bar,
         // rounded surface, and drag-to-dismiss); this is just the bottom inset.
         .padding(.bottom, 10)
-        // Sized to content and kept over the still-readable reader.
-        .sheetPresentation(sizing, readableBackground: true, estimatedHeight: 280)
+        // Sized to content and kept over the still-readable reader. The
+        // estimated height is shared with the reader's bottom scroll reserve so
+        // the two can't drift — see `BibleBottomOverlayKind.estimatedSheetHeight`.
+        .sheetPresentation(
+            sizing,
+            readableBackground: true,
+            estimatedHeight: BibleBottomOverlayKind.selection.estimatedSheetHeight
+        )
     }
 
     private var highlightRow: some View {

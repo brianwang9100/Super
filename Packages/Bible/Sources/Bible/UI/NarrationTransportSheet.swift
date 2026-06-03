@@ -85,8 +85,14 @@ struct NarrationTransportSheet: View {
         // The card is a native `.sheet` (the system supplies the drag bar,
         // rounded surface, and drag-to-dismiss); this is just the bottom inset.
         .padding(.bottom, 16)
-        // Sized to content and kept over the still-readable reader.
-        .sheetPresentation(sizing, readableBackground: true, estimatedHeight: 360)
+        // Sized to content and kept over the still-readable reader. The
+        // estimated height is shared with the reader's bottom scroll reserve so
+        // the two can't drift — see `BibleBottomOverlayKind.estimatedSheetHeight`.
+        .sheetPresentation(
+            sizing,
+            readableBackground: true,
+            estimatedHeight: BibleBottomOverlayKind.narration.estimatedSheetHeight
+        )
         .task {
             // First-open path only: `cachedVoices` was empty at view
             // construction, so do the 100-300 ms

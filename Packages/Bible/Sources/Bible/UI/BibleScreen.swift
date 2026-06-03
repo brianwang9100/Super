@@ -509,8 +509,9 @@ public struct BibleScreen: View {
                 // paired selection scroll runs only for the action sheet —
                 // lifting the just-selected verse clear of the sheet — while
                 // narration's own follow-scroll stays the sole driver as it
-                // plays. The sheets float above the reader (the user accepts
-                // their covering the chat pill), so no reader inset is needed.
+                // plays. It also sizes the reader's bottom scroll reserve to the
+                // presented sheet's height, so the last verses scroll clear of
+                // the floating, scrim-less sheet instead of hiding behind it.
                 bottomOverlayKind: activeOverlayKind,
                 onTapVerse: { number in
                     withAnimation(motion.animation) { viewModel.toggleVerse(number) }
