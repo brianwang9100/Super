@@ -407,7 +407,11 @@ public struct ChatComposer: View {
                 .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft.opacity(0.4))
                 .frame(width: 34, height: 34)
-                .superGlassButton(in: Circle())
+                // Passive glass: this button is `.disabled(true)`, so the
+                // interactive variant's touch response + hit-shape would be
+                // dead weight. Same tinted regular glass as `micButton`, minus
+                // the interactivity.
+                .superGlassSurface(in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(true)
