@@ -189,6 +189,24 @@ public struct BibleApplet: MiniApplet {
     /// API, matching the convention used by other applets.
     var _referenceInbox: BibleReferenceInbox { referenceInbox }
 
+    /// The "Annotations" entry for the shared Settings screen — the bulk
+    /// generation hub. Built here so the applet's `bible.sqlite`
+    /// `DatabaseContext` (which drives the coverage `@Query`) never leaks into
+    /// the composition root, mirroring `registerAnnotationTool(in:)`. `nil`
+    /// when the database failed to open. Uses the in-memory
+    /// `FakeBulkAnnotationRunner` until the LLM-backed engine lands.
+    @MainActor
+    public func annotationsSettingsContribution(
+        requiresCostConfirmation: Bool
+    ) -> AppletSettingsContribution? {
+        guard let databaseContext else { return nil }
+        return BibleAnnotationsSettings.contribution(
+            databaseContext: databaseContext,
+            runner: FakeBulkAnnotationRunner(),
+            requiresCostConfirmation: requiresCostConfirmation
+        )
+    }
+
     @MainActor
     public func iconView(size: CGFloat) -> AnyView {
         AnyView(BibleAppletIcon(size: size))

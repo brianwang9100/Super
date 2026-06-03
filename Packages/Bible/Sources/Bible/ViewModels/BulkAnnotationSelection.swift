@@ -1,0 +1,88 @@
+import Foundation
+
+/// A single chapter address used across the bulk-annotation selection and
+/// "already annotated" sets.
+public struct ChapterRef: Hashable, Sendable {
+    public let bookID: String
+    public let number: Int
+
+    public init(bookID: String, number: Int) {
+        self.bookID = bookID
+        self.number = number
+    }
+}
+
+/// What the user has picked in the Generate sheet: the set of selected chapter
+/// numbers per book. Whole-book selection is represented as every chapter of
+/// that book being present. Pure value type so the toggle rules and the
+/// estimate are unit-testable without a view.
+public struct BulkSelection: Sendable, Equatable {
+    /// bookID → selected chapter numbers.
+    public private(set) var chapters: [String: Set<Int>]
+
+    public init(chapters: [String: Set<Int>] = [:]) {
+        self.chapters = chapters.filter { !$0.value.isEmpty }
+    }
+
+    public func selectedChapters(in bookID: String) -> Set<Int> { chapters[bookID] ?? [] }
+
+    public func isChapterSelected(_ ref: ChapterRef) -> Bool {
+        chapters[ref.bookID]?.contains(ref.number) ?? false
+    }
+
+    /// `.full` when every chapter of `chapterCount` is selected, `.partial`
+    /// when some are, `.none` when none.
+    public func bookSelectionState(_ bookID: String, chapterCount: Int) -> BookSelectionState {
+        let selected = selectedChapters(in: bookID)
+        if selected.isEmpty { return .none }
+        if selected.count >= chapterCount { return .full }
+        return .partial
+    }
+
+    public mutating func toggleChapter(_ ref: ChapterRef) {
+        var set = chapters[ref.bookID] ?? []
+        if set.contains(ref.number) { set.remove(ref.number) } else { set.insert(ref.number) }
+        if set.isEmpty { chapters[ref.bookID] = nil } else { chapters[ref.bookID] = set }
+    }
+
+    /// Toggle the whole book: select every chapter when not already full,
+    /// otherwise clear it.
+    public mutating func toggleBook(_ bookID: String, chapterCount: Int) {
+        if bookSelectionState(bookID, chapterCount: chapterCount) == .full {
+            chapters[bookID] = nil
+        } else {
+            chapters[bookID] = Set(1...max(1, chapterCount))
+        }
+    }
+
+    /// Total selected chapters across all books.
+    public var selectedChapterCount: Int { chapters.values.reduce(0) { $0 + $1.count } }
+
+    /// Books with at least one selected chapter.
+    public var selectedBookCount: Int { chapters.count }
+
+    public var isEmpty: Bool { chapters.isEmpty }
+
+    public enum BookSelectionState: Sendable, Equatable { case none, partial, full }
+}
+
+/// A rough pre-run estimate for the Generate sheet footer. **Placeholder
+/// throughput** — `annotationsPerChapter` and `secondsPerChapter` want tuning
+/// to real model speed (flagged in the design handoff).
+public struct BulkRunEstimate: Sendable, Equatable {
+    public let books: Int
+    public let annotations: Int
+    public let minutes: Int
+
+    /// Average annotations a chapter yields (one chapter summary + several
+    /// notable verses), used only for the footer estimate.
+    public static let annotationsPerChapter = 8
+    public static let secondsPerChapter = 3
+
+    public init(selection: BulkSelection) {
+        let chapters = selection.selectedChapterCount
+        books = selection.selectedBookCount
+        annotations = chapters * Self.annotationsPerChapter
+        minutes = max(1, Int((Double(chapters * Self.secondsPerChapter) / 60).rounded(.up)))
+    }
+}
