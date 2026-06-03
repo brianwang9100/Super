@@ -19,8 +19,13 @@ struct BulkAnnotationHubScreen: View {
     /// `false` for the free on-device model (Generate starts directly).
     let requiresCostConfirmation: Bool
 
-    @State private var showGenerate = false
-    @State private var showProgress = false
+    /// The two surfaces are mutually exclusive, so one `.sheet(item:)` drives
+    /// both rather than two `isPresented` sheets stacked on one view.
+    private enum ActiveSheet: Identifiable {
+        case generate, progress
+        var id: Self { self }
+    }
+    @State private var activeSheet: ActiveSheet?
     @State private var confirmDeleteAll = false
 
     var body: some View {
@@ -47,11 +52,13 @@ struct BulkAnnotationHubScreen: View {
         .padding(.bottom, 22)
         .frame(maxWidth: .infinity, alignment: .top)
         .background(theme.background)
-        .sheet(isPresented: $showGenerate) {
-            GenerateAnnotationsSheet(viewModel: viewModel, requiresCostConfirmation: requiresCostConfirmation)
-        }
-        .sheet(isPresented: $showProgress) {
-            BulkAnnotationProgressScreen(viewModel: viewModel)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .generate:
+                GenerateAnnotationsSheet(viewModel: viewModel, requiresCostConfirmation: requiresCostConfirmation)
+            case .progress:
+                BulkAnnotationProgressScreen(viewModel: viewModel)
+            }
         }
         .alert("Delete all annotations?", isPresented: $confirmDeleteAll) {
             Button("Delete", role: .destructive) { viewModel.confirmDeleteAll() }
@@ -65,7 +72,7 @@ struct BulkAnnotationHubScreen: View {
     private var idleSection: some View {
         VStack(spacing: 9) {
             BulkPrimaryButton(title: "Generate annotations", systemImage: "sparkles") {
-                showGenerate = true
+                activeSheet = .generate
             }
             Text("Pick books and chapters to annotate. Runs in the background — keep reading while it works.")
                 .font(typography.font(.caption))
@@ -87,7 +94,7 @@ struct BulkAnnotationHubScreen: View {
                 .padding(.bottom, 8)
             BulkJobCard(
                 snapshot: run,
-                onOpen: { showProgress = true },
+                onOpen: { activeSheet = .progress },
                 onTogglePause: { viewModel.togglePause() }
             )
             .padding(.horizontal, 16)

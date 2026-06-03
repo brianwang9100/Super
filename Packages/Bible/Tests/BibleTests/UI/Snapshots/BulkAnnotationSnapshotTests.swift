@@ -60,7 +60,7 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
-    @Test("hub with the single running job in light / dark", arguments: [SuperTheme.Identifier.light, .dark])
+    @Test("hub with the single running job in light / dark / sepia", arguments: SuperTheme.Identifier.allCases)
     func hubRunning(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.midRun())
         verify(theme: id, height: 700, name: "hub_running_\(id.rawValue)") {
@@ -97,7 +97,7 @@ struct BulkAnnotationSnapshotTests {
 
     // MARK: - Progress
 
-    @Test("per-book progress mid-run in light / dark", arguments: [SuperTheme.Identifier.light, .dark])
+    @Test("per-book progress mid-run in light / dark / sepia", arguments: SuperTheme.Identifier.allCases)
     func progressMid(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.midRun())
         verify(theme: id, height: 760, name: "progress_mid_\(id.rawValue)") {
@@ -105,8 +105,8 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
-    @Test("per-book progress with a failed chapter in light / sepia",
-          arguments: [SuperTheme.Identifier.light, .sepia])
+    @Test("per-book progress with a failed chapter in light / dark / sepia",
+          arguments: SuperTheme.Identifier.allCases)
     func progressFailed(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.failedRun())
         verify(theme: id, height: 760, name: "progress_failed_\(id.rawValue)") {

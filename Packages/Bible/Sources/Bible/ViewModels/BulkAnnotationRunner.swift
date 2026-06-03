@@ -32,8 +32,10 @@ public struct BulkRunPlan: Sendable, Equatable {
 public protocol BulkAnnotationRunning: AnyObject {
     /// `nil` when idle; a snapshot while a job exists (running or paused).
     var snapshot: BulkRunSnapshot? { get }
-    /// Called whenever `snapshot` changes so the view model re-reads.
-    var onSnapshotChange: (() -> Void)? { get set }
+    /// Called whenever `snapshot` changes so the view model re-reads. Marked
+    /// `@MainActor @Sendable` so the real `BulkAnnotationRunner` actor (follow-on)
+    /// can't invoke it without hopping to main first.
+    var onSnapshotChange: (@MainActor @Sendable () -> Void)? { get set }
 
     func start(_ plan: BulkRunPlan)
     func togglePause()

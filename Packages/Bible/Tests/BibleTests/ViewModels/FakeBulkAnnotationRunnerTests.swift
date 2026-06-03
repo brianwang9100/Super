@@ -86,8 +86,8 @@ struct FakeBulkAnnotationRunnerTests {
         let runner = FakeBulkAnnotationRunner(autoAdvance: false)
         var count = 0
         runner.onSnapshotChange = { count += 1 }
-        runner.start(plan())
-        runner.step()
-        #expect(count >= 2)
+        runner.start(plan())          // 1: seed
+        runner.step()                 // 2: chapter 1 → done, 3: chapter 2 → generating
+        #expect(count == 3)
     }
 }

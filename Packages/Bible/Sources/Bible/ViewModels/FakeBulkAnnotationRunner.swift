@@ -11,7 +11,7 @@ import Foundation
 @MainActor
 public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
-    public var onSnapshotChange: (() -> Void)?
+    public var onSnapshotChange: (@MainActor @Sendable () -> Void)?
 
     private let autoAdvance: Bool
     private let stepInterval: Duration
