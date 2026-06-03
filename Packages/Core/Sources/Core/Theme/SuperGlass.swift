@@ -129,6 +129,50 @@ public struct SuperPressButtonStyle: ButtonStyle {
     }
 }
 
+/// Groups child glass surfaces into one shared Liquid Glass sampling region so a
+/// cluster of glass controls (e.g. the chapter grid) reads as one cohesive field
+/// instead of N independently-shadowed pills. Glass samples an area larger than its
+/// own bounds and can't sample a neighbouring glass, so a tight grid of separately
+/// glassed cells produces overlapping shadow/sampling artifacts; a container gives
+/// them a single sampling region with unified lighting and one elevation.
+///
+/// `spacing` is the proximity threshold at which adjacent glass shapes *merge* into
+/// one blob — keep it below the inter-element gap so the children stay visually
+/// distinct (pass `0` to share the sampling region without ever merging).
+///
+/// Mirrors `SuperGlassModifier`'s test story: inside an XCTest-hosted bundle the real
+/// `GlassEffectContainer` (like `.glassEffect`) captures as transparent in offscreen
+/// snapshots, and the children already render their solid stand-in, so the container
+/// is a passthrough there.
+public struct SuperGlassContainer<Content: View>: View {
+    private let spacing: CGFloat?
+    private let content: Content
+
+    public init(spacing: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    public var body: some View {
+        if SuperGlass.usesSolidFallback {
+            content
+        } else {
+            GlassEffectContainer(spacing: spacing) { content }
+        }
+    }
+}
+
+/// Namespace for `SuperGlass`-internal shared state — keeps the solid-fallback
+/// detection in one place for the modifier and the container.
+enum SuperGlass {
+    /// True when running inside an XCTest-hosted (or swift-testing) bundle, detected
+    /// by XCTest being linked. The shipping app does not link XCTest, so this is
+    /// `false` there and real glass renders.
+    static var usesSolidFallback: Bool {
+        NSClassFromString("XCTestCase") != nil
+    }
+}
+
 /// Reads the active theme's `glassTint` and applies `.glassEffect` so the tint
 /// decision lives in one place. Generic over `Shape` so callers keep their own
 /// `Circle` / `Capsule` / `RoundedRectangle` clip.
@@ -175,7 +219,7 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
 
     @ViewBuilder
     private func glassed(_ content: Content) -> some View {
-        if Self.usesSolidFallback {
+        if SuperGlass.usesSolidFallback {
             // Stand-in fill tracks the tint so tinted callers (highlight
             // swatches, accent AI tiles) stay visually distinct in snapshots;
             // untinted callers keep the original raised fill byte-for-byte. No
@@ -205,12 +249,5 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
         } else {
             content
         }
-    }
-
-    /// True when running inside an XCTest-hosted (or swift-testing) bundle,
-    /// detected by XCTest being linked. The shipping app does not link XCTest,
-    /// so this is `false` there and real glass renders.
-    private static var usesSolidFallback: Bool {
-        NSClassFromString("XCTestCase") != nil
     }
 }
