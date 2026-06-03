@@ -53,12 +53,6 @@ struct BibleChapterReader: View {
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
 
-    /// Verse the user was reading just before the action sheet appeared. Set
-    /// when the action sheet appears (`bottomOverlayKind` becomes `.selection`)
-    /// and consumed on dismiss to scroll the reader back to the same vertical
-    /// anchor. `nil` while no action sheet is up.
-    @State private var preSheetSelectedVerse: Int? = nil
-
     /// - Parameters:
     ///   - bookId: the book whose highlights the `@Query` observes; paired
     ///     with `chapter.number` it scopes the observation to this chapter.
@@ -275,47 +269,24 @@ struct BibleChapterReader: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onClearSelection() }
             }
-            // Action-sheet appear / dismiss drives a paired scroll: on show
-            // the just-selected verse is brought to `y = 0.35` (a third from
-            // top — same anchor narration uses) so the sheet doesn't cover
-            // it; on dismiss the reader scrolls back to that same verse at
-            // `y = 0.65` (two-thirds down), which approximates the verse's
-            // pre-sheet vertical position so the chapter visually returns
-            // to where the user was reading. Gated to the action sheet
-            // (`.selection`): the narration card has its own current-verse
-            // follow-scroll, so a paired selection scroll here would fight it.
+            // When the verse-selection action sheet appears, scroll the
+            // just-selected verse up to `y = 0.35` (a third from top — same
+            // anchor narration uses) so the floating sheet doesn't cover it.
+            // Dismiss intentionally does *not* scroll back: the reader stays
+            // where it scrolled to, keeping the user's place under the
+            // just-closed sheet. Gated to the action sheet (`.selection`): the
+            // narration card has its own current-verse follow-scroll, so a
+            // paired selection scroll here would fight it.
             .onChange(of: bottomOverlayKind) { oldKind, newKind in
+                guard Self.shouldScrollSelectionIntoView(oldKind: oldKind, newKind: newKind),
+                      let verse = selectedVerses.min() else { return }
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.3)
-                switch Self.selectionSheetTransition(oldKind: oldKind, newKind: newKind) {
-                case .appearing:
-                    guard let verse = selectedVerses.min() else { return }
-                    preSheetSelectedVerse = verse
-                    withAnimation(animation) {
-                        proxy.scrollTo(
-                            VerseAnchor(verseNumber: verse),
-                            anchor: UnitPoint(x: 0.5, y: 0.35)
-                        )
-                    }
-                case .dismissing:
-                    guard let verse = preSheetSelectedVerse else { return }
-                    preSheetSelectedVerse = nil
-                    withAnimation(animation) {
-                        proxy.scrollTo(
-                            VerseAnchor(verseNumber: verse),
-                            anchor: UnitPoint(x: 0.5, y: 0.65)
-                        )
-                    }
-                case nil:
-                    return
+                withAnimation(animation) {
+                    proxy.scrollTo(
+                        VerseAnchor(verseNumber: verse),
+                        anchor: UnitPoint(x: 0.5, y: 0.35)
+                    )
                 }
-            }
-            // Keep the restore anchor aligned with the user's *current*
-            // first-selected verse: if they extend or shift the selection
-            // while the sheet is up, dismiss should return them near the
-            // verse they ended on, not the one they started with.
-            .onChange(of: selectedVerses) { _, newSelection in
-                guard preSheetSelectedVerse != nil, let verse = newSelection.min() else { return }
-                preSheetSelectedVerse = verse
             }
             .onChange(of: currentNarratingVerse) { _, new in
                 guard let new, Self.shouldAutoScroll(suppressed: suppressNarrationScroll) else {
@@ -485,34 +456,21 @@ struct BibleChapterReader: View {
         !suppressed
     }
 
-    /// Classifies a change in which bottom sheet is presented, driving the
-    /// paired selection scroll. The scroll only runs for the *bare* appear and
-    /// dismiss of the verse-selection action sheet — `nil → .selection` is
-    /// `.appearing`, `.selection → nil` is `.dismissing`. Any transition
-    /// involving `.narration` (a selection→narration hand-off, or narration on
-    /// its own) returns `nil`: narration owns scrolling while it plays, and
-    /// scrolling on the swap would jolt the chapter. This matches the pre-native
-    /// behavior, where the inset only crossed zero on a true appear / dismiss.
-    /// Factored out as a pure predicate so a unit test can cover the branches
-    /// without standing up a SwiftUI host.
-    static func selectionSheetTransition(
+    /// `true` only when the verse-selection action sheet has just appeared
+    /// (`nil → .selection`) — the transition that scrolls the selected verse up
+    /// to `y = 0.35` so the floating sheet doesn't cover it. Every other
+    /// transition is `false`: a dismiss now leaves the reader where it scrolled
+    /// to (the user keeps their place under the just-closed sheet), and any
+    /// transition involving `.narration` (a selection→narration hand-off, or
+    /// narration on its own) is owned by narration's own follow-scroll. Factored
+    /// out as a pure predicate so a unit test can cover the branches without
+    /// standing up a SwiftUI host.
+    static func shouldScrollSelectionIntoView(
         oldKind: BibleBottomOverlayKind?,
         newKind: BibleBottomOverlayKind?
-    ) -> BibleSheetTransition? {
-        if oldKind == nil, newKind == .selection { return .appearing }
-        if oldKind == .selection, newKind == nil { return .dismissing }
-        return nil
+    ) -> Bool {
+        oldKind == nil && newKind == .selection
     }
-}
-
-/// Classifies a change in the presented bottom sheet so the reader knows when
-/// to scroll the selected verse into view (`.appearing`) and when to restore
-/// the user to their pre-sheet anchor (`.dismissing`). A `nil` return from
-/// `BibleChapterReader.selectionSheetTransition(…)` means the action sheet was
-/// neither entered nor left, and no scroll should fire.
-enum BibleSheetTransition {
-    case appearing
-    case dismissing
 }
 
 /// Identity tag attached to each verse's first word so

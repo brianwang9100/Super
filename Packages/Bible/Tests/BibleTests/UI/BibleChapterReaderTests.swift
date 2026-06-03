@@ -19,44 +19,46 @@ struct BibleChapterReaderTests {
     }
 }
 
-/// Unit tests for the action-sheet appear / dismiss predicate that decides
-/// when the reader runs its paired selection scroll. Only entering or leaving
-/// `.selection` scrolls; transitions that don't touch `.selection` (so
-/// narration's own follow-scroll stays the sole driver) return `nil`. The
-/// same-to-same no-op path (`.selection` → `.selection`) is deliberately
-/// covered here too. Covered without standing up the reader's SwiftUI host.
-@Suite("BibleChapterReader.selectionSheetTransition")
+/// Unit tests for the action-sheet appear predicate that decides when the
+/// reader scrolls the selected verse up under the floating sheet. Only the bare
+/// appear (`nil → .selection`) scrolls; dismiss no longer scrolls back (the
+/// reader stays where it scrolled to), and transitions that don't enter
+/// `.selection` from no sheet — including any `.narration` transition, so
+/// narration's own follow-scroll stays the sole driver — are `false`. The
+/// same-to-same no-op path (`.selection` → `.selection`) is deliberately covered
+/// here too. Covered without standing up the reader's SwiftUI host.
+@Suite("BibleChapterReader.shouldScrollSelectionIntoView")
 @MainActor
 struct BibleChapterSheetTransitionTests {
-    @Test("opening the action sheet from no sheet is appearing")
-    func appearingFromNil() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: .selection) == .appearing)
+    @Test("opening the action sheet from no sheet scrolls the selection up")
+    func scrollsOnAppear() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: nil, newKind: .selection) == true)
     }
 
-    @Test("closing the action sheet to no sheet is dismissing")
-    func dismissingToNil() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: nil) == .dismissing)
+    @Test("closing the action sheet does not scroll back")
+    func doesNotScrollOnDismiss() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: .selection, newKind: nil) == false)
     }
 
     @Test("narration stepping over the action sheet does not scroll")
-    func nilWhenNarrationTakesOver() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: .narration) == nil)
+    func falseWhenNarrationTakesOver() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: .selection, newKind: .narration) == false)
     }
 
     @Test("returning to the action sheet after narration does not scroll")
-    func nilWhenSelectionReturnsFromNarration() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .narration, newKind: .selection) == nil)
+    func falseWhenSelectionReturnsFromNarration() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: .narration, newKind: .selection) == false)
     }
 
     @Test("narration presenting or dismissing without a selection does not scroll")
-    func nilForNarrationOnly() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: .narration) == nil)
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .narration, newKind: nil) == nil)
+    func falseForNarrationOnly() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: nil, newKind: .narration) == false)
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: .narration, newKind: nil) == false)
     }
 
     @Test("a no-op change does not scroll")
-    func nilForNoChange() {
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: nil, newKind: nil) == nil)
-        #expect(BibleChapterReader.selectionSheetTransition(oldKind: .selection, newKind: .selection) == nil)
+    func falseForNoChange() {
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: nil, newKind: nil) == false)
+        #expect(BibleChapterReader.shouldScrollSelectionIntoView(oldKind: .selection, newKind: .selection) == false)
     }
 }
