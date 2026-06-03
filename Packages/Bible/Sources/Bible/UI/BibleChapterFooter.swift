@@ -15,12 +15,17 @@ struct BibleChapterFooter: View {
     let onNext: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            if let previousLabel {
-                card(isPrevious: true, label: previousLabel, action: onPrevious)
-            }
-            if let nextLabel {
-                card(isPrevious: false, label: nextLabel, action: onNext)
+        // One shared glass sampling region for the two adjacent cards so their
+        // edges and elevation read as one field — `spacing: 0` shares the
+        // region without ever merging the shapes (they keep the 8pt gap).
+        SuperGlassContainer(spacing: 0) {
+            HStack(spacing: 8) {
+                if let previousLabel {
+                    card(isPrevious: true, label: previousLabel, action: onPrevious)
+                }
+                if let nextLabel {
+                    card(isPrevious: false, label: nextLabel, action: onNext)
+                }
             }
         }
         .padding(.top, 28)
@@ -57,8 +62,9 @@ struct BibleChapterFooter: View {
             .foregroundStyle(theme.inkSoft)
             .padding(14)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 14).fill(theme.backgroundRaised))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(theme.borderFaint, lineWidth: 0.5))
+            // Interactive Liquid Glass replaces the old raised fill + border —
+            // glass supplies its own frosted edge and elevation.
+            .superGlassButton(in: RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(kicker) chapter, \(label)")
