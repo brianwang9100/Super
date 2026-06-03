@@ -43,18 +43,19 @@ struct NoteListSheet: View {
     /// Extra bottom padding so the last card clears the shell's minimized
     /// chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
+    /// Dismisses the sheet from the nav bar's leading close button.
+    let onClose: () -> Void
     let onCompose: () -> Void
     let onSelect: (Item.ID) -> Void
     let onDelete: (Item.ID) -> Void
 
-    // Nav-bar font sizes scaled to Dynamic Type (the `BibleBookSheet`
-    // convention); the round + button stays a fixed control glyph.
-    @ScaledMetric(relativeTo: .title2) private var citationSize: CGFloat = 21
-    @ScaledMetric(relativeTo: .caption2) private var countSize: CGFloat = 10
+    /// `.medium`/`.large` list sheet — same detents the book picker uses.
+    private let sizing = SheetSizing.expandable
 
     init(
         citation: String,
         items: [Item],
+        onClose: @escaping () -> Void,
         onCompose: @escaping () -> Void,
         onSelect: @escaping (Item.ID) -> Void,
         onDelete: @escaping (Item.ID) -> Void,
@@ -62,6 +63,7 @@ struct NoteListSheet: View {
     ) {
         self.citation = citation
         self.items = items
+        self.onClose = onClose
         self.onCompose = onCompose
         self.onSelect = onSelect
         self.onDelete = onDelete
@@ -70,7 +72,14 @@ struct NoteListSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            navBar
+            SheetNavBar(
+                title: citation,
+                subtitle: "\(items.count) \(items.count == 1 ? "Note" : "Notes")",
+                sizing: sizing,
+                onClose: onClose
+            ) {
+                composeButton
+            }
             Rectangle()
                 .fill(theme.borderFaint)
                 .frame(height: 0.5)
@@ -81,43 +90,21 @@ struct NoteListSheet: View {
                 noteList
             }
         }
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
-                .fill(theme.background)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .sheetPresentation(sizing)
     }
 
-    private var navBar: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(citation)
-                    .font(typography.font(size: citationSize, weight: .semibold, design: .serif))
-                    .foregroundStyle(theme.ink)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Text("\(items.count) \(items.count == 1 ? "Note" : "Notes")")
-                    .font(typography.font(size: countSize, weight: .medium, design: .monospaced))
-                    .tracking(0.6)
-                    .foregroundStyle(theme.inkFaint)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onCompose) {
-                Image(systemName: "plus")
-                    .font(typography.font(size: 17, weight: .semibold))
-                    .foregroundStyle(theme.accentInk)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(theme.accent))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Write a note")
+    /// Round **+** that composes a new note, hosted in the nav bar's trailing
+    /// slot. Theme-tinted glass to match the leading close button.
+    private var composeButton: some View {
+        Button(action: onCompose) {
+            Image(systemName: "plus")
+                .font(typography.font(size: 16, weight: .semibold))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
-        // Top room for the system drag indicator now that the native `.sheet`
-        // supplies it in place of the removed custom grabber.
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Write a note")
     }
 
     private var noteList: some View {

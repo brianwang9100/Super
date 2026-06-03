@@ -71,6 +71,8 @@ struct AnnotationSheet: View {
     /// Extra bottom padding so the last card clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
+    /// Dismisses the sheet from the nav bar's leading close button.
+    let onClose: () -> Void
     let onRegenerate: () -> Void
     let onAddAllToChat: () -> Void
     let onCardAddToChat: (Card.ID) -> Void
@@ -88,6 +90,7 @@ struct AnnotationSheet: View {
     init(
         citation: String,
         cards: [Card],
+        onClose: @escaping () -> Void,
         onRegenerate: @escaping () -> Void,
         onAddAllToChat: @escaping () -> Void,
         onCardAddToChat: @escaping (Card.ID) -> Void,
@@ -103,6 +106,7 @@ struct AnnotationSheet: View {
         self.isGenerating = isGenerating
         self.errorMessage = errorMessage
         self.bottomInset = bottomInset
+        self.onClose = onClose
         self.onRegenerate = onRegenerate
         self.onAddAllToChat = onAddAllToChat
         self.onCardAddToChat = onCardAddToChat
@@ -111,54 +115,47 @@ struct AnnotationSheet: View {
         self.onRetry = onRetry
     }
 
+    /// `.medium`/`.large` list sheet — same detents the book picker uses.
+    private let sizing = SheetSizing.expandable
+
     var body: some View {
         VStack(spacing: 0) {
-            header
+            SheetNavBar(
+                title: citation,
+                subtitle: "ANNOTATIONS",
+                sizing: sizing,
+                onClose: onClose
+            ) {
+                overflowMenu
+            }
             Rectangle()
                 .fill(theme.borderFaint)
                 .frame(height: 0.5)
             cardList
         }
-        // Top clearance for the system drag indicator now that the native
-        // `.sheet` supplies it in place of the removed custom grabber.
-        .padding(.top, 10)
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
-                .fill(theme.background)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        .sheetPresentation(sizing)
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(citation)
-                .font(typography.font(size: 17, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            Text("ANNOTATIONS")
-                .font(typography.font(size: 9.5, weight: .medium, design: .monospaced))
-                .tracking(0.6)
-                .foregroundStyle(theme.inkFaint)
-            Spacer()
-            Menu {
-                Button(action: onRegenerate) {
-                    Label("Regenerate all", systemImage: "arrow.clockwise")
-                }
-                Button(action: onAddAllToChat) {
-                    Label("Add all to chat", systemImage: "paperplane")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(typography.font(size: 14, weight: .medium))
-                    .foregroundStyle(theme.inkSoft)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(theme.backgroundSunken))
-                    .contentShape(Circle())
+    /// Kebab overflow carrying the sheet-wide actions, hosted in the nav bar's
+    /// trailing slot. Theme-tinted glass to match the leading close button and
+    /// the other sheets' trailing controls.
+    private var overflowMenu: some View {
+        Menu {
+            Button(action: onRegenerate) {
+                Label("Regenerate all", systemImage: "arrow.clockwise")
             }
-            .menuStyle(.borderlessButton)
-            .accessibilityLabel("Sheet actions")
+            Button(action: onAddAllToChat) {
+                Label("Add all to chat", systemImage: "paperplane")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(typography.font(size: 16, weight: .medium))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Sheet actions")
     }
 
     @ViewBuilder

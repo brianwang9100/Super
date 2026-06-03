@@ -163,6 +163,7 @@ public struct BibleScreen: View {
                 citation: viewModel.citationLabel(for: spec),
                 catalog: .standard,
                 repository: annotationRepository,
+                onClose: { viewModel.dismissAnnotationSheet() },
                 onRegenerate: { viewModel.triggerAnnotationGeneration(for: spec) },
                 onAddAllToChat: { records in
                     if let reference = viewModel.makeAnnotationGroupReference(records, for: spec) {
@@ -187,9 +188,9 @@ public struct BibleScreen: View {
                 },
                 dispatchStatus: viewModel.dispatchStatus(for: spec)
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(theme.background)
+            // Detents / drag indicator / themed background now ride with the
+            // sheet view via `.sheetPresentation(.expandable)` (matching the
+            // book / translation / action / narration sheets).
         }
         .sheet(
             isPresented: $viewModel.isAnnotationDisclaimerPresented,
@@ -225,6 +226,7 @@ public struct BibleScreen: View {
                 spec: presentation.spec,
                 citation: viewModel.citationLabel(for: presentation.spec),
                 autoCompose: presentation.autoCompose,
+                onClose: { viewModel.dismissNoteList() },
                 onCreate: { body in
                     viewModel.createNote(target: presentation.spec, body: body)
                 },
@@ -235,9 +237,8 @@ public struct BibleScreen: View {
                     viewModel.deleteNote(id: id)
                 }
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(theme.background)
+            // Detents / drag indicator / themed background now ride with the
+            // sheet view via `.sheetPresentation(.expandable)`.
         }
         // The verse-selection action sheet and the narration transport share a
         // single `.sheet(item:)` so a `.selection` → `.narration` swap is one

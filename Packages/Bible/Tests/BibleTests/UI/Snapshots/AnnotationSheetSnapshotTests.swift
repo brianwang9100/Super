@@ -304,6 +304,7 @@ struct AnnotationSheetSnapshotTests {
             AnnotationSheet(
                 citation: Self.citation,
                 cards: cards,
+                onClose: {},
                 onRegenerate: {},
                 onAddAllToChat: {},
                 onCardAddToChat: { _ in },

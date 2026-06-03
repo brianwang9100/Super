@@ -108,6 +108,7 @@ struct NoteListSheetSnapshotTests {
             NoteListSheet(
                 citation: Self.citation,
                 items: items,
+                onClose: {},
                 onCompose: {},
                 onSelect: { _ in },
                 onDelete: { _ in },
