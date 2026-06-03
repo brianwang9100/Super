@@ -218,7 +218,7 @@ No path-filter matrix on the app builds. Always build both. Rationale:
 
 ### 5.2 What changes in CI
 
-- `ios-build.yml` adds a second job matrix entry: `scheme: [Super, SuperBible]`. Both run in parallel on macos-26 with Xcode 26.4.1 + iOS 26.4 simulator on iPhone 17 (the pinned CI trio per `AGENTS.md`).
+- `ios-build.yml` adds a second job matrix entry: `scheme: [Super, SuperBible]`. Both run in parallel on macos-26 with Xcode 26.4.1 + iOS 26.4.1 (build `23E254a`) simulator on iPhone 17 (the pinned CI trio per `AGENTS.md`).
 - `actions/cache` keyed on `hashFiles('**/Package.resolved', 'project.yml')` over `~/Library/Developer/Xcode/DerivedData`. Both app-build jobs share this cache — second build mostly hits cache for Core / Chat / Bible.
 - `swift-test.yml` matrix auto-discovery (open TODO from `TODO.md` § CI gaps) lands first so new packages (Plans / Memorize / Quiz / Learn) join the test matrix as they appear, without per-package workflow edits.
 - `testflight.yml` parameterized by scheme so it can ship either target. New tag conventions: `release/super-v*` ships SuperOS; `release/superbible-v*` ships SuperBible. Each tag triggers a single-target archive.

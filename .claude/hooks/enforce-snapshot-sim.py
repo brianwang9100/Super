@@ -6,7 +6,7 @@ run on a different iPhone model, iOS runtime, or Xcode toolchain than CI uses
 produces diffs that are pure environment drift, not real regressions — and a
 "re-record to make it pass" on the wrong runtime is exactly how a baseline goes
 bad. CI pins (see AGENTS.md "iOS testing: match CI's Xcode + simulator runtime
-+ iPhone"): iPhone 17 / iOS 26.4 / Xcode 26.4.1.
++ iPhone"): iPhone 17 / iOS 26.4.1 (build 23E254a) / Xcode 26.4.1.
 
 The pin is NOT hardcoded here — it is read at runtime from the single source of
 truth, .github/workflows/ios-build.yml (the `xcode-version:` input and the
@@ -32,21 +32,24 @@ import sys
 # Last-known pin. Used ONLY when ios-build.yml cannot be read (see load_pin).
 FALLBACK_DEVICE = "iPhone 17"
 FALLBACK_OS = "26.4"
+FALLBACK_BUILD = "23E254a"
 FALLBACK_XCODE = "26.4.1"
 
 DOC = 'AGENTS.md "iOS testing: match CI\'s Xcode + simulator runtime + iPhone"'
 
 
 def load_pin():
-    """Read the pinned (device, os, xcode) from .github/workflows/ios-build.yml.
+    """Read the pinned (device, os, build, xcode) from ios-build.yml.
 
     Keys strictly off the authoritative tokens so a stray "iOS 26.2" in a
-    comment can't be mistaken for the runtime: the device name and runtime come
-    from the "Pick iOS simulator" step's selection logic, and the Xcode version
-    from the setup-xcode action input (all `xcode-version:` values must agree).
-    Any value that can't be read falls back to its FALLBACK_* constant.
+    comment can't be mistaken for the runtime: the device name, runtime minor,
+    and exact runtime build come from the "Pick iOS simulator" step's selection
+    logic, and the Xcode version from the setup-xcode action input (all
+    `xcode-version:` values must agree). Any value that can't be read falls back
+    to its FALLBACK_* constant.
     """
-    device, osv, xcode = FALLBACK_DEVICE, FALLBACK_OS, FALLBACK_XCODE
+    device, osv, build, xcode = (
+        FALLBACK_DEVICE, FALLBACK_OS, FALLBACK_BUILD, FALLBACK_XCODE)
     # <root>/.claude/hooks/<this>.py -> <root>/.github/workflows/ios-build.yml
     here = os.path.abspath(__file__)
     root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
@@ -55,12 +58,16 @@ def load_pin():
         with open(workflow, encoding="utf-8") as handle:
             text = handle.read()
     except Exception:
-        return device, osv, xcode
+        return device, osv, build, xcode
     # The runtime CI actually selects: `simctl list devices --json "iOS 26.4"`.
     match = re.search(
         r'simctl\s+list\s+devices\s+--json\s+"iOS\s+([0-9]+\.[0-9]+)"', text)
     if match:
         osv = match.group(1)
+    # The exact runtime build the picker asserts: `RUNTIME_BUILD="23E254a"`.
+    match = re.search(r'RUNTIME_BUILD="?([0-9A-Za-z]+)"?', text)
+    if match:
+        build = match.group(1)
     # The device the picker matches by name: `d.get("name")=="iPhone 17"`.
     match = re.search(r'\.get\("name"\)\s*==\s*"([^"]+)"', text)
     if match:
@@ -69,7 +76,7 @@ def load_pin():
     versions = set(re.findall(r'xcode-version:\s*"?([0-9][0-9.]*)"?', text))
     if len(versions) == 1:
         xcode = versions.pop()
-    return device, osv, xcode
+    return device, osv, build, xcode
 
 
 def allow():
@@ -110,7 +117,7 @@ if not concrete:
 # Resolve the pin lazily — only now that we know this is a concrete iOS-sim run.
 # This keeps the ios-build.yml read off the hot path for every non-xcodebuild
 # command (and for generic builds), which is the overwhelming majority.
-PIN_DEVICE, PIN_OS, PIN_XCODE = load_pin()
+PIN_DEVICE, PIN_OS, PIN_BUILD, PIN_XCODE = load_pin()
 
 
 def parse_kv(dest):
@@ -156,6 +163,58 @@ def mismatch_reason(found_device, found_os, dest):
         '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
         + PIN_OS + '". See ' + DOC + "."
     )
+
+
+def installed_pinned_minor_builds():
+    """Builds of every installed, available iOS runtime on the pinned minor.
+
+    A -destination can only name the runtime minor (OS=26.4), and simctl
+    conflates same-minor runtimes (26.4.0 + 26.4.1) under one identifier
+    (iOS-26-4) with no per-device build field — so a UDID can't be resolved to
+    a build. The only reliable build guarantee is therefore that the *only*
+    pinned-minor runtime installed is the pinned build. Returns the list of
+    installed builds (e.g. ['23E254a'], or ['23E244', '23E254a'] when both are
+    present), or None when simctl can't be read (caller fails open).
+    """
+    try:
+        raw = subprocess.run(
+            ["xcrun", "simctl", "list", "runtimes", "--json"],
+            capture_output=True, text=True, timeout=10, check=True).stdout
+        data = json.loads(raw)
+    except Exception:
+        return None
+    builds = []
+    for runtime in data.get("runtimes") or []:
+        if not runtime.get("isAvailable"):
+            continue
+        version = runtime.get("version") or ""
+        # Match the pinned minor: "26.4" matches 26.4 and 26.4.1, not 26.40.
+        if version == PIN_OS or version.startswith(PIN_OS + "."):
+            builds.append(runtime.get("buildversion"))
+    return builds
+
+
+# Build-level invariant. The per-destination checks below pin the device, the
+# runtime minor, and Xcode — but not the runtime *build*, which a -destination
+# cannot express. Enforce it here at the install level: if any pinned-minor
+# runtime other than PIN_BUILD is installed, no concrete sim run can be
+# guaranteed to land on the pinned build, so refuse until the stale build is
+# removed. Fails open when simctl can't be read.
+builds = installed_pinned_minor_builds()
+if builds is not None:
+    stale = sorted({b for b in builds if b and b != PIN_BUILD})
+    if stale:
+        deny(
+            "iOS " + PIN_OS + " snapshot baselines are pinned to build "
+            + PIN_BUILD + ", but this machine also has " + ", ".join(stale)
+            + " installed. simctl conflates same-minor runtimes under one "
+            "identifier (iOS-" + PIN_OS.replace(".", "-") + "), so a recording "
+            "or verification on OS=" + PIN_OS + " can silently land on the "
+            "wrong build and drift the pixel-exact baselines. Remove the stale "
+            "runtime(s) so only " + PIN_BUILD + " remains: find the UUID with "
+            "'xcrun simctl runtime list', then 'xcrun simctl runtime delete "
+            "<uuid>'. See " + DOC + "."
+        )
 
 
 for dest in concrete:

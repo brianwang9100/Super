@@ -227,7 +227,7 @@ its stacking contract (co-trailing), Core `ToolExecutor`/`LLMTool`/`ToolRegistra
   swipe), `NoteListSheet` (empty / one / many-scrolling), `NoteEditor` (create-empty /
   edit-prefilled / delete-confirm) — across **light / dark / sepia × default Dynamic Type**,
   plus **XXL** for `NoteCard` + `NoteListSheet`, plus reader/action-sheet/book-picker
-  integration snapshots in PR3. Record on the CI trio (Xcode 26.4.1 + iOS 26.4 sim + iPhone 17)
+  integration snapshots in PR3. Record on the CI trio (Xcode 26.4.1 + iOS 26.4.1 (build `23E254a`) sim + iPhone 17)
   via the `SNAPSHOT_RECORD` env approach. Coverage stays ≥70%.
 
 ## 11. Milestones & PR bundling

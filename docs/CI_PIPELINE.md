@@ -275,7 +275,7 @@ jobs:
 GitHub-hosted macOS runners (`macos-26`) come with multiple Xcode versions and iOS simulator runtimes preinstalled. Key considerations:
 
 - **Pin the Xcode version literally** (`xcode-version: "26.4.1"` via `maxim-lobanov/setup-xcode@v1`), not `latest-stable`, to prevent SwiftUI snapshot drift between agent PRs and across runner image refreshes.
-- **Preinstalled simulators** are sufficient for CI. Do not download additional runtimes — it adds 5-10 minutes. macos-26 ships iOS 26.1 / 26.2 / 26.4 OS-level runtimes; we target 26.4 (the highest available, bundled with Xcode 26.4.1).
+- **Pin the exact runtime build, not just the minor.** The snapshot legs run on iOS **26.4.1 (build `23E254a`)** — the build `macos-26` bundles with the pinned Xcode 26.4.1. `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4" but render differently, and a `-destination` can only name the minor (`OS=26.4`), so the **"Pick iOS simulator"** step asserts `buildversion == 23E254a` and fails loud if a runner image ever swaps the bundled build (or installs both). No extra runtime download — the preinstalled build is verified in place, which is also enforced locally by `.claude/hooks/enforce-snapshot-sim.py`.
 - **Disable code signing** for CI builds (`CODE_SIGNING_ALLOWED=NO`). Signing only happens in the deployment pipeline.
 - **Use `xcbeautify`** for human-readable (and agent-readable) build output.
 
@@ -680,7 +680,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 
 2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
 
-3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5 beta) with 26.2 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
+3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5) with 26.4.1 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
 
 4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
 

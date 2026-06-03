@@ -199,6 +199,8 @@ xcodebuild test -scheme Chat \
   -destination 'platform=iOS Simulator,id=472D292D-71F0-4D2B-ADFC-C5D5BAF14450'
 ```
 
+Record on iOS **26.4.1 (build `23E254a`)** — keep only that 26.4.x build installed locally (see [`AGENTS.md`](../AGENTS.md) §5 "iOS testing"); the `enforce-snapshot-sim.py` PreToolUse guard refuses these runs if a stale `23E244` is also installed.
+
 To re-record snapshot baselines after an intentional visual change:
 
 ```bash

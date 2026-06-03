@@ -415,7 +415,7 @@ Module suite (`swift test` from `Packages/Bible/`) green before any PR, per root
 
 ### UI snapshots (per Bible AGENTS §Tests — PR 2)
 
-Light / dark / sepia × default + Dynamic Type XXL, recorded on the CI Xcode 26.4.1 + iOS 26.4 + iPhone 17 pin:
+Light / dark / sepia × default + Dynamic Type XXL, recorded on the CI Xcode 26.4.1 + iOS 26.4.1 (build `23E254a`) + iPhone 17 pin:
 
 - `AnnotationBubble`: empty / generating / filled / multi-bubble-stack (3 bubbles after one verse).
 - `AnnotationSheet`: 0 / 1 / 3 / 8 cards, plus one-card-per-category (exercises every badge glyph).
