@@ -123,6 +123,7 @@ struct NoteListSheetContainerSnapshotTests {
             NoteListSheetContainer(
                 spec: Self.spec,
                 citation: "John 3:16-18",
+                onClose: {},
                 onCreate: { _ in },
                 onUpdate: { _, _ in },
                 onDelete: { _ in }

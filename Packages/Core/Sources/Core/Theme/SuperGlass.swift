@@ -1,6 +1,22 @@
 import Foundation
 import SwiftUI
 
+/// A Liquid Glass morph identity — the `glassEffectID(_:in:)` inputs bundled
+/// into one value so a `SuperGlass` caller passes a single `morph:` argument.
+/// Two glass surfaces that carry the same `id` in the same `namespace` (inside
+/// one `GlassEffectContainer`) morph into each other when one appears or
+/// disappears under an animated transaction. String ids are `Hashable &
+/// Sendable`, which is all `glassEffectID` requires.
+public struct GlassMorphID {
+    let id: String
+    let namespace: Namespace.ID
+
+    public init(_ id: String, in namespace: Namespace.ID) {
+        self.id = id
+        self.namespace = namespace
+    }
+}
+
 /// Theme-tinted Liquid Glass helpers — the single owner of how Super's nav
 /// chrome adopts iOS 26 glass, the way `SuperTypography` owns font-face
 /// resolution and `SuperTheme` owns color. Every glass control routes through
@@ -42,16 +58,21 @@ public extension View {
     ///     liquid press. Defaults to `true`. Pass `false` in a dense cluster
     ///     where that press glow-flickers on release, and pair with
     ///     ``SuperPressButtonStyle`` for the press feedback instead.
+    ///   - morph: Gives the control a Liquid Glass identity so it morphs into a
+    ///     sibling sharing the same id when it enters or leaves the hierarchy
+    ///     (see `GlassMorphID`). `nil` for a static control.
     func superGlassButton(
         in shape: some Shape = Circle(),
         tint: Color? = nil,
-        interactive: Bool = true
+        interactive: Bool = true,
+        morph: GlassMorphID? = nil
     ) -> some View {
         modifier(SuperGlassModifier(
             shape: shape,
             glassInteractive: interactive,
             assertsHitRegion: true,
-            tint: tint
+            tint: tint,
+            morph: morph
         ))
     }
 
@@ -59,13 +80,18 @@ public extension View {
     /// book/translation pill and selection pill — clipped to `shape`. Use the
     /// frosted `.regular` glass these produce — never clear glass — so text over
     /// the surface stays legible. Non-interactive so the inner segment buttons
-    /// keep their own taps.
-    func superGlassSurface(in shape: some Shape) -> some View {
+    /// keep their own taps. Pass `morph` to give the surface a Liquid Glass
+    /// identity for cross-state morphing (see `GlassMorphID`).
+    func superGlassSurface(
+        in shape: some Shape,
+        morph: GlassMorphID? = nil
+    ) -> some View {
         modifier(SuperGlassModifier(
             shape: shape,
             glassInteractive: false,
             assertsHitRegion: false,
-            tint: nil
+            tint: nil,
+            morph: morph
         ))
     }
 }
@@ -103,14 +129,6 @@ public struct SuperPressButtonStyle: ButtonStyle {
     }
 }
 
-/// Runtime probe shared by the glass helpers: true inside an XCTest/swift-testing
-/// bundle (which can't capture real glass), false in the shipping app.
-enum SuperGlassRuntime {
-    /// True when XCTest is linked (test process); the shipping app never links
-    /// it, so real glass renders there.
-    static var usesSolidFallback: Bool { NSClassFromString("XCTestCase") != nil }
-}
-
 /// Reads the active theme's `glassTint` and applies `.glassEffect` so the tint
 /// decision lives in one place. Generic over `Shape` so callers keep their own
 /// `Circle` / `Capsule` / `RoundedRectangle` clip.
@@ -141,6 +159,8 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
     /// accent); `nil` falls back to the theme tint so existing callers are
     /// unchanged.
     let tint: Color?
+    /// Liquid Glass morph identity, or `nil` for a static control.
+    let morph: GlassMorphID?
 
     private var resolvedTint: Color { tint ?? theme.glassTint }
 
@@ -155,20 +175,42 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
 
     @ViewBuilder
     private func glassed(_ content: Content) -> some View {
-        if SuperGlassRuntime.usesSolidFallback {
+        if Self.usesSolidFallback {
             // Stand-in fill tracks the tint so tinted callers (highlight
             // swatches, accent AI tiles) stay visually distinct in snapshots;
-            // untinted callers keep the original raised fill byte-for-byte.
+            // untinted callers keep the original raised fill byte-for-byte. No
+            // `glassEffectID` here: the morph it drives is invisible to
+            // offscreen snapshots anyway.
             content
                 .background(shape.fill(tint ?? theme.backgroundRaised))
                 .overlay(shape.stroke(theme.borderFaint, lineWidth: 0.5))
         } else {
-            content.glassEffect(
-                glassInteractive
-                    ? Glass.regular.tint(resolvedTint).interactive()
-                    : Glass.regular.tint(resolvedTint),
-                in: shape
+            morphed(
+                content.glassEffect(
+                    glassInteractive
+                        ? Glass.regular.tint(resolvedTint).interactive()
+                        : Glass.regular.tint(resolvedTint),
+                    in: shape
+                )
             )
         }
+    }
+
+    /// Tags the glassed content with its morph identity when one was supplied,
+    /// so siblings sharing the id morph into each other across hierarchy changes.
+    @ViewBuilder
+    private func morphed(_ content: some View) -> some View {
+        if let morph {
+            content.glassEffectID(morph.id, in: morph.namespace)
+        } else {
+            content
+        }
+    }
+
+    /// True when running inside an XCTest-hosted (or swift-testing) bundle,
+    /// detected by XCTest being linked. The shipping app does not link XCTest,
+    /// so this is `false` there and real glass renders.
+    private static var usesSolidFallback: Bool {
+        NSClassFromString("XCTestCase") != nil
     }
 }

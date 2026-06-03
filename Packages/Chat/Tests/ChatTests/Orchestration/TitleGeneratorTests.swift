@@ -4,12 +4,25 @@ import Testing
 
 @testable import Chat
 
-/// Tests for `TitleGenerator`'s prompt assembly, stream consumption, and
-/// title cleanup. The provider is the in-tree `FakeLLMProvider` from
-/// `Helpers/`, so no network or real LLM is touched.
+/// Tests for `TitleGenerator`'s model resolution, prompt assembly, stream
+/// consumption, and title cleanup. The provider is the in-tree
+/// `FakeLLMProvider` from `Helpers/`, so no network or real LLM is touched.
+/// The summarizer model + toggle are read from an in-memory
+/// `ChatSettingsStore`.
 @Suite("TitleGenerator")
 struct TitleGeneratorTests {
     private let model = OrchestrationFixtures.defaultModel()
+
+    /// Build a store whose title-summarization toggle and selected model id
+    /// are seeded directly. Defaults select the fixture model so the title
+    /// path resolves to the registered `FakeLLMProvider`.
+    private func makeStore(enabled: Bool = true, titleModelId: String? = "fake-model-1") async -> ChatSettingsStore {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        try? await store.setSummarizeTitlesEnabled(enabled)
+        try? await store.setTitleModelId(titleModelId)
+        return store
+    }
 
     @Test("Concatenates streamed text deltas into a single title")
     func generateAccumulatesStreamedText() async throws {
@@ -24,11 +37,10 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        let generator = TitleGenerator(llmProviderRegistry: registry)
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
         let title = await generator.generate(
             userText: "Help me onboard a new hire",
-            assistantText: "Sure, here is a checklist...",
-            model: model
+            assistantText: "Sure, here is a checklist..."
         )
 
         #expect(title == "Onboarding checklist")
@@ -45,11 +57,10 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        let generator = TitleGenerator(llmProviderRegistry: registry)
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
         let title = await generator.generate(
             userText: "I'm planning a trip to Lisbon",
-            assistantText: "Lisbon is a great choice",
-            model: model
+            assistantText: "Lisbon is a great choice"
         )
 
         #expect(title == "Trip plan to Lisbon")
@@ -65,12 +76,8 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        let generator = TitleGenerator(llmProviderRegistry: registry)
-        let title = await generator.generate(
-            userText: "Hi",
-            assistantText: "Hello",
-            model: model
-        )
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
 
         #expect(title == nil)
     }
@@ -86,26 +93,81 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        let generator = TitleGenerator(llmProviderRegistry: registry)
-        let title = await generator.generate(
-            userText: "Hi",
-            assistantText: "Hello",
-            model: model
-        )
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
 
         #expect(title == nil)
     }
 
-    @Test("No active provider returns nil cleanly")
+    @Test("No registered provider returns nil cleanly")
     func generateReturnsNilWhenRegistryEmpty() async throws {
         let registry = LLMProviderRegistry()
-        let generator = TitleGenerator(llmProviderRegistry: registry)
-        let title = await generator.generate(
-            userText: "Hi",
-            assistantText: "Hello",
-            model: model
-        )
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
         #expect(title == nil)
+    }
+
+    @Test("Disabled toggle returns nil and never calls the provider")
+    func generateSkipsWhenSummarizationDisabled() async throws {
+        let provider = FakeLLMProvider(model: model)
+        // No script enqueued: a stream call would `fatalError`, proving the
+        // provider must not be touched when titling is off.
+        let registry = LLMProviderRegistry()
+        await registry.register(provider)
+
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry,
+            settingsStore: await makeStore(enabled: false)
+        )
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
+
+        #expect(title == nil)
+        #expect(await provider.capturedRequests().isEmpty)
+    }
+
+    @Test("Automatic selection titles with the Apple Foundation model when available")
+    func generateAutomaticUsesAppleFoundationModel() async throws {
+        let afmModel = LLMModel(
+            id: AppleFoundationLLMProvider.defaultModelID,
+            displayName: "Apple Intelligence",
+            supportsThinking: false,
+            supportsTools: true,
+            maxContextTokens: 8_192
+        )
+        let provider = FakeLLMProvider(id: "afm", model: afmModel)
+        await provider.enqueue([
+            .messageStart(id: "t1", model: afmModel.id),
+            .textDelta(index: 0, text: "On-device title"),
+            .messageComplete(usage: TokenUsage(inputTokens: 5, outputTokens: 2)),
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(provider)
+
+        // titleModelId: nil ⇒ automatic ⇒ AFM.
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry,
+            settingsStore: await makeStore(titleModelId: nil)
+        )
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
+
+        #expect(title == "On-device title")
+    }
+
+    @Test("A deleted (unavailable) selected model resolves to no titling")
+    func generateReturnsNilWhenSelectedModelUnavailable() async throws {
+        let provider = FakeLLMProvider(model: model)
+        let registry = LLMProviderRegistry()
+        await registry.register(provider)
+
+        // Selected id points at a model no registered provider serves.
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry,
+            settingsStore: await makeStore(titleModelId: "deleted-model-id")
+        )
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
+
+        #expect(title == nil)
+        #expect(await provider.capturedRequests().isEmpty)
     }
 
     @Test("Sends a system+user message pair to the provider")
@@ -119,11 +181,10 @@ struct TitleGeneratorTests {
         let registry = LLMProviderRegistry()
         await registry.register(provider)
 
-        let generator = TitleGenerator(llmProviderRegistry: registry)
+        let generator = TitleGenerator(llmProviderRegistry: registry, settingsStore: await makeStore())
         _ = await generator.generate(
             userText: "first user line",
-            assistantText: "first assistant line",
-            model: model
+            assistantText: "first assistant line"
         )
 
         let captured = await provider.capturedRequests()
@@ -146,6 +207,38 @@ struct TitleGeneratorTests {
         }
     }
 
+    // MARK: - resolveTitleModel
+
+    @Test("Explicit selection resolves to the matching available model")
+    func resolveExplicitSelection() {
+        let a = LLMModel(id: "a", displayName: "A", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        let b = LLMModel(id: "b", displayName: "B", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        #expect(TitleGenerator.resolveTitleModel(selectedModelId: "b", available: [a, b])?.id == "b")
+    }
+
+    @Test("A selected id absent from the available list resolves to nil (deleted → none)")
+    func resolveDeletedSelection() {
+        let a = LLMModel(id: "a", displayName: "A", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        #expect(TitleGenerator.resolveTitleModel(selectedModelId: "gone", available: [a]) == nil)
+    }
+
+    @Test("Automatic resolves to the Apple Foundation model when present, else nil")
+    func resolveAutomatic() {
+        let afm = LLMModel(
+            id: AppleFoundationLLMProvider.defaultModelID,
+            displayName: "Apple Intelligence",
+            supportsThinking: false,
+            supportsTools: true,
+            maxContextTokens: 1
+        )
+        let other = LLMModel(id: "other", displayName: "Other", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        #expect(TitleGenerator.resolveTitleModel(selectedModelId: nil, available: [other, afm])?.id == afm.id)
+        // AFM not in the available list (unsupported device) ⇒ none.
+        #expect(TitleGenerator.resolveTitleModel(selectedModelId: nil, available: [other]) == nil)
+    }
+
+    // MARK: - clean
+
     @Test("Cleans whitespace-only output to nil")
     func cleanReturnsNilForWhitespaceOnly() {
         #expect(TitleGenerator.clean("   \n\t", maxLength: 60) == nil)
@@ -164,4 +257,14 @@ struct TitleGeneratorTests {
         #expect(TitleGenerator.clean("“Hello world”", maxLength: 60) == "Hello world")
         #expect(TitleGenerator.clean("`code review notes`", maxLength: 60) == "code review notes")
     }
+}
+
+/// In-memory `SettingRepository` for the title-summarizer tests.
+private actor InMemorySettingRepository: SettingRepository {
+    private var storage: [String: String] = [:]
+
+    func get(_ key: String) async throws -> String? { storage[key] }
+    func set(_ key: String, value: String) async throws { storage[key] = value }
+    func delete(_ key: String) async throws { storage.removeValue(forKey: key) }
+    func all() async throws -> [String: String] { storage }
 }

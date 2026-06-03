@@ -175,11 +175,12 @@ public struct ChatScreen: View {
         progress <= ChatPresentationState.editorInteractiveThreshold
     }
 
-    /// Surround opacity: rounded-rect panel background + stroke + shadow
-    /// that make the chat read as a floating panel in semi-expanded mode.
-    /// Hidden in pill mode (composer's own capsule shadow takes over) and
-    /// in fully-expanded mode (chat fills the screen, no floating
-    /// effect).
+    /// Surround opacity: the floating panel's border stroke + drop shadows
+    /// (the `panelBackground` fill is now a flat `theme.background`, so this
+    /// only drives the card's edge + elevation) that make the chat read as a
+    /// floating panel in semi-expanded mode. Hidden in pill mode (the flat
+    /// composer sits directly on the applet) and in fully-expanded mode (chat
+    /// fills the screen, no floating effect).
     private var panelSurroundOpacity: Double {
         let fadeIn = Self.smoothstep(progress, from: 0, to: 0.1)
         let fadeOut = 1 - Self.smoothstep(progress, from: 0.9, to: 1.0)
@@ -368,6 +369,27 @@ public struct ChatScreen: View {
                 .simultaneousGesture(
                     TapGesture().onEnded { dismissKeyboard() }
                 )
+                // Drag-anywhere on the transcript/empty-state content: a
+                // `UIPanGestureRecognizer` that scrolls the transcript until it
+                // hits an edge, then hands the same finger-drag off to resizing
+                // the overlay (down → collapse/dismiss, up → expand) — the
+                // nested-scroll → sheet-drag handoff. Reuses the very callbacks
+                // `ChatDragHandle` feeds, so the overlay can't tell which input
+                // drove the drag. Attached *here*, on `content` (a sibling of
+                // the composer), and *before* the `.safeAreaInset` composer
+                // below — so the composer's text field and footer stay fully
+                // interactive (a drag starting on the composer is never
+                // hijacked). No-op on macOS.
+                .overlayContentDrag(
+                    // Gate the handoff so an up-drag at the expanded top (or a
+                    // down-drag at the minimized floor) scrolls rather than
+                    // no-op resizing. `progress` is the settled anchor here —
+                    // no drag height is in flight until handoff.
+                    canExpand: progress < 0.999,
+                    canCollapse: progress > 0.001,
+                    onChanged: { translation in onDragChanged?(translation) },
+                    onEnded: { translation, predicted in onDragEnded?(translation, predicted) }
+                )
                 // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
@@ -539,29 +561,22 @@ public struct ChatScreen: View {
             .accessibilityHint("Tap to expand the chat panel")
     }
 
-    /// Panel surround background: rounded-rect raised fill that sits
-    /// behind the chat content and fades in/out with `panelSurroundOpacity`.
-    /// In pill mode the composer's own capsule does the lifted-surface
-    /// duty so this layer hides; in expanded mode the chat-surface base
-    /// background handles the solid fill so this layer also hides.
+    /// Chat-surface background: a single `theme.background` fill — the same
+    /// color as the applet backdrop — so the overlay panel and the content read
+    /// as the same surface as the applet, not a lighter raised card. Fades in
+    /// with the panel (transparent in pill mode so the applet shows through);
+    /// the floating-card edge is carried by the border + shadow in `body`.
     @ViewBuilder
     private var panelBackground: some View {
-        ZStack {
-            // Chat-surface base background — fades in alongside the
-            // panel so pill mode lets the applet through, fully opaque
-            // by mid-drag onward. Doesn't extend past the safe area;
-            // see `homeIndicatorFill` for the at-full-expansion unsafe
-            // area cover.
-            theme.background.opacity(surfaceBackgroundOpacity)
-            // Panel surround — visible only when the chat reads as a
-            // floating panel. The corner radius is shared with the
-            // outer clipShape so the two layers stay aligned during
-            // the morph.
-            RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
-                .fill(theme.backgroundRaised.opacity(0.95))
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous))
-                .opacity(panelSurroundOpacity)
-        }
+        // The chat surface — both the overlay panel and the content behind the
+        // transcript — is `theme.background`, the same color as the applet
+        // backdrop, so the chat reads as the same surface as the applet rather
+        // than a lighter raised card or a frosted overlay. Fades in alongside the
+        // panel so pill mode lets the applet through, fully opaque by mid-drag
+        // onward; the floating-card edge is carried by the border + shadow in
+        // `body`. Doesn't extend past the safe area; see `homeIndicatorFill` for
+        // the at-full-expansion unsafe-area cover.
+        theme.background.opacity(surfaceBackgroundOpacity)
     }
 
     /// Bottom-anchored extension that paints over the home-indicator's

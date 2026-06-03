@@ -15,6 +15,10 @@ struct AssistantMessage: View {
     /// grounded Gemini turn. Rendered unmodified and always visible (not
     /// collapsible) per Google's grounding terms; nil hides it.
     var searchSuggestionsHTML: String? = nil
+    /// Search-engine label + query for the expandable "Web search" cell
+    /// (`nil` when this turn ran no search).
+    var searchSystem: String? = nil
+    var searchQuery: String? = nil
     let verbosity: ChatVerbosity
     /// Disables Regenerate while a turn is mid-stream. Copy stays
     /// enabled — copying text from an older response during a new one
@@ -72,14 +76,40 @@ struct AssistantMessage: View {
                     ToolCallBlock(call: call, verbosity: verbosity)
                 }
             }
+            // A turn that searched the web — evidenced by cited sources *or*
+            // the captured query/system metadata — announces it with a
+            // tool-call-style cell above the answer (sequence: search call →
+            // grounded answer → sources). Gating on the metadata too (not just
+            // `sources`) means an approved search that returned *zero* results
+            // still leaves a record in the transcript rather than vanishing.
+            if !sources.isEmpty || searchQuery != nil || searchSystem != nil {
+                WebSearchCallCell(
+                    system: searchSystem,
+                    query: searchQuery,
+                    sourceCount: sources.count
+                )
+            }
             if hasText {
                 MarkdownText(text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                // Copy + Regenerate only attach to a row that actually has
-                // text — for tool-call-only or thinking-only turns there's
-                // nothing to copy and the next turn carries the real reply,
-                // so the action row would just be visual noise.
+            }
+            // Google's required Search-Suggestions strip sits directly under a
+            // grounded Gemini answer (always visible, unmodified). It precedes
+            // our own collapsible sources pill.
+            if let searchSuggestionsHTML, !searchSuggestionsHTML.isEmpty {
+                GeminiSearchSuggestionsView(html: searchSuggestionsHTML)
+            }
+            // Citations sit below the answer, as a tool-call-style collapsible
+            // card: claim first, sources after.
+            if !sources.isEmpty {
+                SourceCitationsPill(sources: sources)
+            }
+            // Copy + Regenerate sit at the very bottom of the turn — beneath the
+            // sources card — and only attach to a row that actually has text
+            // (tool-call-only or thinking-only turns have nothing to copy, and
+            // the next turn carries the real reply).
+            if hasText {
                 HStack(spacing: 4) {
                     MessageActionButton(
                         systemName: "doc.on.doc",
@@ -93,17 +123,6 @@ struct AssistantMessage: View {
                         disabled: isStreaming
                     )
                 }
-            }
-            // Google's required Search-Suggestions strip sits directly under a
-            // grounded Gemini answer (always visible, unmodified). It precedes
-            // our own collapsible sources pill.
-            if let searchSuggestionsHTML, !searchSuggestionsHTML.isEmpty {
-                GeminiSearchSuggestionsView(html: searchSuggestionsHTML)
-            }
-            // Citations sit below the answer (and its action row), mirroring
-            // the way a grounded reply reads: claim first, sources after.
-            if !sources.isEmpty {
-                SourceCitationsPill(sources: sources)
             }
         }
         .padding(.vertical, appearance.assistantRowVerticalPadding)
