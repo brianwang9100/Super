@@ -243,6 +243,40 @@ struct BibleAnnotateDispatcherTests {
         #expect(result == .success(annotationCount: 0))
     }
 
+    @Test("a successful tool call followed by a trailing stream error is still success")
+    func successfulToolCallSurvivesTrailingError() async throws {
+        // Regression for the spurious "Couldn't regenerate annotations."
+        // toast: a real model can call bible.annotate cleanly (rows are
+        // written — the user sees the cards), then emit a trailing `.error`
+        // on the *next* turn. The annotations exist, so the turn must be
+        // reported `.success`, not `.failure` — otherwise the Bible sheet
+        // shows the new cards *and* an error toast, and the bulk ledger
+        // records a succeeded unit as failed. Before the fix this returned
+        // `.failure`.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .error(LLMError.requestFailed("late boom")),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+
+        let request = reference(id: "req-trailing-error")
+        let stream = await setup.bus.events()
+        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
+        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+
+        #expect(result == .success(annotationCount: 2))
+        // The tool ran (rows were written), which is what makes the
+        // trailing error irrelevant.
+        #expect(await setup.toolExecutor.executionCount() == 1)
+    }
+
     @Test("a model that never calls bible.annotate produces a failure with a clear message")
     func textOnlyTurnIsAFailure() async throws {
         let setup = try await makeSetup(scripts: [

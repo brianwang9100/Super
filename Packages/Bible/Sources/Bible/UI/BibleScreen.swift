@@ -184,7 +184,7 @@ public struct BibleScreen: View {
                     viewModel.presentDeleteAnnotationFailedToast()
                 },
                 onRegenerateFailed: {
-                    viewModel.presentRegenerateAnnotationFailedToast(for: spec)
+                    viewModel.clearFailedDispatchStatus(for: spec)
                 },
                 dispatchStatus: viewModel.dispatchStatus(for: spec)
             )

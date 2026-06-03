@@ -149,8 +149,8 @@ struct BibleScreenViewModelDispatchTests {
         #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "no key configured"))
     }
 
-    @Test("presentRegenerateAnnotationFailedToast raises the copy and clears the failed status")
-    func regenerateFailedToastClearsStatus() async {
+    @Test("clearFailedDispatchStatus clears the failed status and raises no toast")
+    func regenerateFailedClearsStatusWithoutToast() async {
         let bus = SuperEventBus()
         let viewModel = await makeViewModel(bus: bus)
         let spec = BibleAnnotationTargetSpec.chapter(bookId: "ROM", chapterNumber: 8)
@@ -167,11 +167,13 @@ struct BibleScreenViewModelDispatchTests {
         )
         #expect(viewModel.dispatchStatusByTarget[spec] == .failed(message: "boom"))
 
-        viewModel.presentRegenerateAnnotationFailedToast(for: spec)
+        viewModel.clearFailedDispatchStatus(for: spec)
 
-        #expect(viewModel.toast == "Couldn't regenerate annotations.")
+        // No toast: a regenerate that fails over present cards is silent —
+        // the previous cards stay on screen and speak for themselves.
+        #expect(viewModel.toast == nil)
         // Status cleared so the sheet keeps showing the still-present
-        // previous cards rather than the inline error state.
+        // previous cards and never flips to the inline error state.
         #expect(viewModel.dispatchStatusByTarget[spec] == nil)
         #expect(viewModel.dispatchStatus(for: spec) == nil)
     }
