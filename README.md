@@ -5,30 +5,74 @@
 [![SwiftLint](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml)
 [![Secrets Scan](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml)
 
-A monorepo containing **two apps** built from one shared codebase:
+**One codebase, a family of chat-first AI apps.** The flagship is **SuperBible** — a free, open-source, BYOK AI study Bible heading to the App Store.
 
-- **SuperOS** — a chat-first, AI-native personal productivity app (Chat host + ToDo + Recipes + Finance + …). Founder's personal app, not heading to the App Store.
-- **SuperBible** — a chat-first AI Bible app: read scripture, follow plans, and converse with an AI about what you're reading. Free, BYOK, open source, local-first. **Public App Store target.**
+---
 
-Both apps share `Core`, `Chat`, and `Bible` packages; each ships its own composition root and applet set. See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md) for the fork rationale.
+## Design philosophy
 
-> **Status:** Super MVP M0–M12 complete (2026-05-10) — Chat is shipped, Bible and Todo packages exist in the repo, the SuperOS app target is buildable. SuperBible target is **not yet wired up** — see [`TODO.md`](TODO.md) § SuperBible for the SB-M0 through SB-M5 plan.
+- **Chat is the host**, not a tab. Mini-apps render *behind* the chat in coordinated overlay states.
+- **Bi-directional AI.** Chat drives mini-apps via tool calls; mini-apps pipe records back into chat with a tap.
+- **Offline-first.** GRDB/SQLite on-device is the source of truth. On-device LLMs (Apple Foundation Models, MLX) are first-class; cloud endpoints are optional.
+- **BYOK & open source.** No API keys ship in the binary — users provide their own, stored in the iOS Keychain.
 
-See [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) for the long version.
+## The apps
 
-## What works today
+All three are built from the same `Core`, `Chat`, and `Bible` packages — they differ only in which mini-apps each composition root registers at launch.
 
-| Surface | Status |
+| App | What it is | Status |
+|---|---|---|
+| 📖 **SuperBible** | The flagship. A free, open-source, **BYOK**, local-first AI **study Bible**: read scripture, generate AI study annotations, take notes, and chat about what you're reading. | **Heading to the App Store** |
+| 🧩 **SuperOS** | The broader multi-mini-app shell SuperBible grew out of — Chat host + ToDo + more, all driven by AI. The founder's personal app. | Personal, not App Store-bound |
+| 💬 **SuperChat** | A dead-simple chat app for people who just want to talk to their local LLM. | Future |
+
+See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md) for the fork rationale, and [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) for the long-form vision.
+
+## SuperBible in action
+
+<table>
+  <tr>
+    <td width="25%" align="center">
+      <img src="docs/assets/screenshots/chat_semi_expanded.png" alt="Reading a chapter with a floating chat panel and a verse reference piped into the composer" width="100%"><br>
+      <sub><b>Read + chat, together</b><br>A floating chat panel over the reader, with the verse you're reading piped into the conversation.</sub>
+    </td>
+    <td width="25%" align="center">
+      <img src="docs/assets/screenshots/annotations_full.png" alt="AI-generated study annotations for John 3:5" width="100%"><br>
+      <sub><b>AI study annotations</b><br>Context, cross-references, and explanation generated for the passage you're on.</sub>
+    </td>
+    <td width="25%" align="center">
+      <img src="docs/assets/screenshots/chat_fully_expanded.png" alt="A full-screen conversation about John 3:16-17" width="100%"><br>
+      <sub><b>Go deep in chat</b><br>Ask follow-ups about any passage — with the verses linked right in the answer.</sub>
+    </td>
+    <td width="25%" align="center">
+      <img src="docs/assets/screenshots/action_sheet.png" alt="Verse action menu: highlight, annotate, add note, add to chat" width="100%"><br>
+      <sub><b>Tap any verse</b><br>Highlight, annotate, take a note, or send it straight into chat.</sub>
+    </td>
+  </tr>
+</table>
+
+## Why I built this
+
+I started this as a personal project with two goals: to really understand how LLMs work under the hood, and to take on the challenge of designing a chat app that actually feels well-built — not another bolted-on chatbot.
+
+The itch was practical, too. I was tired of having fifteen different apps on my phone for the things I do every day — todos, finance, the smart home, Bible reading. I wanted **one** app that could do all of it, with an AI chat at the center. The end goal: an app of mini-applets I could drive entirely through conversation — "add four things to my to-do list," "pull up a recipe," "turn off the garage lights," "check the camera," "give me a verse of the day."
+
+My first MVP was **SuperOS**, where I poured the work into making the chat experience genuinely polished. But as I kept building, I realized I wanted to actually *ship* something. SuperOS was too broad and generic to do any one thing really well — so I narrowed my focus to **SuperBible**. Because I'd architected the app so mini-apps are configurable, SuperBible ended up being a focused, stripped-down SuperOS rather than a rewrite.
+
+I chose the Bible because I couldn't find a free AI Bible-study app that genuinely looked and felt good. Open-source and BYOK (Bring Your Own Key) made for a clean MVP — aimed first at technical people who want an AI-centric Bible app. I may explore monetization later, but this is the right place to start.
+
+## Features
+
+| Area | What you get |
 |---|---|
-| **Chat applet** | Streaming chat against any OpenAI-compatible endpoint (BYOK). Markdown + Splash-highlighted code blocks. Thinking traces. Tool calls (built-in `time.now`). Per-conversation model selection. Sidebar drawer. Settings sheet (theme, verbosity, models, prompt, compaction, tools). On-device voice dictation via `SFSpeechRecognizer`. Auto-titling + auto-compaction. |
-| **iOS app shell** | Native SwiftUI. Light / Dark / Sepia themes. Dynamic Type up to XXL. Reduce Motion respected. |
-| **Server** | Not yet built. Chat runs fully on-device against the user's chosen LLM endpoint. |
-| **Sync** | Not yet built. Each install is local-only. |
-| **Other applets** | Designed in [`docs/`](docs/), not implemented. |
+| **Chat** | Talk to most frontier providers (OpenAI, Anthropic, Google) and **any OpenAI-compatible endpoint** (Ollama, vLLM, LM Studio, …) — BYOK. Apple Foundation Models runs on-device by default: free, offline, no key. Markdown rendering and automatic conversation compaction. |
+| **Web search** | Native web search for the three top frontier models — **OpenAI, Claude, and Gemini**. |
+| **Tools** | Local, on-device tool use — get the current time, annotate a Bible passage, and more. |
+| **Bible** | Four public-domain translations (**WEB, ASV, KJV, BSB**). Highlights, notes, AI study annotations, and voiceover narration. |
+| **Appearance** | Light and dark themes, plus adjustable font scaling. |
+| **Privacy** | Everything is persisted on-device — nothing reaches a server. BYOK API keys live in the iOS Keychain and never leave the phone. |
 
-MVP complete (2026-05-10). Open work: [`TODO.md`](TODO.md). Archived milestone build log: [`docs/archived/IMPLEMENTATION_STATUS.md`](docs/archived/IMPLEMENTATION_STATUS.md).
-
-## Build & run
+## Set up & run
 
 **Prereqs:** macOS 15+, Xcode 26+, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
@@ -41,87 +85,49 @@ open Super.xcodeproj
 
 Two app schemes are generated:
 
-- **`Super`** — the SuperOS app target (Chat + Bible + Todo).
-- **`SuperBible`** — the SuperBible app target (Chat + Bible + Plans). *Planned. Wired up at milestone SB-M0 — see [`TODO.md`](TODO.md) § SuperBible.*
+- **`SuperBible`** — the flagship study-Bible app (Chat + Bible).
+- **`Super`** — the SuperOS personal app (Chat + Bible + ToDo).
 
-Pick a scheme + an iPhone simulator and ⌘R. On first launch the app seeds Apple Foundation Models as the default chat model (free, on-device, no key). To use a stronger model: Settings → Models to add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, Anthropic, etc.) and an API key. Keys live in the iOS Keychain — they never leave the device.
+Pick a scheme + an iPhone simulator and ⌘R. On first launch the app seeds **Apple Foundation Models** as the default chat model (free, on-device, no key). To use a stronger model, open **Settings → Models** and add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, Anthropic, etc.) plus an API key. **Keys live in the iOS Keychain — they never leave the device.**
 
-To run from the command line instead:
+To build from the command line instead:
 
 ```bash
-# SuperOS (current default)
-xcodebuild build \
-  -project Super.xcodeproj \
-  -scheme Super \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-  CODE_SIGNING_ALLOWED=NO
-
-# SuperBible (once SB-M0 lands)
+# SuperBible (flagship)
 xcodebuild build \
   -project Super.xcodeproj \
   -scheme SuperBible \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   CODE_SIGNING_ALLOWED=NO
+
+# SuperOS
+xcodebuild build \
+  -project Super.xcodeproj \
+  -scheme Super \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
-## Tests
+### Tests
 
 Each Swift package owns its own test suite:
 
 ```bash
-swift test --parallel                          # from Packages/Core/ or Packages/Chat/
-xcodebuild test \                              # snapshot tests need iOS sim
+swift test --parallel                          # from Packages/Core/, Packages/Chat/, Packages/Bible/, …
+xcodebuild test \                              # snapshot tests need an iOS sim
   -project Super.xcodeproj -scheme Chat \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
 ```
 
 CI runs both on every push. Coverage thresholds (per [`AGENTS.md`](AGENTS.md)): Core ≥ 80%, applets ≥ 70%.
 
-## Repository layout
-
-```
-Super/
-├── App/                       # SuperOS app target — composition root only
-├── App-SuperBible/            # SuperBible app target — composition root only (planned, SB-M0)
-├── Packages/
-│   ├── Core/                  # Shared primitives: HTTP, SSE, JSON, LLM, Tools, Ambient (shared by both apps)
-│   ├── Chat/                  # Chat applet — host surface (shared by both apps)
-│   ├── Bible/                 # Bible applet (shared by both apps)
-│   ├── Todo/                  # Todo applet (SuperOS only)
-│   └── Plans/, Memorize/, …   # SuperBible-only applets (planned)
-├── Scripts/
-│   ├── ChatLiveLLM/           # Standalone smoke runner against a real local LLM
-│   └── xcodegen-extras/       # Per-package test schemes (xcodegen can't model these from project.yml)
-├── docs/                      # Design + architecture docs (one source of truth per area)
-│   ├── PRODUCT_VISION.md
-│   ├── DESIGN.md
-│   ├── MOBILE_ARCHITECTURE.md
-│   ├── OBSERVABILITY.md       # Apple-built-in posture (no third-party SDKs)
-│   ├── Chat/                  # Chat-specific architecture + design notes
-│   ├── SuperBible/            # SuperBible-specific overview + observability
-│   └── superpowers/specs/     # Per-milestone implementation specs
-├── project.yml                # XcodeGen project definition
-├── AGENTS.md                  # Project-wide rules (CLAUDE.md is a symlink to this)
-└── TODO.md                    # Full backlog (the MVP milestone log lives at docs/archived/IMPLEMENTATION_STATUS.md)
-```
-
-## Design philosophy
-
-- **Chat is the host**, not a tab. Mini-apps render *behind* the chat in three coordinated overlay states.
-- **Bi-directional AI.** Chat drives mini-apps via tool calls; mini-apps pipe records back into chat via long-press.
-- **Offline-first.** GRDB/SQLite is the local source of truth. On-device LLMs (MLX, Apple Foundation Models) are first-class; cloud endpoints are optional.
-- **BYOK.** Super is open source; no API keys ship with the binary. Users provide their own.
-- **AI-built.** Every commit so far is the work of an AI agent under human review. The CI pipeline is the immune system that keeps that safe.
-
-See [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) §2 for the full set of principles.
-
 ## Contributing
 
-This is an experimental project; the codebase moves quickly. If you want to dig in:
+This is an experimental project and the codebase moves quickly. If you want to dig in:
 
-1. Read [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md), [`docs/DESIGN.md`](docs/DESIGN.md), and [`docs/MOBILE_ARCHITECTURE.md`](docs/MOBILE_ARCHITECTURE.md).
+1. Read [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md), [`docs/DESIGN.md`](docs/DESIGN.md), and [`docs/MOBILE_ARCHITECTURE.md`](docs/MOBILE_ARCHITECTURE.md). For SuperBible specifics, start with [`docs/SuperBible/OVERVIEW.md`](docs/SuperBible/OVERVIEW.md).
 2. Skim [`AGENTS.md`](AGENTS.md) — it codifies the conventions every PR follows (Swift 6 strict concurrency, GRDB naming, structs-vs-classes, testing rules).
-3. See [`TODO.md`](TODO.md) for what's open. The MVP milestone build log is archived at [`docs/archived/IMPLEMENTATION_STATUS.md`](docs/archived/IMPLEMENTATION_STATUS.md).
+3. See [`TODO.md`](TODO.md) for what's open.
 
 ## License
 
