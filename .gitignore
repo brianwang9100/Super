@@ -43,6 +43,9 @@ Carthage/Build/
 
 .claude/worktrees/
 
+# Superset workspace setup/teardown config — user-specific, not for the OSS repo
+.superset/
+
 # Coverage
 *.profraw
 *.profdata
