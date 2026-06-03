@@ -5,11 +5,13 @@ import SwiftUI
 /// book / translation pill.
 ///
 /// The prev / next arrows step chapters and the pill's two segments open the
-/// book and translation pickers. The arrows are pinned to the adjacent edge
-/// controls (the leading hamburger placeholder and the trailing action), so
-/// the pill's content can grow or shrink without shifting them. When verses
-/// are selected (`selectionCitation` is non-`nil`) the arrows step out and
-/// the centre slot becomes a citation pill with a clear control. The
+/// book and translation pickers. The arrows flank the pill as one centred glass
+/// cluster (a shared `glassEffectID` namespace), with the leading hamburger
+/// placeholder and the trailing action pushed to the edges so the cluster stays
+/// centred; a longer book name widens the cluster symmetrically about the pill.
+/// When verses are selected (`selectionCitation` is non-`nil`) the arrows morph
+/// *into* the centre pill and the centre slot becomes a citation pill with a
+/// clear control — the arrows resolve toward the pill, not the outer islands. The
 /// trailing slot is a sparkles `Menu` while narration is idle (Add to
 /// chat / Start a new chat / Narrate); while narration is speaking or paused
 /// the same 44pt Liquid Glass circle stays, the sparkles glyph swaps for a
@@ -29,6 +31,11 @@ struct BibleNavBar: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+
+    /// Shared namespace for the centre cluster's Liquid Glass identities so the
+    /// arrows morph into the pill (and the book pill into the citation pill)
+    /// when a selection starts or clears.
+    @Namespace private var glassNamespace
 
     let bookName: String
     let chapterNumber: Int
@@ -59,42 +66,45 @@ struct BibleNavBar: View {
         // and blend coherently rather than each compositing in isolation.
         GlassEffectContainer {
             HStack(spacing: 8) {
-                // Balances the trailing control so the centre group stays
+                // Balances the trailing control so the centre cluster stays
                 // centered; the shell's floating hamburger sits over this gap
                 // and matches its 44pt size.
                 Color.clear.frame(width: 44, height: 44)
 
-                // Arrows pin to the edge controls (hamburger / plus) rather than
-                // to the pill, so chapter / book / translation length never
-                // shifts their position. In selection mode the arrows step out
-                // and the citation pill takes the full centre slot.
-                if selectionCitation == nil {
-                    circleButton(systemImage: "chevron.left", action: onPrevious)
-                        .disabled(!canStepBackward)
-                        .opacity(canStepBackward ? 1 : 0.35)
-                        .accessibilityLabel("Previous chapter")
-                }
+                Spacer(minLength: 0)
 
-                Group {
+                // The centre cluster: arrows hug the pill and share one glass
+                // namespace, so on selection the arrows morph into the pill
+                // (toward the centre, not the outer islands) and the book pill
+                // morphs into the citation pill. The flanking `Spacer`s keep the
+                // cluster centred and far enough from the hamburger / trailing
+                // control that their glass never merges with the arrows.
+                HStack(spacing: 8) {
+                    if selectionCitation == nil {
+                        circleButton(systemImage: "chevron.left", action: onPrevious, morphID: "nav.prev")
+                            .disabled(!canStepBackward)
+                            .opacity(canStepBackward ? 1 : 0.35)
+                            .accessibilityLabel("Previous chapter")
+                    }
+
                     if let selectionCitation {
                         selectionPill(selectionCitation)
                     } else {
-                        HStack(spacing: 0) {
-                            Spacer(minLength: 0)
-                            pill
-                            Spacer(minLength: 0)
-                        }
+                        pill
+                    }
+
+                    if selectionCitation == nil {
+                        circleButton(systemImage: "chevron.right", action: onNext, morphID: "nav.next")
+                            .disabled(!canStepForward)
+                            .opacity(canStepForward ? 1 : 0.35)
+                            .accessibilityLabel("Next chapter")
                     }
                 }
-                .frame(maxWidth: .infinity)
 
-                if selectionCitation == nil {
-                    circleButton(systemImage: "chevron.right", action: onNext)
-                        .disabled(!canStepForward)
-                        .opacity(canStepForward ? 1 : 0.35)
-                        .accessibilityLabel("Next chapter")
-                }
+                Spacer(minLength: 0)
 
+                // Stable island — no morph id, so the arrows resolve toward the
+                // centre pill rather than toward this control.
                 trailingControl
             }
         }
@@ -162,7 +172,7 @@ struct BibleNavBar: View {
             .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
         .frame(height: 44)
-        .superGlassSurface(in: Capsule())
+        .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
     }
 
     /// The selection-mode centre group: the verse citation with a clear
@@ -191,7 +201,9 @@ struct BibleNavBar: View {
         .padding(.leading, 14)
         .padding(.trailing, 6)
         .frame(height: 44)
-        .superGlassSurface(in: Capsule())
+        // Same centre id as the book/translation pill so the two morph into
+        // each other across the selection transition.
+        .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
     }
 
     /// The trailing-edge control. Switches between the idle sparkles
@@ -274,14 +286,15 @@ struct BibleNavBar: View {
 
     private func circleButton(
         systemImage: String,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
+        morphID: String
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(typography.font(size: 16, weight: .medium))
                 .foregroundStyle(theme.ink)
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+                .superGlassButton(in: Circle(), morph: GlassMorphID(morphID, in: glassNamespace))
         }
         .buttonStyle(.plain)
     }
