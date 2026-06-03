@@ -394,17 +394,24 @@ struct BibleBookSheet: View {
         // chapter cell as soon as the book's row is laid out.
         let columns = BibleBookSheetViewModel.chapterGridColumns
         let rowCount = (book.chapterCount + columns - 1) / columns
-        return VStack(spacing: 6) {
-            ForEach(0..<rowCount, id: \.self) { rowIndex in
-                HStack(spacing: 6) {
-                    ForEach(0..<columns, id: \.self) { column in
-                        let number = rowIndex * columns + column + 1
-                        if number <= book.chapterCount {
-                            chapterCell(for: book, number: number)
-                        } else {
-                            Color.clear
-                                .frame(maxWidth: .infinity)
-                                .frame(height: chapterCellHeight)
+        // One shared glass sampling region for the whole grid: without it each cell's
+        // interactive glass samples independently and casts its own elevation shadow,
+        // producing the fragmented "strange shadow behind each component" artifacts.
+        // `spacing: 0` sets the merge threshold to 0, so cells share the sampling
+        // region but never merge; the 6pt VStack/HStack gap keeps them separated.
+        return SuperGlassContainer(spacing: 0) {
+            VStack(spacing: 6) {
+                ForEach(0..<rowCount, id: \.self) { rowIndex in
+                    HStack(spacing: 6) {
+                        ForEach(0..<columns, id: \.self) { column in
+                            let number = rowIndex * columns + column + 1
+                            if number <= book.chapterCount {
+                                chapterCell(for: book, number: number)
+                            } else {
+                                Color.clear
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: chapterCellHeight)
+                            }
                         }
                     }
                 }
