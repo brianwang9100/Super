@@ -96,6 +96,32 @@ struct BookAnnotationsExistenceRequestTests {
         #expect(try fetch(database) == ["GEN"])
     }
 
+    @Test("book-level rows in different books yield the full set")
+    func multipleBooksAllQualify() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .book, bookId: "GEN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "g", target: .book, bookId: "GEN",
+                    category: .summary, title: "Prologue", body: "In the beginning.",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        try await repository.replace(
+            target: .book, bookId: "JHN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "j", target: .book, bookId: "JHN",
+                    category: .summary, title: "Gospel", body: "The Word.",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        #expect(try fetch(database) == ["GEN", "JHN"])
+    }
+
     @Test("multiple book-level rows in one book yield a single set entry")
     func deduplicatedAcrossRows() async throws {
         let (repository, database) = try makeFixture()
