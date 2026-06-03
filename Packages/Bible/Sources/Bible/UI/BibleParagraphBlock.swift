@@ -126,9 +126,14 @@ struct BibleParagraphBlock: View {
                 onTap: onTapVerse
             )
         case .bubble(let spec):
+            // The trailing glyphs carry no verse-text baseline, so flag them to
+            // centre vertically in their row rather than baseline-align with the
+            // words — keeping them mid-line beside the verse text.
             trailingBubble(for: spec)
+                .layoutValue(key: CentersInRowKey.self, value: true)
         case .note(let spec):
             trailingNoteGlyph(for: spec)
+                .layoutValue(key: CentersInRowKey.self, value: true)
         }
     }
 
@@ -363,8 +368,19 @@ private struct VerseWord: View {
             .font(isPoetry ? wordFont.italic() : wordFont)
             .foregroundStyle(theme.ink)
         guard token.showsVerseNumber else { return word }
+        // Raise the marker proportionally to its resolved point size so it sits
+        // at a consistent superscript height across both scale axes. The
+        // @ScaledMetric base folds in OS Dynamic Type; `fontScale` folds in the
+        // app slider (SuperTypography applies it to the marker font the same
+        // way). 4/11 keeps the historical ratio — 4pt at the 11pt base — so the
+        // 1.0× / default-Dynamic-Type look is unchanged.
+        let markerOffset = verseNumberSize * typography.fontScale * (4.0 / 11.0)
         let number = BibleVerseNumber(number: token.verseNumber)
-            .text(color: theme.inkFaint, font: typography.font(size: verseNumberSize))
+            .text(
+                color: theme.inkFaint,
+                font: typography.font(size: verseNumberSize),
+                baselineOffset: markerOffset
+            )
         return number + Text(" ") + word
     }
 
