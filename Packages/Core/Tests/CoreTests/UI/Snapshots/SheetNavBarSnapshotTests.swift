@@ -19,7 +19,11 @@ import UIKit
 ///   `typography.font(.body)`, which maps to a *fixed* `.system(size: 17)` (no
 ///   `relativeTo:`), so it deliberately does **not** scale with the OS text-size
 ///   setting — this variant is a layout-stability regression check that the bar
-///   stays put under XXL, not an accessibility-scaling check.
+///   stays put under XXL, not an accessibility-scaling check;
+/// - a font-scale-max variant across the three themes. The same `.body` title
+///   *does* track the app font-scale slider (`size × fontScale`), so this grows
+///   the title at the `1.20` maximum — the live counterpart to the inert OS
+///   Dynamic Type axis above.
 ///
 /// The glass `X` renders its deterministic solid stand-in here (Liquid Glass
 /// captures transparent in offscreen snapshots — see `SuperGlass.swift`).
@@ -97,6 +101,21 @@ struct SheetNavBarSnapshotTests {
         record(view, named: "navbar_light_xxl", function: function)
     }
 
+    @Test("font scale max — title scales with the slider")
+    func fontScaleMax() {
+        verifyFontScaleMax(theme: .light, name: "navbar_font_scale_max_light")
+    }
+
+    @Test("font scale max — title scales with the slider (dark)")
+    func fontScaleMaxDark() {
+        verifyFontScaleMax(theme: .dark, name: "navbar_font_scale_max_dark")
+    }
+
+    @Test("font scale max — title scales with the slider (sepia)")
+    func fontScaleMaxSepia() {
+        verifyFontScaleMax(theme: .sepia, name: "navbar_font_scale_max_sepia")
+    }
+
     // MARK: - Helpers
 
     /// Default case: the no-trailing convenience init under `theme`.
@@ -123,6 +142,24 @@ struct SheetNavBarSnapshotTests {
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
         record(chrome(bar, theme: theme), named: name, function: function, sourceLocation: sourceLocation)
+    }
+
+    /// The title routes through `typography.font(.body)` at the default
+    /// `tracksFontScale: true`, so the app font-scale slider (a global size
+    /// control) grows it — 17 → 17 × 1.20 — independent of OS Dynamic Type.
+    /// This records a dedicated `navbar_font_scale_max_<theme>` baseline that
+    /// must differ from the `fontScale == 1.0` variants: the *live* counterpart
+    /// to the inert OS Dynamic Type axis the XXL test locks. `1.20` is the
+    /// slider's documented maximum (`SuperFontScale`).
+    private func verifyFontScaleMax(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let view = chrome(SheetNavBar(title: "John 3", onClose: {}), theme: theme)
+            .superTypography(.make(.serif, fontScale: 1.20))
+        record(view, named: name, function: function, sourceLocation: sourceLocation)
     }
 
     /// Pin the bar to the top of a themed card so its top inset (the one thing
