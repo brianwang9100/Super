@@ -268,19 +268,41 @@ jobs:
       - name: Pick iOS simulator
         id: sim
         run: |
-          # Pinned literally to "iPhone 17 on iOS 26.4" — both the device
-          # name and the runtime must match between CI and local recording
-          # or SwiftUI snapshot baselines drift (different screen size,
-          # safe-area insets, text-renderer build). When repinning, update
-          # this script, the AGENTS.md trio (§ "iOS testing"), and re-record
-          # every baseline under Packages/Chat/Tests/.../__Snapshots__.
+          # Pinned literally to "iPhone 17 on iOS 26.4.1 (build 23E254a)" — the
+          # device name, the runtime minor, AND the exact runtime build must
+          # match between CI and local recording or SwiftUI snapshot baselines
+          # drift (different screen size, safe-area insets, text-renderer
+          # build). A -destination can only express the minor (OS=26.4), so the
+          # build is asserted separately below: 23E244 (26.4.0) and 23E254a
+          # (26.4.1) both report as "iOS 26.4" yet render differently. When
+          # repinning, update this script (incl. RUNTIME_BUILD), the AGENTS.md
+          # trio (§ "iOS testing"), and re-record every baseline under
+          # Packages/*/Tests/.../__Snapshots__.
           #
           # Source of truth: the local PreToolUse guard
           # (.claude/hooks/enforce-snapshot-sim.py) reads the pin straight from
-          # this file — the `--json "iOS <ver>"` literal below, the
-          # `name")=="iPhone <n>"` literal, and the `xcode-version:` inputs.
-          # Keep those three shapes intact when editing, or the guard falls
-          # back to its hardcoded last-known pin.
+          # this file — the `RUNTIME_BUILD="..."` literal, the `--json "iOS
+          # <ver>"` literal, the `name")=="iPhone <n>"` literal, and the
+          # `xcode-version:` inputs. Keep those four shapes intact when editing,
+          # or the guard falls back to its hardcoded last-known pin.
+          RUNTIME_BUILD="23E254a"
+          # Assert the runner's iOS 26.4 runtime is exactly the pinned build:
+          # there must be exactly one installed iOS 26.4.x runtime and its build
+          # must be $RUNTIME_BUILD. simctl can't express a build in a
+          # -destination, and it conflates 26.4.0 + 26.4.1 under one identifier
+          # (iOS-26-4), so a runner image that swaps the bundled 26.4 build —
+          # or installs both — would silently re-render every baseline. Fail
+          # loud here instead.
+          BUILD=$(xcrun simctl list runtimes --json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); \
+                r=[x for x in d["runtimes"] if "SimRuntime.iOS-26-4" in x.get("identifier","") and x.get("isAvailable")]; \
+                print(r[0]["buildversion"] if len(r)==1 else ("NONE" if not r else "MULTIPLE"))')
+          if [ "$BUILD" != "$RUNTIME_BUILD" ]; then
+            echo "::error::Expected exactly one iOS 26.4.x runtime at build $RUNTIME_BUILD on this runner, got: $BUILD."
+            xcrun simctl list runtimes iOS
+            echo "::error::Snapshot baselines are pixel-locked to $RUNTIME_BUILD. Install it with 'sudo xcodebuild -downloadPlatform iOS -buildVersion $RUNTIME_BUILD' (and remove any other 26.4.x build), or repin + re-record."
+            exit 1
+          fi
           DEVICE=$(xcrun simctl list devices --json "iOS 26.4" \
             | python3 -c 'import json,sys; data=json.load(sys.stdin); \
                 target=next((d for r in data["devices"] for d in data["devices"][r] if d.get("name")=="iPhone 17"), None); \
@@ -291,7 +313,7 @@ jobs:
             exit 1
           fi
           echo "udid=$DEVICE" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $DEVICE (iPhone 17 / iOS 26.4)"
+          echo "Using simulator $DEVICE (iPhone 17 / iOS 26.4.1 / $RUNTIME_BUILD)"
 
       - name: Boot iOS simulator
         # Boot the simulator now so it's warm before `xcodebuild test`.

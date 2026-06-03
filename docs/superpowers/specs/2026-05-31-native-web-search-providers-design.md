@@ -338,7 +338,7 @@ All cost-gate logic lives in `ChatSession` + the tool-name convention; zero prot
 
 ## 9. Testing strategy
 
-Per root + Chat `AGENTS.md`: **LLM tests mock `LLMProvider` / never hit a real endpoint**; SSE fixtures captured once and replayed offline (`Tests/ChatTests/Fixtures/`); snapshot tests ship in the same PR as the views, recorded against CI's pinned trio (Xcode 26.4.1 / iOS 26.4 sim / iPhone 17).
+Per root + Chat `AGENTS.md`: **LLM tests mock `LLMProvider` / never hit a real endpoint**; SSE fixtures captured once and replayed offline (`Tests/ChatTests/Fixtures/`); snapshot tests ship in the same PR as the views, recorded against CI's pinned trio (Xcode 26.4.1 / iOS 26.4.1 build `23E254a` sim / iPhone 17).
 
 1. **Captured SSE fixtures (offline).** Per provider, capture real streams once (out of band) and commit raw SSE: plain text, thinking, regular tool-call, **search-with-citations**, and (Gemini) a turn with `searchEntryPoint`. Never re-fetch in CI.
 2. **Reducer unit tests.** Feed each fixture line-by-line; assert the exact `[LLMStreamEvent]` sequence including the new cases and `SourceCitation` fields (esp. Anthropic `providerEcho.encryptedContent`/`encryptedIndex`). Cover `event:`+`data:` framing and split-across-lines JSON deltas.
