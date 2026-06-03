@@ -29,14 +29,16 @@ public struct MessageList: View {
             text: String,
             toolCalls: [ToolCallItem],
             sources: [SourceCitationPillModel],
-            searchSuggestionsHTML: String?
+            searchSuggestionsHTML: String?,
+            searchSystem: String?,
+            searchQuery: String?
         )
         case compactionBanner(id: String, summary: String)
 
         public var id: String {
             switch self {
             case .userBubble(let id, _, _),
-                 .assistantText(let id, _, _, _, _, _, _),
+                 .assistantText(let id, _, _, _, _, _, _, _, _),
                  .compactionBanner(let id, _):
                 return id
             }
@@ -534,7 +536,7 @@ public struct MessageList: View {
         switch item {
         case .userBubble(_, let text, let references):
             UserBubble(text: text, references: references)
-        case .assistantText(let id, let thinking, let thinkingDurationMs, let text, let toolCalls, let sources, let searchSuggestionsHTML):
+        case .assistantText(let id, let thinking, let thinkingDurationMs, let text, let toolCalls, let sources, let searchSuggestionsHTML, let searchSystem, let searchQuery):
             AssistantMessage(
                 thinking: thinking,
                 thinkingDurationMs: thinkingDurationMs,
@@ -542,6 +544,8 @@ public struct MessageList: View {
                 toolCalls: toolCalls,
                 sources: sources,
                 searchSuggestionsHTML: searchSuggestionsHTML,
+                searchSystem: searchSystem,
+                searchQuery: searchQuery,
                 verbosity: verbosity,
                 isStreaming: isStreaming,
                 onCopyTapped: { onCopyTapped(text) },

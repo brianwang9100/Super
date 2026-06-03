@@ -30,16 +30,19 @@ struct ToolCallBlock: View {
                 isExpanded.toggle()
             } label: {
                 HStack(spacing: 8) {
+                    // Header typography is shared with `WebSearchCallCell` and
+                    // `SourceCitationsPill` so every tool-call-style cell reads
+                    // identically: subheadline icon + name, caption chevron.
                     Image(systemName: "wrench.and.screwdriver")
-                        .font(typography.font(.caption))
+                        .font(typography.font(.subheadline))
                         .foregroundStyle(theme.inkSoft)
                     Text(call.toolDisplayName)
-                        .font(typography.font(.caption))
+                        .font(typography.font(.subheadline, weight: .medium))
                         .foregroundStyle(theme.ink)
                     statusBadge
                     Spacer(minLength: 0)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(typography.font(.caption2, weight: .semibold))
+                        .font(typography.font(.caption, weight: .semibold))
                         .foregroundStyle(theme.inkFaint)
                 }
                 .padding(.horizontal, 14)

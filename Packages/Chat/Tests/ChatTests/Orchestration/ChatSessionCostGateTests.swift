@@ -117,6 +117,7 @@ struct ChatSessionCostGateTests {
             // Re-issued turn after approval: the grounded answer + a citation.
             [
                 .messageStart(id: "m2", model: "native-model-1"),
+                .searchStarted(query: "mars rover news"),
                 .textDelta(index: 0, text: "Here is what I found."),
                 .citations([SourceCitation(
                     id: "https://example.com/a#0", title: "A", url: URL(string: "https://example.com/a")!
@@ -150,6 +151,10 @@ struct ChatSessionCostGateTests {
         let assistant = messages.last { $0.role == .assistant }
         #expect(assistant?.content == "Here is what I found.")
         #expect(assistant?.attachments?.sources.count == 1)
+        // Web-search cell metadata: query from `.searchStarted`, system from the
+        // model's `"native"` backend.
+        #expect(assistant?.attachments?.searchQuery == "mars rover news")
+        #expect(assistant?.attachments?.searchSystem == "Native search")
     }
 
     @Test("gate ON: skipping answers without the sentinel and offers no further search")

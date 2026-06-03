@@ -1167,7 +1167,9 @@ public final class ChatScreenViewModel {
                     text: message.content,
                     toolCalls: calls,
                     sources: (message.attachments?.sources ?? []).map(Self.sourcePill),
-                    searchSuggestionsHTML: message.attachments?.searchSuggestionsHTML
+                    searchSuggestionsHTML: message.attachments?.searchSuggestionsHTML,
+                    searchSystem: message.attachments?.searchSystem,
+                    searchQuery: message.attachments?.searchQuery
                 ))
             case .system:
                 // System rows are not rendered in the transcript today —

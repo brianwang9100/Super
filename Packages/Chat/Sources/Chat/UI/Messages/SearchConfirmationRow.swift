@@ -38,8 +38,13 @@ struct SearchConfirmationRow: View {
             // action of consequence.
             prompt(fields: fields)
         case .success:
-            summary(icon: "magnifyingglass", text: searchedSummaryText(query: fields.query), tint: theme.inkSoft)
+            // Approved: the answer turn renders the `WebSearchCallCell` (shown
+            // whenever the turn searched, even with zero results), so a resolved
+            // summary here would duplicate it.
+            EmptyView()
         case .failed:
+            // Skipped: no search ran and the answer carries no sources, so this
+            // is the only record that the model declined to search.
             summary(icon: "minus.circle", text: "Web search skipped.", tint: theme.inkFaint)
         }
     }
@@ -114,17 +119,15 @@ struct SearchConfirmationRow: View {
 
     // MARK: - Resolved summary
 
-    private func searchedSummaryText(query: String) -> String {
-        query.isEmpty ? "Searched the web." : "Searched the web for “\(query)”."
-    }
-
     private func summary(icon: String, text: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(typography.font(.caption2))
+                .font(typography.font(.callout))
                 .foregroundStyle(tint)
             Text(text)
-                .font(typography.font(.caption))
+                // Matches the chat body size (the answer it summarizes) rather
+                // than the old caption — routed through SuperTypography.
+                .font(typography.font(.body))
                 .foregroundStyle(tint)
                 .fixedSize(horizontal: false, vertical: true)
         }

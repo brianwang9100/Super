@@ -40,9 +40,10 @@ enum DebugSearchFixture {
     /// (the real payload is richer styled HTML); rendered unmodified by the
     /// strip just like the live one.
     static let suggestionsHTML = """
-    <html><head><style>.c{font-family:-apple-system;font-size:14px;\
-    display:inline-block;padding:6px 12px;border:1px solid #ddd;\
-    border-radius:16px;margin:2px;color:#1a73e8;text-decoration:none}</style></head>\
+    <html><head><meta name="viewport" content="width=device-width,initial-scale=1">\
+    <style>html,body{margin:0;padding:0}body{font-family:-apple-system;line-height:1}\
+    .c{font-size:17px;display:inline-block;padding:10px 16px;border:1px solid #ddd;\
+    border-radius:20px;margin:0 8px 0 0;color:#1a73e8;text-decoration:none}</style></head>\
     <body><a class="c" href="https://www.google.com/search?q=mars+rover+news">mars rover news</a>\
     <a class="c" href="https://www.google.com/search?q=jezero+crater+water">jezero crater water</a></body></html>
     """
