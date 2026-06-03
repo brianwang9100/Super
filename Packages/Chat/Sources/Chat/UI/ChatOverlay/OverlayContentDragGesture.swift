@@ -5,21 +5,21 @@ import SwiftUI
 ///
 /// The chat transcript is a `ScrollView`. We want a single finger-drag on it to
 /// scroll the content normally until it reaches an edge, then — in the *same*
-/// gesture — take over resizing the chat overlay (drag down past the top edge →
-/// collapse/dismiss; drag up past the bottom edge → expand). The arbiter decides,
-/// per pan tick, whether the scroll view owns the gesture or the overlay does.
+/// gesture — take over resizing the chat overlay. The pairing is edge-specific
+/// and symmetric:
+///
+/// - at the **top** edge, a downward drag **collapses** (minimize);
+/// - at the **bottom** edge, an upward drag **expands** (maximize);
+/// - mid-content, and at the "wrong" edge for a direction, the scroll view
+///   keeps the gesture.
+///
+/// Crucially the handoff is *reversible within one gesture*: the arbiter is a
+/// signed-displacement integrator driven by the per-tick pan **delta**, not a
+/// one-shot latch. As long as the overlay is displaced from its anchor it stays
+/// in control; the instant the finger reverses far enough to bring the overlay
+/// back to its anchor, control returns to the scroll view — so "drag down to
+/// minimize, then back up to scroll" flows in a single motion.
 struct OverlayDragArbiter {
-    /// What the current pan tick should do.
-    enum Phase: Equatable {
-        /// Let the inner scroll view consume this tick; the overlay stays put.
-        case scrolling
-        /// Drive the overlay. `drivenTranslationY` is the pan translation
-        /// measured from the handoff point (`0` at the instant of handoff), so
-        /// it can be fed straight to the overlay's drag callback as if the drag
-        /// had started there — matching what `ChatDragHandle` feeds.
-        case drivingPanel(drivenTranslationY: CGFloat)
-    }
-
     /// Live scroll geometry sampled at the current tick.
     struct ScrollState: Equatable {
         /// Current vertical content offset.
@@ -42,63 +42,93 @@ struct OverlayDragArbiter {
         var atBottom: Bool { offsetY >= bottomOffsetY - Self.edgeEpsilon }
     }
 
-    /// Decide the phase for a single pan tick.
+    /// The result of integrating one pan tick.
+    struct Step: Equatable {
+        /// The overlay's new signed displacement from its settled anchor, in
+        /// points. `> 0` collapsing (dragged down from the top edge), `< 0`
+        /// expanding (dragged up from the bottom edge), `0` resting at the
+        /// anchor (scroll view owns the gesture). Fed straight to the overlay's
+        /// drag callback as a translation — matching what `ChatDragHandle`
+        /// feeds (positive height collapses, negative expands).
+        let overlayDisplacement: CGFloat
+        /// When `true`, the inner scroll view must be pinned to ``pinnedOffsetY``
+        /// this tick so the finger drives the overlay instead of scrolling.
+        /// When `false`, the scroll view owns the tick and scrolls normally.
+        let pinScroll: Bool
+        /// The content offset to pin the scroll view at while driving (the top
+        /// or bottom edge). Only meaningful when ``pinScroll`` is `true`.
+        let pinnedOffsetY: CGFloat
+    }
+
+    /// Integrate a single pan tick into the overlay's displacement.
     ///
     /// - Parameters:
     ///   - scroll: live scroll geometry this tick.
-    ///   - velocityY: current pan velocity (points/sec); positive = finger
-    ///     moving down (revealing content above → scrolling toward the top).
+    ///   - deltaY: pan translation change since the previous tick (points);
+    ///     positive = finger moving down (scrolling the content toward its top
+    ///     edge); negative = finger moving up.
+    ///   - previousDisplacement: the overlay's signed displacement carried from
+    ///     the previous tick (see ``Step/overlayDisplacement``).
     ///   - canExpand: whether the overlay can still grow (it isn't already at
-    ///     the fully-expanded anchor). Gates the up-drag handoff so that, once
-    ///     fully expanded, an up-drag scrolls the content instead of fighting a
-    ///     no-op expansion.
+    ///     the fully-expanded anchor). Gates the *start* of an expand handoff.
     ///   - canCollapse: whether the overlay can still shrink (it isn't already
-    ///     minimized). Gates the down-drag handoff symmetrically.
-    ///   - alreadyDriving: whether an earlier tick in this gesture already
-    ///     handed off to the overlay. Once driving, the gesture stays driving
-    ///     for its remainder (reversing back into scrolling requires lifting
-    ///     the finger — a deliberate v1 simplification).
-    ///   - translationY: cumulative pan translation since the gesture began.
-    ///   - handoffTranslationY: the translation captured at the handoff tick;
-    ///     only meaningful when `alreadyDriving`.
-    /// - Returns: `.drivingPanel(drivenTranslationY: 0)` on the tick that first
-    ///   hands off (the caller should capture `handoffTranslationY = translationY`
-    ///   then), the relative translation on subsequent driving ticks, or
-    ///   `.scrolling` while the scroll view still owns the gesture.
-    func resolve(
+    ///     minimized). Gates the *start* of a collapse handoff.
+    /// - Returns: the integrated ``Step`` for this tick.
+    func step(
         scroll: ScrollState,
-        velocityY: CGFloat,
+        deltaY: CGFloat,
+        previousDisplacement: CGFloat,
         canExpand: Bool,
-        canCollapse: Bool,
-        alreadyDriving: Bool,
-        translationY: CGFloat,
-        handoffTranslationY: CGFloat
-    ) -> Phase {
-        if alreadyDriving {
-            return .drivingPanel(drivenTranslationY: translationY - handoffTranslationY)
+        canCollapse: Bool
+    ) -> Step {
+        // Already displaced toward collapse (driving from the top edge).
+        if previousDisplacement > 0 {
+            let next = previousDisplacement + deltaY
+            // Reversing far enough to reach/pass the anchor hands the gesture
+            // back to the scroll view (the leftover up-delta becomes a scroll).
+            guard next > 0 else {
+                return Step(overlayDisplacement: 0, pinScroll: false, pinnedOffsetY: scroll.topOffsetY)
+            }
+            return Step(overlayDisplacement: next, pinScroll: true, pinnedOffsetY: scroll.topOffsetY)
         }
-        let draggingDown = velocityY > 0
-        let draggingUp = velocityY < 0
-        let wantsDrive: Bool
-        if !scroll.isScrollable {
+        // Already displaced toward expand (driving from the bottom edge).
+        if previousDisplacement < 0 {
+            let next = previousDisplacement + deltaY
+            guard next < 0 else {
+                return Step(overlayDisplacement: 0, pinScroll: false, pinnedOffsetY: scroll.bottomOffsetY)
+            }
+            return Step(overlayDisplacement: next, pinScroll: true, pinnedOffsetY: scroll.bottomOffsetY)
+        }
+
+        // Resting at the anchor: the scroll view owns the gesture until it
+        // reaches an edge and the finger pushes *past* it.
+        let draggingDown = deltaY > 0
+        let draggingUp = deltaY < 0
+
+        guard scroll.isScrollable else {
             // Empty state / content shorter than the viewport: nothing to
             // scroll, so the overlay drives immediately — in whichever
             // direction it can still move.
-            wantsDrive = (draggingDown && canCollapse) || (draggingUp && canExpand)
-        } else if draggingDown {
-            // Pulling down past the top edge collapses the overlay.
-            wantsDrive = scroll.atTop && canCollapse
-        } else if draggingUp {
-            // Pulling up at *either* scroll edge expands the overlay — mirroring
-            // the native sheet's "pull at the edge grows the sheet" feel, and
-            // making the up-drag a handoff trigger (not just the down-drag).
-            // Mid-content up-drags still scroll toward the bottom edge first;
-            // only at an edge (and with room to grow) does the overlay take over.
-            wantsDrive = (scroll.atTop || scroll.atBottom) && canExpand
-        } else {
-            wantsDrive = false
+            if draggingDown && canCollapse {
+                return Step(overlayDisplacement: deltaY, pinScroll: true, pinnedOffsetY: 0)
+            }
+            if draggingUp && canExpand {
+                return Step(overlayDisplacement: deltaY, pinScroll: true, pinnedOffsetY: 0)
+            }
+            return Step(overlayDisplacement: 0, pinScroll: false, pinnedOffsetY: 0)
         }
-        return wantsDrive ? .drivingPanel(drivenTranslationY: 0) : .scrolling
+
+        // At the top, pulling down past the edge collapses the overlay.
+        if scroll.atTop && draggingDown && canCollapse {
+            return Step(overlayDisplacement: deltaY, pinScroll: true, pinnedOffsetY: scroll.topOffsetY)
+        }
+        // At the bottom, pulling up past the edge expands the overlay. (An
+        // up-drag at the *top* scrolls down through content — it is NOT an
+        // expand trigger; expansion only comes from the bottom edge.)
+        if scroll.atBottom && draggingUp && canExpand {
+            return Step(overlayDisplacement: deltaY, pinScroll: true, pinnedOffsetY: scroll.bottomOffsetY)
+        }
+        return Step(overlayDisplacement: 0, pinScroll: false, pinnedOffsetY: scroll.offsetY)
     }
 }
 
@@ -147,20 +177,18 @@ import UIKit
 /// Bridges a `UIPanGestureRecognizer` into SwiftUI so a drag anywhere on the
 /// chat content can scroll the transcript and then hand off to resizing the
 /// chat overlay in one continuous motion (the nested-scroll → sheet-drag
-/// handoff a native `.sheet` performs). The decision per tick lives in the pure
-/// ``OverlayDragArbiter``; this type only samples live scroll geometry and
-/// forwards the result to the overlay's drag callbacks.
+/// handoff a native `.sheet` performs). The per-tick integration lives in the
+/// pure ``OverlayDragArbiter``; this type only samples live scroll geometry,
+/// pins the scroll view while the overlay drives, and forwards the result to
+/// the overlay's drag callbacks.
 struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
     let onChanged: (CGSize) -> Void
     let onEnded: (CGSize, CGSize) -> Void
     /// Whether the overlay can still grow / shrink from its current settled
     /// anchor. Refreshed onto the coordinator on every SwiftUI update (see
     /// ``updateUIGestureRecognizer``); the arbiter reads them live on each
-    /// pre-handoff tick. They equal the *settled* anchor's capability up to the
-    /// moment of handoff because the surface hasn't moved yet — the caller
-    /// derives them from `progress`, which stays at the settled value until a
-    /// drag height is in flight (i.e. until after handoff). So "live read" and
-    /// "settled value" coincide exactly where the handoff decision is made.
+    /// at-anchor tick to gate the *start* of a handoff (don't begin driving in
+    /// a direction the overlay can't move).
     let canExpand: Bool
     let canCollapse: Bool
 
@@ -215,15 +243,22 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         /// which the arbiter reads as "not scrollable" and drives immediately.
         private weak var scrollView: UIScrollView?
         /// Live expand/collapse capability, refreshed from the representable on
-        /// every SwiftUI update. Read at handoff to gate the drag direction so
-        /// an up-drag scrolls (rather than no-op expands) once fully expanded.
+        /// every SwiftUI update. Read when at the anchor to gate the *start* of
+        /// a handoff so an up-drag at the bottom doesn't no-op-expand once
+        /// fully expanded (and symmetrically for collapse).
         var canExpand = true
         var canCollapse = true
-        /// `true` once this gesture handed off to driving the overlay.
-        private var isDriving = false
-        /// Pan translation captured at the handoff tick; subsequent driving
-        /// ticks subtract it so the overlay sees a drag that starts at zero.
-        private var handoffTranslationY: CGFloat = 0
+
+        /// The overlay's signed displacement from its anchor, integrated across
+        /// the gesture (see ``OverlayDragArbiter/Step/overlayDisplacement``).
+        private var displacement: CGFloat = 0
+        /// Cumulative pan translation at the previous tick — subtracted to get
+        /// this tick's delta (the integrator's only motion input).
+        private var lastTranslationY: CGFloat = 0
+        /// `true` once this gesture has driven the overlay at least once. Gates
+        /// whether `.ended` fires the snap callback and whether we keep syncing
+        /// the overlay back to its anchor after a reversal.
+        private var didDrive = false
 
         init(onChanged: @escaping (CGSize) -> Void, onEnded: @escaping (CGSize, CGSize) -> Void) {
             self.onChanged = onChanged
@@ -234,54 +269,59 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
             guard let view = recognizer.view else { return }
             switch recognizer.state {
             case .began:
-                isDriving = false
-                handoffTranslationY = 0
+                displacement = 0
+                lastTranslationY = 0
+                didDrive = false
                 scrollView = Self.findScrollView(in: view)
 
             case .changed:
                 let translationY = recognizer.translation(in: view).y
-                let velocityY = recognizer.velocity(in: view).y
-                let phase = arbiter.resolve(
+                let deltaY = translationY - lastTranslationY
+                lastTranslationY = translationY
+                let step = arbiter.step(
                     scroll: scrollState(),
-                    velocityY: velocityY,
+                    deltaY: deltaY,
+                    previousDisplacement: displacement,
                     canExpand: canExpand,
-                    canCollapse: canCollapse,
-                    alreadyDriving: isDriving,
-                    translationY: translationY,
-                    handoffTranslationY: handoffTranslationY
+                    canCollapse: canCollapse
                 )
-                switch phase {
-                case .scrolling:
-                    break
-                case .drivingPanel(let driven):
-                    if isDriving {
-                        onChanged(CGSize(width: 0, height: driven))
-                    } else {
-                        // First handoff tick: anchor the relative translation
-                        // here and stop the scroll view (cleanly cancels its
-                        // pan, so it can't also scroll/bounce for the rest of
-                        // the gesture).
-                        isDriving = true
-                        handoffTranslationY = translationY
-                        scrollView?.panGestureRecognizer.isEnabled = false
-                        onChanged(.zero)
-                    }
+                displacement = step.overlayDisplacement
+                if step.pinScroll {
+                    // Counteract the scroll view's own pan for this tick so the
+                    // finger drives the overlay, not the content. Re-asserting
+                    // the edge offset every driving tick (rather than disabling
+                    // the scroll view's pan) is what keeps the handoff
+                    // reversible: the moment we stop pinning, the still-enabled
+                    // scroll pan resumes scrolling from the pinned edge.
+                    scrollView?.contentOffset.y = step.pinnedOffsetY
+                    didDrive = true
+                }
+                // Once we've driven, keep the overlay synced every tick —
+                // including the tick that returns it to the anchor (`displacement
+                // == 0`) so a reversal visibly hands back rather than freezing.
+                if didDrive {
+                    onChanged(CGSize(width: 0, height: displacement))
                 }
 
             case .ended, .cancelled, .failed:
-                let wasDriving = isDriving
-                let driven = recognizer.translation(in: view).y - handoffTranslationY
-                let velocityY = recognizer.velocity(in: view).y
-                scrollView?.panGestureRecognizer.isEnabled = true
-                isDriving = false
-                handoffTranslationY = 0
-                if wasDriving {
-                    let predicted = driven + overlayDragProjection(velocityY: velocityY)
+                if didDrive {
+                    let velocityY = recognizer.velocity(in: view).y
+                    // Only project momentum when we're still driving on release
+                    // (displacement != 0). If the gesture handed back to the
+                    // scroll view (displacement == 0), the overlay simply
+                    // settles at its anchor — the scroll view keeps its own
+                    // deceleration.
+                    let projected = displacement != 0
+                        ? displacement + overlayDragProjection(velocityY: velocityY)
+                        : 0
                     onEnded(
-                        CGSize(width: 0, height: driven),
-                        CGSize(width: 0, height: predicted)
+                        CGSize(width: 0, height: displacement),
+                        CGSize(width: 0, height: projected)
                     )
                 }
+                displacement = 0
+                lastTranslationY = 0
+                didDrive = false
 
             default:
                 break
