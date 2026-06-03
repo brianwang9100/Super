@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Internal override for the recording-pulse animation. Defaults to
@@ -194,17 +195,6 @@ public struct ChatComposer: View {
         Self.smoothstep(progress, from: 0.3, to: 0.6)
     }
 
-    /// Faint accent ring around the composer pill — fades in once the
-    /// panel surround in `ChatScreen` is taking over the lifted-surface
-    /// job. Hidden in pure pill mode (minimized) so the pill reads as a
-    /// flat capsule sitting directly on the applet, per the 2026-05-14
-    /// design feedback. Without this gate the heavy two-layer shadow
-    /// gave the minimized pill a misleading raised look.
-    private var pillShadowAlpha: Double {
-        Self.smoothstep(progress, from: 0.05, to: 0.15)
-            * (1 - Self.smoothstep(progress, from: 0.9, to: 1.0))
-    }
-
     /// Capsule padding interpolates between the prior `MinimizedChatPill`
     /// values (18 horizontal / 12 vertical) and the full composer's
     /// values (16 leading / 10 trailing, 10 top / 8 bottom).
@@ -245,6 +235,14 @@ public struct ChatComposer: View {
                 bottom: capsuleBottomPadding,
                 trailing: capsuleTrailingPadding
             ))
+            // Flat capsule in every state — the composer body deliberately does
+            // NOT use Liquid Glass. Real glass casts an unavoidable elevation
+            // shadow (no `glassEffect` API suppresses it; verified on-device),
+            // and the design calls for the composer to sit flat on the surface
+            // at every progress. So it's a plain raised fill + hairline border;
+            // the two former drop shadows are gone. Only the mic (a tappable
+            // control) keeps theme-tinted glass. The focus glow is the lone
+            // shadow — accent, focused-only — pure focus feedback, not elevation.
             .background(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .fill(theme.backgroundRaised)
@@ -254,8 +252,6 @@ public struct ChatComposer: View {
                     .stroke(isFocused ? theme.border : theme.borderFaint, lineWidth: 1)
             )
             .shadow(color: focusGlowColor, radius: 4, x: 0, y: 0)
-            .shadow(color: Color.black.opacity(0.15 * pillShadowAlpha), radius: 12, x: 0, y: 12)
-            .shadow(color: Color.black.opacity(0.10 * pillShadowAlpha), radius: 30, x: 0, y: 24)
         }
         .padding(EdgeInsets(
             top: outerTopPadding,
@@ -273,8 +269,11 @@ public struct ChatComposer: View {
         )
     }
 
+    /// Accent glow shown only while the editor is focused — pure focus
+    /// feedback. Unfocused it's `.clear` so the flat capsule sits with no
+    /// shadow at rest.
     private var focusGlowColor: Color {
-        isFocused ? theme.accent.opacity(0.12) : .black.opacity(0.05)
+        isFocused ? theme.accent.opacity(0.12) : .clear
     }
 
     /// Horizontal strip of attached verse-reference pills above the text
@@ -393,7 +392,7 @@ public struct ChatComposer: View {
                 .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(theme.backgroundSunken))
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Voice input")
@@ -408,7 +407,7 @@ public struct ChatComposer: View {
                 .font(typography.font(.callout))
                 .foregroundStyle(theme.inkSoft.opacity(0.4))
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(theme.backgroundSunken))
+                .superGlassButton(in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(true)
