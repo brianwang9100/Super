@@ -380,12 +380,10 @@ public struct ChatScreen: View {
                 // interactive (a drag starting on the composer is never
                 // hijacked). No-op on macOS.
                 .overlayContentDrag(
-                    // Gate the handoff direction on how much room the overlay
-                    // has left to move: near the expanded top an up-drag scrolls
-                    // the content instead of no-op expanding; near the minimized
-                    // floor a down-drag scrolls instead of no-op collapsing.
-                    // `progress` is the settled anchor's progress when a drag
-                    // begins (no drag height in flight yet).
+                    // Gate the handoff so an up-drag at the expanded top (or a
+                    // down-drag at the minimized floor) scrolls rather than
+                    // no-op resizing. `progress` is the settled anchor here —
+                    // no drag height is in flight until handoff.
                     canExpand: progress < 0.999,
                     canCollapse: progress > 0.001,
                     onChanged: { translation in onDragChanged?(translation) },

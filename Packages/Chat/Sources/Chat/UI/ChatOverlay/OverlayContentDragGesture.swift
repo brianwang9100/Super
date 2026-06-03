@@ -180,11 +180,15 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
     }
 
     func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        // Keep the coordinator's expand/collapse capability current. A drag's
-        // handoff decision reads these at `.began`, when the overlay is still
-        // settled, so they reflect the settled anchor at that moment.
+        // Keep *all* coordinator state current — the representable contract
+        // expects `update` to refresh everything the persisted coordinator
+        // holds. The capability flags gate the handoff direction; the closures
+        // capture `ChatOverlay`'s live per-render geometry, so a stale closure
+        // would drive the surface from the wrong settled height.
         context.coordinator.canExpand = canExpand
         context.coordinator.canCollapse = canCollapse
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
@@ -195,8 +199,15 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
     /// pan to run alongside the scroll view's.
     @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        private let onChanged: (CGSize) -> Void
-        private let onEnded: (CGSize, CGSize) -> Void
+        /// Forwarding closures, kept current by ``updateUIGestureRecognizer``.
+        /// They must be refreshed (not just captured at `makeCoordinator`)
+        /// because the call-site closures close over `ChatOverlay`'s live
+        /// `metrics` / `keyboardAwareHeight`, which are recomputed each render:
+        /// the coordinator persists across renders, so a closure captured once
+        /// would feed `updateDrag` stale geometry if the overlay's state
+        /// changed (keyboard toggle, expand via the handle) before a drag.
+        var onChanged: (CGSize) -> Void
+        var onEnded: (CGSize, CGSize) -> Void
         private let arbiter = OverlayDragArbiter()
 
         /// The inner transcript scroll view, located on `.began` and held
