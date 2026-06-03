@@ -53,6 +53,11 @@ struct AnnotationCoverageCard: View {
                         .font(typography.mono(11))
                         .foregroundStyle(theme.inkMute)
                 }
+                // Keep "value /total" on one line — at high coverage the verses
+                // column ("1,204 /31,102") would otherwise wrap; shrink to fit
+                // the third-of-width column instead.
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 Text(label)
                     .font(typography.mono(9.5))
                     .tracking(0.5)
