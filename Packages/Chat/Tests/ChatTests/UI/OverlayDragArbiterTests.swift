@@ -2,11 +2,19 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `OverlayDragArbiter` — the pure per-tick decision behind the
+/// Tests for `OverlayDragArbiter` — the pure per-tick integrator behind the
 /// content-drag → overlay-drag handoff (scroll the transcript until an edge,
-/// then resize the overlay in the same gesture) — and the `overlayDragProjection`
-/// flick helper. Resolves in-process with no UIKit, so the handoff rules are
-/// pinned without a device or simulator.
+/// then resize the overlay in the *same* gesture, reversibly) — and the
+/// `overlayDragProjection` flick helper. Resolves in-process with no UIKit, so
+/// the handoff rules are pinned without a device or simulator.
+///
+/// The model is a signed-displacement integrator: each tick takes the per-tick
+/// pan *delta* and the overlay's current displacement from its settled anchor
+/// (`> 0` collapsing from the top edge, `< 0` expanding from the bottom edge,
+/// `0` at the anchor) and returns the new displacement plus whether the inner
+/// scroll view must be pinned this tick. Because every tick is recomputed from
+/// the live edge + delta, reversing the finger hands control straight back to
+/// the scroll view — no latch.
 @Suite("OverlayDragArbiter handoff")
 struct OverlayDragArbiterTests {
     private let arbiter = OverlayDragArbiter()
@@ -24,139 +32,170 @@ struct OverlayDragArbiterTests {
         .init(offsetY: 1000, topOffsetY: 0, bottomOffsetY: 1000, isScrollable: true)
     }
 
-    // MARK: - Scroll phase
+    // MARK: - Scroll phase (at the anchor, scroll owns the gesture)
 
-    @Test("Mid-content drag lets the scroll view own the gesture")
-    func midContentScrolls() {
-        let phase = arbiter.resolve(
-            scroll: midContent(),
-            velocityY: 400,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: 60,
-            handoffTranslationY: 0
+    @Test("Mid-content down-drag lets the scroll view own the gesture")
+    func midContentDownScrolls() {
+        let step = arbiter.step(
+            scroll: midContent(), deltaY: 12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .scrolling)
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
     @Test("Mid-content up-drag scrolls toward the bottom (not an expand handoff)")
     func midContentUpScrolls() {
-        let phase = arbiter.resolve(
-            scroll: midContent(),
-            velocityY: -400,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: -60,
-            handoffTranslationY: 0
+        let step = arbiter.step(
+            scroll: midContent(), deltaY: -12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .scrolling)
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
     @Test("At the bottom, dragging down (into content) keeps scrolling")
     func atBottomDraggingDownScrolls() {
-        let phase = arbiter.resolve(
-            scroll: atBottom(),
-            velocityY: 500,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: 40,
-            handoffTranslationY: 0
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: 12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .scrolling)
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
-    // MARK: - Handoff
-
-    @Test("At the top, dragging down hands off to collapse")
-    func atTopDraggingDownHandsOff() {
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: 500,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: 80,
-            handoffTranslationY: 0
+    @Test("At the top, dragging up scrolls down through content (NOT an expand)")
+    func atTopDraggingUpScrolls() {
+        // The defect this replaces: an up-drag at the top used to expand the
+        // overlay. The overlay only maximizes from the *bottom* edge.
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: -12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .drivingPanel(drivenTranslationY: 0))
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
-    @Test("At the top, dragging up now hands off to expand (the new trigger)")
-    func atTopDraggingUpHandsOffToExpand() {
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: -500,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: -40,
-            handoffTranslationY: 0
+    // MARK: - Handoff (edge + direction specific)
+
+    @Test("At the top, dragging down hands off to collapse and pins the scroll view")
+    func atTopDraggingDownCollapses() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .drivingPanel(drivenTranslationY: 0))
+        #expect(step.overlayDisplacement == 12)
+        #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 0)
     }
 
-    @Test("At the bottom, dragging up hands off to expand")
-    func atBottomDraggingUpHandsOff() {
-        let phase = arbiter.resolve(
-            scroll: atBottom(),
-            velocityY: -500,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: -80,
-            handoffTranslationY: 0
+    @Test("At the bottom, dragging up hands off to expand and pins the scroll view")
+    func atBottomDraggingUpExpands() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .drivingPanel(drivenTranslationY: 0))
+        #expect(step.overlayDisplacement == -12)
+        #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 1000)
+    }
+
+    // MARK: - Reversible handoff (no latch)
+
+    @Test("While collapsing, a further down-delta keeps driving and stays pinned")
+    func collapsingContinues() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 10, previousDisplacement: 30,
+            canExpand: true, canCollapse: true
+        )
+        #expect(step.overlayDisplacement == 40)
+        #expect(step.pinScroll)
+    }
+
+    @Test("While collapsing, reversing up shrinks the displacement back toward the anchor")
+    func collapsingReverses() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: -10, previousDisplacement: 30,
+            canExpand: true, canCollapse: true
+        )
+        #expect(step.overlayDisplacement == 20)
+        #expect(step.pinScroll)
+    }
+
+    @Test("Reversing past the anchor releases the gesture back to the scroll view")
+    func collapsingReleasesAtAnchor() {
+        // Displacement 8, finger reverses up by 20 → would cross the anchor.
+        // The overlay returns to its anchor (0) and the scroll view takes over
+        // again — the "transition straight into a scroll within the same drag".
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: -20, previousDisplacement: 8,
+            canExpand: true, canCollapse: true
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    @Test("While expanding, reversing down past the anchor releases to the scroll view")
+    func expandingReleasesAtAnchor() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: 20, previousDisplacement: -8,
+            canExpand: true, canCollapse: true
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    @Test("While expanding, a further up-delta keeps driving and stays pinned")
+    func expandingContinues() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: -10, previousDisplacement: -30,
+            canExpand: true, canCollapse: true
+        )
+        #expect(step.overlayDisplacement == -40)
+        #expect(step.pinScroll)
     }
 
     // MARK: - Capability gating
 
-    @Test("Already fully expanded, an up-drag at the top scrolls instead of expanding")
-    func fullyExpandedTopUpScrolls() {
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: -500,
-            canExpand: false,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: -40,
-            handoffTranslationY: 0
+    @Test("Already fully expanded, an up-drag at the bottom scrolls instead of expanding")
+    func fullyExpandedBottomUpScrolls() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
+            canExpand: false, canCollapse: true
         )
-        #expect(phase == .scrolling)
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
     @Test("Already minimized, a down-drag at the top scrolls instead of collapsing")
     func fullyMinimizedTopDownScrolls() {
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: 500,
-            canExpand: true,
-            canCollapse: false,
-            alreadyDriving: false,
-            translationY: 40,
-            handoffTranslationY: 0
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 12, previousDisplacement: 0,
+            canExpand: true, canCollapse: false
         )
-        #expect(phase == .scrolling)
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
+
+    // MARK: - Non-scrollable (empty state)
 
     @Test("Non-scrollable content drives in whichever direction the overlay can move")
     func nonScrollableDrivesImmediately() {
         let nonScrollable = OverlayDragArbiter.ScrollState(
             offsetY: 0, topOffsetY: 0, bottomOffsetY: 0, isScrollable: false
         )
-        let down = arbiter.resolve(
-            scroll: nonScrollable, velocityY: 300, canExpand: true, canCollapse: true,
-            alreadyDriving: false, translationY: 30, handoffTranslationY: 0
+        let down = arbiter.step(
+            scroll: nonScrollable, deltaY: 12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        let up = arbiter.resolve(
-            scroll: nonScrollable, velocityY: -300, canExpand: true, canCollapse: true,
-            alreadyDriving: false, translationY: -30, handoffTranslationY: 0
+        let up = arbiter.step(
+            scroll: nonScrollable, deltaY: -12, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(down == .drivingPanel(drivenTranslationY: 0))
-        #expect(up == .drivingPanel(drivenTranslationY: 0))
+        #expect(down.overlayDisplacement == 12)
+        #expect(down.pinScroll)
+        #expect(up.overlayDisplacement == -12)
+        #expect(up.pinScroll)
     }
 
     @Test("Non-scrollable content won't drive past an anchor it can't move toward")
@@ -165,62 +204,22 @@ struct OverlayDragArbiterTests {
             offsetY: 0, topOffsetY: 0, bottomOffsetY: 0, isScrollable: false
         )
         // Fully expanded: an up-drag has nowhere to grow → no handoff.
-        let up = arbiter.resolve(
-            scroll: nonScrollable, velocityY: -300, canExpand: false, canCollapse: true,
-            alreadyDriving: false, translationY: -30, handoffTranslationY: 0
+        let up = arbiter.step(
+            scroll: nonScrollable, deltaY: -12, previousDisplacement: 0,
+            canExpand: false, canCollapse: true
         )
-        #expect(up == .scrolling)
+        #expect(up.overlayDisplacement == 0)
+        #expect(up.pinScroll == false)
     }
 
-    @Test("A directionless tick (zero velocity) at the top doesn't hand off")
-    func zeroVelocityAtTopScrolls() {
-        // The handoff direction is decided by velocity sign; a momentary
-        // zero-velocity sample (e.g. a hold at the edge) stays with the scroll
-        // view until the finger commits to a direction.
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: 0,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: false,
-            translationY: 0,
-            handoffTranslationY: 0
+    @Test("A directionless tick (zero delta) at the top doesn't hand off")
+    func zeroDeltaAtTopScrolls() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 0, previousDisplacement: 0,
+            canExpand: true, canCollapse: true
         )
-        #expect(phase == .scrolling)
-    }
-
-    // MARK: - Stay-driving after handoff
-
-    @Test("Once driving, subsequent ticks report translation relative to the handoff")
-    func drivingReportsRelativeTranslation() {
-        // Handed off at translationY = 80; now at 200 → overlay sees 120.
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: 600,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: true,
-            translationY: 200,
-            handoffTranslationY: 80
-        )
-        #expect(phase == .drivingPanel(drivenTranslationY: 120))
-    }
-
-    @Test("Once driving, reversing direction keeps driving (no return to scroll)")
-    func drivingStaysDrivingOnReverse() {
-        // Reversing back toward (and past) the handoff point still drives —
-        // the overlay returns to its anchor rather than the scroll view
-        // re-claiming the gesture mid-drag.
-        let phase = arbiter.resolve(
-            scroll: atTop(),
-            velocityY: -800,
-            canExpand: true,
-            canCollapse: true,
-            alreadyDriving: true,
-            translationY: 40,
-            handoffTranslationY: 80
-        )
-        #expect(phase == .drivingPanel(drivenTranslationY: -40))
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
     }
 
     // MARK: - ScrollState edge helpers
