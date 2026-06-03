@@ -1,6 +1,22 @@
 import Foundation
 import SwiftUI
 
+/// A Liquid Glass morph identity — the `glassEffectID(_:in:)` inputs bundled
+/// into one value so a `SuperGlass` caller passes a single `morph:` argument.
+/// Two glass surfaces that carry the same `id` in the same `namespace` (inside
+/// one `GlassEffectContainer`) morph into each other when one appears or
+/// disappears under an animated transaction. String ids are `Hashable &
+/// Sendable`, which is all `glassEffectID` requires.
+public struct GlassMorphID {
+    let id: String
+    let namespace: Namespace.ID
+
+    public init(_ id: String, in namespace: Namespace.ID) {
+        self.id = id
+        self.namespace = namespace
+    }
+}
+
 /// Theme-tinted Liquid Glass helpers — the single owner of how Super's nav
 /// chrome adopts iOS 26 glass, the way `SuperTypography` owns font-face
 /// resolution and `SuperTheme` owns color. Every glass control routes through
@@ -22,18 +38,27 @@ public extension View {
     /// `shape` (defaults to a circle for the standard round nav buttons).
     /// Replaces the old fill + border + drop-shadow chrome — glass supplies its
     /// own edge and elevation, so callers should drop those first. Restores the
-    /// full-`shape` hit region (see the type note above).
-    func superGlassButton(in shape: some Shape = Circle()) -> some View {
-        modifier(SuperGlassModifier(shape: shape, interactive: true))
+    /// full-`shape` hit region (see the type note above). Pass `morph` to give
+    /// the control a Liquid Glass identity so it morphs into a sibling sharing
+    /// the same id when it enters or leaves the hierarchy (see `GlassMorphID`).
+    func superGlassButton(
+        in shape: some Shape = Circle(),
+        morph: GlassMorphID? = nil
+    ) -> some View {
+        modifier(SuperGlassModifier(shape: shape, interactive: true, morph: morph))
     }
 
     /// Apply theme-tinted glass to a passive *inline* surface — the nav bar's
     /// book/translation pill and selection pill — clipped to `shape`. Use the
     /// frosted `.regular` glass these produce — never clear glass — so text over
     /// the surface stays legible. Non-interactive so the inner segment buttons
-    /// keep their own taps.
-    func superGlassSurface(in shape: some Shape) -> some View {
-        modifier(SuperGlassModifier(shape: shape, interactive: false))
+    /// keep their own taps. Pass `morph` to give the surface a Liquid Glass
+    /// identity for cross-state morphing (see `GlassMorphID`).
+    func superGlassSurface(
+        in shape: some Shape,
+        morph: GlassMorphID? = nil
+    ) -> some View {
+        modifier(SuperGlassModifier(shape: shape, interactive: false, morph: morph))
     }
 }
 
@@ -56,6 +81,7 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
 
     let shape: S
     let interactive: Bool
+    let morph: GlassMorphID?
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -72,16 +98,32 @@ private struct SuperGlassModifier<S: Shape>: ViewModifier {
     @ViewBuilder
     private func glassed(_ content: Content) -> some View {
         if Self.usesSolidFallback {
+            // No `glassEffectID` here: it's meaningful only alongside a real
+            // glass effect inside a container, and the morph it drives is
+            // invisible to offscreen snapshots anyway.
             content
                 .background(shape.fill(theme.backgroundRaised))
                 .overlay(shape.stroke(theme.borderFaint, lineWidth: 0.5))
         } else {
-            content.glassEffect(
-                interactive
-                    ? Glass.regular.tint(theme.glassTint).interactive()
-                    : Glass.regular.tint(theme.glassTint),
-                in: shape
+            morphed(
+                content.glassEffect(
+                    interactive
+                        ? Glass.regular.tint(theme.glassTint).interactive()
+                        : Glass.regular.tint(theme.glassTint),
+                    in: shape
+                )
             )
+        }
+    }
+
+    /// Tags the glassed content with its morph identity when one was supplied,
+    /// so siblings sharing the id morph into each other across hierarchy changes.
+    @ViewBuilder
+    private func morphed(_ content: some View) -> some View {
+        if let morph {
+            content.glassEffectID(morph.id, in: morph.namespace)
+        } else {
+            content
         }
     }
 
