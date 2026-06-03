@@ -53,16 +53,16 @@ struct SheetNavBarSnapshotTests {
     func trailing() {
         // Default `.expandable` sizing so the only delta from `navbar_light` is
         // the trailing control; the zero-inset `.fitsContent` axis is owned
-        // solely by the `fitsContent` test below.
+        // solely by the `fitsContent` test below. One `themeID` local ties the
+        // trailing ink and the snapshot theme together so they can't drift.
+        let themeID = SuperTheme.Identifier.light
         let bar = SheetNavBar(title: "John 3", onClose: {}) {
             Image(systemName: "stop.fill")
                 .font(.system(size: 15, weight: .semibold))
-                // Hardcoded to match `verify(theme: .light)` — keep in sync if
-                // this variant is ever recorded under another theme.
-                .foregroundStyle(SuperTheme.make(.light).ink)
+                .foregroundStyle(SuperTheme.make(themeID).ink)
                 .frame(width: 44, height: 44)
         }
-        verify(bar, theme: .light, name: "navbar_trailing")
+        verify(bar, theme: themeID, name: "navbar_trailing")
     }
 
     @Test("fitsContent pins the top inset to zero")
@@ -92,6 +92,8 @@ struct SheetNavBarSnapshotTests {
         )
         .dynamicTypeSize(.xxLarge)
 
+        // `.dynamicTypeSize` must wrap the fully-chromed view, so this test
+        // bypasses `verify()` and calls `record()` on the wrapped view directly.
         record(view, named: "navbar_light_xxl", function: function)
     }
 
