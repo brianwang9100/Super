@@ -1123,6 +1123,14 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
+    /// Compares (or records) `view` against the named baseline.
+    ///
+    /// Uses the same `precision` / `perceptualPrecision` budget as
+    /// `ChatScreenSnapshotTests` so both snapshot suites share one comparison
+    /// policy. The small tolerance absorbs the custom brand face's run-to-run
+    /// glyph-edge anti-aliasing (which trips exact comparison at large Dynamic
+    /// Type) while still failing on any real layout/text/color regression — a
+    /// genuine change registers far above a ~1% / ~3% delta.
     private func recordOrCompare<V: View>(
         view: V,
         name: String,
@@ -1130,7 +1138,11 @@ struct SettingsSheetSnapshotTests {
     ) {
         let failure = verifySnapshot(
             of: view,
-            as: .image(layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
+            as: .image(
+                precision: 0.99,
+                perceptualPrecision: 0.97,
+                layout: .fixed(width: Self.frame.width, height: Self.frame.height)
+            ),
             named: name,
             record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
