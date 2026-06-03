@@ -4,8 +4,8 @@ import Testing
 @testable import Bible
 
 /// Tests for `BookAnnotationsExistenceRequest` — the book-picker bubble
-/// visibility request returning the set of `bookId`s with any annotation
-/// rows.
+/// visibility request returning the set of `bookId`s carrying a book-level
+/// annotation (chapter- and verse-level rows don't count).
 @Suite("BookAnnotationsExistenceRequest")
 struct BookAnnotationsExistenceRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -27,8 +27,24 @@ struct BookAnnotationsExistenceRequestTests {
         #expect(try fetch(database).isEmpty)
     }
 
-    @Test("any annotation row makes its book appear in the set")
-    func anyAnnotationCountsTheBook() async throws {
+    @Test("a book-level annotation makes its book appear in the set")
+    func bookLevelAnnotationCountsTheBook() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .book, bookId: "GEN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "g", target: .book, bookId: "GEN",
+                    category: .summary, title: "Prologue", body: "In the beginning.",
+                    source: .user, modelId: "m", createdAt: t0
+                )
+            ]
+        )
+        #expect(try fetch(database) == ["GEN"])
+    }
+
+    @Test("chapter- and verse-level annotations do not count the book")
+    func subBookAnnotationsExcluded() async throws {
         let (repository, database) = try makeFixture()
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
@@ -41,34 +57,21 @@ struct BookAnnotationsExistenceRequestTests {
                 )
             ]
         )
-        #expect(try fetch(database) == ["ROM"])
-    }
-
-    @Test("multiple rows in one book yield a single set entry")
-    func deduplicatedAcrossRows() async throws {
-        let (repository, database) = try makeFixture()
         try await repository.replace(
-            target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
+            target: .chapter, bookId: "JHN", chapterNumber: 3, verseStart: nil, verseEnd: nil,
             inserting: [
                 BibleAnnotationRecord(
-                    id: "a", target: .verse, bookId: "ROM",
-                    chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "T", body: ".",
+                    id: "j", target: .chapter, bookId: "JHN", chapterNumber: 3,
+                    category: .summary, title: "Summary", body: "Nicodemus.",
                     source: .user, modelId: "m", createdAt: t0
-                ),
-                BibleAnnotationRecord(
-                    id: "b", target: .verse, bookId: "ROM",
-                    chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "U", body: ".",
-                    source: .user, modelId: "m", createdAt: t0
-                ),
+                )
             ]
         )
-        #expect(try fetch(database) == ["ROM"])
+        #expect(try fetch(database).isEmpty)
     }
 
-    @Test("rows in different books yield the full set")
-    func multipleBooks() async throws {
+    @Test("a book with only sub-book annotations stays out even when another book qualifies")
+    func mixedBooksReturnOnlyBookLevel() async throws {
         let (repository, database) = try makeFixture()
         try await repository.replace(
             target: .book, bookId: "GEN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
@@ -90,6 +93,27 @@ struct BookAnnotationsExistenceRequestTests {
                 )
             ]
         )
-        #expect(try fetch(database) == ["GEN", "JHN"])
+        #expect(try fetch(database) == ["GEN"])
+    }
+
+    @Test("multiple book-level rows in one book yield a single set entry")
+    func deduplicatedAcrossRows() async throws {
+        let (repository, database) = try makeFixture()
+        try await repository.replace(
+            target: .book, bookId: "GEN", chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "a", target: .book, bookId: "GEN",
+                    category: .summary, title: "T", body: ".",
+                    source: .user, modelId: "m", createdAt: t0
+                ),
+                BibleAnnotationRecord(
+                    id: "b", target: .book, bookId: "GEN",
+                    category: .reference, title: "U", body: ".",
+                    source: .user, modelId: "m", createdAt: t0
+                ),
+            ]
+        )
+        #expect(try fetch(database) == ["GEN"])
     }
 }
