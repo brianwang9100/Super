@@ -15,10 +15,15 @@ struct BibleVerseNumber {
     ///     caller (`BibleParagraphBlock`) resolves it through `SuperTypography`
     ///     so the number scales with the app font-scale slider and OS Dynamic
     ///     Type alongside the verse words it precedes.
-    func text(color: Color, font: Font) -> Text {
+    ///   - baselineOffset: how far to raise the marker, in points. The caller
+    ///     derives it from the resolved marker size (rather than a constant) so
+    ///     the superscript sits at a consistent height across both scale axes —
+    ///     a fixed offset reads as floating-high once the slider shrinks the
+    ///     marker.
+    func text(color: Color, font: Font, baselineOffset: CGFloat) -> Text {
         Text("\(number)")
             .font(font)
             .foregroundStyle(color)
-            .baselineOffset(4)
+            .baselineOffset(baselineOffset)
     }
 }

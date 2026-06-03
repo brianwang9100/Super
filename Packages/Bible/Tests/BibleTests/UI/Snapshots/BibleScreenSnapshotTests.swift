@@ -90,6 +90,24 @@ struct BibleScreenSnapshotTests {
                theme: .sepia, fontScale: 1.2, name: "populated_font_scale_max_sepia")
     }
 
+    @Test("1 Peter 2 scales with the app font-scale slider at min in the light theme")
+    func populatedFontScaleMinLight() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .light, fontScale: 0.8, name: "populated_font_scale_min_light")
+    }
+
+    @Test("1 Peter 2 scales with the app font-scale slider at min in the dark theme")
+    func populatedFontScaleMinDark() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .dark, fontScale: 0.8, name: "populated_font_scale_min_dark")
+    }
+
+    @Test("1 Peter 2 scales with the app font-scale slider at min in the sepia theme")
+    func populatedFontScaleMinSepia() async throws {
+        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
+               theme: .sepia, fontScale: 0.8, name: "populated_font_scale_min_sepia")
+    }
+
     @Test("Genesis 1 disables the previous arrow and drops the previous footer card")
     func genesisStart() async throws {
         verify(await screen(at: BiblePosition(bookId: "GEN", chapterNumber: 1)),
