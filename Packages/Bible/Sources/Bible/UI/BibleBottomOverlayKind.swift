@@ -1,3 +1,5 @@
+import CoreGraphics
+
 /// Which bottom-anchored sheet is currently presented over the reader,
 /// with narration taking precedence over the verse-selection action sheet.
 ///
@@ -18,4 +20,16 @@ enum BibleBottomOverlayKind: Equatable, Identifiable {
     /// since this enum has no associated values, `Hashable` (and `Equatable`)
     /// is synthesized automatically, so `ID == Self` satisfies it for free.
     var id: Self { self }
+
+    /// First-paint height for this kind's `.fitsContent` sheet, the single
+    /// source the sheet's `estimatedHeight:` and the reader's bottom scroll
+    /// reserve both read from. Slightly generous so the sheet contracts to fit
+    /// rather than clipping a frame; the reader reserves this plus a margin so
+    /// the last verses clear the floating sheet instead of hiding behind it.
+    var estimatedSheetHeight: CGFloat {
+        switch self {
+        case .selection: 280
+        case .narration: 360
+        }
+    }
 }

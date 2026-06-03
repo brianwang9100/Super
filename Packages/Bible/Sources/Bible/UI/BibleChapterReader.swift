@@ -66,8 +66,12 @@ struct BibleChapterReader: View {
     ///   - bottomOverlayKind: which bottom sheet is presented over the reader.
     ///     The paired selection auto-scroll runs only for `.selection` (lifting
     ///     the just-selected verse clear of the action sheet); `.narration`
-    ///     leaves narration's own follow-scroll the sole driver. The sheets
-    ///     float above the reader, so this no longer drives a content inset.
+    ///     leaves narration's own follow-scroll the sole driver. Either kind also
+    ///     grows the reader's bottom scroll reserve to the sheet's height plus a
+    ///     margin (see `bottomClearHeight(for:)`): the sheets float over the
+    ///     still-interactive page without a scrim, so without the reserve the
+    ///     last verses would stay hidden behind the sheet instead of scrolling
+    ///     clear of it.
     ///   - onClearSelection: invoked when a tap lands on the column but misses
     ///     every verse word.
     ///   - pendingScrollVerse: verse number to scroll to on appear and on
@@ -258,7 +262,10 @@ struct BibleChapterReader: View {
 
                     // Bottom inset so the chat overlay's minimized pill doesn't
                     // obscure the footer — mirrors the shell's chat-pill reserve.
-                    Color.clear.frame(height: Self.chatPillHeight)
+                    // While a floating action / narration sheet is up this grows
+                    // to that sheet's height plus a margin so the last verses can
+                    // scroll clear of it instead of staying stuck behind it.
+                    Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind))
                 }
                 .padding(.horizontal, 26)
                 // Top inset clears the floating nav bar; the bar's gradient
@@ -448,6 +455,25 @@ struct BibleChapterReader: View {
     /// always reserves at the bottom of its scroll content, so the chapter
     /// footer settles above the pill rather than behind it.
     static let chatPillHeight: CGFloat = 76
+
+    /// Breathing room added above a presented sheet's height in the reader's
+    /// bottom scroll reserve, so the last verse rests a comfortable gap above
+    /// the sheet's top edge rather than flush against it. Matches the
+    /// `bottomReserve` the pre-native-sheet screen folded into its inset math.
+    static let overlayBottomReserve: CGFloat = 100
+
+    /// Bottom scroll clearance to reserve below the chapter footer. With no
+    /// sheet up that's just the chat-pill reserve; while the floating action or
+    /// narration sheet is presented it's that sheet's height plus
+    /// `overlayBottomReserve`, so the last verses + footer can scroll clear of
+    /// the sheet instead of staying behind it (the sheets float over the
+    /// still-interactive page with no scrim, so the reader must make the room).
+    /// Factored out as a pure function so a unit test can cover it without a
+    /// SwiftUI host.
+    static func bottomClearHeight(for kind: BibleBottomOverlayKind?) -> CGFloat {
+        guard let kind else { return chatPillHeight }
+        return kind.estimatedSheetHeight + overlayBottomReserve
+    }
 
     /// Decide whether a narration advance should auto-scroll. Factored
     /// out so a unit test can cover the predicate without standing up a
