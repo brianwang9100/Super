@@ -913,6 +913,14 @@ private struct BackdropLayer: View, @MainActor Equatable {
     /// `.make(id)`. `chatProgress`/`chatSemiProgress` stay in so the dim
     /// keeps tracking a live drag.
     ///
+    /// Bound on excluding `onBackdropTap`: that closure captures
+    /// `AppShell`'s `reduceMotion`, so a Reduce Motion toggle while every
+    /// other prop is unchanged leaves the skipped layer holding a stale
+    /// closure. Observable only as a one-update-late animation curve if the
+    /// user taps the dimmed backdrop while semi-expanded before any other
+    /// state change, and self-correcting on the next `==`-failing update —
+    /// accepted as cosmetic.
+    ///
     /// Paired with `.equatable()` at the call site so SwiftUI skips this
     /// body when these inputs are unchanged. Safe because the applet-switch
     /// re-render is driven by `AppShell.body` observing `registry.activeID`
