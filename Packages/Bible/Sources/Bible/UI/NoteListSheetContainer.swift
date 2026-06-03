@@ -31,6 +31,8 @@ struct NoteListSheetContainer: View {
     /// straight in composition rather than on the list.
     let autoCompose: Bool
     let bottomInset: CGFloat
+    /// Dismisses the sheet from the nav bar's leading close button.
+    let onClose: () -> Void
     /// Persist a new note with this body on `spec`.
     let onCreate: (String) -> Void
     /// Replace note `id`'s body.
@@ -53,6 +55,7 @@ struct NoteListSheetContainer: View {
         citation: String,
         autoCompose: Bool = false,
         bottomInset: CGFloat = 0,
+        onClose: @escaping () -> Void,
         onCreate: @escaping (String) -> Void,
         onUpdate: @escaping (_ id: String, _ body: String) -> Void,
         onDelete: @escaping (_ id: String) -> Void
@@ -61,6 +64,7 @@ struct NoteListSheetContainer: View {
         self.citation = citation
         self.autoCompose = autoCompose
         self.bottomInset = bottomInset
+        self.onClose = onClose
         self.onCreate = onCreate
         self.onUpdate = onUpdate
         self.onDelete = onDelete
@@ -77,6 +81,7 @@ struct NoteListSheetContainer: View {
         NoteListSheet(
             citation: citation,
             items: items,
+            onClose: onClose,
             onCompose: { editing = .create },
             onSelect: { id in
                 guard let item = items.first(where: { $0.id == id }) else { return }

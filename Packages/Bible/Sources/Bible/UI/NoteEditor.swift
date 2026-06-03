@@ -70,7 +70,17 @@ struct NoteEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            // `.fitsContent` pins the nav-bar top inset to 0 — correct here
+            // because the editor presents with its drag indicator hidden (a
+            // commit/cancel surface), so there's no grabber to clear. The
+            // leading ✕ is Cancel; Save rides the trailing slot.
+            SheetNavBar(
+                title: mode == .edit ? "Edit note" : "New note",
+                sizing: .fitsContent,
+                onClose: onCancel
+            ) {
+                saveButton
+            }
             Rectangle()
                 .fill(theme.borderFaint)
                 .frame(height: 0.5)
@@ -80,9 +90,11 @@ struct NoteEditor: View {
                 deleteSection
             }
         }
-        // Top clearance for the system drag indicator now that the native
-        // `.sheet` supplies it in place of the removed custom grabber.
-        .padding(.top, 10)
+        // The editor always presents at `.large` (full height) with no drag
+        // indicator, so its nav bar would otherwise hug the top safe-area edge.
+        // This margin gives the ✕ / ✓ buttons room to breathe below the sheet's
+        // rounded top corner — the `.fitsContent` nav-bar inset stays 0.
+        .padding(.top, 14)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
                 .fill(theme.background)
@@ -100,57 +112,26 @@ struct NoteEditor: View {
         }
     }
 
-    private var toolbar: some View {
-        ZStack {
-            Text(mode == .edit ? "Edit note" : "New note")
-                .font(typography.font(size: titleSize, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            HStack {
-                circleButton(symbol: "xmark", accent: false, enabled: true, action: onCancel)
-                    .accessibilityLabel("Cancel")
-                Spacer()
-                circleButton(symbol: "checkmark", accent: true, enabled: canSave) {
-                    // `canSave` gates on the trimmed value; forward the
-                    // trimmed text too so a body of only whitespace can't be
-                    // saved past the guard and leading/trailing space isn't
-                    // persisted.
-                    onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-                .accessibilityLabel("Save note")
-                .disabled(!canSave)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
-    }
-
-    private func circleButton(
-        symbol: String,
-        accent: Bool,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
+    /// **✓** that commits the note, hosted in the nav bar's trailing slot;
+    /// disabled + dimmed until the body has non-whitespace content. Theme-tinted
+    /// glass to match the leading close button.
+    private var saveButton: some View {
+        Button {
+            // `canSave` gates on the trimmed value; forward the trimmed text
+            // too so a body of only whitespace can't be saved past the guard
+            // and leading/trailing space isn't persisted.
+            onSave(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        } label: {
+            Image(systemName: "checkmark")
                 .font(typography.font(size: 16, weight: .semibold))
-                .foregroundStyle(symbolColor(accent: accent, enabled: enabled))
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(fillColor(accent: accent, enabled: enabled)))
-                .contentShape(Circle())
-                .opacity(enabled ? 1 : 0.6)
+                .foregroundStyle(canSave ? theme.ink : theme.inkMute)
+                .frame(width: 44, height: 44)
+                .superGlassButton(in: Circle())
+                .opacity(canSave ? 1 : 0.6)
         }
         .buttonStyle(.plain)
-    }
-
-    private func fillColor(accent: Bool, enabled: Bool) -> Color {
-        guard accent else { return theme.backgroundSunken }
-        return enabled ? theme.accent : theme.backgroundSunken
-    }
-
-    private func symbolColor(accent: Bool, enabled: Bool) -> Color {
-        guard accent else { return theme.inkSoft }
-        return enabled ? theme.accentInk : theme.inkMute
+        .disabled(!canSave)
+        .accessibilityLabel("Save note")
     }
 
     private var caption: some View {

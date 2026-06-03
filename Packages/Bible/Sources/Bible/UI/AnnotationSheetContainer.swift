@@ -54,6 +54,8 @@ struct AnnotationSheetContainer: View {
     /// reappear alongside a toast.
     let dispatchStatus: BibleAnnotationDispatchStatus?
     let bottomInset: CGFloat
+    /// Dismisses the sheet from the nav bar's leading close button.
+    let onClose: () -> Void
     let onRegenerate: () -> Void
     let onAddAllToChat: ([BibleAnnotationRecord]) -> Void
     let onCardAddToChat: (BibleAnnotationRecord) -> Void
@@ -86,6 +88,7 @@ struct AnnotationSheetContainer: View {
         citation: String,
         catalog: BibleBookCatalog,
         repository: (any BibleAnnotationRepository)?,
+        onClose: @escaping () -> Void,
         onRegenerate: @escaping () -> Void,
         onAddAllToChat: @escaping ([BibleAnnotationRecord]) -> Void,
         onCardAddToChat: @escaping (BibleAnnotationRecord) -> Void,
@@ -100,6 +103,7 @@ struct AnnotationSheetContainer: View {
         self.citation = citation
         self.catalog = catalog
         self.repository = repository
+        self.onClose = onClose
         self.onRegenerate = onRegenerate
         self.onAddAllToChat = onAddAllToChat
         self.onCardAddToChat = onCardAddToChat
@@ -116,6 +120,7 @@ struct AnnotationSheetContainer: View {
         AnnotationSheet(
             citation: citation,
             cards: cards,
+            onClose: onClose,
             onRegenerate: onRegenerate,
             onAddAllToChat: { onAddAllToChat(records) },
             onCardAddToChat: { id in

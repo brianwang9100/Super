@@ -49,20 +49,28 @@ public struct SheetNavBar<Trailing: View>: View {
     @Environment(\.superTypography) private var typography
 
     private let title: String
+    private let subtitle: String?
     private let sizing: SheetSizing
     private let onClose: () -> Void
     private let trailing: Trailing
 
-    /// - Parameter sizing: the sheet's detent kind. Drives the top clearance
-    ///   for the system drag indicator so no caller tunes a margin by hand —
-    ///   see ``SheetSizing``. Defaults to `.expandable`.
+    /// - Parameters:
+    ///   - subtitle: an optional small caption rendered under the title — used
+    ///     by the annotation ("ANNOTATIONS") and note-list ("{n} Notes") sheets
+    ///     to keep the secondary label their bespoke headers carried. `nil`
+    ///     renders the title alone.
+    ///   - sizing: the sheet's detent kind. Drives the top clearance for the
+    ///     system drag indicator so no caller tunes a margin by hand — see
+    ///     ``SheetSizing``. Defaults to `.expandable`.
     public init(
         title: String,
+        subtitle: String? = nil,
         sizing: SheetSizing = .expandable,
         onClose: @escaping () -> Void,
         @ViewBuilder trailing: () -> Trailing
     ) {
         self.title = title
+        self.subtitle = subtitle
         self.sizing = sizing
         self.onClose = onClose
         self.trailing = trailing()
@@ -80,13 +88,36 @@ public struct SheetNavBar<Trailing: View>: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
 
-            Text(title)
-                .font(typography.font(.body, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .frame(maxWidth: .infinity)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(typography.font(.body, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .accessibilityAddTraits(.isHeader)
+                if let subtitle {
+                    // Small mono caption matching the tracked, faint style the
+                    // annotation / note-list headers used before they unified
+                    // behind this bar. Like the title, it tracks the app
+                    // font-scale slider but stays inert to OS Dynamic Type
+                    // (`typography.font(size:)`, not `@ScaledMetric`).
+                    //
+                    // Deliberate tradeoff: `NoteListSheet`'s old "{n} Notes"
+                    // count used `@ScaledMetric(relativeTo: .caption2)` and so
+                    // grew with OS Dynamic Type. Unifying it here drops that —
+                    // by design, so the caption stays visually subordinate to a
+                    // title that is itself OS-DT-inert (a subtitle that scaled
+                    // with OS DT would outgrow the title above it at XXXL). Both
+                    // axes still compose via the slider, which scales the whole
+                    // bar together.
+                    Text(subtitle)
+                        .font(typography.font(size: 11, weight: .medium, design: .monospaced))
+                        .tracking(0.6)
+                        .foregroundStyle(theme.inkFaint)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
 
             // Fixed 44pt box mirroring the close button so the centered title
             // is balanced; an empty slot renders an invisible spacer.
@@ -105,8 +136,13 @@ public struct SheetNavBar<Trailing: View>: View {
 public extension SheetNavBar where Trailing == Color {
     /// Header with no trailing control — the slot becomes an invisible 44pt
     /// spacer so the title stays centered against the leading close button.
-    init(title: String, sizing: SheetSizing = .expandable, onClose: @escaping () -> Void) {
-        self.init(title: title, sizing: sizing, onClose: onClose) { Color.clear }
+    init(
+        title: String,
+        subtitle: String? = nil,
+        sizing: SheetSizing = .expandable,
+        onClose: @escaping () -> Void
+    ) {
+        self.init(title: title, subtitle: subtitle, sizing: sizing, onClose: onClose) { Color.clear }
     }
 }
 
