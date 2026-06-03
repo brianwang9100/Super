@@ -189,11 +189,12 @@ struct NarrationTransportSheet: View {
             Image(systemName: glyph)
                 .font(typography.font(size: 22, weight: .bold))
                 .foregroundStyle(theme.ink)
-                // Prominent 56pt — the largest control in the card — but
-                // interactive Liquid Glass like the rest of the transport
-                // rather than an accent fill.
+                // Prominent 56pt — the largest control in the card. Its glass
+                // is biased toward the theme accent (vs. the neutral tint on
+                // the skip/stop controls) so the primary transport action
+                // reads as primary, without a hard filled-accent disc.
                 .frame(width: 56, height: 56)
-                .superGlassButton(in: Circle())
+                .superGlassButton(in: Circle(), tint: theme.accent)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
