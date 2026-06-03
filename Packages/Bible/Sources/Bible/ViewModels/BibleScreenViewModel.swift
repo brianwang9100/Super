@@ -396,13 +396,13 @@ public final class BibleScreenViewModel {
         clearSelection()
     }
 
-    /// Toggle `color` across the selection, then leave selection mode. Tapping
-    /// a colour paints every selected verse with it — *unless* every selected
-    /// verse already carries exactly that colour, in which case the tap clears
-    /// them (re-tapping the active colour is a natural way to remove a
-    /// highlight). The write is asynchronous; the chapter's reactive `@Query`
-    /// repaints once it lands. A no-op without a highlight store or with
-    /// nothing selected.
+    /// Toggle `color` across the selection, leaving the selection (and the
+    /// action sheet) intact so the user can keep adjusting. Tapping a colour
+    /// paints every selected verse with it — *unless* every selected verse
+    /// already carries exactly that colour, in which case the tap clears them
+    /// (re-tapping the active colour is a natural way to remove a highlight).
+    /// The write is asynchronous; the chapter's reactive `@Query` repaints once
+    /// it lands. A no-op without a highlight store or with nothing selected.
     public func applyHighlight(_ color: BibleHighlightColor) {
         writeHighlights(failureMessage: "Couldn't save the highlight.") {
             repository, verses, bookId, chapterNumber, now in
@@ -428,7 +428,8 @@ public final class BibleScreenViewModel {
         }
     }
 
-    /// Clear the highlight on every selected verse, then leave selection mode.
+    /// Clear the highlight on every selected verse, leaving the selection (and
+    /// the action sheet) intact so the user can keep adjusting.
     public func clearHighlight() {
         writeHighlights(failureMessage: "Couldn't clear the highlight.") {
             repository, verses, bookId, chapterNumber, now in
@@ -441,13 +442,14 @@ public final class BibleScreenViewModel {
     }
 
     /// Run `mutate` for the selected verses on a background task chained after
-    /// any prior highlight write, then clear the selection. The highlight
+    /// any prior highlight write. The selection (and the action sheet) is left
+    /// intact so the user can keep adjusting the highlight. The highlight
     /// actions — toggle and clear — differ only in this mutation block and in
     /// the toast shown when it fails.
     ///
     /// - Parameter failureMessage: shown in the toast if the mutation throws.
-    ///   The selection clears synchronously, so without this a failed write
-    ///   would read as success — the chapter just never repaints.
+    ///   The write is fire-and-forget, so without this a failed write would
+    ///   read as success — the chapter just never repaints.
     private func writeHighlights(
         failureMessage: String,
         _ mutate: @escaping @Sendable (
@@ -469,7 +471,6 @@ public final class BibleScreenViewModel {
                 self?.toast = failureMessage
             }
         }
-        clearSelection()
     }
 
     /// Build a `RecordReference` for the current verse selection — its
