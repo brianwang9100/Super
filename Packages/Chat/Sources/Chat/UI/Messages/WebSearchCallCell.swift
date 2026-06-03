@@ -62,13 +62,22 @@ struct WebSearchCallCell: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
+                    // Mirror `ToolCallBlock`'s expanded body exactly: a plain
+                    // monospace line for the identifier (SYSTEM ≈ FUNCTION), and
+                    // bordered monospace code blocks for QUERY/RESULTS (≈
+                    // INPUT/RESULT).
                     if let system, !system.isEmpty {
-                        section("SYSTEM", value: system)
+                        sectionLabel("SYSTEM")
+                        Text(system)
+                            .font(typography.mono(11, relativeTo: .caption2))
+                            .foregroundStyle(theme.inkSoft)
                     }
                     if let query, !query.isEmpty {
-                        section("QUERY", value: "“\(query)”")
+                        sectionLabel("QUERY")
+                        monospaceBlock(query)
                     }
-                    section("RESULTS", value: resultsLabel)
+                    sectionLabel("RESULTS")
+                    monospaceBlock(resultsLabel)
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
@@ -107,20 +116,27 @@ struct WebSearchCallCell: View {
         }
     }
 
-    /// One labeled detail row, mirroring `ToolCallBlock`'s INPUT/RESULT panels
-    /// (a small caps label over the value), but with prose values rather than
-    /// monospace JSON.
-    private func section(_ label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(typography.font(.caption2, weight: .medium))
-                .tracking(0.5)
-                .foregroundStyle(theme.inkFaint)
-            Text(value)
-                .font(typography.font(.subheadline))
+    /// Small-caps section label, identical to `ToolCallBlock`'s.
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(typography.font(.caption2, weight: .medium))
+            .tracking(0.5)
+            .foregroundStyle(theme.inkFaint)
+    }
+
+    /// Bordered, horizontally-scrolling monospace code block — identical to
+    /// `ToolCallBlock`'s INPUT/RESULT panel, so the query and results read like
+    /// a tool call's input/output.
+    private func monospaceBlock(_ text: String) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(text)
+                .font(typography.mono(11, relativeTo: .caption2))
                 .foregroundStyle(theme.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
+                .padding(10)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(theme.background)
+        )
     }
 }

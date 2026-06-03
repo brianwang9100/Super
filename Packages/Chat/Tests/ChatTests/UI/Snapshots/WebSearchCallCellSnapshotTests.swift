@@ -37,22 +37,22 @@ struct WebSearchCallCellSnapshotTests {
 
     @Test("expanded, light")
     func expandedLight() {
-        verify(expanded: true, theme: .light, height: 190, name: "web_search_cell_expanded_light")
+        verify(expanded: true, theme: .light, height: 240, name: "web_search_cell_expanded_light")
     }
 
     @Test("expanded, dark")
     func expandedDark() {
-        verify(expanded: true, theme: .dark, height: 190, name: "web_search_cell_expanded_dark")
+        verify(expanded: true, theme: .dark, height: 240, name: "web_search_cell_expanded_dark")
     }
 
     @Test("expanded, sepia")
     func expandedSepia() {
-        verify(expanded: true, theme: .sepia, height: 190, name: "web_search_cell_expanded_sepia")
+        verify(expanded: true, theme: .sepia, height: 240, name: "web_search_cell_expanded_sepia")
     }
 
     @Test("expanded dynamic type XXL")
     func expandedXXL() {
-        verify(expanded: true, theme: .light, dynamicType: .xxLarge, height: 280, name: "web_search_cell_expanded_light_xxl")
+        verify(expanded: true, theme: .light, dynamicType: .xxLarge, height: 360, name: "web_search_cell_expanded_light_xxl")
     }
 
     private func verify(
