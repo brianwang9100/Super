@@ -197,6 +197,8 @@ Snapshot baselines are pixel-exact comparisons. A baseline recorded on one Xcode
 
 Before recording new snapshot baselines, confirm the local Xcode + runtime + device match CI's resolved trio. If they can't match exactly, document the gap and the chosen mitigation (e.g., perceptual tolerance, deferred variant) in the PR description.
 
+**Test on a dedicated, per-worktree simulator — not the shared booted one.** Because work happens across many parallel worktrees on one machine (see *Worktree discipline*), the shared booted simulator is contended: another session's app install, launch, or snapshot run collides with yours and produces confusing "stale build" / wrong-state results. For interactive verification and app install/launch, create a fresh sim that still matches CI's pinned device + runtime — `xcrun simctl create "SB-<worktree-name>" "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4` — boot it, and install/launch there. **Delete that sim when the worktree's PR merges**, the same teardown trigger as the worktree itself (verify `MERGED`, then `xcrun simctl shutdown <id>` + `simctl delete <id>`); keep it alive while the branch is in flight.
+
 ### 6. PR description must state what was tested
 
 Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
