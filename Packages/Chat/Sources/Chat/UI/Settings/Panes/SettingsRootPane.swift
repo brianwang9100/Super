@@ -11,6 +11,11 @@ import SwiftUI
 struct SettingsRootPane: View {
     let viewModel: SettingsViewModel
 
+    /// Applet-contributed rows (e.g. Bible's "Annotations"), injected by the
+    /// composition root — rendered in their own group between the system group
+    /// and Data/About. Empty in previews/tests.
+    @Environment(\.appletSettingsContributions) private var appletContributions
+
     var body: some View {
         VStack(spacing: 0) {
             SettingsGroup {
@@ -60,6 +65,20 @@ struct SettingsRootPane: View {
                     borderBottom: false,
                     action: { viewModel.openPane(.search) }
                 )
+            }
+
+            if !appletContributions.isEmpty {
+                SettingsGroup {
+                    ForEach(Array(appletContributions.enumerated()), id: \.element.id) { index, contribution in
+                        SettingsRow(
+                            icon: contribution.icon,
+                            label: contribution.label,
+                            value: contribution.makeValue(),
+                            borderBottom: index < appletContributions.count - 1,
+                            action: { viewModel.openPane(.appletContributed(id: contribution.id, title: contribution.label)) }
+                        )
+                    }
+                }
             }
 
             SettingsGroup {

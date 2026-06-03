@@ -34,6 +34,11 @@ struct SuperBibleAppDependencies {
     /// kill the headless dispatch path.
     let bibleAnnotateDispatcher: BibleAnnotateDispatcher
 
+    /// Applet-contributed Settings surfaces (Bible's "Annotations" hub),
+    /// injected into the shell's environment by `SuperBibleContentView` so the
+    /// Chat-hosted Settings can render them without importing Bible.
+    let appletSettingsContributions: [AppletSettingsContribution]
+
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
     /// to the shell is the applet set inside `appletRegistry`.
@@ -133,6 +138,13 @@ enum SuperBibleAppBootstrap {
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
+
+        // Bible's "Annotations" hub for the shared Settings screen. BYOK cost
+        // confirmation defaults on; the on-device default model makes this a
+        // no-op gate at run time once the active-model check is wired.
+        let bibleSettingsContributions = bibleApplet
+            .annotationsSettingsContribution(requiresCostConfirmation: true)
+            .map { [$0] } ?? []
 
         // Best-effort AFM seed, same shape as SuperOS — skipped on
         // ineligible devices and pre-populated DBs.
@@ -284,7 +296,8 @@ enum SuperBibleAppBootstrap {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability,
-            bibleAnnotateDispatcher: bibleAnnotateDispatcher
+            bibleAnnotateDispatcher: bibleAnnotateDispatcher,
+            appletSettingsContributions: bibleSettingsContributions
         )
     }
 }

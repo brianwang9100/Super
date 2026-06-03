@@ -425,22 +425,58 @@ Light / dark / sepia × default + Dynamic Type XXL, recorded on the CI Xcode 26.
 
 Coverage target ≥70% per Bible AGENTS.
 
-## 11. Future work
+## 11. Bulk annotations (M-B / M-C)
 
-Designed at the data model level, deferred from M-A.
+**Status (2026-06-03):** In build. The whole-Bible bulk runner went through a Claude Design pass that
+**centralized** it into one Settings → Annotations flow and dropped the earlier three-toggle / mode /
+disclaimer-modal model. Design source lives in `docs/SuperBible/design/bulk/` (`BulkAnnotations.html`
++ `atoms/screens/mockups.jsx`). The **UI surfaces + view model + an in-memory fake runner + coverage
+query** ship first (this work); the **LLM-backed engine + ledger tables + retry/circuit-breaker +
+BGProcessingTask** follow.
 
-### M-B — bulk for books + chapters
+### Shipped shape (per the design)
 
-Settings → "Generate annotations" → buttons:
+One home: **Settings → Annotations**. The hub shows an honest **books · chapters · verses** coverage
+synopsis (`AnnotationCoverageCard`, backed by `AnnotationCoverageRequest`), then either a **Generate**
+CTA or the single active **job card** (titled by all books, counted in *annotations*), and a
+full-width red **Delete all annotations**. **Generate sheet:** a flat book list where each book
+expands to chapters, already-annotated books/chapters carry a **"Done"** badge, and a pinned footer
+shows a live estimate beside Generate (a one-tap cost confirm precedes the run for remote BYOK models;
+the free on-device model starts directly). **Per-book progress:** a ring header + pause/cancel over a
+chapter list (`queued / generating / done / failed`); **failures isolate per chapter → Retry, never
+restart**. There is **one job at a time**.
 
-- "Generate all book prologues" — 66 units.
-- "Generate all chapter summaries" — 1,189 units.
+What "generate" produces, by selection granularity: a whole-book selection → a **book prologue** plus
+every chapter; a chapter selection → a **chapter summary** plus the LLM-ranked **notable verses**.
+"Done"-badge selection *is* the implicit fill-gaps/regenerate (no global mode toggle). Rows are stamped
+`source: .userBulk`; bubbles fill reactively as units complete.
 
-Foreground long-running task; resumability via new `bulkAnnotationRun` + `bulkAnnotationRunUnit` tables (checkpoints which units are `pending` / `done` / `failed`). Cancellable. Progress sheet. Rows written with `source: .userBulk`. Bubbles fill incrementally as units complete (reactive `@Query` already in place).
+### Backend (follow-on)
 
-### M-C — bulk for notable verses
+`BulkAnnotationRunner` actor drives the active `LLMProvider` directly and reuses the
+`AnnotateBibleTool` executor; per-run `bulkAnnotationRun` + `bulkAnnotationRunUnit` ledger tables
+(with `attemptCount`) for resume/retry/progress; three-tier retry (per-unit auto-retry + run-level
+circuit breaker + manual per-chapter retry); atomic `replace` makes retries idempotent;
+BGProcessingTask last. Unit = a chapter, plus a book-prologue unit for a whole-book selection.
 
-Adds a third Settings button. Per-chapter call asking the LLM to both identify the most-annotatable verses AND generate annotations for them in one shot (single-call-per-chapter rank-and-generate). ~1,189 chapter-level calls producing several thousand verse-annotation rows.
+### Code (this pass, Bible package)
+
+UI: `UI/BulkAnnotation{Atoms,Buttons,HubScreen,ProgressScreen}.swift`, `UI/BulkChapterRow.swift`,
+`UI/BulkBookSelectionRows.swift`, `UI/BulkJobCard.swift`, `UI/AnnotationCoverageCard.swift`,
+`UI/GenerateAnnotationsSheet.swift`. State/logic:
+`ViewModels/BulkAnnotation{Models,Selection,Runner,ViewModel}.swift`,
+`ViewModels/FakeBulkAnnotationRunner.swift`. Query: `Queries/AnnotationCoverageRequest.swift`.
+Interactive Liquid Glass goes on the round icon controls via `superGlassButton`; accent/danger CTAs
+stay solid (glass would frost away the colour that is their identity, and the snapshot-safe glass
+helper is the frosting one).
+
+### Reachability seam (pending)
+
+The shared Settings UI lives in **Chat**, which cannot import Bible. A generic Core-level
+**applet-settings contribution** (a descriptor + a `() -> AnyView` destination the composition root
+populates) lets Chat's `SettingsRootPane` render the **Annotations** row and route to Bible's hub
+without importing it. Wiring note: the hub's coverage `@Query` needs the **Bible** `DatabaseContext`
+injected for that subtree — the Settings sheet otherwise carries `chat.sqlite`.
 
 ### Background tasks
 

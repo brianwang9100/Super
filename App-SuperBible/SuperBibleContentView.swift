@@ -41,6 +41,7 @@ struct SuperBibleContentView: View {
                     .transition(.opacity)
             case .ready(let dependencies):
                 AppShell(dependencies: dependencies.shellDependencies)
+                    .environment(\.appletSettingsContributions, dependencies.appletSettingsContributions)
                     .transition(.opacity)
             }
         }
