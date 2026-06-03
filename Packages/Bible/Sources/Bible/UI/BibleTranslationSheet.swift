@@ -8,6 +8,10 @@ struct BibleTranslationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
+    /// Declared once and shared by the nav bar and the presentation so the two
+    /// can't drift; a short content-sized sheet.
+    private let sizing = SheetSizing.fitsContent
+
     /// The translation currently in use — its row renders as active.
     let current: BibleTranslation
     /// Extra bottom padding so the last row clears the shell's minimized
@@ -28,29 +32,12 @@ struct BibleTranslationSheet: View {
             .padding(.top, 2)
             .padding(.bottom, 22 + bottomInset)
         }
-        // Top clearance for the system drag indicator now that the native
-        // `.sheet` supplies it in place of the removed custom grabber.
-        .padding(.top, 10)
-        .background {
-            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
-                .fill(theme.background)
-                .ignoresSafeArea(edges: .bottom)
-        }
+        // Detents + drag indicator + background, derived from `sizing`.
+        .sheetPresentation(sizing, estimatedHeight: 320)
     }
 
     private var header: some View {
-        HStack {
-            Text("Translation")
-                .font(typography.font(size: 16, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            Spacer()
-            Button("Done", action: onClose)
-                .font(typography.font(size: 14))
-                .foregroundStyle(theme.inkFaint)
-                .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 22)
-        .padding(.bottom, 10)
+        SheetNavBar(title: "Translation", sizing: sizing, onClose: onClose)
     }
 
     private func row(_ translation: BibleTranslation) -> some View {

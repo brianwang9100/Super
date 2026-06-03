@@ -72,6 +72,8 @@ All naming — files, folders, function parameters, Swift type suffixes, SwiftUI
 
 All text resolves through `SuperTypography` (`Packages/Core/Sources/Core/Theme/SuperTypography.swift`), read from `@Environment(\.superTypography)`. **Route every `Text` through the `typography.*` accessors** (`display`, `mono`, `font(_:)`, `font(size:)`) — never raw `.font(.system(...))` or `Font.custom(...)`. That keeps the brand-face swap and scale centralized; a literal `.system`/`.custom` call silently opts out of both.
 
+**This is lint-enforced, not just convention.** The `super_typography_only` SwiftLint `custom_rules` rule in [`.swiftlint.yml`](./.swiftlint.yml) fails the build (`error` severity) on any `.font(.system…)`, `.font(.custom…)`, or bare `Font.system` / `Font.custom` in the linted source — App, Core, and Chat. The required `SwiftLint` CI check (`.github/workflows/swiftlint.yml`) gates merge on it. The rule skips comments (so doc-comment mentions of the banned forms are fine), exempts `SuperTypography.swift` itself as the one sanctioned caller, and exempts the test targets (snapshot reference grids are fixtures, not product surfaces). For an SF Symbol or other size that doesn't map to a `Role`, use `typography.font(size:)` (pair it with a `@ScaledMetric` base when the surface should honor OS Dynamic Type); never reach back for `.font(.system(size:))`. Need a genuinely sanctioned raw call outside `SuperTypography.swift`? Add `// swiftlint:disable:next super_typography_only` with a one-line rationale rather than weakening the rule.
+
 Type scales along **two independent axes**, one knob each:
 
 - **App font-scale slider** (`fontScale`, set in Settings) — folded into every accessor's size. This is a **global size control**: it scales *all* app text, reading content and chrome alike. Opt a surface out with **`tracksFontScale: false`**, which renders at the unscaled base size regardless of the slider — now reserved for the handful of fixed brand marks (see below).
@@ -82,6 +84,20 @@ Rule of thumb: **everything scales with the slider** (the default, `tracksFontSc
 `tracksFontScale: false` is the **rare** exception, for a brand mark that must stay a fixed visual anchor regardless of the slider — today only the Settings monogram (`SettingsAboutPane`) and the model badge (`SettingsModelsPane`). A **page/sheet title that labels the content you're reading is content** and scales (e.g. `SettingsHeader`'s centered title keeps the default `font(.body)`). Don't reach for `tracksFontScale: false` on anything else — the sidebar's earlier slider-independence was intentionally removed.
 
 Snapshot implication: because almost every surface now tracks the slider, a view's `*_font_scale_max_*` baseline renders at the **scaled** size — re-record it when the view legitimately changes, but never re-record a `fontScale == 1.0` baseline to "make a test pass" (identity at 1.0× means it must stay byte-identical). For the rare `tracksFontScale: false` brand mark, the `*_font_scale_max_*` baseline must still be byte-identical to its `1.0×` render.
+
+## Theming & Controls
+
+Glass and chrome resolve through `SuperGlass` (`Packages/Core/Sources/Core/Theme/SuperGlass.swift`), the single owner of how Super adopts iOS 26 Liquid Glass — the companion to `SuperTypography` (faces) and `SuperTheme` (color). Route every glass surface through its helpers; never call `.glassEffect(...)` directly at a call site (that hard-codes the tint and skips the snapshot solid-fallback).
+
+- **Buttons and controls use interactive glass.** Apply **`superGlassButton(in:)`** to tappable chrome (nav buttons, toolbar controls). It renders `Glass.regular.tint(theme.glassTint).interactive()` so the control reacts to touch, and re-asserts the full `shape` as the `contentShape` (glass otherwise collapses the hit region to the glyph — the bug that broke the hamburger). Drop any pre-existing fill + border + drop-shadow first; glass supplies its own edge and elevation. `SettingsHeader`'s 44pt circular leading button is the canonical control.
+- **Passive inline glass surfaces use `superGlassSurface(in:)`** — the frosted `.regular`, non-interactive variant (nav pills, selection pills) so inner segment buttons keep their own taps. Never clear glass over text.
+
+### Sheets
+
+Sheets are **native `.sheet`** (system-presented), never a custom overlay — the system supplies the drag indicator, scrim, and detent behavior. (This is about *presentation*; turning the Chat transcript itself into a sheet was tried and rejected — that decision stands and isn't reopened by this rule.)
+
+- **Consistent nav bar + navigation button.** Every sheet opens with a top chrome bar carrying a leading circular `superGlassButton` (close `✕` at the root, back chevron on pushed sub-panes) and a centered title. `SettingsHeader` is the reference; match its structure (leading button, centered title, hidden trailing spacer to keep the title centered). Multi-pane sheets drive navigation with a `NavigationStack` (see `SettingsSheet`) so pushes get the native left-to-right transition.
+- **Background is Super theme color, not glass.** The sheet's content panel fills with the active theme's `background` (or `backgroundRaised`) — a full-bleed glass sheet is too distracting behind reading/editing content. Glass stays on the *controls* (the nav button), not the panel.
 
 ## Swift Concurrency & Type Policy
 

@@ -22,13 +22,15 @@ public struct SourceCitationPillModel: Identifiable, Sendable, Equatable {
     }
 }
 
-/// Inline collapsible pill rendered under an assistant message that cited web
-/// sources (native search today; standalone search later — both land their
-/// citations in `MessageAttachments.sources`, so this one pill renders both).
+/// Collapsible "N sources" cell rendered under an assistant answer that cited
+/// web sources (native search today; standalone search later — both land their
+/// citations in `MessageAttachments.sources`, so this one cell renders both).
 ///
-/// Mirrors `MemoryUpdatedPill`'s ambient styling: a faint collapsed "N
-/// sources" chip that expands to a per-source list (domain + truncated title).
-/// Tapping a source opens it externally via `OpenURLAction`.
+/// Styled as a tool-call cell (the same card chrome + header typography as
+/// `ToolCallBlock` / `WebSearchCallCell`): a leading arrow-up-right glyph (the
+/// rows open externally), the source count, and a chevron. Expands to a
+/// per-source list (domain + truncated title). Tapping a source opens it via
+/// `OpenURLAction`.
 struct SourceCitationsPill: View {
     let sources: [SourceCitationPillModel]
     @State private var isExpanded: Bool
