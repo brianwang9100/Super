@@ -100,8 +100,15 @@ public func makeLLMProvider(
         default:
             // Carry the row's search backend so a seeded "Debug (mock
             // search)" row (`searchBackend == "debug"`) drives the
-            // client-mock search path end-to-end in the simulator.
-            return DebugLLMProvider(id: record.id, searchBackend: record.searchBackend)
+            // client-mock search path end-to-end in the simulator. Pass the
+            // row's `name` as the picker label so the canned and mock-search
+            // rows read distinctly (they share `modelId`, so the static label
+            // alone made them indistinguishable — and unselectable apart).
+            return DebugLLMProvider(
+                id: record.id,
+                searchBackend: record.searchBackend,
+                modelDisplayName: record.name
+            )
         }
     #endif
     }

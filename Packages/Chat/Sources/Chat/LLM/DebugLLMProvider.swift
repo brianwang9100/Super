@@ -28,15 +28,27 @@ public struct DebugLLMProvider: LLMProvider {
     /// the simulator with no key. `nil` for the plain canned-stream row.
     public let searchBackend: String?
 
-    /// Stable model id used by the seeded `ModelConfigurationRecord`.
+    /// Label shown in the chat model picker for this row's vended model.
+    /// Carried from the seeded row's `name` so the two `DebugLLMProvider`-backed
+    /// rows ("Debug (canned)" and "Debug (mock search)") read distinctly —
+    /// they otherwise shared one static label and one static model id, which
+    /// collided in the picker and made the mock-search row unselectable.
+    public let modelDisplayName: String
+
+    /// Stable `ModelConfigurationRecord.modelId` the factory dispatches on to
+    /// build this provider (shared by both the canned and mock-search rows).
+    /// Distinct from the *vended* `LLMModel.id`, which is the per-row provider
+    /// id so the picker entries don't collide.
     public static let modelID = "debug-default"
-    public static let modelDisplayName = "Debug stream"
     public static let maxContextTokens = 8_192
 
     public var supportedModels: [LLMModel] {
         [LLMModel(
-            id: Self.modelID,
-            displayName: Self.modelDisplayName,
+            // Per-instance id (the provider/record id), not the shared static
+            // `modelID` — otherwise both debug rows vend the same model id and
+            // `activateProvider(matching:)` always resolves to the first one.
+            id: id,
+            displayName: modelDisplayName,
             supportsThinking: true,
             supportsTools: false,
             maxContextTokens: Self.maxContextTokens,
@@ -44,9 +56,10 @@ public struct DebugLLMProvider: LLMProvider {
         )]
     }
 
-    public init(id: String, searchBackend: String? = nil) {
+    public init(id: String, searchBackend: String? = nil, modelDisplayName: String = "Debug stream") {
         self.id = id
         self.searchBackend = searchBackend
+        self.modelDisplayName = modelDisplayName
     }
 
     public func stream(

@@ -106,5 +106,35 @@ struct LLMProviderFactoryTests {
         #expect(make(debugRow(modelId: DebugLLMProvider.modelID)) is DebugLLMProvider)
         #expect(make(debugRow(modelId: "anything-else")) is DebugLLMProvider)
     }
+
+    /// Regression: the two `DebugLLMProvider`-backed rows ("Debug (canned)" and
+    /// "Debug (mock search)") share `modelId`, so they used to vend an
+    /// identical static model id + label — the picker showed two "Debug
+    /// stream" entries and `activateProvider(matching:)` always resolved to the
+    /// first, leaving the mock-search row unselectable. The vended model now
+    /// carries the per-row provider id and the row's `name`.
+    @Test("two debug rows sharing modelId vend distinct picker entries")
+    func debugRowsVendDistinctModels() {
+        func cannedRow(id: String, name: String, searchBackend: String? = nil) -> ModelConfigurationRecord {
+            ModelConfigurationRecord(
+                id: id, name: name, baseURL: nil, apiKeyRef: nil,
+                modelId: DebugLLMProvider.modelID,
+                createdAt: Date(timeIntervalSince1970: 0), kind: .debug,
+                searchBackend: searchBackend
+            )
+        }
+        let canned = make(cannedRow(id: "debug-canned", name: "Debug (canned)"))
+        let mock = make(cannedRow(id: "debug-mock-search", name: "Debug (mock search)", searchBackend: "debug"))
+
+        let cannedModel = canned?.supportedModels.first
+        let mockModel = mock?.supportedModels.first
+        // Distinct ids so the picker's `ForEach` and `activateProvider(matching:)`
+        // can tell them apart.
+        #expect(cannedModel?.id == "debug-canned")
+        #expect(mockModel?.id == "debug-mock-search")
+        // Labels mirror the seeded row names rather than one shared static.
+        #expect(cannedModel?.displayName == "Debug (canned)")
+        #expect(mockModel?.displayName == "Debug (mock search)")
+    }
     #endif
 }
