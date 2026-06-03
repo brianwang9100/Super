@@ -56,20 +56,10 @@ struct SearchConfirmationRowSnapshotTests {
         )
     }
 
-    @Test("resolved searched, light")
-    func searchedLight() {
-        verify(status: .success, theme: .light, height: 80, name: "search_confirm_searched_light")
-    }
-
-    @Test("resolved searched, dark")
-    func searchedDark() {
-        verify(status: .success, theme: .dark, height: 80, name: "search_confirm_searched_dark")
-    }
-
-    @Test("resolved searched, sepia")
-    func searchedSepia() {
-        verify(status: .success, theme: .sepia, height: 80, name: "search_confirm_searched_sepia")
-    }
+    // Note: `.success` (approved) intentionally renders nothing here — the
+    // approved search is announced by `WebSearchCallCell` on the answer turn,
+    // so there's no "searched" summary to snapshot. Only the skipped (`.failed`)
+    // summary remains.
 
     @Test("resolved skipped, light")
     func skippedLight() {
@@ -86,18 +76,8 @@ struct SearchConfirmationRowSnapshotTests {
         verify(status: .failed, theme: .sepia, height: 80, name: "search_confirm_skipped_sepia")
     }
 
-    // The resolved summaries are single-line in the steady case, but the
-    // "searched" summary embeds an arbitrary model-generated query that can
-    // wrap at XXL. Pin both resolved states at XXL so a long query's reflow
-    // is captured rather than silently regressing.
-    @Test("resolved searched, dynamic type XXL")
-    func searchedXXL() {
-        verify(
-            status: .success, theme: .light, dynamicType: .xxLarge, height: 140,
-            name: "search_confirm_searched_light_xxl"
-        )
-    }
-
+    // The skipped summary is single-line in the steady case; pin it at XXL so
+    // its reflow is captured rather than silently regressing.
     @Test("resolved skipped, dynamic type XXL")
     func skippedXXL() {
         verify(

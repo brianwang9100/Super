@@ -33,7 +33,7 @@ struct MessageListSnapshotTests {
                     status: .success
                 )
             ],
-            sources: [], searchSuggestionsHTML: nil
+            sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
         ),
         .userBubble(id: "u2", text: "Thanks!", references: []),
     ]
@@ -251,7 +251,7 @@ struct MessageListSnapshotTests {
         let function = #function
         let withBanner: [MessageList.Item] = [
             .userBubble(id: "u1", text: "older", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             .compactionBanner(id: "b1", summary: "User said hello, assistant replied with the time."),
             .userBubble(id: "u2", text: "follow-up", references: []),
         ]
@@ -281,7 +281,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             ],
             verbosity: .verbose
         )
@@ -315,7 +315,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Show me a fetch helper", references: []),
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             ],
             verbosity: .verbose
         )
@@ -340,7 +340,7 @@ struct MessageListSnapshotTests {
         """
         let view = MessageList(
             items: [
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             ],
             verbosity: .verbose
         )
@@ -359,7 +359,7 @@ struct MessageListSnapshotTests {
         let summary = "User asked about **Lisbon** itinerary; assistant replied with `tram 28` and pastry-shop tips."
         let view = MessageList(items: [
             .userBubble(id: "u1", text: "older", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             .compactionBanner(id: "b1", summary: summary),
             .userBubble(id: "u2", text: "follow-up", references: []),
         ], verbosity: .verbose)
@@ -389,7 +389,7 @@ struct MessageListSnapshotTests {
                 thinking: thinking,
                 thinkingDurationMs: 4200,
                 text: "Here's a starter itinerary.",
-                toolCalls: [], sources: [], searchSuggestionsHTML: nil
+                toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
             ),
         ], verbosity: .verbose)
         .superTheme(.make(.light))
@@ -499,7 +499,7 @@ struct MessageListSnapshotTests {
         let view = MessageList(
             items: [
                 .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
-                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil),
+                .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: markdown, toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
             ],
             verbosity: .verbose
         )
@@ -683,7 +683,7 @@ struct MessageListSnapshotTests {
                 thinking: nil,
                 thinkingDurationMs: nil,
                 text: "Assistant reply \(i).",
-                toolCalls: [], sources: [], searchSuggestionsHTML: nil
+                toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
             ),
         ]
     }

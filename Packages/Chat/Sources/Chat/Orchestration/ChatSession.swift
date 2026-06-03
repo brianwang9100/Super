@@ -112,6 +112,10 @@ public actor ChatSession {
     /// provider's `.citations` land. Empty between mock searches.
     private var pendingMockSources: [SourceCitation] = []
     private var pendingMockSuggestionsHTML: String?
+    /// The mock search's query, stashed alongside the sources so the grounded
+    /// answer's "Web search" cell can show it even when the answer turn (a real
+    /// model) emits no `.searchStarted` of its own.
+    private var pendingMockQuery: String?
 
     /// Chat-assistant base prompt, loaded once at app launch from
     /// `Resources/DefaultSystemPrompt.md`. Hidden from the user; owned by
@@ -628,6 +632,7 @@ public actor ChatSession {
         // fresh user turn always starts clean.
         pendingMockSources = []
         pendingMockSuggestionsHTML = nil
+        pendingMockQuery = nil
         while true {
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
@@ -808,6 +813,7 @@ public actor ChatSession {
         // matching where native `.citations` land — not this proposal turn.
         pendingMockSources = outcome.sources
         pendingMockSuggestionsHTML = outcome.searchSuggestionsHTML
+        pendingMockQuery = query.isEmpty ? nil : query
 
         let result = ToolResult(toolID: record.toolName, content: outcome.findings, isError: false)
         try await toolCallRepository.updateStatus(
@@ -1004,6 +1010,7 @@ public actor ChatSession {
         var streamError: LLMError?
         var accumulatedSources: [SourceCitation] = []
         var searchSuggestionsHTML: String?
+        var searchStartedQuery: String?
 
         for try await event in stream {
             try Task.checkCancellation()
@@ -1021,10 +1028,11 @@ public actor ChatSession {
                 broadcast(.thinkingDelta(text))
             case .toolUse(_, let id, let name, let input):
                 pendingCalls.append((id, name, input))
-            case .searchStarted:
-                // PR1 captures-and-persists citations only; a live "Searching…"
-                // affordance via a ChatEvent is a follow-up.
-                break
+            case .searchStarted(let query):
+                // Capture the query for the expandable "Web search" cell. (A
+                // live "Searching…" affordance via a ChatEvent is still a
+                // follow-up.)
+                searchStartedQuery = query
             case .citations(let cites):
                 for cite in cites {
                     let key = Self.citationDedupeKey(cite.url)
@@ -1056,7 +1064,7 @@ public actor ChatSession {
         // the prior loop iteration onto *this* assistant message — the model's
         // grounded answer — mirroring where a native provider's `.citations`
         // land. Dedup against any stream citations with the same shared key.
-        if !pendingMockSources.isEmpty || pendingMockSuggestionsHTML != nil {
+        if !pendingMockSources.isEmpty || pendingMockSuggestionsHTML != nil || pendingMockQuery != nil {
             for cite in pendingMockSources {
                 let key = Self.citationDedupeKey(cite.url)
                 if !accumulatedSources.contains(where: { Self.citationDedupeKey($0.url) == key }) {
@@ -1064,8 +1072,12 @@ public actor ChatSession {
                 }
             }
             if searchSuggestionsHTML == nil { searchSuggestionsHTML = pendingMockSuggestionsHTML }
+            // The answer turn (a real model) emits no `.searchStarted`, so the
+            // mock query stashed at fulfillment time is the only query source.
+            if searchStartedQuery == nil { searchStartedQuery = pendingMockQuery }
             pendingMockSources = []
             pendingMockSuggestionsHTML = nil
+            pendingMockQuery = nil
         }
 
         // Skip empty turns — the LLM yielded `.messageComplete` without
@@ -1087,9 +1099,22 @@ public actor ChatSession {
             guard let start = thinkingStartedAt, let end = thinkingEndedAt else { return nil }
             return max(0, Int(end.timeIntervalSince(start) * 1000))
         }()
+        // Web-search metadata for the expandable "Web search" cell. Populated
+        // only when this turn actually searched (cited sources or announced a
+        // query). System label: the mock/native backend, else the provider's
+        // own name (the DEBUG canned provider fakes citations with no backend).
+        let didSearch = !accumulatedSources.isEmpty || searchStartedQuery != nil
+        let searchSystem: String? = {
+            guard didSearch else { return nil }
+            if NativeWebSearch.usesMockSearch(model) { return "Debug (mock)" }
+            if NativeWebSearch.usesNativeSearch(model) { return "Native search" }
+            return provider.displayName
+        }()
         let attachments = MessageAttachments(
             sources: accumulatedSources,
-            searchSuggestionsHTML: searchSuggestionsHTML
+            searchSuggestionsHTML: searchSuggestionsHTML,
+            searchQuery: didSearch ? searchStartedQuery : nil,
+            searchSystem: searchSystem
         )
         let assistantMessage = MessageRecord(
             id: idGenerator.nextID(),

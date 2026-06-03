@@ -13,25 +13,40 @@ public struct MessageAttachments: Codable, Sendable, Equatable {
     /// Provider-mandated search-attribution HTML (Gemini "Google Search
     /// Suggestions") that must be rendered unmodified; `nil` for all others.
     public var searchSuggestionsHTML: String?
+    /// The query the assistant searched for, captured from the provider's
+    /// `.searchStarted` event (or the mock fulfiller). Surfaced in the
+    /// expandable "Web search" cell. `nil` when the turn ran no search.
+    public var searchQuery: String?
+    /// Human label for the search engine used — `"Native search"` for a
+    /// native backend, `"Debug (mock)"` for the mock backend, else the
+    /// provider's own display name (the DEBUG canned provider fakes citations
+    /// with no real backend). Derived at turn time; `nil` when the turn ran no
+    /// search.
+    public var searchSystem: String?
 
     public init(
         references: [RecordReference] = [],
         sources: [SourceCitation] = [],
-        searchSuggestionsHTML: String? = nil
+        searchSuggestionsHTML: String? = nil,
+        searchQuery: String? = nil,
+        searchSystem: String? = nil
     ) {
         self.references = references
         self.sources = sources
         self.searchSuggestionsHTML = searchSuggestionsHTML
+        self.searchQuery = searchQuery
+        self.searchSystem = searchSystem
     }
 
     public var isEmpty: Bool {
         references.isEmpty && sources.isEmpty && searchSuggestionsHTML == nil
+            && searchQuery == nil && searchSystem == nil
     }
 
-    // Custom decoding so rows written before `sources` / `searchSuggestionsHTML`
-    // existed (keys absent) still decode cleanly.
+    // Custom decoding so rows written before these keys existed (keys absent)
+    // still decode cleanly.
     private enum CodingKeys: String, CodingKey {
-        case references, sources, searchSuggestionsHTML
+        case references, sources, searchSuggestionsHTML, searchQuery, searchSystem
     }
 
     public init(from decoder: Decoder) throws {
@@ -45,5 +60,7 @@ public struct MessageAttachments: Codable, Sendable, Equatable {
         // via the `try?` in `MessageRecord.attachments`. Degrade to [] instead.
         self.sources = (try? container.decodeIfPresent([SourceCitation].self, forKey: .sources)) ?? []
         self.searchSuggestionsHTML = try? container.decodeIfPresent(String.self, forKey: .searchSuggestionsHTML)
+        self.searchQuery = try? container.decodeIfPresent(String.self, forKey: .searchQuery)
+        self.searchSystem = try? container.decodeIfPresent(String.self, forKey: .searchSystem)
     }
 }

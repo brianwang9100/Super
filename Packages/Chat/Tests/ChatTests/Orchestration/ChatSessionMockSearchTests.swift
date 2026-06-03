@@ -172,6 +172,11 @@ struct ChatSessionMockSearchTests {
         #expect(assistant?.content == "Here is what the search found.")
         #expect(assistant?.attachments?.sources.count == Self.canned.sources.count)
         #expect(assistant?.attachments?.searchSuggestionsHTML == Self.canned.searchSuggestionsHTML)
+        // Web-search cell metadata: the proposal query is stashed by the
+        // fulfiller (the answer turn emits no `.searchStarted`), and the system
+        // is derived from the model's `"debug"` backend.
+        #expect(assistant?.attachments?.searchQuery == "mars rover news")
+        #expect(assistant?.attachments?.searchSystem == "Debug (mock)")
     }
 
     @Test("gate ON: skipping writes a declined result, never calls the fulfiller, attaches no sources")
