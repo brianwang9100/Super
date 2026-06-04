@@ -33,9 +33,10 @@ public struct TodoFilterPill: View {
             .foregroundStyle(theme.inkSoft)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(theme.backgroundRaised)
-            .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 0.5))
-            .clipShape(Capsule())
+            // Whole pill is the tap target, so the hit-region-asserting glass
+            // button is right; it supplies its own frosted edge in place of
+            // the old raised fill + faint stroke.
+            .superGlassButton(in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Filter and sort")

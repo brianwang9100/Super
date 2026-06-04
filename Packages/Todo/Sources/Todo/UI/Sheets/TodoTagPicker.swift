@@ -14,10 +14,26 @@ struct TodoTagPicker: View {
     /// Create-or-fetch a label by name; returns its canonical id.
     let onCreate: (String) async -> String?
 
-    @State private var query = ""
+    @State private var query: String
     @FocusState private var fieldFocused: Bool
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+
+    /// - Parameter initialQuery: Snapshot-only test seam — seeds the search
+    ///   field so a recorded baseline can render the "＋ Create" affordance and
+    ///   the filtered-suggestion state without simulating typing. Production
+    ///   callers leave it empty.
+    init(
+        labels: [LabelRecord],
+        selectedIds: Binding<[String]>,
+        onCreate: @escaping (String) async -> String?,
+        initialQuery: String = ""
+    ) {
+        self.labels = labels
+        self._selectedIds = selectedIds
+        self.onCreate = onCreate
+        self._query = State(initialValue: initialQuery)
+    }
 
     private var labelsByID: [String: LabelRecord] {
         Dictionary(uniqueKeysWithValues: labels.map { ($0.id, $0) })
@@ -78,9 +94,10 @@ struct TodoTagPicker: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(minHeight: 36)
-        .background(theme.backgroundRaised)
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.borderFaint, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        // Passive glass field — it hosts the text input and the removable
+        // selected-label chips, so the non-hit-asserting surface keeps those
+        // inner taps live. Replaces the old raised fill + faint stroke.
+        .superGlassSurface(in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func selectedChip(_ label: LabelRecord) -> some View {
@@ -108,10 +125,11 @@ struct TodoTagPicker: View {
             HStack(spacing: 9) {
                 Image(systemName: "plus")
                     .font(.system(size: 12 * fontScale, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.accentInk)
                     .frame(width: 18, height: 18)
-                    .background(theme.accent)
-                    .clipShape(Circle())
+                    // Accent call-to-action glass, matching the project's other
+                    // create-`+` buttons (new chat, add task, add model).
+                    .superGlassCTAButton(in: Circle())
                 Text("Create \"\(trimmedQuery)\"")
                     .font(.system(size: 15 * fontScale, weight: .medium))
                 Spacer(minLength: 0)
@@ -142,7 +160,9 @@ struct TodoTagPicker: View {
                     .foregroundStyle(theme.inkSoft)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 6)
-                    .overlay(Capsule().strokeBorder(theme.borderFaint, lineWidth: 1))
+                    // Tappable suggestion chip → frosted glass with its own
+                    // edge, in place of the old hairline-stroked capsule.
+                    .superGlassButton(in: Capsule())
                 }
                 .buttonStyle(.plain)
             }

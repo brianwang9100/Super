@@ -138,14 +138,12 @@ struct TodoTaskEditorSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .foregroundStyle(selected ? OKLCH(0.4, 0.1, priority.hue).color : theme.inkSoft)
-                        .background(selected ? OKLCH(0.94, 0.035, priority.hue).color : theme.backgroundRaised)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10).strokeBorder(
-                                selected ? OKLCH(0.62, 0.14, priority.hue).color : theme.borderFaint,
-                                lineWidth: 1
-                            )
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .modifier(SelectorChipSurface(
+                            shape: RoundedRectangle(cornerRadius: 10),
+                            selected: selected,
+                            selectedFill: OKLCH(0.94, 0.035, priority.hue).color,
+                            selectedBorder: OKLCH(0.62, 0.14, priority.hue).color
+                        ))
                     }
                     .buttonStyle(.plain)
                 }
@@ -189,9 +187,12 @@ struct TodoTaskEditorSheet: View {
                 .foregroundStyle(selected ? theme.accent : theme.inkSoft)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(selected ? theme.accentSoft : theme.backgroundRaised)
-                .overlay(Capsule().strokeBorder(selected ? theme.accent : theme.borderFaint, lineWidth: 1))
-                .clipShape(Capsule())
+                .modifier(SelectorChipSurface(
+                    shape: Capsule(),
+                    selected: selected,
+                    selectedFill: theme.accentSoft,
+                    selectedBorder: theme.accent
+                ))
         }
         .buttonStyle(.plain)
     }
@@ -215,13 +216,12 @@ struct TodoTaskEditorSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .foregroundStyle(selected ? theme.accent : theme.inkSoft)
-                            .background(selected ? theme.accentSoft : theme.backgroundRaised)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10).strokeBorder(
-                                    selected ? theme.accent : theme.borderFaint, lineWidth: 1
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .modifier(SelectorChipSurface(
+                                shape: RoundedRectangle(cornerRadius: 10),
+                                selected: selected,
+                                selectedFill: theme.accentSoft,
+                                selectedBorder: theme.accent
+                            ))
                     }
                     .buttonStyle(.plain)
                 }
@@ -282,5 +282,30 @@ struct TodoTaskEditorSheet: View {
         return !isSameDay(draft.dueAt, offsetDays: 0)
             && !isSameDay(draft.dueAt, offsetDays: 1)
             && !isSameDay(draft.dueAt, offsetDays: 7)
+    }
+}
+
+/// Surface for a Todo selector chip (priority / due / state). When picked it
+/// keeps a solid accent- or hue-soft fill + matching border so the selection
+/// stays loud; otherwise it swaps the old neutral raised fill + faint stroke
+/// for Liquid Glass, so the unselected segments frost like the rest of the
+/// app's chrome. The chip is the whole tap target, so the unselected branch
+/// uses `superGlassButton` (which re-asserts the shape's hit region).
+private struct SelectorChipSurface<S: InsettableShape>: ViewModifier {
+    let shape: S
+    let selected: Bool
+    let selectedFill: Color
+    let selectedBorder: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if selected {
+            content
+                .background(selectedFill)
+                .overlay(shape.strokeBorder(selectedBorder, lineWidth: 1))
+                .clipShape(shape)
+        } else {
+            content.superGlassButton(in: shape)
+        }
     }
 }
