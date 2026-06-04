@@ -538,4 +538,69 @@ import Testing
         #expect(try await ledger.run(id: "stale") == nil)   // swept
         #expect(try await ledger.run(id: "fresh") != nil)   // kept
     }
+
+    /// A launch `restore()` must cede to a user-initiated `resume()` already in
+    /// flight rather than half-adopting a crash-orphaned active run: `resume`
+    /// claims the engine (`isDriving`) synchronously before its async setup, so a
+    /// `restore` that doesn't honour that claim would adopt the orphan and call
+    /// `startDriver()` — which no-ops against the claim, wedging the run with no
+    /// loop. Here `restore` must leave the orphaned `.running` run untouched and
+    /// let the resumed run drive to completion as the single active job.
+    @Test func restoreCedesToAnInFlightResume() async throws {
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let now = Date(timeIntervalSince1970: 1_000)
+        // A crash-orphaned active run (its unit stuck `.generating`).
+        try await ledger.createRun(
+            BulkAnnotationRunRecord(id: "orphan", status: .running, modelId: "m", createdAt: now, updatedAt: now),
+            units: [
+                BulkAnnotationRunUnitRecord(id: "o0", runId: "orphan", ordinal: 0, kind: .chapter,
+                                            bookId: "GEN", bookName: "Genesis", chapterNumber: 1,
+                                            state: .generating, updatedAt: now)
+            ]
+        )
+        // A finished run with a failed unit (the one the user taps Retry on).
+        try await ledger.createRun(
+            BulkAnnotationRunRecord(id: "fin", status: .completed, modelId: "m",
+                                    createdAt: now, updatedAt: now,
+                                    completedAt: Date(timeIntervalSince1970: 1_100)),
+            units: [
+                BulkAnnotationRunUnitRecord(id: "f0", runId: "fin", ordinal: 0, kind: .chapter,
+                                            bookId: "ROM", bookName: "Romans", chapterNumber: 1,
+                                            state: .failed, attemptCount: 1, errorMessage: "boom", updatedAt: now)
+            ]
+        )
+
+        let generator = GatedBibleAnnotateGenerator()
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            clock: FixedClock(),  // epoch → sweep cutoff is negative, nothing swept
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "m" }
+        )
+
+        // Retry claims the engine synchronously; the racing launch restore must
+        // cede instead of adopting "orphan".
+        runner.resume(runID: "fin")
+        await runner.restore()
+
+        // The resumed run drives its single revived unit to completion.
+        await generator.awaitCall()
+        generator.releaseNext(.success(annotationCount: 4))
+        await runner._waitUntilIdle()
+
+        // Only "fin"'s unit was ever generated — "orphan" was never driven.
+        #expect(generator.maxInFlight == 1)
+        #expect(generator.receivedReferences.count == 1)
+
+        let fin = try #require(try await ledger.run(id: "fin"))
+        #expect(fin.status == .completed)
+
+        // "orphan" is untouched: restore ceded, so its unit was never reset and
+        // its run never resumed (a later launch will restore it cleanly).
+        let orphan = try #require(try await ledger.run(id: "orphan"))
+        #expect(orphan.status == .running)
+        let orphanUnits = try await ledger.units(runId: "orphan")
+        #expect(orphanUnits[0].state == .generating)
+    }
 }

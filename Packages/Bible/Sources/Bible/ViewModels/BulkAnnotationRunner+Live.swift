@@ -302,9 +302,19 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         let cutoff = clock.now().addingTimeInterval(-completedRunRetention)
         try? await ledger.deleteRunsCompleted(before: cutoff)
 
-        guard runRecord == nil else { return }  // resume once; never clobber a live run.
+        // `restore` runs as a fire-and-forget Task at launch, concurrently with a
+        // live hub. A user-initiated `start`/`resume` claims the engine by setting
+        // `isDriving = true` synchronously before its async setup, *before* it
+        // assigns `runRecord`. So guarding on `runRecord == nil` alone isn't
+        // enough: restore could pass that guard while a `resume`'s `adoptFinished`
+        // is mid-setup, then adopt the orphaned active run and call `startDriver()`
+        // — which no-ops against the resume's claim, leaving a run with no loop
+        // (wedged until relaunch). Bailing on `!isDriving` cedes to the in-flight
+        // user action, which will drive its own (or, if it bails, a later launch
+        // restores cleanly).
+        guard runRecord == nil, !isDriving else { return }  // resume once; never clobber a live/claimed run.
         guard let run = try? await ledger.activeRun() else { return }
-        guard runRecord == nil else { return }  // a run may have started during the await.
+        guard runRecord == nil, !isDriving else { return }  // a run may have started/been claimed during the await.
         var loaded = (try? await ledger.units(runId: run.id)) ?? []
         let now = clock.now()
         for index in loaded.indices where loaded[index].state == .generating {
@@ -315,11 +325,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // during restore, so ordering holds without the serialized tail.
             try? await ledger.saveUnit(loaded[index])
         }
-        // Re-check after every suspension above before taking ownership, so a
-        // run that started mid-restore is never clobbered (call-site safe too:
-        // the fire-and-forget restore Task at the composition root can't race a
-        // user-initiated run).
-        guard runRecord == nil else { return }
+        // Final re-check before taking ownership: from here to `startDriver()`
+        // (which claims `isDriving`) there is no suspension, so the claim is
+        // atomic on the MainActor and a concurrent `start`/`resume` either
+        // already tripped the guard above or will trip its own `runRecord == nil`.
+        guard runRecord == nil, !isDriving else { return }
         runRecord = run
         units = loaded
         consecutiveFailures = 0
