@@ -21,11 +21,14 @@ struct ChatsScreenEventBusTests {
         let stream = await bus.events()
 
         let screen = ChatsScreen(eventBus: bus)
-        screen._openConversation(id: "row-42")
+        // Await the publish task itself — not a timeout — so the event is
+        // already buffered on the (unbounded) stream before we drain. This
+        // closes the race the old timeout-only version lost under parallel
+        // load: a starved fire-and-forget publish could miss the deadline.
+        await screen._openConversation(id: "row-42")?.value
 
-        // Drain the first event with a deadline guard so a regression
-        // that silently drops the publish surfaces as a fail rather
-        // than a hung suite.
+        // The deadline guard now only fires on a genuinely dropped publish
+        // (a real regression), never as the synchronization mechanism.
         let received = try await firstEvent(from: stream, timeout: .seconds(1))
         #expect(received == .openConversationRequested(id: "row-42"))
     }
@@ -36,7 +39,7 @@ struct ChatsScreenEventBusTests {
         let stream = await bus.events()
 
         let screen = ChatsScreen(eventBus: bus)
-        screen._startNewChat()
+        await screen._startNewChat()?.value
 
         let received = try await firstEvent(from: stream, timeout: .seconds(1))
         #expect(received == .newConversationRequested)
