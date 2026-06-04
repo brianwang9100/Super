@@ -196,17 +196,33 @@ public struct BibleApplet: MiniApplet {
     /// API, matching the convention used by other applets.
     var _referenceInbox: BibleReferenceInbox { referenceInbox }
 
-    /// The "Annotations" entry for the shared Settings screen — the bulk
-    /// generation hub. Built here so the applet's `bible.sqlite`
-    /// `DatabaseContext` (which drives the coverage `@Query`) and ledger never
-    /// leak into the composition root, mirroring `registerAnnotationTool(in:)`.
-    /// `nil` when the database failed to open.
+    /// The "Annotations" entry for the shared Settings screen, backed by the
+    /// in-memory `FakeBulkAnnotationRunner` — the fallback for previews, tests,
+    /// or a shell that doesn't wire real bulk generation. The production path
+    /// (SuperBible) uses `makeBulkAnnotationWiring(…)` instead, which builds the
+    /// LLM-backed runner. `nil` when the database failed to open.
+    @MainActor
+    public func annotationsSettingsContribution(
+        requiresCostConfirmation: Bool
+    ) -> AppletSettingsContribution? {
+        guard let databaseContext else { return nil }
+        return BibleAnnotationsSettings.contribution(
+            databaseContext: databaseContext,
+            runner: FakeBulkAnnotationRunner(),
+            requiresCostConfirmation: requiresCostConfirmation
+        )
+    }
+
+    /// The full bulk-annotation wiring for the production shell: the Settings
+    /// hub contribution **and** the background scheduler, both driving a single
+    /// shared `BulkAnnotationRunner` over the applet's `bible.sqlite` ledger.
     ///
-    /// When a `generator` is supplied (the composition root injects a
-    /// `.userBulk`-stamped `BibleAnnotateDispatcher`), the real LLM-backed
-    /// `BulkAnnotationRunner` is built over the applet's ledger and resumed.
-    /// Without one — previews, tests, or a shell that doesn't wire bulk
-    /// generation — it falls back to the in-memory `FakeBulkAnnotationRunner`.
+    /// Built here (rather than at the composition root) so the Bible-internal
+    /// `BibleDatabase` + `GRDBBulkAnnotationLedger` never leak — only the
+    /// Core-typed `generator` crosses the seam, mirroring
+    /// `registerAnnotationTool(in:)`. One runner backs both the foreground hub
+    /// and the background task, so the two never run competing loops over the
+    /// same run rows. `nil` when the database failed to open.
     ///
     /// - Parameters:
     ///   - generator: the cross-package generation seam (Bible can't import
@@ -216,30 +232,27 @@ public struct BibleApplet: MiniApplet {
     ///     async). The authoritative per-annotation stamp is still the
     ///     dispatcher's `.userBulk` stamp provider.
     @MainActor
-    public func annotationsSettingsContribution(
+    public func makeBulkAnnotationWiring(
         requiresCostConfirmation: Bool,
-        generator: (any BibleAnnotateGenerating)? = nil,
+        generator: any BibleAnnotateGenerating,
         currentModelID: @escaping @Sendable () async -> String = { "" }
-    ) -> AppletSettingsContribution? {
-        guard let databaseContext else { return nil }
-        let runner: any BulkAnnotationRunning
-        if let generator, let database {
-            let liveRunner = BulkAnnotationRunner(
-                ledger: GRDBBulkAnnotationLedger(database: database),
-                generator: generator,
-                currentModelID: currentModelID
-            )
-            // Resume an in-progress run on launch (no-op when none is active).
-            Task { await liveRunner.restore() }
-            runner = liveRunner
-        } else {
-            runner = FakeBulkAnnotationRunner()
-        }
-        return BibleAnnotationsSettings.contribution(
+    ) -> BulkAnnotationWiring? {
+        guard let databaseContext, let database else { return nil }
+        let ledger = GRDBBulkAnnotationLedger(database: database)
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            currentModelID: currentModelID
+        )
+        // Resume an in-progress run on launch (no-op when none is active).
+        Task { await runner.restore() }
+        let contribution = BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
             runner: runner,
             requiresCostConfirmation: requiresCostConfirmation
         )
+        let background = BulkAnnotationBackgroundScheduler(runner: runner, ledger: ledger)
+        return BulkAnnotationWiring(settingsContribution: contribution, background: background)
     }
 
     @MainActor
