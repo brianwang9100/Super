@@ -43,7 +43,7 @@ struct BulkFinishedRunRow: View {
     private var leaf: some View {
         if summary.status == .failed {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 15, weight: .semibold))
+                .font(typography.font(size: 15, weight: .semibold))
                 .foregroundStyle(theme.errorInk)
                 .frame(width: 22, height: 22)
                 .accessibilityHidden(true)
@@ -92,7 +92,7 @@ struct BulkFinishedRunRow: View {
     private var dismissButton: some View {
         Button(action: onDismiss) {
             Image(systemName: "xmark")
-                .font(.system(size: 12, weight: .bold))
+                .font(typography.font(size: 12, weight: .bold))
                 .foregroundStyle(theme.inkSoft)
                 .frame(width: 30, height: 30)
         }
