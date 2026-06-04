@@ -58,15 +58,23 @@ struct ChatsEmptyState: View {
             Text("Tap + button to start new chat")
                 .foregroundStyle(theme.inkFaint)
         case .noMatches(let query):
-            // Built as a composed `Text` so the quoted query reads in
-            // `theme.ink` against the surrounding `theme.inkFaint`
-            // prose — matches the original search-empty styling.
-            Text("Nothing in your history matches ")
-                .foregroundStyle(theme.inkFaint)
-            + Text("\u{201C}\(query)\u{201D}")
-                .foregroundStyle(theme.ink)
-            + Text(".")
-                .foregroundStyle(theme.inkFaint)
+            // Built as an `AttributedString` so the quoted query reads in
+            // `theme.ink` against the surrounding `theme.inkFaint` prose —
+            // matches the original search-empty styling. Per-run colour via
+            // `AttributedString` rather than the deprecated `Text + Text`.
+            Text(noMatchesCaption(query: query))
         }
+    }
+
+    /// Search-empty caption with the quoted query emphasized in `theme.ink`
+    /// against `theme.inkFaint` prose.
+    private func noMatchesCaption(query: String) -> AttributedString {
+        var prose = AttributedString("Nothing in your history matches ")
+        prose.foregroundColor = theme.inkFaint
+        var quoted = AttributedString("\u{201C}\(query)\u{201D}")
+        quoted.foregroundColor = theme.ink
+        var period = AttributedString(".")
+        period.foregroundColor = theme.inkFaint
+        return prose + quoted + period
     }
 }

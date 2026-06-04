@@ -354,7 +354,7 @@ struct NarrationTransportSheet: View {
     /// to voices that can pronounce English (or whatever the OS locale
     /// is) intelligibly. Falls back to `"en"` when the locale lacks a
     /// language code.
-    private static var localeLanguagePrefix: String {
+    nonisolated private static var localeLanguagePrefix: String {
         Locale.current.language.languageCode?.identifier ?? "en"
     }
 
@@ -377,7 +377,7 @@ struct NarrationTransportSheet: View {
             .sorted { $0.displayName < $1.displayName }
     }
 
-    private static func voiceDisplayName(_ voice: AVSpeechSynthesisVoice) -> String {
+    nonisolated private static func voiceDisplayName(_ voice: AVSpeechSynthesisVoice) -> String {
         let tier: String
         switch voice.quality {
         case .premium: tier = "Premium"

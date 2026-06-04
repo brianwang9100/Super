@@ -669,7 +669,6 @@ struct ChatSessionTests {
         // exposes it through the snapshot. Without the fix, the
         // `snapshot.thinkingStartedAt` assertion below trips on `nil`.
         let database = try ChatDatabase.makeInMemory()
-        let conversationRepo = GRDBConversationRepository(database: database)
         let messageRepo = GRDBMessageRepository(database: database)
         let toolCallRepo = GRDBToolCallRepository(database: database)
         let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)

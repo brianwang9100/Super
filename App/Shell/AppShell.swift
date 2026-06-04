@@ -488,112 +488,108 @@ struct AppShell: View {
     private func ensureViewModel() async {
         guard !bootstrapStarted else { return }
         bootstrapStarted = true
-        do {
-            // Begin draining the cross-applet bus before any composer
-            // mounts, so a verse added early is buffered, not lost.
-            await referenceInbox.attach(to: dependencies.eventBus)
+        // Begin draining the cross-applet bus before any composer
+        // mounts, so a verse added early is buffered, not lost.
+        await referenceInbox.attach(to: dependencies.eventBus)
 
-            // Drain the Chats applet's "open this chat" / "new chat"
-            // requests onto the shell's existing routing. The bus
-            // does no buffering before subscription, so any event the
-            // Chats backdrop publishes after this task starts is
-            // delivered exactly once. The task is intentionally
-            // long-lived — `AppShell` lives for the whole app session,
-            // so cancellation isn't load-bearing.
-            //
-            // Writes land in `pendingNavigation`, a `@State` whose
-            // reference-backed storage survives the struct copy this
-            // closure captures. The body's `.onChange` then dispatches
-            // from a fresh `self` so `@Environment` reads (notably
-            // `reduceMotion`) reflect the live OS setting at the
-            // moment of navigation — not the value frozen into this
-            // captured copy at task-spawn time.
-            let eventBus = dependencies.eventBus
-            Task { [self] in
-                for await event in await eventBus.events() {
-                    switch event {
-                    case .openConversationRequested(let id):
-                        pendingNavigation = .openConversation(id: id)
-                    case .newConversationRequested:
-                        pendingNavigation = .newConversation
-                    case .recordAddedToChat:
-                        // Owned by `ChatReferenceInbox` — skip here so
-                        // we don't double-route the verse hand-off.
-                        break
-                    case .openRecord(let reference):
-                        // The receiving applet's own bus subscriber
-                        // performs the within-applet navigation; the
-                        // shell's job is only to make that applet's
-                        // backdrop visible. Route through
-                        // `pendingNavigation` so the dispatch runs
-                        // inside a body re-eval and `@Environment`
-                        // reads (notably `reduceMotion`) are fresh.
-                        pendingNavigation = .openApplet(id: reference.appletID)
-                    case .bibleAnnotateRequested, .bibleAnnotateCompleted:
-                        // Headless Bible → Chat dispatch handshake —
-                        // routed end-to-end by
-                        // `BibleAnnotateDispatcher` (request) and
-                        // `BibleScreenViewModel` (completion). The
-                        // shell has no part in the flow and explicitly
-                        // skips both envelopes.
-                        break
-                    }
+        // Drain the Chats applet's "open this chat" / "new chat"
+        // requests onto the shell's existing routing. The bus
+        // does no buffering before subscription, so any event the
+        // Chats backdrop publishes after this task starts is
+        // delivered exactly once. The task is intentionally
+        // long-lived — `AppShell` lives for the whole app session,
+        // so cancellation isn't load-bearing.
+        //
+        // Writes land in `pendingNavigation`, a `@State` whose
+        // reference-backed storage survives the struct copy this
+        // closure captures. The body's `.onChange` then dispatches
+        // from a fresh `self` so `@Environment` reads (notably
+        // `reduceMotion`) reflect the live OS setting at the
+        // moment of navigation — not the value frozen into this
+        // captured copy at task-spawn time.
+        let eventBus = dependencies.eventBus
+        Task { [self] in
+            for await event in await eventBus.events() {
+                switch event {
+                case .openConversationRequested(let id):
+                    pendingNavigation = .openConversation(id: id)
+                case .newConversationRequested:
+                    pendingNavigation = .newConversation
+                case .recordAddedToChat:
+                    // Owned by `ChatReferenceInbox` — skip here so
+                    // we don't double-route the verse hand-off.
+                    break
+                case .openRecord(let reference):
+                    // The receiving applet's own bus subscriber
+                    // performs the within-applet navigation; the
+                    // shell's job is only to make that applet's
+                    // backdrop visible. Route through
+                    // `pendingNavigation` so the dispatch runs
+                    // inside a body re-eval and `@Environment`
+                    // reads (notably `reduceMotion`) are fresh.
+                    pendingNavigation = .openApplet(id: reference.appletID)
+                case .bibleAnnotateRequested, .bibleAnnotateCompleted:
+                    // Headless Bible → Chat dispatch handshake —
+                    // routed end-to-end by
+                    // `BibleAnnotateDispatcher` (request) and
+                    // `BibleScreenViewModel` (completion). The
+                    // shell has no part in the flow and explicitly
+                    // skips both envelopes.
+                    break
                 }
             }
-            let conversation = ensureConversation()
-            // Whether this conversation came from disk or is a fresh
-            // launch-into-empty-DB draft. Captured before
-            // `rebuildChatViewModel` runs (which checks the DB itself
-            // to decide whether to wrap the driver lazily).
-            let isDraft = ((try? await dependencies.conversationRepository.fetch(id: conversation.id)) == nil)
-            // Build the sidebar view model **before** the chat view
-            // model so the chat's lazy-persist callback and the
-            // auto-titler's `onTitleGenerated` hook can capture a
-            // non-nil sidebar reference.
-            let sidebar = SidebarViewModel(
-                conversationRepository: dependencies.conversationRepository,
-                sessionStore: dependencies.chatSessionStore,
-                activeConversationId: conversation.id
-            )
-            sidebarViewModel = sidebar
-            if isDraft {
-                sidebar.draftConversation = conversation
-            }
-            // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
-            let settings = SettingsViewModel(
-                appInfo: appInfo,
-                settingRepository: dependencies.settingRepository,
-                modelRepository: dependencies.modelConfigurationRepository,
-                conversationRepository: dependencies.conversationRepository,
-                toolRegistry: dependencies.toolRegistry,
-                userPersonalizationReceiver: dependencies.chatSessionStore,
-                autoCompactPolicyReceiver: dependencies.chatSessionStore,
-                webSearchPolicyReceiver: dependencies.chatSessionStore,
-                // Required for SettingsMemoryPane edit/delete/clear-all
-                // to reach the GRDB store. Optional in the type so test
-                // fixtures can construct the VM without one — production
-                // always wires it.
-                memoryRepository: dependencies.memoryRepository,
-                llmProviderRegistry: dependencies.llmProviderRegistry,
-                httpClient: URLSessionHTTPClient(),
-                // Thread the boot-time availability snapshot through so the
-                // Settings UI agrees with the seeder/provider hydrator on
-                // whether AFM is usable. Re-querying `SystemLanguageModel
-                // .default.availability` here would let a mid-session toggle
-                // of Apple Intelligence split that answer across surfaces.
-                appleFoundationAvailability: dependencies.appleFoundationAvailability
-            )
-            await settings.load()
-            settingsViewModel = settings
-            theme = .make(settings.settings.themeId)
-            appearance = ChatAppearance(fontScale: settings.settings.fontScale)
-            typography = .make(settings.settings.typographyID, fontScale: settings.settings.fontScale)
-
-            await rebuildChatViewModel(for: conversation)
-            await sidebar.refresh()
-        } catch {
-            bootstrapError = "Could not open chat: \(error.localizedDescription)"
         }
+        let conversation = ensureConversation()
+        // Whether this conversation came from disk or is a fresh
+        // launch-into-empty-DB draft. Captured before
+        // `rebuildChatViewModel` runs (which checks the DB itself
+        // to decide whether to wrap the driver lazily).
+        let isDraft = ((try? await dependencies.conversationRepository.fetch(id: conversation.id)) == nil)
+        // Build the sidebar view model **before** the chat view
+        // model so the chat's lazy-persist callback and the
+        // auto-titler's `onTitleGenerated` hook can capture a
+        // non-nil sidebar reference.
+        let sidebar = SidebarViewModel(
+            conversationRepository: dependencies.conversationRepository,
+            sessionStore: dependencies.chatSessionStore,
+            activeConversationId: conversation.id
+        )
+        sidebarViewModel = sidebar
+        if isDraft {
+            sidebar.draftConversation = conversation
+        }
+        // settings.load() must precede rebuildChatViewModel — provides lastSelectedModelId, verbosity, and theme.
+        let settings = SettingsViewModel(
+            appInfo: appInfo,
+            settingRepository: dependencies.settingRepository,
+            modelRepository: dependencies.modelConfigurationRepository,
+            conversationRepository: dependencies.conversationRepository,
+            toolRegistry: dependencies.toolRegistry,
+            userPersonalizationReceiver: dependencies.chatSessionStore,
+            autoCompactPolicyReceiver: dependencies.chatSessionStore,
+            webSearchPolicyReceiver: dependencies.chatSessionStore,
+            // Required for SettingsMemoryPane edit/delete/clear-all
+            // to reach the GRDB store. Optional in the type so test
+            // fixtures can construct the VM without one — production
+            // always wires it.
+            memoryRepository: dependencies.memoryRepository,
+            llmProviderRegistry: dependencies.llmProviderRegistry,
+            httpClient: URLSessionHTTPClient(),
+            // Thread the boot-time availability snapshot through so the
+            // Settings UI agrees with the seeder/provider hydrator on
+            // whether AFM is usable. Re-querying `SystemLanguageModel
+            // .default.availability` here would let a mid-session toggle
+            // of Apple Intelligence split that answer across surfaces.
+            appleFoundationAvailability: dependencies.appleFoundationAvailability
+        )
+        await settings.load()
+        settingsViewModel = settings
+        theme = .make(settings.settings.themeId)
+        appearance = ChatAppearance(fontScale: settings.settings.fontScale)
+        typography = .make(settings.settings.typographyID, fontScale: settings.settings.fontScale)
+
+        await rebuildChatViewModel(for: conversation)
+        await sidebar.refresh()
     }
 
     private func rebuildChatViewModel(for conversation: ConversationRecord) async {

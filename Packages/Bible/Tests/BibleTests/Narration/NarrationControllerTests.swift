@@ -337,7 +337,10 @@ struct NarrationControllerTests {
 
         controller.voice = nil  // back to default
         #expect(service.setVoiceCalls.count == 2)
-        #expect(service.setVoiceCalls.last as? AVSpeechSynthesisVoice? == .some(nil))
+        // `.last` is `AVSpeechSynthesisVoice??`; the outer optional is non-nil
+        // (count == 2 above), so force-unwrap it and confirm the recorded voice
+        // was nil. `Optional == nil` needs no `Equatable` on the voice.
+        #expect(service.setVoiceCalls.last! == nil)
     }
 
     @Test("re-assigning `voice` to a voice with the same identifier does NOT trigger setVoice")
