@@ -51,7 +51,6 @@ public struct TodoScreen: View {
                 filter: filterBinding,
                 labels: labels
             )
-            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: Binding(
             get: { editorPresented },
@@ -73,7 +72,12 @@ public struct TodoScreen: View {
                 now: viewModel.now,
                 calendar: viewModel.calendar
             )
+            // Full-height editor whose `SheetNavBar` close (✕) handles
+            // dismissal, so the system grabber is hidden — matching the Bible
+            // note editor's presentation.
             .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            .presentationBackground(theme.background)
         }
         .overlay(alignment: .bottom) { toastLayer }
         .onChange(of: viewModel.toast?.id) { _, id in
@@ -116,10 +120,11 @@ public struct TodoScreen: View {
                 .foregroundStyle(theme.accentInk)
                 // 36×36 mirrors the shell's hamburger button; the 4pt top
                 // offset puts it on the same baseline (safe-area top + 4).
+                // Accent-tinted call-to-action glass (the primary "add task"
+                // action) — glass supplies its own edge and elevation, so the
+                // old accent fill + drop shadow are gone.
                 .frame(width: 36, height: 36)
-                .background(theme.accent)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+                .superGlassCTAButton(in: Circle())
         }
         .buttonStyle(.plain)
         .padding(.top, 4)
