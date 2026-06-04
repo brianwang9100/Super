@@ -107,7 +107,12 @@ jobs:
 
       - name: Run tests
         working-directory: Packages/${{ matrix.package }}
-        run: swift test --parallel --enable-code-coverage
+        # `-Xswiftc -warnings-as-errors` mirrors the Xcode targets'
+        # SWIFT_TREAT_WARNINGS_AS_ERRORS (project.yml). The bare `swift test`
+        # path compiles from Package.swift and ignores that build setting, so
+        # the flag is applied here (CI-only) to keep both legs consistent
+        # without forcing warnings-as-errors on local `swift test`.
+        run: swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors
 
       - name: Coverage summary
         if: always()

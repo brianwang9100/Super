@@ -867,7 +867,7 @@ struct SettingsModelDetailPane: View {
     ///    catalog base URL (trailing-slash tolerant); otherwise Custom, so a
     ///    user who points a catalog wire id at their own proxy isn't
     ///    reclassified and re-URL'd on Save.
-    static func resolveEditProvider(
+    nonisolated static func resolveEditProvider(
         kind: LLMProviderKind,
         modelId: String,
         baseURL: URL?
@@ -916,7 +916,7 @@ struct SettingsModelDetailPane: View {
     /// Returns `true` when both URLs are nil; otherwise normalises
     /// each side by stripping a single trailing `/` from
     /// `absoluteString` and compares the results.
-    static func urlsMatchIgnoringTrailingSlash(_ lhs: URL?, _ rhs: URL?) -> Bool {
+    nonisolated static func urlsMatchIgnoringTrailingSlash(_ lhs: URL?, _ rhs: URL?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil): return true
         case (nil, _), (_, nil): return false
@@ -930,7 +930,7 @@ struct SettingsModelDetailPane: View {
     /// than a single drop) handles values that arrive with multiple
     /// trailing slashes (`…/v1//`) without falling through to the
     /// Custom branch.
-    static func urlNormalized(_ url: URL) -> String {
+    nonisolated static func urlNormalized(_ url: URL) -> String {
         var s = url.absoluteString
         while s.hasSuffix("/") { s = String(s.dropLast()) }
         return s
@@ -940,7 +940,7 @@ struct SettingsModelDetailPane: View {
     /// given provider id in the create flow. Centralized so the init
     /// seam (for snapshot tests pinning an initial selection) and the
     /// runtime `applyProviderSelection` path share one source of truth.
-    static func makeCreateSeeds(providerID: String) -> CreateSeeds {
+    nonisolated static func makeCreateSeeds(providerID: String) -> CreateSeeds {
         // Same three-level fallback as `currentProvider` — never
         // force-unwrap on a catalog lookup since the helper is called
         // from every `applyProviderSelection` tap.

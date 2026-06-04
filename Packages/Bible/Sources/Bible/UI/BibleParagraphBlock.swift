@@ -364,10 +364,10 @@ private struct VerseWord: View {
     /// `underlineRule` drawn under it — extends to meet the next word.
     private var styledText: Text {
         let wordFont = typography.font(size: verseBodySize)
-        let word = Text(token.word + " ")
-            .font(isPoetry ? wordFont.italic() : wordFont)
-            .foregroundStyle(theme.ink)
-        guard token.showsVerseNumber else { return word }
+        var word = AttributedString(token.word + " ")
+        word.font = isPoetry ? wordFont.italic() : wordFont
+        word.foregroundColor = theme.ink
+        guard token.showsVerseNumber else { return Text(word) }
         // Raise the marker proportionally to its resolved point size so it sits
         // at a consistent superscript height across both scale axes. The
         // @ScaledMetric base folds in OS Dynamic Type; `fontScale` folds in the
@@ -376,12 +376,15 @@ private struct VerseWord: View {
         // 1.0× / default-Dynamic-Type look is unchanged.
         let markerOffset = verseNumberSize * typography.fontScale * (4.0 / 11.0)
         let number = BibleVerseNumber(number: token.verseNumber)
-            .text(
+            .attributedText(
                 color: theme.inkFaint,
                 font: typography.font(size: verseNumberSize),
                 baselineOffset: markerOffset
             )
-        return number + Text(" ") + word
+        // Marker, an unstyled separator space (inherits the body run), then the
+        // word — composed as one `AttributedString` so the paragraph stays a
+        // single wrapping `Text`. `AttributedString.+` replaces `Text.+`.
+        return Text(number + AttributedString(" ") + word)
     }
 
     /// The selection / narration underline, drawn as a bottom-aligned rule

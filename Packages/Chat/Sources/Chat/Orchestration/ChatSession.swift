@@ -356,7 +356,7 @@ public actor ChatSession {
         let subscription = subscribe()
         let task = Task {
             await self.run(userText: text, references: references, model: model, temperature: temperature)
-            await self.finishLiveTurn()
+            self.finishLiveTurn()
         }
         currentTask = task
         // Intentionally no per-iterator cancel hook. The turn's lifetime
@@ -387,7 +387,7 @@ public actor ChatSession {
         let subscription = subscribe()
         let task = Task {
             await self.runRetry(model: model, temperature: temperature)
-            await self.finishLiveTurn()
+            self.finishLiveTurn()
         }
         currentTask = task
         return subscription.stream
@@ -410,7 +410,7 @@ public actor ChatSession {
         let subscription = subscribe()
         let task = Task {
             await self.runCompaction(model: model)
-            await self.finishLiveTurn()
+            self.finishLiveTurn()
         }
         currentTask = task
         return subscription.stream

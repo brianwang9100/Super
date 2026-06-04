@@ -188,7 +188,7 @@ struct SettingsMemoryPane: View {
     /// race a stale `commitEdit(for: A)` after `draft` had already been
     /// overwritten with B's text — silently writing B's draft into A's
     /// row (data corruption, per PR #72 round-5 review).
-    static func decideCommit(
+    nonisolated static func decideCommit(
         editingId: String?,
         target: MemoryRecord,
         draft: String

@@ -24,7 +24,7 @@ struct DynamicLLMToolTests {
         let result = try await dynamicTool.call(arguments: emptyArguments())
 
         #expect(result == "echo: hello")
-        let captured = await executor.lastInput
+        let captured = executor.lastInput
         #expect(captured?.isEmpty == true)
     }
 
@@ -47,7 +47,7 @@ struct DynamicLLMToolTests {
             "message": "hello"
         ]))
 
-        let captured = await executor.lastInput
+        let captured = executor.lastInput
         #expect(captured == ["message": .string("hello")])
     }
 
@@ -71,7 +71,7 @@ struct DynamicLLMToolTests {
             "loud": true,
         ]))
 
-        let captured = await executor.lastInput
+        let captured = executor.lastInput
         #expect(captured?["count"] == .int(5))
         #expect(captured?["ratio"] == .double(0.5))
         #expect(captured?["loud"] == .bool(true))
@@ -96,7 +96,7 @@ struct DynamicLLMToolTests {
         // omit an optional argument.
         _ = try await dynamicTool.call(arguments: emptyArguments())
 
-        let captured = await executor.lastInput
+        let captured = executor.lastInput
         // Missing parameter is dropped, not surfaced as null/empty.
         #expect(captured?.isEmpty == true)
     }
