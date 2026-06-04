@@ -9,8 +9,10 @@ struct TodoFilterSheet: View {
     @Binding var filter: TodoFilter
     let labels: [LabelRecord]
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// Sort cases the sheet exposes — `.manual` is omitted per MVP scope.
     private let sortOptions: [(TodoFilter.Sort, String)] = [
@@ -54,23 +56,31 @@ struct TodoFilterSheet: View {
         }
         .padding(.bottom, 24)
         .background(theme.background)
+        .sheetPresentation(.expandable)
     }
 
+    /// Shared sheet nav bar: leading close, centered title, and a trailing
+    /// glass **Reset** that restores the default filter. The 44pt trailing slot
+    /// is icon-sized (the bar's convention), so Reset reads as the
+    /// counter-clockwise glyph rather than the old inline text label.
     private var header: some View {
-        HStack {
-            Text("Sort & filter")
-                .font(.system(size: 17 * fontScale, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            Spacer()
-            Button("Reset") {
+        SheetNavBar(
+            title: "Sort & filter",
+            sizing: .expandable,
+            onClose: { dismiss() }
+        ) {
+            Button {
                 filter = .defaults
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(typography.font(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .frame(width: 44, height: 44)
+                    .superGlassButton(in: Circle())
             }
-            .font(.system(size: 15 * fontScale))
-            .foregroundStyle(theme.inkFaint)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Reset filters")
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 14)
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

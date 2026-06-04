@@ -25,6 +25,7 @@ struct TodoTaskEditorSheet: View {
     @State private var showingDatePicker = false
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     private var titleIsBlank: Bool {
         draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -46,57 +47,48 @@ struct TodoTaskEditorSheet: View {
                 }
             }
         }
+        // Presents at `.large` with the grabber hidden, so without this the nav
+        // bar would hug the sheet's rounded top corner — the margin gives the
+        // ✕ / ✓ room to breathe (the `.fitsContent` nav-bar inset stays 0). Same
+        // compensation the Bible note editor applies.
+        .padding(.top, 14)
         .background(theme.background)
     }
 
+    /// Shared sheet nav bar: leading neutral-glass cancel (✕), centered title,
+    /// and the accent-tinted call-to-action **save** (✓) in the trailing slot —
+    /// the same close/save pairing as the Bible note editor, with the matching
+    /// `.fitsContent` zero top inset (the grabber is hidden, so there's nothing
+    /// to clear; the body's top padding handles the rounded-corner breathing
+    /// room). Replaces the old bespoke tinted-disc title bar.
     private var titleBar: some View {
-        HStack {
-            circleButton(
-                systemName: "xmark",
-                tint: Self.cancelRed,
-                accessibilityLabel: "Cancel",
-                action: onCancel
-            )
-            Spacer()
-            Text(mode == .create ? "New task" : "Edit task")
-                .font(.system(size: 17 * fontScale, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            Spacer()
-            circleButton(
-                systemName: "checkmark",
-                tint: titleIsBlank ? theme.inkMute : theme.accent,
-                accessibilityLabel: mode == .create ? "Add task" : "Save task"
-            ) {
-                Task { await onSave() }
-            }
-            .disabled(titleIsBlank)
+        SheetNavBar(
+            title: mode == .create ? "New task" : "Edit task",
+            sizing: .fitsContent,
+            onClose: onCancel
+        ) {
+            saveButton
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 22)
-        .padding(.bottom, 14)
     }
 
-    /// A 32pt circular nav action — a tinted disc with a white glyph.
-    private func circleButton(
-        systemName: String,
-        tint: Color,
-        accessibilityLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(tint)
-                .clipShape(Circle())
+    /// ✓ that commits the draft, hosted in the nav bar's trailing slot;
+    /// disabled + dimmed until the title has non-whitespace content. Accent
+    /// call-to-action glass, mirroring `NoteEditor`'s save button.
+    private var saveButton: some View {
+        Button {
+            Task { await onSave() }
+        } label: {
+            Image(systemName: "checkmark")
+                .font(typography.font(size: 16, weight: .semibold))
+                .foregroundStyle(titleIsBlank ? theme.inkMute : theme.accentInk)
+                .frame(width: 44, height: 44)
+                .superGlassCTAButton(in: Circle())
+                .opacity(titleIsBlank ? 0.6 : 1)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
+        .disabled(titleIsBlank)
+        .accessibilityLabel(mode == .create ? "Add task" : "Save task")
     }
-
-    /// Warm red for the cancel action — the design's `oklch(0.55 0.16 25)`.
-    private static let cancelRed = OKLCH(0.55, 0.16, 25).color
 
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 8) {
