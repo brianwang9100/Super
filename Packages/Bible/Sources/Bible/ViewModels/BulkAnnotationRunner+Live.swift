@@ -209,6 +209,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public func restore() async {
         guard runRecord == nil else { return }  // resume once; never clobber a live run.
         guard let run = try? await ledger.activeRun() else { return }
+        guard runRecord == nil else { return }  // a run may have started during the await.
         var loaded = (try? await ledger.units(runId: run.id)) ?? []
         let now = clock.now()
         for index in loaded.indices where loaded[index].state == .generating {
@@ -219,6 +220,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // during restore, so ordering holds without the serialized tail.
             try? await ledger.saveUnit(loaded[index])
         }
+        // Re-check after every suspension above before taking ownership, so a
+        // run that started mid-restore is never clobbered (call-site safe too:
+        // the fire-and-forget restore Task at the composition root can't race a
+        // user-initiated run).
+        guard runRecord == nil else { return }
         runRecord = run
         units = loaded
         consecutiveFailures = 0
@@ -474,8 +480,9 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     /// Await the current work loop and all issued ledger writes to settle
     /// (completed, halted, paused, or cancelled). Lets tests drive the engine
-    /// deterministically with no sleeps.
-    func waitUntilIdle() async {
+    /// deterministically with no sleeps. Underscore-prefixed per the test-only
+    /// seam convention (AGENTS.md §Testing).
+    func _waitUntilIdle() async {
         await driver?.value
         await lastWrite?.value
     }

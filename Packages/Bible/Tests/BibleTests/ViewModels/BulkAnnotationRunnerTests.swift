@@ -6,7 +6,7 @@ import Testing
 
 /// Engine tests for the LLM-backed `BulkAnnotationRunner`, driven against an
 /// in-memory ledger and a scripted/gated `BibleAnnotateGenerating`. The runner's
-/// `waitUntilIdle()` test seam awaits the work loop + all issued ledger writes,
+/// `_waitUntilIdle()` test seam awaits the work loop + all issued ledger writes,
 /// so every assertion is deterministic with no sleeps.
 @MainActor
 @Suite struct BulkAnnotationRunnerTests {
@@ -59,7 +59,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator)
 
         runner.start(oneBookPlan(chapters: [1, 2, 3]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
@@ -88,7 +88,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator)
 
         runner.start(oneBookPlan(chapters: [1]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let units = try await loadUnits(ledger)
         #expect(units.count == 1)
@@ -108,7 +108,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 2)
 
         runner.start(oneBookPlan(chapters: [1]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let units = try await loadUnits(ledger)
         #expect(units[0].state == .failed)
@@ -130,7 +130,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator)
 
         runner.start(oneBookPlan(chapters: [1, 2]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .failed)
@@ -151,7 +151,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator)
 
         runner.start(oneBookPlan(chapters: [1, 2]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .failed)
@@ -168,7 +168,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1, breaker: 3)
 
         runner.start(oneBookPlan(chapters: [1, 2, 3, 4]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .failed)
@@ -188,14 +188,14 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
 
         runner.start(oneBookPlan(chapters: [1]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         var units = try await loadUnits(ledger)
         #expect(units[0].state == .failed)
 
         generator.enqueue(.success(annotationCount: 3))
         runner.retry(ChapterRef(bookID: "ROM", number: 1))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         units = try await loadUnits(ledger)
         #expect(units[0].state == .done)
@@ -215,7 +215,7 @@ import Testing
         let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
 
         runner.start(oneBookPlan(chapters: [1, 2]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         var units = try await loadUnits(ledger)
         #expect(units[0].state == .failed)
@@ -224,7 +224,7 @@ import Testing
         generator.enqueue(.success(annotationCount: 2))
         generator.enqueue(.success(annotationCount: 6))
         runner.retryAllFailed()
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         units = try await loadUnits(ledger)
         #expect(units[0].state == .done)
@@ -258,7 +258,7 @@ import Testing
         generator.releaseNext(.success(annotationCount: 1))  // chapter 1 done
         await generator.awaitCall()                          // chapter 3
         generator.releaseNext(.success(annotationCount: 3))  // chapter 3 done
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         // The single-flight guard held: a generation was never in flight more
         // than once at a time (the passive high-water mark proves it without
@@ -283,7 +283,7 @@ import Testing
         await generator.awaitCall()  // first unit in flight
         runner.cancel()
         generator.releaseNext(.success(annotationCount: 5))  // resolve the in-flight call
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         #expect(runner.snapshot == nil)
         let completed = try await ledger.completedRuns()
@@ -311,7 +311,7 @@ import Testing
         await modelGate.awaitCall()  // suspended in persistThenRun at currentModelID()
         runner.cancel()
         modelGate.release("model-x")  // resume; the identity guard must bail
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         #expect(runner.snapshot == nil)
         #expect(try await ledger.run(id: "id-1") == nil)
@@ -330,7 +330,7 @@ import Testing
         await generator.awaitCall()  // unit 0 in flight
         runner.togglePause()
         generator.releaseNext(.success(annotationCount: 5))  // discarded; unit re-queued
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         #expect(runner.snapshot?.isRunning == false)
         let parked = try #require(try await ledger.activeRun())
@@ -344,7 +344,7 @@ import Testing
         generator.releaseNext(.success(annotationCount: 5))
         await generator.awaitCall()
         generator.releaseNext(.success(annotationCount: 7))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
@@ -390,7 +390,7 @@ import Testing
         )
 
         await runner.restore()
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let restored = try #require(try await ledger.run(id: "run-A"))
         #expect(restored.status == .completed)
@@ -418,7 +418,7 @@ import Testing
         let runner = BulkAnnotationRunner(ledger: ledger, generator: generator)
 
         await runner.restore()
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         #expect(runner.snapshot?.isRunning == false)
         let still = try #require(try await ledger.run(id: "run-P"))
@@ -433,7 +433,7 @@ import Testing
         let (runner, _) = try makeRunner(generator: generator)
 
         runner.start(oneBookPlan("ROM", "Romans", chapters: [8]))
-        await runner.waitUntilIdle()
+        await runner._waitUntilIdle()
 
         let reference = try #require(generator.receivedReferences.first)
         #expect(reference.kind == "chapter")
