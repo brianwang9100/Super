@@ -41,6 +41,11 @@ public struct BibleApplet: MiniApplet {
     /// rather than failing outright.
     private let databaseContext: DatabaseContext?
 
+    /// The applet's `bible.sqlite` handle, retained so the bulk-annotation
+    /// runner can build its `GRDBBulkAnnotationLedger` from it without the
+    /// database leaking past the applet. `nil` when the database failed to open.
+    private let database: BibleDatabase?
+
     /// Write seam for the `bible.annotate` tool. `nil` when the database
     /// failed to open at init; `registerAnnotationTool(in:)` then becomes
     /// a no-op so the rest of the reader still loads.
@@ -63,6 +68,7 @@ public struct BibleApplet: MiniApplet {
     @MainActor
     public init() {
         let database = BibleApplet.openDatabase()
+        self.database = database
         self.databaseContext = database.map { db in
             DatabaseContext.readOnly { db.queue }
         }
@@ -103,6 +109,7 @@ public struct BibleApplet: MiniApplet {
     ) {
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
+        self.database = nil
         self.databaseContext = databaseContext
         self.annotationRepository = annotationRepository
         self.noteRepository = noteRepository
@@ -191,18 +198,46 @@ public struct BibleApplet: MiniApplet {
 
     /// The "Annotations" entry for the shared Settings screen — the bulk
     /// generation hub. Built here so the applet's `bible.sqlite`
-    /// `DatabaseContext` (which drives the coverage `@Query`) never leaks into
-    /// the composition root, mirroring `registerAnnotationTool(in:)`. `nil`
-    /// when the database failed to open. Uses the in-memory
-    /// `FakeBulkAnnotationRunner` until the LLM-backed engine lands.
+    /// `DatabaseContext` (which drives the coverage `@Query`) and ledger never
+    /// leak into the composition root, mirroring `registerAnnotationTool(in:)`.
+    /// `nil` when the database failed to open.
+    ///
+    /// When a `generator` is supplied (the composition root injects a
+    /// `.userBulk`-stamped `BibleAnnotateDispatcher`), the real LLM-backed
+    /// `BulkAnnotationRunner` is built over the applet's ledger and resumed.
+    /// Without one — previews, tests, or a shell that doesn't wire bulk
+    /// generation — it falls back to the in-memory `FakeBulkAnnotationRunner`.
+    ///
+    /// - Parameters:
+    ///   - generator: the cross-package generation seam (Bible can't import
+    ///     Chat, so the dispatcher arrives as a Core `BibleAnnotateGenerating`).
+    ///   - currentModelID: resolves the model active at run kickoff for the run
+    ///     record's `modelId` metadata (the registry is actor-isolated, hence
+    ///     async). The authoritative per-annotation stamp is still the
+    ///     dispatcher's `.userBulk` stamp provider.
     @MainActor
     public func annotationsSettingsContribution(
-        requiresCostConfirmation: Bool
+        requiresCostConfirmation: Bool,
+        generator: (any BibleAnnotateGenerating)? = nil,
+        currentModelID: @escaping @Sendable () async -> String = { "" }
     ) -> AppletSettingsContribution? {
         guard let databaseContext else { return nil }
+        let runner: any BulkAnnotationRunning
+        if let generator, let database {
+            let liveRunner = BulkAnnotationRunner(
+                ledger: GRDBBulkAnnotationLedger(database: database),
+                generator: generator,
+                currentModelID: currentModelID
+            )
+            // Resume an in-progress run on launch (no-op when none is active).
+            Task { await liveRunner.restore() }
+            runner = liveRunner
+        } else {
+            runner = FakeBulkAnnotationRunner()
+        }
         return BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
-            runner: FakeBulkAnnotationRunner(),
+            runner: runner,
             requiresCostConfirmation: requiresCostConfirmation
         )
     }
