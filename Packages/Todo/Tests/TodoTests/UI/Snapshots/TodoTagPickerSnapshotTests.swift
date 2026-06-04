@@ -56,6 +56,18 @@ struct TodoTagPickerSnapshotTests {
         )
     }
 
+    /// The "＋ Create" row carries user-length text (the typed query), so the
+    /// larger Dynamic Type size exercises its reflow.
+    @Test("create affordance, Dynamic Type XXL") func createXXL() {
+        verify(
+            theme: .light,
+            query: "Groceries",
+            dynamicType: .xxLarge,
+            height: 240,
+            name: "tag_picker_create_light_xxl"
+        )
+    }
+
     private var labels: [LabelRecord] {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         return [
