@@ -373,6 +373,24 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    @Test("models pane title-summarization footer: automatic default (dark)")
+    func modelsPaneTitlingAutomaticDark() async {
+        await verifyModelsPaneTitling(
+            theme: .dark,
+            settings: Self.titleSettings(enabled: true, modelId: nil),
+            name: "settings_models_titling_automatic_dark"
+        )
+    }
+
+    @Test("models pane title-summarization footer: automatic default (sepia)")
+    func modelsPaneTitlingAutomaticSepia() async {
+        await verifyModelsPaneTitling(
+            theme: .sepia,
+            settings: Self.titleSettings(enabled: true, modelId: nil),
+            name: "settings_models_titling_automatic_sepia"
+        )
+    }
+
     @Test("models pane title-summarization footer: an explicit model is selected")
     func modelsPaneTitlingExplicitModel() async {
         await verifyModelsPaneTitling(
@@ -380,6 +398,26 @@ struct SettingsSheetSnapshotTests {
             availability: .available,
             settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
             name: "settings_models_titling_explicit_light"
+        )
+    }
+
+    @Test("models pane title-summarization footer: explicit model selected (dark)")
+    func modelsPaneTitlingExplicitModelDark() async {
+        await verifyModelsPaneTitling(
+            theme: .dark,
+            availability: .available,
+            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            name: "settings_models_titling_explicit_dark"
+        )
+    }
+
+    @Test("models pane title-summarization footer: explicit model selected (sepia)")
+    func modelsPaneTitlingExplicitModelSepia() async {
+        await verifyModelsPaneTitling(
+            theme: .sepia,
+            availability: .available,
+            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            name: "settings_models_titling_explicit_sepia"
         )
     }
 
