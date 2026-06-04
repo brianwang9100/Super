@@ -42,4 +42,12 @@ public protocol BulkAnnotationRunning: AnyObject {
     func retry(_ ref: ChapterRef)
     func retryAllFailed()
     func cancel()
+
+    /// Re-adopt a finished run (from the hub's "Recently finished" list) as the
+    /// active job: revive its failed units and resume generation. A no-op when a
+    /// run is already active (one job at a time) or the id isn't a terminal run.
+    func resume(runID: String)
+    /// Remove a finished run from the ledger (the list's dismiss control). A
+    /// no-op for the active run, which is torn down via `cancel()` instead.
+    func dismissFinishedRun(id: String)
 }

@@ -18,6 +18,9 @@ struct BulkAnnotationHubScreen: View {
     /// `true` for a remote BYOK model (Generate asks for confirmation first);
     /// `false` for the free on-device model (Generate starts directly).
     let requiresCostConfirmation: Bool
+    /// Terminal runs (newest first) the "Recently finished" section lists — bound
+    /// by the container from `FinishedRunsRequest`. Empty hides the section.
+    var finishedRuns: [FinishedRunSummary] = []
 
     /// The two surfaces are mutually exclusive, so one `.sheet(item:)` drives
     /// both rather than two `isPresented` sheets stacked on one view.
@@ -38,6 +41,11 @@ struct BulkAnnotationHubScreen: View {
                 runningSection(run)
             } else {
                 idleSection
+            }
+
+            if !finishedRuns.isEmpty {
+                finishedSection
+                    .padding(.top, 22)
             }
 
             Spacer(minLength: 24)
@@ -97,6 +105,29 @@ struct BulkAnnotationHubScreen: View {
                 onOpen: { activeSheet = .progress },
                 onTogglePause: { viewModel.togglePause() }
             )
+            .padding(.horizontal, 16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var finishedSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("RECENTLY FINISHED")
+                .font(typography.mono(10.5, weight: .medium))
+                .tracking(0.8)
+                .foregroundStyle(theme.inkFaint)
+                .padding(.horizontal, 20)
+
+            VStack(spacing: 8) {
+                ForEach(finishedRuns) { summary in
+                    BulkFinishedRunRow(
+                        summary: summary,
+                        onRetry: { viewModel.retryFinishedRun(summary.runID) },
+                        onDismiss: { viewModel.dismissFinishedRun(summary.runID) }
+                    )
+                }
+            }
             .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

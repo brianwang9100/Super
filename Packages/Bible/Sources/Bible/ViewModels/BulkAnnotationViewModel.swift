@@ -126,4 +126,30 @@ public final class BulkAnnotationViewModel {
     public func retryAllFailed() { runner.retryAllFailed() }
     public func cancelRun() { runner.cancel() }
     public func confirmDeleteAll() { deleteAll() }
+
+    // MARK: - Finished-run intents
+
+    /// Re-adopt a finished run as the active job (the list's Retry control).
+    public func retryFinishedRun(_ runID: String) { runner.resume(runID: runID) }
+
+    /// Remove a finished run from the list (its dismiss control).
+    public func dismissFinishedRun(_ runID: String) { runner.dismissFinishedRun(id: runID) }
+
+    // MARK: - Done-badge state
+
+    /// Fold the annotated-chapters query result into the per-chapter and
+    /// per-book "Done" badges. A book is done when *every* chapter it has carries
+    /// an annotation (derived against the catalog's chapter counts). Called by
+    /// the hub container whenever the `@Query` value changes.
+    public func updateDoneState(annotatedChapters: Set<ChapterRef>) {
+        self.annotatedChapters = annotatedChapters
+        var fully: Set<String> = []
+        for book in catalog.books where book.chapterCount > 0 {
+            let allAnnotated = (1...book.chapterCount).allSatisfy {
+                annotatedChapters.contains(ChapterRef(bookID: book.id, number: $0))
+            }
+            if allAnnotated { fully.insert(book.id) }
+        }
+        fullyAnnotatedBookIDs = fully
+    }
 }
