@@ -161,10 +161,12 @@ struct TodoTagPicker: View {
                     .padding(.horizontal, 11)
                     .padding(.vertical, 6)
                     // Tappable suggestion chip → frosted glass with its own
-                    // edge, in place of the old hairline-stroked capsule.
-                    .superGlassButton(in: Capsule())
+                    // edge, in place of the old hairline-stroked capsule. Inert
+                    // glass + `SuperPressButtonStyle` (not interactive glass) so
+                    // a wrapping row of chips doesn't glow-flicker on release.
+                    .superGlassButton(in: Capsule(), interactive: false)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SuperPressButtonStyle())
             }
         }
     }

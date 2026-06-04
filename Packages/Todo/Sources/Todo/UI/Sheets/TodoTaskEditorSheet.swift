@@ -145,7 +145,7 @@ struct TodoTaskEditorSheet: View {
                             selectedBorder: OKLCH(0.62, 0.14, priority.hue).color
                         ))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SuperPressButtonStyle())
                 }
             }
         }
@@ -194,7 +194,7 @@ struct TodoTaskEditorSheet: View {
                     selectedBorder: theme.accent
                 ))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SuperPressButtonStyle())
     }
 
     private var labelsField: some View {
@@ -223,7 +223,7 @@ struct TodoTaskEditorSheet: View {
                                 selectedBorder: theme.accent
                             ))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SuperPressButtonStyle())
                 }
             }
         }
@@ -291,6 +291,12 @@ struct TodoTaskEditorSheet: View {
 /// for Liquid Glass, so the unselected segments frost like the rest of the
 /// app's chrome. The chip is the whole tap target, so the unselected branch
 /// uses `superGlassButton` (which re-asserts the shape's hit region).
+///
+/// Glass is **inert** here (`interactive: false`): these chips sit in tight
+/// rows (3 priorities, 3 states, 5 due pills), and interactive glass
+/// glow-flickers as each shape springs back on release in a dense cluster —
+/// the same reason the Bible verse action sheet opts out. The press feedback
+/// is supplied instead by ``SuperPressButtonStyle`` on the hosting button.
 private struct SelectorChipSurface<S: InsettableShape>: ViewModifier {
     let shape: S
     let selected: Bool
@@ -305,7 +311,7 @@ private struct SelectorChipSurface<S: InsettableShape>: ViewModifier {
                 .overlay(shape.strokeBorder(selectedBorder, lineWidth: 1))
                 .clipShape(shape)
         } else {
-            content.superGlassButton(in: shape)
+            content.superGlassButton(in: shape, interactive: false)
         }
     }
 }
