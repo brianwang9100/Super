@@ -74,8 +74,9 @@ import Testing
         #expect(units[0].producedCount == 5)
         #expect(units[1].producedCount == 7)
         #expect(units[2].producedCount == 9)
-        #expect(runner.snapshot?.producedCount == 21)
-        #expect(runner.snapshot?.isRunning == false)
+        // The completed run clears the active slot so the hub returns to idle
+        // (the Generate CTA comes back); it now surfaces in the finished list.
+        #expect(runner.snapshot == nil)
     }
 
     // MARK: - Per-unit retry
@@ -141,7 +142,7 @@ import Testing
         #expect(units[0].state == .failed)
         #expect(units[1].state == .queued)  // never attempted — wallet protection
         #expect(generator.receivedReferences.count == 1)
-        #expect(runner.snapshot?.isRunning == false)
+        #expect(runner.snapshot == nil)  // halted run clears the active slot too
     }
 
     @Test func fatalQuotaHaltsWithQuotaReason() async throws {
@@ -179,59 +180,42 @@ import Testing
         #expect(generator.receivedReferences.count == 3)
     }
 
-    // MARK: - Manual retry
+    // MARK: - Manual retry (while the run is still active)
 
-    @Test func manualRetryRevivesFailedUnitAndCompletesRun() async throws {
-        let generator = ScriptedBibleAnnotateGenerator([
-            .failure(message: "boom", classification: .retryable),
-        ])
-        let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
+    /// `retryAllFailed()` revives every `.failed` unit on a *still-running* run —
+    /// the per-chapter Retry the progress screen offers while a later unit holds
+    /// the run open. (Reviving a finished run instead goes through `resume`.)
+    @Test func retryAllFailedRevivesFailedUnitsOnAnActiveRun() async throws {
+        let generator = GatedBibleAnnotateGenerator()
+        // One attempt per unit so a retryable fails the unit immediately; a high
+        // breaker so two failures in a row don't halt the run.
+        let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1, breaker: 99)
 
-        runner.start(oneBookPlan(chapters: [1]))
-        await runner._waitUntilIdle()
+        runner.start(oneBookPlan(chapters: [1, 2, 3]))
 
-        var units = try await loadUnits(ledger)
-        #expect(units[0].state == .failed)
+        // Chapters 1 and 2 fail; chapter 3 is held in flight, keeping the run
+        // active with two `.failed` units present.
+        await generator.awaitCall()
+        generator.releaseNext(.failure(message: "a", classification: .retryable))
+        await generator.awaitCall()
+        generator.releaseNext(.failure(message: "b", classification: .retryable))
+        await generator.awaitCall()  // chapter 3 now generating (held)
 
-        generator.enqueue(.success(annotationCount: 3))
-        runner.retry(ChapterRef(bookID: "ROM", number: 1))
-        await runner._waitUntilIdle()
-
-        units = try await loadUnits(ledger)
-        #expect(units[0].state == .done)
-        #expect(units[0].producedCount == 3)
-        #expect(units[0].attemptCount == 1)  // reset to 0 on revive, then +1
-
-        let run = try #require(try await ledger.run(id: "id-1"))
-        #expect(run.status == .completed)
-        #expect(run.haltReason == nil)
-    }
-
-    @Test func retryAllFailedRevivesEveryFailedUnit() async throws {
-        let generator = ScriptedBibleAnnotateGenerator([
-            .failure(message: "a", classification: .retryable),
-            .failure(message: "b", classification: .retryable),
-        ])
-        let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
-
-        runner.start(oneBookPlan(chapters: [1, 2]))
-        await runner._waitUntilIdle()
-
-        var units = try await loadUnits(ledger)
-        #expect(units[0].state == .failed)
-        #expect(units[1].state == .failed)
-
-        generator.enqueue(.success(annotationCount: 2))
-        generator.enqueue(.success(annotationCount: 6))
+        // Revive both failed units while the run is still going.
         runner.retryAllFailed()
+
+        generator.releaseNext(.success(annotationCount: 9))  // chapter 3 done
+        await generator.awaitCall()
+        generator.releaseNext(.success(annotationCount: 2))  // revived chapter 1
+        await generator.awaitCall()
+        generator.releaseNext(.success(annotationCount: 6))  // revived chapter 2
         await runner._waitUntilIdle()
 
-        units = try await loadUnits(ledger)
-        #expect(units[0].state == .done)
-        #expect(units[1].state == .done)
-
+        let units = try await ledger.units(runId: "id-1")
+        #expect(units.allSatisfy { $0.state == .done })
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
+        #expect(runner.snapshot == nil)  // completed → active slot cleared
     }
 
     /// Retrying a failed unit while another unit is still generating must NOT
@@ -442,5 +426,116 @@ import Testing
         #expect(reference.citation == "Romans 8 (WEB)")
         #expect(reference.snapshot == "")
         #expect(reference.appletID == "bible")
+    }
+
+    // MARK: - Finished-run lifecycle
+
+    /// Retrying a finished run that left a failed unit revives it and drives the
+    /// run back to completion — and clears the active slot again when done.
+    @Test func resumeRevivesFailedRunAndCompletes() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .failure(message: "boom", classification: .retryable),
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
+
+        runner.start(oneBookPlan(chapters: [1]))
+        await runner._waitUntilIdle()
+
+        // The unit failed but the run completed (a failed unit is terminal), and
+        // the active slot cleared — the run is now in the finished list.
+        var units = try await loadUnits(ledger)
+        #expect(units[0].state == .failed)
+        #expect(runner.snapshot == nil)
+        var run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+        #expect(run.completedAt != nil)
+
+        // Retry from the finished list → revive + re-run to a clean completion.
+        generator.enqueue(.success(annotationCount: 4))
+        runner.resume(runID: "id-1")
+        await runner._waitUntilIdle()
+
+        units = try await loadUnits(ledger)
+        #expect(units[0].state == .done)
+        #expect(units[0].producedCount == 4)
+        #expect(units[0].attemptCount == 1)  // reset on revive, then +1
+
+        run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+        #expect(run.haltReason == nil)
+        #expect(runner.snapshot == nil)
+    }
+
+    /// Resuming a cleanly-completed run (no failed/queued work) is a no-op — it
+    /// stays terminal and the generator is never called again.
+    @Test func resumeOnCleanCompletionIsNoOp() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 3)])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1]))
+        await runner._waitUntilIdle()
+        #expect(generator.receivedReferences.count == 1)
+
+        runner.resume(runID: "id-1")
+        await runner._waitUntilIdle()
+
+        #expect(generator.receivedReferences.count == 1)  // not re-driven
+        #expect(runner.snapshot == nil)
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+    }
+
+    /// Dismissing a finished run deletes its ledger row (and cascades its units).
+    @Test func dismissFinishedRunDeletesTheRow() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 2)])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1]))
+        await runner._waitUntilIdle()
+        #expect(try await ledger.run(id: "id-1") != nil)
+
+        runner.dismissFinishedRun(id: "id-1")
+        await runner._waitUntilIdle()
+
+        #expect(try await ledger.run(id: "id-1") == nil)
+        #expect(try await ledger.units(runId: "id-1").isEmpty)
+    }
+
+    /// `restore()` sweeps terminal runs older than the retention window and keeps
+    /// recent ones, regardless of whether there's an active run to resume.
+    @Test func restoreSweepsRunsOlderThanRetention() async throws {
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let stale = BulkAnnotationRunRecord(
+            id: "stale", status: .completed, modelId: "m",
+            createdAt: now, updatedAt: now, completedAt: now.addingTimeInterval(-100_000)  // > 24 h ago
+        )
+        let fresh = BulkAnnotationRunRecord(
+            id: "fresh", status: .completed, modelId: "m",
+            createdAt: now, updatedAt: now, completedAt: now.addingTimeInterval(-3_600)  // 1 h ago
+        )
+        try await ledger.createRun(stale, units: [
+            BulkAnnotationRunUnitRecord(id: "s0", runId: "stale", ordinal: 0, kind: .chapter,
+                                        bookId: "ROM", bookName: "Romans", chapterNumber: 1,
+                                        state: .done, updatedAt: now)
+        ])
+        try await ledger.createRun(fresh, units: [
+            BulkAnnotationRunUnitRecord(id: "f0", runId: "fresh", ordinal: 0, kind: .chapter,
+                                        bookId: "GAL", bookName: "Galatians", chapterNumber: 1,
+                                        state: .done, updatedAt: now)
+        ])
+
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: ScriptedBibleAnnotateGenerator(),  // no active run → never called
+            clock: FixedClock(now),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "m" }
+        )
+        await runner.restore()
+        await runner._waitUntilIdle()
+
+        #expect(try await ledger.run(id: "stale") == nil)   // swept
+        #expect(try await ledger.run(id: "fresh") != nil)   // kept
     }
 }
