@@ -323,7 +323,7 @@ struct NarrationControllerTests {
     }
 
     @Test("setting `voice` propagates to the service via setVoice(_:)")
-    func voiceSetterPropagatesToService() {
+    func voiceSetterPropagatesToService() throws {
         // Regression guard: prior to the v1.1 fix, the controller's
         // `voice` was a plain stored property and changes only took
         // effect on the *next* `start(...)` — the picker felt broken.
@@ -337,10 +337,11 @@ struct NarrationControllerTests {
 
         controller.voice = nil  // back to default
         #expect(service.setVoiceCalls.count == 2)
-        // `.last` is `AVSpeechSynthesisVoice??`; the outer optional is non-nil
-        // (count == 2 above), so force-unwrap it and confirm the recorded voice
-        // was nil. `Optional == nil` needs no `Equatable` on the voice.
-        #expect(service.setVoiceCalls.last! == nil)
+        // `.last` is `AVSpeechSynthesisVoice??`; require the outer optional, then
+        // confirm the recorded voice was nil. `Optional == nil` needs no
+        // `Equatable` on the voice.
+        let lastCall = try #require(service.setVoiceCalls.last)
+        #expect(lastCall == nil)
     }
 
     @Test("re-assigning `voice` to a voice with the same identifier does NOT trigger setVoice")
