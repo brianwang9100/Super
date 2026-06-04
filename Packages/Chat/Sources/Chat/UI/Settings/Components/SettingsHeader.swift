@@ -13,7 +13,9 @@ struct SettingsHeader: View {
     let onBack: () -> Void
     let onClose: () -> Void
     /// Optional trailing glass button action. `nil` ⇒ the trailing slot is a
-    /// hidden spacer (the default for panes without a top-bar action).
+    /// hidden spacer (the default for panes without a top-bar action). When
+    /// present it renders as an accent-tinted call-to-action button (the
+    /// add-model **+**), distinct from the neutral leading close/back glass.
     var trailingAction: (() -> Void)?
     /// VoiceOver label for the trailing button when `trailingAction` is set.
     var trailingAccessibilityLabel: String?
@@ -58,9 +60,9 @@ struct SettingsHeader: View {
                 .accessibilityAddTraits(.isHeader)
 
             if let trailingAction {
-                iconButton(action: trailingAction) {
+                iconButton(action: trailingAction, prominent: true) {
                     PlusIcon(size: 18)
-                        .foregroundStyle(theme.ink)
+                        .foregroundStyle(theme.accentInk)
                 }
                 .accessibilityLabel(trailingAccessibilityLabel ?? "Add")
             } else {
@@ -82,16 +84,27 @@ struct SettingsHeader: View {
         }
     }
 
+    /// - Parameter prominent: When `true`, the button rides accent-tinted
+    ///   call-to-action glass (the trailing add **+**); otherwise neutral nav
+    ///   glass (the leading close/back).
     @ViewBuilder
     private func iconButton<Content: View>(
         action: @escaping () -> Void,
+        prominent: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
         Button(action: action) {
-            content()
-                .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+            iconGlass(content().frame(width: 44, height: 44), prominent: prominent)
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func iconGlass(_ content: some View, prominent: Bool) -> some View {
+        if prominent {
+            content.superGlassCTAButton(in: Circle())
+        } else {
+            content.superGlassButton(in: Circle())
+        }
     }
 }

@@ -76,6 +76,22 @@ public extension View {
         ))
     }
 
+    /// Apply theme-**accent**-tinted glass to a call-to-action control — the
+    /// send / save (✓) / add (+) buttons. This is the prominent-glass look the
+    /// narration sheet's play button established (`superGlassButton(in:tint:)`
+    /// biased toward `theme.accent`): the primary action reads as primary
+    /// *without* a hard filled-accent disc, while still riding real Liquid
+    /// Glass. Pair it with `.foregroundStyle(theme.accentInk)` on the glyph so
+    /// the symbol sits legibly on the accent. Neutral nav chrome (close, back,
+    /// toolbar controls) stays on ``superGlassButton(in:tint:interactive:morph:)``.
+    ///
+    /// Kept as a modifier rather than a one-line `superGlassButton(tint:)`
+    /// forward so the accent is read from `@Environment(\.superTheme)` here
+    /// instead of every call site threading `theme.accent` through.
+    func superGlassCTAButton(in shape: some Shape = Circle()) -> some View {
+        modifier(SuperGlassCTAModifier(shape: shape))
+    }
+
     /// Apply theme-tinted glass to a passive *inline* surface — the nav bar's
     /// book/translation pill and selection pill — clipped to `shape`. Use the
     /// frosted `.regular` glass these produce — never clear glass — so text over
@@ -93,6 +109,19 @@ public extension View {
             tint: nil,
             morph: morph
         ))
+    }
+}
+
+/// Resolves the active theme's `accent` and forwards it to `superGlassButton`
+/// as the tint, so `superGlassCTAButton` callers don't each have to read the
+/// theme and pass `theme.accent` by hand.
+private struct SuperGlassCTAModifier<S: Shape>: ViewModifier {
+    @Environment(\.superTheme) private var theme
+
+    let shape: S
+
+    func body(content: Content) -> some View {
+        content.superGlassButton(in: shape, tint: theme.accent)
     }
 }
 
