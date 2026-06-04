@@ -113,10 +113,13 @@ public final class BulkAnnotationBackgroundScheduler {
         }
     }
 
-    /// A run is still active (`status` running or paused) — `activeRun()` only
-    /// ever returns a non-terminal run, so this is `false` once the run completes,
-    /// halts, or is cancelled.
+    /// There's background work only when a run is actually `.running`.
+    /// `activeRun()` also returns a `.paused` run, but a paused run can't advance
+    /// in the background (`restore()` / `runInBackground()` deliberately don't
+    /// start a loop for it) — counting it as pending would schedule a task that
+    /// wakes, does nothing, and reschedules itself in an endless cycle. Once the
+    /// run completes, halts, or is cancelled, `activeRun()` returns `nil`.
     private func hasPendingWork() async -> Bool {
-        ((try? await ledger.activeRun()) ?? nil) != nil
+        ((try? await ledger.activeRun()) ?? nil)?.status == .running
     }
 }

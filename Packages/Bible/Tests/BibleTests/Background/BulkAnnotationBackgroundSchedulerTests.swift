@@ -91,6 +91,39 @@ import Testing
         #expect(system.cancelled == [BulkAnnotationBackgroundScheduler.taskIdentifier])
     }
 
+    @Test func doesNotScheduleForAPausedRun() async throws {
+        // A paused run is "active" (`activeRun()` returns it) but can't advance in
+        // the background — scheduling against it would wake the app repeatedly to
+        // do nothing. So a paused run must cancel, not submit.
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let now = Date(timeIntervalSince1970: 100)
+        try await ledger.createRun(
+            BulkAnnotationRunRecord(
+                id: "run-P", status: .paused, modelId: "model-x", createdAt: now, updatedAt: now
+            ),
+            units: [
+                BulkAnnotationRunUnitRecord(
+                    id: "p0", runId: "run-P", ordinal: 0, kind: .chapter, bookId: "ROM",
+                    bookName: "Romans", chapterNumber: 1, state: .queued, updatedAt: now
+                ),
+            ]
+        )
+        let system = FakeTaskScheduling()
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: ScriptedBibleAnnotateGenerator(),
+            clock: FixedClock(),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "model-x" }
+        )
+        let scheduler = BulkAnnotationBackgroundScheduler(runner: runner, ledger: ledger, system: system)
+
+        await scheduler.scheduleIfNeeded()
+
+        #expect(system.submitted.isEmpty)
+        #expect(system.cancelled == [BulkAnnotationBackgroundScheduler.taskIdentifier])
+    }
+
     // MARK: - handle
 
     @Test func handleDrivesAndCompletesARunWithNoLiveLoop() async throws {
