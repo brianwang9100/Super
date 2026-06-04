@@ -7,7 +7,7 @@ import Testing
 struct BibleTranslationTests {
     @Test("the four bundled translations are exposed in order")
     func allCases() {
-        #expect(BibleTranslation.allCases == [.web, .kjv, .asv, .bsb])
+        #expect(BibleTranslation.allCases == [.kjv, .web, .asv, .bsb])
     }
 
     @Test("each translation carries a full display name")
@@ -27,6 +27,6 @@ struct BibleTranslationTests {
     @Test("named falls back to the default for an unknown code")
     func namedFallsBackForUnknownCode() {
         #expect(BibleTranslation.named("ESV") == .defaultTranslation)
-        #expect(BibleTranslation.named("") == .web)
+        #expect(BibleTranslation.named("") == .kjv)
     }
 }
