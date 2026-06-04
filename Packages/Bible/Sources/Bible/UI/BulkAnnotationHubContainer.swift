@@ -9,6 +9,8 @@ import SwiftUI
 /// carries `chat.sqlite`.
 public struct BulkAnnotationHubContainer: View {
     @Query(AnnotationCoverageRequest()) private var coverage: AnnotationCoverage
+    @Query(FinishedRunsRequest()) private var finishedRuns: [FinishedRunSummary]
+    @Query(AnnotatedChaptersRequest()) private var annotatedChapters: Set<ChapterRef>
 
     private let viewModel: BulkAnnotationViewModel
     private let requiresCostConfirmation: Bool
@@ -22,7 +24,15 @@ public struct BulkAnnotationHubContainer: View {
         BulkAnnotationHubScreen(
             viewModel: viewModel,
             coverage: coverage,
-            requiresCostConfirmation: requiresCostConfirmation
+            requiresCostConfirmation: requiresCostConfirmation,
+            finishedRuns: finishedRuns
         )
+        // Fold the annotated-chapters query into the view model's "Done" badges
+        // (the Generate sheet reads them imperatively — it's presented as a sheet,
+        // outside this container's `@Query` scope). `initial: true` seeds them on
+        // first appearance so badges are correct before any write lands.
+        .onChange(of: annotatedChapters, initial: true) { _, chapters in
+            viewModel.updateDoneState(annotatedChapters: chapters)
+        }
     }
 }

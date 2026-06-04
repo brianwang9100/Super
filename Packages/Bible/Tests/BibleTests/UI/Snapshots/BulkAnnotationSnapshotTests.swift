@@ -68,6 +68,35 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
+    @Test("hub with a recently-finished list (idle) in light / dark / sepia",
+          arguments: SuperTheme.Identifier.allCases)
+    func hubFinished(_ id: SuperTheme.Identifier) {
+        let vm = makeViewModel()
+        verify(theme: id, height: 760, name: "hub_finished_\(id.rawValue)") {
+            BulkAnnotationHubScreen(
+                viewModel: vm,
+                coverage: Self.coverage,
+                requiresCostConfirmation: true,
+                finishedRuns: Self.finishedRuns
+            )
+        }
+    }
+
+    /// One clean completion and one halted run — exercises both row variants
+    /// (dismiss-only vs. dismiss + Retry, with a halt reason).
+    private static let finishedRuns: [FinishedRunSummary] = [
+        FinishedRunSummary(
+            runID: "r1", status: .completed, haltReason: nil,
+            completedAt: Date(timeIntervalSince1970: 200),
+            bookNames: ["Romans", "Galatians"], producedCount: 124, failedCount: 0
+        ),
+        FinishedRunSummary(
+            runID: "r2", status: .failed, haltReason: .quota,
+            completedAt: Date(timeIntervalSince1970: 100),
+            bookNames: ["1 Corinthians"], producedCount: 38, failedCount: 2
+        ),
+    ]
+
     // MARK: - Generate sheet
 
     @Test("generate sheet with an expanded partial book in light / dark / sepia",

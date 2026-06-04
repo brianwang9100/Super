@@ -93,6 +93,12 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
         notify()
     }
 
+    /// The in-memory fake keeps no ledger, so the "Recently finished" list (a
+    /// DB-backed `@Query`) is always empty in previews — these are no-ops the
+    /// protocol requires. The real engine drives the list.
+    public func resume(runID: String) {}
+    public func dismissFinishedRun(id: String) {}
+
     /// Advance the simulation by one unit. Finishes the current generating
     /// chapter (done, or failed if seeded), then promotes the next queued one.
     /// Returns `false` when nothing is left to do.

@@ -39,6 +39,10 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     private let currentModelID: @Sendable () async -> String
     private let maxAttemptsPerUnit: Int
     private let consecutiveFailureLimit: Int
+    /// How long a terminal run lingers in the "Recently finished" list before the
+    /// launch sweep removes it (default 24 h). Injectable so tests can sweep
+    /// without waiting.
+    private let completedRunRetention: TimeInterval
 
     /// Authoritative state lives in the ledger; these mirror it in memory so the
     /// snapshot can be projected synchronously without a round-trip.
@@ -83,7 +87,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         idGenerator: any IDGenerator = UUIDGenerator(),
         currentModelID: @escaping @Sendable () async -> String = { "" },
         maxAttemptsPerUnit: Int = 3,
-        consecutiveFailureLimit: Int = 5
+        consecutiveFailureLimit: Int = 5,
+        completedRunRetention: TimeInterval = 24 * 60 * 60
     ) {
         self.ledger = ledger
         self.generator = generator
@@ -94,6 +99,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         self.currentModelID = currentModelID
         self.maxAttemptsPerUnit = max(1, maxAttemptsPerUnit)
         self.consecutiveFailureLimit = max(1, consecutiveFailureLimit)
+        self.completedRunRetention = completedRunRetention
     }
 
     // MARK: - BulkAnnotationRunning
@@ -101,8 +107,12 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public func start(_ plan: BulkRunPlan) {
         // One active run at a time. The hub already gates this on `!isRunning`;
         // guarding here too keeps the engine from leaking a loop or creating a
-        // second ledger row if `start` is ever called while a run exists.
-        guard runRecord == nil, !plan.isEmpty else { return }
+        // second ledger row if `start` is ever called while a run exists. The
+        // `!isDriving` clause closes the kickoff window: `start`/`resume` both
+        // claim the engine by setting `isDriving = true` synchronously before
+        // their async setup, so a near-simultaneous Generate-then-Retry (or
+        // double-Generate) can't both pass while `runRecord` is still nil.
+        guard runRecord == nil, !isDriving, !plan.isEmpty else { return }
         let now = clock.now()
         let runID = idGenerator.nextID()
 
@@ -201,15 +211,110 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         notify()
     }
 
+    // MARK: - Finished runs (hub "Recently finished" list)
+
+    /// Re-adopt a finished run as the active job and resume it. Claims the engine
+    /// synchronously (`isDriving`) so it can't race a near-simultaneous `start`;
+    /// the actual reload + revive happens off the spawned Task.
+    public func resume(runID: String) {
+        guard runRecord == nil, !isDriving else { return }
+        isDriving = true
+        driver = Task { [weak self] in await self?.adoptFinished(runID: runID) }
+    }
+
+    /// Delete a finished run from the ledger (the list's dismiss control). The
+    /// reactive `FinishedRunsRequest` drops the row from the section.
+    public func dismissFinishedRun(id: String) {
+        // The active run is never in the finished list; guard so a stale id can't
+        // tear down a freshly-started run sharing it.
+        guard runRecord?.id != id else { return }
+        enqueueWrite { [ledger] in try? await ledger.deleteRun(id: id) }
+    }
+
+    /// Reload a terminal run, revive its failed (and crash-orphaned `.generating`)
+    /// units to `.queued`, flip the run back to `.running`, and resume the loop.
+    /// Owns `isDriving` (claimed by `resume`) exactly like `persistThenRun`:
+    /// cleared on every early return, handed to `runLoop` on the happy path.
+    private func adoptFinished(runID: String) async {
+        guard runRecord == nil else { isDriving = false; return }
+        // Drain any still-pending terminal write for this run so the reload below
+        // reads its settled state rather than a row mid-transition.
+        await lastWrite?.value
+        guard runRecord == nil else { isDriving = false; return }
+        guard let run = try? await ledger.run(id: runID), run.completedAt != nil else {
+            isDriving = false
+            return
+        }
+        guard runRecord == nil else { isDriving = false; return }
+        var loaded = (try? await ledger.units(runId: runID)) ?? []
+        guard runRecord == nil else { isDriving = false; return }
+
+        let now = clock.now()
+        var hasWork = false
+        for index in loaded.indices {
+            switch loaded[index].state {
+            case .failed, .generating:
+                loaded[index].state = .queued
+                loaded[index].attemptCount = 0
+                loaded[index].errorMessage = nil
+                loaded[index].updatedAt = now
+                hasWork = true
+            case .queued:
+                hasWork = true  // a fatal halt left later units unattempted.
+            case .done:
+                break
+            }
+        }
+        // A clean completion has nothing to redo — leave it terminal in the list.
+        guard hasWork else { isDriving = false; return }
+
+        var revived = run
+        revived.status = .running
+        revived.haltReason = nil
+        revived.completedAt = nil
+        revived.updatedAt = now
+
+        // Persist the revival before taking ownership (awaited directly, as in
+        // `restore()` — nothing else mutates state during adoption). The run row
+        // dropping its `completedAt` removes it from the finished list.
+        try? await ledger.saveRun(revived)
+        for unit in loaded where unit.state == .queued {
+            try? await ledger.saveUnit(unit)
+        }
+        guard runRecord == nil else { isDriving = false; return }
+        runRecord = revived
+        units = loaded
+        consecutiveFailures = 0
+        runPersisted = true
+        projectSnapshot()
+        await runLoop()  // clears `isDriving` via its `defer`
+    }
+
     // MARK: - Resume on launch
 
     /// Reload the single active run (if any) and resume it. Any unit left
     /// `.generating` by a crash mid-call is reset to `.queued` so it re-runs.
     /// A `.paused` run is restored parked; a `.running` one resumes its loop.
     public func restore() async {
-        guard runRecord == nil else { return }  // resume once; never clobber a live run.
+        // Launch-time sweep of stale finished runs (older than the retention
+        // window) — runs unconditionally, before the active-run guards, so it
+        // happens whether or not there's a run to resume.
+        let cutoff = clock.now().addingTimeInterval(-completedRunRetention)
+        try? await ledger.deleteRunsCompleted(before: cutoff)
+
+        // `restore` runs as a fire-and-forget Task at launch, concurrently with a
+        // live hub. A user-initiated `start`/`resume` claims the engine by setting
+        // `isDriving = true` synchronously before its async setup, *before* it
+        // assigns `runRecord`. So guarding on `runRecord == nil` alone isn't
+        // enough: restore could pass that guard while a `resume`'s `adoptFinished`
+        // is mid-setup, then adopt the orphaned active run and call `startDriver()`
+        // — which no-ops against the resume's claim, leaving a run with no loop
+        // (wedged until relaunch). Bailing on `!isDriving` cedes to the in-flight
+        // user action, which will drive its own (or, if it bails, a later launch
+        // restores cleanly).
+        guard runRecord == nil, !isDriving else { return }  // resume once; never clobber a live/claimed run.
         guard let run = try? await ledger.activeRun() else { return }
-        guard runRecord == nil else { return }  // a run may have started during the await.
+        guard runRecord == nil, !isDriving else { return }  // a run may have started/been claimed during the await.
         var loaded = (try? await ledger.units(runId: run.id)) ?? []
         let now = clock.now()
         for index in loaded.indices where loaded[index].state == .generating {
@@ -220,11 +325,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // during restore, so ordering holds without the serialized tail.
             try? await ledger.saveUnit(loaded[index])
         }
-        // Re-check after every suspension above before taking ownership, so a
-        // run that started mid-restore is never clobbered (call-site safe too:
-        // the fire-and-forget restore Task at the composition root can't race a
-        // user-initiated run).
-        guard runRecord == nil else { return }
+        // Final re-check before taking ownership: from here to `startDriver()`
+        // (which claims `isDriving`) there is no suspension, so the claim is
+        // atomic on the MainActor and a concurrent `start`/`resume` either
+        // already tripped the guard above or will trip its own `runRecord == nil`.
+        guard runRecord == nil, !isDriving else { return }
         runRecord = run
         units = loaded
         consecutiveFailures = 0
@@ -375,9 +480,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         run.haltReason = reason
         run.completedAt = now
         run.updatedAt = now
-        runRecord = run
         enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
-        projectSnapshot()
+        finishActiveRun()
     }
 
     private func finalizeCompleted() {
@@ -386,9 +490,21 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         run.status = .completed
         run.completedAt = now
         run.updatedAt = now
-        runRecord = run
         enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
-        projectSnapshot()
+        finishActiveRun()
+    }
+
+    /// Drop a just-finished run from the active slot so the hub returns to idle
+    /// (the Generate CTA comes back) and the run surfaces in the "Recently
+    /// finished" list instead. The terminal run row is already enqueued by the
+    /// caller; clearing the in-memory mirror here projects a `nil` snapshot. The
+    /// run lives on in the ledger until dismissed or swept.
+    private func finishActiveRun() {
+        runRecord = nil
+        units = []
+        consecutiveFailures = 0
+        runPersisted = false
+        projectSnapshot()  // runRecord == nil → snapshot becomes nil
     }
 
     private func reviveFailedUnits(_ predicate: (BulkAnnotationRunUnitRecord) -> Bool) {

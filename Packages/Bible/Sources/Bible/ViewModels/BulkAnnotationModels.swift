@@ -101,3 +101,50 @@ public struct BulkRunSnapshot: Sendable, Equatable {
         return Double(producedCount) / Double(estimatedTotal)
     }
 }
+
+/// A finished run as the hub's "Recently finished" section reads it — a flat
+/// projection of one terminal `bulkAnnotationRun` plus its units, built by
+/// `FinishedRunsRequest`. The active `BulkRunSnapshot` covers the *running* job;
+/// once a run goes terminal it clears from the snapshot and surfaces here
+/// instead (until the 24 h sweep or a manual dismiss removes it).
+public struct FinishedRunSummary: Sendable, Equatable, Identifiable {
+    public let runID: String
+    /// The terminal status (`.completed` or `.failed`; cancelled runs are not
+    /// listed — they were a deliberate user abort).
+    public let status: BulkRunStatus
+    /// Why the run halted, when `status == .failed`.
+    public let haltReason: BulkRunHaltReason?
+    /// Set on every terminal run — the section's newest-first sort key.
+    public let completedAt: Date
+    /// Distinct book display names in run order — the entry's title.
+    public let bookNames: [String]
+    /// Annotations written across every `.done` unit.
+    public let producedCount: Int
+    /// Units that exhausted their retries.
+    public let failedCount: Int
+
+    public var id: String { runID }
+
+    public init(
+        runID: String,
+        status: BulkRunStatus,
+        haltReason: BulkRunHaltReason?,
+        completedAt: Date,
+        bookNames: [String],
+        producedCount: Int,
+        failedCount: Int
+    ) {
+        self.runID = runID
+        self.status = status
+        self.haltReason = haltReason
+        self.completedAt = completedAt
+        self.bookNames = bookNames
+        self.producedCount = producedCount
+        self.failedCount = failedCount
+    }
+
+    /// `true` when the run still has revivable work (failed units, or a halt) —
+    /// drives the entry's **Retry** affordance. A clean completion offers only
+    /// dismiss.
+    public var isRetryable: Bool { failedCount > 0 || status == .failed }
+}
