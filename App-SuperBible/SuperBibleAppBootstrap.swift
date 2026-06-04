@@ -139,12 +139,9 @@ enum SuperBibleAppBootstrap {
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
 
-        // Bible's "Annotations" hub for the shared Settings screen. BYOK cost
-        // confirmation defaults on; the on-device default model makes this a
-        // no-op gate at run time once the active-model check is wired.
-        let bibleSettingsContributions = bibleApplet
-            .annotationsSettingsContribution(requiresCostConfirmation: true)
-            .map { [$0] } ?? []
+        // Bible's "Annotations" hub for the shared Settings screen is built
+        // further down, once the `.userBulk` annotate dispatcher it drives
+        // exists (it needs `compactor` + the repos constructed below).
 
         // Best-effort AFM seed, same shape as SuperOS — skipped on
         // ineligible devices and pre-populated DBs.
@@ -280,6 +277,40 @@ enum SuperBibleAppBootstrap {
             compactor: compactor
         )
         await bibleAnnotateDispatcher.attach(to: eventBus)
+
+        // Bible → bulk-annotation generation: a SECOND single-tool dispatcher,
+        // stamped `.userBulk` (vs the spark button's `.user`), driven directly
+        // by the Bible-side `BulkAnnotationRunner` rather than the event bus —
+        // so it is deliberately NOT `attach`-ed. Injected as the runner's
+        // `BibleAnnotateGenerating` seam at the Annotations Settings hub.
+        let bibleBulkAnnotateRegistry = ToolRegistry()
+        await bibleApplet.registerAnnotationTool(
+            in: bibleBulkAnnotateRegistry,
+            stampProvider: ActiveModelBibleAnnotationStampProvider(
+                registry: llmProviderRegistry,
+                source: .userBulk
+            )
+        )
+        let bibleBulkAnnotateDispatcher = BibleAnnotateDispatcher(
+            conversationRepository: conversationRepo,
+            messageRepository: messageRepo,
+            toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
+            llmProviderRegistry: llmProviderRegistry,
+            toolRegistry: bibleBulkAnnotateRegistry,
+            compactor: compactor
+        )
+
+        // The Annotations hub, now backed by the real runner. BYOK cost
+        // confirmation defaults on; the on-device default model makes this a
+        // no-op gate at run time once the active-model check is wired.
+        let bibleSettingsContributions = bibleApplet
+            .annotationsSettingsContribution(
+                requiresCostConfirmation: true,
+                generator: bibleBulkAnnotateDispatcher,
+                currentModelID: { await llmProviderRegistry.activeID() ?? "" }
+            )
+            .map { [$0] } ?? []
 
         return SuperBibleAppDependencies(
             chatDatabase: database,
