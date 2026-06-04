@@ -248,24 +248,22 @@ import Testing
         await generator.awaitCall()
         generator.releaseNext(.failure(message: "down", classification: .retryable))
         await generator.awaitCall()  // chapter 2 now generating
-        #expect(generator.inFlightCount == 1)
 
-        // Revive chapter 1 while chapter 2 is mid-flight.
+        // Revive chapter 1 while chapter 2 is mid-flight, then drain one unit at
+        // a time. A second (buggy) work loop would drive a concurrent generate
+        // for the revived unit while chapter 2 is still in flight.
         runner.retry(ChapterRef(bookID: "ROM", number: 1))
-        // Give any erroneously-spawned second loop ample scheduling to reach a
-        // generate call; the single-flight guard must keep it at exactly one.
-        for _ in 0..<10 { await Task.yield() }
-        #expect(generator.inFlightCount == 1)
-
-        // Drain: chapter 2, then revived chapter 1, then chapter 3 — one at a time.
-        generator.releaseNext(.success(annotationCount: 2))
-        await generator.awaitCall()
-        generator.releaseNext(.success(annotationCount: 1))
-        await generator.awaitCall()
-        generator.releaseNext(.success(annotationCount: 3))
+        generator.releaseNext(.success(annotationCount: 2))  // chapter 2 done
+        await generator.awaitCall()                          // revived chapter 1
+        generator.releaseNext(.success(annotationCount: 1))  // chapter 1 done
+        await generator.awaitCall()                          // chapter 3
+        generator.releaseNext(.success(annotationCount: 3))  // chapter 3 done
         await runner.waitUntilIdle()
 
-        // Exactly four generate calls — no chapter generated twice.
+        // The single-flight guard held: a generation was never in flight more
+        // than once at a time (the passive high-water mark proves it without
+        // polling), and no chapter was generated twice.
+        #expect(generator.maxInFlight == 1)
         #expect(generator.receivedReferences.count == 4)
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
@@ -292,6 +290,34 @@ import Testing
         #expect(completed.count == 1)
         #expect(completed.first?.status == .cancelled)
         #expect(completed.first?.completedAt != nil)
+    }
+
+    /// Cancelling while the engine is suspended resolving the active model (at
+    /// run kickoff, before the run row is written) must leave the ledger empty —
+    /// no phantom `.cancelled` row and no resurrected run.
+    @Test func cancelDuringModelIDResolutionLeavesNoLedgerRow() async throws {
+        let modelGate = GatedModelID()
+        let generator = ScriptedBibleAnnotateGenerator()  // must never be called
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            clock: FixedClock(),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { await modelGate.value() }
+        )
+
+        runner.start(oneBookPlan(chapters: [1]))
+        await modelGate.awaitCall()  // suspended in persistThenRun at currentModelID()
+        runner.cancel()
+        modelGate.release("model-x")  // resume; the identity guard must bail
+        await runner.waitUntilIdle()
+
+        #expect(runner.snapshot == nil)
+        #expect(try await ledger.run(id: "id-1") == nil)
+        let completed = try await ledger.completedRuns()
+        #expect(completed.isEmpty)
+        #expect(generator.receivedReferences.isEmpty)
     }
 
     // MARK: - Pause / resume (gated, mid-flight)

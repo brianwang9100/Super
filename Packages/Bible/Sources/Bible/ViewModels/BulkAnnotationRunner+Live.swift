@@ -46,6 +46,13 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     private var units: [BulkAnnotationRunUnitRecord] = []
     private var consecutiveFailures = 0
 
+    /// `true` once the run row has actually been written to the ledger
+    /// (`createRun` returned). Guards `cancel()` from persisting a `.cancelled`
+    /// row for a run that was torn down before it ever reached the ledger —
+    /// otherwise a cancel during `start`'s async setup leaves a phantom row in
+    /// `completedRuns()`.
+    private var runPersisted = false
+
     /// The in-flight work loop, retained until it actually exits so
     /// `waitUntilIdle()` can await it. Pause/cancel signal the loop through run
     /// state (below) rather than Task cancellation, so the loop is never torn
@@ -133,6 +140,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         )
         units = newUnits
         consecutiveFailures = 0
+        runPersisted = false
         projectSnapshot()
 
         isDriving = true
@@ -179,7 +187,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // best-effort cooperative abort of that call. We keep `driver` so
         // `waitUntilIdle()` can await the loop's actual exit.
         driver?.cancel()
-        if var run = runRecord {
+        if var run = runRecord, runPersisted {
             let now = clock.now()
             run.status = .cancelled
             run.completedAt = now
@@ -188,6 +196,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         }
         runRecord = nil
         units = []
+        runPersisted = false
         snapshot = nil
         notify()
     }
@@ -213,6 +222,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         runRecord = run
         units = loaded
         consecutiveFailures = 0
+        runPersisted = true  // the run already exists in the ledger.
         projectSnapshot()
         if run.status == .running {
             startDriver()
@@ -224,6 +234,9 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     private func persistThenRun() async {
         guard var run = runRecord else { isDriving = false; return }
         run.modelId = await currentModelID()
+        // `cancel()` can land during the await above. Don't resurrect a torn-down
+        // run — that would persist a job the user already cancelled.
+        guard runRecord?.id == run.id else { isDriving = false; return }
         runRecord = run
         do {
             try await ledger.createRun(run, units: units)
@@ -237,6 +250,14 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             notify()
             return
         }
+        // Or `cancel()` landed during `createRun` (it wrote nothing, since
+        // `runPersisted` was still false) — undo the just-persisted run row.
+        guard runRecord?.id == run.id else {
+            try? await ledger.deleteRun(id: run.id)
+            isDriving = false
+            return
+        }
+        runPersisted = true
         await runLoop()  // clears `isDriving` via its `defer`
     }
 
