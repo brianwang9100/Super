@@ -106,9 +106,10 @@ struct FooterPillLabel: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        // Passive glass surface replaces the old hairline-stroked capsule; the
-        // hosting `Menu` owns the tap, so re-assert the capsule hit region so
-        // the frosted padding stays tappable (glass doesn't claim it).
+        // Passive glass surface replaces the old hairline-stroked capsule.
+        // Glass collapses the hit region to the glyph (see `SuperGlass`), and
+        // the hosting `Menu` owns the tap — so re-assert the full capsule as
+        // the contentShape, or the frosted padding goes dead to taps.
         .superGlassSurface(in: Capsule())
         .contentShape(Capsule())
     }
