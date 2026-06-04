@@ -384,6 +384,44 @@ import Testing
         #expect(final[2].state == .done)
     }
 
+    @Test func runInBackgroundResumesARunLoadedFromTheLedger() async throws {
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let now = Date(timeIntervalSince1970: 100)
+        let run = BulkAnnotationRunRecord(
+            id: "run-B", status: .running, modelId: "model-x", createdAt: now, updatedAt: now
+        )
+        let units = [
+            BulkAnnotationRunUnitRecord(
+                id: "u0", runId: "run-B", ordinal: 0, kind: .chapter, bookId: "ROM",
+                bookName: "Romans", chapterNumber: 1, state: .done, producedCount: 3, updatedAt: now
+            ),
+            BulkAnnotationRunUnitRecord(
+                id: "u1", runId: "run-B", ordinal: 1, kind: .chapter, bookId: "ROM",
+                bookName: "Romans", chapterNumber: 2, state: .queued, updatedAt: now
+            ),
+        ]
+        try await ledger.createRun(run, units: units)
+
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 6)])
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            clock: FixedClock(),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "model-x" }
+        )
+
+        // A fresh runner with nothing in memory loads + drains the active run.
+        await runner.runInBackground()
+        await runner._waitUntilIdle()
+
+        let finished = try #require(try await ledger.run(id: "run-B"))
+        #expect(finished.status == .completed)
+        let final = try await ledger.units(runId: "run-B")
+        #expect(final[1].state == .done)
+        #expect(final[1].producedCount == 6)
+    }
+
     @Test func restorePausedRunStaysParked() async throws {
         let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
         let now = Date(timeIntervalSince1970: 100)

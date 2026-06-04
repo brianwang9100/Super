@@ -72,6 +72,14 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     /// every exit, so it's reliably `false` the instant no loop is running.
     private var isDriving = false
 
+    /// Set when a background task runs out of time (`requestBackgroundStop()`):
+    /// the live loop finishes the in-flight unit, saving its result, then stops
+    /// before the next one — leaving the run `.running` so a later foreground or
+    /// background resume continues it. Cleared at the top of every fresh loop,
+    /// and by `resumeActiveRun()` (which cancels a pending stop rather than
+    /// letting a just-arrived foreground race the loop into a wedged state).
+    private var backgroundStopRequested = false
+
     /// Serialized tail of all ledger writes. Each write chains on the previous so
     /// upserts apply in issue order (a pause's `saveRun` before a later resume's),
     /// and `waitUntilIdle()` can await the durable state having caught up — even
@@ -290,6 +298,44 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         await runLoop()  // clears `isDriving` via its `defer`
     }
 
+    // MARK: - Background execution
+
+    /// Drive the active run for a background task: pick up an in-memory run whose
+    /// loop a prior expiration stopped (or, after a cold relaunch, the one
+    /// `restore()` loads from the ledger), then await the loop to its next
+    /// stopping point — the run draining, halting, or a fresh
+    /// `requestBackgroundStop()`. Safe to call with no active run (returns at
+    /// once).
+    public func runInBackground() async {
+        await restore()        // cold relaunch: load + resume an active run; no-op when one's already in memory.
+        resumeActiveRun()      // suspended warm: restart a loop a prior expiration stopped; no-op when one's live.
+        await driver?.value
+        // Drain the serialized write tail too, so the ledger reflects the run's
+        // settled state (e.g. a just-finalized `.completed`) before the caller
+        // decides whether to reschedule.
+        await lastWrite?.value
+    }
+
+    /// Ask the live work loop to stop after the current unit because a background
+    /// task ran out of time. The run stays active (its status is untouched), so
+    /// `resumeActiveRun()` — on the next foreground or background task — continues
+    /// it. No-op beyond setting the flag when no loop is running.
+    public func requestBackgroundStop() {
+        backgroundStopRequested = true
+    }
+
+    /// Restart the work loop for an active `.running` run that has no live loop —
+    /// the app foregrounding after a background-stop, or a fresh background task
+    /// picking the run back up. Clearing `backgroundStopRequested` first cancels a
+    /// just-fired stop so a loop still winding down keeps going (rather than
+    /// exiting and leaving the run with no driver). No-op when there's no run, it
+    /// isn't running, or a loop is already draining.
+    public func resumeActiveRun() {
+        guard let run = runRecord, run.status == .running else { return }
+        backgroundStopRequested = false
+        startDriver()  // single-flight: no-ops if a loop is already live.
+    }
+
     // MARK: - Resume on launch
 
     /// Reload the single active run (if any) and resume it. Any unit left
@@ -391,6 +437,9 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     private func runLoop() async {
+        // A fresh loop never starts pre-stopped: clear any background-stop left by
+        // a prior loop that has since exited.
+        backgroundStopRequested = false
         // Cleared synchronously at every exit, so `isDriving` is reliably `false`
         // the instant the loop stops — which is what makes `startDriver()`'s
         // single-flight guard correct.
@@ -401,6 +450,12 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                 finalizeCompleted()
                 return
             }
+            // A background task that ran out of time asked us to wind down: stop
+            // before starting the next unit, leaving the run active for a later
+            // resume. Checked only once real work remains (an already-drained run
+            // still finalizes above), and after the in-flight unit's result was
+            // saved on the prior iteration — so no generation is wasted.
+            if backgroundStopRequested { return }
 
             units[index].state = .generating
             units[index].updatedAt = clock.now()

@@ -39,6 +39,12 @@ struct SuperBibleAppDependencies {
     /// Chat-hosted Settings can render them without importing Bible.
     let appletSettingsContributions: [AppletSettingsContribution]
 
+    /// Drives an active bulk-annotation run on a `BGProcessingTask` while the app
+    /// is backgrounded. Held by the app's `BulkAnnotationBackgroundController` so
+    /// it survives the Settings screen being dismissed. `nil` when the Bible
+    /// database failed to open (bulk generation is then unavailable anyway).
+    let bulkAnnotationBackground: BulkAnnotationBackgroundScheduler?
+
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
     /// to the shell is the applet set inside `appletRegistry`.
@@ -301,16 +307,18 @@ enum SuperBibleAppBootstrap {
             compactor: compactor
         )
 
-        // The Annotations hub, now backed by the real runner. BYOK cost
-        // confirmation defaults on; the on-device default model makes this a
-        // no-op gate at run time once the active-model check is wired.
-        let bibleSettingsContributions = bibleApplet
-            .annotationsSettingsContribution(
-                requiresCostConfirmation: true,
-                generator: bibleBulkAnnotateDispatcher,
-                currentModelID: { await llmProviderRegistry.activeID() ?? "" }
-            )
-            .map { [$0] } ?? []
+        // The Annotations hub + background scheduler, both backed by one shared
+        // runner. BYOK cost confirmation defaults on; the on-device default model
+        // makes this a no-op gate at run time once the active-model check is
+        // wired. The background scheduler is handed to the app's lifecycle
+        // controller so a run keeps draining on a BGProcessingTask while the app
+        // is suspended.
+        let bulkWiring = bibleApplet.makeBulkAnnotationWiring(
+            requiresCostConfirmation: true,
+            generator: bibleBulkAnnotateDispatcher,
+            currentModelID: { await llmProviderRegistry.activeID() ?? "" }
+        )
+        let bibleSettingsContributions = bulkWiring.map { [$0.settingsContribution] } ?? []
 
         return SuperBibleAppDependencies(
             chatDatabase: database,
@@ -328,7 +336,8 @@ enum SuperBibleAppBootstrap {
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability,
             bibleAnnotateDispatcher: bibleAnnotateDispatcher,
-            appletSettingsContributions: bibleSettingsContributions
+            appletSettingsContributions: bibleSettingsContributions,
+            bulkAnnotationBackground: bulkWiring?.background
         )
     }
 }

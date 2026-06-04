@@ -10,12 +10,23 @@ import SwiftUI
 @main
 struct SuperBibleApp: App {
     @State private var state: SuperBibleBootstrapState = .loading
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Owns the bulk-annotation `BGProcessingTask` registration + lifecycle.
+    /// Created here so `registerLaunchHandler()` can run in `init` (the BGTask
+    /// handler must be registered before the app finishes launching); the real
+    /// scheduler is `attach`-ed once bootstrap builds it.
+    private let backgroundController = BulkAnnotationBackgroundController()
 
     init() {
         // Register Instrument Serif Italic + JetBrains Mono Regular before
         // SwiftUI's first render. Idempotent and shared with SuperOS — both
         // apps consume the same Core font registration.
         Core.registerBundledFonts()
+        // Register the bulk-annotation BGTask launch handler now, before the
+        // first scene appears (a requirement of `BGTaskScheduler`). The handler
+        // stays inert until bootstrap attaches the scheduler.
+        backgroundController.registerLaunchHandler()
     }
 
     var body: some Scene {
@@ -26,12 +37,26 @@ struct SuperBibleApp: App {
                         await load()
                     }
                 }
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .background:
+                        // Schedule a processing task if a run is still active, so
+                        // iOS grants background time to keep draining it.
+                        backgroundController.applicationDidEnterBackground()
+                    case .active:
+                        // Resume a run a prior background task parked.
+                        backgroundController.applicationDidBecomeActive()
+                    default:
+                        break
+                    }
+                }
         }
     }
 
     private func load() async {
         do {
             let dependencies = try await SuperBibleAppBootstrap.bootstrap()
+            backgroundController.attach(dependencies.bulkAnnotationBackground)
             state = .ready(dependencies)
         } catch {
             state = .failed(error.localizedDescription)
