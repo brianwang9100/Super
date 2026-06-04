@@ -84,9 +84,9 @@ public struct ModelPill: View {
     }
 }
 
-/// Visual treatment for composer-footer pills. A capsule with a faint
-/// border, soft ink, and a trailing chevron — matches `footerPill` in
-/// `chat-view.jsx`.
+/// Visual treatment for composer-footer pills. A frosted glass capsule with
+/// soft ink and a trailing chevron — matches `footerPill` in `chat-view.jsx`,
+/// brought onto the same Liquid Glass surface as the nav-bar pills.
 struct FooterPillLabel: View {
     let text: String
     let theme: SuperTheme
@@ -106,9 +106,10 @@ struct FooterPillLabel: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(
-            Capsule().stroke(theme.borderFaint, lineWidth: 1)
-        )
+        // Passive glass surface replaces the old hairline-stroked capsule; the
+        // hosting `Menu` owns the tap, so re-assert the capsule hit region so
+        // the frosted padding stays tappable (glass doesn't claim it).
+        .superGlassSurface(in: Capsule())
         .contentShape(Capsule())
     }
 }
