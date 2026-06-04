@@ -5,11 +5,11 @@
 /// value is the storage code persisted in `BibleReadingPositionRecord` and
 /// the lookup key `BundledBibleTextLoader` resolves resources by.
 public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identifiable {
-    /// World English Bible — the default, and the canon `BibleBookCatalog`
-    /// is verified against.
-    case web = "WEB"
-    /// King James Version (2006 public-domain edition).
+    /// King James Version (2006 public-domain edition) — the default, and the
+    /// first row in the picker.
     case kjv = "KJV"
+    /// World English Bible — the canon `BibleBookCatalog` is verified against.
+    case web = "WEB"
     /// American Standard Version (1901).
     case asv = "ASV"
     /// Berean Standard Bible — the modern-English option, released into the
@@ -29,7 +29,7 @@ public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identif
     }
 
     /// The translation a fresh install opens in.
-    public static let defaultTranslation: BibleTranslation = .web
+    public static let defaultTranslation: BibleTranslation = .kjv
 
     /// The translation for a stored code, falling back to the default when
     /// the code is unknown — a persisted row from a future build, say.

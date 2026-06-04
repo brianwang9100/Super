@@ -239,10 +239,10 @@ struct BibleScreenViewModelTests {
     }
 
     @Test("a fresh load opens in the default translation")
-    func loadDefaultsToWEB() async {
+    func loadDefaultsToKJV() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        #expect(viewModel.translation == .web)
+        #expect(viewModel.translation == .kjv)
     }
 
     @Test("load restores a persisted translation")
@@ -274,28 +274,28 @@ struct BibleScreenViewModelTests {
     @Test("selecting a translation reloads the chapter and closes the sheet")
     func selectingTranslationReloadsChapter() async {
         let viewModel = makeViewModel()
-        await viewModel.load()                          // 1 Peter 2, WEB
-        let webChapter = viewModel.chapter
-        viewModel.presentTranslationSheet()
-
-        viewModel.selectTranslation(.kjv)
-        #expect(viewModel.translation == .kjv)
-        #expect(viewModel.isTranslationSheetPresented == false)
-        #expect(viewModel.chapter?.number == 2)
-        #expect(viewModel.chapter != webChapter, "the chapter should re-render in KJV text")
-    }
-
-    @Test("selecting the current translation just closes the sheet")
-    func selectingCurrentTranslationIsNoOp() async {
-        let viewModel = makeViewModel()
-        await viewModel.load()                          // WEB
-        let webChapter = viewModel.chapter
+        await viewModel.load()                          // 1 Peter 2, KJV
+        let kjvChapter = viewModel.chapter
         viewModel.presentTranslationSheet()
 
         viewModel.selectTranslation(.web)
         #expect(viewModel.translation == .web)
         #expect(viewModel.isTranslationSheetPresented == false)
-        #expect(viewModel.chapter == webChapter)
+        #expect(viewModel.chapter?.number == 2)
+        #expect(viewModel.chapter != kjvChapter, "the chapter should re-render in WEB text")
+    }
+
+    @Test("selecting the current translation just closes the sheet")
+    func selectingCurrentTranslationIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()                          // KJV
+        let kjvChapter = viewModel.chapter
+        viewModel.presentTranslationSheet()
+
+        viewModel.selectTranslation(.kjv)
+        #expect(viewModel.translation == .kjv)
+        #expect(viewModel.isTranslationSheetPresented == false)
+        #expect(viewModel.chapter == kjvChapter)
     }
 
     @Test("selecting a translation persists it")
@@ -304,12 +304,12 @@ struct BibleScreenViewModelTests {
             database: try BibleDatabase.makeInMemory()
         )
         let viewModel = makeViewModel(repository: repository)
-        await viewModel.load()                          // 1 Peter 2, WEB
-        viewModel.selectTranslation(.kjv)
+        await viewModel.load()                          // 1 Peter 2, KJV
+        viewModel.selectTranslation(.web)
 
         await viewModel._waitForPendingPersist()
         let saved = try await repository.load()
-        #expect(saved?.translationId == "KJV")
+        #expect(saved?.translationId == "WEB")
         #expect(saved?.bookId == "1PE")
         #expect(saved?.chapterNumber == 2)
     }
@@ -379,7 +379,7 @@ struct BibleScreenViewModelTests {
         let viewModel = makeViewModel()
         await viewModel.load()
         viewModel.toggleVerse(9)
-        viewModel.selectTranslation(.kjv)
+        viewModel.selectTranslation(.web)
         #expect(viewModel.selectedVerses.isEmpty)
     }
 
@@ -387,12 +387,12 @@ struct BibleScreenViewModelTests {
     func copyWritesPassageThenClears() async throws {
         let clipboard = FakeClipboard()
         let viewModel = makeViewModel(clipboard: clipboard)
-        await viewModel.load()                          // 1 Peter 2, WEB
+        await viewModel.load()                          // 1 Peter 2, KJV
         viewModel.toggleVerse(9)
         viewModel.copySelection()
 
         let copied = try #require(clipboard.lastWritten)
-        let suffix = "— 1 Peter 2:9 (WEB)"
+        let suffix = "— 1 Peter 2:9 (KJV)"
         #expect(copied.hasSuffix(suffix))
         #expect(copied.count > suffix.count + 10, "the verse body should precede the citation")
         #expect(viewModel.selectedVerses.isEmpty)
@@ -404,15 +404,17 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         viewModel.toggleVerse(4)
         viewModel.toggleVerse(5)
-        #expect(viewModel.selectionShareText?.hasSuffix("— 1 Peter 2:4-5 (WEB)") == true)
+        #expect(viewModel.selectionShareText?.hasSuffix("— 1 Peter 2:4-5 (KJV)") == true)
     }
 
     @Test("a verse straddling a paragraph boundary joins all its fragments")
     func straddlingVerseJoinsFragments() async {
         // In 1 Peter 2 (WEB) verse 6 spans a prose sentence and the poetry
-        // quotation that follows it — the share text must carry both.
+        // quotation that follows it — the share text must carry both. KJV is
+        // all prose, so switch to WEB to exercise the straddling case.
         let viewModel = makeViewModel()
         await viewModel.load()
+        viewModel.selectTranslation(.web)
         viewModel.toggleVerse(6)
         let share = viewModel.selectionShareText
         #expect(share?.contains("Because it is contained in Scripture") == true)
@@ -585,14 +587,14 @@ struct BibleScreenViewModelTests {
     @Test("makeVerseReference carries the citation, applet id, and verse text")
     func makeVerseReferenceForSingleVerse() async {
         let viewModel = makeViewModel()
-        await viewModel.load()                          // 1 Peter 2, WEB
+        await viewModel.load()                          // 1 Peter 2, KJV
         viewModel.toggleVerse(9)
 
         let reference = viewModel.makeVerseReference()
         #expect(reference?.appletID == "bible")
         #expect(reference?.kind == "verseRange")
-        #expect(reference?.citation == "1 Peter 2:9 (WEB)")
-        #expect(reference?.displayLabel == "1 Peter 2:9 (WEB)")
+        #expect(reference?.citation == "1 Peter 2:9 (KJV)")
+        #expect(reference?.displayLabel == "1 Peter 2:9 (KJV)")
         #expect(reference?.snapshot.isEmpty == false)
     }
 
@@ -602,19 +604,19 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         for verse in [9, 4, 6, 5] { viewModel.toggleVerse(verse) }
 
-        #expect(viewModel.makeVerseReference()?.citation == "1 Peter 2:4-6, 9 (WEB)")
+        #expect(viewModel.makeVerseReference()?.citation == "1 Peter 2:4-6, 9 (KJV)")
     }
 
     @Test("makeVerseReference reflects the active translation")
     func makeVerseReferenceUsesActiveTranslation() async {
         let viewModel = makeViewModel()
-        await viewModel.load()
-        viewModel.selectTranslation(.kjv)
+        await viewModel.load()                          // KJV
+        viewModel.selectTranslation(.web)
         viewModel.toggleVerse(9)
 
         let reference = viewModel.makeVerseReference()
-        #expect(reference?.citation == "1 Peter 2:9 (KJV)")
-        #expect(reference?.sourceID.hasPrefix("KJV/") == true)
+        #expect(reference?.citation == "1 Peter 2:9 (WEB)")
+        #expect(reference?.sourceID.hasPrefix("WEB/") == true)
     }
 
     // MARK: - Whole-chapter chat hand-off
@@ -622,19 +624,19 @@ struct BibleScreenViewModelTests {
     @Test("makeChapterReference returns the whole chapter's text + a colon-less citation")
     func makeChapterReferenceShape() async throws {
         let viewModel = makeViewModel()
-        await viewModel.load()                          // 1 Peter 2, WEB
+        await viewModel.load()                          // 1 Peter 2, KJV
 
         let reference = try #require(viewModel.makeChapterReference())
         #expect(reference.appletID == "bible")
         #expect(reference.kind == "verseRange")
         // No verse component — the chapter citation drops the ":N" clause.
-        #expect(reference.citation == "1 Peter 2 (WEB)")
-        #expect(reference.displayLabel == "1 Peter 2 (WEB)")
+        #expect(reference.citation == "1 Peter 2 (KJV)")
+        #expect(reference.displayLabel == "1 Peter 2 (KJV)")
         // Snapshot carries the whole chapter — at minimum the famous v9.
         #expect(reference.snapshot.contains("chosen race") || reference.snapshot.contains("chosen generation"))
         // sourceID encodes every verse in the chapter so a round-trip can
-        // unambiguously rebuild the range. 1 Peter 2 has 25 verses (WEB).
-        #expect(reference.sourceID.hasPrefix("WEB/1PE/2/"))
+        // unambiguously rebuild the range. 1 Peter 2 has 25 verses (KJV).
+        #expect(reference.sourceID.hasPrefix("KJV/1PE/2/"))
         let verses = reference.sourceID
             .split(separator: "/").last
             .map { String($0).split(separator: ",").compactMap { Int($0) } } ?? []
@@ -644,12 +646,12 @@ struct BibleScreenViewModelTests {
     @Test("makeChapterReference reflects the active translation")
     func makeChapterReferenceUsesActiveTranslation() async throws {
         let viewModel = makeViewModel()
-        await viewModel.load()
-        viewModel.selectTranslation(.kjv)
+        await viewModel.load()                          // KJV
+        viewModel.selectTranslation(.web)
 
         let reference = try #require(viewModel.makeChapterReference())
-        #expect(reference.citation == "1 Peter 2 (KJV)")
-        #expect(reference.sourceID.hasPrefix("KJV/1PE/2/"))
+        #expect(reference.citation == "1 Peter 2 (WEB)")
+        #expect(reference.sourceID.hasPrefix("WEB/1PE/2/"))
     }
 
     // MARK: - Narration
@@ -737,12 +739,12 @@ struct BibleScreenViewModelTests {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
-        await viewModel.load()                          // WEB
+        await viewModel.load()                          // KJV
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "x")])
         controller._simulateEvent(.started(verseNumber: 1))
 
-        viewModel.selectTranslation(.kjv)
+        viewModel.selectTranslation(.web)
         #expect(service.stopCallCount == 1)
     }
 

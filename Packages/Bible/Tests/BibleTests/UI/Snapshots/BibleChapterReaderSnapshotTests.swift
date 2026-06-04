@@ -70,7 +70,7 @@ struct BibleChapterReaderSnapshotTests {
         function: String = #function
     ) throws {
         let database = try BibleDatabase.makeInMemory()
-        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .defaultTranslation)
+        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .web)
         let chapter = try #require(book.chapter(2))
         let theme = SuperTheme.make(themeID)
         let view = ZStack {
@@ -142,7 +142,7 @@ struct BibleChapterReaderSnapshotTests {
                 body: "Whole-chapter thought.", source: .user, createdAt: t0, updatedAt: t0
             ).insert(db)
         }
-        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .defaultTranslation)
+        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .web)
         let chapter = try #require(book.chapter(2))
         let theme = SuperTheme.make(themeID)
         let view = ZStack {
