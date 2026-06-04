@@ -380,7 +380,7 @@ public struct ChatComposer: View {
                 .font(typography.font(.callout, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(theme.accent))
+                .superGlassCTAButton(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Send message")
@@ -419,8 +419,8 @@ public struct ChatComposer: View {
         .accessibilityHint("On-device speech recognition isn't available for your language.")
     }
 
-    /// Mid-dictation stop affordance: accent-filled circle with a stop
-    /// glyph and an animated outer ring that pulses outward to signal
+    /// Mid-dictation stop affordance: accent-tinted call-to-action glass with a
+    /// stop glyph and an animated outer ring that pulses outward to signal
     /// "still recording." The pulse overlay is suppressed when Reduce
     /// Motion is on; the static button still flips so the user gets the
     /// affordance change either way.
@@ -430,7 +430,7 @@ public struct ChatComposer: View {
                 .font(typography.font(.callout, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(theme.accent))
+                .superGlassCTAButton(in: Circle())
                 .overlay {
                     if !reduceMotion {
                         Circle()
@@ -457,7 +457,7 @@ public struct ChatComposer: View {
                 .font(typography.font(.subheadline, weight: .bold))
                 .foregroundStyle(theme.accentInk)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(theme.accent))
+                .superGlassCTAButton(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stop generating")
