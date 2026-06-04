@@ -237,6 +237,14 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Work loop
 
+    // Ownership note: `isDriving` was set `true` synchronously by `start()` before
+    // this Task was spawned; this function owns clearing it. Every early return
+    // here must clear it explicitly; the happy path hands ownership to `runLoop`,
+    // whose `defer` clears it. It is deliberately NOT a `defer` at this function's
+    // top: that would fire after `await runLoop()` returns, and a resume landing
+    // in the await-resumption gap (its `startDriver` having set `isDriving = true`)
+    // would then be clobbered back to `false`, admitting a second loop. Any new
+    // early-return branch added before `runLoop` must clear `isDriving`.
     private func persistThenRun() async {
         guard var run = runRecord else { isDriving = false; return }
         run.modelId = await currentModelID()
@@ -297,9 +305,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             let reference = makeReference(for: units[index])
             let outcome = await generator.generate(reference: reference)
 
-            // Cancel / pause may have landed while the request was in flight
-            // (both cancel the driver Task, so `Task.isCancelled` can't tell them
-            // apart — distinguish on the run state cancel/pause leave behind).
+            // Cancel / pause may have landed while the request was in flight.
+            // Distinguish them by the state each leaves behind, not
+            // `Task.isCancelled`: `cancel()` clears `runRecord` (and also marks
+            // the Task cancelled, but that signal alone can't tell cancel from
+            // pause); `togglePause()` only sets the status to `.paused`.
             if runRecord == nil { return }  // cancelled: run torn down, touch nothing.
             if runRecord?.status != .running {
                 // Paused mid-flight: return the unit to the queue (discarding this
