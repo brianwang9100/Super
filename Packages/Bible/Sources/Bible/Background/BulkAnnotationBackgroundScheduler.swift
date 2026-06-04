@@ -57,13 +57,23 @@ public final class BulkAnnotationBackgroundScheduler {
     /// grants background time.
     public func scheduleIfNeeded() async {
         if await hasPendingWork() {
-            try? system.submit(
-                BulkBackgroundTaskRequest(
-                    identifier: Self.taskIdentifier,
-                    requiresNetworkConnectivity: true,
-                    requiresExternalPower: false
+            do {
+                try system.submit(
+                    BulkBackgroundTaskRequest(
+                        identifier: Self.taskIdentifier,
+                        requiresNetworkConnectivity: true,
+                        requiresExternalPower: false
+                    )
                 )
-            )
+            } catch {
+                // Best-effort on release (the run still drains whenever the app is
+                // foregrounded), but surface it in DEBUG: `submit` throwing means
+                // a misconfigured plist / denied permission — and it always throws
+                // on the simulator, where there's no background runtime.
+                #if DEBUG
+                print("[BulkAnnotationBackgroundScheduler] submit failed: \(error)")
+                #endif
+            }
         } else {
             system.cancel(identifier: Self.taskIdentifier)
         }

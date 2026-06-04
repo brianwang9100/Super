@@ -196,23 +196,6 @@ public struct BibleApplet: MiniApplet {
     /// API, matching the convention used by other applets.
     var _referenceInbox: BibleReferenceInbox { referenceInbox }
 
-    /// The "Annotations" entry for the shared Settings screen, backed by the
-    /// in-memory `FakeBulkAnnotationRunner` — the fallback for previews, tests,
-    /// or a shell that doesn't wire real bulk generation. The production path
-    /// (SuperBible) uses `makeBulkAnnotationWiring(…)` instead, which builds the
-    /// LLM-backed runner. `nil` when the database failed to open.
-    @MainActor
-    public func annotationsSettingsContribution(
-        requiresCostConfirmation: Bool
-    ) -> AppletSettingsContribution? {
-        guard let databaseContext else { return nil }
-        return BibleAnnotationsSettings.contribution(
-            databaseContext: databaseContext,
-            runner: FakeBulkAnnotationRunner(),
-            requiresCostConfirmation: requiresCostConfirmation
-        )
-    }
-
     /// The full bulk-annotation wiring for the production shell: the Settings
     /// hub contribution **and** the background scheduler, both driving a single
     /// shared `BulkAnnotationRunner` over the applet's `bible.sqlite` ledger.

@@ -93,20 +93,49 @@ import Testing
 
     // MARK: - handle
 
-    @Test func handleDrainsTheActiveRunToCompletion() async throws {
+    @Test func handleDrivesAndCompletesARunWithNoLiveLoop() async throws {
+        // Seed a `.running` run directly in the ledger — no foreground `start()`,
+        // so no work loop is live. This is the suspended-app shape: the engine
+        // instance exists but its loop has stopped. `handle` must restore the run
+        // and drive it to completion itself (not lean on a pre-existing loop).
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let now = Date(timeIntervalSince1970: 100)
+        try await ledger.createRun(
+            BulkAnnotationRunRecord(
+                id: "run-X", status: .running, modelId: "model-x", createdAt: now, updatedAt: now
+            ),
+            units: [
+                BulkAnnotationRunUnitRecord(
+                    id: "x0", runId: "run-X", ordinal: 0, kind: .chapter, bookId: "ROM",
+                    bookName: "Romans", chapterNumber: 1, state: .queued, updatedAt: now
+                ),
+                BulkAnnotationRunUnitRecord(
+                    id: "x1", runId: "run-X", ordinal: 1, kind: .chapter, bookId: "ROM",
+                    bookName: "Romans", chapterNumber: 2, state: .queued, updatedAt: now
+                ),
+            ]
+        )
         let generator = ScriptedBibleAnnotateGenerator([
             .success(annotationCount: 3),
             .success(annotationCount: 4),
         ])
-        let (scheduler, runner, ledger, system) = try make(generator: generator)
-        runner.start(plan([1, 2]))
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            clock: FixedClock(),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "model-x" }
+        )
+        let system = FakeTaskScheduling()
+        let scheduler = BulkAnnotationBackgroundScheduler(runner: runner, ledger: ledger, system: system)
 
         let task = FakeTask()
         await scheduler.handle(task)
-        await runner._waitUntilIdle()
 
-        let run = try #require(try await ledger.run(id: "id-1"))
+        let run = try #require(try await ledger.run(id: "run-X"))
         #expect(run.status == .completed)
+        let units = try await ledger.units(runId: "run-X")
+        #expect(units.allSatisfy { $0.state == .done })
         #expect(task.completedSuccess == true)
         // Nothing left to do → no reschedule.
         #expect(system.submitted.isEmpty)

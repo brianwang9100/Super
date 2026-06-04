@@ -445,16 +445,17 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // single-flight guard correct.
         defer { isDriving = false }
         while !Task.isCancelled {
-            // A background task that ran out of time asked us to wind down: stop
-            // before the next unit, leaving the run active for a later resume. The
-            // in-flight unit's result (below) is saved before this is next checked,
-            // so no generation is wasted.
-            if backgroundStopRequested { return }
             guard runRecord?.status == .running else { return }
             guard let index = units.firstIndex(where: { $0.state == .queued }) else {
                 finalizeCompleted()
                 return
             }
+            // A background task that ran out of time asked us to wind down: stop
+            // before starting the next unit, leaving the run active for a later
+            // resume. Checked only once real work remains (an already-drained run
+            // still finalizes above), and after the in-flight unit's result was
+            // saved on the prior iteration — so no generation is wasted.
+            if backgroundStopRequested { return }
 
             units[index].state = .generating
             units[index].updatedAt = clock.now()
