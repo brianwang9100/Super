@@ -33,20 +33,20 @@ See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpo
 <table>
   <tr>
     <td width="25%" align="center">
+      <img src="docs/assets/screenshots/reader.png" alt="Reading a chapter in the SuperBible reader" width="100%"><br>
+      <sub><b>A reader built for focus</b><br>Clean, typographic chapter reading that gets out of your way.</sub>
+    </td>
+    <td width="25%" align="center">
       <img src="docs/assets/screenshots/chat_semi_expanded.png" alt="Reading a chapter with a floating chat panel and a verse reference piped into the composer" width="100%"><br>
       <sub><b>Read + chat, together</b><br>A floating chat panel over the reader, with the verse you're reading piped into the conversation.</sub>
     </td>
     <td width="25%" align="center">
-      <img src="docs/assets/screenshots/annotations_full.png" alt="AI-generated study annotations for John 3:5" width="100%"><br>
-      <sub><b>AI study annotations</b><br>Context, cross-references, and explanation generated for the passage you're on.</sub>
-    </td>
-    <td width="25%" align="center">
-      <img src="docs/assets/screenshots/chat_fully_expanded.png" alt="A full-screen conversation about John 3:16-17" width="100%"><br>
-      <sub><b>Go deep in chat</b><br>Ask follow-ups about any passage — with the verses linked right in the answer.</sub>
-    </td>
-    <td width="25%" align="center">
       <img src="docs/assets/screenshots/action_sheet.png" alt="Verse action menu: highlight, annotate, add note, add to chat" width="100%"><br>
       <sub><b>Tap any verse</b><br>Highlight, annotate, take a note, or send it straight into chat.</sub>
+    </td>
+    <td width="25%" align="center">
+      <img src="docs/assets/screenshots/annotations_semi_expanded.png" alt="AI-generated study annotations alongside the passage" width="100%"><br>
+      <sub><b>AI study annotations</b><br>Context, cross-references, and explanation generated for the passage you're on.</sub>
     </td>
   </tr>
 </table>
