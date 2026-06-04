@@ -119,15 +119,18 @@ struct SettingsAppearancePane: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(theme.backgroundRaised)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // Neutral glass card. The colored preview swatch stays opaque on
+            // top, so glass frosts only the label footer (the dropped
+            // `backgroundRaised` fill); glass also supplies the unselected
+            // edge in place of the old neutral border. The selected accent
+            // border + halo layer over the glass to keep the picked theme
+            // reading as picked.
+            .superGlassButton(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? theme.accent : theme.border,
-                        lineWidth: isSelected ? 2 : 1
-                    )
+                    .strokeBorder(theme.accent, lineWidth: isSelected ? 2 : 0)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 19, style: .continuous)

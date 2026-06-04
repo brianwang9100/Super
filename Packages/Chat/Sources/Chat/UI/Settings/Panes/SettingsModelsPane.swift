@@ -98,14 +98,11 @@ struct SettingsModelsPane: View {
             .disabled(!isAvailable)
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(theme.backgroundRaised)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(theme.borderFaint, lineWidth: 1)
-        )
+        // Passive glass card — the row hosts two independent tap targets (the
+        // body button and the trailing toggle), so `superGlassSurface` (which
+        // doesn't claim a hit region) keeps both live. Glass supplies its own
+        // edge and elevation, so the old raised fill + faint stroke are gone.
+        .superGlassSurface(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// Whether the row is usable right now. `.openAICompatible` rows are
@@ -222,6 +219,12 @@ struct SettingsModelsPane: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
             .frame(maxWidth: .infinity)
+            // Soft accent band marks the picked summarizer, matching how the
+            // due-date / priority chips show selection — a clearer "picked"
+            // state than the lone checkmark, and legible across all themes.
+            // (A grouped radio row inside a solid card, so a neutral glass
+            // lift would read near-invisible here; the accent tint carries it.)
+            .background(isSelected ? theme.accentSoft : Color.clear)
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 if !isLast { titleDivider }
