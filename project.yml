@@ -235,6 +235,14 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperBible uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperBible needs microphone access to capture your voice for dictation."
+        # Background bulk-annotation generation: the `processing` mode plus the
+        # permitted-identifier list let `BulkAnnotationBackgroundScheduler`
+        # register + run its `BGProcessingTask`. The identifier must match
+        # `BulkAnnotationBackgroundScheduler.taskIdentifier`.
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.brianwang.SuperBible.bulk-annotation
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
