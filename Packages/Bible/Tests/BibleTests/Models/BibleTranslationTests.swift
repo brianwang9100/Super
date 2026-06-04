@@ -27,6 +27,6 @@ struct BibleTranslationTests {
     @Test("named falls back to the default for an unknown code")
     func namedFallsBackForUnknownCode() {
         #expect(BibleTranslation.named("ESV") == .defaultTranslation)
-        #expect(BibleTranslation.named("") == .kjv)
+        #expect(BibleTranslation.named("") == .defaultTranslation)
     }
 }
