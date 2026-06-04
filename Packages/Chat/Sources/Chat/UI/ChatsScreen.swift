@@ -213,7 +213,7 @@ public struct ChatsScreen: View {
     }
 
     private var addButton: some View {
-        Button(action: _startNewChat) {
+        Button(action: { _startNewChat() }) {
             Image(systemName: "plus")
                 .font(typography.font(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
@@ -256,16 +256,25 @@ public struct ChatsScreen: View {
     /// event bus. Internal (not private) so the unit-test suite can
     /// drive it directly; production fires it from the row's tap
     /// closure.
-    func _openConversation(id: String) {
-        guard let eventBus else { return }
-        Task { await eventBus.publish(.openConversationRequested(id: id)) }
+    ///
+    /// Returns the spawned publish `Task` so tests can `await` it before
+    /// draining the bus — without that handle the publish is a
+    /// fire-and-forget race the test could only guess at with a timeout.
+    /// Production discards the handle.
+    @discardableResult
+    func _openConversation(id: String) -> Task<Void, Never>? {
+        guard let eventBus else { return nil }
+        return Task { await eventBus.publish(.openConversationRequested(id: id)) }
     }
 
     /// Publish a "start a new conversation" request on the shared
     /// event bus. Internal (not private) so the unit-test suite can
     /// drive it directly; production fires it from the `+` button.
-    func _startNewChat() {
-        guard let eventBus else { return }
-        Task { await eventBus.publish(.newConversationRequested) }
+    ///
+    /// Returns the spawned publish `Task` (see `_openConversation`).
+    @discardableResult
+    func _startNewChat() -> Task<Void, Never>? {
+        guard let eventBus else { return nil }
+        return Task { await eventBus.publish(.newConversationRequested) }
     }
 }
