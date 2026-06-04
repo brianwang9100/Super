@@ -216,13 +216,14 @@ public struct ChatsScreen: View {
         Button(action: _startNewChat) {
             Image(systemName: "plus")
                 .font(typography.font(size: 18, weight: .semibold))
-                .foregroundStyle(theme.ink)
+                .foregroundStyle(theme.accentInk)
                 // 44×44 mirrors the shell's hamburger button so the two share a
-                // baseline. The accent fill is gone — this is plain Liquid Glass
-                // like the rest of the nav chrome; glass supplies its own edge
-                // and elevation (no fill or shadow of its own).
+                // baseline. Accent-tinted call-to-action glass: "new chat" is a
+                // primary create action, so it rides the accent (an `accentInk`
+                // glyph on `theme.accent`-biased glass) like the narration
+                // sheet's play button — a soft tint, not the old hard filled disc.
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+                .superGlassCTAButton(in: Circle())
         }
         .buttonStyle(.plain)
         .padding(.top, 4)

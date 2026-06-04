@@ -124,9 +124,9 @@ struct NoteEditor: View {
         } label: {
             Image(systemName: "checkmark")
                 .font(typography.font(size: 16, weight: .semibold))
-                .foregroundStyle(canSave ? theme.ink : theme.inkMute)
+                .foregroundStyle(canSave ? theme.accentInk : theme.inkMute)
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+                .superGlassCTAButton(in: Circle())
                 .opacity(canSave ? 1 : 0.6)
         }
         .buttonStyle(.plain)

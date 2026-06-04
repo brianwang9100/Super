@@ -94,14 +94,15 @@ struct NoteListSheet: View {
     }
 
     /// Round **+** that composes a new note, hosted in the nav bar's trailing
-    /// slot. Theme-tinted glass to match the leading close button.
+    /// slot. Accent-tinted call-to-action glass (vs. the leading close button's
+    /// neutral glass) so the primary "write a note" action reads as primary.
     private var composeButton: some View {
         Button(action: onCompose) {
             Image(systemName: "plus")
                 .font(typography.font(size: 16, weight: .semibold))
-                .foregroundStyle(theme.ink)
+                .foregroundStyle(theme.accentInk)
                 .frame(width: 44, height: 44)
-                .superGlassButton(in: Circle())
+                .superGlassCTAButton(in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Write a note")
