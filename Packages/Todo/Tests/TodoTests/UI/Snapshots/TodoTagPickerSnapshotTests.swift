@@ -9,6 +9,10 @@ import Testing
 /// suggestion chips, and the accent call-to-action "＋ Create" affordance.
 /// The create affordance and filtered suggestions are seeded through the
 /// `initialQuery` test seam (the field's query is otherwise internal state).
+///
+/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
+/// touch process-global recording + font-registration state, so the suites
+/// run serially to keep that setup deterministic — not to paper over a race.
 @Suite("TodoTagPicker snapshots", .serialized)
 @MainActor
 struct TodoTagPickerSnapshotTests {
@@ -16,6 +20,14 @@ struct TodoTagPickerSnapshotTests {
     /// frosted suggestion chips for the unselected pool.
     @Test("suggestions, light") func suggestionsLight() {
         verify(theme: .light, query: "", name: "tag_picker_suggestions_light")
+    }
+
+    @Test("suggestions, dark") func suggestionsDark() {
+        verify(theme: .dark, query: "", name: "tag_picker_suggestions_dark")
+    }
+
+    @Test("suggestions, sepia") func suggestionsSepia() {
+        verify(theme: .sepia, query: "", name: "tag_picker_suggestions_sepia")
     }
 
     /// Typed query with no exact match: the accent "＋ Create" call-to-action
