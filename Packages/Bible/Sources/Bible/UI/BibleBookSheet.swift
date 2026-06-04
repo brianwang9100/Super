@@ -461,7 +461,10 @@ struct BibleBookSheet: View {
             toggleSegment("Alphabetical", order: .alphabetical)
         }
         .padding(4)
-        .background(Capsule().fill(theme.backgroundSunken))
+        // Frosted glass track for the segmented toggle, matching the nav-bar
+        // pills; the active segment keeps its own raised inner capsule so it
+        // still reads as selected against the surface.
+        .superGlassSurface(in: Capsule())
         .padding(.top, 8)
         .padding(.bottom, 22 + bottomInset)
     }
