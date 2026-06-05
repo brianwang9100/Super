@@ -63,7 +63,7 @@ struct GenerateAnnotationsSheet: View {
                             .foregroundStyle(theme.inkMute)
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
@@ -115,6 +115,7 @@ struct GenerateAnnotationsSheet: View {
                 .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollIndicators(.hidden)
         .background(theme.background)
