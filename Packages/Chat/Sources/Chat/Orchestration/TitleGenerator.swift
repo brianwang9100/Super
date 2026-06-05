@@ -42,9 +42,7 @@ public struct TitleGenerator: Sendable {
     ) async -> String? {
         guard await settingsStore.isTitleSummarizationEnabled() else { return nil }
 
-        let available = await llmProviderRegistry.allProviders().compactMap { provider in
-            provider.supportedModels.first.map { SelectableModel(recordId: provider.id, model: $0) }
-        }
+        let available = SelectableModel.from(providers: await llmProviderRegistry.allProviders())
         guard let chosen = Self.resolveTitleModel(
             selectedRecordId: await settingsStore.titleModelId(),
             available: available

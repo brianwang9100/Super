@@ -29,10 +29,15 @@ public struct SelectableModel: Identifiable, Sendable, Equatable {
         self.model = model
     }
 
-    /// Convenience for call sites where the record id isn't meaningfully
-    /// distinct from the vended model id (tests/previews with a single model
-    /// per id). Defaults `recordId` to `model.id`.
-    public init(_ model: LLMModel) {
-        self.init(recordId: model.id, model: model)
+    /// Pair each registered provider with the single model it vends —
+    /// provider→model is 1:1, so a provider exposing nothing is skipped. The
+    /// one home for the "first model per provider" rule, shared by the composer
+    /// (`AppShell`) and the title path (`TitleGenerator`).
+    public static func from(providers: [any LLMProvider]) -> [SelectableModel] {
+        providers.compactMap { provider in
+            provider.supportedModels.first.map {
+                SelectableModel(recordId: provider.id, model: $0)
+            }
+        }
     }
 }

@@ -130,6 +130,7 @@ struct ChatScreenViewModelTests {
         // Selecting the other record id moves the active model to that row.
         vm.selectedModelId = "rec-a"
         #expect(vm.selectedModelId == "rec-a")
+        #expect(vm.activeModel?.id == shared)
     }
 
     @Test("send accumulates streaming text into the tail until completion")

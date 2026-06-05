@@ -628,7 +628,7 @@ struct AppShell: View {
             driver = liveDriver
         }
         let providers = await dependencies.llmProviderRegistry.allProviders()
-        let providerModels = Self.selectableModels(from: providers)
+        let providerModels = SelectableModel.from(providers: providers)
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(
             llmProviderRegistry: dependencies.llmProviderRegistry,
@@ -697,20 +697,6 @@ struct AppShell: View {
         sidebarViewModel?.activeConversationId = conversation.id
     }
 
-    /// Pair each registered provider's unique record id (its `.id`, ==
-    /// `ModelConfigurationRecord.id`) with the single model it vends, for the
-    /// composer's record-id-keyed selection. Providers are 1:1 with models, so
-    /// a provider vending nothing is skipped.
-    private static func selectableModels(
-        from providers: [any LLMProvider]
-    ) -> [SelectableModel] {
-        providers.compactMap { provider in
-            provider.supportedModels.first.map {
-                SelectableModel(recordId: provider.id, model: $0)
-            }
-        }
-    }
-
     /// Refresh the chat composer's model list after the user
     /// adds/edits/deletes a model in Settings. Re-pulls from the
     /// registry (which `SettingsViewModel` already updated during the
@@ -720,7 +706,7 @@ struct AppShell: View {
     /// `setActive(id:)`, no scan) so it matches the registry.
     private func refreshAvailableModels() async {
         let providers = await dependencies.llmProviderRegistry.allProviders()
-        viewModel?.setAvailableModels(Self.selectableModels(from: providers))
+        viewModel?.setAvailableModels(SelectableModel.from(providers: providers))
         if let recordId = viewModel?.selectedModelId {
             try? await dependencies.llmProviderRegistry.setActive(id: recordId)
         }
