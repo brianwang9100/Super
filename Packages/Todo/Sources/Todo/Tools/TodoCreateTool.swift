@@ -20,7 +20,10 @@ import Foundation
 /// payload rather than tearing down the whole turn. Mirrors `NoteBibleTool`.
 public struct TodoCreateTool: ToolExecutor {
     /// Dotted form namespaces the tool under its applet, matching
-    /// `bible.note`, `time.now`, etc.
+    /// `bible.note`, `time.now`, etc. The DEBUG-only
+    /// `DebugTodoLLMProvider.toolName` (Chat package) hard-codes this same
+    /// string by literal so Chat needn't import Todo — keep the two in sync
+    /// if this is ever renamed.
     public static let toolID = "todo.create"
 
     public static let appletID = "todo"
@@ -127,7 +130,12 @@ public struct TodoCreateTool: ToolExecutor {
                 created.append(record)
             }
         } catch {
-            return Self.errorResult("Failed to create the tasks: \(error.localizedDescription)")
+            // Saves aren't one transaction, so rows written before this
+            // failure stay committed. Report the count so an LLM retry is less
+            // likely to duplicate the ones that already succeeded.
+            return Self.errorResult(
+                "Created \(created.count) of \(specs.count) task(s) before a write error: \(error.localizedDescription)"
+            )
         }
 
         let titles = created.map(\.title).joined(separator: ", ")
