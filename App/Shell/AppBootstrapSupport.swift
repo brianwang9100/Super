@@ -168,8 +168,14 @@ enum AppBootstrapSupport {
     /// unselected (alternatives in the picker). A developer who has already
     /// wired a real provider keeps that active and sees the debug entries as
     /// alternatives.
+    /// - Parameter includesTodoTool: Whether the `todo.create` tool is
+    ///   registered in this build (i.e. the Todo applet is injected). Only
+    ///   then is the "Debug (todo)" row seeded — SuperBible, which ships no
+    ///   Todo applet, passes `false` so the row never appears in its picker
+    ///   (where the tool call would fail).
     static func seedDebugModelIfNeeded(
-        repository: GRDBModelConfigurationRepository
+        repository: GRDBModelConfigurationRepository,
+        includesTodoTool: Bool = false
     ) async throws {
         // Canned-stream provider — the auto-selected default on a fresh
         // install (when nothing else is wired).
@@ -250,6 +256,28 @@ enum AppBootstrapSupport {
                 // pins the two equal.
                 searchBackend: "debug"
             )
+        }
+        // Todo create provider — emits a canned `todo.create` tool call.
+        // Gated on the Todo applet being injected (its tool registered): only
+        // SuperOS ships Todo, so SuperBible passes `includesTodoTool: false`
+        // and never seeds this row. Never auto-selected.
+        if includesTodoTool {
+            _ = try await repository.insertDebugRowIfMissing(
+                id: "debug-todo", selectable: false
+            ) { _ in
+                ModelConfigurationRecord(
+                    id: "debug-todo",
+                    name: "Debug (todo)",
+                    baseURL: nil,
+                    apiKeyRef: nil,
+                    modelId: DebugTodoLLMProvider.modelID,
+                    createdAt: Date(),
+                    kind: .debug,
+                    supportsThinking: false,
+                    maxContextTokens: DebugTodoLLMProvider.maxContextTokens,
+                    isSelected: false
+                )
+            }
         }
     }
     #endif
