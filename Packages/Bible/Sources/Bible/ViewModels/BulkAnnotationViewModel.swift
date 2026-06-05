@@ -30,12 +30,12 @@ public final class BulkAnnotationViewModel {
     public let catalog: BibleBookCatalog
 
     private let runner: any BulkAnnotationRunning
-    private let deleteAll: () -> Void
+    private let deleteAll: @MainActor () -> Void
 
     public init(
         runner: any BulkAnnotationRunning,
         catalog: BibleBookCatalog = .standard,
-        deleteAll: @escaping () -> Void = {}
+        deleteAll: @escaping @MainActor () -> Void = {}
     ) {
         self.runner = runner
         self.catalog = catalog
