@@ -61,15 +61,15 @@ See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpo
 
 <table>
   <tr>
-    <td width="33%" align="center">
+    <td width="33.33%" align="center">
       <img src="docs/assets/screenshots/superos_sidebar.png" alt="SuperOS sidebar listing chats and mini-apps" width="100%"><br>
       <sub><b>One sidebar, your whole workspace</b><br>Jump between chats or switch mini-apps — ToDo, Recipes, Bible, Finance — from a single drawer.</sub>
     </td>
-    <td width="33%" align="center">
+    <td width="33.33%" align="center">
       <img src="docs/assets/screenshots/superos_chat.png" alt="A SuperOS chat with rich Markdown formatting" width="100%"><br>
       <sub><b>Chat that reads well</b><br>A polished chat experience with full Markdown support — headings, bold, and clean bulleted lists.</sub>
     </td>
-    <td width="33%" align="center">
+    <td width="33.33%" align="center">
       <img src="docs/assets/screenshots/superos_tool_use.png" alt="Chat invoking tools to create tasks and Bible annotations" width="100%"><br>
       <sub><b>Talk to your mini-apps</b><br>Tool calls let chat act for you — create tasks, annotate scripture — with each step shown inline.</sub>
     </td>
