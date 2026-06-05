@@ -13,6 +13,12 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
     public var onSnapshotChange: (@MainActor @Sendable () -> Void)?
 
+    /// Plans handed to `start(_:)`, in call order — a test seam so a view-model
+    /// test can assert how a selection was resolved into a `BulkRunPlan`
+    /// (e.g. whether a whole-book selection flagged its book for book-level
+    /// generation). Not used by previews.
+    public private(set) var startedPlans: [BulkRunPlan] = []
+
     private let autoAdvance: Bool
     private let stepInterval: Duration
     /// Chapters seeded to fail the first time they generate (then they succeed
@@ -38,6 +44,7 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     public func start(_ plan: BulkRunPlan) {
+        startedPlans.append(plan)
         let firstBookID = plan.books.first?.bookID
         var books: [BulkBookProgress] = []
         for book in plan.books {

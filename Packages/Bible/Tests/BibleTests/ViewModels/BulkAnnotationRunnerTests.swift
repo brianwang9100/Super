@@ -36,9 +36,17 @@ import Testing
     private func oneBookPlan(
         _ bookID: String = "ROM",
         _ name: String = "Romans",
-        chapters: [Int]
+        chapters: [Int],
+        includesBookLevel: Bool = false
     ) -> BulkRunPlan {
-        BulkRunPlan(books: [BulkRunPlan.Book(bookID: bookID, name: name, chapters: chapters)])
+        BulkRunPlan(books: [
+            BulkRunPlan.Book(
+                bookID: bookID,
+                name: name,
+                chapters: chapters,
+                includesBookLevel: includesBookLevel
+            )
+        ])
     }
 
     /// The single run's units in ordinal order (fails the test if there isn't
@@ -77,6 +85,97 @@ import Testing
         // The completed run clears the active slot so the hub returns to idle
         // (the Generate CTA comes back); it now surfaces in the finished list.
         #expect(runner.snapshot == nil)
+    }
+
+    // MARK: - Whole-book selection (book-level prologue unit)
+
+    @Test func wholeBookSelectionEnqueuesABookPrologueAheadOfChapters() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .success(annotationCount: 3),  // book-level
+            .success(annotationCount: 5),  // chapter 1
+            .success(annotationCount: 6),  // chapter 2
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1, 2], includesBookLevel: true))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.count == 3)
+        // The book-level unit sorts first (ordinal 0) and carries no chapter.
+        #expect(units[0].kind == .bookPrologue)
+        #expect(units[0].chapterNumber == nil)
+        #expect(units[1].kind == .chapter)
+        #expect(units[1].chapterNumber == 1)
+        #expect(units[2].kind == .chapter)
+        #expect(units[2].chapterNumber == 2)
+        for unit in units { #expect(unit.state == .done) }
+
+        // The first generation targets the whole book, matching the single-shot
+        // book reference convention the dispatcher prompt expects.
+        let first = try #require(generator.receivedReferences.first)
+        #expect(first.kind == "book")
+        #expect(first.sourceID == "book:ROM")
+        #expect(first.displayLabel == "Romans")
+        #expect(first.citation == "Romans (WEB)")
+
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+    }
+
+    @Test func chapterOnlySelectionEnqueuesNoBookPrologue() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .success(annotationCount: 5),
+            .success(annotationCount: 6),
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1, 2], includesBookLevel: false))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.count == 2)
+        for unit in units { #expect(unit.kind == .chapter) }
+        for reference in generator.receivedReferences { #expect(reference.kind == "chapter") }
+    }
+
+    @Test func failedBookLevelUnitIsRevivedByResume() async throws {
+        // The book-level unit (ordinal 0) fails terminally; its chapter succeeds.
+        // The book unit isn't shown in the live progress grid, so its recovery
+        // path runs through the finished-run list — `resume` must revive it
+        // kind-agnostically, not just chapter units.
+        let generator = ScriptedBibleAnnotateGenerator([
+            .failure(message: "boom", classification: .retryable),  // book-level
+            .success(annotationCount: 5),                           // chapter 1
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator, maxAttempts: 1)
+
+        runner.start(oneBookPlan(chapters: [1], includesBookLevel: true))
+        await runner._waitUntilIdle()
+
+        var units = try await loadUnits(ledger)
+        #expect(units.count == 2)
+        // The run completed with one failed (book) and one done (chapter) unit.
+        #expect(units[0].kind == .bookPrologue)
+        #expect(units[0].state == .failed)
+        #expect(units[1].kind == .chapter)
+        #expect(units[1].state == .done)
+        var run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+
+        // Retry from the finished list revives the failed book unit and re-runs
+        // it to a clean completion.
+        generator.enqueue(.success(annotationCount: 3))
+        runner.resume(runID: "id-1")
+        await runner._waitUntilIdle()
+
+        units = try await loadUnits(ledger)
+        #expect(units[0].kind == .bookPrologue)
+        #expect(units[0].state == .done)
+        #expect(units[0].producedCount == 3)
+        run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+        #expect(run.haltReason == nil)
     }
 
     // MARK: - Per-unit retry

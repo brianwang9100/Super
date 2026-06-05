@@ -12,10 +12,11 @@ import Foundation
 /// second observation.
 ///
 /// The write surface is intentionally narrow: `replace(...)` swaps a
-/// target group's rows atomically, and `deleteOne(id:)` removes a single
-/// card. No per-row update path — regenerate replaces the whole group,
-/// per-card "Delete this card" calls `deleteOne(id:)`, and a future
-/// manual-edit feature gets its own typed method when it lands.
+/// target group's rows atomically, `deleteOne(id:)` removes a single
+/// card, and `deleteAll()` clears every annotation (the hub's "Delete all
+/// annotations" reset). No per-row update path — regenerate replaces the
+/// whole group, per-card "Delete this card" calls `deleteOne(id:)`, and a
+/// future manual-edit feature gets its own typed method when it lands.
 public protocol BibleAnnotationRepository: Sendable {
     /// All annotation rows in a target group, in canonical display order
     /// (`category ASC, createdAt ASC, id ASC`) — the same order the
@@ -44,4 +45,9 @@ public protocol BibleAnnotationRepository: Sendable {
 
     /// Delete one annotation row by id. No-op if no such row exists.
     func deleteOne(id: String) async throws
+
+    /// Delete every annotation row across all books, chapters, and verses —
+    /// the whole-Bible reset behind the hub's "Delete all annotations". No-op
+    /// on an already-empty table.
+    func deleteAll() async throws
 }

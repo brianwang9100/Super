@@ -21,10 +21,12 @@ import Foundation
 ///   run rather than burning requests on a persistent error.
 /// - *Manual retry* — `retry(_:)` / `retryAllFailed()` revive `.failed` units.
 ///
-/// Book **prologues** are deferred: `BulkChapterProgress` can only carry a
-/// chapter number, so `kind == .bookPrologue` units are skipped in the snapshot.
-/// The current `BulkRunPlan` only ever yields chapter units, so this is a
-/// forward-guard, not a regression.
+/// A whole-book selection enqueues one **book-level** (`.bookPrologue`) unit
+/// ahead of that book's chapters; the engine generates it like any other unit
+/// (a `kind == "book"` reference). `BulkChapterProgress` can only carry a chapter
+/// number, so book-level units are intentionally absent from the live progress
+/// grid — they still generate, persist, and count toward run completion, just
+/// without a dedicated progress row.
 @MainActor
 public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
@@ -127,6 +129,26 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         var newUnits: [BulkAnnotationRunUnitRecord] = []
         var ordinal = 0
         for book in plan.books {
+            // A whole-book selection generates one book-level annotation first
+            // (ordinal ahead of its chapters), so it lands before — and the run
+            // finalizes together with — the visible chapter rows. `bookPrologue`
+            // units carry no `chapterNumber`.
+            if book.includesBookLevel {
+                newUnits.append(
+                    BulkAnnotationRunUnitRecord(
+                        id: idGenerator.nextID(),
+                        runId: runID,
+                        ordinal: ordinal,
+                        kind: .bookPrologue,
+                        bookId: book.bookID,
+                        bookName: book.name,
+                        chapterNumber: nil,
+                        state: .queued,
+                        updatedAt: now
+                    )
+                )
+                ordinal += 1
+            }
             for chapter in book.chapters {
                 newUnits.append(
                     BulkAnnotationRunUnitRecord(
@@ -639,17 +661,30 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Reference
 
-    /// Build the per-chapter `RecordReference` the dispatcher annotates — mirrors
-    /// `BibleScreenViewModel.makeAnnotateRequestReference`: `snapshot: ""` because
-    /// the model knows the passage from the citation (same as the spark-button
-    /// per-target path).
+    /// Build the per-unit `RecordReference` the dispatcher annotates — mirrors
+    /// `BibleScreenViewModel.makeAnnotateRequestReference` (same `kind` /
+    /// `sourceID` / `citation` shape per target) so the headless prompt names the
+    /// target identically to the single-shot spark-button path. `snapshot: ""`
+    /// because the model knows the passage from the citation.
     private func makeReference(for unit: BulkAnnotationRunUnitRecord) -> RecordReference {
-        let chapterNumber = unit.chapterNumber ?? 0
-        let label = "\(unit.bookName) \(chapterNumber)"
+        let kind: String
+        let sourceID: String
+        let label: String
+        switch unit.kind {
+        case .bookPrologue:
+            kind = "book"
+            sourceID = "book:\(unit.bookId)"
+            label = unit.bookName
+        case .chapter:
+            let chapterNumber = unit.chapterNumber ?? 0
+            kind = "chapter"
+            sourceID = "chapter:\(unit.bookId):\(chapterNumber)"
+            label = "\(unit.bookName) \(chapterNumber)"
+        }
         return RecordReference(
             appletID: BibleApplet.appletID,
-            kind: "chapter",
-            sourceID: "chapter:\(unit.bookId):\(chapterNumber)",
+            kind: kind,
+            sourceID: sourceID,
             displayLabel: label,
             citation: "\(label) (\(translation.rawValue))",
             snapshot: "",
