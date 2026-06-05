@@ -65,8 +65,11 @@ struct URLSessionHTTPClientTests {
         } catch {
             caught = error
         }
-        if case .badStatus(let code) = caught as? HTTPError {
+        if case .badStatus(let code, let body) = caught as? HTTPError {
             #expect(code == 500)
+            // The response body is captured (not discarded) so the provider's
+            // explanation can reach the surfaced error message.
+            #expect(body == "error")
         } else {
             Issue.record("Expected HTTPError.badStatus, got \(String(describing: caught))")
         }

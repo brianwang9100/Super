@@ -113,13 +113,14 @@ public struct LLMProviderCatalogEntry: Equatable, Sendable, Identifiable {
 /// they map to, what context-window cap they enforce, and which
 /// support thinking.
 ///
-/// Anthropic uses its OpenAI-compat shim (`/v1/openai/`) for the default
-/// (non-search) path, so every non-Apple entry's `kind` is
-/// `.openAICompatible`. A provider's *native* web-search adapter is
-/// declared separately via `nativeSearchAdapter` / `nativeSearchBaseURL`;
-/// when the user enables native search, the row's persisted `kind` and
-/// `baseURL` are resolved from those fields at add-time, leaving the
-/// default path untouched.
+/// Most non-Apple entries use an OpenAI-compat shim (`/v1/openai/`) for the
+/// default (non-search) path, so their `kind` is `.openAICompatible`. **Google
+/// is the exception**: it defaults to the native Gemini adapter
+/// (`kind == .geminiNative`) because Gemini 3 thinking models require
+/// `thoughtSignature` round-tripping on tool calls. A provider's *native*
+/// web-search adapter is declared separately via `nativeSearchAdapter` /
+/// `nativeSearchBaseURL`; when the user enables native search, the row's
+/// persisted `kind` and `baseURL` are resolved from those fields at add-time.
 public enum LLMProviderCatalog {
     /// Identifier of the Custom entry. Held as a constant rather
     /// than a string literal so visibility predicates can reference
@@ -213,8 +214,13 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: "google",
             displayName: "Google",
-            kind: .openAICompatible,
-            defaultBaseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta/openai/"),
+            // Google defaults to the **native** Gemini `generateContent` adapter
+            // (not the `/v1beta/openai/` compat shim the other providers use):
+            // Gemini 3 thinking models require `thoughtSignature` round-tripping
+            // on tool calls, which the native adapter handles first-class. The
+            // OpenAI-compat path still works for a Custom-provider Google URL.
+            kind: .geminiNative,
+            defaultBaseURL: geminiNativeBaseURL,
             models: [
                 // Gemini 3.5 Flash is the newest mid-2026 iteration.
                 // Gemini 3 Pro is the flagship; Gemini 3 Flash sits

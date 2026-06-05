@@ -151,7 +151,7 @@ struct OpenAIStreamReducerTests {
             usage: nil
         ))
         let toolUse = finishEvents.compactMap { event -> JSONValue? in
-            if case .toolUse(_, _, _, let input) = event { return input }
+            if case .toolUse(_, _, _, let input, _) = event { return input }
             return nil
         }
         #expect(toolUse == [.object(["q": .string("swift")])])
@@ -180,7 +180,7 @@ struct OpenAIStreamReducerTests {
             usage: nil
         ))
         let toolUse = events.compactMap { event -> JSONValue? in
-            if case .toolUse(_, _, _, let input) = event { return input }
+            if case .toolUse(_, _, _, let input, _) = event { return input }
             return nil
         }
         #expect(toolUse == [.object(["q": .string("swift")])])
@@ -195,7 +195,7 @@ struct OpenAIStreamReducerTests {
             usage: nil
         ))
         let names = finish.compactMap { event -> String? in
-            if case .toolUse(_, _, let name, _) = event { return name }
+            if case .toolUse(_, _, let name, _, _) = event { return name }
             return nil
         }
         #expect(names == ["alpha", "beta"])
@@ -249,7 +249,7 @@ struct OpenAIStreamReducerTests {
             usage: nil
         ))
         let toolUseNames = events.compactMap { event -> String? in
-            if case .toolUse(_, _, let name, _) = event { return name }
+            if case .toolUse(_, _, let name, _, _) = event { return name }
             return nil
         }
         let errors = events.compactMap { event -> LLMError? in

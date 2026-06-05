@@ -25,7 +25,7 @@ extension TokenEstimator {
                 switch block {
                 case .text(let text):
                     total += estimate(text)
-                case .toolUse(_, let name, let input):
+                case .toolUse(_, let name, let input, _):
                     total += estimate(name)
                     total += estimate(JSONStringifier.string(for: input))
                 case .toolResult(_, let content, _):

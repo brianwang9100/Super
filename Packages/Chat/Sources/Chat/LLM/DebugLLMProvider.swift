@@ -285,7 +285,8 @@ public struct DebugLLMProvider: LLMProvider {
             index: 0,
             id: "debug-search-\(UUID().uuidString)",
             name: NativeWebSearch.proposalToolName,
-            input: input
+            input: input,
+            signature: nil
         ))
         continuation.yield(.messageComplete(usage: TokenUsage(
             inputTokens: messages.reduce(0) { $0 + approxTokens(of: $1) },

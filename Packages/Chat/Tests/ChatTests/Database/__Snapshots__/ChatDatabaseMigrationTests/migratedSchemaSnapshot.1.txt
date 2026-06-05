@@ -11,7 +11,7 @@ CREATE TABLE "modelConfiguration" ("id" TEXT PRIMARY KEY NOT NULL, "kind" TEXT N
 CREATE UNIQUE INDEX modelConfiguration_unique_selected
     ON modelConfiguration(isSelected) WHERE isSelected = 1;
 CREATE TABLE "setting" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL);
-CREATE TABLE "toolCall" ("id" TEXT PRIMARY KEY NOT NULL, "messageId" TEXT NOT NULL REFERENCES "message"("id") ON DELETE CASCADE, "conversationId" TEXT NOT NULL, "toolName" TEXT NOT NULL, "parameters" TEXT NOT NULL, "result" TEXT, "status" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "completedAt" DATETIME);
+CREATE TABLE "toolCall" ("id" TEXT PRIMARY KEY NOT NULL, "messageId" TEXT NOT NULL REFERENCES "message"("id") ON DELETE CASCADE, "conversationId" TEXT NOT NULL, "toolName" TEXT NOT NULL, "parameters" TEXT NOT NULL, "result" TEXT, "status" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "completedAt" DATETIME, "signature" TEXT);
 CREATE INDEX "toolCall_on_conversationId" ON "toolCall"("conversationId");
 CREATE INDEX "toolCall_on_messageId" ON "toolCall"("messageId");
 CREATE INDEX "toolCall_on_status" ON "toolCall"("status");

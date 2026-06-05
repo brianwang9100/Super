@@ -256,10 +256,12 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                     return nil
                 }
                 let toolUses = try message.content.compactMap { block -> OutgoingToolCall? in
-                    guard case .toolUse(let id, let name, let input) = block else { return nil }
+                    guard case .toolUse(let id, let name, let input, let signature) = block else { return nil }
                     let argsData = try toolCallEncoder.encode(input)
                     let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
-                    return OutgoingToolCall(id: id, name: name, argumentsJSON: argsJSON)
+                    // Replay Gemini's thought signature via the `extra_content`
+                    // extension — the shim 400s the follow-up turn without it.
+                    return OutgoingToolCall(id: id, name: name, argumentsJSON: argsJSON, thoughtSignature: signature)
                 }
                 let joined = texts.joined()
                 if joined.isEmpty && toolUses.isEmpty {
@@ -277,46 +279,11 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     }
 
     private func translate(_ tool: LLMTool) -> OpenAITool {
-        var properties: [String: JSONValue] = [:]
-        var required: [String] = []
-        for parameter in tool.parameters {
-            var schema: [String: JSONValue] = [
-                "type": .string(jsonSchemaType(for: parameter.type)),
-                "description": .string(parameter.description),
-            ]
-            if let enumValues = parameter.enumValues {
-                schema["enum"] = .array(enumValues.map { .string($0) })
-            }
-            properties[parameter.name] = .object(schema)
-            if parameter.isRequired {
-                required.append(parameter.name)
-            }
-        }
-        var parametersObject: [String: JSONValue] = [
-            "type": .string("object"),
-            "properties": .object(properties),
-        ]
-        // Some local OpenAI shims (older LM Studio, llama.cpp's server)
-        // reject `required: []`. Drop the key when there are no required
-        // parameters; the spec treats absent and empty as equivalent.
-        if !required.isEmpty {
-            parametersObject["required"] = .array(required.map { .string($0) })
-        }
-        return OpenAITool(function: OpenAIFunctionDefinition(
+        OpenAITool(function: OpenAIFunctionDefinition(
             name: tool.name,
             description: tool.description,
-            parameters: .object(parametersObject)
+            parameters: JSONToolSchema.parametersObject(for: tool.parameters)
         ))
-    }
-
-    /// `LLMTool.ParameterType` reuses Swift-friendly names (`bool`); JSON
-    /// Schema (which OpenAI's tool spec follows) uses `boolean`. Translate
-    /// at the boundary so consumers don't need to know.
-    private func jsonSchemaType(for parameterType: ParameterType) -> String {
-        switch parameterType {
-        case .bool: return "boolean"
-        case .string, .integer, .number, .array, .object: return parameterType.rawValue
-        }
     }
 
     private func roleString(for role: LLMRole) -> String {
@@ -345,12 +312,15 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
 
     private func mapHTTPError(_ httpError: HTTPError) -> LLMError {
         switch httpError {
-        case .badStatus(401), .badStatus(403):
+        case .badStatus(401, _), .badStatus(403, _):
             return .unauthorized
-        case .badStatus(429):
+        case .badStatus(429, _):
             return .rateLimited
-        case .badStatus(let code):
-            return .providerError(code: "\(code)", message: "HTTP \(code)")
+        case .badStatus(let code, let body):
+            return .providerError(
+                code: "\(code)",
+                message: body.isEmpty ? "HTTP \(code)" : "HTTP \(code): \(body)"
+            )
         case .invalidResponse:
             return .requestFailed("invalid response")
         case .transport(let message):

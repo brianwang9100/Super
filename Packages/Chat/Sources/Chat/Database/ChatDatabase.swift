@@ -268,4 +268,16 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "searchBackend", .text)
         }
     }
+
+    // Adds the nullable `signature` column to `toolCall`, holding the opaque
+    // provider continuation token a call carries (today Gemini's
+    // `thoughtSignature`). The native Gemini adapter must replay it on the
+    // follow-up turn's `functionCall` or the thinking model rejects the turn
+    // with HTTP 400. Additive and nullable — a plain ALTER ADD suffices, and
+    // existing rows keep NULL (no signature to replay). Never queried, no index.
+    migrator.registerMigration("v7_toolCallSignature") { db in
+        try db.alter(table: "toolCall") { t in
+            t.add(column: "signature", .text)
+        }
+    }
 }

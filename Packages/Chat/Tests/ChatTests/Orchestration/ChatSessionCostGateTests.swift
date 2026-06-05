@@ -105,7 +105,7 @@ struct ChatSessionCostGateTests {
             .toolUse(
                 index: 0, id: "tc-search", name: NativeWebSearch.proposalToolName,
                 input: .object(["query": .string("mars rover news"), "reason": .string("current events")])
-            ),
+            , signature: nil),
             .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
         ]
     }
@@ -249,7 +249,7 @@ struct ChatSessionCostGateTests {
                 .toolUse(
                     index: 0, id: "tc-search-2", name: NativeWebSearch.proposalToolName,
                     input: .object(["query": .string("q2"), "reason": .string("r2")])
-                ),
+                , signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
             [

@@ -316,7 +316,7 @@ struct OpenAIResponsesStreamReducer {
                 let blockIndex = nextBlockIndex
                 nextBlockIndex += 1
                 events.append(.contentBlockStart(index: blockIndex, type: .toolUse))
-                events.append(.toolUse(index: blockIndex, id: builder.callID, name: builder.name, input: input))
+                events.append(.toolUse(index: blockIndex, id: builder.callID, name: builder.name, input: input, signature: nil))
                 events.append(.contentBlockStop(index: blockIndex))
             } catch let error as LLMError {
                 events.append(.error(error))

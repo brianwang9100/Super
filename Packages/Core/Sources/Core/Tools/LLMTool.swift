@@ -62,20 +62,42 @@ public struct LLMToolParameter: Sendable, Equatable {
     public let description: String
     public let isRequired: Bool
     public let enumValues: [String]?
+    /// Element/nested schema for `.array` and `.object` parameters. The native
+    /// Gemini `generateContent` API **rejects** an array parameter declared
+    /// without JSON-Schema `items` (HTTP 400 `INVALID_ARGUMENT`), so any
+    /// `.array`/`.object` parameter should carry this. `nil` for scalars.
+    public let valueSchema: ToolValueSchema?
 
     public init(
         name: String,
         type: ParameterType,
         description: String,
         isRequired: Bool = false,
-        enumValues: [String]? = nil
+        enumValues: [String]? = nil,
+        valueSchema: ToolValueSchema? = nil
     ) {
         self.name = name
         self.type = type
         self.description = description
         self.isRequired = isRequired
         self.enumValues = enumValues
+        self.valueSchema = valueSchema
     }
+}
+
+/// The element schema of an `.array` parameter (JSON-Schema `items`) or the
+/// nested shape of an `.object` parameter. Provider adapters expand this into
+/// their function/tool declaration; the native Gemini adapter rejects an array
+/// or object declared without it.
+public indirect enum ToolValueSchema: Sendable, Equatable {
+    /// A scalar element (string / integer / number / bool), optionally
+    /// constrained to a closed set of values.
+    case scalar(ParameterType, enumValues: [String]? = nil)
+    /// An object element with named properties (their `isRequired` flags drive
+    /// the nested `required` list).
+    case object([LLMToolParameter])
+    /// A nested array whose elements follow `element`.
+    case array(element: ToolValueSchema)
 }
 
 /// JSON Schema-style primitive type for tool parameters. Maps onto provider

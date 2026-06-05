@@ -24,7 +24,11 @@ public protocol HTTPClient: Sendable {
 /// URLSession bubble up unchanged; this type covers the cases we synthesize
 /// ourselves.
 public enum HTTPError: Error, Sendable, Equatable {
-    case badStatus(Int)
+    /// A non-2xx status, carrying the decoded response body when one was
+    /// returned (empty string otherwise). The body is the provider's
+    /// explanation — e.g. Gemini's "...items: missing field" on a 400 — so it
+    /// must reach the error message rather than being discarded.
+    case badStatus(Int, body: String)
     case invalidResponse
     case transport(String)
 }
@@ -65,6 +69,16 @@ private final class StreamingDelegate: NSObject, URLSessionDataDelegate, @unchec
     typealias Continuation = AsyncThrowingStream<Data, Error>.Continuation
     private let continuation: Continuation
 
+    /// Set when the response status is non-2xx. We then read (rather than
+    /// cancel) the body so its bytes can be surfaced in `HTTPError.badStatus`,
+    /// and route those bytes into `errorBody` instead of yielding them as
+    /// stream content. Touched only on URLSession's serial delegate queue.
+    private var errorStatusCode: Int?
+    private var errorBody = Data()
+    /// Cap on buffered error-body bytes — provider error payloads are small,
+    /// and we never want a runaway error response to balloon memory.
+    private static let maxErrorBodyBytes = 8 * 1024
+
     init(continuation: Continuation) {
         self.continuation = continuation
     }
@@ -76,19 +90,28 @@ private final class StreamingDelegate: NSObject, URLSessionDataDelegate, @unchec
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            continuation.finish(throwing: HTTPError.badStatus(http.statusCode))
-            completionHandler(.cancel)
-            return
+            // Allow the body to stream so we can capture the provider's
+            // explanation; the enriched error is thrown in didCompleteWithError.
+            errorStatusCode = http.statusCode
         }
         completionHandler(.allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        if errorStatusCode != nil {
+            let remaining = Self.maxErrorBodyBytes - errorBody.count
+            if remaining > 0 { errorBody.append(data.prefix(remaining)) }
+            return
+        }
         continuation.yield(data)
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error {
+        if let errorStatusCode {
+            let body = String(decoding: errorBody, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            continuation.finish(throwing: HTTPError.badStatus(errorStatusCode, body: body))
+        } else if let error {
             continuation.finish(throwing: error)
         } else {
             continuation.finish()

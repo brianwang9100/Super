@@ -259,7 +259,7 @@ struct DebugBibleProvidersTests {
     private static func afterToolRanMessages() -> [LLMMessage] {
         [
             LLMMessage(role: .user, text: "annotate Romans 8:28-30"),
-            LLMMessage(role: .assistant, content: [.toolUse(id: "tc-1", name: "bible.annotate", input: .object([:]))]),
+            LLMMessage(role: .assistant, content: [.toolUse(id: "tc-1", name: "bible.annotate", input: .object([:]), signature: nil)]),
             LLMMessage(role: .tool, content: [.toolResult(toolUseID: "tc-1", content: "ok", isError: false)]),
         ]
     }
@@ -278,7 +278,7 @@ struct DebugBibleProvidersTests {
         in events: [LLMStreamEvent]
     ) -> (id: String, name: String, input: JSONValue)? {
         for event in events {
-            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            if case .toolUse(_, let id, let name, let input, _) = event { return (id, name, input) }
         }
         return nil
     }
