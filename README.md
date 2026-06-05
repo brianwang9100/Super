@@ -1,5 +1,9 @@
 # Super
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Super demo" width="280" />
+</p>
+
 [![Swift Tests](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml)
 [![iOS Build](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml)
 [![SwiftLint](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml)
@@ -32,21 +36,42 @@ See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpo
 
 <table>
   <tr>
-    <td width="25%" align="center">
+    <td width="50%" align="center">
       <img src="docs/assets/screenshots/reader.png" alt="Reading a chapter in the SuperBible reader" width="100%"><br>
       <sub><b>A reader built for focus</b><br>Clean, typographic chapter reading that gets out of your way.</sub>
     </td>
-    <td width="25%" align="center">
+    <td width="50%" align="center">
       <img src="docs/assets/screenshots/chat_semi_expanded.png" alt="Reading a chapter with a floating chat panel and a verse reference piped into the composer" width="100%"><br>
       <sub><b>Read + chat, together</b><br>A floating chat panel over the reader, with the verse you're reading piped into the conversation.</sub>
     </td>
-    <td width="25%" align="center">
+  </tr>
+  <tr>
+    <td width="50%" align="center">
       <img src="docs/assets/screenshots/action_sheet.png" alt="Verse action menu: highlight, annotate, add note, add to chat" width="100%"><br>
       <sub><b>Tap any verse</b><br>Highlight, annotate, take a note, or send it straight into chat.</sub>
     </td>
-    <td width="25%" align="center">
+    <td width="50%" align="center">
       <img src="docs/assets/screenshots/annotations_semi_expanded.png" alt="AI-generated study annotations alongside the passage" width="100%"><br>
       <sub><b>AI study annotations</b><br>Context, cross-references, and explanation generated for the passage you're on.</sub>
+    </td>
+  </tr>
+</table>
+
+## SuperOS in action
+
+<table>
+  <tr>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_sidebar.png" alt="SuperOS sidebar listing chats and mini-apps" width="100%"><br>
+      <sub><b>One sidebar, your whole workspace</b><br>Jump between chats or switch mini-apps — ToDo, Recipes, Bible, Finance — from a single drawer.</sub>
+    </td>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_chat.png" alt="A SuperOS chat with rich Markdown formatting" width="100%"><br>
+      <sub><b>Chat that reads well</b><br>A polished chat experience with full Markdown support — headings, bold, and clean bulleted lists.</sub>
+    </td>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_tool_use.png" alt="Chat invoking tools to create tasks and Bible annotations" width="100%"><br>
+      <sub><b>Talk to your mini-apps</b><br>Tool calls let chat act for you — create tasks, annotate scripture — with each step shown inline.</sub>
     </td>
   </tr>
 </table>
