@@ -448,7 +448,26 @@ struct AppShell: View {
         // otherwise leave the keyboard up behind the drawer.
         dismissKeyboard()
         sidebarOpen = true
-        Task { await sidebarViewModel.refresh() }
+        // Tell applets the drawer is opening so they dismiss any native
+        // sheet they're presenting — a native sheet renders in its own
+        // window above the in-view drawer, so the menu would otherwise
+        // slide in behind it. The drawer is a Chat-package overlay; the
+        // shell can't reach Bible's view model directly (applets are
+        // import-isolated), so this goes through the bus.
+        //
+        // Intentional async gap: `sidebarOpen = true` above starts the
+        // drawer's spring on *this* render pass, while the publish (and
+        // the resulting sheet dismissal) lands a main-actor turn later.
+        // That's fine — the drawer's animation is far longer than the
+        // scheduling delay, so the sheet slides away under the incoming
+        // drawer and the overlap is imperceptible. Don't reorder the
+        // publish ahead of `sidebarOpen = true` chasing a tighter
+        // guarantee; the bus hop can't be made synchronous anyway.
+        let eventBus = dependencies.eventBus
+        Task {
+            await eventBus.publish(.sidebarOpened)
+            await sidebarViewModel.refresh()
+        }
     }
 
     /// Dismiss the composer's keyboard before a chrome transition.
@@ -535,6 +554,11 @@ struct AppShell: View {
                     // `BibleScreenViewModel` (completion). The
                     // shell has no part in the flow and explicitly
                     // skips both envelopes.
+                    break
+                case .sidebarOpened:
+                    // The shell *publishes* this (see `openSidebar`) so
+                    // applets dismiss their native sheets; it has nothing
+                    // to do on the receiving side.
                     break
                 }
             }
