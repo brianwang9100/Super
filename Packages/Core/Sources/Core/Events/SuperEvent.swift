@@ -42,4 +42,12 @@ public enum SuperEvent: Sendable, Equatable {
     /// the running entry from its dispatch table or surface a retry
     /// button.
     case bibleAnnotateCompleted(requestId: String, result: BibleAnnotateResult)
+
+    /// Shell → applets: the navigation drawer (sidebar) is opening.
+    /// Applets dismiss any native sheet they're presenting so the
+    /// in-view drawer — which renders *below* a native sheet's own
+    /// presentation window and would otherwise slide in behind it —
+    /// becomes the topmost surface. Today's sole consumer is Bible
+    /// dismissing its action / narration / picker sheets.
+    case sidebarOpened
 }
