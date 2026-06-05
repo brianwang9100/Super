@@ -229,10 +229,15 @@ public struct BibleApplet: MiniApplet {
         )
         // Resume an in-progress run on launch (no-op when none is active).
         Task { await runner.restore() }
+        // The hub's "Delete all annotations" reset writes through the same
+        // `bible.sqlite` the runner persists to; the sync closure spawns the
+        // async clear (the coverage `@Query` reactively redraws to zero).
+        let annotationRepository = GRDBBibleAnnotationRepository(database: database)
         let contribution = BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
             runner: runner,
-            requiresCostConfirmation: requiresCostConfirmation
+            requiresCostConfirmation: requiresCostConfirmation,
+            deleteAll: { Task { try? await annotationRepository.deleteAll() } }
         )
         let background = BulkAnnotationBackgroundScheduler(runner: runner, ledger: ledger)
         return BulkAnnotationWiring(settingsContribution: contribution, background: background)

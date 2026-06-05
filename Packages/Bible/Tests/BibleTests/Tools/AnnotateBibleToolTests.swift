@@ -340,6 +340,10 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
     func deleteOne(id: String) async throws {
         fatalError("SpyBibleAnnotationRepository.deleteOne called — tool path should not delete.")
     }
+
+    func deleteAll() async throws {
+        fatalError("SpyBibleAnnotationRepository.deleteAll called — tool path should not delete.")
+    }
 }
 
 private struct FakeStampProvider: BibleAnnotationStampProvider {

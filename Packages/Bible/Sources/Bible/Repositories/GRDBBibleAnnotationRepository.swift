@@ -78,6 +78,12 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
         }
     }
 
+    public func deleteAll() async throws {
+        _ = try await queue.write { db in
+            try BibleAnnotationRecord.deleteAll(db)
+        }
+    }
+
     /// The base query for one target group. Equality on a nullable column
     /// in GRDB needs the IS-NULL branch explicit; `nil`-typed comparisons
     /// otherwise compile but always evaluate false in SQL.

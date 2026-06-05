@@ -113,7 +113,17 @@ public final class BulkAnnotationViewModel {
         let books: [BulkRunPlan.Book] = catalog.books.compactMap { summary in
             let chapters = selection.selectedChapters(in: summary.id).sorted()
             guard !chapters.isEmpty else { return nil }
-            return BulkRunPlan.Book(bookID: summary.id, name: summary.name, chapters: chapters)
+            // A whole-book pick also generates one book-level annotation; a
+            // partial chapter selection generates only the chosen chapters.
+            let isWholeBook = selection.bookSelectionState(
+                summary.id, chapterCount: summary.chapterCount
+            ) == .full
+            return BulkRunPlan.Book(
+                bookID: summary.id,
+                name: summary.name,
+                chapters: chapters,
+                includesBookLevel: isWholeBook
+            )
         }
         guard !books.isEmpty else { return }
         runner.start(BulkRunPlan(books: books))
