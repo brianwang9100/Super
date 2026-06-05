@@ -42,12 +42,15 @@ public struct TitleGenerator: Sendable {
     ) async -> String? {
         guard await settingsStore.isTitleSummarizationEnabled() else { return nil }
 
-        let available = await llmProviderRegistry.allProviders().flatMap(\.supportedModels)
-        guard let model = Self.resolveTitleModel(
-            selectedModelId: await settingsStore.titleModelId(),
+        let available = SelectableModel.from(providers: await llmProviderRegistry.allProviders())
+        guard let chosen = Self.resolveTitleModel(
+            selectedRecordId: await settingsStore.titleModelId(),
             available: available
         ) else { return nil }
-        guard let provider = await llmProviderRegistry.provider(forModelId: model.id) else { return nil }
+        // Resolve the provider directly by record id — no model-id scan, so two
+        // rows sharing a `modelId` (e.g. the debug rows) each resolve to exactly
+        // their own provider.
+        guard let provider = await llmProviderRegistry.provider(id: chosen.recordId) else { return nil }
 
         let messages: [LLMMessage] = [
             LLMMessage(role: .system, text: Self.systemPrompt),
@@ -58,7 +61,7 @@ public struct TitleGenerator: Sendable {
         do {
             let stream = provider.stream(
                 messages: messages,
-                model: model,
+                model: chosen.model,
                 tools: [],
                 temperature: 0.4
             )
@@ -79,19 +82,30 @@ public struct TitleGenerator: Sendable {
         return Self.clean(accumulated, maxLength: maxLength)
     }
 
-    /// Resolve which model titles a chat from the persisted selection and the
-    /// currently-available models. `nil` selection ⇒ "automatic": the Apple
-    /// Foundation Model if it's available (its `LLMModel` is only present when
-    /// the provider registered, i.e. AFM is supported on this device), else
-    /// `nil`. An explicit id ⇒ that model when still available, else `nil` (the
-    /// model was deleted — fall back to no titling rather than reverting to
-    /// AFM). The enabled/disabled gate is the caller's; this only picks the
-    /// model.
-    static func resolveTitleModel(selectedModelId: String?, available: [LLMModel]) -> LLMModel? {
-        if let selectedModelId {
-            return available.first { $0.id == selectedModelId }
+    /// Resolve which model titles a chat from the persisted **record id** and
+    /// the currently-available models. `nil` selection ⇒ "automatic": the Apple
+    /// Foundation Model if it's available (its provider is only present when AFM
+    /// is supported on this device), else `nil`. An explicit id ⇒ that record
+    /// when still available, else `nil` (the model was deleted — fall back to no
+    /// titling rather than reverting to AFM).
+    ///
+    /// Backward-compat: an explicit id that doesn't match a record id is also
+    /// tried against `model.id` (how the summarizer was persisted before the
+    /// record-id convergence), so an upgraded install keeps titling with the
+    /// same model. The enabled/disabled gate is the caller's; this only picks
+    /// the model.
+    static func resolveTitleModel(
+        selectedRecordId: String?,
+        available: [SelectableModel]
+    ) -> SelectableModel? {
+        if let selectedRecordId {
+            if let match = available.first(where: { $0.recordId == selectedRecordId }) {
+                return match
+            }
+            // Legacy fallback: an old persisted `LLMModel.id`.
+            return available.first { $0.model.id == selectedRecordId }
         }
-        return available.first { $0.id == AppleFoundationLLMProvider.defaultModelID }
+        return available.first { $0.model.id == AppleFoundationLLMProvider.defaultModelID }
     }
 
     /// System prompt sent on every title call. Pinned to a static so the

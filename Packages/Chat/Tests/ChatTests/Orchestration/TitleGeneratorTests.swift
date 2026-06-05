@@ -14,9 +14,10 @@ struct TitleGeneratorTests {
     private let model = OrchestrationFixtures.defaultModel()
 
     /// Build a store whose title-summarization toggle and selected model id
-    /// are seeded directly. Defaults select the fixture model so the title
-    /// path resolves to the registered `FakeLLMProvider`.
-    private func makeStore(enabled: Bool = true, titleModelId: String? = "fake-model-1") async -> ChatSettingsStore {
+    /// are seeded directly. Defaults select the fixture provider by its
+    /// **record id** (`"fake"`, the default `FakeLLMProvider.id`) so the title
+    /// path resolves through `provider(id:)`.
+    private func makeStore(enabled: Bool = true, titleModelId: String? = "fake") async -> ChatSettingsStore {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
         try? await store.setSummarizeTitlesEnabled(enabled)
@@ -170,6 +171,45 @@ struct TitleGeneratorTests {
         #expect(await provider.capturedRequests().isEmpty)
     }
 
+    @Test("Two providers sharing a modelId: titling routes to the selected record, not the first")
+    func generateRoutesBySharedModelIdRecord() async throws {
+        // End-to-end convergence regression. Both providers vend the same
+        // `model.id` ("debug-default") but have distinct record ids — the debug
+        // canned / mock-search shape. `titleModelId` names the mock-search
+        // record, so only that provider must stream. The old `forModelId` scan
+        // resolved to the first by sorted id ("debug-canned"), titling from the
+        // wrong provider.
+        let shared = LLMModel(
+            id: "debug-default", displayName: "Debug",
+            supportsThinking: false, supportsTools: false, maxContextTokens: 8_192
+        )
+        let canned = FakeLLMProvider(id: "debug-canned", model: shared)
+        let mock = FakeLLMProvider(id: "debug-mock-search", model: shared)
+        await canned.enqueue([
+            .messageStart(id: "c1", model: shared.id),
+            .textDelta(index: 0, text: "CANNED"),
+            .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+        ])
+        await mock.enqueue([
+            .messageStart(id: "m1", model: shared.id),
+            .textDelta(index: 0, text: "Mock title"),
+            .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+        ])
+        let registry = LLMProviderRegistry()
+        await registry.register(canned)
+        await registry.register(mock)
+
+        let generator = TitleGenerator(
+            llmProviderRegistry: registry,
+            settingsStore: await makeStore(titleModelId: "debug-mock-search")
+        )
+        let title = await generator.generate(userText: "Hi", assistantText: "Hello")
+
+        #expect(title == "Mock title")
+        // The canned provider must never have been asked to stream.
+        #expect(await canned.capturedRequests().isEmpty)
+    }
+
     @Test("Sends a system+user message pair to the provider")
     func generateSendsSystemAndUserMessages() async throws {
         let provider = FakeLLMProvider(model: model)
@@ -209,32 +249,55 @@ struct TitleGeneratorTests {
 
     // MARK: - resolveTitleModel
 
-    @Test("Explicit selection resolves to the matching available model")
+    private func selectable(recordId: String, modelId: String) -> SelectableModel {
+        SelectableModel(
+            recordId: recordId,
+            model: LLMModel(id: modelId, displayName: modelId, supportsThinking: false, supportsTools: true, maxContextTokens: 1)
+        )
+    }
+
+    @Test("Explicit selection resolves to the matching record id")
     func resolveExplicitSelection() {
-        let a = LLMModel(id: "a", displayName: "A", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
-        let b = LLMModel(id: "b", displayName: "B", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
-        #expect(TitleGenerator.resolveTitleModel(selectedModelId: "b", available: [a, b])?.id == "b")
+        let a = selectable(recordId: "rec-a", modelId: "a")
+        let b = selectable(recordId: "rec-b", modelId: "b")
+        #expect(TitleGenerator.resolveTitleModel(selectedRecordId: "rec-b", available: [a, b])?.recordId == "rec-b")
+    }
+
+    @Test("Two rows sharing a modelId resolve to the picked record id, not the first")
+    func resolveDistinguishesSharedModelId() {
+        // The convergence guarantee for the title path: two providers vending
+        // the same `model.id` (the debug canned/mock-search case) must resolve
+        // by record id. The old `forModelId` scan returned the first by sorted
+        // id ("debug-canned"); keying on record id returns exactly the pick.
+        let canned = selectable(recordId: "debug-canned", modelId: "debug-default")
+        let mock = selectable(recordId: "debug-mock-search", modelId: "debug-default")
+        let resolved = TitleGenerator.resolveTitleModel(
+            selectedRecordId: "debug-mock-search", available: [canned, mock]
+        )
+        #expect(resolved?.recordId == "debug-mock-search")
+    }
+
+    @Test("A legacy persisted model id still resolves (back-compat)")
+    func resolveLegacyModelId() {
+        let a = selectable(recordId: "rec-a", modelId: "a")
+        let b = selectable(recordId: "rec-b", modelId: "b")
+        // "b" is a model id, not a record id — the back-compat branch maps it.
+        #expect(TitleGenerator.resolveTitleModel(selectedRecordId: "b", available: [a, b])?.recordId == "rec-b")
     }
 
     @Test("A selected id absent from the available list resolves to nil (deleted → none)")
     func resolveDeletedSelection() {
-        let a = LLMModel(id: "a", displayName: "A", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
-        #expect(TitleGenerator.resolveTitleModel(selectedModelId: "gone", available: [a]) == nil)
+        let a = selectable(recordId: "rec-a", modelId: "a")
+        #expect(TitleGenerator.resolveTitleModel(selectedRecordId: "gone", available: [a]) == nil)
     }
 
     @Test("Automatic resolves to the Apple Foundation model when present, else nil")
     func resolveAutomatic() {
-        let afm = LLMModel(
-            id: AppleFoundationLLMProvider.defaultModelID,
-            displayName: "Apple Intelligence",
-            supportsThinking: false,
-            supportsTools: true,
-            maxContextTokens: 1
-        )
-        let other = LLMModel(id: "other", displayName: "Other", supportsThinking: false, supportsTools: true, maxContextTokens: 1)
-        #expect(TitleGenerator.resolveTitleModel(selectedModelId: nil, available: [other, afm])?.id == afm.id)
+        let afm = selectable(recordId: "afm", modelId: AppleFoundationLLMProvider.defaultModelID)
+        let other = selectable(recordId: "other", modelId: "other")
+        #expect(TitleGenerator.resolveTitleModel(selectedRecordId: nil, available: [other, afm])?.recordId == "afm")
         // AFM not in the available list (unsupported device) ⇒ none.
-        #expect(TitleGenerator.resolveTitleModel(selectedModelId: nil, available: [other]) == nil)
+        #expect(TitleGenerator.resolveTitleModel(selectedRecordId: nil, available: [other]) == nil)
     }
 
     // MARK: - clean

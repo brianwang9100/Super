@@ -204,7 +204,7 @@ struct SettingsModelsPane: View {
         let isAvailable = isModelAvailable(model)
         let isSelected = isTitleModelSelected(model)
         return Button(action: {
-            Task { await viewModel.setTitleModelId(model.modelId) }
+            Task { await viewModel.setTitleModelId(model.id) }
         }) {
             HStack(spacing: 14) {
                 Text(model.name)
@@ -244,13 +244,34 @@ struct SettingsModelsPane: View {
     }
 
     /// Whether `model` is the current title summarizer. An explicit
-    /// `titleModelId` matches by `LLMModel.id`; the automatic default
-    /// (`nil`) highlights the Apple Foundation row.
+    /// `titleModelId` matches by the row's unique **record id** (`model.id`,
+    /// not `modelId` — two rows can share a `modelId`, which would light both
+    /// up); the automatic default (`nil`) highlights the Apple Foundation row.
     private func isTitleModelSelected(_ model: SettingsViewModel.ModelRow) -> Bool {
-        if let id = viewModel.settings.titleModelId {
-            return model.modelId == id
+        guard let id = viewModel.settings.titleModelId else {
+            // Automatic ⇒ Apple Foundation row.
+            return model.kind == .appleFoundation
         }
-        return model.kind == .appleFoundation
+        // Resolve to a single record id so exactly one row checks — including a
+        // legacy persisted `LLMModel.id`, matching `TitleGenerator`'s
+        // back-compat. A stored id that resolves to nothing (deleted model)
+        // checks no row (and does not fall back to AFM).
+        return model.id == Self.resolvedTitleRecordID(titleModelId: id, in: viewModel.models)
+    }
+
+    /// Map a stored title id to the record id that should be checked: the row
+    /// whose record id equals it, else the first row whose `modelId` equals it
+    /// (legacy `LLMModel.id` back-compat — keeps the checkmark in step with
+    /// `TitleGenerator.resolveTitleModel`), else `nil` (deleted model → no
+    /// check). For-loops rather than `first(where:)` per the in-tree
+    /// `@MainActor` predicate-closure caveat.
+    static func resolvedTitleRecordID(
+        titleModelId id: String,
+        in models: [SettingsViewModel.ModelRow]
+    ) -> String? {
+        for model in models where model.id == id { return id }
+        for model in models where model.modelId == id { return model.id }
+        return nil
     }
 
 }
