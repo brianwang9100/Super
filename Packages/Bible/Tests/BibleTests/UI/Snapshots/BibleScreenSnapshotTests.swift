@@ -163,6 +163,15 @@ struct BibleScreenSnapshotTests {
                name: "selection_active_sepia_xxl")
     }
 
+    /// Pins the scale-aware underline weight at its 1pt floor: at the 0.8× slider
+    /// the rule rounds to 1pt (vs 2pt at the default size the tests above cover).
+    /// The weight is theme-independent, so one theme locks the behaviour.
+    @Test("verse selection underline thins to its 1pt floor at the min font scale")
+    func selectionActiveFontScaleMinLight() async {
+        verify(await selectionScreen(), theme: .light, fontScale: 0.8,
+               name: "selection_active_font_scale_min_light")
+    }
+
     @Test("the chat stub raises the coming-soon toast over the reader")
     func chatToastLight() async {
         verify(await toastScreen(), theme: .light, name: "chat_toast_light")
@@ -347,6 +356,15 @@ struct BibleScreenSnapshotTests {
         verify(await narratingScreen(currentVerse: 4),
                theme: .sepia, dynamicType: .xxLarge,
                name: "narrating_sepia_xxl")
+    }
+
+    /// Pins the dashed narration rule at the same 1pt floor as selection when
+    /// the slider is at 0.8× (both share `underlineWeight`).
+    @Test("the active-verse dashed underline thins to its 1pt floor at the min font scale")
+    func narratingFontScaleMinLight() async {
+        verify(await narratingScreen(currentVerse: 4),
+               theme: .light, fontScale: 0.8,
+               name: "narrating_font_scale_min_light")
     }
 
     /// A `BibleScreen` whose narration controller is driven into
