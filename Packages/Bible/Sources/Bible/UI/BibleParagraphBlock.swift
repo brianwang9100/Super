@@ -290,6 +290,21 @@ private struct VerseWord: View {
     /// pre-migration size; tracks the same two axes as the word it precedes.
     @ScaledMetric(relativeTo: .caption2) private var verseNumberSize: CGFloat = 11
 
+    /// Distance from the text baseline down to the underline, scale-aware the
+    /// same way as `markerOffset`: the rendered body point size (`verseBodySize`
+    /// folds in OS Dynamic Type; `fontScale` folds in the app slider) times the
+    /// body face's descent ratio. Anchoring the rule here — one constant for
+    /// every word — sits it just under the glyphs as a box-bottom anchor did,
+    /// but identically on each, so the marker-inflated verse-number cell no
+    /// longer dips. See `identifiedWord`.
+    private var underlineBaselineDrop: CGFloat {
+        verseBodySize * typography.fontScale * Self.underlineDescentRatio
+    }
+
+    /// Descent-to-point-size ratio of the reading body face, used to place the
+    /// underline a glyph's-descent below the baseline.
+    private static let underlineDescentRatio: CGFloat = 0.22
+
     var body: some View {
         if token.isVerseStart {
             // The verse's first word stands in for the whole verse as a
@@ -322,7 +337,16 @@ private struct VerseWord: View {
     /// change).
     @ViewBuilder
     private var identifiedWord: some View {
+        let baselineDrop = underlineBaselineDrop
         let word = styledText
+            // Anchor the underline to the text baseline + a fixed descent rather
+            // than the cell's own box bottom. The verse-number cell's raised
+            // marker inflates its box, and at fractional font scales its box
+            // bottom rounds ~2px off a plain word's — so a bottom-anchored rule
+            // dipped under the verse number. Baselines *are* aligned across the
+            // row (`VerseFlowLayout` aligns on `firstTextBaseline`), so making
+            // `.bottom` baseline-relative keeps every word's rule on one line.
+            .alignmentGuide(.bottom) { $0[.firstTextBaseline] + baselineDrop }
             .overlay(alignment: .bottom) { underlineRule }
             .padding(.vertical, 1.5)
             .background(wordBackground)
@@ -400,24 +424,42 @@ private struct VerseWord: View {
     /// action.
     @ViewBuilder
     private var underlineRule: some View {
+        let weight = underlineWeight
         if isSelected {
             Rectangle()
                 .fill(theme.accent)
-                .frame(height: Self.underlineWeight)
+                .frame(height: weight)
         } else if isNarrating {
             HorizontalRule()
                 .stroke(
                     theme.accent.opacity(0.65),
-                    style: StrokeStyle(lineWidth: Self.underlineWeight, dash: [3, 3])
+                    style: StrokeStyle(lineWidth: weight, dash: [3, 3])
                 )
-                .frame(height: Self.underlineWeight)
+                .frame(height: weight)
         }
     }
 
-    /// Hairline weight shared by the solid (selection) and dashed (narration)
-    /// rules so the two stay visually equal — and so the dashed stroke, centred
-    /// in a frame of this height, fills it exactly without clipping.
-    private static let underlineWeight: CGFloat = 1.5
+    /// Weight shared by the solid (selection) and dashed (narration) rules so
+    /// the two stay visually equal. It tracks the rendered body size — the
+    /// `verseBodySize` @ScaledMetric folds in OS Dynamic Type, `fontScale` folds
+    /// in the app slider — so the rule grows with the text it underlines: 2pt at
+    /// the default reading size, thinning to 1pt only at the min slider (0.8×)
+    /// and thickening further under large Dynamic Type.
+    ///
+    /// It's **rounded to a whole point** (and floored at 1): a whole-point value
+    /// is also a whole number of device pixels at @2x (×2) and @3x (×3), so the
+    /// rule lands on the pixel grid and rasterizes an identical thickness on
+    /// every wrapped row. A fractional weight — e.g. the earlier 1.5pt = 4.5px
+    /// at @3x, or a naive `2 × 0.8 = 1.6pt` — can't, and reads a touch thicker
+    /// on some rows than others. The `round()` is what keeps it crisp.
+    private var underlineWeight: CGFloat {
+        max(1, (verseBodySize * typography.fontScale * Self.underlineWeightRatio).rounded())
+    }
+
+    /// Weight-to-point-size ratio, tuned so the rule rounds to 2pt at the
+    /// default reading size (17pt × 1.0 × 0.10 = 1.7 → 2), 1pt at the min slider
+    /// (0.8×), and up from 2pt under large Dynamic Type.
+    private static let underlineWeightRatio: CGFloat = 0.10
 }
 
 /// A single horizontal line spanning its rect, centred vertically — stroked
