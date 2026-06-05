@@ -62,8 +62,8 @@ struct BulkBookSelectionRow: View {
     }
 }
 
-/// An indented chapter line revealed under an expanded book. Sits on the
-/// sunken surface; a fully-annotated chapter shows a "Done" badge.
+/// An indented chapter line revealed under an expanded book. Shares the book
+/// cells' background; a fully-annotated chapter shows a "Done" badge.
 struct BulkChapterSelectionRow: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -89,7 +89,7 @@ struct BulkChapterSelectionRow: View {
             .padding(.trailing, 14)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity)
-            .background(theme.backgroundSunken)
+            .background(theme.background)
             .overlay(alignment: .bottom) {
                 Rectangle().fill(theme.borderFaint).frame(height: 0.5)
             }
