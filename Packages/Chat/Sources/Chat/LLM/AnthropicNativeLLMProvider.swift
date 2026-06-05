@@ -343,7 +343,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                 // not become a `tool_use` block at the user position.
                 if message.role == .assistant {
                     for block in message.content {
-                        if case .toolUse(let id, let name, let input) = block {
+                        if case .toolUse(let id, let name, let input, _) = block {
                             blocks.append(.toolUse(id: id, name: name, input: input))
                         }
                     }
@@ -406,48 +406,13 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             .function(
                 name: tool.name,
                 description: tool.description,
-                inputSchema: parametersSchema(for: tool)
+                inputSchema: JSONToolSchema.parametersObject(for: tool.parameters)
             )
         }
         if searchEnabled {
             out.append(.webSearch(maxUses: AnthropicWebSearch.defaultMaxUses))
         }
         return out.isEmpty ? nil : out
-    }
-
-    /// Build the JSON-Schema `input_schema` object for a client tool (drop
-    /// `required` when empty; map `bool` → `boolean`).
-    private func parametersSchema(for tool: LLMTool) -> JSONValue {
-        var properties: [String: JSONValue] = [:]
-        var required: [String] = []
-        for parameter in tool.parameters {
-            var schema: [String: JSONValue] = [
-                "type": .string(jsonSchemaType(for: parameter.type)),
-                "description": .string(parameter.description),
-            ]
-            if let enumValues = parameter.enumValues {
-                schema["enum"] = .array(enumValues.map { .string($0) })
-            }
-            properties[parameter.name] = .object(schema)
-            if parameter.isRequired {
-                required.append(parameter.name)
-            }
-        }
-        var schemaObject: [String: JSONValue] = [
-            "type": .string("object"),
-            "properties": .object(properties),
-        ]
-        if !required.isEmpty {
-            schemaObject["required"] = .array(required.map { .string($0) })
-        }
-        return .object(schemaObject)
-    }
-
-    private func jsonSchemaType(for parameterType: ParameterType) -> String {
-        switch parameterType {
-        case .bool: return "boolean"
-        case .string, .integer, .number, .array, .object: return parameterType.rawValue
-        }
     }
 
     /// Coerce any thrown error into an `LLMError`, normalizing cancellation the
@@ -463,12 +428,15 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
 
     private func mapHTTPError(_ httpError: HTTPError) -> LLMError {
         switch httpError {
-        case .badStatus(401), .badStatus(403):
+        case .badStatus(401, _), .badStatus(403, _):
             return .unauthorized
-        case .badStatus(429):
+        case .badStatus(429, _):
             return .rateLimited
-        case .badStatus(let code):
-            return .providerError(code: "\(code)", message: "HTTP \(code)")
+        case .badStatus(let code, let body):
+            return .providerError(
+                code: "\(code)",
+                message: body.isEmpty ? "HTTP \(code)" : "HTTP \(code): \(body)"
+            )
         case .invalidResponse:
             return .requestFailed("invalid response")
         case .transport(let message):

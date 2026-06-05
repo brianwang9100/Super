@@ -61,12 +61,17 @@ struct SettingsModelDetailPaneCatalogTests {
         }
     }
 
-    @Test("Apple provider uses .appleFoundation kind; everyone else .openAICompatible")
+    @Test("Apple uses .appleFoundation, Google defaults to native Gemini, everyone else .openAICompatible")
     func providerKindsMatchExpectations() {
         for entry in LLMProviderCatalog.all {
-            if entry.id == LLMProviderCatalog.appleProviderID {
+            switch entry.id {
+            case LLMProviderCatalog.appleProviderID:
                 #expect(entry.kind == .appleFoundation)
-            } else {
+            case "google":
+                // Google defaults to the native Gemini adapter so Gemini 3
+                // thinking models can round-trip tool-call thought signatures.
+                #expect(entry.kind == .geminiNative, "Google should default to native Gemini")
+            default:
                 #expect(entry.kind == .openAICompatible, "provider \(entry.id) should route through openAI-compat")
             }
         }
@@ -303,12 +308,13 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(seeds.baseURLText == "")
     }
 
-    @Test("Google seeds Gemini 3 Pro with the OpenAI-compat shim URL")
+    @Test("Google seeds Gemini 3 Pro with the native generateContent URL")
     func googleSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "google")
         #expect(seeds.name == "Gemini 3 Pro")
         #expect(seeds.modelId == "gemini-3-pro")
-        #expect(seeds.baseURLText == "https://generativelanguage.googleapis.com/v1beta/openai/")
+        // Google defaults to the native Gemini base (not the /openai/ shim).
+        #expect(seeds.baseURLText == "https://generativelanguage.googleapis.com/v1beta")
         #expect(seeds.maxContextText == "1000000")
         #expect(seeds.supportsThinking == true)
     }

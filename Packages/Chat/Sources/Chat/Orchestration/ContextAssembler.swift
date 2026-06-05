@@ -310,7 +310,14 @@ public struct ContextAssembler: Sendable {
                 }
                 for call in toolCallsByMessageID[record.id] ?? [] {
                     let input = try call.decodedParameters()
-                    blocks.append(.toolUse(id: call.id, name: call.toolName, input: input))
+                    // Replay the provider continuation token (Gemini thought
+                    // signature) so the next turn's functionCall carries it.
+                    blocks.append(.toolUse(
+                        id: call.id,
+                        name: call.toolName,
+                        input: input,
+                        signature: call.signature
+                    ))
                 }
                 if !blocks.isEmpty {
                     llmMessages.append(LLMMessage(role: .assistant, content: blocks))

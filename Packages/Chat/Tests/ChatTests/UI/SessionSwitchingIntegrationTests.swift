@@ -47,7 +47,7 @@ struct SessionSwitchingIntegrationTests {
         // `executeToolCalls` once the tool actually starts.
         await provider.enqueue([
             .messageStart(id: "m1", model: model.id),
-            .toolUse(index: 0, id: "tc-1", name: toolID, input: .object([:])),
+            .toolUse(index: 0, id: "tc-1", name: toolID, input: .object([:]), signature: nil),
             .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
         ])
         // Round 2: after the tool resumes, emit the final assistant text.

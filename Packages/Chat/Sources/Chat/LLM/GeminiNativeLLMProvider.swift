@@ -311,8 +311,15 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 // message must not become a `functionCall` at the user position.
                 if message.role == .assistant {
                     for block in message.content {
-                        if case .toolUse(_, let name, let input) = block {
-                            parts.append(.functionCall(name: name, args: input))
+                        if case .toolUse(_, let name, let input, let signature) = block {
+                            // Replay the thinking model's `thoughtSignature` on the
+                            // functionCall part — Gemini rejects the follow-up turn
+                            // with HTTP 400 when it's dropped.
+                            parts.append(.functionCall(
+                                name: name,
+                                args: input,
+                                thoughtSignature: signature
+                            ))
                         }
                     }
                 }
@@ -344,7 +351,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 GeminiFunctionDeclaration(
                     name: tool.name,
                     description: tool.description,
-                    parameters: parametersSchema(for: tool)
+                    parameters: JSONToolSchema.parametersObject(for: tool.parameters)
                 )
             }))
         }
@@ -352,41 +359,6 @@ public struct GeminiNativeLLMProvider: LLMProvider {
             out.append(.googleSearch)
         }
         return out.isEmpty ? nil : out
-    }
-
-    /// Build the JSON-Schema `parameters` object for a client tool (drop
-    /// `required` when empty; map `bool` → `boolean`).
-    private func parametersSchema(for tool: LLMTool) -> JSONValue {
-        var properties: [String: JSONValue] = [:]
-        var required: [String] = []
-        for parameter in tool.parameters {
-            var schema: [String: JSONValue] = [
-                "type": .string(jsonSchemaType(for: parameter.type)),
-                "description": .string(parameter.description),
-            ]
-            if let enumValues = parameter.enumValues {
-                schema["enum"] = .array(enumValues.map { .string($0) })
-            }
-            properties[parameter.name] = .object(schema)
-            if parameter.isRequired {
-                required.append(parameter.name)
-            }
-        }
-        var schemaObject: [String: JSONValue] = [
-            "type": .string("object"),
-            "properties": .object(properties),
-        ]
-        if !required.isEmpty {
-            schemaObject["required"] = .array(required.map { .string($0) })
-        }
-        return .object(schemaObject)
-    }
-
-    private func jsonSchemaType(for parameterType: ParameterType) -> String {
-        switch parameterType {
-        case .bool: return "boolean"
-        case .string, .integer, .number, .array, .object: return parameterType.rawValue
-        }
     }
 
     /// Coerce any thrown error into an `LLMError`, normalizing cancellation the
@@ -402,12 +374,15 @@ public struct GeminiNativeLLMProvider: LLMProvider {
 
     private func mapHTTPError(_ httpError: HTTPError) -> LLMError {
         switch httpError {
-        case .badStatus(401), .badStatus(403):
+        case .badStatus(401, _), .badStatus(403, _):
             return .unauthorized
-        case .badStatus(429):
+        case .badStatus(429, _):
             return .rateLimited
-        case .badStatus(let code):
-            return .providerError(code: "\(code)", message: "HTTP \(code)")
+        case .badStatus(let code, let body):
+            return .providerError(
+                code: "\(code)",
+                message: body.isEmpty ? "HTTP \(code)" : "HTTP \(code): \(body)"
+            )
         case .invalidResponse:
             return .requestFailed("invalid response")
         case .transport(let message):

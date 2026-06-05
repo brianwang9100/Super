@@ -198,7 +198,7 @@ struct OpenAIResponsesLLMProviderTests {
         // already-surfaced provider error (`ChatSession` keeps the last one).
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("openai-responses-error-only").utf8)],
-            error: HTTPError.badStatus(500)
+            error: HTTPError.badStatus(500, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -217,7 +217,7 @@ struct OpenAIResponsesLLMProviderTests {
         // immediately before the terminal event per the stream contract.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("openai-responses-partial-text").utf8)],
-            error: HTTPError.badStatus(500)
+            error: HTTPError.badStatus(500, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -232,7 +232,7 @@ struct OpenAIResponsesLLMProviderTests {
         // keeps the last `.error`, so that would mask the network failure.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("openai-responses-partial-toolcall").utf8)],
-            error: HTTPError.badStatus(503)
+            error: HTTPError.badStatus(503, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -253,7 +253,7 @@ struct OpenAIResponsesLLMProviderTests {
         ))
 
         let toolUses = events.compactMap { event -> (id: String, name: String, input: JSONValue)? in
-            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            if case .toolUse(_, let id, let name, let input, _) = event { return (id, name, input) }
             return nil
         }
         #expect(toolUses.count == 1)
@@ -284,7 +284,7 @@ struct OpenAIResponsesLLMProviderTests {
     @Test func transportFailureBeforeAnySSEStillEmitsMessageStartFirst() async throws {
         // No chunks; the stream finishes by throwing a transport error before
         // any SSE frame arrives — the catch path must flush messageStart first.
-        let http = FakeHTTPClient(error: HTTPError.badStatus(401))
+        let http = FakeHTTPClient(error: HTTPError.badStatus(401, body: ""))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
         ))
@@ -364,7 +364,7 @@ struct OpenAIResponsesLLMProviderTests {
         let history: [LLMMessage] = [
             LLMMessage(role: .user, content: [
                 .text("hi"),
-                .toolUse(id: "call_bad", name: "x", input: .object([:])),
+                .toolUse(id: "call_bad", name: "x", input: .object([:]), signature: nil),
             ]),
         ]
         _ = try await collect(makeProvider(http: http).stream(
@@ -403,7 +403,7 @@ struct OpenAIResponsesLLMProviderTests {
             LLMMessage(role: .user, text: "weather?"),
             LLMMessage(role: .assistant, content: [
                 .text("Let me check."),
-                .toolUse(id: "call_xyz", name: "get_weather", input: .object(["city": .string("Paris")])),
+                .toolUse(id: "call_xyz", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "call_xyz", content: "18°C and clear", isError: false),

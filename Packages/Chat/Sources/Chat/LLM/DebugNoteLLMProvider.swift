@@ -73,7 +73,8 @@ public struct DebugNoteLLMProvider: LLMProvider {
                         index: 0,
                         id: "debug-tool-\(UUID().uuidString)",
                         name: Self.toolName,
-                        input: Self.noteInput(for: target)
+                        input: Self.noteInput(for: target),
+                        signature: nil
                     ))
                     continuation.yield(.contentBlockStop(index: 0))
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))

@@ -49,7 +49,7 @@ struct TokenEstimatorTests {
             LLMMessage(role: .user, text: "Hi there."),
             LLMMessage(role: .assistant, content: [
                 .text("Sure thing."),
-                .toolUse(id: "t1", name: "echo", input: .object(["text": .string("ping")])),
+                .toolUse(id: "t1", name: "echo", input: .object(["text": .string("ping")]), signature: nil),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "t1", content: "pong", isError: false),
@@ -68,12 +68,12 @@ struct TokenEstimatorTests {
         // would let a 50-key payload pass under the radar.
         let estimator = HeuristicTokenEstimator()
         let small = LLMMessage(role: .assistant, content: [
-            .toolUse(id: "t1", name: "k", input: .object(["a": .string("x")])),
+            .toolUse(id: "t1", name: "k", input: .object(["a": .string("x")]), signature: nil),
         ])
         let large = LLMMessage(role: .assistant, content: [
             .toolUse(id: "t1", name: "k", input: .object([
                 "a": .string(String(repeating: "x", count: 200)),
-            ])),
+            ]), signature: nil),
         ])
         #expect(estimator.estimate(messages: [large]) > estimator.estimate(messages: [small]))
     }

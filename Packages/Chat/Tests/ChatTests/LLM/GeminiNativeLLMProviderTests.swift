@@ -188,7 +188,7 @@ struct GeminiNativeLLMProviderTests {
             "messageStart", "contentBlockStart(toolUse)", "toolUse", "contentBlockStop", "messageComplete",
         ])
         let toolUses = events.compactMap { event -> (id: String, name: String, input: JSONValue)? in
-            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            if case .toolUse(_, let id, let name, let input, _) = event { return (id, name, input) }
             return nil
         }
         #expect(toolUses.count == 1)
@@ -197,6 +197,66 @@ struct GeminiNativeLLMProviderTests {
         #expect(toolUses.first?.name == "get_weather")
         #expect(toolUses.first?.input == .object(["city": .string("Paris")]))
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 15, outputTokens: 8)))
+    }
+
+    /// Thinking models attach a `thoughtSignature` to the functionCall part;
+    /// the reducer must surface it on the `.toolUse` event so it can be
+    /// persisted and replayed (Gemini 400s on a replay that omits it).
+    @Test func toolCallCapturesThoughtSignature() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-toolcall-signature"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "weather in Paris?")],
+            model: model, tools: [], temperature: 0.0
+        ))
+        let signature = events.compactMap { event -> String? in
+            if case .toolUse(_, _, _, _, let signature) = event { return signature }
+            return nil
+        }.first
+        #expect(signature == "SIG-abc123")
+    }
+
+    /// Gemini may deliver the `thoughtSignature` on a separate (empty-text)
+    /// part preceding the `functionCall`. The reducer must still attach it to
+    /// the tool call rather than dropping it with the content-free part.
+    @Test func toolCallCapturesThoughtSignatureFromSeparatePart() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-toolcall-signature-separate"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "weather in Paris?")],
+            model: model, tools: [], temperature: 0.0
+        ))
+        let signature = events.compactMap { event -> String? in
+            if case .toolUse(_, _, _, _, let signature) = event { return signature }
+            return nil
+        }.first
+        #expect(signature == "SIG-sep-99")
+    }
+
+    /// On replay, the persisted signature must ride the request's functionCall
+    /// part as a sibling `thoughtSignature` key — the exact field Gemini
+    /// rejected the `bible.annotate` follow-up turn for omitting.
+    @Test func replayedToolCallEncodesThoughtSignatureOnFunctionCallPart() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "weather?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(
+                    id: "get_weather", name: "get_weather",
+                    input: .object(["city": .string("Paris")]), signature: "SIG-xyz"
+                ),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "get_weather", content: "18C clear", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let contents = try #require(body["contents"] as? [[String: Any]])
+        let modelParts = try #require(contents[1]["parts"] as? [[String: Any]])
+        // The functionCall part carries the thoughtSignature as a sibling key.
+        let callPart = try #require(modelParts.first { $0["functionCall"] != nil })
+        #expect(callPart["thoughtSignature"] as? String == "SIG-xyz")
     }
 
     // MARK: - Error ordering (messageStart-first contract)
@@ -231,7 +291,7 @@ struct GeminiNativeLLMProviderTests {
         // is balanced with a stop, then the transport error is reported.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("gemini-open-text").utf8)],
-            error: HTTPError.badStatus(503)
+            error: HTTPError.badStatus(503, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -252,7 +312,7 @@ struct GeminiNativeLLMProviderTests {
         // already-surfaced one (`ChatSession` keeps the last).
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("gemini-error-only").utf8)],
-            error: HTTPError.badStatus(500)
+            error: HTTPError.badStatus(500, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -278,7 +338,7 @@ struct GeminiNativeLLMProviderTests {
     }
 
     @Test func transportFailureBeforeAnySSEStillEmitsMessageStartFirst() async throws {
-        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401))
+        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401, body: ""))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
         ))
@@ -384,6 +444,39 @@ struct GeminiNativeLLMProviderTests {
         #expect(tools.contains { $0["google_search"] != nil })
     }
 
+    @Test func arrayParameterDeclaresItemsSchema() async throws {
+        // Regression: an array function-declaration parameter must carry `items`
+        // — the native generateContent validator rejects the tool with HTTP 400
+        // (`properties[entries].items: missing field`) when it's absent.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
+        let tool = LLMTool(
+            id: "annotate", name: "annotate", description: "writes cards",
+            category: .mutation,
+            parameters: [
+                LLMToolParameter(
+                    name: "entries", type: .array, description: "cards", isRequired: true,
+                    valueSchema: .object([
+                        LLMToolParameter(name: "title", type: .string, description: "t", isRequired: true),
+                    ])
+                ),
+            ],
+            appletId: "bible"
+        )
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [tool], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        let declarations = tools.compactMap { $0["functionDeclarations"] as? [[String: Any]] }.flatMap { $0 }
+        let parameters = try #require(declarations.first?["parameters"] as? [String: Any])
+        let properties = try #require(parameters["properties"] as? [String: Any])
+        let entries = try #require(properties["entries"] as? [String: Any])
+        #expect(entries["type"] as? String == "array")
+        let items = try #require(entries["items"] as? [String: Any])
+        #expect(items["type"] as? String == "object")
+        #expect((items["properties"] as? [String: Any])?["title"] != nil)
+    }
+
     @Test func noToolsOmitsToolsKeyEntirely() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
         _ = try await collect(makeProvider(http: http).stream(
@@ -401,7 +494,7 @@ struct GeminiNativeLLMProviderTests {
             LLMMessage(role: .user, text: "weather?"),
             LLMMessage(role: .assistant, content: [
                 .text("Let me check."),
-                .toolUse(id: "get_weather", name: "get_weather", input: .object(["city": .string("Paris")])),
+                .toolUse(id: "get_weather", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "get_weather", content: "18C clear", isError: false),

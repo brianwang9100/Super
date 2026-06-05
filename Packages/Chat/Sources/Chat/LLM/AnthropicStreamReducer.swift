@@ -336,7 +336,7 @@ struct AnthropicStreamReducer {
         do {
             let input = try Self.parseArguments(arguments)
             return [
-                .toolUse(index: normalizedIndex, id: callID, name: name, input: input),
+                .toolUse(index: normalizedIndex, id: callID, name: name, input: input, signature: nil),
                 .contentBlockStop(index: normalizedIndex),
             ]
         } catch let error as LLMError {

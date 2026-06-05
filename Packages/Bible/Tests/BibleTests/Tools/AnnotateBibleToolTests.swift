@@ -22,6 +22,34 @@ struct AnnotateBibleToolTests {
         return (tool, repository)
     }
 
+    // MARK: - Descriptor schema
+
+    /// Regression: the `entries` array parameter must carry a `valueSchema` so
+    /// adapters emit JSON-Schema `items`. The native Gemini adapter rejects the
+    /// annotation tool with HTTP 400 without it.
+    @Test("entries parameter declares an object element schema that yields items")
+    func entriesDeclaresItemsSchema() {
+        let entries = AnnotateBibleTool.descriptor.parameters.first { $0.name == "entries" }
+        #expect(entries?.type == .array)
+        guard case .object(let itemProperties)? = entries?.valueSchema else {
+            Issue.record("entries.valueSchema should describe an object element")
+            return
+        }
+        let names = Set(itemProperties.map(\.name))
+        #expect(names == ["category", "title", "body"])
+
+        let schema = JSONToolSchema.parametersObject(for: AnnotateBibleTool.descriptor.parameters)
+        guard case .object(let top) = schema,
+              case .object(let props)? = top["properties"],
+              case .object(let entriesSchema)? = props["entries"],
+              case .object(let items)? = entriesSchema["items"] else {
+            Issue.record("expected entries -> items object in built schema")
+            return
+        }
+        #expect(items["type"] == .string("object"))
+        #expect(items["properties"] != nil)
+    }
+
     // MARK: - Happy path
 
     @Test("verse-target call inserts records with the parsed category and stamped fields")

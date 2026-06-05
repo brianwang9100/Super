@@ -36,6 +36,14 @@ struct GeminiStreamReducer {
     /// Monotonic normalized content-block index.
     private var nextBlockIndex = 0
 
+    /// The most recent `thoughtSignature` seen on any part this turn. Gemini's
+    /// thinking models may deliver the signature on a *separate* (often
+    /// empty-text) part that precedes the `functionCall` rather than on the
+    /// call part itself; the follow-up turn is rejected with HTTP 400 if it's
+    /// dropped, so we hold the last one seen and attach it to the next tool
+    /// call. See https://ai.google.dev/gemini-api/docs/thought-signatures.
+    private var pendingThoughtSignature: String?
+
     /// The single open prose block, if any. Gemini interleaves thinking and
     /// text as parts, so the reducer closes/reopens this when the kind flips.
     private enum ProseBlock {
@@ -132,6 +140,13 @@ struct GeminiStreamReducer {
         _ part: GeminiStreamResponse.Part,
         into events: inout [LLMStreamEvent]
     ) {
+        // A `thoughtSignature` can ride this part — including a content-free
+        // part whose only payload is the signature — so capture it before any
+        // early return below drops the part. The next tool call replays it.
+        if let signature = part.thoughtSignature, !signature.isEmpty {
+            pendingThoughtSignature = signature
+        }
+
         // A function call is delivered whole and brackets its own block.
         if let call = part.functionCall, let name = call.name, !name.isEmpty {
             closeProse(into: &events)
@@ -139,7 +154,19 @@ struct GeminiStreamReducer {
             events.append(.contentBlockStart(index: index, type: .toolUse))
             // Gemini supplies no call id; matching on later turns is by function
             // name, so the name doubles as the id (see translate(_:) round-trip).
-            events.append(.toolUse(index: index, id: name, name: name, input: call.args ?? .object([:])))
+            // Replay the thinking model's signature (from this part or the most
+            // recent one seen) on the next turn's functionCall, else Gemini 400s.
+            events.append(.toolUse(
+                index: index,
+                id: name,
+                name: name,
+                input: call.args ?? .object([:]),
+                signature: part.thoughtSignature ?? pendingThoughtSignature
+            ))
+            // Consume the pending signature so a *second* tool call in the same
+            // turn doesn't inherit the first's — parallel calls each carry (or
+            // omit) their own.
+            pendingThoughtSignature = nil
             events.append(.contentBlockStop(index: index))
             return
         }

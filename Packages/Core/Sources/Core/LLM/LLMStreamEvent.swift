@@ -16,7 +16,13 @@ public enum LLMStreamEvent: Sendable, Equatable {
     /// `JSONValue.object` whose keys match the tool's parameter schema —
     /// kept as a single `JSONValue` (rather than `[String: JSONValue]`) so
     /// downstream serializers can encode/decode the payload in one hop.
-    case toolUse(index: Int, id: String, name: String, input: JSONValue)
+    ///
+    /// `signature` is an opaque provider continuation token attached to the
+    /// call that MUST be echoed back unchanged on the next turn — today this
+    /// is Gemini's `thoughtSignature` (thinking models reject a replayed
+    /// `functionCall` that omits it with HTTP 400). `nil` for providers that
+    /// don't emit one.
+    case toolUse(index: Int, id: String, name: String, input: JSONValue, signature: String?)
     case contentBlockStop(index: Int)
     /// A native server-side web search has started for the given query. Drives a
     /// "Searching the web…" affordance independently of whether citations arrive.

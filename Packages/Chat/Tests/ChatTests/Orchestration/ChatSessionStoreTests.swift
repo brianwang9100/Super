@@ -141,7 +141,7 @@ struct ChatSessionStoreTests {
             // (we will never reach the closing turn because A is cancelled).
             [
                 .messageStart(id: "ma", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-a", name: toolID, input: .object([:])),
+                .toolUse(index: 0, id: "tc-a", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 0)),
             ],
             // Session B: simple text reply.

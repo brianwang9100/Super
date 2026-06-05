@@ -1005,7 +1005,7 @@ public actor ChatSession {
         liveTurn?.accumulatedThinking = ""
         liveTurn?.thinkingStartedAt = nil
         var thinkingEndedAt: Date?
-        var pendingCalls: [(id: String, name: String, input: JSONValue)] = []
+        var pendingCalls: [(id: String, name: String, input: JSONValue, signature: String?)] = []
         var capturedUsage: TokenUsage?
         var streamError: LLMError?
         var accumulatedSources: [SourceCitation] = []
@@ -1026,8 +1026,8 @@ public actor ChatSession {
                 }
                 thinkingEndedAt = now
                 broadcast(.thinkingDelta(text))
-            case .toolUse(_, let id, let name, let input):
-                pendingCalls.append((id, name, input))
+            case .toolUse(_, let id, let name, let input, let signature):
+                pendingCalls.append((id, name, input, signature))
             case .searchStarted(let query):
                 // Capture the query for the expandable "Web search" cell. (A
                 // live "Searching…" affordance via a ChatEvent is still a
@@ -1143,7 +1143,8 @@ public actor ChatSession {
                 result: nil,
                 status: .pending,
                 createdAt: clock.now(),
-                completedAt: nil
+                completedAt: nil,
+                signature: call.signature
             )
             try await toolCallRepository.save(record)
             broadcast(.toolCallStarted(record))

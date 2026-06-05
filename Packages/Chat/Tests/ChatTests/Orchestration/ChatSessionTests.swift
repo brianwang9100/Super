@@ -605,7 +605,7 @@ struct ChatSessionTests {
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
                 .textDelta(index: 0, text: "thinking"),
-                .toolUse(index: 1, id: "tc-1", name: toolID, input: .object([:])),
+                .toolUse(index: 1, id: "tc-1", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
             [

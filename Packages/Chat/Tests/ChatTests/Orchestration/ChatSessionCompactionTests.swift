@@ -435,7 +435,7 @@ struct ChatSessionCompactionTests {
                 // Iter 1: tool call.
                 [
                     .messageStart(id: "m1", model: "tiny-model"),
-                    .toolUse(index: 0, id: "tc-1", name: toolID, input: .object([:])),
+                    .toolUse(index: 0, id: "tc-1", name: toolID, input: .object([:]), signature: nil),
                     .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
                 ],
                 // Iter 2: closing assistant text.

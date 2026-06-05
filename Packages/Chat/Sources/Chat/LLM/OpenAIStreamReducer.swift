@@ -200,7 +200,7 @@ struct OpenAIStreamReducer {
                 let blockIndex = nextBlockIndex
                 nextBlockIndex += 1
                 events.append(.contentBlockStart(index: blockIndex, type: .toolUse))
-                events.append(.toolUse(index: blockIndex, id: id, name: name, input: input))
+                events.append(.toolUse(index: blockIndex, id: id, name: name, input: input, signature: builder.signature))
                 events.append(.contentBlockStop(index: blockIndex))
             } catch let error as LLMError {
                 events.append(.error(error))
@@ -220,12 +220,19 @@ private struct ToolCallBuilder {
     var id: String?
     var name: String?
     var arguments: String = ""
+    /// Google's thought signature (from `extra_content.google.thought_signature`),
+    /// captured whenever a fragment carries it so it survives multi-fragment
+    /// streaming. Replayed on the next turn's tool call. Nil for non-Gemini.
+    var signature: String?
 
     mutating func merge(_ fragment: OpenAIToolCallDelta) {
         if let newID = fragment.id { id = newID }
         if let newName = fragment.function?.name { name = newName }
         if let argsFragment = fragment.function?.arguments {
             arguments.append(argsFragment)
+        }
+        if let newSignature = fragment.extraContent?.google?.thoughtSignature, !newSignature.isEmpty {
+            signature = newSignature
         }
     }
 
