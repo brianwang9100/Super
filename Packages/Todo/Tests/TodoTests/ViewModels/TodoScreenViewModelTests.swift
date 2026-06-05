@@ -86,11 +86,41 @@ struct TodoScreenViewModelTests {
         #expect(saved?.updatedAt == now)
     }
 
-    @Test func updateDraftAppliesEditWhileDraftIsOpen() throws {
+    @Test func setDraftFieldAppliesEditWhileDraftIsOpen() throws {
         let (viewModel, _, _, _) = try makeViewModel()
         viewModel.beginCreate()
-        viewModel.updateDraft(TaskDraft(title: "typed in the editor"))
+        viewModel.setDraftTitle("typed in the editor")
         #expect(viewModel.draft?.title == "typed in the editor")
+    }
+
+    /// Field-scoped draft edits must be isolated: a commit to one field must
+    /// not revert another. This is the contract that fixes the priority bug —
+    /// the editor's `TextField(axis: .vertical)` fields commit their buffered
+    /// text late, and the old single whole-`TaskDraft` write path let such a
+    /// late title/notes commit carry a stale priority and clobber a change the
+    /// user just made (the list stripe and the editor chip stayed on the old
+    /// color). Guards against anyone collapsing the per-field setters back into
+    /// a whole-struct write. (Demonstrated fail-before during development by
+    /// driving the old `updateDraft(_ whole:)` path with a stale snapshot.)
+    @Test func priorityChangeSurvivesLateSiblingFieldCommit() async throws {
+        let (viewModel, taskRepo, _, _) = try makeViewModel()
+        let original = task("T1", title: "old") // priority == .normal
+        try await taskRepo.save(original)
+        viewModel.beginEdit(TaskWithLabels(task: original, labels: []))
+
+        // User raises the priority in the editor.
+        viewModel.setDraftPriority(.urgent)
+
+        // A multiline TextField commits its buffered text late. With
+        // per-field bindings that commit touches only the title, so it can no
+        // longer carry a stale priority and revert the change above.
+        viewModel.setDraftTitle("edited title")
+
+        await viewModel.saveDraft()
+
+        let saved = try await taskRepo.fetch(id: "T1")
+        #expect(saved?.priority == .urgent)
+        #expect(saved?.title == "edited title")
     }
 
     @Test func lateEditorWriteDoesNotResurrectClearedDraft() async throws {
@@ -102,7 +132,7 @@ struct TodoScreenViewModelTests {
         #expect(viewModel.draft == nil)
         // The editor sheet is mid-dismiss: a text field commits one last
         // value through its binding. This must not re-open a blank editor.
-        viewModel.updateDraft(TaskDraft(id: "T1", title: "new"))
+        viewModel.setDraftTitle("new")
         #expect(viewModel.draft == nil, "a late binding write must not re-present the editor")
     }
 
@@ -113,7 +143,7 @@ struct TodoScreenViewModelTests {
         #expect(viewModel.draft == nil)
         // Same dismissal race as the post-save case, but via the Cancel
         // button: a late text-field commit must not re-open the editor.
-        viewModel.updateDraft(TaskDraft(id: "T1", title: "old"))
+        viewModel.setDraftTitle("old")
         #expect(viewModel.draft == nil, "a late binding write after cancel must not re-present the editor")
     }
 

@@ -166,18 +166,62 @@ public final class TodoScreenViewModel {
         draft = nil
     }
 
-    /// Applies an in-flight edit from the editor sheet's two-way bindings.
-    ///
-    /// A no-op once the draft has been cleared by `saveDraft()` or
-    /// `cancelDraft()`: as the editor sheet animates away, its text fields
-    /// can still commit a final value through the binding. Without this
-    /// guard that late write would resurrect a draft — the editor's binding
-    /// falls back to an empty `TaskDraft` when `draft` is `nil` — and
-    /// immediately re-present the editor as a blank task seconds after the
-    /// user saved and dismissed it.
-    public func updateDraft(_ newValue: TaskDraft) {
-        guard draft != nil else { return }
-        draft = newValue
+    // MARK: Field-scoped draft edits
+    //
+    // One mutator per editable field, each backing a per-field two-way
+    // binding in `TodoTaskEditorSheet`. Every mutator reads the *current*
+    // draft and rewrites only its own field, so a buffered or late commit
+    // from one editor control can never carry a stale value for a *different*
+    // field. (The editor's two `TextField(axis: .vertical)` fields commit
+    // their text late; routing every field through a single whole-`TaskDraft`
+    // binding previously let such a late commit silently revert a priority
+    // the user had changed in between — the bug this split fixes.)
+    //
+    // Each is also a no-op once the draft has been cleared by `saveDraft()`
+    // or `cancelDraft()`: as the editor sheet animates away its fields can
+    // still commit a final value, and without the `nil` guard that late write
+    // would resurrect a dismissed editor as a blank task.
+
+    /// Set the open draft's title; no-op when no draft is open.
+    public func setDraftTitle(_ title: String) {
+        guard var draft else { return }
+        draft.title = title
+        self.draft = draft
+    }
+
+    /// Set the open draft's notes; no-op when no draft is open.
+    public func setDraftNotes(_ notes: String) {
+        guard var draft else { return }
+        draft.notes = notes
+        self.draft = draft
+    }
+
+    /// Set the open draft's priority; no-op when no draft is open.
+    public func setDraftPriority(_ priority: TaskPriority) {
+        guard var draft else { return }
+        draft.priority = priority
+        self.draft = draft
+    }
+
+    /// Set the open draft's due date (or clear it); no-op when no draft is open.
+    public func setDraftDueAt(_ dueAt: Date?) {
+        guard var draft else { return }
+        draft.dueAt = dueAt
+        self.draft = draft
+    }
+
+    /// Set the open draft's label ids; no-op when no draft is open.
+    public func setDraftLabelIds(_ labelIds: [String]) {
+        guard var draft else { return }
+        draft.labelIds = labelIds
+        self.draft = draft
+    }
+
+    /// Set the open draft's state; no-op when no draft is open.
+    public func setDraftState(_ state: TaskState) {
+        guard var draft else { return }
+        draft.state = state
+        self.draft = draft
     }
 
     /// Persist the open draft (create or edit) and its label set. A draft
