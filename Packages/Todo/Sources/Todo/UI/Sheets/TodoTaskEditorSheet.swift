@@ -3,10 +3,20 @@ import SwiftUI
 
 /// Create / edit sheet for a single task: title, notes, priority, due date,
 /// labels — plus a state row and delete button in edit mode. Mirrors
-/// `TaskModal` in the Todo design source's `sheets.jsx`. Binds directly to
-/// the view model's draft.
+/// `TaskModal` in the Todo design source's `sheets.jsx`.
+///
+/// Each editable field binds through its *own* two-way binding rather than
+/// one shared `Binding<TaskDraft>`. That isolation is load-bearing: the two
+/// multiline `TextField`s commit their text late, and a single whole-draft
+/// binding let such a late commit clobber a sibling field (e.g. revert a
+/// just-changed priority). Per-field bindings write only their own field.
 struct TodoTaskEditorSheet: View {
-    @Binding var draft: TaskDraft
+    @Binding var title: String
+    @Binding var notes: String
+    @Binding var priority: TaskPriority
+    @Binding var dueAt: Date?
+    @Binding var labelIds: [String]
+    @Binding var state: TaskState
     let mode: TodoScreenViewModel.DraftMode
     let labels: [LabelRecord]
     let onSave: () async -> Void
@@ -28,7 +38,7 @@ struct TodoTaskEditorSheet: View {
     @Environment(\.superTypography) private var typography
 
     private var titleIsBlank: Bool {
-        draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -92,10 +102,10 @@ struct TodoTaskEditorSheet: View {
 
     private var textFields: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField("What needs to happen?", text: $draft.title, axis: .vertical)
+            TextField("What needs to happen?", text: $title, axis: .vertical)
                 .font(.custom("InstrumentSerif-Italic", size: 22 * fontScale))
                 .foregroundStyle(theme.ink)
-            TextField("Notes (optional)", text: $draft.notes, axis: .vertical)
+            TextField("Notes (optional)", text: $notes, axis: .vertical)
                 .font(.system(size: 15 * fontScale))
                 .foregroundStyle(theme.inkSoft)
         }
@@ -123,26 +133,26 @@ struct TodoTaskEditorSheet: View {
     private var priorityField: some View {
         field("Priority · required") {
             HStack(spacing: 6) {
-                ForEach(TaskPriority.allCases, id: \.self) { priority in
-                    let selected = draft.priority == priority
+                ForEach(TaskPriority.allCases, id: \.self) { option in
+                    let selected = priority == option
                     Button {
-                        draft.priority = priority
+                        priority = option
                     } label: {
                         VStack(spacing: 3) {
                             Circle()
-                                .fill(OKLCH(0.62, 0.14, priority.hue).color)
+                                .fill(OKLCH(0.62, 0.14, option.hue).color)
                                 .frame(width: 7, height: 7)
-                            Text(priority.displayName)
+                            Text(option.displayName)
                                 .font(.system(size: 15 * fontScale, weight: .medium))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .foregroundStyle(selected ? OKLCH(0.4, 0.1, priority.hue).color : theme.inkSoft)
+                        .foregroundStyle(selected ? OKLCH(0.4, 0.1, option.hue).color : theme.inkSoft)
                         .modifier(SelectorChipSurface(
                             shape: RoundedRectangle(cornerRadius: 10),
                             selected: selected,
-                            selectedFill: OKLCH(0.94, 0.035, priority.hue).color,
-                            selectedBorder: OKLCH(0.62, 0.14, priority.hue).color
+                            selectedFill: OKLCH(0.94, 0.035, option.hue).color,
+                            selectedBorder: OKLCH(0.62, 0.14, option.hue).color
                         ))
                     }
                     .buttonStyle(SuperPressButtonStyle())
@@ -155,14 +165,14 @@ struct TodoTaskEditorSheet: View {
         field("Due · optional") {
             VStack(alignment: .leading, spacing: 8) {
                 FlowLayout(spacing: 6) {
-                    duePill("No date", selected: draft.dueAt == nil) { selectPreset(nil) }
-                    duePill("Today", selected: isSameDay(draft.dueAt, offsetDays: 0)) {
+                    duePill("No date", selected: dueAt == nil) { selectPreset(nil) }
+                    duePill("Today", selected: isSameDay(dueAt, offsetDays: 0)) {
                         selectPreset(dayOffset(0))
                     }
-                    duePill("Tomorrow", selected: isSameDay(draft.dueAt, offsetDays: 1)) {
+                    duePill("Tomorrow", selected: isSameDay(dueAt, offsetDays: 1)) {
                         selectPreset(dayOffset(1))
                     }
-                    duePill("This week", selected: isSameDay(draft.dueAt, offsetDays: 7)) {
+                    duePill("This week", selected: isSameDay(dueAt, offsetDays: 7)) {
                         selectPreset(dayOffset(7))
                     }
                     duePill(pickPillTitle, selected: isCustomDate) { showingDatePicker = true }
@@ -170,7 +180,7 @@ struct TodoTaskEditorSheet: View {
                 if showingDatePicker {
                     DatePicker(
                         "Due date",
-                        selection: Binding(get: { draft.dueAt ?? now }, set: { draft.dueAt = $0 }),
+                        selection: Binding(get: { dueAt ?? now }, set: { dueAt = $0 }),
                         displayedComponents: .date
                     )
                     .datePickerStyle(.graphical)
@@ -198,20 +208,20 @@ struct TodoTaskEditorSheet: View {
     }
 
     private var labelsField: some View {
-        field("Labels · \(draft.labelIds.count) selected") {
-            TodoTagPicker(labels: labels, selectedIds: $draft.labelIds, onCreate: onCreateLabel)
+        field("Labels · \(labelIds.count) selected") {
+            TodoTagPicker(labels: labels, selectedIds: $labelIds, onCreate: onCreateLabel)
         }
     }
 
     private var stateField: some View {
         field("State") {
             HStack(spacing: 6) {
-                ForEach(TaskState.allCases, id: \.self) { state in
-                    let selected = draft.state == state
+                ForEach(TaskState.allCases, id: \.self) { option in
+                    let selected = state == option
                     Button {
-                        draft.state = state
+                        state = option
                     } label: {
-                        Text(state.displayName)
+                        Text(option.displayName)
                             .font(.system(size: 15 * fontScale, weight: .medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -254,14 +264,14 @@ struct TodoTaskEditorSheet: View {
     /// exclusive ways to set the date, so choosing a preset dismisses the
     /// picker and drops "Pick…" back to its neutral prompt.
     private func selectPreset(_ date: Date?) {
-        draft.dueAt = date
+        dueAt = date
         showingDatePicker = false
     }
 
     /// The "Pick…" pill's label: the chosen date once a custom (non-preset)
     /// due date is set, otherwise the neutral "Pick…" prompt.
     private var pickPillTitle: String {
-        guard isCustomDate, let due = draft.dueAt else { return "Pick…" }
+        guard isCustomDate, let due = dueAt else { return "Pick…" }
         return due.formatted(.dateTime.month(.abbreviated).day())
     }
 
@@ -278,10 +288,10 @@ struct TodoTaskEditorSheet: View {
     /// True when a due date is set that none of the preset pills (Today,
     /// Tomorrow, This week) own — only then does "Pick…" light up.
     private var isCustomDate: Bool {
-        guard draft.dueAt != nil else { return false }
-        return !isSameDay(draft.dueAt, offsetDays: 0)
-            && !isSameDay(draft.dueAt, offsetDays: 1)
-            && !isSameDay(draft.dueAt, offsetDays: 7)
+        guard dueAt != nil else { return false }
+        return !isSameDay(dueAt, offsetDays: 0)
+            && !isSameDay(dueAt, offsetDays: 1)
+            && !isSameDay(dueAt, offsetDays: 7)
     }
 }
 

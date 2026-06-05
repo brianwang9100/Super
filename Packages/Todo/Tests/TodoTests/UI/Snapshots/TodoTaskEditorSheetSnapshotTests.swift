@@ -153,7 +153,12 @@ struct TodoTaskEditorSheetSnapshotTests {
         var utc = Calendar(identifier: .gregorian)
         utc.timeZone = TimeZone(identifier: "UTC")!
         let view = TodoTaskEditorSheet(
-            draft: .constant(draft),
+            title: .constant(draft.title),
+            notes: .constant(draft.notes),
+            priority: .constant(draft.priority),
+            dueAt: .constant(draft.dueAt),
+            labelIds: .constant(draft.labelIds),
+            state: .constant(draft.state),
             mode: mode,
             labels: labels ?? self.labels,
             onSave: {},
