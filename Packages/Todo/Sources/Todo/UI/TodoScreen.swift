@@ -57,7 +57,12 @@ public struct TodoScreen: View {
             set: { if !$0 { viewModel.cancelDraft() } }
         )) {
             TodoTaskEditorSheet(
-                draft: draftBinding,
+                title: Binding(get: { viewModel.draft?.title ?? "" }, set: { viewModel.setDraftTitle($0) }),
+                notes: Binding(get: { viewModel.draft?.notes ?? "" }, set: { viewModel.setDraftNotes($0) }),
+                priority: Binding(get: { viewModel.draft?.priority ?? .normal }, set: { viewModel.setDraftPriority($0) }),
+                dueAt: Binding(get: { viewModel.draft?.dueAt }, set: { viewModel.setDraftDueAt($0) }),
+                labelIds: Binding(get: { viewModel.draft?.labelIds ?? [] }, set: { viewModel.setDraftLabelIds($0) }),
+                state: Binding(get: { viewModel.draft?.state ?? .open }, set: { viewModel.setDraftState($0) }),
                 mode: viewModel.draftMode,
                 labels: labels,
                 onSave: { await viewModel.saveDraft() },
@@ -214,10 +219,6 @@ public struct TodoScreen: View {
 
     private var filterBinding: Binding<TodoFilter> {
         Binding(get: { viewModel.filter }, set: { viewModel.filter = $0 })
-    }
-
-    private var draftBinding: Binding<TaskDraft> {
-        Binding(get: { viewModel.draft ?? .empty }, set: { viewModel.updateDraft($0) })
     }
 
     private func scheduleToastDismiss(id: String) {
