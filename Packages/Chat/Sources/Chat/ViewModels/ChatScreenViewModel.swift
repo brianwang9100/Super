@@ -42,12 +42,12 @@ public final class ChatScreenViewModel {
     /// `send(_:)`.
     public private(set) var pendingReferences: [RecordReference] = []
 
-    /// Active model id selected in the model pill. Falls back to the
-    /// first available model if nil. The didSet hook fires
-    /// `onModelSelected` so the host can promote the matching provider
-    /// to "active" in `LLMProviderRegistry` — without that wiring, the
-    /// picker would be decorative (chat would always route to whatever
-    /// provider was registered first).
+    /// Record id (`SelectableModel.recordId` == `ModelConfigurationRecord.id`)
+    /// of the model selected in the pill. Falls back to the first available
+    /// model if nil. The didSet hook fires `onModelSelected` so the host can
+    /// promote that exact provider to "active" in `LLMProviderRegistry` —
+    /// without that wiring, the picker would be decorative (chat would always
+    /// route to whatever provider was registered first).
     public var selectedModelId: String? {
         didSet {
             guard oldValue != selectedModelId, let id = selectedModelId else { return }
@@ -55,10 +55,11 @@ public final class ChatScreenViewModel {
         }
     }
 
-    /// Optional callback the host installs to promote a provider to
-    /// active when the user picks a different model in the composer.
-    /// Receives the picked `LLMModel.id` (the upstream "model identifier"
-    /// like `claude-opus-4-7`, not the record UUID).
+    /// Optional callback the host installs to promote a provider to active
+    /// when the user picks a different model in the composer. Receives the
+    /// picked **record id** (the unique `ModelConfigurationRecord.id`, not the
+    /// shared upstream model string) so the host resolves exactly one provider
+    /// via `setActive(id:)` with no scan.
     public var onModelSelected: (@MainActor (String) -> Void)?
 
     /// Active verbosity used by `MessageList` to expand or collapse
@@ -67,7 +68,9 @@ public final class ChatScreenViewModel {
     public private(set) var verbosity: ChatVerbosity = .simple
 
     public private(set) var modelOptions: [ModelPill.Option]
-    public private(set) var availableModels: [LLMModel]
+    /// Selectable models for the composer, each pairing the unique record id
+    /// with the provider's vended descriptor. Selection keys on `recordId`.
+    public private(set) var availableModels: [SelectableModel]
 
     /// Cumulative used tokens for the active conversation. Refreshed from
     /// the saved assistant rows; the streaming tail does not contribute
@@ -189,7 +192,7 @@ public final class ChatScreenViewModel {
         messageRepository: any MessageRepository,
         toolCallRepository: any ToolCallRepository,
         checkpointRepository: any CompactionCheckpointRepository,
-        availableModels: [LLMModel],
+        availableModels: [SelectableModel],
         selectedModelId: String? = nil,
         verbosity: ChatVerbosity = .simple,
         conversationRepository: (any ConversationRepository)? = nil,
@@ -212,12 +215,12 @@ public final class ChatScreenViewModel {
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
             ModelPill.Option(
-                id: $0.id,
-                displayName: $0.displayName,
-                maxContextTokens: $0.maxContextTokens
+                id: $0.recordId,
+                displayName: $0.model.displayName,
+                maxContextTokens: $0.model.maxContextTokens
             )
         }
-        self.selectedModelId = selectedModelId ?? availableModels.first?.id
+        self.selectedModelId = selectedModelId ?? availableModels.first?.recordId
         self.verbosity = verbosity
         // A conversation that already has a real title (anything other
         // than the placeholder) is treated as already auto-titled so we
@@ -256,23 +259,32 @@ public final class ChatScreenViewModel {
     }
 
     public var activeModel: LLMModel? {
-        if let selectedModelId, let match = availableModels.first(where: { $0.id == selectedModelId }) {
-            return match
+        if let selectedModelId, let match = availableModels.first(where: { $0.recordId == selectedModelId }) {
+            return match.model
         }
-        return availableModels.first
+        return availableModels.first?.model
     }
 
-    /// Resolves the initial `selectedModelId` for a new chat view model
-    /// from a persisted "last selected" id and the currently-available
-    /// model list. Returns the persisted id when it's still registered;
-    /// otherwise falls back to the first available model (matching the
-    /// stale-id-fallback branch in `setAvailableModels`). Returns nil when the
-    /// list is empty.
+    /// Resolves the initial `selectedModelId` (a **record id**) for a new chat
+    /// view model from a persisted "last selected" id and the currently-
+    /// available model list. Returns the persisted id when it still names a
+    /// registered record. As a backward-compatibility shim it also accepts a
+    /// legacy persisted *model id* (`LLMModel.id`, how this was stored before
+    /// the record-id convergence), mapping it to that row's record id; the
+    /// value re-persists as a record id on the next selection. Falls back to
+    /// the first available model, or nil when the list is empty.
     public static func resolveInitialModelId(
         persisted: String?,
-        available: [LLMModel]
+        available: [SelectableModel]
     ) -> String? {
-        available.first(where: { $0.id == persisted })?.id ?? available.first?.id
+        if let match = available.first(where: { $0.recordId == persisted }) {
+            return match.recordId
+        }
+        // Legacy fallback: an old persisted `LLMModel.id`.
+        if let legacy = available.first(where: { $0.model.id == persisted }) {
+            return legacy.recordId
+        }
+        return available.first?.recordId
     }
 
     public var maxContextTokens: Int {
@@ -737,20 +749,20 @@ public final class ChatScreenViewModel {
     /// model becomes available — the underlying condition is resolved,
     /// so the banner shouldn't linger. Unrelated `generic` errors are
     /// left untouched.
-    public func setAvailableModels(_ models: [LLMModel]) {
+    public func setAvailableModels(_ models: [SelectableModel]) {
         availableModels = models
         modelOptions = models.map {
             ModelPill.Option(
-                id: $0.id,
-                displayName: $0.displayName,
-                maxContextTokens: $0.maxContextTokens
+                id: $0.recordId,
+                displayName: $0.model.displayName,
+                maxContextTokens: $0.model.maxContextTokens
             )
         }
         if let current = selectedModelId,
-           !models.contains(where: { $0.id == current }) {
-            selectedModelId = models.first?.id
+           !models.contains(where: { $0.recordId == current }) {
+            selectedModelId = models.first?.recordId
         } else if selectedModelId == nil {
-            selectedModelId = models.first?.id
+            selectedModelId = models.first?.recordId
         }
         if !models.isEmpty, error?.kind == .noModelConfigured {
             error = nil

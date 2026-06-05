@@ -45,8 +45,10 @@ public struct DebugLLMProvider: LLMProvider {
     public var supportedModels: [LLMModel] {
         [LLMModel(
             // Per-instance id (the provider/record id), not the shared static
-            // `modelID` — otherwise both debug rows vend the same model id and
-            // `activateProvider(matching:)` always resolves to the first one.
+            // `modelID`, so the two debug rows vend distinct model ids. Selection
+            // now keys on the record id via `provider(id:)` / `setActive(id:)`,
+            // so this is no longer required to disambiguate them — but the
+            // factory/snapshot regression tests still pin it.
             id: id,
             displayName: modelDisplayName,
             supportsThinking: true,

@@ -2,13 +2,14 @@ import Core
 import SwiftUI
 
 /// Composer footer pill that opens a Menu of available models. Reflects the
-/// active model id; emits the new id via `onSelect`.
+/// active model's record id; emits the picked record id via `onSelect`.
 ///
 /// Mirrors `ModelPill` in `.design-tmp/chat/project/src/chat-view.jsx`.
 /// Native `Menu` replaces the React popover so users get the system's
 /// affordances (haptic, accessibility) for free.
 public struct ModelPill: View {
-    /// One row in the dropdown. Ids match `LLMModel.id`.
+    /// One row in the dropdown. `id` is the model's unique **record id**
+    /// (`ModelConfigurationRecord.id`), not the shared upstream `LLMModel.id`.
     public struct Option: Identifiable, Sendable, Equatable {
         public let id: String
         public let displayName: String
