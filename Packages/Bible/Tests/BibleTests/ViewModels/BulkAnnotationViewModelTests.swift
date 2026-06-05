@@ -55,21 +55,21 @@ import Testing
         return nil
     }
 
-    @Test func generateFlagsAFullySelectedBookForBookLevelGeneration() {
+    @Test func generateFlagsAFullySelectedBookForBookLevelGeneration() throws {
         let runner = FakeBulkAnnotationRunner(autoAdvance: false)
         let vm = BulkAnnotationViewModel(runner: runner)
         // Philemon has a single chapter, so selecting it is a whole-book pick.
-        let philemon = try! #require(catalogBook(vm, id: "PHM"))
+        let philemon = try #require(catalogBook(vm, id: "PHM"))
         vm.toggleBook(philemon)
 
         vm.generate()
 
-        let plan = try! #require(runner.startedPlans.first)
-        let book = try! #require(planBook(plan, bookID: "PHM"))
+        let plan = try #require(runner.startedPlans.first)
+        let book = try #require(planBook(plan, bookID: "PHM"))
         #expect(book.includesBookLevel)
     }
 
-    @Test func generateDoesNotFlagAPartiallySelectedBook() {
+    @Test func generateDoesNotFlagAPartiallySelectedBook() throws {
         let runner = FakeBulkAnnotationRunner(autoAdvance: false)
         let vm = BulkAnnotationViewModel(runner: runner)
         // Romans has 16 chapters — pick just one, a partial selection.
@@ -77,8 +77,8 @@ import Testing
 
         vm.generate()
 
-        let plan = try! #require(runner.startedPlans.first)
-        let book = try! #require(planBook(plan, bookID: "ROM"))
+        let plan = try #require(runner.startedPlans.first)
+        let book = try #require(planBook(plan, bookID: "ROM"))
         #expect(!book.includesBookLevel)
     }
 

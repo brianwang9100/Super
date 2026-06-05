@@ -2,6 +2,12 @@ import Core
 import Foundation
 import GRDBQuery
 import SwiftUI
+import os
+
+/// Diagnostics for `BibleApplet` composition-root wiring (the bulk-annotation
+/// hub's fire-and-forget actions), under the same `com.brianwang.Super`
+/// subsystem the rest of the app logs through.
+private let bibleAppletLog = Logger(subsystem: "com.brianwang.Super", category: "bible-applet")
 
 /// The Bible mini-applet entry point. Registered with the shell's
 /// `AppletRegistry` at composition root; the shell renders `rootView()`
@@ -231,13 +237,25 @@ public struct BibleApplet: MiniApplet {
         Task { await runner.restore() }
         // The hub's "Delete all annotations" reset writes through the same
         // `bible.sqlite` the runner persists to; the sync closure spawns the
-        // async clear (the coverage `@Query` reactively redraws to zero).
+        // async clear (the coverage `@Query` reactively redraws to zero). A
+        // failed clear is logged rather than swallowed — otherwise the tap
+        // would silently look like a no-op (the `@Query` just retains old rows).
         let annotationRepository = GRDBBibleAnnotationRepository(database: database)
         let contribution = BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
             runner: runner,
             requiresCostConfirmation: requiresCostConfirmation,
-            deleteAll: { Task { try? await annotationRepository.deleteAll() } }
+            deleteAll: {
+                Task {
+                    do {
+                        try await annotationRepository.deleteAll()
+                    } catch {
+                        bibleAppletLog.error(
+                            "delete-all annotations failed: \(String(describing: error), privacy: .public)"
+                        )
+                    }
+                }
+            }
         )
         let background = BulkAnnotationBackgroundScheduler(runner: runner, ledger: ledger)
         return BulkAnnotationWiring(settingsContribution: contribution, background: background)
