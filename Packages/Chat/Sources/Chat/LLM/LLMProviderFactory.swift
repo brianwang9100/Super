@@ -97,6 +97,8 @@ public func makeLLMProvider(
             return DebugAnnotateLLMProvider(id: record.id)
         case DebugNoteLLMProvider.modelID:
             return DebugNoteLLMProvider(id: record.id)
+        case DebugTodoLLMProvider.modelID:
+            return DebugTodoLLMProvider(id: record.id)
         default:
             // Carry the row's search backend so a seeded "Debug (mock
             // search)" row (`searchBackend == "debug"`) drives the

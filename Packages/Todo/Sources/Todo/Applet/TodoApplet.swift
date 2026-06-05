@@ -35,6 +35,21 @@ public struct TodoApplet: MiniApplet {
         )
     }
 
+    /// Register the `todo.create` tool with `registry`, backed by this
+    /// applet's task repository. Called from the SuperOS composition root
+    /// (`SuperOSAppBootstrap`), mirroring how Bible ships `bible.note`. Tool
+    /// ownership stays with the applet so the Todo-internal database never
+    /// leaks into the composition root.
+    public func registerCreateTool(in registry: ToolRegistry) async {
+        await registry.register(
+            TodoCreateTool.registration(
+                repository: dependencies.taskRepository,
+                clock: dependencies.clock,
+                ids: dependencies.ids
+            )
+        )
+    }
+
     @MainActor
     public func iconView(size: CGFloat) -> AnyView {
         AnyView(TodoIcon(size: size))

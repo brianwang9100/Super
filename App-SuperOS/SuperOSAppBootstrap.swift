@@ -156,6 +156,13 @@ enum SuperOSAppBootstrap {
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
 
+        // Constructed here (rather than inline in the `applets` array below)
+        // so it can register the `todo.create` tool with the shared registry;
+        // the local is reused for the registry slot below. Mirrors how
+        // `bibleApplet` registers its tools.
+        let todoApplet = TodoApplet(dependencies: todoDependencies)
+        await todoApplet.registerCreateTool(in: toolRegistry)
+
         // Best-effort: seed an AFM row for fresh installs so Chat opens
         // onto a usable provider. Skipped on ineligible devices and
         // pre-populated DBs; errors swallowed so a transient SQLite
@@ -184,7 +191,14 @@ enum SuperOSAppBootstrap {
         // `assertionFailure` so dev-loop annoyance is bounded to a log
         // line rather than a hard trap.
         do {
-            try await AppBootstrapSupport.seedDebugModelIfNeeded(repository: modelConfigRepo)
+            // Gate the "Debug (todo)" row on the Todo applet being injected —
+            // its tool is registered above, so the registry is the source of
+            // truth for "is Todo present in this build".
+            let includesTodoTool = await toolRegistry.registration(toolID: TodoCreateTool.toolID) != nil
+            try await AppBootstrapSupport.seedDebugModelIfNeeded(
+                repository: modelConfigRepo,
+                includesTodoTool: includesTodoTool
+            )
         } catch {
             print("[DebugLLMProvider] seed failed: \(error)")
         }
@@ -234,7 +248,7 @@ enum SuperOSAppBootstrap {
             // re-couple them: reordering this array must not change the
             // fresh-install landing surface.
             ChatsApplet(chatDatabase: database),
-            TodoApplet(dependencies: todoDependencies),
+            todoApplet,
             RecipesPlaceholderApplet(),
             bibleApplet,
             FinancePlaceholderApplet(),
