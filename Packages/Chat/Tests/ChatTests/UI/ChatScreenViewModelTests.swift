@@ -45,26 +45,40 @@ struct ChatScreenViewModelTests {
         return TitleGenerator(llmProviderRegistry: registry, settingsStore: store)
     }
 
-    @Test("resolveInitialModelId returns the persisted id when it is in the available list")
+    @Test("resolveInitialModelId returns the persisted record id when it is in the available list")
     func resolveInitialModelIdReturnsPersistedWhenValid() {
-        let a = makeModel(id: "model-a")
-        let b = makeModel(id: "model-b")
+        let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
+        let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
+        let resolved = ChatScreenViewModel.resolveInitialModelId(
+            persisted: "rec-b",
+            available: [a, b]
+        )
+        #expect(resolved == "rec-b")
+    }
+
+    @Test("resolveInitialModelId maps a legacy persisted model id to its record id")
+    func resolveInitialModelIdMapsLegacyModelId() {
+        // Back-compat: before the record-id convergence, this was stored as the
+        // `LLMModel.id`. An upgraded install must still land on the same model,
+        // resolving to its record id (which then re-persists on next pick).
+        let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
+        let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
         let resolved = ChatScreenViewModel.resolveInitialModelId(
             persisted: "model-b",
             available: [a, b]
         )
-        #expect(resolved == "model-b")
+        #expect(resolved == "rec-b")
     }
 
     @Test("resolveInitialModelId falls back to first available when persisted is nil")
     func resolveInitialModelIdFallsBackWhenNilPersisted() {
-        let a = makeModel(id: "model-a")
-        let b = makeModel(id: "model-b")
+        let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
+        let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
         let resolved = ChatScreenViewModel.resolveInitialModelId(
             persisted: nil,
             available: [a, b]
         )
-        #expect(resolved == "model-a")
+        #expect(resolved == "rec-a")
     }
 
     @Test("resolveInitialModelId falls back to first available when persisted id is stale")
@@ -74,13 +88,13 @@ struct ChatScreenViewModelTests {
         // host would otherwise hand a nonexistent id to
         // `ChatScreenViewModel.init`, where `activeModel` would still
         // fall back to first but the picker's UI state could lag.
-        let a = makeModel(id: "model-a")
-        let b = makeModel(id: "model-b")
+        let a = SelectableModel(recordId: "rec-a", model: makeModel(id: "model-a"))
+        let b = SelectableModel(recordId: "rec-b", model: makeModel(id: "model-b"))
         let resolved = ChatScreenViewModel.resolveInitialModelId(
             persisted: "deleted-model",
             available: [a, b]
         )
-        #expect(resolved == "model-a")
+        #expect(resolved == "rec-a")
     }
 
     @Test("resolveInitialModelId returns nil when no models are available")
@@ -90,6 +104,32 @@ struct ChatScreenViewModelTests {
             available: []
         )
         #expect(resolved == nil)
+    }
+
+    @Test("two rows sharing a modelId are independently selectable by record id")
+    func sameModelIdRowsSelectableByRecordId() {
+        // The convergence guarantee: two configured models with the SAME
+        // upstream `modelId` (e.g. two BYOK keys for `gpt-4o`, or the debug
+        // canned/mock-search rows) must each be selectable. Keying on the
+        // record id — not the shared `model.id` — makes `activeModel` follow
+        // the picked row.
+        let shared = "gpt-4o"
+        let a = SelectableModel(recordId: "rec-a", model: makeModel(id: shared))
+        let b = SelectableModel(recordId: "rec-b", model: makeModel(id: shared))
+        let vm = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [a, b],
+            selectedModelId: "rec-b"
+        )
+        #expect(vm.activeModel?.id == shared)
+        // Selecting the other record id moves the active model to that row.
+        vm.selectedModelId = "rec-a"
+        #expect(vm.selectedModelId == "rec-a")
     }
 
     @Test("send accumulates streaming text into the tail until completion")
@@ -110,7 +150,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: toolCalls,
             checkpointRepository: checkpoints,
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         // After userMessageSaved the repo will be queried again, so seed
@@ -147,7 +187,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.send("hi")
@@ -172,7 +212,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         // Prime an error state without going through send — equivalent to
         // the post-failure state the user taps Retry from. Must include a
@@ -206,7 +246,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel.confirmSearch(id: "tc-search")
         await driver.waitForSearchDecision()
@@ -224,7 +264,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel.skipSearch(id: "tc-search")
         await driver.waitForSearchDecision()
@@ -248,7 +288,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         // Pin the VM into a mid-stream state: error set, user bubble in
         // items, isStreaming true. The view model holds the precondition
@@ -314,7 +354,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.send("test")
@@ -405,7 +445,7 @@ struct ChatScreenViewModelTests {
         viewModel.send("hi")
         #expect(viewModel.error?.kind == .noModelConfigured)
 
-        viewModel.setAvailableModels([model])
+        viewModel.setAvailableModels([SelectableModel(model)])
 
         #expect(viewModel.error == nil)
         #expect(viewModel.availableModels.count == 1)
@@ -428,7 +468,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel.composerText = "/compact"
 
@@ -451,7 +491,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel.composerText = "Hello there"
 
@@ -475,7 +515,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel._setSnapshotState(
             items: [],
@@ -506,7 +546,7 @@ struct ChatScreenViewModelTests {
             error: MessageList.ErrorState(message: "Authentication failed.")
         )
 
-        viewModel.setAvailableModels([model])
+        viewModel.setAvailableModels([SelectableModel(model)])
 
         #expect(viewModel.error?.kind == .generic)
         #expect(viewModel.error?.message == "Authentication failed.")
@@ -547,7 +587,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         await viewModel.load()
@@ -601,7 +641,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         // First load — initial subscribe attaches to the live turn.
@@ -653,7 +693,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         await viewModel.load()
@@ -677,7 +717,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.cancelStreaming()
@@ -697,7 +737,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.send("   ")
@@ -718,7 +758,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.send("/compact")
@@ -780,7 +820,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: titleGen
         )
@@ -841,7 +881,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: await makeTitleGenerator(registry: registry)
         )
@@ -886,7 +926,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: await makeTitleGenerator(registry: registry)
         )
@@ -926,7 +966,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: await makeTitleGenerator(registry: registry)
         )
@@ -973,7 +1013,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: await makeTitleGenerator(registry: registry)
         )
@@ -1010,7 +1050,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations
         )
 
@@ -1054,7 +1094,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations,
             titleGenerator: await makeTitleGenerator(registry: registry)
         )
@@ -1090,7 +1130,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations
         )
 
@@ -1125,7 +1165,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             conversationRepository: conversations
         )
 
@@ -1281,7 +1321,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
     }
 
@@ -1293,7 +1333,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             voice: voice
         )
     }
@@ -1328,7 +1368,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(initial: []),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             referenceInbox: inbox
         )
         return (viewModel, inbox)
@@ -1460,7 +1500,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.confirmCopy()
@@ -1483,7 +1523,7 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
 
         viewModel.confirmCopy()
@@ -1649,7 +1689,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         // Project the persisted rows into items so the synchronous guard
         // in `retry()` sees a user bubble.
@@ -1687,7 +1727,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         // Stage a pending target, then push the view model into a
         // streaming state via the snapshot seam. The streaming guard
@@ -1750,7 +1790,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q", references: []),
@@ -1798,7 +1838,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: checkpoints,
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q", references: []),
@@ -1850,7 +1890,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: checkpoints,
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
@@ -1899,7 +1939,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: checkpoints,
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
         viewModel._setSnapshotState(items: [
             .userBubble(id: "u1", text: "q1", references: []),
@@ -1930,7 +1970,7 @@ struct ChatScreenViewModelTests {
             messageRepository: messages,
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
     }
 }

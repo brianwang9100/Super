@@ -171,7 +171,7 @@ struct SessionSwitchingIntegrationTests {
             messageRepository: messageRepo,
             toolCallRepository: toolCallRepo,
             checkpointRepository: checkpointRepo,
-            availableModels: [model],
+            availableModels: [SelectableModel(model)],
             selectedModelId: model.id,
             conversationRepository: conversationRepo
         )

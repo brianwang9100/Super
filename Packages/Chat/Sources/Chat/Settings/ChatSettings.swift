@@ -45,11 +45,15 @@ public struct ChatSettings: Sendable, Equatable {
     /// Fraction of `maxContextTokens` (0.0–1.0) at which auto-compaction
     /// fires. Persisted now; consumed alongside `autoCompactEnabled` in M10.
     public var autoCompactThreshold: Double
-    /// `LLMModel.id` (e.g. `"claude-opus-4-7"`) of the model the user most
-    /// recently activated in the composer pill. Used as the initial
-    /// selection for every new chat so the picker survives relaunch.
-    /// `nil` until the first chat has been opened and the initial pick
-    /// has been persisted; subsequent launches always read a populated value.
+    /// **Record id** (`ModelConfigurationRecord.id`) of the model the user most
+    /// recently activated in the composer pill — the unique per-model identity,
+    /// not the shared `modelId`. Used as the initial selection for every new
+    /// chat so the picker survives relaunch. `nil` until the first chat has been
+    /// opened and the initial pick has been persisted; subsequent launches
+    /// always read a populated value. (Legacy values stored as an `LLMModel.id`
+    /// before the record-id convergence still resolve via the back-compat
+    /// branch in `ChatScreenViewModel.resolveInitialModelId`, then re-persist as
+    /// a record id on the next pick.)
     public var lastSelectedModelId: String?
     /// Native web-search cost gate. When `true` (the default), a model's
     /// web-search request is surfaced as an inline confirm prompt
@@ -65,13 +69,15 @@ public struct ChatSettings: Sendable, Equatable {
     /// `true`. The *which model* knob is `titleModelId`; this is the master
     /// on/off so the user can avoid the round-trip (and its cost) entirely.
     public var summarizeTitlesEnabled: Bool
-    /// `LLMModel.id` of the model used to summarize chat titles, or `nil`
-    /// for "automatic" — which resolves to the Apple Foundation Model when
-    /// it's available, else no titling (truncated-message fallback). A
-    /// stored id that no longer maps to an available model (the model was
-    /// deleted) also resolves to none rather than reverting to AFM. Resolution
-    /// lives in `TitleGenerator.resolveTitleModel`. Independent of the chat's
-    /// active model — titling can use a different model than the conversation.
+    /// **Record id** (`ModelConfigurationRecord.id`) of the model used to
+    /// summarize chat titles — the unique per-model identity, not the shared
+    /// `modelId` — or `nil` for "automatic" (which resolves to the Apple
+    /// Foundation Model when available, else no titling). A stored id that no
+    /// longer maps to an available model (the model was deleted) also resolves
+    /// to none rather than reverting to AFM. Resolution (incl. the legacy
+    /// `LLMModel.id` back-compat branch) lives in
+    /// `TitleGenerator.resolveTitleModel`. Independent of the chat's active
+    /// model — titling can use a different model than the conversation.
     public var titleModelId: String?
 
     /// Factory default for `autoCompactThreshold` — the fraction of

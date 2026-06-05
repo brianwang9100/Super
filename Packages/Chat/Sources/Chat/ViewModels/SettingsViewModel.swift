@@ -408,8 +408,10 @@ public final class SettingsViewModel {
 
     /// Selects the model used to summarize chat titles. Pass `nil` for
     /// "automatic" (resolves to the Apple Foundation Model when available).
-    /// Stores an `LLMModel.id` (`ModelRow.modelId`), consistent with how the
-    /// title path resolves the provider.
+    /// Stores the summarizer's **record id** (`ModelRow.id` ==
+    /// `ModelConfigurationRecord.id`), the unique per-model identity the title
+    /// path resolves through `LLMProviderRegistry.provider(id:)`. Pass the row
+    /// `id`, never `modelId` — two rows can share a `modelId`.
     public func setTitleModelId(_ id: String?) async {
         settings.titleModelId = id
         try? await store.setTitleModelId(id)

@@ -245,7 +245,7 @@ struct ChatOverlaySnapshotTests {
             messageRepository: messages,
             toolCallRepository: toolCalls,
             checkpointRepository: checkpoints,
-            availableModels: [model]
+            availableModels: [SelectableModel(model)]
         )
     }
 }

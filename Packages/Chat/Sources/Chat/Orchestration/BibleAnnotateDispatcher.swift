@@ -248,8 +248,8 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     /// normal chat sessions run against. Bootstrap seeds the active
     /// provider from the selected row (falling back to first-registered
     /// when that row's provider didn't register), and the shell then
-    /// keeps it in sync with the chat composer's selection via
-    /// `AppShell.activateProvider(matching:)`. Every provider maps 1:1
+    /// keeps it in sync with the chat composer's selection (the picked
+    /// record id is promoted via `registry.setActive(id:)`). Every provider maps 1:1
     /// to a single model, so the active provider's sole model *is* the
     /// chat model. Deriving the model from the active provider
     /// (rather than cross-checking the persisted selection row) also

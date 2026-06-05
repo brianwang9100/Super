@@ -368,7 +368,7 @@ struct SettingsSheetSnapshotTests {
     func modelsPaneTitlingAutomatic() async {
         await verifyModelsPaneTitling(
             theme: .light,
-            settings: Self.titleSettings(enabled: true, modelId: nil),
+            settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_light"
         )
     }
@@ -377,7 +377,7 @@ struct SettingsSheetSnapshotTests {
     func modelsPaneTitlingAutomaticDark() async {
         await verifyModelsPaneTitling(
             theme: .dark,
-            settings: Self.titleSettings(enabled: true, modelId: nil),
+            settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_dark"
         )
     }
@@ -386,7 +386,7 @@ struct SettingsSheetSnapshotTests {
     func modelsPaneTitlingAutomaticSepia() async {
         await verifyModelsPaneTitling(
             theme: .sepia,
-            settings: Self.titleSettings(enabled: true, modelId: nil),
+            settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_sepia"
         )
     }
@@ -396,7 +396,7 @@ struct SettingsSheetSnapshotTests {
         await verifyModelsPaneTitling(
             theme: .light,
             availability: .available,
-            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_light"
         )
     }
@@ -406,7 +406,7 @@ struct SettingsSheetSnapshotTests {
         await verifyModelsPaneTitling(
             theme: .dark,
             availability: .available,
-            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_dark"
         )
     }
@@ -416,16 +416,18 @@ struct SettingsSheetSnapshotTests {
         await verifyModelsPaneTitling(
             theme: .sepia,
             availability: .available,
-            settings: Self.titleSettings(enabled: true, modelId: "claude-opus-4-7"),
+            settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_sepia"
         )
     }
 
     /// `ChatSettings.default` with the two title-summarization knobs set.
-    private static func titleSettings(enabled: Bool, modelId: String? = nil) -> ChatSettings {
+    /// `recordId` is the summarizer row's **record id** (`ModelRow.id`), the
+    /// unique identity the picker now matches on.
+    private static func titleSettings(enabled: Bool, recordId: String? = nil) -> ChatSettings {
         var settings = ChatSettings.default
         settings.summarizeTitlesEnabled = enabled
-        settings.titleModelId = modelId
+        settings.titleModelId = recordId
         return settings
     }
 

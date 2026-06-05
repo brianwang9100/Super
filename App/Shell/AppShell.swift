@@ -628,7 +628,7 @@ struct AppShell: View {
             driver = liveDriver
         }
         let providers = await dependencies.llmProviderRegistry.allProviders()
-        let providerModels = providers.flatMap(\.supportedModels)
+        let providerModels = Self.selectableModels(from: providers)
         let verbosity = settingsViewModel?.settings.defaultVerbosity ?? .verbose
         let titleGenerator = TitleGenerator(
             llmProviderRegistry: dependencies.llmProviderRegistry,
@@ -666,10 +666,10 @@ struct AppShell: View {
         )
         let registry = dependencies.llmProviderRegistry
         // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.
-        newModel.onModelSelected = { [weak settings = settingsViewModel] modelId in
+        newModel.onModelSelected = { [weak settings = settingsViewModel] recordId in
             Task {
-                await activateProvider(matching: modelId, in: registry)
-                await settings?.setLastSelectedModelId(modelId)
+                try? await registry.setActive(id: recordId)
+                await settings?.setLastSelectedModelId(recordId)
             }
         }
         // When the auto-titler lands, repaint the sidebar so the row's
@@ -678,9 +678,11 @@ struct AppShell: View {
         newModel.onTitleGenerated = { [weak sidebar = sidebarViewModel] _ in
             Task { await sidebar?.refresh() }
         }
-        // Mirror the picker's initial pick into the active provider, and persist if it differs from disk.
+        // Mirror the picker's initial pick into the active provider, and persist
+        // if it differs from disk (also self-heals a legacy model-id value, which
+        // `resolveInitialModelId` maps to its record id).
         if let id = initialModelId {
-            await activateProvider(matching: id, in: registry)
+            try? await registry.setActive(id: id)
             if id != persistedModelId {
                 await settingsViewModel?.setLastSelectedModelId(id)
             }
@@ -695,31 +697,32 @@ struct AppShell: View {
         sidebarViewModel?.activeConversationId = conversation.id
     }
 
-    /// Find the registered provider whose `supportedModels` include
-    /// `modelId` and promote it to active. The picker uses the upstream
-    /// model identifier (e.g. `claude-opus-4-7`), not the record UUID,
-    /// so we have to scan rather than `setActive(id: modelId)` directly.
-    private func activateProvider(
-        matching modelId: String,
-        in registry: LLMProviderRegistry
-    ) async {
-        guard let match = await registry.provider(forModelId: modelId) else { return }
-        try? await registry.setActive(id: match.id)
+    /// Pair each registered provider's unique record id (its `.id`, ==
+    /// `ModelConfigurationRecord.id`) with the single model it vends, for the
+    /// composer's record-id-keyed selection. Providers are 1:1 with models, so
+    /// a provider vending nothing is skipped.
+    private static func selectableModels(
+        from providers: [any LLMProvider]
+    ) -> [SelectableModel] {
+        providers.compactMap { provider in
+            provider.supportedModels.first.map {
+                SelectableModel(recordId: provider.id, model: $0)
+            }
+        }
     }
 
     /// Refresh the chat composer's model list after the user
     /// adds/edits/deletes a model in Settings. Re-pulls from the
     /// registry (which `SettingsViewModel` already updated during the
     /// save) and pushes the new list into the live chat view model so
-    /// the picker repaints without losing the transcript. Also re-runs
-    /// the active-provider promotion so the picker's current selection
-    /// matches the registry.
+    /// the picker repaints without losing the transcript. Also re-asserts
+    /// the active provider by the picker's selected record id (direct
+    /// `setActive(id:)`, no scan) so it matches the registry.
     private func refreshAvailableModels() async {
         let providers = await dependencies.llmProviderRegistry.allProviders()
-        let models = providers.flatMap(\.supportedModels)
-        viewModel?.setAvailableModels(models)
-        if let pickedId = viewModel?.selectedModelId {
-            await activateProvider(matching: pickedId, in: dependencies.llmProviderRegistry)
+        viewModel?.setAvailableModels(Self.selectableModels(from: providers))
+        if let recordId = viewModel?.selectedModelId {
+            try? await dependencies.llmProviderRegistry.setActive(id: recordId)
         }
     }
 
