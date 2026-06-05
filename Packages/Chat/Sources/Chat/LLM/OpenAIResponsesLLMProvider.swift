@@ -293,7 +293,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                 // position in `input` — the Responses API would reject that.
                 if message.role == .assistant {
                     for block in message.content {
-                        guard case .toolUse(let id, let name, let toolInput) = block else { continue }
+                        guard case .toolUse(let id, let name, let toolInput, _) = block else { continue }
                         let argsData = try argsEncoder.encode(toolInput)
                         let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
                         input.append(.functionCall(callID: id, name: name, argumentsJSON: argsJSON))
@@ -316,49 +316,13 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
             .function(
                 name: tool.name,
                 description: tool.description,
-                parameters: parametersSchema(for: tool)
+                parameters: JSONToolSchema.parametersObject(for: tool.parameters)
             )
         }
         if searchEnabled {
             out.append(.webSearch)
         }
         return out.isEmpty ? nil : out
-    }
-
-    /// Build the JSON-Schema `parameters` object for a client tool, matching
-    /// the shape `OpenAICompatibleLLMProvider` produces (drop `required` when
-    /// empty; map `bool` → `boolean`).
-    private func parametersSchema(for tool: LLMTool) -> JSONValue {
-        var properties: [String: JSONValue] = [:]
-        var required: [String] = []
-        for parameter in tool.parameters {
-            var schema: [String: JSONValue] = [
-                "type": .string(jsonSchemaType(for: parameter.type)),
-                "description": .string(parameter.description),
-            ]
-            if let enumValues = parameter.enumValues {
-                schema["enum"] = .array(enumValues.map { .string($0) })
-            }
-            properties[parameter.name] = .object(schema)
-            if parameter.isRequired {
-                required.append(parameter.name)
-            }
-        }
-        var parametersObject: [String: JSONValue] = [
-            "type": .string("object"),
-            "properties": .object(properties),
-        ]
-        if !required.isEmpty {
-            parametersObject["required"] = .array(required.map { .string($0) })
-        }
-        return .object(parametersObject)
-    }
-
-    private func jsonSchemaType(for parameterType: ParameterType) -> String {
-        switch parameterType {
-        case .bool: return "boolean"
-        case .string, .integer, .number, .array, .object: return parameterType.rawValue
-        }
     }
 
     /// Coerce any thrown error into an `LLMError`, normalizing cancellation
@@ -374,12 +338,15 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
 
     private func mapHTTPError(_ httpError: HTTPError) -> LLMError {
         switch httpError {
-        case .badStatus(401), .badStatus(403):
+        case .badStatus(401, _), .badStatus(403, _):
             return .unauthorized
-        case .badStatus(429):
+        case .badStatus(429, _):
             return .rateLimited
-        case .badStatus(let code):
-            return .providerError(code: "\(code)", message: "HTTP \(code)")
+        case .badStatus(let code, let body):
+            return .providerError(
+                code: "\(code)",
+                message: body.isEmpty ? "HTTP \(code)" : "HTTP \(code): \(body)"
+            )
         case .invalidResponse:
             return .requestFailed("invalid response")
         case .transport(let message):

@@ -121,7 +121,32 @@ public struct AnnotateBibleTool: ToolExecutor {
                 existing annotations for the target without inserting new \
                 ones.
                 """,
-                isRequired: true
+                isRequired: true,
+                // The array's element schema (JSON-Schema `items`). The native
+                // Gemini adapter rejects an array parameter declared without it
+                // (HTTP 400) — see `JSONToolSchema`. For an `.array` parameter
+                // the `valueSchema` describes each item directly.
+                valueSchema: .object([
+                    LLMToolParameter(
+                        name: "category",
+                        type: .string,
+                        description: "One of: 'author', 'summary', 'historical', 'clarification', 'reference'.",
+                        isRequired: true,
+                        enumValues: ["author", "summary", "historical", "clarification", "reference"]
+                    ),
+                    LLMToolParameter(
+                        name: "title",
+                        type: .string,
+                        description: "Short, plain-language card heading (e.g. 'Author', 'Historical context').",
+                        isRequired: true
+                    ),
+                    LLMToolParameter(
+                        name: "body",
+                        type: .string,
+                        description: "For 'reference': a bare scripture citation like 'Heb 4:15'. For every other category: markdown prose, ~240 chars / ≤2 sentences.",
+                        isRequired: true
+                    ),
+                ])
             ),
         ],
         appletId: AnnotateBibleTool.appletID,

@@ -155,7 +155,7 @@ struct AnthropicNativeLLMProviderTests {
             "messageStart", "contentBlockStart(toolUse)", "toolUse", "contentBlockStop", "messageComplete",
         ])
         let toolUses = events.compactMap { event -> (id: String, name: String, input: JSONValue)? in
-            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            if case .toolUse(_, let id, let name, let input, _) = event { return (id, name, input) }
             return nil
         }
         #expect(toolUses.count == 1)
@@ -200,7 +200,7 @@ struct AnthropicNativeLLMProviderTests {
         // provider error (`ChatSession` keeps the last one).
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("anthropic-error-only").utf8)],
-            error: HTTPError.badStatus(500)
+            error: HTTPError.badStatus(500, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -219,7 +219,7 @@ struct AnthropicNativeLLMProviderTests {
         // error, which `ChatSession` keeps.
         let http = FakeHTTPClient(
             chunks: [Data(FixtureLoader.load("anthropic-partial-toolcall").utf8)],
-            error: HTTPError.badStatus(503)
+            error: HTTPError.badStatus(503, body: "")
         )
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "q")], model: model, tools: [], temperature: 0.5
@@ -251,7 +251,7 @@ struct AnthropicNativeLLMProviderTests {
     }
 
     @Test func transportFailureBeforeAnySSEStillEmitsMessageStartFirst() async throws {
-        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401))
+        let http = FakeHTTPClient(chunks: [], error: HTTPError.badStatus(401, body: ""))
         let events = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
         ))
@@ -380,7 +380,7 @@ struct AnthropicNativeLLMProviderTests {
             LLMMessage(role: .user, text: "weather?"),
             LLMMessage(role: .assistant, content: [
                 .text("Let me check."),
-                .toolUse(id: "toolu_x", name: "get_weather", input: .object(["city": .string("Paris")])),
+                .toolUse(id: "toolu_x", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "toolu_x", content: "18C clear", isError: false),

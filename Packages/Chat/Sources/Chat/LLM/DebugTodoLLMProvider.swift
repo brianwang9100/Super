@@ -73,7 +73,8 @@ public struct DebugTodoLLMProvider: LLMProvider {
                         index: 0,
                         id: "debug-tool-\(UUID().uuidString)",
                         name: Self.toolName,
-                        input: Self.createInput(from: messages)
+                        input: Self.createInput(from: messages),
+                        signature: nil
                     ))
                     continuation.yield(.contentBlockStop(index: 0))
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))

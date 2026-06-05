@@ -152,7 +152,7 @@ struct OpenAICompatibleLLMProviderTests {
         ))
 
         let toolUses = events.compactMap { event -> (String, String, JSONValue)? in
-            if case .toolUse(_, let id, let name, let input) = event { return (id, name, input) }
+            if case .toolUse(_, let id, let name, let input, _) = event { return (id, name, input) }
             return nil
         }
         #expect(toolUses.count == 1)
@@ -202,7 +202,7 @@ struct OpenAICompatibleLLMProviderTests {
         ))
 
         let toolUses = events.compactMap { event -> (String, JSONValue)? in
-            if case .toolUse(_, let id, _, let input) = event { return (id, input) }
+            if case .toolUse(_, let id, _, let input, _) = event { return (id, input) }
             return nil
         }
         #expect(toolUses.count == 1)
@@ -249,21 +249,29 @@ struct OpenAICompatibleLLMProviderTests {
     }
 
     @Test func httpStatus401EmitsUnauthorizedErrorThenMessageComplete() async throws {
-        let events = try await collectErrorRun(error: HTTPError.badStatus(401))
+        let events = try await collectErrorRun(error: HTTPError.badStatus(401, body: ""))
         #expect(errorEvents(events) == [.unauthorized])
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
     @Test func httpStatus429EmitsRateLimitedErrorThenMessageComplete() async throws {
-        let events = try await collectErrorRun(error: HTTPError.badStatus(429))
+        let events = try await collectErrorRun(error: HTTPError.badStatus(429, body: ""))
         #expect(errorEvents(events) == [.rateLimited])
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
 
     @Test func httpStatus5xxEmitsProviderErrorThenMessageComplete() async throws {
-        let events = try await collectErrorRun(error: HTTPError.badStatus(503))
+        let events = try await collectErrorRun(error: HTTPError.badStatus(503, body: ""))
         #expect(errorEvents(events) == [.providerError(code: "503", message: "HTTP 503")])
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+    }
+
+    @Test func httpErrorBodyIsFoldedIntoProviderErrorMessage() async throws {
+        // The captured response body (e.g. Gemini's schema-validation
+        // explanation) must reach the surfaced error so a 400 is diagnosable.
+        let body = "entries.items: missing field"
+        let events = try await collectErrorRun(error: HTTPError.badStatus(400, body: body))
+        #expect(errorEvents(events) == [.providerError(code: "400", message: "HTTP 400: \(body)")])
     }
 
     @Test func malformedSSEDataLineEmitsDecodingFailedErrorThenMessageComplete() async throws {
@@ -508,7 +516,7 @@ struct OpenAICompatibleLLMProviderTests {
                     id: "call_abc",
                     name: "get_time",
                     input: .object(["timezone": .string("UTC")])
-                ),
+                , signature: nil),
             ]),
             LLMMessage(role: .tool, content: [
                 .toolResult(toolUseID: "call_abc", content: "12:00 UTC", isError: false)
@@ -542,6 +550,49 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(toolResult["role"] as? String == "tool")
         #expect(toolResult["tool_call_id"] as? String == "call_abc")
         #expect(toolResult["content"] as? String == "12:00 UTC")
+    }
+
+    @Test func captureThoughtSignatureFromToolCallExtraContent() async throws {
+        // Gemini over the OpenAI-compat shim carries the thought signature in
+        // `extra_content.google.thought_signature` on the streamed tool call.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-toolcall-signature"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "what time is it?")],
+            model: model, tools: [], temperature: 0.0
+        ))
+        let signature = events.compactMap { event -> String? in
+            if case .toolUse(_, _, _, _, let signature) = event { return signature }
+            return nil
+        }.first
+        #expect(signature == "SIG-compat-1")
+    }
+
+    @Test func replayedToolCallEncodesThoughtSignatureInExtraContent() async throws {
+        // On the follow-up turn the signature must ride the outgoing tool call's
+        // `extra_content.google.thought_signature`, or the shim 400s.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        let messages: [LLMMessage] = [
+            LLMMessage(role: .user, text: "what time is it?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "call_abc", name: "get_time",
+                         input: .object(["timezone": .string("UTC")]), signature: "SIG-xyz"),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "call_abc", content: "12:00 UTC", isError: false),
+            ]),
+        ]
+        _ = try await collect(provider.stream(messages: messages, model: model, tools: [], temperature: 0.0))
+
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let outgoing = try #require(decoded["messages"] as? [[String: Any]])
+        let toolCalls = try #require((outgoing[1])["tool_calls"] as? [[String: Any]])
+        let extraContent = try #require(toolCalls[0]["extra_content"] as? [String: Any])
+        let google = try #require(extraContent["google"] as? [String: Any])
+        #expect(google["thought_signature"] as? String == "SIG-xyz")
     }
 
     private func collectErrorRun(error: Error) async throws -> [LLMStreamEvent] {

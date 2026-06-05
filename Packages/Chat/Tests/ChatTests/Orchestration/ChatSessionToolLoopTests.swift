@@ -89,7 +89,7 @@ struct ChatSessionToolLoopTests {
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
                 .textDelta(index: 0, text: "checking..."),
-                .toolUse(index: 0, id: "tc-1", name: toolID, input: .object(["q": .string("ping")])),
+                .toolUse(index: 0, id: "tc-1", name: toolID, input: .object(["q": .string("ping")]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
             ],
             // Turn 2: after the tool returns, the assistant finishes plainly.
@@ -160,7 +160,7 @@ struct ChatSessionToolLoopTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-x", name: toolID, input: .object([:])),
+                .toolUse(index: 0, id: "tc-x", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
             [
@@ -184,7 +184,7 @@ struct ChatSessionToolLoopTests {
         // user, assistant(toolUse only — empty text), tool(result)
         #expect(secondTurnMessages.count == 3)
         #expect(secondTurnMessages[1].role == .assistant)
-        if case .toolUse(let id, let name, _) = secondTurnMessages[1].content.first {
+        if case .toolUse(let id, let name, _, _) = secondTurnMessages[1].content.first {
             #expect(id == "tc-x")
             #expect(name == toolID)
         } else {
@@ -205,7 +205,7 @@ struct ChatSessionToolLoopTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-bad", name: toolID, input: .object([:])),
+                .toolUse(index: 0, id: "tc-bad", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
             [
@@ -280,7 +280,7 @@ struct ChatSessionToolLoopTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-parse", name: toolID, input: .object([:])),
+                .toolUse(index: 0, id: "tc-parse", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
             [
@@ -315,7 +315,7 @@ struct ChatSessionToolLoopTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-row", name: toolID, input: .object([:])),
+                .toolUse(index: 0, id: "tc-row", name: toolID, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
             [
@@ -348,8 +348,8 @@ struct ChatSessionToolLoopTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tc-a", name: toolA, input: .object([:])),
-                .toolUse(index: 1, id: "tc-b", name: toolB, input: .object([:])),
+                .toolUse(index: 0, id: "tc-a", name: toolA, input: .object([:]), signature: nil),
+                .toolUse(index: 1, id: "tc-b", name: toolB, input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
             ],
             [

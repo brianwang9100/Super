@@ -179,6 +179,10 @@ public struct MessageList: View {
         }
 
         public let message: String
+        /// Optional verbose detail (e.g. a provider's raw error body) shown
+        /// only when the user expands the banner. The banner stays compact by
+        /// default — `message` is the one-line summary, `detail` the rest.
+        public let detail: String?
         public let actionLabel: String?
         public let action: (@MainActor @Sendable () -> Void)?
         public let showsRetry: Bool
@@ -186,12 +190,14 @@ public struct MessageList: View {
 
         public init(
             message: String,
+            detail: String? = nil,
             actionLabel: String? = nil,
             action: (@MainActor @Sendable () -> Void)? = nil,
             showsRetry: Bool = true,
             kind: Kind = .generic
         ) {
             self.message = message
+            self.detail = detail
             self.actionLabel = actionLabel
             self.action = action
             self.showsRetry = showsRetry
@@ -215,6 +221,7 @@ public struct MessageList: View {
 
         public static func == (lhs: ErrorState, rhs: ErrorState) -> Bool {
             lhs.message == rhs.message
+                && lhs.detail == rhs.detail
                 && lhs.actionLabel == rhs.actionLabel
                 && lhs.showsRetry == rhs.showsRetry
                 && lhs.kind == rhs.kind

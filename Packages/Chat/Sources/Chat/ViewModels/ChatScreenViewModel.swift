@@ -917,7 +917,7 @@ public final class ChatScreenViewModel {
             if case .cancelled = llmError {
                 error = nil
             } else {
-                error = MessageList.ErrorState(message: Self.describe(llmError))
+                error = Self.errorState(for: llmError)
             }
         }
     }
@@ -1226,6 +1226,27 @@ public final class ChatScreenViewModel {
         case .failed, .cancelled:
             return .failed
         }
+    }
+
+    /// Build the banner state for an `LLMError`. A provider error carries its
+    /// raw body — often a long JSON payload — so it's split into a compact
+    /// one-line `message` plus a `detail` the banner reveals on tap, rather
+    /// than dumping the whole thing inline.
+    private nonisolated static func errorState(for error: LLMError) -> MessageList.ErrorState {
+        if case .providerError(let code, let message) = error {
+            // `message` is "HTTP <code>" or "HTTP <code>: <body>". The summary
+            // already states the status, so strip the redundant "HTTP <code>: "
+            // prefix and surface just the provider body as the detail (nil when
+            // there's no body beyond the status, so no empty disclosure).
+            let prefix = "HTTP \(code): "
+            let body = message.hasPrefix(prefix) ? String(message.dropFirst(prefix.count)) : message
+            let hasBody = message != "HTTP \(code)"
+            return MessageList.ErrorState(
+                message: "The model provider returned an error (HTTP \(code)).",
+                detail: hasBody ? body : nil
+            )
+        }
+        return MessageList.ErrorState(message: describe(error))
     }
 
     private nonisolated static func describe(_ error: LLMError) -> String {

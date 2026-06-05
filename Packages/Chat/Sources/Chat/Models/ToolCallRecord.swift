@@ -36,6 +36,12 @@ public struct ToolCallRecord: Codable, FetchableRecord, PersistableRecord, Senda
     public var status: ToolCallStatus
     public var createdAt: Date
     public var completedAt: Date?
+    /// Opaque provider continuation token for the call (today Gemini's
+    /// `thoughtSignature`). Persisted so it survives the DB round-trip the turn
+    /// loop makes between requesting a tool and replaying the assistant turn,
+    /// and is echoed back on the next `functionCall` — Gemini's thinking models
+    /// reject a replay that omits it. `nil` for providers that emit none.
+    public var signature: String?
 
     public init(
         id: String,
@@ -46,7 +52,8 @@ public struct ToolCallRecord: Codable, FetchableRecord, PersistableRecord, Senda
         result: String? = nil,
         status: ToolCallStatus,
         createdAt: Date,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        signature: String? = nil
     ) {
         self.id = id
         self.messageId = messageId
@@ -57,6 +64,7 @@ public struct ToolCallRecord: Codable, FetchableRecord, PersistableRecord, Senda
         self.status = status
         self.createdAt = createdAt
         self.completedAt = completedAt
+        self.signature = signature
     }
 }
 

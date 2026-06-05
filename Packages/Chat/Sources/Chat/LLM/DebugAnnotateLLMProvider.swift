@@ -79,7 +79,8 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
                         index: 0,
                         id: "debug-tool-\(UUID().uuidString)",
                         name: Self.toolName,
-                        input: Self.annotateInput(for: target)
+                        input: Self.annotateInput(for: target),
+                        signature: nil
                     ))
                     continuation.yield(.contentBlockStop(index: 0))
                     continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))

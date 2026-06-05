@@ -17,7 +17,13 @@ public enum LLMContent: Sendable, Equatable {
     /// `JSONValue.object` matching the tool's parameter schema; the type is
     /// a single `JSONValue` (rather than `[String: JSONValue]`) so the
     /// payload encodes/decodes through `Codable` in one hop.
-    case toolUse(id: String, name: String, input: JSONValue)
+    ///
+    /// `signature` is an opaque provider continuation token (today Gemini's
+    /// `thoughtSignature`) that must be replayed verbatim on the `functionCall`
+    /// part of the next turn; thinking models 400 without it. `nil` for
+    /// providers that don't emit one. Reconstructed by `ContextAssembler`
+    /// from the persisted `ToolCallRecord.signature`.
+    case toolUse(id: String, name: String, input: JSONValue, signature: String?)
     case toolResult(toolUseID: String, content: String, isError: Bool)
     /// Echoed prior-turn web-search results, replayed verbatim so providers
     /// that require it (Anthropic) keep earlier citations valid across turns.

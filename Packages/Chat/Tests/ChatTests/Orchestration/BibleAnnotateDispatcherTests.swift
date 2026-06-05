@@ -177,7 +177,7 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
             [
@@ -216,7 +216,7 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
             [
@@ -255,7 +255,7 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
             [
@@ -426,7 +426,7 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
             // The session feeds the tool error back for a second turn.
@@ -460,7 +460,7 @@ struct BibleAnnotateDispatcherTests {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "m1", model: "fake-model-1"),
-                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                 .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
             ],
             [
@@ -485,7 +485,7 @@ struct BibleAnnotateDispatcherTests {
             scripts: [
                 [
                     .messageStart(id: "m1", model: "fake-model-1"),
-                    .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:])),
+                    .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
                     .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
                 ],
                 [

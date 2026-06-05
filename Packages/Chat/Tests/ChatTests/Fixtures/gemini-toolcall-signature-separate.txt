@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"","thoughtSignature":"SIG-sep-99"},{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":15,"candidatesTokenCount":8},"modelVersion":"gemini-2.5-pro","responseId":"resp_tool_sig_sep"}
+

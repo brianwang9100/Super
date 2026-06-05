@@ -69,13 +69,19 @@ struct GeminiContent: Encodable {
 /// One part inside a content turn. `text` is prose; `functionCall` replays a
 /// prior assistant tool call; `functionResponse` carries a tool result (Gemini
 /// matches it back to the call by function *name*).
+///
+/// `functionCall` carries an optional `thoughtSignature` — an opaque token
+/// Gemini's thinking models attach to the call and **require** echoed back on
+/// the next turn's `functionCall` part (a replay that omits it is rejected
+/// with HTTP 400 `INVALID_ARGUMENT`). It rides the *part*, as a sibling of the
+/// `functionCall` object, not inside it.
 enum GeminiPart: Encodable {
     case text(String)
-    case functionCall(name: String, args: JSONValue)
+    case functionCall(name: String, args: JSONValue, thoughtSignature: String?)
     case functionResponse(name: String, response: JSONValue)
 
     private enum CodingKeys: String, CodingKey {
-        case text, functionCall, functionResponse
+        case text, functionCall, functionResponse, thoughtSignature
     }
 
     private struct FunctionCallBody: Encodable {
@@ -93,8 +99,11 @@ enum GeminiPart: Encodable {
         switch self {
         case .text(let text):
             try container.encode(text, forKey: .text)
-        case .functionCall(let name, let args):
+        case .functionCall(let name, let args, let thoughtSignature):
             try container.encode(FunctionCallBody(name: name, args: args), forKey: .functionCall)
+            if let thoughtSignature {
+                try container.encode(thoughtSignature, forKey: .thoughtSignature)
+            }
         case .functionResponse(let name, let response):
             try container.encode(FunctionResponseBody(name: name, response: response), forKey: .functionResponse)
         }
@@ -174,10 +183,14 @@ struct GeminiStreamResponse: Decodable {
 
     /// One streamed part. `thought == true` marks a reasoning fragment;
     /// `functionCall` is a client tool call (delivered whole, not streamed).
+    /// `thoughtSignature` is the opaque token a thinking model attaches to a
+    /// `functionCall`; it must be echoed back verbatim on the next turn (see
+    /// `GeminiPart`), so the reducer surfaces it on the `.toolUse` event.
     struct Part: Decodable {
         let text: String?
         let thought: Bool?
         let functionCall: FunctionCall?
+        let thoughtSignature: String?
     }
 
     struct FunctionCall: Decodable {
