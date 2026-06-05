@@ -296,4 +296,66 @@ struct BibleAnnotationRepositoryTests {
         )
         #expect(listed.map(\.id) == ["a"])
     }
+
+    // MARK: - Delete all
+
+    @Test("deleteAll removes every row across book, chapter, and verse groups")
+    func deleteAllClearsEverything() async throws {
+        let (repository, database) = try makeFixture()
+        // Seed one row in each of the three target shapes.
+        try await repository.replace(
+            target: .book, bookId: "ROM",
+            chapterNumber: nil, verseStart: nil, verseEnd: nil,
+            inserting: [BibleAnnotationRecord(
+                id: "bk", target: .book, bookId: "ROM",
+                category: .author, title: "Prologue", body: "Letter.",
+                source: .userBulk, modelId: "test", createdAt: t0
+            )]
+        )
+        try await repository.replace(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil,
+            inserting: [BibleAnnotationRecord(
+                id: "ch", target: .chapter, bookId: "ROM", chapterNumber: 8,
+                category: .summary, title: "Summary", body: "Spirit.",
+                source: .userBulk, modelId: "test", createdAt: t0
+            )]
+        )
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30,
+            inserting: [verseRecord(id: "vs")]
+        )
+
+        try await repository.deleteAll()
+
+        // Every target group is now empty.
+        #expect(try await repository.list(
+            target: .book, bookId: "ROM",
+            chapterNumber: nil, verseStart: nil, verseEnd: nil
+        ).isEmpty)
+        #expect(try await repository.list(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil
+        ).isEmpty)
+        #expect(try await repository.list(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30
+        ).isEmpty)
+        // And the table is genuinely empty (coverage resets to zero).
+        let remaining = try await database.queue.read { db in
+            try BibleAnnotationRecord.fetchCount(db)
+        }
+        #expect(remaining == 0)
+    }
+
+    @Test("deleteAll on an already-empty table is a no-op")
+    func deleteAllOnEmptyIsNoOp() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.deleteAll()
+        #expect(try await repository.list(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30
+        ).isEmpty)
+    }
 }

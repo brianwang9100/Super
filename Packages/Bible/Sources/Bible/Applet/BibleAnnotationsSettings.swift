@@ -20,7 +20,7 @@ public enum BibleAnnotationsSettings {
         databaseContext: DatabaseContext,
         runner: any BulkAnnotationRunning,
         requiresCostConfirmation: Bool,
-        deleteAll: @escaping () -> Void = {}
+        deleteAll: @escaping @MainActor () -> Void = {}
     ) -> AppletSettingsContribution {
         let viewModel = BulkAnnotationViewModel(runner: runner, deleteAll: deleteAll)
         return AppletSettingsContribution(

@@ -9,10 +9,15 @@ public struct BulkRunPlan: Sendable, Equatable {
         public let bookID: String
         public let name: String
         public let chapters: [Int]
-        public init(bookID: String, name: String, chapters: [Int]) {
+        /// `true` when the user selected the *whole* book (every chapter), which
+        /// also generates one book-level annotation ahead of the chapters. A
+        /// partial chapter pick leaves this `false`.
+        public let includesBookLevel: Bool
+        public init(bookID: String, name: String, chapters: [Int], includesBookLevel: Bool = false) {
             self.bookID = bookID
             self.name = name
             self.chapters = chapters
+            self.includesBookLevel = includesBookLevel
         }
     }
 
