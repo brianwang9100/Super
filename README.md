@@ -1,15 +1,15 @@
 # Super
 
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="Super demo" width="280" />
-</p>
-
 [![Swift Tests](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swift-test.yml)
 [![iOS Build](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/ios-build.yml)
 [![SwiftLint](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/swiftlint.yml)
 [![Secrets Scan](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml/badge.svg?branch=main)](https://github.com/brianwang9100/Super/actions/workflows/secrets-scan.yml)
 
 **One codebase, a family of chat-first AI apps.** The flagship is **SuperBible** — a free, open-source, BYOK AI study Bible heading to the App Store.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Super demo" width="280" />
+</p>
 
 ---
 
@@ -32,6 +32,25 @@ All three are built from the same `Core`, `Chat`, and `Bible` packages — they 
 
 See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpowers/specs/2026-05-23-superbible-fork-design.md) for the fork rationale, and [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md) for the long-form vision.
 
+## SuperOS in action
+
+<table>
+  <tr>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_sidebar.png" alt="SuperOS sidebar listing chats and mini-apps" width="100%"><br>
+      <sub><b>One sidebar, your whole workspace</b><br>Jump between chats or switch mini-apps — ToDo, Recipes, Bible, Finance — from a single drawer.</sub>
+    </td>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_chat.png" alt="A SuperOS chat with rich Markdown formatting" width="100%"><br>
+      <sub><b>Chat that reads well</b><br>A polished chat experience with full Markdown support — headings, bold, and clean bulleted lists.</sub>
+    </td>
+    <td width="33.33%" align="center">
+      <img src="docs/assets/screenshots/superos_tool_use.png" alt="Chat invoking tools to create tasks and Bible annotations" width="100%"><br>
+      <sub><b>Talk to your mini-apps</b><br>Tool calls let chat act for you — create tasks, annotate scripture — with each step shown inline.</sub>
+    </td>
+  </tr>
+</table>
+
 ## SuperBible in action
 
 <table>
@@ -53,25 +72,6 @@ See [`docs/superpowers/specs/2026-05-23-superbible-fork-design.md`](docs/superpo
     <td width="50%" align="center">
       <img src="docs/assets/screenshots/annotations_semi_expanded.png" alt="AI-generated study annotations alongside the passage" width="100%"><br>
       <sub><b>AI study annotations</b><br>Context, cross-references, and explanation generated for the passage you're on.</sub>
-    </td>
-  </tr>
-</table>
-
-## SuperOS in action
-
-<table>
-  <tr>
-    <td width="33.33%" align="center">
-      <img src="docs/assets/screenshots/superos_sidebar.png" alt="SuperOS sidebar listing chats and mini-apps" width="100%"><br>
-      <sub><b>One sidebar, your whole workspace</b><br>Jump between chats or switch mini-apps — ToDo, Recipes, Bible, Finance — from a single drawer.</sub>
-    </td>
-    <td width="33.33%" align="center">
-      <img src="docs/assets/screenshots/superos_chat.png" alt="A SuperOS chat with rich Markdown formatting" width="100%"><br>
-      <sub><b>Chat that reads well</b><br>A polished chat experience with full Markdown support — headings, bold, and clean bulleted lists.</sub>
-    </td>
-    <td width="33.33%" align="center">
-      <img src="docs/assets/screenshots/superos_tool_use.png" alt="Chat invoking tools to create tasks and Bible annotations" width="100%"><br>
-      <sub><b>Talk to your mini-apps</b><br>Tool calls let chat act for you — create tasks, annotate scripture — with each step shown inline.</sub>
     </td>
   </tr>
 </table>
