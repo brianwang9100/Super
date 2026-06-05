@@ -454,6 +454,15 @@ struct AppShell: View {
         // slide in behind it. The drawer is a Chat-package overlay; the
         // shell can't reach Bible's view model directly (applets are
         // import-isolated), so this goes through the bus.
+        //
+        // Intentional async gap: `sidebarOpen = true` above starts the
+        // drawer's spring on *this* render pass, while the publish (and
+        // the resulting sheet dismissal) lands a main-actor turn later.
+        // That's fine — the drawer's animation is far longer than the
+        // scheduling delay, so the sheet slides away under the incoming
+        // drawer and the overlap is imperceptible. Don't reorder the
+        // publish ahead of `sidebarOpen = true` chasing a tighter
+        // guarantee; the bus hop can't be made synchronous anyway.
         let eventBus = dependencies.eventBus
         Task {
             await eventBus.publish(.sidebarOpened)

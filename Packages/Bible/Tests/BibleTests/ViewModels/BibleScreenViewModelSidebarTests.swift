@@ -96,4 +96,19 @@ struct BibleScreenViewModelSidebarTests {
         await openSidebarAndAwait(on: bus, through: viewModel)
         #expect(!viewModel.isTranslationSheetPresented)
     }
+
+    @Test("opening the sidebar dismisses the annotation sheet and the note list")
+    func dismissesAnnotationAndNoteList() async {
+        let bus = SuperEventBus()
+        let viewModel = await makeViewModel(bus: bus)
+        viewModel.presentedAnnotationTarget = .chapter(bookId: "ROM", chapterNumber: 8)
+        viewModel.presentNoteList(for: .chapter(bookId: "ROM", chapterNumber: 8))
+        #expect(viewModel.presentedAnnotationTarget != nil)
+        #expect(viewModel.presentedNoteList != nil)
+
+        await openSidebarAndAwait(on: bus, through: viewModel)
+
+        #expect(viewModel.presentedAnnotationTarget == nil)
+        #expect(viewModel.presentedNoteList == nil)
+    }
 }
