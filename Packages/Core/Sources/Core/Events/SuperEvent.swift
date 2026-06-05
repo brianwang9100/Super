@@ -47,7 +47,7 @@ public enum SuperEvent: Sendable, Equatable {
     /// Applets dismiss any native sheet they're presenting so the
     /// in-view drawer — which renders *below* a native sheet's own
     /// presentation window and would otherwise slide in behind it —
-    /// becomes the topmost surface. Today's sole consumer is Bible
-    /// dismissing its action / narration / picker sheets.
+    /// becomes the topmost surface. Subscribers dismiss any native sheet
+    /// they're presenting.
     case sidebarOpened
 }
