@@ -19,10 +19,9 @@ import Testing
 struct BibleScreenViewModelSidebarTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private final class AckedDisclaimerStore: AnnotationDisclaimerStore, @unchecked Sendable {
-        private var value = true
-        var isAcknowledged: Bool { value }
-        func setAcknowledged(_ value: Bool) { self.value = value }
+    private struct AckedDisclaimerStore: AnnotationDisclaimerStore, Sendable {
+        var isAcknowledged: Bool { true }
+        func setAcknowledged(_ value: Bool) {}
     }
 
     private func makeViewModel(bus: SuperEventBus) async -> BibleScreenViewModel {
@@ -110,5 +109,21 @@ struct BibleScreenViewModelSidebarTests {
 
         #expect(viewModel.presentedAnnotationTarget == nil)
         #expect(viewModel.presentedNoteList == nil)
+    }
+
+    /// The annotation disclaimer is a confirmation gate, not a passive
+    /// sheet — `dismissPresentedSheets()` deliberately spares it because
+    /// dismissing it discards the user's pending annotation intent. This
+    /// locks that invariant in so a future refactor can't start dismissing
+    /// it without a failing test.
+    @Test("opening the sidebar does NOT dismiss the annotation disclaimer")
+    func sparesDisclaimerGate() async {
+        let bus = SuperEventBus()
+        let viewModel = await makeViewModel(bus: bus)
+        viewModel.isAnnotationDisclaimerPresented = true
+
+        await openSidebarAndAwait(on: bus, through: viewModel)
+
+        #expect(viewModel.isAnnotationDisclaimerPresented)
     }
 }
