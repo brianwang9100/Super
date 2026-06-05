@@ -133,6 +133,12 @@ public final class BibleScreenViewModel {
     /// update. Never observed in production.
     private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
 
+    /// One-shot callbacks fired after the dispatch-subscription task
+    /// processes a `sidebarOpened` envelope (and the resulting sheet
+    /// dismissal). Test seam — lets a test await the bus-driven dismiss
+    /// deterministically instead of polling. Never observed in production.
+    private var sidebarDismissCallbacks: [@MainActor () -> Void] = []
+
     /// In-flight reading-position write, retained so tests can await it.
     private var persistTask: Task<Void, Never>?
 
@@ -716,7 +722,24 @@ public final class BibleScreenViewModel {
     }
 
     private func handleBusEvent(_ event: SuperEvent) {
-        guard case .bibleAnnotateCompleted(let requestId, let result) = event else { return }
+        switch event {
+        case .bibleAnnotateCompleted(let requestId, let result):
+            handleAnnotateCompleted(requestId: requestId, result: result)
+        case .sidebarOpened:
+            // The shell's navigation drawer is opening. Any native sheet
+            // we're presenting sits in its own window above the in-view
+            // drawer, so the menu would slide in behind it — dismiss them
+            // all so the drawer is the topmost surface.
+            dismissPresentedSheets()
+            let callbacks = sidebarDismissCallbacks
+            sidebarDismissCallbacks.removeAll()
+            for callback in callbacks { callback() }
+        default:
+            break
+        }
+    }
+
+    private func handleAnnotateCompleted(requestId: String, result: BibleAnnotateResult) {
         // Find the target whose running status carries this id. The
         // map is small (one entry per in-flight target) so a linear
         // scan is fine and avoids a parallel reverse map.
@@ -739,6 +762,34 @@ public final class BibleScreenViewModel {
         let callbacks = dispatchCompletionCallbacks
         dispatchCompletionCallbacks.removeAll()
         for callback in callbacks { callback() }
+    }
+
+    /// Close the native sheets this screen presents so the shell's drawer
+    /// (an in-view overlay that renders below a native sheet's window) wins
+    /// the z-order when the sidebar opens. Each call is a no-op when that
+    /// sheet isn't up, so dismissing all of them unconditionally is safe.
+    ///
+    /// The annotation *disclaimer* is deliberately excluded: it's a
+    /// confirmation gate, not a passive sheet — flipping its binding fires
+    /// `discardAnnotationDisclaimer()` and silently throws away the user's
+    /// pending annotation intent. Leaving it up is the safer trade-off; the
+    /// user just invoked it and is unlikely to reach for the hamburger mid-gate.
+    private func dismissPresentedSheets() {
+        clearSelection()
+        dismissNarrationSheet()
+        dismissBookSheet()
+        dismissTranslationSheet()
+        dismissAnnotationSheet()
+        dismissNoteList()
+    }
+
+    /// Test seam: register a one-shot callback fired after the
+    /// subscription processes a `sidebarOpened` envelope and dismisses
+    /// the presented sheets. Lets tests await the bus-driven dismiss
+    /// deterministically without `Task.yield()` polling (AGENTS.md §2).
+    /// Underscored because it's not stable API.
+    func _onNextSidebarDismiss(_ callback: @escaping @MainActor () -> Void) {
+        sidebarDismissCallbacks.append(callback)
     }
 
     /// Test seam: register a one-shot callback fired after the
