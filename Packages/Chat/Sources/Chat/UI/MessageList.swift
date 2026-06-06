@@ -294,6 +294,27 @@ public struct MessageList: View {
     /// Counter consumed by the geometry action; resets to 0 on every
     /// content-height change while ``verbosityScrollMode`` is active.
     @State private var verbosityStableTickCount: Int = 0
+    /// Measured height of the `ScrollView`'s own bounds (the container),
+    /// fed back into the content's `minHeight` so the content frame is
+    /// `max(containerHeight, contentHeight)` — continuous, with no
+    /// bistable fits-vs-overflows boundary for the resize jitter to land
+    /// on. Sourced from a background `GeometryReader` on the ScrollView
+    /// (not the content), so it's an input set by the surface's frame —
+    /// never an output of the content's own height. That independence is
+    /// what keeps it loop-free.
+    @State private var containerHeight: CGFloat = 0
+    /// Armed by `.onChange(of: items.count)` so the geometry action
+    /// re-issues a bottom-snap once content height *settles* — the
+    /// single immediate snap there lands against transient stream-end
+    /// geometry (small semi container + large keyboard/composer inset +
+    /// mid-flight markdown/keyboard animation), which the still-changing
+    /// content height then invalidates, hiding the last rows. Mirrors the
+    /// ``verbosityScrollMode`` settle pattern.
+    @State private var pendingBottomSnap = false
+    /// Counter for ``pendingBottomSnap``; resets to 0 on every content-
+    /// height change and disarms the pending snap after
+    /// ``bottomSnapStableTicksToClear`` consecutive content-stable ticks.
+    @State private var bottomSnapStableTickCount = 0
 
     /// What to do with the scroll position while a verbosity-driven
     /// relayout is in flight. See ``verbosityScrollMode``.
@@ -309,6 +330,12 @@ public struct MessageList: View {
     /// holding the mode through a subsequent independent content
     /// change.
     private static let verbosityStableTicksToClear: Int = 3
+    /// Consecutive content-height-stable ticks required to disarm
+    /// ``pendingBottomSnap``. Independent of
+    /// ``verbosityStableTicksToClear`` (same value today, different
+    /// concern — the stream-end settle vs. the verbosity-relayout settle)
+    /// so tuning one doesn't silently move the other.
+    private static let bottomSnapStableTicksToClear: Int = 3
     /// Reduced, `Equatable` snapshot of the scroll geometry — the
     /// only shape `onScrollGeometryChange`'s transform emits.
     /// `contentHeight` lets the action distinguish content-grow ticks
@@ -374,12 +401,39 @@ public struct MessageList: View {
             // visual margin the old `__bottom` clear-color marker
             // (4pt) used to add on top of the 4pt LazyVStack padding.
             .padding(.bottom, 8)
+            // Floor the content frame at the container height so it's
+            // `max(containerHeight, contentHeight)` — continuous in the
+            // container height with no fits-vs-overflows boundary. Short
+            // content top-aligns within the filled frame (the fresh-page
+            // shape, replacing the old `.defaultScrollAnchor(.top, for:
+            // .alignment)`); long content makes the floor inert and scrolls
+            // normally. This removes the bistable top/bottom anchor flip
+            // that jittered while the surface was being actively resized
+            // (drag/morph sweeping the container height through the content
+            // height). `containerHeight` is the ScrollView's own bounds, an
+            // input from the surface frame — never an output of this content
+            // — so feeding it back here can't loop.
+            .frame(minHeight: containerHeight, alignment: .top)
             .contentShape(Rectangle())
             .simultaneousGesture(
                 TapGesture().onEnded { onContentTap() }
             )
         }
         .background(theme.background)
+        // Measure the ScrollView's container bounds (not the content) to
+        // drive the `minHeight` floor above. A background `GeometryReader`
+        // here reads the surface-imposed frame, so it changes only on a
+        // genuine container resize (drag/morph/keyboard), not per layout
+        // pass — and never reacts to the content height it ultimately
+        // bounds, keeping the dependency one-directional (loop-free).
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onChange(of: proxy.size.height, initial: true) { _, height in
+                        containerHeight = height
+                    }
+            }
+        )
         // Drag-to-dismiss; the `simultaneousGesture` above handles
         // tap-to-dismiss. Both routes lead through `ChatScreen`'s
         // `dismissKeyboard()` via the `onContentTap` callback (taps) and
@@ -393,18 +447,15 @@ public struct MessageList: View {
         // offset cases only.
         .scrollDismissesKeyboard(.interactively)
         .scrollPosition($scrollPosition)
-        // Declarative anchor roles:
-        //   - no-role `.defaultScrollAnchor(.bottom)` sets the initial
-        //     position for a long, overflowing transcript — lands
-        //     at the bottom on mount.
-        //   - `.alignment` pinned to `.top` keeps non-scrollable short
-        //     chats top-aligned, filling from the top with empty space
-        //     below — like a fresh page. Without this override the
-        //     `.bottom` anchor would push short content to the bottom
-        //     of the viewport, which is the wrong shape for a
-        //     fresh/empty chat.
+        // `.defaultScrollAnchor(.bottom)` sets the initial position for a
+        // long, overflowing transcript — lands at the bottom on mount.
+        // Short content is top-aligned by the `.frame(minHeight:)` floor on
+        // the content above (not a `.defaultScrollAnchor(.top, for:
+        // .alignment)`): the alignment-role anchor made the layout bistable
+        // on `sign(contentHeight - containerHeight)` and flipped — jittering
+        // — whenever an active resize swept the container across the content
+        // height. The min-height floor is the continuous replacement.
         .defaultScrollAnchor(.bottom)
-        .defaultScrollAnchor(.top, for: .alignment)
         // Bottom-pin on content grow (new message, lazy-mat'd row
         // becoming visible) and on streaming-content deltas.
         // Empirically `.defaultScrollAnchor(.bottom, for: .sizeChanges)`
@@ -425,6 +476,17 @@ public struct MessageList: View {
             verbosityScrollMode = nil
             verbosityStableTickCount = 0
             scrollPosition.scrollTo(edge: .bottom)
+            // Arm a settle re-snap: the immediate snap above lands against
+            // transient geometry at stream end (the streaming tail just
+            // cleared while the persisted row grew, and in semi-expanded +
+            // keyboard the container is small with a large composer/keyboard
+            // inset and the keyboard-glide animation may still be settling),
+            // so the bottom it computes is invalidated as content height
+            // keeps changing — leaving the last rows hidden behind the inset
+            // until the user scrolls. The geometry action re-snaps once
+            // content height holds steady (see `pendingBottomSnap`).
+            pendingBottomSnap = true
+            bottomSnapStableTickCount = 0
         }
         // `streamingTail` is the whole `StreamingState`, not just
         // `.text` — the tail grows during the pure-thinking phase via
@@ -524,6 +586,33 @@ public struct MessageList: View {
                     if verbosityStableTickCount >= Self.verbosityStableTicksToClear {
                         verbosityScrollMode = nil
                         verbosityStableTickCount = 0
+                    }
+                }
+            }
+            // Stream-end settle re-snap. The immediate `scrollTo(.bottom)`
+            // in `.onChange(of: items.count)` runs against transient
+            // geometry (tail-clear + persisted-row-grow + keyboard/composer
+            // inset + in-flight animation); re-snap on every content-height
+            // change until it holds steady, so the final snap lands against
+            // settled geometry. Gated on content-height equality (never live
+            // `contentOffset`), so the `scrollTo` write can't retrigger it;
+            // the stable-tick counter self-terminates once geometry stops
+            // moving. Must sit *before* the container-height auto-follow's
+            // early returns below, because the stream-end settle is mostly
+            // content-only ticks (container height unchanged) that those
+            // returns would skip. (For short content the `minHeight` floor
+            // ties contentHeight to containerHeight, so a container resize
+            // also re-fires this — harmless: re-snapping on a resize is
+            // wanted, and it still disarms when motion stops.)
+            if pendingBottomSnap {
+                if oldValue.contentHeight != newValue.contentHeight {
+                    bottomSnapStableTickCount = 0
+                    scrollPosition.scrollTo(edge: .bottom)
+                } else {
+                    bottomSnapStableTickCount += 1
+                    if bottomSnapStableTickCount >= Self.bottomSnapStableTicksToClear {
+                        pendingBottomSnap = false
+                        bottomSnapStableTickCount = 0
                     }
                 }
             }
