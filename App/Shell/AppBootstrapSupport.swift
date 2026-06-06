@@ -231,6 +231,25 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
+        // Read provider — emits a canned `bible.read` tool call from the
+        // reference in the user's turn. Both targets register `bible.read`, so
+        // it seeds unconditionally (unlike "Debug (todo)"). Never auto-selected.
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-read", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-read",
+                name: "Debug (read)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugReadLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: false,
+                maxContextTokens: DebugReadLLMProvider.maxContextTokens,
+                isSelected: false
+            )
+        }
         // Canned-stream provider wired to the client-mock search backend so
         // the full web-search flow (cost gate → confirm → sources pill →
         // Gemini suggestions on a "gemini" query) is exercisable in the
