@@ -275,6 +275,9 @@ public struct ReadBibleTool: ToolExecutor {
         if case .int(let value) = raw { return value }
         if case .double(let value) = raw {
             // Some providers serialize integers as doubles; round-trip safely.
+            // `Int(_:)` traps on NaN/±∞ — standard JSON can't carry those, but
+            // guard before the cast so a non-finite value degrades to nil.
+            guard value.isFinite else { return nil }
             let rounded = Int(value)
             return Double(rounded) == value ? rounded : nil
         }
@@ -287,7 +290,7 @@ public struct ReadBibleTool: ToolExecutor {
 
     /// A soft input failure, caught in `execute` and returned as an `isError`
     /// `ToolResult` so the model can correct its arguments.
-    private struct ValidationError: Error {
+    private struct ValidationError: Error, Sendable {
         let message: String
         init(_ message: String) { self.message = message }
     }
