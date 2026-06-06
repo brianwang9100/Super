@@ -142,8 +142,11 @@ public struct ReadBibleTool: ToolExecutor {
         let translation: BibleTranslation
         do {
             range = try Self.resolveRange(input)
-            translation = try await resolveTranslation(input)
-        } catch let error as ValidationError {
+            translation = try await BibleToolTranslationResolver.resolve(
+                explicitCode: Self.optionalString(input, key: "translation"),
+                positionRepository: positionRepository
+            )
+        } catch let error as BibleToolValidationError {
             return Self.errorResult(error.message)
         }
 
@@ -227,71 +230,28 @@ public struct ReadBibleTool: ToolExecutor {
         case (nil, nil):
             return .wholeChapter
         case (nil, .some):
-            throw ValidationError("endVerse was provided without startVerse. Pass startVerse too, or omit both to read the whole chapter.")
+            throw BibleToolValidationError("endVerse was provided without startVerse. Pass startVerse too, or omit both to read the whole chapter.")
         case (.some(let s), nil):
-            guard s >= 1 else { throw ValidationError("startVerse must be ≥ 1.") }
+            guard s >= 1 else { throw BibleToolValidationError("startVerse must be ≥ 1.") }
             return .single(s)
         case (.some(let s), .some(let e)):
-            guard s >= 1 else { throw ValidationError("startVerse must be ≥ 1.") }
-            guard e >= s else { throw ValidationError("endVerse (\(e)) must be ≥ startVerse (\(s)).") }
+            guard s >= 1 else { throw BibleToolValidationError("startVerse must be ≥ 1.") }
+            guard e >= s else { throw BibleToolValidationError("endVerse (\(e)) must be ≥ startVerse (\(s)).") }
             return .span(s, e)
         }
-    }
-
-    // MARK: - Translation
-
-    /// Resolve the translation: an explicit, strictly-validated `translation`
-    /// argument, or — when omitted/blank — the user's currently selected
-    /// translation (falling back to the default when no position is stored or the
-    /// store is unavailable).
-    private func resolveTranslation(_ input: [String: JSONValue]) async throws -> BibleTranslation {
-        if let raw = Self.optionalString(input, key: "translation"),
-           !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let code = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-            // Strict: `init(rawValue:)`, never `.named(_:)`, so an unknown code is
-            // an error the model can correct rather than a silent fallback.
-            guard let translation = BibleTranslation(rawValue: code) else {
-                let valid = BibleTranslation.allCases.map(\.rawValue).joined(separator: ", ")
-                throw ValidationError("Unknown translation '\(raw)'. Available: \(valid).")
-            }
-            return translation
-        }
-        var storedCode: String?
-        if let positionRepository {
-            storedCode = (try? await positionRepository.load())?.translationId
-        }
-        return storedCode.flatMap(BibleTranslation.init(rawValue:)) ?? .defaultTranslation
     }
 
     // MARK: - JSON parsing
 
     private static func optionalString(_ input: [String: JSONValue], key: String) -> String? {
-        guard case .string(let value) = input[key] else { return nil }
-        return value
+        BibleToolJSON.optionalString(input, key: key)
     }
 
     private static func optionalInt(_ input: [String: JSONValue], key: String) -> Int? {
-        guard let raw = input[key] else { return nil }
-        if case .int(let value) = raw { return value }
-        if case .double(let value) = raw {
-            // Some providers serialize integers as doubles; round-trip safely.
-            // `Int(_:)` traps on NaN/±∞ — standard JSON can't carry those, but
-            // guard before the cast so a non-finite value degrades to nil.
-            guard value.isFinite else { return nil }
-            let rounded = Int(value)
-            return Double(rounded) == value ? rounded : nil
-        }
-        return nil
+        BibleToolJSON.optionalInt(input, key: key)
     }
 
     private static func errorResult(_ message: String) -> ToolResult {
         ToolResult(toolID: ReadBibleTool.toolID, content: message, isError: true)
-    }
-
-    /// A soft input failure, caught in `execute` and returned as an `isError`
-    /// `ToolResult` so the model can correct its arguments.
-    private struct ValidationError: Error, Sendable {
-        let message: String
-        init(_ message: String) { self.message = message }
     }
 }

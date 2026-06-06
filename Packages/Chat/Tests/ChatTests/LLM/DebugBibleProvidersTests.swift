@@ -198,6 +198,33 @@ struct DebugBibleProvidersTests {
         #expect(input["startVerse"] == nil)
     }
 
+    @Test func searchProviderEmitsBibleSearchToolCallFromUserText() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "verses about anxiety")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        #expect(call.name == "bible.search")
+        let input = try #require(Self.object(call.input))
+        // The whole user turn becomes the query; no translation → current selection.
+        #expect(input["query"] == .string("verses about anxiety"))
+        #expect(input["translation"] == nil)
+    }
+
+    @Test func searchProviderFallsBackToCannedQueryWhenUserTextIsEmpty() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "   ")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["query"] == .string(DebugSearchLLMProvider.fallbackQuery))
+    }
+
     // MARK: - Provider stream: loop termination
 
     @Test func annotateProviderStopsAfterToolResultTurn() async throws {
@@ -222,6 +249,16 @@ struct DebugBibleProvidersTests {
 
     @Test func readProviderStopsAfterToolResultTurn() async throws {
         let provider = DebugReadLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(provider, messages: Self.afterToolRanMessages(), model: model)
+
+        #expect(Self.firstToolUse(in: events) == nil)
+        let hasText = events.contains { if case .textDelta = $0 { return true } else { return false } }
+        #expect(hasText)
+    }
+
+    @Test func searchProviderStopsAfterToolResultTurn() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
         let events = try await Self.collect(provider, messages: Self.afterToolRanMessages(), model: model)
 
@@ -315,6 +352,26 @@ struct DebugBibleProvidersTests {
         #expect(input["chapter"] == .int(3))
         #expect(input["startVerse"] == .int(16))
         #expect(input["endVerse"] == .int(17))
+        let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
+        #expect(roles == [.user, .assistant, .tool, .assistant])
+    }
+
+    @Test func searchProviderDrivesOneToolCallThroughSession() async throws {
+        let provider = DebugSearchLLMProvider(id: "debug-search-1")
+        let setup = try await Self.makeSession(provider: provider)
+        let executor = FakeToolExecutor(toolID: "bible.search")
+        await executor.setResult(ToolResult(toolID: "bible.search", content: "1 result for \"anxiety\" (KJV):\n\nPhilippians 4:6 — ..."))
+        await setup.toolRegistry.register(ToolRegistration(
+            tool: Self.tool(id: "bible.search"), execution: .local(executor)
+        ))
+
+        let stream = await setup.session.send(text: "anxiety", model: setup.model)
+        _ = await Self.drain(stream)
+        await setup.session.waitUntilFinished()
+
+        #expect(await executor.executionCount() == 1)
+        let input = try #require(await executor.capturedInputs().first)
+        #expect(input["query"] == .string("anxiety"))
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }

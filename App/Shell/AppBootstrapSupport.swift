@@ -250,6 +250,25 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
+        // Search provider — emits a canned `bible.search` tool call using the
+        // user's turn as the query. Both targets register `bible.search`, so it
+        // seeds unconditionally (like "Debug (read)"). Never auto-selected.
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-search", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-search",
+                name: "Debug (search)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugSearchLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: false,
+                maxContextTokens: DebugSearchLLMProvider.maxContextTokens,
+                isSelected: false
+            )
+        }
         // Canned-stream provider wired to the client-mock search backend so
         // the full web-search flow (cost gate → confirm → sources pill →
         // Gemini suggestions on a "gemini" query) is exercisable in the

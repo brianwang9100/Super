@@ -294,10 +294,3 @@ private struct StubBibleTextLoader: BibleTextLoader {
         return book
     }
 }
-
-/// An in-memory `BibleReadingPositionRepository` returning a fixed record.
-private struct StubPositionRepository: BibleReadingPositionRepository {
-    let record: BibleReadingPositionRecord?
-    func load() async throws -> BibleReadingPositionRecord? { record }
-    func save(_ record: BibleReadingPositionRecord) async throws {}
-}

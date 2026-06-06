@@ -145,6 +145,7 @@ enum SuperBibleAppBootstrap {
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
         await bibleApplet.registerReadTool(in: toolRegistry)
+        await bibleApplet.registerSearchTool(in: toolRegistry)
 
         // Bible's "Annotations" hub for the shared Settings screen is built
         // further down, once the `.userBulk` annotate dispatcher it drives
