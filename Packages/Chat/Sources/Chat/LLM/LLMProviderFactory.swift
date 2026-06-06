@@ -99,6 +99,8 @@ public func makeLLMProvider(
             return DebugNoteLLMProvider(id: record.id)
         case DebugReadLLMProvider.modelID:
             return DebugReadLLMProvider(id: record.id)
+        case DebugSearchLLMProvider.modelID:
+            return DebugSearchLLMProvider(id: record.id)
         case DebugTodoLLMProvider.modelID:
             return DebugTodoLLMProvider(id: record.id)
         default:

@@ -69,6 +69,12 @@ public struct BibleApplet: MiniApplet {
     /// passed explicitly.
     private let readingPositionRepository: (any BibleReadingPositionRepository)?
 
+    /// Content-search seam for the `bible.search` tool, over the read-only bundled
+    /// `bible-text.sqlite` FTS index. `nil` only if that bundle resource is
+    /// missing/unreadable — `registerSearchTool(in:)` then becomes a no-op so the
+    /// rest of the reader still loads.
+    private let textSearcher: (any BibleTextSearching)?
+
     /// Production entry point — bundled text plus an on-disk store under
     /// Application Support for the reading position and verse highlights.
     ///
@@ -96,6 +102,10 @@ public struct BibleApplet: MiniApplet {
         // the view model — both point at the same `bible.sqlite` queue.
         let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
         self.readingPositionRepository = readingPositionRepository
+        // The bundled FTS index is independent of `bible.sqlite`; `try?` because
+        // a missing/corrupt bundle resource should degrade `bible.search` to a
+        // no-op, not crash the applet.
+        self.textSearcher = try? BundledBibleTextSearcher()
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -123,7 +133,8 @@ public struct BibleApplet: MiniApplet {
         databaseContext: DatabaseContext? = nil,
         annotationRepository: (any BibleAnnotationRepository)? = nil,
         noteRepository: (any BibleNoteRepository)? = nil,
-        readingPositionRepository: (any BibleReadingPositionRepository)? = nil
+        readingPositionRepository: (any BibleReadingPositionRepository)? = nil,
+        textSearcher: (any BibleTextSearching)? = nil
     ) {
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
@@ -132,6 +143,7 @@ public struct BibleApplet: MiniApplet {
         self.annotationRepository = annotationRepository
         self.noteRepository = noteRepository
         self.readingPositionRepository = readingPositionRepository
+        self.textSearcher = textSearcher
     }
 
     /// Register the `bible.annotate` tool with the given registry, using
@@ -202,6 +214,23 @@ public struct BibleApplet: MiniApplet {
         await registry.register(
             ReadBibleTool.registration(
                 textLoader: BundledBibleTextLoader(),
+                positionRepository: readingPositionRepository
+            )
+        )
+    }
+
+    /// Register the `bible.search` content-search tool with the given registry,
+    /// so the assistant can find verses by topic from the bundled FTS index
+    /// before answering thematic Bible questions.
+    ///
+    /// No-op only if the bundled `bible-text.sqlite` resource couldn't be opened
+    /// (it ships with the app, so this is effectively always available). Called
+    /// from each app's bootstrap alongside `registerReadTool`.
+    public func registerSearchTool(in registry: ToolRegistry) async {
+        guard let textSearcher else { return }
+        await registry.register(
+            SearchBibleTool.registration(
+                searcher: textSearcher,
                 positionRepository: readingPositionRepository
             )
         )
