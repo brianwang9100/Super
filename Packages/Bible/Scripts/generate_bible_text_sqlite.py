@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Build the read-only `bible-text.sqlite` full-text-search database from the
-bundled per-book translation JSON.
+"""Build the read-only `bible-text.sqlite` database from the bundled per-book
+translation JSON.
 
-`bible.read` looks scripture up by *reference*; this database is the substrate for
-its sibling, `bible.search` — retrieval by *content*. It is a flat, immutable verse
-table plus an FTS5 index, kept deliberately separate from the mutable, sync-targeted
-`bible.sqlite` so 124k static verse rows never enter the sync story.
+This database is the immutable, prebuilt store for on-device Bible text, kept
+deliberately separate from the mutable, sync-targeted `bible.sqlite` so its static
+rows never enter the sync story. It carries two layers, both derived here from the
+same parsed chapters:
+
+- **Reading** — a `chapter` table whose `json` column holds each chapter's structured
+  object (`{number, paragraphs}`) *verbatim*, so Swift's `JSONDecoder` reconstructs
+  the identical `BibleChapter`. (Consumed by the chapter reader and `bible.read`.)
+  Book *names* stay in `BibleBookCatalog`, so no `book` table is needed here.
+- **Search** — a flat, coalesced `verse` table + an FTS5 index, the substrate for
+  `bible.search` — retrieval by *content* rather than *reference*.
 
 Run once from the package root after the JSON resources change; commit the result:
 
@@ -17,11 +24,13 @@ override:
 
     python3 Scripts/generate_bible_text_sqlite.py <resources_dir> <output_sqlite>
 
-The verse text is **coalesced exactly as Swift's `BibleChapter.coalescedVerses()`
-does** (Models/BibleChapter.swift): walk paragraphs in order, skip headings, group
-fragments sharing a verse number, join them space-separated, flatten `\n` line
-breaks to spaces, ascending verse order. `BibleTextDatabase`'s bundled-consistency
-test diffs the shipped rows against that Swift path, so the two must not drift.
+The structured `chapter.json` is stored unmodified — key order and whitespace are
+irrelevant to `JSONDecoder`. The flat verse text is **coalesced exactly as Swift's
+`BibleChapter.coalescedVerses()` does** (Models/BibleChapter.swift): walk paragraphs
+in order, skip headings, group fragments sharing a verse number, join them
+space-separated, flatten `\n` line breaks to spaces, ascending verse order.
+`BibleTextDatabase`'s bundled-consistency test diffs the shipped rows against that
+Swift path, so the two must not drift.
 """
 
 import json
@@ -56,18 +65,14 @@ def coalesce_chapter(paragraphs):
     return rows
 
 
-def iter_verse_rows(resources_dir):
-    """Yield (translation, bookId, chapter, verse, text) for every bundled book."""
+def iter_books(resources_dir):
+    """Yield the decoded `(translation, bookId, book)` for every bundled `<CODE>-<bookID>.json`."""
     for json_path in sorted(resources_dir.glob("*-*.json")):
         # `<CODE>-<bookID>.json`, e.g. `KJV-1PE.json`. The bookId itself can
         # contain a hyphen-free 3-char code, so split only on the first hyphen.
         translation = json_path.stem.split("-", 1)[0]
         book = json.loads(json_path.read_text(encoding="utf-8"))
-        book_id = book["id"]
-        for chapter in book["chapters"]:
-            chapter_number = chapter["number"]
-            for verse_number, text in coalesce_chapter(chapter["paragraphs"]):
-                yield (translation, book_id, chapter_number, verse_number, text)
+        yield translation, book["id"], book
 
 
 def build(resources_dir: Path, output_path: Path):
@@ -77,6 +82,13 @@ def build(resources_dir: Path, output_path: Path):
     try:
         connection.executescript(
             """
+            CREATE TABLE chapter (
+              translation TEXT NOT NULL,
+              bookId      TEXT NOT NULL,
+              number      INTEGER NOT NULL,
+              json        TEXT NOT NULL,
+              PRIMARY KEY (translation, bookId, number)
+            );
             CREATE TABLE verse (
               id          INTEGER PRIMARY KEY,
               translation TEXT NOT NULL,
@@ -95,11 +107,27 @@ def build(resources_dir: Path, output_path: Path):
             );
             """
         )
-        rows = list(iter_verse_rows(resources_dir))
+
+        chapter_rows = []
+        verse_rows = []
+        for translation, book_id, book in iter_books(resources_dir):
+            for chapter in book["chapters"]:
+                number = chapter["number"]
+                # Stored verbatim so Swift decodes the identical `BibleChapter`.
+                chapter_rows.append(
+                    (translation, book_id, number, json.dumps(chapter, ensure_ascii=False))
+                )
+                for verse_number, text in coalesce_chapter(chapter["paragraphs"]):
+                    verse_rows.append((translation, book_id, number, verse_number, text))
+
+        connection.executemany(
+            "INSERT INTO chapter(translation, bookId, number, json) VALUES (?, ?, ?, ?)",
+            chapter_rows,
+        )
         connection.executemany(
             "INSERT INTO verse(translation, bookId, chapter, verse, text) "
             "VALUES (?, ?, ?, ?, ?)",
-            rows,
+            verse_rows,
         )
         connection.execute(
             "INSERT INTO verse_fts(rowid, text) SELECT id, text FROM verse"
@@ -110,7 +138,7 @@ def build(resources_dir: Path, output_path: Path):
         connection.commit()
         connection.execute("VACUUM")
         connection.commit()
-        return len(rows)
+        return len(chapter_rows), len(verse_rows)
     finally:
         connection.close()
 
@@ -135,9 +163,12 @@ def main(argv):
         print(f"error: resources dir not found: {resources_dir}")
         return 1
 
-    count = build(resources_dir, output_path)
+    chapters, verses = build(resources_dir, output_path)
     size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"wrote {count} verses to {output_path} ({size_mb:.1f} MB)")
+    print(
+        f"wrote {chapters} chapters, {verses} verses "
+        f"to {output_path} ({size_mb:.1f} MB)"
+    )
     return 0
 
 
