@@ -25,7 +25,27 @@ struct ReadBibleToolTests {
         )
     }
 
+    /// Acts 8 with verse 37 omitted — a real textual variant some translations
+    /// (the bundled WEB) leave out, so `37` is a valid verse number that selects
+    /// no text.
+    private var actsBookWithGap: BibleBook {
+        BibleBook(
+            id: "ACT",
+            name: "Acts",
+            testament: .newTestament,
+            chapters: [
+                BibleChapter(number: 8, paragraphs: [
+                    .prose([
+                        BibleVerse(number: 36, text: "And as they went on their way, they came unto a certain water."),
+                        BibleVerse(number: 38, text: "And he commanded the chariot to stand still."),
+                    ]),
+                ]),
+            ]
+        )
+    }
+
     private func makeTool(
+        book: BibleBook? = nil,
         currentTranslation: String? = nil,
         positionAvailable: Bool = true
     ) -> ReadBibleTool {
@@ -38,7 +58,7 @@ struct ReadBibleToolTests {
             })
             : nil
         return ReadBibleTool(
-            textLoader: StubBibleTextLoader(book: johnBook),
+            textLoader: StubBibleTextLoader(book: book ?? johnBook),
             positionRepository: repository
         )
     }
@@ -225,6 +245,42 @@ struct ReadBibleToolTests {
         ])
         #expect(result.isError == true)
         #expect(result.content.contains("out of range"))
+    }
+
+    // MARK: - Omitted verses (textual variants)
+
+    @Test("a verse the translation omits is an error, not an empty body")
+    func omittedSingleVerseErrors() async throws {
+        let result = try await makeTool(book: actsBookWithGap).execute(input: [
+            "book": .string("Acts"), "chapter": .int(8), "startVerse": .int(37),
+        ])
+        #expect(result.isError == true)
+        #expect(result.content.contains("no verse text"))
+    }
+
+    @Test("a range spanning an omitted verse returns the present verses")
+    func rangeAcrossOmittedVerse() async throws {
+        let result = try await makeTool(book: actsBookWithGap).execute(input: [
+            "book": .string("Acts"), "chapter": .int(8),
+            "startVerse": .int(36), "endVerse": .int(38),
+        ])
+        #expect(result.isError == false)
+        // The citation reflects which verses are actually present (36 and 38),
+        // and the omitted verse 37 is absent from the body.
+        #expect(result.content.hasPrefix("Acts 8:36, 38 (KJV)"))
+        #expect(result.content.contains("36. "))
+        #expect(result.content.contains("38. "))
+        #expect(!result.content.contains("37."))
+    }
+
+    @Test("a whole-chapter read of a chapter with a verse gap still succeeds")
+    func wholeChapterWithGapSucceeds() async throws {
+        let result = try await makeTool(book: actsBookWithGap).execute(input: [
+            "book": .string("Acts"), "chapter": .int(8),
+        ])
+        #expect(result.isError == false)
+        #expect(result.content.contains("36. "))
+        #expect(result.content.contains("38. "))
     }
 }
 

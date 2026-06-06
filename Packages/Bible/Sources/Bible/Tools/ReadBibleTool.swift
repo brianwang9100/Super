@@ -174,6 +174,20 @@ public struct ReadBibleTool: ToolExecutor {
             // rather than erroring, so "16-9999" returns 16…end.
             let upper = range.upperBound.map { min($0, maxVerse) } ?? number
             selected = allVerses.filter { $0.number >= number && $0.number <= upper }
+            // `number <= maxVerse` is a bound, not a membership check: bundled
+            // text has real verse-number gaps (textual variants some
+            // translations omit, e.g. Acts 8:37 in WEB). A request that lands
+            // entirely in such a gap selects nothing — error rather than return
+            // a confident citation header over an empty body, which is exactly
+            // the silent-grounding failure this tool exists to prevent. A range
+            // that drops only *interior* omitted verses still returns its
+            // present verses (the citation reflects which ones).
+            guard !selected.isEmpty else {
+                let requested = range.upperBound == nil
+                    ? "\(summary.name) \(chapterNumber):\(number)"
+                    : "\(summary.name) \(chapterNumber):\(number)-\(upper)"
+                return Self.errorResult("\(requested) (\(translation.rawValue)) has no verse text in this translation — those verse numbers are omitted here, as a textual variant some translations don't include. Try an adjacent verse.")
+            }
             citedNumbers = selected.map(\.number)
         }
 
