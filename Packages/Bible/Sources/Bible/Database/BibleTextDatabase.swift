@@ -41,32 +41,17 @@ public struct BibleTextDatabase: Sendable {
 
     /// Build an in-memory database with the same schema as the shipped artifact
     /// and the given verses inserted — the test seam, so searcher-logic tests
-    /// don't depend on the 30 MB bundled file.
+    /// don't depend on the 50 MB bundled file.
     ///
-    /// The schema here mirrors `Scripts/generate_bible_text_sqlite.py` exactly;
-    /// the bundled-consistency test guards the shipped artifact against the
-    /// Swift coalescing path, so the two schema expressions can't silently drift.
+    /// The schema here mirrors `Scripts/generate_bible_text_sqlite.py` exactly
+    /// (including the structured `chapter` table, even though this verse-only seam
+    /// leaves it empty); the bundled-consistency test guards the shipped artifact
+    /// against the Swift coalescing path, so the two schema expressions can't
+    /// silently drift.
     static func makeInMemory(verses: [Row]) throws -> BibleTextDatabase {
         let queue = try DatabaseQueue()
         try queue.write { db in
-            try db.execute(sql: """
-                CREATE TABLE verse (
-                  id          INTEGER PRIMARY KEY,
-                  translation TEXT NOT NULL,
-                  bookId      TEXT NOT NULL,
-                  chapter     INTEGER NOT NULL,
-                  verse       INTEGER NOT NULL,
-                  text        TEXT NOT NULL
-                );
-                CREATE INDEX verse_on_translation_bookId_chapter
-                  ON verse(translation, bookId, chapter);
-                CREATE VIRTUAL TABLE verse_fts USING fts5(
-                  text,
-                  content='verse',
-                  content_rowid='id',
-                  tokenize='porter unicode61'
-                );
-                """)
+            try db.execute(sql: Self.schemaSQL)
             for verse in verses {
                 try db.execute(
                     sql: "INSERT INTO verse(translation, bookId, chapter, verse, text) VALUES (?, ?, ?, ?, ?)",
@@ -77,6 +62,34 @@ public struct BibleTextDatabase: Sendable {
         }
         return BibleTextDatabase(queue: queue)
     }
+
+    /// The full schema of `bible-text.sqlite`, mirroring the generator script. Kept
+    /// as one constant so every in-memory seam builds the identical shape.
+    static let schemaSQL = """
+        CREATE TABLE chapter (
+          translation TEXT NOT NULL,
+          bookId      TEXT NOT NULL,
+          number      INTEGER NOT NULL,
+          json        TEXT NOT NULL,
+          PRIMARY KEY (translation, bookId, number)
+        );
+        CREATE TABLE verse (
+          id          INTEGER PRIMARY KEY,
+          translation TEXT NOT NULL,
+          bookId      TEXT NOT NULL,
+          chapter     INTEGER NOT NULL,
+          verse       INTEGER NOT NULL,
+          text        TEXT NOT NULL
+        );
+        CREATE INDEX verse_on_translation_bookId_chapter
+          ON verse(translation, bookId, chapter);
+        CREATE VIRTUAL TABLE verse_fts USING fts5(
+          text,
+          content='verse',
+          content_rowid='id',
+          tokenize='porter unicode61'
+        );
+        """
 
     /// A verse row for the in-memory test seam.
     struct Row {

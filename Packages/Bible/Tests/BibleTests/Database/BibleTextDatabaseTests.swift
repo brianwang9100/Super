@@ -4,13 +4,14 @@ import Testing
 @testable import Bible
 
 /// Guards the committed `bible-text.sqlite` artifact against the JSON it's built
-/// from. The FTS database is generated offline by a Python script
-/// (`Scripts/generate_bible_text_sqlite.py`) that reimplements
-/// `BibleChapter.coalescedVerses()`; this suite opens the *real* bundled artifact
-/// and diffs a sample of its rows against the Swift coalescing path. The sample
-/// catches systematic regeneration staleness and any divergence in the shared
-/// coalescing rules; a localized single-book edit that misses the sampled
-/// chapters would slip through, but the verse-count bounds below still flag gross
+/// from. The database is generated offline by a Python script
+/// (`Scripts/generate_bible_text_sqlite.py`); this suite opens the *real* bundled
+/// artifact and checks both layers: the flat `verse`/FTS search rows (diffed
+/// against the Swift `coalescedVerses()` path the script reimplements) and the
+/// structured `chapter` blobs (decoded back into `BibleChapter` and compared to the
+/// JSON loader). The samples catch systematic regeneration staleness and any
+/// divergence in the shared rules; a localized single-book edit that misses the
+/// sampled chapters would slip through, but the count bounds below still flag gross
 /// staleness.
 @Suite("BibleTextDatabase bundled artifact")
 struct BibleTextDatabaseTests {
@@ -89,6 +90,58 @@ struct BibleTextDatabaseTests {
                     "\(translation.rawValue) \(bookId) \(chapterNumber):\(verse.number) drifted from the JSON"
                 )
             }
+        }
+    }
+
+    // MARK: - Structured chapter table
+
+    @Test("every translation's full canon is present in the chapter table")
+    func chapterTablePopulated() throws {
+        let database = try BibleTextDatabase.openBundled()
+        for translation in BibleTranslation.allCases {
+            let books = try database.queue.read { db in
+                try Int.fetchOne(
+                    db, sql: "SELECT count(DISTINCT bookId) FROM chapter WHERE translation = ?",
+                    arguments: [translation.rawValue]
+                ) ?? 0
+            }
+            #expect(books == 66, "\(translation.rawValue) should have all 66 books")
+        }
+        let chapters = try database.queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT count(*) FROM chapter") ?? 0
+        }
+        // 1,189 chapters in the Protestant canon × 4 full-canon translations.
+        // A lower bound so an unrelated text fix doesn't churn this test.
+        #expect(chapters > 4_700)
+    }
+
+    @Test("a stored chapter blob decodes to the same BibleChapter the JSON loader yields")
+    func chapterBlobDecodesToBibleChapter() throws {
+        let database = try BibleTextDatabase.openBundled()
+        let loader = BundledBibleTextLoader()
+        // Prose (JHN 3) and a heading-plus-poetry chapter (PSA 23) cover the two
+        // paragraph shapes the blob round-trips.
+        let samples: [(BibleTranslation, String, Int)] = [
+            (.kjv, "JHN", 3),
+            (.web, "PSA", 23),
+        ]
+        let decoder = JSONDecoder()
+        for (translation, bookId, chapterNumber) in samples {
+            let blob = try #require(try database.queue.read { db in
+                try String.fetchOne(
+                    db,
+                    sql: "SELECT json FROM chapter WHERE translation = ? AND bookId = ? AND number = ?",
+                    arguments: [translation.rawValue, bookId, chapterNumber]
+                )
+            })
+            let decoded = try decoder.decode(BibleChapter.self, from: Data(blob.utf8))
+            let expected = try #require(
+                try loader.loadBook(id: bookId, translation: translation).chapter(chapterNumber)
+            )
+            #expect(
+                decoded == expected,
+                "\(translation.rawValue) \(bookId) \(chapterNumber) blob drifted from the JSON"
+            )
         }
     }
 
