@@ -123,6 +123,28 @@ import Testing
         #expect(run.status == .completed)
     }
 
+    @Test("chapter references carry the verbatim verse text; book references don't")
+    func referencesCarryGroundingText() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .success(annotationCount: 3),  // book-level
+            .success(annotationCount: 5),  // chapter 1
+        ])
+        let (runner, _) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1], includesBookLevel: true))
+        await runner._waitUntilIdle()
+
+        let book = try #require(generator.receivedReferences.first { $0.kind == "book" })
+        // Whole-book target stays text-light — the full book would be enormous.
+        #expect(book.snapshot.isEmpty)
+
+        let chapter = try #require(generator.receivedReferences.first { $0.kind == "chapter" })
+        // The chapter reference grounds the model in the real WEB text, numbered.
+        #expect(!chapter.snapshot.isEmpty)
+        #expect(chapter.snapshot.hasPrefix("1. "))
+        #expect(chapter.snapshot.contains("\n2. "))
+    }
+
     @Test func chapterOnlySelectionEnqueuesNoBookPrologue() async throws {
         let generator = ScriptedBibleAnnotateGenerator([
             .success(annotationCount: 5),
@@ -561,7 +583,9 @@ import Testing
         #expect(reference.sourceID == "chapter:ROM:8")
         #expect(reference.displayLabel == "Romans 8")
         #expect(reference.citation == "Romans 8 (WEB)")
-        #expect(reference.snapshot == "")
+        // A chapter reference now grounds the generator in the exact verse text
+        // (see `referencesCarryGroundingText`), so the snapshot is populated.
+        #expect(reference.snapshot.hasPrefix("1. "))
         #expect(reference.appletID == "bible")
     }
 

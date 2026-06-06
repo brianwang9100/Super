@@ -114,6 +114,25 @@ struct BibleAppletTests {
         #expect(viewModel.position == original)
     }
 
+    @Test("registerReadTool registers bible.read and it dispatches a lookup")
+    func registerReadToolDispatches() async throws {
+        let registry = ToolRegistry()
+        await makeApplet().registerReadTool(in: registry)
+
+        let registrations = await registry.allRegistrations()
+        let read = try #require(registrations.first { $0.tool.id == ReadBibleTool.toolID })
+        #expect(read.isEnabled)
+        #expect(read.tool.category == .query)
+
+        // Dispatch through the registry against the real bundled KJV text.
+        let result = try await registry.execute(
+            toolID: ReadBibleTool.toolID,
+            input: ["book": .string("John"), "chapter": .int(3), "startVerse": .int(16)]
+        )
+        #expect(result.isError == false)
+        #expect(result.content.hasPrefix("John 3:16 (KJV)"))
+    }
+
     @Test("attach is idempotent — second call does not add another subscriber")
     func attachIsIdempotent() async throws {
         let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())

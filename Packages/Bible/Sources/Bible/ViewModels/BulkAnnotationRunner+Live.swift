@@ -36,6 +36,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     private let generator: any BibleAnnotateGenerating
     private let catalog: BibleBookCatalog
     private let translation: BibleTranslation
+    private let textLoader: any BibleTextLoader
     private let clock: any Clock
     private let idGenerator: any IDGenerator
     private let currentModelID: @Sendable () async -> String
@@ -93,6 +94,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         generator: any BibleAnnotateGenerating,
         catalog: BibleBookCatalog = .standard,
         translation: BibleTranslation = .web,
+        textLoader: any BibleTextLoader = BundledBibleTextLoader(),
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         currentModelID: @escaping @Sendable () async -> String = { "" },
@@ -104,6 +106,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         self.generator = generator
         self.catalog = catalog
         self.translation = translation
+        self.textLoader = textLoader
         self.clock = clock
         self.idGenerator = idGenerator
         self.currentModelID = currentModelID
@@ -664,12 +667,17 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     /// Build the per-unit `RecordReference` the dispatcher annotates — mirrors
     /// `BibleScreenViewModel.makeAnnotateRequestReference` (same `kind` /
     /// `sourceID` / `citation` shape per target) so the headless prompt names the
-    /// target identically to the single-shot spark-button path. `snapshot: ""`
-    /// because the model knows the passage from the citation.
+    /// target identically to the single-shot spark-button path.
+    ///
+    /// A `.chapter` unit carries the chapter's verbatim, verse-numbered text in
+    /// `snapshot` so the generator annotates the actual translation rather than
+    /// its recollection. A `.bookPrologue` leaves `snapshot: ""` — the whole book
+    /// would be an enormous prompt, and book-level cards don't quote verses.
     private func makeReference(for unit: BulkAnnotationRunUnitRecord) -> RecordReference {
         let kind: String
         let sourceID: String
         let label: String
+        var snapshot = ""
         switch unit.kind {
         case .bookPrologue:
             kind = "book"
@@ -680,6 +688,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             kind = "chapter"
             sourceID = "chapter:\(unit.bookId):\(chapterNumber)"
             label = "\(unit.bookName) \(chapterNumber)"
+            snapshot = chapterSnapshot(bookId: unit.bookId, chapterNumber: chapterNumber)
         }
         return RecordReference(
             appletID: BibleApplet.appletID,
@@ -687,9 +696,18 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             sourceID: sourceID,
             displayLabel: label,
             citation: "\(label) (\(translation.rawValue))",
-            snapshot: "",
+            snapshot: snapshot,
             id: idGenerator.nextID()
         )
+    }
+
+    /// The chapter's verbatim, verse-numbered text from the bundled translation,
+    /// or `""` if it can't be loaded (the dispatch then degrades to citation-only
+    /// rather than failing).
+    private func chapterSnapshot(bookId: String, chapterNumber: Int) -> String {
+        guard let book = try? textLoader.loadBook(id: bookId, translation: translation),
+              let chapter = book.chapter(chapterNumber) else { return "" }
+        return BibleVerseTextFormatter.numbered(chapter.coalescedVerses())
     }
 
     // MARK: - Test seam

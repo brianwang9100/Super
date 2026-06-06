@@ -113,6 +113,28 @@ struct BibleScreenViewModelDispatchTests {
         #expect(viewModel.toast == nil)
     }
 
+    @Test("the published reference carries verbatim verse text for chapter/verse targets, none for book")
+    func publishedReferenceCarriesGroundingText() async {
+        let bus = SuperEventBus()
+        let viewModel = await makeViewModel(bus: bus)
+
+        // Verse-range target → the exact numbered text for that range.
+        let verseStream = await bus.events()
+        viewModel.triggerAnnotationGeneration(
+            for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+        )
+        let verseRef = await drainNextRequest(stream: verseStream)
+        #expect(verseRef.snapshot.hasPrefix("28. "))
+        #expect(verseRef.snapshot.contains("\n29. "))
+        #expect(verseRef.snapshot.contains("\n30. "))
+
+        // Whole-book target → no snapshot (the full book would be enormous).
+        let bookStream = await bus.events()
+        viewModel.triggerAnnotationGeneration(for: .book(bookId: "ROM"))
+        let bookRef = await drainNextRequest(stream: bookStream)
+        #expect(bookRef.snapshot.isEmpty)
+    }
+
     @Test("a successful completion event removes the dispatch entry")
     func successRemovesEntry() async {
         let bus = SuperEventBus()

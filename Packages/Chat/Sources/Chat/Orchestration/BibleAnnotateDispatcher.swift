@@ -344,6 +344,10 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     conversationally, do not call any other tool, do not ask follow-up \
     questions. After the tool call completes, end your turn.
 
+    When the target's exact verse text is provided, base every annotation on \
+    that text — quote and reason from it, and never reference words it does \
+    not contain.
+
     Default to 2–4 short annotation cards per target. Classify each card \
     with a `category`: `author`, `summary`, `historical`, \
     `clarification` (concise prose), or `reference` (a single scripture \
@@ -371,10 +375,23 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             Reference id: \(reference.sourceID)
             Display: \(reference.displayLabel)
             Citation: \(reference.citation)
-            """
+            """,
         ]
         if let sections = sectionGuidance(forKind: reference.kind) {
             paragraphs.append(sections)
+        }
+        // The exact verse text, when the Bible side captured it (chapter and
+        // verse-range targets). Grounding the model in the actual translation
+        // here is what stops annotations that reference words the passage
+        // doesn't use. A whole-book target carries no snapshot (too large), so
+        // the block is omitted and the prompt falls back to citation-only.
+        if !reference.snapshot.isEmpty {
+            paragraphs.append("""
+                Exact text of the target — base every annotation on this, and \
+                do not reference words that aren't present here:
+
+                \(reference.snapshot)
+                """)
         }
         paragraphs.append("""
             Call `bible.annotate` once with arguments matching this target, \
