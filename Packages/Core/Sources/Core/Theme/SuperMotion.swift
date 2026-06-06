@@ -22,6 +22,14 @@ public enum SuperMotion {
     /// is on so a vestibular-sensitive user never sees the overshoot.
     public static let reducedMotion: Animation = .easeInOut(duration: 0.2)
 
+    /// Keyboard-avoidance glide — the chat surface's height step when the
+    /// software keyboard shows or hides. A plain ease (no overshoot) at
+    /// roughly the system keyboard's own duration; `snap`'s spring overshoot
+    /// reads as a bounce against the keyboard's near-linear rise. Suppress
+    /// under Reduce Motion at the call site (pass `nil`) so the surface cuts
+    /// instantly rather than easing.
+    public static let keyboardGlide: Animation = .smooth(duration: 0.25)
+
     /// Button-press scale spring — a quick, lightly-damped settle used by
     /// ``SuperPressButtonStyle`` for the press feedback on inert glass control
     /// clusters (the Bible action sheet's swatches/tiles), where the built-in

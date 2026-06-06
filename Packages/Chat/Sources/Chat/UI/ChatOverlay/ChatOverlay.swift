@@ -247,6 +247,8 @@ public struct ChatOverlay: View {
         .frame(height: metrics.renderedHeight, alignment: .bottom)
         // Use `keyboardAwareHeight` — not `geo.size.height` — so the chat surface shrinks above the keyboard; the inner GR's `.ignoresSafeArea(.keyboard)` (see body comment) blocks alternative safeAreaInset-based hoisting.
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
+        // `.ignoresSafeArea(.keyboard)` (outer GR, for keyboard-free morph math) makes the keyboard a value step, not layout-driven avoidance — so the surface snaps without this; key on the *inset* (not absolute height) so rotation/resize still snap. Suppressed under Reduce Motion, like the surface's other animators.
+        .animation(reduceMotion ? nil : SuperMotion.keyboardGlide, value: geo.size.height - keyboardAwareHeight)
         .preference(key: ChatProgressPreferenceKey.self, value: metrics.progress)
         .preference(key: ChatSemiProgressPreferenceKey.self, value: metrics.semiExpandedProgress)
     }
