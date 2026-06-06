@@ -62,6 +62,13 @@ public struct BibleApplet: MiniApplet {
     /// rest of the reader still loads.
     private let noteRepository: (any BibleNoteRepository)?
 
+    /// Read seam for the `bible.read` tool's current-translation fallback.
+    /// Shared with the view model so both see the same `bible.sqlite` row.
+    /// `nil` when the database failed to open — `registerReadTool(in:)` still
+    /// registers the tool, which then defaults the translation when one isn't
+    /// passed explicitly.
+    private let readingPositionRepository: (any BibleReadingPositionRepository)?
+
     /// Production entry point — bundled text plus an on-disk store under
     /// Application Support for the reading position and verse highlights.
     ///
@@ -85,6 +92,10 @@ public struct BibleApplet: MiniApplet {
         // divergence if the repository ever gains instance-level state.
         let noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
         self.noteRepository = noteRepository
+        // One reading-position repository shared by the `bible.read` tool and
+        // the view model — both point at the same `bible.sqlite` queue.
+        let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
+        self.readingPositionRepository = readingPositionRepository
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -95,7 +106,7 @@ public struct BibleApplet: MiniApplet {
         // Chat without violating the no-cross-applet-imports rule.
         let viewModel = BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
-            positionRepository: database.map { GRDBBibleReadingPositionRepository(database: $0) },
+            positionRepository: readingPositionRepository,
             highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
             noteRepository: noteRepository
         )
@@ -111,7 +122,8 @@ public struct BibleApplet: MiniApplet {
         viewModel: BibleScreenViewModel,
         databaseContext: DatabaseContext? = nil,
         annotationRepository: (any BibleAnnotationRepository)? = nil,
-        noteRepository: (any BibleNoteRepository)? = nil
+        noteRepository: (any BibleNoteRepository)? = nil,
+        readingPositionRepository: (any BibleReadingPositionRepository)? = nil
     ) {
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
@@ -119,6 +131,7 @@ public struct BibleApplet: MiniApplet {
         self.databaseContext = databaseContext
         self.annotationRepository = annotationRepository
         self.noteRepository = noteRepository
+        self.readingPositionRepository = readingPositionRepository
     }
 
     /// Register the `bible.annotate` tool with the given registry, using
@@ -172,6 +185,24 @@ public struct BibleApplet: MiniApplet {
                 clock: clock,
                 ids: ids,
                 stampProvider: stampProvider
+            )
+        )
+    }
+
+    /// Register the `bible.read` lookup tool with the given registry, so the
+    /// assistant can fetch verbatim verse text from local storage before
+    /// answering Bible questions.
+    ///
+    /// Unlike `registerAnnotationTool`/`registerNoteTool` this registers
+    /// **unconditionally**: the bundled `BibleTextLoader` is always available, so
+    /// the tool works even when `bible.sqlite` failed to open — it just falls
+    /// back to the default translation when `translation` is omitted. Called from
+    /// each app's bootstrap alongside `registerNoteTool`.
+    public func registerReadTool(in registry: ToolRegistry) async {
+        await registry.register(
+            ReadBibleTool.registration(
+                textLoader: BundledBibleTextLoader(),
+                positionRepository: readingPositionRepository
             )
         )
     }

@@ -661,9 +661,32 @@ public final class BibleScreenViewModel {
             sourceID: spec.id,
             displayLabel: citation,
             citation: "\(citation) (\(translation.rawValue))",
-            snapshot: "",
+            snapshot: snapshotText(for: spec),
             id: idGenerator.nextID()
         )
+    }
+
+    /// The verbatim, verse-numbered text for an annotation target, so the
+    /// headless generator annotates the *actual* translation rather than its
+    /// recollection (preventing cards that reference words not in the text).
+    ///
+    /// Chapter and verse-range targets carry their text; a whole-`book` target
+    /// returns `""` — the full book would be an enormous prompt, and book-level
+    /// cards (author/summary/historical) don't quote specific verses. Loaded
+    /// off the bundled text, so an unavailable book degrades to no snapshot
+    /// rather than failing the dispatch.
+    private func snapshotText(for spec: BibleAnnotationTargetSpec) -> String {
+        guard let chapterNumber = spec.chapterNumber,
+              let book = try? textLoader.loadBook(id: spec.bookId, translation: translation),
+              let chapter = book.chapter(chapterNumber) else { return "" }
+        let verses = chapter.coalescedVerses()
+        let selected: [BibleVerse]
+        if let start = spec.verseStart, let end = spec.verseEnd {
+            selected = verses.filter { $0.number >= start && $0.number <= end }
+        } else {
+            selected = verses
+        }
+        return BibleVerseTextFormatter.numbered(selected)
     }
 
     /// Initial headless `bible.annotate` dispatch — called by the
@@ -1196,20 +1219,9 @@ public final class BibleScreenViewModel {
     /// line breaks poetry carries so copied text stays on one line.
     private func verseTextsByNumber() -> [Int: String] {
         guard let chapter else { return [:] }
-        var fragments: [Int: [String]] = [:]
-        for paragraph in chapter.paragraphs {
-            switch paragraph {
-            case .heading:
-                continue
-            case .prose(let verses), .poetry(let verses):
-                for verse in verses {
-                    fragments[verse.number, default: []].append(verse.text)
-                }
-            }
-        }
-        return fragments.mapValues {
-            $0.joined(separator: " ").replacingOccurrences(of: "\n", with: " ")
-        }
+        return Dictionary(
+            uniqueKeysWithValues: chapter.coalescedVerses().map { ($0.number, $0.text) }
+        )
     }
 
     /// Awaits the pending background reading-position writes. Test-only seam

@@ -149,6 +149,55 @@ struct DebugBibleProvidersTests {
         }
     }
 
+    @Test func readProviderEmitsBibleReadToolCallForVerseRange() async throws {
+        let provider = DebugReadLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "read Romans 8:28-30")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        #expect(call.name == "bible.read")
+        let input = try #require(Self.object(call.input))
+        #expect(input["book"] == .string("ROM"))
+        #expect(input["chapter"] == .int(8))
+        #expect(input["startVerse"] == .int(28))
+        #expect(input["endVerse"] == .int(30))
+        // No translation argument → the tool uses the current selection.
+        #expect(input["translation"] == nil)
+    }
+
+    @Test func readProviderReadsWholeChapterForAChapterReference() async throws {
+        let provider = DebugReadLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "read Psalm 23")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["book"] == .string("PSA"))
+        #expect(input["chapter"] == .int(23))
+        // No verse bounds → whole chapter.
+        #expect(input["startVerse"] == nil)
+        #expect(input["endVerse"] == nil)
+    }
+
+    @Test func readProviderDefaultsABareBookReferenceToChapterOne() async throws {
+        let provider = DebugReadLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "read Romans")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["book"] == .string("ROM"))
+        // bible.read requires a chapter; a whole-book reference defaults to 1.
+        #expect(input["chapter"] == .int(1))
+        #expect(input["startVerse"] == nil)
+    }
+
     // MARK: - Provider stream: loop termination
 
     @Test func annotateProviderStopsAfterToolResultTurn() async throws {
@@ -163,6 +212,16 @@ struct DebugBibleProvidersTests {
 
     @Test func noteProviderStopsAfterToolResultTurn() async throws {
         let provider = DebugNoteLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(provider, messages: Self.afterToolRanMessages(), model: model)
+
+        #expect(Self.firstToolUse(in: events) == nil)
+        let hasText = events.contains { if case .textDelta = $0 { return true } else { return false } }
+        #expect(hasText)
+    }
+
+    @Test func readProviderStopsAfterToolResultTurn() async throws {
+        let provider = DebugReadLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
         let events = try await Self.collect(provider, messages: Self.afterToolRanMessages(), model: model)
 
@@ -233,6 +292,29 @@ struct DebugBibleProvidersTests {
         let input = try #require(await executor.capturedInputs().first)
         #expect(input["action"] == .string("create"))
         #expect(input["bookId"] == .string("JHN"))
+        let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
+        #expect(roles == [.user, .assistant, .tool, .assistant])
+    }
+
+    @Test func readProviderDrivesOneToolCallThroughSession() async throws {
+        let provider = DebugReadLLMProvider(id: "debug-read-1")
+        let setup = try await Self.makeSession(provider: provider)
+        let executor = FakeToolExecutor(toolID: "bible.read")
+        await executor.setResult(ToolResult(toolID: "bible.read", content: "John 3:16 (KJV)\n\n16. ..."))
+        await setup.toolRegistry.register(ToolRegistration(
+            tool: Self.tool(id: "bible.read"), execution: .local(executor)
+        ))
+
+        let stream = await setup.session.send(text: "read John 3:16-17", model: setup.model)
+        _ = await Self.drain(stream)
+        await setup.session.waitUntilFinished()
+
+        #expect(await executor.executionCount() == 1)
+        let input = try #require(await executor.capturedInputs().first)
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["chapter"] == .int(3))
+        #expect(input["startVerse"] == .int(16))
+        #expect(input["endVerse"] == .int(17))
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }

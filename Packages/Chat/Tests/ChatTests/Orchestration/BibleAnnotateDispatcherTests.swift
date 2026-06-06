@@ -139,7 +139,8 @@ struct BibleAnnotateDispatcherTests {
     private func reference(
         id: String = "req-1",
         kind: String = "verseRange",
-        sourceID: String = "verse:ROM:8:28:30"
+        sourceID: String = "verse:ROM:8:28:30",
+        snapshot: String = "All things work together for good..."
     ) -> RecordReference {
         RecordReference(
             appletID: "bible",
@@ -147,7 +148,7 @@ struct BibleAnnotateDispatcherTests {
             sourceID: sourceID,
             displayLabel: "Romans 8:28-30 (WEB)",
             citation: "Romans 8:28-30 (WEB)",
-            snapshot: "All things work together for good...",
+            snapshot: snapshot,
             id: id
         )
     }
@@ -558,6 +559,23 @@ struct BibleAnnotateDispatcherTests {
         #expect(prompt.contains("historical context"))
         #expect(prompt.contains("clarification"))
         #expect(prompt.contains("cross-reference"))
+    }
+
+    @Test("a snapshot grounds the prompt in the exact verse text")
+    func promptIncludesSnapshotText() {
+        let prompt = BibleAnnotateDispatcher.prompt(
+            for: reference(snapshot: "28. And we know that all things work together for good")
+        )
+        #expect(prompt.contains("Exact text of the target"))
+        #expect(prompt.contains("28. And we know that all things work together for good"))
+        // The instruction to call the tool still comes after the grounding text.
+        #expect(prompt.contains("Call `bible.annotate` once"))
+    }
+
+    @Test("an empty snapshot omits the grounding block")
+    func promptOmitsEmptySnapshot() {
+        let prompt = BibleAnnotateDispatcher.prompt(for: reference(snapshot: ""))
+        #expect(!prompt.contains("Exact text of the target"))
     }
 
     @Test("an unrecognised kind falls back to the generic prompt with no scope line")
