@@ -37,10 +37,12 @@ struct MessageListDeclarativeScrollTests {
     // MARK: - Initial position
 
     /// Short chats (content fits viewport) keep the natural top
-    /// alignment — `.defaultScrollAnchor(.top, for: .alignment)` wins
-    /// for non-scrollable content. Guards against an accidental
-    /// anchor regression that would push short chats to the bottom of
-    /// the viewport with empty space above.
+    /// alignment — the content's `.frame(minHeight: containerHeight,
+    /// alignment: .top)` floor fills the viewport so short content sits at
+    /// the top (the floor replaced `.defaultScrollAnchor(.top, for:
+    /// .alignment)`). Guards against an accidental anchor regression that
+    /// would push short chats to the bottom of the viewport with empty
+    /// space above.
     @Test("short chat starts at top with content fitting viewport")
     func shortChatStartsAtTop() async throws {
         let driver = MessageListDriver(items: makeItems(count: 2))
@@ -57,6 +59,68 @@ struct MessageListDeclarativeScrollTests {
         #expect(
             scrollView.contentOffset.y == 0,
             "expected top alignment for non-scrollable content, got offsetY=\(scrollView.contentOffset.y)"
+        )
+    }
+
+    /// **Bug 2 regression — the content `minHeight` floor is active.**
+    /// Short content's frame must be floored up to the container height
+    /// (`contentSize.height == bounds.height`), not left at its smaller
+    /// intrinsic height. That floor is what makes the short→long
+    /// transition *continuous* in the container height — there's no
+    /// fits-vs-overflows boundary for the old `.defaultScrollAnchor(.top,
+    /// for: .alignment)` to flip on, which is what jittered while the
+    /// surface was actively resized. Combined with `shortChatStartsAtTop`'s
+    /// `contentSize <= bounds + 1`, this pins `contentSize == bounds` for
+    /// short content. A regression that dropped the floor would leave
+    /// `contentSize < bounds` and reintroduce the bistable flip.
+    @Test("short content frame is floored to the container height")
+    func shortContentFloorsToContainerHeight() async throws {
+        let driver = MessageListDriver(items: makeItems(count: 2))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        #expect(
+            scrollView.contentSize.height >= scrollView.bounds.height - 1,
+            "expected the minHeight floor to fill the viewport, got contentH=\(scrollView.contentSize.height) viewportH=\(scrollView.bounds.height)"
+        )
+    }
+
+    /// **Bug 1 regression — stream-end persist lands at the bottom.**
+    /// Reproduces the stream-end ordering: a streaming tail is showing,
+    /// then it's cleared to empty (content shrinks) AND a persisted
+    /// assistant row is appended (content grows) within the same settle
+    /// window — exactly what `ChatScreenViewModel.assistantMessageSaved`
+    /// does. The `pendingBottomSnap` settle re-snap must land the new row
+    /// at the bottom after content height stabilizes. (The semi-expanded +
+    /// keyboard transient that made the *single* immediate snap miss is
+    /// verified on-device; this guards the settle mechanism + no
+    /// regression in the synthetic harness.)
+    @Test("stream-end clear-tail-then-grow-items lands at bottom")
+    func streamEndPersistLandsAtBottom() async throws {
+        let driver = MessageListDriver(
+            items: makeItems(count: 30),
+            streamingTail: MessageList.StreamingState(thinking: "", text: "Streaming reply in progress", isCompacting: false)
+        )
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom while streaming")
+
+        // Mirror `.assistantMessageSaved`: clear the tail to empty and
+        // append the persisted row in the same update.
+        driver.streamingTail = MessageList.StreamingState(thinking: "", text: "", isCompacting: false)
+        driver.items += [makeAssistantItem(id: "persisted-reply", chars: 240)]
+        settle(controller: controller)
+
+        let distance = distanceFromBottom(scrollView)
+        #expect(
+            distance < 2,
+            "expected stream-end persist to settle at bottom, got distanceFromBottom=\(distance)"
         )
     }
 
