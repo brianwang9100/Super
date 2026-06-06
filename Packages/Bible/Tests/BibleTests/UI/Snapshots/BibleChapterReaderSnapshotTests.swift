@@ -70,15 +70,16 @@ struct BibleChapterReaderSnapshotTests {
         function: String = #function
     ) throws {
         let database = try BibleDatabase.makeInMemory()
-        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .web)
-        let chapter = try #require(book.chapter(2))
+        let chapter = try #require(
+            try DatabaseBibleTextLoader().loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web)
+        )
         let theme = SuperTheme.make(themeID)
         let view = ZStack {
             theme.background
             BibleChapterReader(
                 chapter: chapter,
                 bookId: "1PE",
-                bookName: book.name,
+                bookName: "1 Peter",
                 selectedVerses: [],
                 previousLabel: "1 Peter 1",
                 nextLabel: "1 Peter 3",
@@ -142,15 +143,16 @@ struct BibleChapterReaderSnapshotTests {
                 body: "Whole-chapter thought.", source: .user, createdAt: t0, updatedAt: t0
             ).insert(db)
         }
-        let book = try BundledBibleTextLoader().loadBook(id: "1PE", translation: .web)
-        let chapter = try #require(book.chapter(2))
+        let chapter = try #require(
+            try DatabaseBibleTextLoader().loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web)
+        )
         let theme = SuperTheme.make(themeID)
         let view = ZStack {
             theme.background
             BibleChapterReader(
                 chapter: chapter,
                 bookId: "1PE",
-                bookName: book.name,
+                bookName: "1 Peter",
                 selectedVerses: [],
                 previousLabel: "1 Peter 1",
                 nextLabel: "1 Peter 3",

@@ -677,8 +677,9 @@ public final class BibleScreenViewModel {
     /// rather than failing the dispatch.
     private func snapshotText(for spec: BibleAnnotationTargetSpec) -> String {
         guard let chapterNumber = spec.chapterNumber,
-              let book = try? textLoader.loadBook(id: spec.bookId, translation: translation),
-              let chapter = book.chapter(chapterNumber) else { return "" }
+              let chapter = (try? textLoader.loadChapter(
+                  bookId: spec.bookId, chapterNumber: chapterNumber, translation: translation
+              )) ?? nil else { return "" }
         let verses = chapter.coalescedVerses()
         let selected: [BibleVerse]
         if let start = spec.verseStart, let end = spec.verseEnd {
@@ -1246,15 +1247,15 @@ public final class BibleScreenViewModel {
     }
 
     private func applyCurrentChapter() {
-        if let book = try? textLoader.loadBook(id: position.bookId, translation: translation) {
-            bookName = book.name
-            chapter = book.chapter(position.chapterNumber)
-        } else {
-            // Keep the nav bar's book name correct even when the text fails
-            // to load, so the reader can still step to an adjacent chapter.
-            bookName = catalog.book(id: position.bookId)?.name ?? bookName
-            chapter = nil
-        }
+        // The book name comes from the catalog (it matches the source text and is
+        // always available), so the nav bar stays correct even when the chapter
+        // text fails to load and the reader can still step to an adjacent chapter.
+        bookName = catalog.book(id: position.bookId)?.name ?? bookName
+        chapter = (try? textLoader.loadChapter(
+            bookId: position.bookId,
+            chapterNumber: position.chapterNumber,
+            translation: translation
+        )) ?? nil
     }
 
     private func label(for direction: BibleChapterDirection) -> String? {

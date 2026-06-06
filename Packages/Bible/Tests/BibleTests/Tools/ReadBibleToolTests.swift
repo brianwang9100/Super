@@ -286,11 +286,14 @@ struct ReadBibleToolTests {
 
 // MARK: - Test doubles
 
-/// A `BibleTextLoader` returning one fixed book, throwing for any other id.
+/// A `BibleTextLoader` serving chapters from one fixed book; `nil` for any other
+/// book id or an absent chapter (mirroring the DB loader's missing-row case).
 private struct StubBibleTextLoader: BibleTextLoader {
     let book: BibleBook
-    func loadBook(id bookID: String, translation: BibleTranslation) throws -> BibleBook {
-        guard bookID == book.id else { throw BibleTextLoaderError.bookNotFound(bookID) }
-        return book
+    func loadChapter(
+        bookId: String, chapterNumber: Int, translation: BibleTranslation
+    ) throws -> BibleChapter? {
+        guard bookId == book.id else { return nil }
+        return book.chapter(chapterNumber)
     }
 }
