@@ -309,7 +309,7 @@ struct BibleScreenSnapshotTests {
             ]
         )
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
         )
         await viewModel.load()
@@ -382,7 +382,7 @@ struct BibleScreenSnapshotTests {
         let service = FakeNarrationService()
         let narration = NarrationController(service: service)
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2),
             narration: narration
         )
@@ -395,7 +395,7 @@ struct BibleScreenSnapshotTests {
     /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: position
         )
         await viewModel.load()
@@ -405,7 +405,7 @@ struct BibleScreenSnapshotTests {
     /// A `BibleScreen` on 1 Peter 2 with verses 4-6 and 9 selected.
     private func selectionScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
         )
         await viewModel.load()
@@ -416,7 +416,7 @@ struct BibleScreenSnapshotTests {
     /// A `BibleScreen` on 1 Peter 2 with the chat "coming soon" toast raised.
     private func toastScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
         )
         await viewModel.load()
@@ -451,7 +451,7 @@ struct BibleScreenSnapshotTests {
             bookId: "1PE", chapterNumber: 2, verseNumber: 7, color: .green, at: now
         )
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
         )
         await viewModel.load()

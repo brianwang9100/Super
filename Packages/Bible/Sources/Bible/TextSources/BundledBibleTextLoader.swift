@@ -1,10 +1,15 @@
 import Foundation
 
-/// Loads Bible text from the JSON resources bundled in the `Bible` package.
+/// Loads Bible text from the per-book JSON resources, decoding a whole `BibleBook`.
+///
+/// As of the DB-reader consolidation this is **no longer the production loader** —
+/// `DatabaseBibleTextLoader` reads chapters from `bible-text.sqlite` at runtime.
+/// `BundledBibleTextLoader` survives as the *parity oracle*: the JSON is the
+/// authoritative source the sqlite is generated from, so tests decode it here and
+/// assert the DB loader reproduces the identical `BibleChapter`. (PR3 relocates
+/// both this type and the JSON into the test target.)
 ///
 /// Each book is one `<translation>-<bookID>.json` file, e.g. `KJV-1PE.json`.
-/// Books decode on demand and the loader holds no cache — a caller that
-/// re-reads a book should retain the returned `BibleBook`.
 public struct BundledBibleTextLoader: BibleTextLoader {
     private let bundle: Bundle
 
@@ -19,6 +24,23 @@ public struct BundledBibleTextLoader: BibleTextLoader {
         self.bundle = bundle
     }
 
+    public func loadChapter(
+        bookId: String, chapterNumber: Int, translation: BibleTranslation
+    ) throws -> BibleChapter? {
+        let book: BibleBook
+        do {
+            book = try loadBook(id: bookId, translation: translation)
+        } catch BibleTextLoaderError.bookNotFound {
+            // A missing book mirrors the DB loader's missing-row case: nil, not a
+            // throw. A malformed resource still propagates.
+            return nil
+        }
+        return book.chapter(chapterNumber)
+    }
+
+    /// Decode a whole book of one translation by its three-letter id, e.g. `"1PE"`.
+    /// - Throws: `BibleTextLoaderError` when the book has no resource
+    ///   (`bookNotFound`) or its resource can't be decoded (`malformedResource`).
     public func loadBook(id bookID: String, translation: BibleTranslation) throws -> BibleBook {
         let resourceName = "\(translation.rawValue)-\(bookID)"
         guard let url = bundle.url(forResource: resourceName, withExtension: "json") else {

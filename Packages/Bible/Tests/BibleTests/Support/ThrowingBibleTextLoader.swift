@@ -4,7 +4,9 @@
 /// "chapter unavailable" state in tests without needing a malformed
 /// resource fixture.
 struct ThrowingBibleTextLoader: BibleTextLoader {
-    func loadBook(id bookID: String, translation: BibleTranslation) throws -> BibleBook {
-        throw BibleTextLoaderError.bookNotFound(bookID)
+    func loadChapter(
+        bookId: String, chapterNumber: Int, translation: BibleTranslation
+    ) throws -> BibleChapter? {
+        throw BibleTextLoaderError.malformedResource(bookId)
     }
 }

@@ -91,6 +91,24 @@ public struct BibleTextDatabase: Sendable {
         );
         """
 
+    /// Build an in-memory database holding structured `chapter` rows — the seam
+    /// for `DatabaseBibleTextLoader` tests, which read the JSON blobs back into
+    /// `BibleChapter` without the 50 MB bundled file. The flat `verse`/FTS tables
+    /// exist (per `schemaSQL`) but stay empty.
+    static func makeInMemory(chapters: [ChapterRow]) throws -> BibleTextDatabase {
+        let queue = try DatabaseQueue()
+        try queue.write { db in
+            try db.execute(sql: Self.schemaSQL)
+            for chapter in chapters {
+                try db.execute(
+                    sql: "INSERT INTO chapter(translation, bookId, number, json) VALUES (?, ?, ?, ?)",
+                    arguments: [chapter.translation, chapter.bookId, chapter.number, chapter.json]
+                )
+            }
+        }
+        return BibleTextDatabase(queue: queue)
+    }
+
     /// A verse row for the in-memory test seam.
     struct Row {
         let translation: String
@@ -105,6 +123,23 @@ public struct BibleTextDatabase: Sendable {
             self.chapter = chapter
             self.verse = verse
             self.text = text
+        }
+    }
+
+    /// A structured `chapter` row for the in-memory test seam. The `json` blob is
+    /// produced by encoding a `BibleChapter`, so a round-trip through the loader
+    /// returns an equal value.
+    struct ChapterRow {
+        let translation: String
+        let bookId: String
+        let number: Int
+        let json: String
+
+        init(translation: BibleTranslation, bookId: String, number: Int, chapter: BibleChapter) throws {
+            self.translation = translation.rawValue
+            self.bookId = bookId
+            self.number = number
+            self.json = String(decoding: try JSONEncoder().encode(chapter), as: UTF8.self)
         }
     }
 }

@@ -151,13 +151,15 @@ public struct ReadBibleTool: ToolExecutor {
         }
 
         // 5. Load and slice.
-        let book: BibleBook
+        let loaded: BibleChapter?
         do {
-            book = try textLoader.loadBook(id: summary.id, translation: translation)
+            loaded = try textLoader.loadChapter(
+                bookId: summary.id, chapterNumber: chapterNumber, translation: translation
+            )
         } catch {
             return Self.errorResult("Couldn't load \(summary.name) (\(translation.rawValue)).")
         }
-        guard let chapter = book.chapter(chapterNumber) else {
+        guard let chapter = loaded else {
             return Self.errorResult("Chapter \(chapterNumber) is not available in \(summary.name) (\(translation.rawValue)).")
         }
 
