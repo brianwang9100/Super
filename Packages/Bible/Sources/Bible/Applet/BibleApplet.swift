@@ -102,10 +102,13 @@ public struct BibleApplet: MiniApplet {
         // the view model — both point at the same `bible.sqlite` queue.
         let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
         self.readingPositionRepository = readingPositionRepository
-        // The bundled FTS index is independent of `bible.sqlite`; `try?` because
-        // a missing/corrupt bundle resource should degrade `bible.search` to a
-        // no-op, not crash the applet.
-        self.textSearcher = try? BundledBibleTextSearcher()
+        // The bundled `bible-text.sqlite` is independent of `bible.sqlite` and backs
+        // both reading (`DatabaseBibleTextLoader`) and search
+        // (`BundledBibleTextSearcher`). Open it once and share the handle; a
+        // missing/corrupt resource degrades both to soft no-ops (search returns
+        // nothing, the reader shows "unavailable") rather than crashing.
+        let textDatabase = try? BibleTextDatabase.openBundled()
+        self.textSearcher = textDatabase.map(BundledBibleTextSearcher.init(database:))
         // TODO(narration-arbitration): Wire a shell-side
         // `NarrationAudioCoordinator` adapter that reads from Chat's
         // `VoiceInputController`. The default `BibleScreenViewModel`
@@ -115,7 +118,7 @@ public struct BibleApplet: MiniApplet {
         // at the composition root (`SuperOSAppBootstrap`) to bridge Bible →
         // Chat without violating the no-cross-applet-imports rule.
         let viewModel = BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
             highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
             noteRepository: noteRepository
@@ -206,14 +209,15 @@ public struct BibleApplet: MiniApplet {
     /// answering Bible questions.
     ///
     /// Unlike `registerAnnotationTool`/`registerNoteTool` this registers
-    /// **unconditionally**: the bundled `BibleTextLoader` is always available, so
-    /// the tool works even when `bible.sqlite` failed to open — it just falls
-    /// back to the default translation when `translation` is omitted. Called from
-    /// each app's bootstrap alongside `registerNoteTool`.
+    /// **unconditionally**: the `DatabaseBibleTextLoader` is always constructible
+    /// (it degrades to empty results if the bundled `bible-text.sqlite` can't be
+    /// opened), so the tool works even when `bible.sqlite` failed to open — it just
+    /// falls back to the default translation when `translation` is omitted. Called
+    /// from each app's bootstrap alongside `registerNoteTool`.
     public func registerReadTool(in registry: ToolRegistry) async {
         await registry.register(
             ReadBibleTool.registration(
-                textLoader: BundledBibleTextLoader(),
+                textLoader: DatabaseBibleTextLoader(),
                 positionRepository: readingPositionRepository
             )
         )

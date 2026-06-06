@@ -94,7 +94,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         generator: any BibleAnnotateGenerating,
         catalog: BibleBookCatalog = .standard,
         translation: BibleTranslation = .web,
-        textLoader: any BibleTextLoader = BundledBibleTextLoader(),
+        textLoader: any BibleTextLoader = DatabaseBibleTextLoader(),
         clock: any Clock = SystemClock(),
         idGenerator: any IDGenerator = UUIDGenerator(),
         currentModelID: @escaping @Sendable () async -> String = { "" },
@@ -705,8 +705,9 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     /// or `""` if it can't be loaded (the dispatch then degrades to citation-only
     /// rather than failing).
     private func chapterSnapshot(bookId: String, chapterNumber: Int) -> String {
-        guard let book = try? textLoader.loadBook(id: bookId, translation: translation),
-              let chapter = book.chapter(chapterNumber) else { return "" }
+        guard let chapter = (try? textLoader.loadChapter(
+            bookId: bookId, chapterNumber: chapterNumber, translation: translation
+        )) ?? nil else { return "" }
         return BibleVerseTextFormatter.numbered(chapter.coalescedVerses())
     }
 
