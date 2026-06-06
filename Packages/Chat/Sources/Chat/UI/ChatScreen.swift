@@ -221,6 +221,24 @@ public struct ChatScreen: View {
         6 * (1 - Self.smoothstep(progress, from: 0.9, to: 1.0))
     }
 
+    /// How far the panel `.mask` is inflated past the card's top/bottom edges
+    /// (never horizontally — horizontal bleed made the card visibly squeeze in
+    /// as it grew from pill to semi). Gated on the inverse of
+    /// `panelSurroundOpacity`, so it's:
+    ///   - 160 at pill (progress 0) — the floating card is invisible, so the
+    ///     blown-out mask clips nothing while the composer's glass shadow falls
+    ///     on the applet content uncropped;
+    ///   - 0 across the floating-card band (≈0.1 → 0.9) — the mask is the exact
+    ///     rounded card so the bottom rounds crisply and the shadow tucks in;
+    ///   - 160 at full screen (progress 1) — no rounded card to protect, and the
+    ///     composer's downward shadow must clear the panel's bottom edge instead
+    ///     of being clipped flat above the home-indicator fill.
+    /// Vertical-only keeps the card's width perfectly steady through the whole
+    /// pill → semi grow, killing the squeeze.
+    private var verticalMaskBleed: CGFloat {
+        160 * (1 - panelSurroundOpacity)
+    }
+
     /// Fade in the home-indicator background extension only as the chat
     /// fills the screen, so pill / semi modes leave the unsafe area
     /// showing the applet (their visual identity is "floating panel above
@@ -390,18 +408,22 @@ public struct ChatScreen: View {
                     onChanged: { translation in onDragChanged?(translation) },
                     onEnded: { translation, predicted in onDragEnded?(translation, predicted) }
                 )
-                // Composer in `safeAreaInset` (not a `VStack` sibling) so SwiftUI's automatic keyboard avoidance hoists it above the keyboard without app-level scroll math.
+                // Composer in the transcript's `safeAreaInset` so it reserves the
+                // bottom space and rides the host's keyboard-aware frame natively,
+                // with the background running straight into the keyboard. It stays
+                // *inside* the panel `.mask`; the mask is inflated in pill /
+                // full-screen states (see `verticalMaskBleed`) so the composer's
+                // glass shadow still reaches the applet there.
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
                 }
                 .overlay(alignment: .bottom) {
                     // Transient "Copied!" pill floats at the bottom edge
                     // of the transcript area, which puts it directly
-                    // above the composer at every progress level.
-                    // Attached *before* `.clipped()` so the slide-in's
-                    // off-screen start is clipped away — the pill
-                    // visually emerges from behind the composer's top
-                    // edge instead of sliding across it.
+                    // above the composer at every progress level. The
+                    // `.clipped()` that used to hide its off-screen
+                    // slide-in start is gone (see the trade-off note
+                    // below), so it now fades/slides in at the edge.
                     if viewModel.showCopyConfirmation {
                         CopyConfirmationPill()
                             .padding(.bottom, 8)
@@ -409,7 +431,11 @@ public struct ChatScreen: View {
                             .allowsHitTesting(false)
                     }
                 }
-                .clipped()
+                // Deliberately no `.clipped()` here: it would crop the composer's
+                // glass elevation shadow in pill mode. The transcript's own
+                // ScrollView self-clips, and the panel `.mask` rounds/contains the
+                // card in semi + expanded. Trade-off: the copy-pill loses its
+                // emerge-from-behind-the-composer clip, which is acceptable.
                 .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
         }
         .background(panelBackground)
@@ -425,6 +451,10 @@ public struct ChatScreen: View {
         .mask {
             RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
                 .padding(.horizontal, panelHorizontalInset)
+                // Top/bottom-only bleed so the glass shadow escapes onto the
+                // applet (pill) / past the home-indicator fill (full screen)
+                // without ever changing the card's width — see `verticalMaskBleed`.
+                .padding(.vertical, -verticalMaskBleed)
         }
         .overlay {
             // Stroke border around the panel surround. Fades in/out with

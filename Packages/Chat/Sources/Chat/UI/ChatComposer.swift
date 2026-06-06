@@ -235,18 +235,14 @@ public struct ChatComposer: View {
                 bottom: capsuleBottomPadding,
                 trailing: capsuleTrailingPadding
             ))
-            // Flat capsule in every state — the composer body deliberately does
-            // NOT use Liquid Glass. Real glass casts an unavoidable elevation
-            // shadow (no `glassEffect` API suppresses it; verified on-device),
-            // and the design calls for the composer to sit flat on the surface
-            // at every progress. So it's a plain raised fill + hairline border;
-            // the two former drop shadows are gone. Only the mic (a tappable
-            // control) keeps theme-tinted glass. The focus glow is the lone
-            // shadow — accent, focused-only — pure focus feedback, not elevation.
-            .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(theme.backgroundRaised)
-            )
+            // Composer body is passive Liquid Glass — a raised glass capsule
+            // that casts a real elevation shadow. The shadow is intentional: in
+            // pill mode it falls on the applet behind the floating composer. The
+            // chat panel inflates its `.mask` in pill / full-screen states (see
+            // `ChatScreen.verticalMaskBleed`) so that shadow reaches the applet
+            // instead of being clipped to the panel. The mic keeps its own tinted
+            // glass; the hairline overlay below is the focus affordance.
+            .superGlassSurface(in: RoundedRectangle(cornerRadius: 26, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(isFocused ? theme.border : theme.borderFaint, lineWidth: 1)
@@ -270,8 +266,8 @@ public struct ChatComposer: View {
     }
 
     /// Accent glow shown only while the editor is focused — pure focus
-    /// feedback. Unfocused it's `.clear` so the flat capsule sits with no
-    /// shadow at rest.
+    /// feedback layered on top of the glass capsule. Unfocused it's `.clear`,
+    /// leaving just the capsule's own glass elevation shadow at rest.
     private var focusGlowColor: Color {
         isFocused ? theme.accent.opacity(0.12) : .clear
     }
