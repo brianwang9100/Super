@@ -67,8 +67,9 @@ struct GeminiContent: Encodable {
 }
 
 /// One part inside a content turn. `text` is prose; `functionCall` replays a
-/// prior assistant tool call; `functionResponse` carries a tool result (Gemini
-/// matches it back to the call by function *name*).
+/// prior assistant tool call; `functionResponse` carries a tool result. Both
+/// carry an optional `id` — Gemini's per-call identity, matched result→call
+/// when present (omitted for older id-less turns; `name` still rides along).
 ///
 /// `functionCall` carries an optional `thoughtSignature` — an opaque token
 /// Gemini's thinking models attach to the call and **require** echoed back on
@@ -77,19 +78,24 @@ struct GeminiContent: Encodable {
 /// `functionCall` object, not inside it.
 enum GeminiPart: Encodable {
     case text(String)
-    case functionCall(name: String, args: JSONValue, thoughtSignature: String?)
-    case functionResponse(name: String, response: JSONValue)
+    case functionCall(id: String?, name: String, args: JSONValue, thoughtSignature: String?)
+    case functionResponse(id: String?, name: String, response: JSONValue)
 
     private enum CodingKeys: String, CodingKey {
         case text, functionCall, functionResponse, thoughtSignature
     }
 
+    // `id` is optional: synthesized `Encodable` uses `encodeIfPresent` for
+    // Optionals, so a nil id omits the key entirely — keeping requests for
+    // id-less (older) Gemini turns byte-identical to before.
     private struct FunctionCallBody: Encodable {
+        let id: String?
         let name: String
         let args: JSONValue
     }
 
     private struct FunctionResponseBody: Encodable {
+        let id: String?
         let name: String
         let response: JSONValue
     }
@@ -99,13 +105,13 @@ enum GeminiPart: Encodable {
         switch self {
         case .text(let text):
             try container.encode(text, forKey: .text)
-        case .functionCall(let name, let args, let thoughtSignature):
-            try container.encode(FunctionCallBody(name: name, args: args), forKey: .functionCall)
+        case .functionCall(let id, let name, let args, let thoughtSignature):
+            try container.encode(FunctionCallBody(id: id, name: name, args: args), forKey: .functionCall)
             if let thoughtSignature {
                 try container.encode(thoughtSignature, forKey: .thoughtSignature)
             }
-        case .functionResponse(let name, let response):
-            try container.encode(FunctionResponseBody(name: name, response: response), forKey: .functionResponse)
+        case .functionResponse(let id, let name, let response):
+            try container.encode(FunctionResponseBody(id: id, name: name, response: response), forKey: .functionResponse)
         }
     }
 }
@@ -194,6 +200,12 @@ struct GeminiStreamResponse: Decodable {
     }
 
     struct FunctionCall: Decodable {
+        /// Gemini's unique per-call id. Present on parallel/multi-tool turns
+        /// (e.g. `gemini-3.5-flash`); absent on older single-call paths. When
+        /// present it is the call's identity and must be round-tripped on the
+        /// `functionResponse` so results match calls — using the function name
+        /// as the id instead collapses parallel same-tool calls onto one id.
+        let id: String?
         let name: String?
         let args: JSONValue?
     }

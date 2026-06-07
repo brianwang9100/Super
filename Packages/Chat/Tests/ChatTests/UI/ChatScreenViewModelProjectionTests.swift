@@ -67,6 +67,23 @@ struct ChatScreenViewModelProjectionTests {
         #expect(text == "the answer is 42")
     }
 
+    @Test("duplicate toolCallId across tool messages does not trap")
+    func duplicateToolCallIdDoesNotTrap() {
+        // Regression: Gemini parallel calls to the SAME tool persisted two
+        // tool-result messages sharing one toolCallId. project()'s
+        // Dictionary(uniqueKeysWithValues:) trapped on the duplicate key,
+        // crashing the app on every refresh and on chat reopen (the
+        // bible-"wrath" crash). Projection of stored data must never trap.
+        let messages: [MessageRecord] = [
+            MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
+            MessageRecord(id: "t1", conversationId: "c", role: .tool, content: "James 1", toolCallId: "bible.read", createdAt: now.addingTimeInterval(1)),
+            MessageRecord(id: "t2", conversationId: "c", role: .tool, content: "Romans 2", toolCallId: "bible.read", createdAt: now.addingTimeInterval(2)),
+        ]
+        let items = ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil)
+        // Returns without trapping; the assistant row projects (tool rows fold).
+        #expect(items.count == 1)
+    }
+
     @Test("assistant tool calls fold their result into the call view")
     func toolResultsFold() {
         let messages: [MessageRecord] = [
