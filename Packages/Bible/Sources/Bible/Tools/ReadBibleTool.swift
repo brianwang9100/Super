@@ -47,9 +47,15 @@ public struct ReadBibleTool: ToolExecutor {
         description: """
         Look up the exact text of a Bible passage from the user's local \
         storage. Call this before summarizing, explaining, quoting, or \
-        otherwise relying on a specific passage — even if you already know \
-        it — so your answer matches the user's selected translation rather \
-        than your memory.
+        otherwise relying on a specific passage — even if you recall it from \
+        memory — so your answer matches the user's selected translation \
+        rather than your memory.
+
+        Skip this call when you already have the verse's exact text in \
+        context — `bible.search` results already carry each verse's full \
+        text, so don't re-fetch those verses here. Reach for this tool to \
+        get verses you don't yet have: a passage the user named, or the \
+        verses *surrounding* a search hit.
 
         Pass the `book` (full name like "John" or "1 Corinthians", or its \
         3-letter code) and the 1-based `chapter`. For the verse argument:

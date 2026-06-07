@@ -57,9 +57,14 @@ public struct SearchBibleTool: ToolExecutor {
         Search is keyword-based with stemming: pass a few content words in \
         `query` (e.g. "love" also matches "loved"/"loving"). Optionally scope to \
         one `book`. Omit `translation` to search the user's currently selected \
-        translation (the usual case). Results are ordered best-match first; once \
-        you have a reference, you can call `bible.read` for its full surrounding \
-        context.
+        translation (the usual case). Results are ordered best-match first.
+
+        Each result already includes the verse's full, exact text from the \
+        user's translation — quote and cite directly from these results. Do NOT \
+        call `bible.read` to re-fetch a verse you already got back from search; \
+        that text is authoritative. Only call `bible.read` afterward when you \
+        need the *surrounding* verses a result doesn't include (e.g. to read \
+        the rest of the chapter for context).
         """,
         category: .query,
         parameters: [
