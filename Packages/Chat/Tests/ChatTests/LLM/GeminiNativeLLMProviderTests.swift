@@ -199,6 +199,67 @@ struct GeminiNativeLLMProviderTests {
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 15, outputTokens: 8)))
     }
 
+    /// Gemini returns a unique per-call `id` on each `functionCall` (verified
+    /// against the live `gemini-3.5-flash` wire body). When the same tool is
+    /// called twice in one turn the reducer must surface those distinct ids on
+    /// the `.toolUse` events — using the function *name* as the id collapses
+    /// both calls onto one identity, which collides the `toolCall` primary key
+    /// and traps transcript projection (the bible-"wrath" crash).
+    @Test func parallelToolCallsToSameToolGetDistinctServerIDs() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-parallel-toolcalls"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "weather in Paris and London?")],
+            model: model, tools: [], temperature: 0.0
+        ))
+        let toolUses = events.compactMap { event -> (id: String, name: String)? in
+            if case .toolUse(_, let id, let name, _, _) = event { return (id, name) }
+            return nil
+        }
+        #expect(toolUses.count == 2)
+        #expect(toolUses.map(\.name) == ["get_weather", "get_weather"])
+        #expect(toolUses.map(\.id) == ["call-paris", "call-london"])
+        #expect(Set(toolUses.map(\.id)).count == 2)
+    }
+
+    /// Replaying parallel same-tool calls must round-trip each call's server id
+    /// on both the `functionCall` and its matching `functionResponse`, with the
+    /// function *name* carried on the response (Gemini matches result→call by
+    /// id; `name` is a required `functionResponse` field).
+    @Test func parallelSameToolResultsRoundTripWithDistinctIDs() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "weather in Paris and London?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "call-paris", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
+                .toolUse(id: "call-london", name: "get_weather", input: .object(["city": .string("London")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "call-paris", content: "18C", isError: false),
+                .toolResult(toolUseID: "call-london", content: "12C", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let contents = try #require(body["contents"] as? [[String: Any]])
+
+        // Assistant turn: two functionCall parts, each carrying its server id.
+        let modelParts = try #require(contents[1]["parts"] as? [[String: Any]])
+        let calls = modelParts.compactMap { $0["functionCall"] as? [String: Any] }
+        #expect(calls.count == 2)
+        #expect(calls.compactMap { $0["id"] as? String } == ["call-paris", "call-london"])
+        #expect(calls.allSatisfy { $0["name"] as? String == "get_weather" })
+
+        // Tool results: two functionResponse parts keyed by the matching id,
+        // each naming the function.
+        let resultParts = try #require(contents[2]["parts"] as? [[String: Any]])
+        let responses = resultParts.compactMap { $0["functionResponse"] as? [String: Any] }
+        #expect(responses.count == 2)
+        #expect(responses.compactMap { $0["id"] as? String } == ["call-paris", "call-london"])
+        #expect(responses.allSatisfy { $0["name"] as? String == "get_weather" })
+    }
+
     /// Thinking models attach a `thoughtSignature` to the functionCall part;
     /// the reducer must surface it on the `.toolUse` event so it can be
     /// persisted and replayed (Gemini 400s on a replay that omits it).

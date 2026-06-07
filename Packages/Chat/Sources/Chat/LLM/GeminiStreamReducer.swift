@@ -152,13 +152,16 @@ struct GeminiStreamReducer {
             closeProse(into: &events)
             let index = allocateBlockIndex()
             events.append(.contentBlockStart(index: index, type: .toolUse))
-            // Gemini supplies no call id; matching on later turns is by function
-            // name, so the name doubles as the id (see translate(_:) round-trip).
-            // Replay the thinking model's signature (from this part or the most
-            // recent one seen) on the next turn's functionCall, else Gemini 400s.
+            // Use Gemini's per-call id as the call identity; it round-trips on
+            // the next turn's functionResponse so results match calls (see
+            // translate(_:)). Older/id-less turns fall back to the function name
+            // — fine for a single call, but two same-name calls would collide,
+            // which is why newer models supply the id. Replay the thinking
+            // model's signature (from this part or the most recent one seen) on
+            // the next turn's functionCall, else Gemini 400s.
             events.append(.toolUse(
                 index: index,
-                id: name,
+                id: call.id ?? name,
                 name: name,
                 input: call.args ?? .object([:]),
                 signature: part.thoughtSignature ?? pendingThoughtSignature

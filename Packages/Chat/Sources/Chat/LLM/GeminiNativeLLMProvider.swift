@@ -259,14 +259,29 @@ public struct GeminiNativeLLMProvider: LLMProvider {
     /// `.searchResult` blocks (Anthropic's encrypted-echo carrier) are ignored
     /// — Gemini grounding needs no per-turn echo to keep citations valid.
     ///
-    /// ⚠️ The `functionResponse` is keyed by function *name* (Gemini matches
-    /// results to calls by name, not id; the reducer mints the call id as the
-    /// name to make this round-trip), and its `response` wraps the tool's string
-    /// output in an object. This client-tool path is only reachable once tools
-    /// are gated alongside search (PR4) and is unverified against the live API.
+    /// ⚠️ The `functionResponse` carries the call `id` (when Gemini supplied
+    /// one — required so parallel same-tool calls match their results) plus the
+    /// function *name* (a required field, recovered from the issuing `.toolUse`
+    /// block), and its `response` wraps the tool's string output in an object.
+    /// Turns where the id equals the name (older id-less responses) send
+    /// name-only, byte-identical to before.
     private func translate(_ messages: [LLMMessage]) -> (systemInstruction: GeminiContent?, contents: [GeminiContent]) {
         var systemParts: [String] = []
         var grouped: [(role: String, parts: [GeminiPart])] = []
+
+        // A `.toolResult` carries only the call id; recover the function name
+        // (a required `functionResponse` field) by matching it back to the
+        // assistant `.toolUse` block that issued the call. When the id equals
+        // the name (older id-less Gemini turns) we send name-only — see the
+        // `wireID` guard below — so those requests stay byte-identical.
+        var toolNameByID: [String: String] = [:]
+        for message in messages where message.role == .assistant {
+            for block in message.content {
+                if case .toolUse(let id, let name, _, _) = block {
+                    toolNameByID[id] = name
+                }
+            }
+        }
 
         func append(role: String, parts: [GeminiPart]) {
             guard !parts.isEmpty else { return }
@@ -289,8 +304,11 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 var parts: [GeminiPart] = []
                 for block in message.content {
                     if case .toolResult(let toolUseID, let content, _) = block {
+                        let name = toolNameByID[toolUseID] ?? toolUseID
+                        let wireID = (toolUseID == name) ? nil : toolUseID
                         parts.append(.functionResponse(
-                            name: toolUseID,
+                            id: wireID,
+                            name: name,
                             response: .object(["result": .string(content)])
                         ))
                     }
@@ -311,11 +329,15 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 // message must not become a `functionCall` at the user position.
                 if message.role == .assistant {
                     for block in message.content {
-                        if case .toolUse(_, let name, let input, let signature) = block {
-                            // Replay the thinking model's `thoughtSignature` on the
-                            // functionCall part — Gemini rejects the follow-up turn
-                            // with HTTP 400 when it's dropped.
+                        if case .toolUse(let id, let name, let input, let signature) = block {
+                            // Echo Gemini's per-call id so the next turn's
+                            // functionResponse can match it (omit when id==name,
+                            // i.e. older id-less turns). Replay the thinking
+                            // model's `thoughtSignature` — Gemini rejects the
+                            // follow-up turn with HTTP 400 when it's dropped.
+                            let wireID = (id == name) ? nil : id
                             parts.append(.functionCall(
+                                id: wireID,
                                 name: name,
                                 args: input,
                                 thoughtSignature: signature

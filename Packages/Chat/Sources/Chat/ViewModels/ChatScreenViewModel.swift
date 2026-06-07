@@ -1135,10 +1135,18 @@ public final class ChatScreenViewModel {
     ) -> [MessageList.Item] {
         var items: [MessageList.Item] = []
         let toolCallsByMessage = Dictionary(grouping: toolCalls, by: \.messageId)
-        let toolResults: [String: String] = Dictionary(uniqueKeysWithValues: messages.compactMap {
-            guard let id = $0.toolCallId else { return nil }
-            return (id, $0.content)
-        })
+        // Keyed by toolCallId. Tolerate duplicate ids (e.g. legacy chats where
+        // a Gemini parallel call to the same tool persisted two results under
+        // one id) — `uniqueKeysWithValues` would *trap* on a dup key and crash
+        // the app on chat open. Projection of stored data must never trap; keep
+        // the first result for a given id.
+        let toolResults: [String: String] = Dictionary(
+            messages.compactMap { message -> (String, String)? in
+                guard let id = message.toolCallId else { return nil }
+                return (id, message.content)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         var bannerArmed = false
         var bannerEmitted = false
