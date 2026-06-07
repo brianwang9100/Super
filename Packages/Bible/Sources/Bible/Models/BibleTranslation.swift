@@ -1,9 +1,9 @@
 /// One of the bundled Bible translations.
 ///
-/// All four are public-domain, Protestant-canon translations whose text
-/// ships in the package as `<rawValue>-<bookID>.json` resources. The raw
-/// value is the storage code persisted in `BibleReadingPositionRecord` and
-/// the lookup key `BundledBibleTextLoader` resolves resources by.
+/// All four are public-domain, Protestant-canon translations whose text ships in
+/// the prebuilt `bible-text.sqlite`. The raw value is the storage code persisted
+/// in `BibleReadingPositionRecord` and the `translation` key `DatabaseBibleTextLoader`
+/// (and `bible.search`) resolve rows by.
 public enum BibleTranslation: String, Sendable, Equatable, CaseIterable, Identifiable {
     /// King James Version (2006 public-domain edition) — the default, and the
     /// first row in the picker.
