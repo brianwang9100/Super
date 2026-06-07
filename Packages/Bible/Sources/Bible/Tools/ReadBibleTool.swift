@@ -292,7 +292,7 @@ public struct ReadBibleTool: ToolExecutor {
             let content = failures.count == 1
                 ? failures[0]
                 : "None of the \(total) references could be read:\n" + bullets(failures)
-            return errorResult(content)
+            return Self.errorResult(content)
         }
         if failures.isEmpty {
             return ToolResult(toolID: toolID, content: passages.joined(separator: "\n\n"), isError: false)

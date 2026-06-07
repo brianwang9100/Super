@@ -232,7 +232,7 @@ struct ReadBibleToolTests {
 
     @Test("more than 25 references is an error telling the model to split the call")
     func tooManyReferences() async throws {
-        let many = (1...26).map { _ in JSONValue.object(["book": .string("John"), "chapter": .int(3)]) }
+        let many = (1...(ReadBibleTool.maxReferences + 1)).map { _ in JSONValue.object(["book": .string("John"), "chapter": .int(3)]) }
         let result = try await makeTool().execute(input: ["references": .array(many)])
         #expect(result.isError == true)
         #expect(result.content.contains("25"))
