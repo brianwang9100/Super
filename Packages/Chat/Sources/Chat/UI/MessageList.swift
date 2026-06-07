@@ -294,15 +294,6 @@ public struct MessageList: View {
     /// Counter consumed by the geometry action; resets to 0 on every
     /// content-height change while ``verbosityScrollMode`` is active.
     @State private var verbosityStableTickCount: Int = 0
-    /// Measured height of the `ScrollView`'s own bounds (the container),
-    /// fed back into the content's `minHeight` so the content frame is
-    /// `max(containerHeight, contentHeight)` — continuous, with no
-    /// bistable fits-vs-overflows boundary for the resize jitter to land
-    /// on. Sourced from a background `GeometryReader` on the ScrollView
-    /// (not the content), so it's an input set by the surface's frame —
-    /// never an output of the content's own height. That independence is
-    /// what keeps it loop-free.
-    @State private var containerHeight: CGFloat = 0
     /// Armed by `.onChange(of: items.count)` so the geometry action
     /// re-issues a bottom-snap once content height *settles* — the
     /// single immediate snap there lands against transient stream-end
@@ -382,6 +373,22 @@ public struct MessageList: View {
     private static let bottomFollowThreshold: CGFloat = 8
 
     public var body: some View {
+        // Read the container height *synchronously* from a wrapping
+        // `GeometryReader` and feed it straight into the content's
+        // `minHeight` (see `transcriptScroll`). Crucially NOT via a
+        // `GeometryReader → @State → layout` round-trip: that reintroduced
+        // the keyboard-animation feedback hang (focusing the composer in
+        // semi-expanded animates the surface height every frame for ~0.25s,
+        // and a per-frame `@State` write + re-layout closed the loop).
+        // `geo.size.height` is a one-directional input (the surface-imposed
+        // frame); the content's `minHeight` can't change it, so there is no
+        // feedback path.
+        GeometryReader { geo in
+            transcriptScroll(containerHeight: geo.size.height)
+        }
+    }
+
+    private func transcriptScroll(containerHeight: CGFloat) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(items) { item in
@@ -410,9 +417,9 @@ public struct MessageList: View {
             // normally. This removes the bistable top/bottom anchor flip
             // that jittered while the surface was being actively resized
             // (drag/morph sweeping the container height through the content
-            // height). `containerHeight` is the ScrollView's own bounds, an
-            // input from the surface frame — never an output of this content
-            // — so feeding it back here can't loop.
+            // height). `containerHeight` is `body`'s wrapping `GeometryReader`
+            // height — a synchronous input from the surface frame, read
+            // without any `@State`, so it can't feed a layout loop.
             .frame(minHeight: containerHeight, alignment: .top)
             .contentShape(Rectangle())
             .simultaneousGesture(
@@ -420,20 +427,6 @@ public struct MessageList: View {
             )
         }
         .background(theme.background)
-        // Measure the ScrollView's container bounds (not the content) to
-        // drive the `minHeight` floor above. A background `GeometryReader`
-        // here reads the surface-imposed frame, so it changes only on a
-        // genuine container resize (drag/morph/keyboard), not per layout
-        // pass — and never reacts to the content height it ultimately
-        // bounds, keeping the dependency one-directional (loop-free).
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .onChange(of: proxy.size.height, initial: true) { _, height in
-                        containerHeight = height
-                    }
-            }
-        )
         // Drag-to-dismiss; the `simultaneousGesture` above handles
         // tap-to-dismiss. Both routes lead through `ChatScreen`'s
         // `dismissKeyboard()` via the `onContentTap` callback (taps) and
