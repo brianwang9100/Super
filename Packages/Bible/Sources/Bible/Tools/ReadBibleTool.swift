@@ -5,17 +5,20 @@ import Foundation
 /// model grounds Bible work in the user's actual translation rather than its own
 /// recollection.
 ///
-/// A strict, read-only lookup: given a book, chapter, optional verse range, and
-/// optional translation, it returns every requested verse with its number. The
-/// tool resolves the book name (or 3-letter code) through `BibleBookCatalog`,
-/// validates the translation against the bundled set, and — when `translation`
-/// is omitted — falls back to the user's currently selected translation read from
-/// the reading-position store.
+/// A strict, read-only lookup over a `references` array: each reference names a
+/// book, chapter, and optional verse range, and the tool returns every requested
+/// verse with its number. References may span different books and chapters, so a
+/// single call can gather a cross-reference set, a topical list, or a reading
+/// plan's verses. The tool resolves each book name (or 3-letter code) through
+/// `BibleBookCatalog`, validates the single top-level `translation` against the
+/// bundled set, and — when `translation` is omitted — falls back to the user's
+/// currently selected translation read from the reading-position store.
 ///
-/// Like the other Bible tools it rejects bad input *softly*: a missing field or
-/// out-of-range reference returns a `ToolResult` with `isError: true` and a
-/// remediation message, so the LLM (Large Language Model) can correct its
-/// arguments instead of tearing down the whole turn.
+/// Like the other Bible tools it rejects bad input *softly*. Crucially, failures
+/// are **per reference**: a malformed or out-of-range reference does not sink the
+/// rest of the call. When some references succeed and some fail, the tool returns
+/// the good passages plus a correctable note for each failure (`isError: false`);
+/// only when *every* reference fails is the whole call an error.
 public struct ReadBibleTool: ToolExecutor {
     /// Dotted form namespaces the tool under its applet, matching `bible.annotate`
     /// and `bible.note`.
@@ -24,6 +27,10 @@ public struct ReadBibleTool: ToolExecutor {
     public static let appletID = "bible"
 
     public let toolID: String = ReadBibleTool.toolID
+
+    /// Upper bound on references per call. Keeps a single tool result digestible
+    /// and bounds the worst case a model can request in one turn.
+    static let maxReferences = 25
 
     private let textLoader: any BibleTextLoader
     /// `nil` when `bible.sqlite` failed to open — the tool then falls back to the
@@ -45,66 +52,82 @@ public struct ReadBibleTool: ToolExecutor {
         id: ReadBibleTool.toolID,
         name: "bible.read",
         description: """
-        Look up the exact text of a Bible passage from the user's local \
-        storage. Call this before summarizing, explaining, quoting, or \
-        otherwise relying on a specific passage — even if you recall it from \
-        memory — so your answer matches the user's selected translation \
-        rather than your memory.
+        Look up the exact text of one or more Bible passages from the user's \
+        local storage. Call this before summarizing, explaining, quoting, or \
+        otherwise relying on specific passages — even ones you recall from \
+        memory — so your answer matches the user's selected translation rather \
+        than your memory.
 
-        Skip this call when you already have the verse's exact text in \
-        context — `bible.search` results already carry each verse's full \
-        text, so don't re-fetch those verses here. Reach for this tool to \
-        get verses you don't yet have: a passage the user named, or the \
-        verses *surrounding* a search hit.
+        Skip this call for verses whose exact text you already have in context \
+        — `bible.search` results already carry each verse's full text, so don't \
+        re-fetch those here. Reach for this tool to get verses you don't yet \
+        have: passages the user named, or the verses *surrounding* a search hit.
 
-        Pass the `book` (full name like "John" or "1 Corinthians", or its \
-        3-letter code) and the 1-based `chapter`. For the verse argument:
-        - omit both `startVerse` and `endVerse` to get the whole chapter;
-        - pass only `startVerse` to get that single verse;
-        - pass both for an inclusive range (`endVerse` ≥ `startVerse`).
+        Pass `references`, an array of one or more passage objects. Each object \
+        has:
+        - `book`: a full name like "John" or "1 Corinthians", or its 3-letter \
+        code ("JHN");
+        - `chapter`: the 1-based chapter number;
+        - `startVerse` (optional) and `endVerse` (optional): omit both for the \
+        whole chapter; pass only `startVerse` for a single verse; pass both for \
+        an inclusive range (`endVerse` ≥ `startVerse`).
 
-        Omit `translation` to use the user's currently selected translation \
-        (the usual case). Only pass it when the user explicitly names a \
-        different one. The tool returns each verse prefixed with its number; \
-        quote from that, not from memory.
+        References may span different books and chapters, so fetch a \
+        cross-reference set, a topical list, or a reading plan's verses in one \
+        call (up to \(ReadBibleTool.maxReferences)). For a single verse, pass an \
+        array of one — e.g. \
+        [{"book":"John","chapter":3,"startVerse":16},{"book":"Romans","chapter":8,"startVerse":28}].
+
+        Omit `translation` to use the user's currently selected translation (the \
+        usual case); it applies to every reference. Only pass it when the user \
+        explicitly names a different one. Each returned verse is prefixed with \
+        its number; quote from that, not from memory.
         """,
         category: .query,
         parameters: [
             LLMToolParameter(
-                name: "book",
-                type: .string,
-                description: "Book to read: a full name like 'John', '1 Corinthians', 'Psalms', or its 3-letter code ('JHN', '1CO', 'PSA').",
-                isRequired: true
-            ),
-            LLMToolParameter(
-                name: "chapter",
-                type: .integer,
-                description: "1-based chapter number.",
-                isRequired: true
-            ),
-            LLMToolParameter(
-                name: "startVerse",
-                type: .integer,
-                description: "1-based first verse. Omit (along with endVerse) to read the whole chapter; pass alone to read a single verse.",
-                isRequired: false
-            ),
-            LLMToolParameter(
-                name: "endVerse",
-                type: .integer,
-                description: "1-based last verse, ≥ startVerse. Requires startVerse. Omit to read a single verse or the whole chapter.",
-                isRequired: false
+                name: "references",
+                type: .array,
+                description: "One or more passages to read, each an object with book, chapter, and optional startVerse/endVerse. References may span different books and chapters.",
+                isRequired: true,
+                valueSchema: .object([
+                    LLMToolParameter(
+                        name: "book",
+                        type: .string,
+                        description: "Book to read: a full name like 'John', '1 Corinthians', 'Psalms', or its 3-letter code ('JHN', '1CO', 'PSA').",
+                        isRequired: true
+                    ),
+                    LLMToolParameter(
+                        name: "chapter",
+                        type: .integer,
+                        description: "1-based chapter number.",
+                        isRequired: true
+                    ),
+                    LLMToolParameter(
+                        name: "startVerse",
+                        type: .integer,
+                        description: "1-based first verse. Omit (along with endVerse) to read the whole chapter; pass alone to read a single verse.",
+                        isRequired: false
+                    ),
+                    LLMToolParameter(
+                        name: "endVerse",
+                        type: .integer,
+                        description: "1-based last verse, ≥ startVerse. Requires startVerse. Omit to read a single verse or the whole chapter.",
+                        isRequired: false
+                    ),
+                ])
             ),
             LLMToolParameter(
                 name: "translation",
                 type: .string,
-                description: "Optional translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Omit to use the user's currently selected translation, which is almost always what they want.",
+                description: "Optional translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Applies to every reference. Omit to use the user's currently selected translation, which is almost always what they want.",
                 isRequired: false,
                 enumValues: BibleTranslation.allCases.map(\.rawValue)
             ),
         ],
         appletId: ReadBibleTool.appletID,
         displayName: "Read scripture",
-        summary: "Looks up exact verse text from local storage."
+        summary: "Looks up exact verse text for one or more passages from local storage."
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
@@ -126,28 +149,18 @@ public struct ReadBibleTool: ToolExecutor {
     }
 
     public func execute(input: [String: JSONValue]) async throws -> ToolResult {
-        // 1. Book — required, resolved by name or code.
-        guard let bookRaw = Self.optionalString(input, key: "book"), !bookRaw.isEmpty else {
-            return Self.errorResult("book is required. Pass a full book name like 'John' or '1 Corinthians'.")
+        // 1. references — required, non-empty, within the per-call cap.
+        guard case .array(let rawReferences)? = input["references"], !rawReferences.isEmpty else {
+            return Self.errorResult("references is required. Pass an array of at least one passage, each with a book and chapter — e.g. [{\"book\":\"John\",\"chapter\":3,\"startVerse\":16}].")
         }
-        guard let summary = catalog.resolve(bookName: bookRaw) else {
-            return Self.errorResult("Unknown or ambiguous book '\(bookRaw)'. Use a full book name like 'John' or '1 Corinthians', or a 3-letter code like 'JHN'.")
-        }
-
-        // 2. Chapter — required, within the book's bounds.
-        guard let chapterNumber = Self.optionalInt(input, key: "chapter") else {
-            return Self.errorResult("chapter is required. Pass a 1-based chapter number.")
-        }
-        guard chapterNumber >= 1, chapterNumber <= summary.chapterCount else {
-            return Self.errorResult("Chapter \(chapterNumber) is out of range; \(summary.name) has \(summary.chapterCount) chapter\(summary.chapterCount == 1 ? "" : "s").")
+        guard rawReferences.count <= Self.maxReferences else {
+            return Self.errorResult("Too many references (\(rawReferences.count)); bible.read reads at most \(Self.maxReferences) passages per call. Split the request into multiple calls.")
         }
 
-        // 3. Verse range (single-verse-friendly) and 4. translation — explicit
-        // (validated strictly) or the user's current selection.
-        let range: VerseRange
+        // 2. translation — resolved once; applies to every reference. An unknown
+        // explicit code is a correctable error for the whole call.
         let translation: BibleTranslation
         do {
-            range = try Self.resolveRange(input)
             translation = try await BibleToolTranslationResolver.resolve(
                 explicitCode: Self.optionalString(input, key: "translation"),
                 positionRepository: positionRepository
@@ -156,17 +169,76 @@ public struct ReadBibleTool: ToolExecutor {
             return Self.errorResult(error.message)
         }
 
-        // 5. Load and slice.
+        // 3. Resolve each reference independently; partition successes/failures
+        // so one bad reference doesn't sink the rest.
+        var passages: [String] = []
+        var failures: [String] = []
+        for raw in rawReferences {
+            guard case .object(let reference) = raw else {
+                failures.append("Each reference must be an object with a book and chapter.")
+                continue
+            }
+            switch readOne(reference: reference, translation: translation) {
+            case .passage(let content): passages.append(content)
+            case .failure(let message): failures.append(message)
+            }
+        }
+
+        return Self.combine(passages: passages, failures: failures, total: rawReferences.count)
+    }
+
+    // MARK: - Single reference
+
+    /// The outcome of reading one reference: a formatted passage, or a
+    /// remediation message the caller surfaces as a correctable note.
+    private enum ReadOutcome {
+        case passage(String)
+        case failure(String)
+    }
+
+    /// Read one reference's verses, returning either the formatted passage or a
+    /// remediation message. `translation` is already resolved (top-level), so this
+    /// holds the pure book → chapter → range → load → slice → format pipeline.
+    private func readOne(
+        reference: [String: JSONValue], translation: BibleTranslation
+    ) -> ReadOutcome {
+        // Book — required, resolved by name or code.
+        guard let bookRaw = Self.optionalString(reference, key: "book"), !bookRaw.isEmpty else {
+            return .failure("book is required. Pass a full book name like 'John' or '1 Corinthians'.")
+        }
+        guard let summary = catalog.resolve(bookName: bookRaw) else {
+            return .failure("Unknown or ambiguous book '\(bookRaw)'. Use a full book name like 'John' or '1 Corinthians', or a 3-letter code like 'JHN'.")
+        }
+
+        // Chapter — required, within the book's bounds.
+        guard let chapterNumber = Self.optionalInt(reference, key: "chapter") else {
+            return .failure("chapter is required. Pass a 1-based chapter number.")
+        }
+        guard chapterNumber >= 1, chapterNumber <= summary.chapterCount else {
+            return .failure("Chapter \(chapterNumber) is out of range; \(summary.name) has \(summary.chapterCount) chapter\(summary.chapterCount == 1 ? "" : "s").")
+        }
+
+        // Verse range (single-verse-friendly).
+        let range: VerseRange
+        do {
+            range = try Self.resolveRange(reference)
+        } catch let error as BibleToolValidationError {
+            return .failure(error.message)
+        } catch {
+            return .failure("Invalid verse range.")
+        }
+
+        // Load and slice.
         let loaded: BibleChapter?
         do {
             loaded = try textLoader.loadChapter(
                 bookId: summary.id, chapterNumber: chapterNumber, translation: translation
             )
         } catch {
-            return Self.errorResult("Couldn't load \(summary.name) (\(translation.rawValue)).")
+            return .failure("Couldn't load \(summary.name) (\(translation.rawValue)).")
         }
         guard let chapter = loaded else {
-            return Self.errorResult("Chapter \(chapterNumber) is not available in \(summary.name) (\(translation.rawValue)).")
+            return .failure("Chapter \(chapterNumber) is not available in \(summary.name) (\(translation.rawValue)).")
         }
 
         let allVerses = chapter.coalescedVerses()
@@ -179,7 +251,7 @@ public struct ReadBibleTool: ToolExecutor {
             citedNumbers = []
         case .single(let number), .span(let number, _):
             guard number <= maxVerse else {
-                return Self.errorResult("Verse \(number) not found in \(summary.name) \(chapterNumber); the chapter has \(maxVerse) verse\(maxVerse == 1 ? "" : "s").")
+                return .failure("Verse \(number) not found in \(summary.name) \(chapterNumber); the chapter has \(maxVerse) verse\(maxVerse == 1 ? "" : "s").")
             }
             // Lenient upper bound: clamp an over-long range to the last verse
             // rather than erroring, so "16-9999" returns 16…end.
@@ -197,7 +269,7 @@ public struct ReadBibleTool: ToolExecutor {
                 let requested = range.upperBound == nil
                     ? "\(summary.name) \(chapterNumber):\(number)"
                     : "\(summary.name) \(chapterNumber):\(number)-\(upper)"
-                return Self.errorResult("\(requested) (\(translation.rawValue)) has no verse text in this translation — those verse numbers are omitted here, as a textual variant some translations don't include. Try an adjacent verse.")
+                return .failure("\(requested) (\(translation.rawValue)) has no verse text in this translation — those verse numbers are omitted here, as a textual variant some translations don't include. Try an adjacent verse.")
             }
             citedNumbers = selected.map(\.number)
         }
@@ -206,7 +278,33 @@ public struct ReadBibleTool: ToolExecutor {
             bookName: summary.name, chapterNumber: chapterNumber, verses: citedNumbers
         )
         let content = "\(citation) (\(translation.rawValue))\n\n" + BibleVerseTextFormatter.numbered(selected)
-        return ToolResult(toolID: ReadBibleTool.toolID, content: content, isError: false)
+        return .passage(content)
+    }
+
+    // MARK: - Assembly
+
+    /// Combine per-reference results into one `ToolResult`. All-fail is the only
+    /// error case; a partial mix returns the good passages plus correctable notes.
+    private static func combine(passages: [String], failures: [String], total: Int) -> ToolResult {
+        if passages.isEmpty {
+            // Every reference failed. A single failure stays byte-identical to the
+            // old single-passage error; multiple failures list each message.
+            let content = failures.count == 1
+                ? failures[0]
+                : "None of the \(total) references could be read:\n" + bullets(failures)
+            return errorResult(content)
+        }
+        if failures.isEmpty {
+            return ToolResult(toolID: toolID, content: passages.joined(separator: "\n\n"), isError: false)
+        }
+        // Partial success: passages, then a correctable note per failed reference.
+        let note = "⚠︎ \(failures.count) of \(total) references couldn't be read:\n" + bullets(failures)
+        let content = passages.joined(separator: "\n\n") + "\n\n" + note
+        return ToolResult(toolID: toolID, content: content, isError: false)
+    }
+
+    private static func bullets(_ messages: [String]) -> String {
+        messages.map { "• \($0)" }.joined(separator: "\n")
     }
 
     // MARK: - Verse range
@@ -228,12 +326,13 @@ public struct ReadBibleTool: ToolExecutor {
         }
     }
 
-    /// Apply the single-verse-friendly rules to the `startVerse`/`endVerse`
-    /// arguments. Both absent → whole chapter; start only → single verse; both →
-    /// span; end without start → error; any non-positive bound → error.
-    private static func resolveRange(_ input: [String: JSONValue]) throws -> VerseRange {
-        let start = optionalInt(input, key: "startVerse")
-        let end = optionalInt(input, key: "endVerse")
+    /// Apply the single-verse-friendly rules to a reference's `startVerse`/
+    /// `endVerse` arguments. Both absent → whole chapter; start only → single
+    /// verse; both → span; end without start → error; any non-positive bound →
+    /// error.
+    private static func resolveRange(_ reference: [String: JSONValue]) throws -> VerseRange {
+        let start = optionalInt(reference, key: "startVerse")
+        let end = optionalInt(reference, key: "endVerse")
         switch (start, end) {
         case (nil, nil):
             return .wholeChapter
