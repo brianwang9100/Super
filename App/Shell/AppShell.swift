@@ -997,35 +997,70 @@ private struct BackdropLayer: View, @MainActor Equatable {
     }
 
     var body: some View {
+        // The applet itself is rendered by an inner `.equatable()`
+        // ``AppletHost`` that EXCLUDES `chatProgress`. A drag/keyboard
+        // morph changes `chatProgress` every frame, so this body re-applies
+        // only the cheap `.opacity`/`.allowsHitTesting` modifiers — it does
+        // NOT re-invoke `activeApplet.rootView()` (the whole applet tree, an
+        // `AnyView` that can't be diffed). Before this split the backdrop
+        // re-rendered the entire hidden applet ~once per frame during a drag
+        // (~130 rebuilds per drag), the dominant cause of the overlay
+        // lag/hang.
+        AppletHost(
+            activeApplet: activeApplet,
+            activeAppletID: activeAppletID,
+            theme: theme,
+            appearance: appearance,
+            typography: typography
+        )
+        .equatable()
+        .opacity(backdropOpacity)
+        .allowsHitTesting(backdropHitTestingEnabled)
+        .overlay {
+            if chatState == .semiExpanded {
+                // Transparent tap-target sits above the dimmed applet only
+                // while semi-expanded. Attached to the settled semi anchor
+                // (not `chatProgress`) so it's gone the instant the overlay
+                // snaps elsewhere rather than armed during the whole drag.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { onBackdropTap() }
+            }
+        }
+    }
+}
+
+/// Renders the active applet's `rootView()` with the theme trio applied.
+/// Split out of ``BackdropLayer`` and gated with `.equatable()` keyed on
+/// applet identity + theme/appearance/typography ONLY — deliberately NOT
+/// `chatProgress` — so the per-frame morph dim (opacity, applied by
+/// `BackdropLayer` *outside* this view) never re-invokes `rootView()`.
+/// `rootView()` returns an `AnyView`, so a re-invocation rebuilds the whole
+/// applet tree undiffed; keeping this body skipped during a drag is the
+/// fix for the overlay lag/hang.
+private struct AppletHost: View, @MainActor Equatable {
+    let activeApplet: (any MiniApplet)?
+    let activeAppletID: String?
+    let theme: SuperTheme
+    let appearance: ChatAppearance
+    let typography: SuperTypography
+
+    static func == (lhs: AppletHost, rhs: AppletHost) -> Bool {
+        lhs.activeAppletID == rhs.activeAppletID
+            && lhs.theme.id == rhs.theme.id
+            && lhs.appearance == rhs.appearance
+            && lhs.typography == rhs.typography
+    }
+
+    var body: some View {
         if let activeApplet {
-            // The rootView keeps the safe area so each applet can place
-            // its own top chrome below the status bar / Dynamic Island
-            // and clear the shell's floating hamburger. Applets fill
-            // the screen edge-to-edge themselves, extending only their
-            // background under the safe area.
+            // The rootView keeps the safe area so each applet can place its
+            // own top chrome below the status bar / Dynamic Island and clear
+            // the shell's floating hamburger.
             activeApplet.rootView()
                 .superTheme(theme)
                 .superFontScale(appearance.fontScale)
                 .superTypography(typography)
-                .opacity(backdropOpacity)
-                .allowsHitTesting(backdropHitTestingEnabled)
-                .overlay {
-                    if chatState == .semiExpanded {
-                        // Transparent tap-target sits above the dimmed
-                        // applet only while semi-expanded. An
-                        // always-present `.onTapGesture` would consume
-                        // applet taps in `.minimized` too, even though
-                        // it would no-op there. We attach it to the
-                        // settled-state semi anchor so it's gone the
-                        // instant the overlay snaps elsewhere — using
-                        // `chatProgress` instead would leave the
-                        // tap-target armed during the entire drag and
-                        // dismiss mid-drag.
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { onBackdropTap() }
-                    }
-                }
         }
     }
 }
