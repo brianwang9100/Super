@@ -63,6 +63,13 @@ public struct ChatScreen: View {
     /// `ChatOverlay` to snap to the nearest presentation state on release.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
 
+    /// Bumped by `ChatOverlay` whenever the surface settles into a new anchor
+    /// or the keyboard shows/hides. Forwarded to the transcript body-drag
+    /// gesture so it can drop any latched per-gesture state on those
+    /// transitions (no stale trigger state bleeding across a snap / keyboard
+    /// toggle). Defaults to `0` for previews and snapshot fixtures.
+    private let dragResetToken: Int
+
     /// Composer focus binding owned by the shell. When non-nil, the
     /// composer's `TextField` binds to this — letting the shell clear
     /// focus on any "user moved away from the composer" transition
@@ -92,6 +99,7 @@ public struct ChatScreen: View {
         onSurfaceTapped: (() -> Void)? = nil,
         onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
         onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
+        dragResetToken: Int = 0,
         clock: any Clock = SystemClock(),
         calendar: Calendar = .current
     ) {
@@ -103,6 +111,7 @@ public struct ChatScreen: View {
         self.onSurfaceTapped = onSurfaceTapped
         self.onDragChanged = onDragChanged
         self.onDragEnded = onDragEnded
+        self.dragResetToken = dragResetToken
         self.clock = clock
         self.calendar = calendar
         viewModel.onAddModelRequested = onAddModelRequested
@@ -405,6 +414,7 @@ public struct ChatScreen: View {
                     // no drag height is in flight until handoff.
                     canExpand: progress < 0.999,
                     canCollapse: progress > 0.001,
+                    resetToken: dragResetToken,
                     onChanged: { translation in onDragChanged?(translation) },
                     onEnded: { translation, predicted in onDragEnded?(translation, predicted) }
                 )
