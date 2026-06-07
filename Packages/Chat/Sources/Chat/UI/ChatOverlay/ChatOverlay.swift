@@ -128,6 +128,12 @@ public struct ChatOverlay: View {
     /// startTopEdge` — i.e. exactly what was already on screen, no jump.
     @State private var dragStartTopEdge: CGFloat? = nil
 
+    /// Bumped on every settle / keyboard toggle (see `resetDragState`) and
+    /// forwarded to the transcript body-drag gesture so it drops its latched
+    /// per-gesture state on those transitions — the trigger for the next drag
+    /// is computed fresh, never bled from the last interaction.
+    @State private var dragResetToken = 0
+
     /// Snapshot-test override. When non-nil, freezes the chat-surface
     /// height at this value so baselines can be recorded mid-morph.
     private let frozenDragHeight: CGFloat?
@@ -242,8 +248,17 @@ public struct ChatOverlay: View {
                     safeAreaBottom: geo.safeAreaInsets.bottom,
                     safeAreaTop: geo.safeAreaInsets.top
                 )
-            }
+            },
+            dragResetToken: dragResetToken
         )
+        // Reset all in-flight drag state on every settle and on every keyboard
+        // show/hide, so no latched height / arm / engaged-edge state from the
+        // prior interaction bleeds into how the next body-drag handoff is
+        // triggered. `settledState` covers snaps (drag-release *and*
+        // shell-driven promote/demote); `keyboardVisible` covers the surface
+        // geometry shift when the composer focuses or dismisses.
+        .onChange(of: settledState) { resetDragState() }
+        .onChange(of: keyboardAwareHeight < geo.size.height - 1) { resetDragState() }
         .frame(height: metrics.renderedHeight, alignment: .bottom)
         // Use `keyboardAwareHeight` — not `geo.size.height` — so the chat surface shrinks above the keyboard; the inner GR's `.ignoresSafeArea(.keyboard)` (see body comment) blocks alternative safeAreaInset-based hoisting.
         .frame(width: geo.size.width, height: keyboardAwareHeight, alignment: .bottom)
@@ -318,6 +333,21 @@ public struct ChatOverlay: View {
             dragTopEdge = nil
             dragStartTopEdge = nil
         }
+    }
+
+    /// Drop every in-flight drag value and signal the body-drag gesture to
+    /// clear its latches. Called when the surface settles into a new anchor or
+    /// the keyboard shows/hides, so neither the rendered geometry nor the
+    /// handoff trigger carries stale state across the transition. Clearing the
+    /// `@State` heights is idempotent with `endDrag` (which already nils them
+    /// on a drag-release snap); the value here is the *non-drag* transitions
+    /// `endDrag` never sees — shell promote/demote and keyboard toggles.
+    private func resetDragState() {
+        dragHeight = nil
+        dragStartHeight = nil
+        dragTopEdge = nil
+        dragStartTopEdge = nil
+        dragResetToken &+= 1
     }
 
     private func surfaceTapped() {

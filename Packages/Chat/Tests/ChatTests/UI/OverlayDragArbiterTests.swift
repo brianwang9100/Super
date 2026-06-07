@@ -3,18 +3,18 @@ import Testing
 @testable import Chat
 
 /// Tests for `OverlayDragArbiter` — the pure per-tick integrator behind the
-/// content-drag → overlay-drag handoff (scroll the transcript until an edge,
-/// then resize the overlay in the *same* gesture, reversibly) — and the
-/// `overlayDragProjection` flick helper. Resolves in-process with no UIKit, so
-/// the handoff rules are pinned without a device or simulator.
+/// content-drag → overlay-drag handoff — and the `overlayDragProjection` flick
+/// helper. Resolves in-process with no UIKit, so the handoff rules are pinned
+/// without a device or simulator.
 ///
-/// The model is a signed-displacement integrator: each tick takes the per-tick
-/// pan *delta* and the overlay's current displacement from its settled anchor
-/// (`> 0` collapsing from the top edge, `< 0` expanding from the bottom edge,
-/// `0` at the anchor) and returns the new displacement plus whether the inner
-/// scroll view must be pinned this tick. Because every tick is recomputed from
-/// the live edge + delta, reversing the finger hands control straight back to
-/// the scroll view — no latch.
+/// The model is **arm-at-start, stay-in-resize**: the coordinator latches
+/// `armedCollapse` / `armedExpand` at `.began` from where the scroll sat (and
+/// the overlay's remaining capability), and these stay constant for the whole
+/// gesture. While not engaged (`engagedEdge == nil`) a drag only resizes if it
+/// was armed in that direction — scrolling *into* an edge mid-gesture never
+/// engages, because the flags reflect the start, not the live edge. Once
+/// engaged, `engagedEdge` is set and the gesture stays in resize until release,
+/// pinning that edge even through an anchor-crossing reversal.
 @Suite("OverlayDragArbiter handoff")
 struct OverlayDragArbiterTests {
     private let arbiter = OverlayDragArbiter()
@@ -32,165 +32,207 @@ struct OverlayDragArbiterTests {
         .init(offsetY: 1000, topOffsetY: 0, bottomOffsetY: 1000, isScrollable: true)
     }
 
-    // MARK: - Scroll phase (at the anchor, scroll owns the gesture)
+    // MARK: - Not armed (began mid-content): the scroll view owns the gesture
 
-    @Test("Mid-content down-drag lets the scroll view own the gesture")
-    func midContentDownScrolls() {
+    @Test("Not armed, a down-drag lets the scroll view own the gesture")
+    func notArmedDownScrolls() {
         let step = arbiter.step(
             scroll: midContent(), deltaY: 12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
         )
         #expect(step.overlayDisplacement == 0)
         #expect(step.pinScroll == false)
     }
 
-    @Test("Mid-content up-drag scrolls toward the bottom (not an expand handoff)")
-    func midContentUpScrolls() {
+    @Test("Not armed, an up-drag lets the scroll view own the gesture")
+    func notArmedUpScrolls() {
         let step = arbiter.step(
             scroll: midContent(), deltaY: -12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
         )
         #expect(step.overlayDisplacement == 0)
         #expect(step.pinScroll == false)
     }
 
-    @Test("At the bottom, dragging down (into content) keeps scrolling")
-    func atBottomDraggingDownScrolls() {
-        let step = arbiter.step(
-            scroll: atBottom(), deltaY: 12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
-        )
-        #expect(step.overlayDisplacement == 0)
-        #expect(step.pinScroll == false)
-    }
-
-    @Test("At the top, dragging up scrolls down through content (NOT an expand)")
-    func atTopDraggingUpScrolls() {
-        // The defect this replaces: an up-drag at the top used to expand the
-        // overlay. The overlay only maximizes from the *bottom* edge.
-        let step = arbiter.step(
-            scroll: atTop(), deltaY: -12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
-        )
-        #expect(step.overlayDisplacement == 0)
-        #expect(step.pinScroll == false)
-    }
-
-    // MARK: - Handoff (edge + direction specific)
-
-    @Test("At the top, dragging down hands off to collapse and pins the scroll view")
-    func atTopDraggingDownCollapses() {
+    @Test("Arm flags are latched at start: scrolling INTO the top edge mid-gesture never collapses")
+    func latchedFlagsIgnoreLiveEdge() {
+        // The core of the rework: even though the live scroll now reads `atTop`,
+        // a gesture that began mid-content (armedCollapse == false) keeps
+        // scrolling on a down-drag — it does not engage collapse.
         let step = arbiter.step(
             scroll: atTop(), deltaY: 12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    @Test("Arm flags are latched at start: scrolling INTO the bottom edge mid-gesture never expands")
+    func latchedFlagsIgnoreLiveBottomEdge() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    // MARK: - Engaging (armed at the matching edge)
+
+    @Test("Armed to collapse, a down-drag engages and pins the top edge")
+    func armedCollapseDownEngages() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 12, previousDisplacement: 0,
+            engagedEdge: nil, armedCollapse: true, armedExpand: false
         )
         #expect(step.overlayDisplacement == 12)
         #expect(step.pinScroll)
         #expect(step.pinnedOffsetY == 0)
     }
 
-    @Test("At the bottom, dragging up hands off to expand and pins the scroll view")
-    func atBottomDraggingUpExpands() {
+    @Test("Armed to expand, an up-drag engages and pins the bottom edge")
+    func armedExpandUpEngages() {
         let step = arbiter.step(
             scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: false, armedExpand: true
         )
         #expect(step.overlayDisplacement == -12)
         #expect(step.pinScroll)
         #expect(step.pinnedOffsetY == 1000)
     }
 
-    // MARK: - Reversible handoff (no latch)
+    @Test("Armed to collapse only, an up-drag still scrolls (collapse is a down-drag)")
+    func armedCollapseUpScrolls() {
+        // At the top, a finger moving up has nowhere to scroll and must not
+        // expand — expansion only arms at the bottom.
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: -12, previousDisplacement: 0,
+            engagedEdge: nil, armedCollapse: true, armedExpand: false
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
 
-    @Test("While collapsing, a further down-delta keeps driving and stays pinned")
-    func collapsingContinues() {
+    @Test("Armed to expand only, a down-drag still scrolls (expand is an up-drag)")
+    func armedExpandDownScrolls() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: 12, previousDisplacement: 0,
+            engagedEdge: nil, armedCollapse: false, armedExpand: true
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    @Test("A directionless tick (zero delta) never engages, even when armed both ways")
+    func zeroDeltaDoesNotEngage() {
+        let step = arbiter.step(
+            scroll: atTop(), deltaY: 0, previousDisplacement: 0,
+            engagedEdge: nil, armedCollapse: true, armedExpand: true
+        )
+        #expect(step.overlayDisplacement == 0)
+        #expect(step.pinScroll == false)
+    }
+
+    // MARK: - Stay in resize (engaged, no hand-back)
+
+    @Test("Engaged from the top, a further down-delta keeps driving and stays pinned")
+    func engagedTopContinues() {
         let step = arbiter.step(
             scroll: atTop(), deltaY: 10, previousDisplacement: 30,
-            canExpand: true, canCollapse: true
+            engagedEdge: .top, armedCollapse: true, armedExpand: false
         )
         #expect(step.overlayDisplacement == 40)
         #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 0)
     }
 
-    @Test("While collapsing, reversing up shrinks the displacement back toward the anchor")
-    func collapsingReverses() {
+    @Test("Engaged from the top, reversing up shrinks the displacement but stays engaged")
+    func engagedTopReversesButStaysEngaged() {
         let step = arbiter.step(
             scroll: atTop(), deltaY: -10, previousDisplacement: 30,
-            canExpand: true, canCollapse: true
+            engagedEdge: .top, armedCollapse: true, armedExpand: false
         )
         #expect(step.overlayDisplacement == 20)
         #expect(step.pinScroll)
     }
 
-    @Test("Reversing past the anchor releases the gesture back to the scroll view")
-    func collapsingReleasesAtAnchor() {
-        // Displacement 8, finger reverses up by 20 → would cross the anchor.
-        // The overlay returns to its anchor (0) and the scroll view takes over
-        // again — the "transition straight into a scroll within the same drag".
+    @Test("Engaged from the top, reversing PAST the anchor stays in resize (no hand-back, no edge flip)")
+    func engagedTopReversesThroughAnchor() {
+        // Replaces the old reversible "releases at anchor" behavior: under
+        // stay-in-resize the drag keeps driving (displacement goes negative)
+        // and keeps pinning the *top* edge it engaged from — it does NOT hand
+        // back to the scroll view, nor flip to pinning the bottom edge.
         let step = arbiter.step(
             scroll: atTop(), deltaY: -20, previousDisplacement: 8,
-            canExpand: true, canCollapse: true
+            engagedEdge: .top, armedCollapse: true, armedExpand: false
         )
-        #expect(step.overlayDisplacement == 0)
-        #expect(step.pinScroll == false)
+        #expect(step.overlayDisplacement == -12)
+        #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 0)
     }
 
-    @Test("While expanding, reversing down past the anchor releases to the scroll view")
-    func expandingReleasesAtAnchor() {
-        let step = arbiter.step(
-            scroll: atBottom(), deltaY: 20, previousDisplacement: -8,
-            canExpand: true, canCollapse: true
-        )
-        #expect(step.overlayDisplacement == 0)
-        #expect(step.pinScroll == false)
-    }
-
-    @Test("While expanding, a further up-delta keeps driving and stays pinned")
-    func expandingContinues() {
+    @Test("Engaged from the bottom, a further up-delta keeps driving and stays pinned")
+    func engagedBottomContinues() {
         let step = arbiter.step(
             scroll: atBottom(), deltaY: -10, previousDisplacement: -30,
-            canExpand: true, canCollapse: true
+            engagedEdge: .bottom, armedCollapse: false, armedExpand: true
         )
         #expect(step.overlayDisplacement == -40)
         #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 1000)
     }
 
-    // MARK: - Capability gating
+    @Test("Engaged from the bottom, reversing down past the anchor stays in resize (no flip)")
+    func engagedBottomReversesThroughAnchor() {
+        let step = arbiter.step(
+            scroll: atBottom(), deltaY: 20, previousDisplacement: -8,
+            engagedEdge: .bottom, armedCollapse: false, armedExpand: true
+        )
+        #expect(step.overlayDisplacement == 12)
+        #expect(step.pinScroll)
+        #expect(step.pinnedOffsetY == 1000)
+    }
 
-    @Test("Already fully expanded, an up-drag at the bottom scrolls instead of expanding")
-    func fullyExpandedBottomUpScrolls() {
+    // MARK: - Capability folded into the arm flags
+
+    @Test("Already fully expanded (expand not armed), an up-drag scrolls instead of expanding")
+    func notArmedExpandUpScrolls() {
+        // The coordinator computes `armedExpand = atBottom && canExpand`; fully
+        // expanded means canExpand == false, so the flag is false here.
         let step = arbiter.step(
             scroll: atBottom(), deltaY: -12, previousDisplacement: 0,
-            canExpand: false, canCollapse: true
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
         )
         #expect(step.overlayDisplacement == 0)
         #expect(step.pinScroll == false)
     }
 
-    @Test("Already minimized, a down-drag at the top scrolls instead of collapsing")
-    func fullyMinimizedTopDownScrolls() {
+    @Test("Already minimized (collapse not armed), a down-drag scrolls instead of collapsing")
+    func notArmedCollapseDownScrolls() {
         let step = arbiter.step(
             scroll: atTop(), deltaY: 12, previousDisplacement: 0,
-            canExpand: true, canCollapse: false
+            engagedEdge: nil, armedCollapse: false, armedExpand: false
         )
         #expect(step.overlayDisplacement == 0)
         #expect(step.pinScroll == false)
     }
 
-    // MARK: - Non-scrollable (empty state)
+    // MARK: - Non-scrollable (empty / short content)
 
-    @Test("Non-scrollable content drives in whichever direction the overlay can move")
-    func nonScrollableDrivesImmediately() {
+    @Test("Non-scrollable content armed both ways drives in whichever direction the finger moves")
+    func nonScrollableArmedDrivesImmediately() {
+        // For non-scrollable content the coordinator arms both directions (up to
+        // capability); the arbiter then engages on the first directional tick.
         let nonScrollable = OverlayDragArbiter.ScrollState(
             offsetY: 0, topOffsetY: 0, bottomOffsetY: 0, isScrollable: false
         )
         let down = arbiter.step(
             scroll: nonScrollable, deltaY: 12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: true, armedExpand: true
         )
         let up = arbiter.step(
             scroll: nonScrollable, deltaY: -12, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
+            engagedEdge: nil, armedCollapse: true, armedExpand: true
         )
         #expect(down.overlayDisplacement == 12)
         #expect(down.pinScroll)
@@ -198,31 +240,7 @@ struct OverlayDragArbiterTests {
         #expect(up.pinScroll)
     }
 
-    @Test("Non-scrollable content won't drive past an anchor it can't move toward")
-    func nonScrollableRespectsCapability() {
-        let nonScrollable = OverlayDragArbiter.ScrollState(
-            offsetY: 0, topOffsetY: 0, bottomOffsetY: 0, isScrollable: false
-        )
-        // Fully expanded: an up-drag has nowhere to grow → no handoff.
-        let up = arbiter.step(
-            scroll: nonScrollable, deltaY: -12, previousDisplacement: 0,
-            canExpand: false, canCollapse: true
-        )
-        #expect(up.overlayDisplacement == 0)
-        #expect(up.pinScroll == false)
-    }
-
-    @Test("A directionless tick (zero delta) at the top doesn't hand off")
-    func zeroDeltaAtTopScrolls() {
-        let step = arbiter.step(
-            scroll: atTop(), deltaY: 0, previousDisplacement: 0,
-            canExpand: true, canCollapse: true
-        )
-        #expect(step.overlayDisplacement == 0)
-        #expect(step.pinScroll == false)
-    }
-
-    // MARK: - ScrollState edge helpers
+    // MARK: - ScrollState edge helpers (read by the coordinator at .began)
 
     @Test("atTop / atBottom honor the edge epsilon")
     func edgeEpsilonTolerance() {
