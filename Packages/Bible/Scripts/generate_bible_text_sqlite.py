@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Build the read-only `bible-text.sqlite` database from the bundled per-book
-translation JSON.
+"""Build the read-only `bible-text.sqlite` database from the per-book translation
+JSON.
+
+The JSON is **not shipped** in the app — it lives in the test target
+(`Tests/BibleTests/Fixtures/Text/`) as the parity oracle the sqlite is generated
+from. The committed `bible-text.sqlite` is the sole on-device source of Bible text.
 
 This database is the immutable, prebuilt store for on-device Bible text, kept
 deliberately separate from the mutable, sync-targeted `bible.sqlite` so its static
@@ -18,11 +22,11 @@ Run once from the package root after the JSON resources change; commit the resul
 
     python3 Scripts/generate_bible_text_sqlite.py
 
-By default it reads every `<CODE>-<bookID>.json` under `Sources/Bible/Resources/`
-and writes `Sources/Bible/Resources/bible-text.sqlite`. Pass explicit paths to
-override:
+By default it reads every `<CODE>-<bookID>.json` under
+`Tests/BibleTests/Fixtures/Text/` and writes `Sources/Bible/Resources/bible-text.sqlite`.
+Pass explicit paths to override:
 
-    python3 Scripts/generate_bible_text_sqlite.py <resources_dir> <output_sqlite>
+    python3 Scripts/generate_bible_text_sqlite.py <json_dir> <output_sqlite>
 
 The structured `chapter.json` is stored unmodified — key order and whitespace are
 irrelevant to `JSONDecoder`. The flat verse text is **coalesced exactly as Swift's
@@ -146,11 +150,12 @@ def build(resources_dir: Path, output_path: Path):
 def main(argv):
     script_dir = Path(__file__).resolve().parent
     package_root = script_dir.parent
-    default_resources = package_root / "Sources" / "Bible" / "Resources"
+    default_json = package_root / "Tests" / "BibleTests" / "Fixtures" / "Text"
+    default_output = package_root / "Sources" / "Bible" / "Resources" / "bible-text.sqlite"
 
     if len(argv) == 1:
-        resources_dir = default_resources
-        output_path = default_resources / "bible-text.sqlite"
+        resources_dir = default_json
+        output_path = default_output
     elif len(argv) == 3:
         resources_dir = Path(argv[1])
         output_path = Path(argv[2])
@@ -160,7 +165,7 @@ def main(argv):
         return 2
 
     if not resources_dir.is_dir():
-        print(f"error: resources dir not found: {resources_dir}")
+        print(f"error: JSON dir not found: {resources_dir}")
         return 1
 
     chapters, verses = build(resources_dir, output_path)

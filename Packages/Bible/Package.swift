@@ -26,10 +26,10 @@ let package = Package(
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
             ],
             // `.process` (not `.copy`) keeps the bundle codesign-valid on the
-            // iOS simulator — see the note in `Chat/Package.swift`. The 264
-            // `<CODE>-<bookID>.json` files (66 each for WEB, KJV, ASV, BSB)
-            // land flat at the bundle root, where `BundledBibleTextLoader`
-            // looks them up by name.
+            // iOS simulator — see the note in `Chat/Package.swift`. Ships the
+            // prebuilt `bible-text.sqlite` (the sole on-device source of Bible
+            // text) and `SystemPrompt.md`. The per-book JSON the sqlite is built
+            // from is no longer shipped — it lives in the test target's fixtures.
             resources: [
                 .process("Resources"),
             ],
@@ -51,8 +51,12 @@ let package = Package(
                 "UI/Snapshots/__Snapshots__",
                 "Database/__Snapshots__",
             ],
-            // `Fixtures/WEB-BAD.json` is a deliberately malformed resource
-            // the loader's malformed-resource test reads via the test bundle.
+            // `Fixtures/Text/` holds the 264 per-book `<CODE>-<bookID>.json`
+            // (the parity oracle the shipped sqlite is generated from), and
+            // `Fixtures/WEB-BAD.json` is a deliberately malformed resource the
+            // loader's malformed-resource test reads. `.process` flattens them
+            // into the test bundle, where `BundledBibleTextLoader` looks them up
+            // by name.
             resources: [
                 .process("Fixtures"),
             ],
