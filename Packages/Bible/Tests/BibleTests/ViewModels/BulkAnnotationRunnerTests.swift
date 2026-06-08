@@ -1,5 +1,6 @@
 import Core
 import Foundation
+import GRDB
 import Testing
 
 @testable import Bible
@@ -16,12 +17,19 @@ import Testing
     private func makeRunner(
         generator: any BibleAnnotateGenerating,
         maxAttempts: Int = 3,
-        breaker: Int = 5
+        breaker: Int = 5,
+        seedAnnotatedChapters: [Int] = [],
+        seedAnnotatedBook: Bool = false
     ) throws -> (BulkAnnotationRunner, GRDBBulkAnnotationLedger) {
-        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        // One in-memory DB backs both the ledger and the annotation repository so
+        // a seeded slot the runner reads is the one the ledger persists against.
+        let database = try BibleDatabase.makeInMemory()
+        let ledger = GRDBBulkAnnotationLedger(database: database)
+        try seedAnnotations(into: database, chapters: seedAnnotatedChapters, book: seedAnnotatedBook)
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: GRDBBibleAnnotationRepository(database: database),
             catalog: .standard,
             translation: .web,
             clock: FixedClock(),
@@ -33,20 +41,49 @@ import Testing
         return (runner, ledger)
     }
 
+    /// A repository over a throwaway empty DB — for lifecycle tests that never
+    /// touch annotation content, so preserve mode's skip check always reads
+    /// "slot empty" and never skips.
+    private func emptyAnnotationRepository() throws -> GRDBBibleAnnotationRepository {
+        GRDBBibleAnnotationRepository(database: try BibleDatabase.makeInMemory())
+    }
+
+    /// Pre-seed Romans chapter- and/or book-level annotations directly so a
+    /// preserve-mode run finds those slots occupied and skips them.
+    private func seedAnnotations(into database: BibleDatabase, chapters: [Int], book: Bool) throws {
+        func record(target: BibleAnnotationTarget, chapter: Int?) -> BibleAnnotationRecord {
+            BibleAnnotationRecord(
+                id: "seed-ROM-\(chapter.map(String.init) ?? "book")",
+                target: target, bookId: "ROM", chapterNumber: chapter,
+                verseStart: nil, verseEnd: nil, category: .summary,
+                title: "Seed", body: "Seed", source: .user, modelId: "seed",
+                createdAt: Date(timeIntervalSince1970: 0)
+            )
+        }
+        try database.queue.write { db in
+            for chapter in chapters { try record(target: .chapter, chapter: chapter).insert(db) }
+            if book { try record(target: .book, chapter: nil).insert(db) }
+        }
+    }
+
     private func oneBookPlan(
         _ bookID: String = "ROM",
         _ name: String = "Romans",
         chapters: [Int],
-        includesBookLevel: Bool = false
+        includesBookLevel: Bool = false,
+        overwriteExisting: Bool = false
     ) -> BulkRunPlan {
-        BulkRunPlan(books: [
-            BulkRunPlan.Book(
-                bookID: bookID,
-                name: name,
-                chapters: chapters,
-                includesBookLevel: includesBookLevel
-            )
-        ])
+        BulkRunPlan(
+            books: [
+                BulkRunPlan.Book(
+                    bookID: bookID,
+                    name: name,
+                    chapters: chapters,
+                    includesBookLevel: includesBookLevel
+                )
+            ],
+            overwriteExisting: overwriteExisting
+        )
     }
 
     /// The single run's units in ordinal order (fails the test if there isn't
@@ -121,6 +158,105 @@ import Testing
 
         let run = try #require(try await ledger.run(id: "id-1"))
         #expect(run.status == .completed)
+    }
+
+    // MARK: - Preserve vs overwrite (skip already-annotated slots)
+
+    /// Preserve mode (the default): a chapter whose slot is already annotated is
+    /// skipped before generating — no LLM call — while a fresh chapter generates.
+    @Test func preserveSkipsAlreadyAnnotatedChapterWithoutGenerating() async throws {
+        // Only chapter 2 should reach the generator; scripting exactly one
+        // success means a stray call on the skipped chapter would trap (strict
+        // double) rather than silently pass.
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 7)])
+        let (runner, ledger) = try makeRunner(generator: generator, seedAnnotatedChapters: [1])
+
+        runner.start(oneBookPlan(chapters: [1, 2]))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units[0].chapterNumber == 1)
+        #expect(units[0].state == .skipped)
+        #expect(units[0].producedCount == 0)
+        #expect(units[1].chapterNumber == 2)
+        #expect(units[1].state == .done)
+        #expect(units[1].producedCount == 7)
+
+        // The model saw only the un-annotated chapter.
+        #expect(generator.receivedReferences.count == 1)
+        #expect(generator.receivedReferences.first?.sourceID == "chapter:ROM:2")
+
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
+    }
+
+    /// Overwrite mode regenerates an already-annotated chapter — both chapters
+    /// reach the generator, none are skipped.
+    @Test func overwriteRegeneratesAlreadyAnnotatedChapter() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .success(annotationCount: 4),
+            .success(annotationCount: 5),
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator, seedAnnotatedChapters: [1])
+
+        runner.start(oneBookPlan(chapters: [1, 2], overwriteExisting: true))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.allSatisfy { $0.state == .done })
+        #expect(generator.receivedReferences.count == 2)
+    }
+
+    /// A run whose every slot is already annotated completes with all units
+    /// skipped, never calling the generator and never tripping the circuit
+    /// breaker (a skip is not a failure).
+    @Test func allSkippedRunCompletesWithoutTrippingBreaker() async throws {
+        let generator = ScriptedBibleAnnotateGenerator()  // must never be called
+        let (runner, ledger) = try makeRunner(
+            generator: generator, breaker: 1, seedAnnotatedChapters: [1, 2, 3]
+        )
+
+        runner.start(oneBookPlan(chapters: [1, 2, 3]))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.allSatisfy { $0.state == .skipped })
+        #expect(generator.receivedReferences.isEmpty)
+
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)        // not .failed — skips don't halt
+        #expect(run.haltReason == nil)
+    }
+
+    /// The book-prologue unit is skipped too when a book-level annotation already
+    /// exists, while the book's chapters still generate.
+    @Test func preserveSkipsAlreadyAnnotatedBookPrologue() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 6)])  // chapter 1 only
+        let (runner, ledger) = try makeRunner(generator: generator, seedAnnotatedBook: true)
+
+        runner.start(oneBookPlan(chapters: [1], includesBookLevel: true))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units[0].kind == .bookPrologue)
+        #expect(units[0].state == .skipped)
+        #expect(units[1].kind == .chapter)
+        #expect(units[1].state == .done)
+        #expect(generator.receivedReferences.count == 1)
+        #expect(generator.receivedReferences.first?.kind == "chapter")
+    }
+
+    /// The per-run flag is persisted on the run record so a relaunch/resume
+    /// honors the choice made at kickoff.
+    @Test func overwriteFlagIsPersistedOnTheRunRecord() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1], overwriteExisting: true))
+        await runner._waitUntilIdle()
+
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.overwriteExisting == true)
     }
 
     @Test("chapter references carry the verbatim verse text; book references don't")
@@ -407,6 +543,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: try emptyAnnotationRepository(),
             clock: FixedClock(),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { await modelGate.value() }
@@ -489,6 +626,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: try emptyAnnotationRepository(),
             clock: FixedClock(),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "model-x" }
@@ -527,6 +665,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: try emptyAnnotationRepository(),
             clock: FixedClock(),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "model-x" }
@@ -558,7 +697,11 @@ import Testing
         try await ledger.createRun(run, units: units)
 
         let generator = ScriptedBibleAnnotateGenerator()  // must not be called
-        let runner = BulkAnnotationRunner(ledger: ledger, generator: generator)
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            annotationRepository: try emptyAnnotationRepository()
+        )
 
         await runner.restore()
         await runner._waitUntilIdle()
@@ -689,6 +832,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: ScriptedBibleAnnotateGenerator(),  // no active run → never called
+            annotationRepository: try emptyAnnotationRepository(),
             clock: FixedClock(now),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "m" }
@@ -735,6 +879,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: try emptyAnnotationRepository(),
             clock: FixedClock(),  // epoch → sweep cutoff is negative, nothing swept
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "m" }

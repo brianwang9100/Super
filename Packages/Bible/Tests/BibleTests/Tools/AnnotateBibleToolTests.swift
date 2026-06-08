@@ -365,6 +365,16 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
         )
     }
 
+    func hasAnnotation(
+        target: BibleAnnotationTarget,
+        bookId: String,
+        chapterNumber: Int?,
+        verseStart: Int?,
+        verseEnd: Int?
+    ) async throws -> Bool {
+        fatalError("SpyBibleAnnotationRepository.hasAnnotation called — tool path should not read.")
+    }
+
     func deleteOne(id: String) async throws {
         fatalError("SpyBibleAnnotationRepository.deleteOne called — tool path should not delete.")
     }

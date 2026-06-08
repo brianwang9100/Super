@@ -34,6 +34,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     private let ledger: any BulkAnnotationLedger
     private let generator: any BibleAnnotateGenerating
+    /// Reads whether a unit's target slot is already annotated, for preserve
+    /// mode's skip-before-generate check. The same `bible.sqlite` the generator
+    /// writes through, so a slot a prior unit in this run just filled reads as
+    /// occupied for a later same-slot unit.
+    private let annotationRepository: any BibleAnnotationRepository
     private let catalog: BibleBookCatalog
     private let translation: BibleTranslation
     private let textLoader: any BibleTextLoader
@@ -92,6 +97,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public init(
         ledger: any BulkAnnotationLedger,
         generator: any BibleAnnotateGenerating,
+        annotationRepository: any BibleAnnotationRepository,
         catalog: BibleBookCatalog = .standard,
         translation: BibleTranslation = .web,
         textLoader: any BibleTextLoader = DatabaseBibleTextLoader(),
@@ -104,6 +110,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     ) {
         self.ledger = ledger
         self.generator = generator
+        self.annotationRepository = annotationRepository
         self.catalog = catalog
         self.translation = translation
         self.textLoader = textLoader
@@ -179,7 +186,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             status: .running,
             modelId: "",
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            overwriteExisting: plan.overwriteExisting
         )
         units = newUnits
         consecutiveFailures = 0
@@ -294,8 +302,8 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                 hasWork = true
             case .queued:
                 hasWork = true  // a fatal halt left later units unattempted.
-            case .done:
-                break
+            case .done, .skipped:
+                break  // terminal — a re-adopt leaves a skipped unit skipped.
             }
         }
         // A clean completion has nothing to redo — leave it terminal in the list.
@@ -482,6 +490,36 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // saved on the prior iteration — so no generation is wasted.
             if backgroundStopRequested { return }
 
+            // Preserve mode (the default): skip a unit whose target slot is
+            // already annotated, with no LLM call. The slot is deterministic
+            // from `unit.kind` (a `.chapter` unit writes a `.chapter`-target
+            // card; a `.bookPrologue` writes a `.book`-target one), so the skip
+            // is decided here without knowing the model's output. `overwriteExisting`
+            // bypasses the check and regenerates as before.
+            if runRecord?.overwriteExisting == false {
+                let slot = targetSlot(for: units[index])
+                let occupied = (try? await annotationRepository.hasAnnotation(
+                    target: slot.target,
+                    bookId: units[index].bookId,
+                    chapterNumber: slot.chapterNumber,
+                    verseStart: nil,
+                    verseEnd: nil
+                )) ?? false
+                // Cancel / pause may have landed during the read; bail the same
+                // way the post-generate block does (leave the unit `.queued` on
+                // pause so resume re-evaluates it).
+                if runRecord == nil { return }
+                if runRecord?.status != .running { return }
+                if occupied {
+                    units[index].state = .skipped
+                    units[index].updatedAt = clock.now()
+                    saveUnit(at: index)
+                    consecutiveFailures = 0  // a skip is not a failure — don't trip the breaker.
+                    projectSnapshot()
+                    continue
+                }
+            }
+
             units[index].state = .generating
             units[index].updatedAt = clock.now()
             saveUnit(at: index)
@@ -661,6 +699,21 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     private func notify() { onSnapshotChange?() }
+
+    // MARK: - Target slot
+
+    /// The annotation target slot a unit writes into — the key preserve mode's
+    /// skip check reads against. Mirrors `makeReference`'s `kind` switch: a
+    /// `.chapter` unit lands a `.chapter`-target card at `(bookId, chapterNumber)`;
+    /// a `.bookPrologue` lands a `.book`-target card at `(bookId)`.
+    private func targetSlot(
+        for unit: BulkAnnotationRunUnitRecord
+    ) -> (target: BibleAnnotationTarget, chapterNumber: Int?) {
+        switch unit.kind {
+        case .bookPrologue: (.book, nil)
+        case .chapter: (.chapter, unit.chapterNumber)
+        }
+    }
 
     // MARK: - Reference
 

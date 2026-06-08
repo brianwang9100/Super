@@ -29,6 +29,22 @@ struct BulkAnnotationSnapshotTests {
         BulkRunSnapshot(books: [romans(doneCount: 9, failAt: 6)], isRunning: true)
     }
 
+    /// A preserve-mode Romans: chapters 1–3 skipped (already annotated), 4–9
+    /// done, 10 generating, the rest queued — exercises the `.skipped` row.
+    private static func skippedRun() -> BulkRunSnapshot {
+        let notes = [9, 14, 11, 16, 12, 8, 13, 18, 10, 15, 7, 12, 9, 11, 14, 6]
+        var chapters: [BulkChapterProgress] = []
+        for n in 1...16 {
+            let state: BulkUnitState
+            if n <= 3 { state = .skipped }
+            else if n <= 9 { state = .done }
+            else if n == 10 { state = .generating }
+            else { state = .queued }
+            chapters.append(BulkChapterProgress(number: n, state: state, producedCount: notes[(n - 1) % notes.count]))
+        }
+        return BulkRunSnapshot(books: [BulkBookProgress(bookID: "ROM", name: "Romans", chapters: chapters)], isRunning: true)
+    }
+
     private static func romans(doneCount: Int, failAt: Int?) -> BulkBookProgress {
         let notes = [9, 14, 11, 16, 12, 8, 13, 18, 10, 15, 7, 12, 9, 11, 14, 6]
         var chapters: [BulkChapterProgress] = []
@@ -139,6 +155,15 @@ struct BulkAnnotationSnapshotTests {
     func progressFailed(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.failedRun())
         verify(theme: id, height: 760, name: "progress_failed_\(id.rawValue)") {
+            BulkAnnotationProgressScreen(viewModel: vm)
+        }
+    }
+
+    @Test("per-book progress with skipped chapters in light / dark / sepia",
+          arguments: SuperTheme.Identifier.allCases)
+    func progressSkipped(_ id: SuperTheme.Identifier) {
+        let vm = makeViewModel(seed: Self.skippedRun())
+        verify(theme: id, height: 760, name: "progress_skipped_\(id.rawValue)") {
             BulkAnnotationProgressScreen(viewModel: vm)
         }
     }

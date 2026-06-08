@@ -149,6 +149,19 @@ struct GenerateAnnotationsSheet: View {
     private var footer: some View {
         let estimate = viewModel.estimate
         return VStack(spacing: 11) {
+            Toggle(isOn: $viewModel.overwriteExisting) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Overwrite existing annotations")
+                        .font(typography.font(.subheadline, weight: .medium))
+                        .foregroundStyle(theme.ink)
+                    Text("Off keeps chapters you've already annotated")
+                        .font(typography.mono(10.5))
+                        .foregroundStyle(theme.inkFaint)
+                }
+            }
+            .tint(theme.accent)
+            .accessibilityHint("When off, already-annotated chapters are skipped instead of regenerated")
+
             HStack(spacing: 8) {
                 Image(systemName: "clock").font(.system(size: 13))
                 Text("\(estimate.books) \(estimate.books == 1 ? "book" : "books") · ~\(estimate.annotations) annotations · est. \(estimate.minutes) min")
