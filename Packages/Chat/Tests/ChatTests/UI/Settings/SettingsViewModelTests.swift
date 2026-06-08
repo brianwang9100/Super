@@ -48,10 +48,10 @@ struct SettingsViewModelTests {
     func setThemePersists() async {
         let settingRepo = InMemorySettingRepository()
         let vm = makeViewModel(settingRepository: settingRepo)
-        await vm.setTheme(.sepiaLight)
-        #expect(vm.settings.themeId == .sepiaLight)
+        await vm.setTheme(.lapisLight)
+        #expect(vm.settings.themeId == .lapisLight)
         let raw = try? await settingRepo.get(ChatSettingsStore.Keys.themeId)
-        #expect(raw == "sepiaLight")
+        #expect(raw == "lapisLight")
     }
 
     @Test("setFontScale clamps to the supported range")

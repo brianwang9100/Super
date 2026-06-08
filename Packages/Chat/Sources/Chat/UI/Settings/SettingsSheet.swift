@@ -275,8 +275,8 @@ public extension SuperTheme {
         switch id {
         case .vellumLight: return .make(SuperTheme.Identifier.vellumLight)
         case .vellumDark: return .make(SuperTheme.Identifier.vellumDark)
-        case .sepiaLight: return .make(SuperTheme.Identifier.sepiaLight)
-        case .sepiaDark: return .make(SuperTheme.Identifier.sepiaDark)
+        case .lapisLight: return .make(SuperTheme.Identifier.lapisLight)
+        case .lapisDark: return .make(SuperTheme.Identifier.lapisDark)
         case .scriptoriumLight: return .make(SuperTheme.Identifier.scriptoriumLight)
         case .scriptoriumDark: return .make(SuperTheme.Identifier.scriptoriumDark)
         case .slateLight: return .make(SuperTheme.Identifier.slateLight)
