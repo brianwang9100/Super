@@ -2107,7 +2107,10 @@ private actor ScriptedDriver: ChatSessionDriver {
     /// Await the scripted sequence finishing on a one-shot signal —
     /// `markFinished()` resumes every waiter — instead of a `Task.sleep`
     /// poll. `throws` is kept so the existing `try await` call sites stay
-    /// unchanged; the body never actually throws.
+    /// unchanged; the body never actually throws. This is now actor-isolated
+    /// (the old version was `nonisolated`): the `if finished` check and the
+    /// `withCheckedContinuation` append run under the actor, closing the
+    /// TOCTOU window against `markFinished()` — do not re-add `nonisolated`.
     func waitUntilFinished() async throws {
         if finished { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

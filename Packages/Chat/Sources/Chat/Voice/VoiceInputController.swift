@@ -181,6 +181,9 @@ public final class VoiceInputController {
     /// not lost; the test may `emit(...)` then `await iterator.next()` in
     /// either interleaving.
     func _observeProcessedEvents() -> AsyncStream<Void> {
+        // Finish any prior stream so an iterator held on it terminates rather
+        // than hanging — makes the seam safe if a test reuses a controller.
+        processedEventSignal?.finish()
         let (stream, continuation) = AsyncStream<Void>.makeStream()
         processedEventSignal = continuation
         return stream
