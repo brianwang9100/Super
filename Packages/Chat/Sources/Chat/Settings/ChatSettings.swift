@@ -143,12 +143,13 @@ public struct ChatSettings: Sendable, Equatable {
     /// light/dark). Re-declared (rather than typealiased) so persistence
     /// string values stay stable even if the SuperTheme enum gains a case the
     /// store doesn't recognize yet. Legacy persisted strings (`light`/`dark`/
-    /// `sepia`) are migrated to these in `ChatSettingsStore.migrateThemeID`.
+    /// `sepia`, and the retired `sepiaLight`/`sepiaDark`) are migrated to these
+    /// in `ChatSettingsStore.migrateThemeID`.
     public enum ThemeID: String, Sendable, Equatable, CaseIterable, Codable {
         case vellumLight
         case vellumDark
-        case sepiaLight
-        case sepiaDark
+        case lapisLight
+        case lapisDark
         case scriptoriumLight
         case scriptoriumDark
         case slateLight

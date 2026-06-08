@@ -2,7 +2,7 @@ import Core
 import SwiftUI
 
 /// Appearance pane. Two stacked controls for how the app looks: a grouped
-/// theme picker (one section per family — Vellum / Sepia / Scriptorium / Slate
+/// theme picker (one section per family — Vellum / Lapis / Scriptorium / Slate
 /// — each with a Light and Dark preview card), and a three-stop font-scale
 /// slider snapping to 0.80× / 1.00× / 1.20× (Small / Medium / Large). Spacing
 /// (line-spacing, paragraph margin, bubble paddings) is derived from the

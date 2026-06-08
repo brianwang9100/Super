@@ -9,7 +9,7 @@ import Testing
 /// The single place all eight theme variants (four families × light/dark) are
 /// pixel-locked on the Bible reader. The per-screen reader suites render only
 /// Vellum light/dark (the default) to keep CI cost flat; this gallery is where
-/// Sepia / Scriptorium / Slate — and Vellum again — get their palette coverage
+/// Lapis / Scriptorium / Slate — and Vellum again — get their palette coverage
 /// on the verse-reading surface (EB Garamond reading body, verse numbers,
 /// chapter title), so a palette regression in any family fails here.
 @Suite("Theme gallery — Bible reader")

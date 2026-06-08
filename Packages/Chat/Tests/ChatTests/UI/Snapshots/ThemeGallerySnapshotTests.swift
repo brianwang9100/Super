@@ -8,7 +8,7 @@ import Testing
 /// The single place all eight theme variants (four families × light/dark) are
 /// pixel-locked on a representative chat surface. The per-screen suites render
 /// only Vellum light/dark (the default) to keep CI cost flat; this gallery is
-/// where Sepia / Scriptorium / Slate — and Vellum again — get their palette
+/// where Lapis / Scriptorium / Slate — and Vellum again — get their palette
 /// coverage, so a regression in any family's tokens fails here. The fixture
 /// exercises the user bubble (Geist), assistant prose (EB Garamond, with
 /// strong/emphasis), inline code (mono), and a tool-call card so accent / ink /
