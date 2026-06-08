@@ -58,11 +58,6 @@ struct ToolCallBlockSnapshotTests {
         verify(call: awaitingCall(), theme: .vellumDark, name: "toolcall_awaiting_dark")
     }
 
-    @Test("awaiting confirmation badge, sepia")
-    func awaitingSepia() {
-        verify(call: awaitingCall(), theme: .sepiaLight, name: "toolcall_awaiting_sepia")
-    }
-
     // FUNCTION-detail card across the light / dark / sepia × default Dynamic
     // Type matrix (AGENTS.md §3), plus an XXL variant for the extra row's
     // reflow. Taller frame than the awaiting cards: this card adds the
@@ -75,11 +70,6 @@ struct ToolCallBlockSnapshotTests {
     @Test("friendly display name surfaces the FUNCTION detail, dark")
     func functionDetailDark() {
         verify(call: renamedCall(), theme: .vellumDark, name: "toolcall_function_detail_dark", height: 180)
-    }
-
-    @Test("friendly display name surfaces the FUNCTION detail, sepia")
-    func functionDetailSepia() {
-        verify(call: renamedCall(), theme: .sepiaLight, name: "toolcall_function_detail_sepia", height: 180)
     }
 
     @Test("dynamic type XXL on the FUNCTION detail card")

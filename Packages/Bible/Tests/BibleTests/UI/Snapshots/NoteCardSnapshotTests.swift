@@ -35,11 +35,6 @@ struct NoteCardSnapshotTests {
         verify(theme: .vellumDark, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_dark")
     }
 
-    @Test("user note renders in the sepia theme")
-    func userSepia() {
-        verify(theme: .sepiaLight, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_sepia")
-    }
-
     @Test("assistant note shows the provenance footer")
     func assistantLight() {
         verify(theme: .vellumLight, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_light")
@@ -48,11 +43,6 @@ struct NoteCardSnapshotTests {
     @Test("assistant note shows the provenance footer in the dark theme")
     func assistantDark() {
         verify(theme: .vellumDark, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_dark")
-    }
-
-    @Test("assistant note shows the provenance footer in the sepia theme")
-    func assistantSepia() {
-        verify(theme: .sepiaLight, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_sepia")
     }
 
     @Test("a long body clamps to four lines with an ellipsis")

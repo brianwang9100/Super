@@ -63,11 +63,6 @@ struct SidebarDrawerSnapshotTests {
         verify(theme: .vellumDark, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_dark")
     }
 
-    @Test("open populated in sepia")
-    func openPopulatedSepia() {
-        verify(theme: .sepiaLight, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_sepia")
-    }
-
     @Test("active row highlighted in dark")
     func activeRowHighlightedDark() {
         verify(theme: .vellumDark, chats: Self.sampleChats, activeId: "c2", name: "sidebar_active_dark")
@@ -167,12 +162,6 @@ struct SidebarDrawerSnapshotTests {
     @Test("font scale max — drawer scales with slider (dark)")
     func fontScaleMaxRowsScaleDark() {
         verifyFontScaleMax(theme: .vellumDark, name: "sidebar_font_scale_max_dark")
-    }
-
-    /// Sepia-theme counterpart to ``fontScaleMaxRowsScale``.
-    @Test("font scale max — drawer scales with slider (sepia)")
-    func fontScaleMaxRowsScaleSepia() {
-        verifyFontScaleMax(theme: .sepiaLight, name: "sidebar_font_scale_max_sepia")
     }
 
     /// Renders the drawer with the font-scale slider pinned to its maximum

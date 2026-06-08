@@ -51,11 +51,6 @@ struct ChatScreenSnapshotTests {
         verifyEmpty(theme: .vellumDark, name: "screen_empty_dark")
     }
 
-    @Test("empty state in sepia theme")
-    func emptySepia() {
-        verifyEmpty(theme: .sepiaLight, name: "screen_empty_sepia")
-    }
-
     @Test("populated transcript in light theme")
     func populatedLight() {
         verifyPopulated(theme: .vellumLight, name: "screen_populated_light")
@@ -66,11 +61,6 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .vellumDark, name: "screen_populated_dark")
     }
 
-    @Test("populated transcript in sepia theme")
-    func populatedSepia() {
-        verifyPopulated(theme: .sepiaLight, name: "screen_populated_sepia")
-    }
-
     @Test("no-model error banner over empty state, light")
     func noModelErrorLight() {
         verifyNoModelError(theme: .vellumLight, name: "screen_no_model_error_light")
@@ -79,11 +69,6 @@ struct ChatScreenSnapshotTests {
     @Test("no-model error banner over empty state, dark")
     func noModelErrorDark() {
         verifyNoModelError(theme: .vellumDark, name: "screen_no_model_error_dark")
-    }
-
-    @Test("no-model error banner over empty state, sepia")
-    func noModelErrorSepia() {
-        verifyNoModelError(theme: .sepiaLight, name: "screen_no_model_error_sepia")
     }
 
     @Test("no-model error banner over empty state at dynamic type XXL")
@@ -120,11 +105,6 @@ struct ChatScreenSnapshotTests {
     @Test("no-model error banner over populated transcript, dark")
     func noModelErrorPopulatedDark() {
         verifyNoModelErrorPopulated(theme: .vellumDark, name: "screen_no_model_error_populated_dark")
-    }
-
-    @Test("no-model error banner over populated transcript, sepia")
-    func noModelErrorPopulatedSepia() {
-        verifyNoModelErrorPopulated(theme: .sepiaLight, name: "screen_no_model_error_populated_sepia")
     }
 
     // The populated-transcript + no-model-error state at Dynamic Type

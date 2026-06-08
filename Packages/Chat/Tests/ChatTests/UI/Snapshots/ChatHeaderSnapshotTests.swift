@@ -25,11 +25,6 @@ struct ChatHeaderSnapshotTests {
         verify(theme: .vellumDark, name: "header_dark")
     }
 
-    @Test("sepia theme")
-    func sepiaTheme() {
-        verify(theme: .sepiaLight, name: "header_sepia")
-    }
-
     @Test("very long title truncates")
     func longTitleTruncates() {
         let long = "An overly long conversation title that should ellipsis"
@@ -76,21 +71,6 @@ struct ChatHeaderSnapshotTests {
             .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_font_scale_max_dark")
-    }
-
-    /// Sepia counterpart to ``fontScaleMax`` — Chat AGENTS.md's snapshot
-    /// matrix is `light/dark/sepia × default/Dynamic Type XXL` and every
-    /// other ChatHeader baseline covers the warm sepia palette. Catches
-    /// regressions where the scaled title interacts with sepia's ink and
-    /// background-blur tint specifically.
-    @Test("font scale max sepia")
-    func fontScaleMaxSepia() {
-        let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.sepiaLight))
-            .chatAppearance(ChatAppearance(fontScale: 1.20))
-            .superTypography(.make(.serif, fontScale: 1.20))
-            .frame(width: 402)
-        recordOrCompare(view: view, name: "header_font_scale_max_sepia")
     }
 
     /// The extreme upper-bound: maxed font slider stacked on top of XXL

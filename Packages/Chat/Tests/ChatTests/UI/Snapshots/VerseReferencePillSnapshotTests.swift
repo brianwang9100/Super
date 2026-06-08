@@ -50,14 +50,6 @@ struct VerseReferencePillSnapshotTests {
         )
     }
 
-    @Test("removable pill — sepia")
-    func removableSepia() {
-        recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .sepiaLight),
-            name: "pill_removable_sepia"
-        )
-    }
-
     @Test("read-only pill (no remove control) — light")
     func readOnlyLight() {
         recordOrCompare(

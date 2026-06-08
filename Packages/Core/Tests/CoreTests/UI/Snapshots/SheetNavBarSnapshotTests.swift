@@ -50,11 +50,6 @@ struct SheetNavBarSnapshotTests {
         verify(theme: .vellumDark, name: "navbar_dark")
     }
 
-    @Test("sepia")
-    func sepia() {
-        verify(theme: .sepiaLight, name: "navbar_sepia")
-    }
-
     @Test("trailing control keeps the title centered")
     func trailing() {
         // Default `.expandable` sizing so the only delta from `navbar_light` is
@@ -79,11 +74,6 @@ struct SheetNavBarSnapshotTests {
     @Test("subtitle — dark")
     func subtitleDark() {
         verify(subtitleBar(theme: .vellumDark), theme: .vellumDark, name: "navbar_subtitle_dark")
-    }
-
-    @Test("subtitle — sepia")
-    func subtitleSepia() {
-        verify(subtitleBar(theme: .sepiaLight), theme: .sepiaLight, name: "navbar_subtitle_sepia")
     }
 
     @Test("subtitle — font scale max grows the title and subtitle together")
@@ -137,11 +127,6 @@ struct SheetNavBarSnapshotTests {
     @Test("font scale max — title scales with the slider (dark)")
     func fontScaleMaxDark() {
         verifyFontScaleMax(theme: .vellumDark, name: "navbar_font_scale_max_dark")
-    }
-
-    @Test("font scale max — title scales with the slider (sepia)")
-    func fontScaleMaxSepia() {
-        verifyFontScaleMax(theme: .sepiaLight, name: "navbar_font_scale_max_sepia")
     }
 
     // MARK: - Helpers

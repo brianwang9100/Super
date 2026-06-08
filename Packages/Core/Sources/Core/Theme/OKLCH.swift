@@ -2,7 +2,7 @@ import SwiftUI
 
 /// OKLCH (Oklab Lightness-Chroma-Hue) color space helper.
 ///
-/// The design palette in `.design-tmp/chat/project/src/theme.jsx` is
+/// The design palettes in `docs/design/palettes.jsx` are
 /// expressed in CSS `oklch(L C H)` triplets. SwiftUI has no native OKLCH
 /// constructor on iOS 18, so this type converts the three components into
 /// an sRGB `Color` at theme-build time.

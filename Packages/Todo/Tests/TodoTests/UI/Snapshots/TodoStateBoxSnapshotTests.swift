@@ -21,10 +21,6 @@ struct TodoStateBoxSnapshotTests {
         verify(theme: .vellumDark, name: "state_box_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "state_box_sepia")
-    }
-
     @Test("dynamic type XXL") func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "state_box_light_xxl")
     }

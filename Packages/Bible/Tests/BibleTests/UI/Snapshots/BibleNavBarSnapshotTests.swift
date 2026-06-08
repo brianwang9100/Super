@@ -24,11 +24,6 @@ struct BibleNavBarSnapshotTests {
         verify(theme: .vellumDark, canStepBackward: true, canStepForward: true, name: "default_dark")
     }
 
-    @Test("the nav bar renders in the sepia theme")
-    func defaultSepia() {
-        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true, name: "default_sepia")
-    }
-
     @Test("the previous arrow is disabled at the start of the canon")
     func previousDisabled() {
         verify(theme: .vellumLight, canStepBackward: false, canStepForward: true,
@@ -53,12 +48,6 @@ struct BibleNavBarSnapshotTests {
                name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
-    @Test("selection mode renders in the sepia theme")
-    func selectionSepia() {
-        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true,
-               name: "selection_sepia", selectionCitation: "1 Peter 2:4-6, 9")
-    }
-
     // MARK: - Narration trailing-control states
 
     @Test("the narration speaker button renders in the light theme while speaking")
@@ -75,10 +64,10 @@ struct BibleNavBarSnapshotTests {
                narrationState: .speaking, narrationCitation: "1 Peter 2:9")
     }
 
-    @Test("the narration speaker button renders in the sepia theme while paused")
-    func narratingSpeakerButtonPausedSepia() {
-        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true,
-               name: "narrating_speaker_button_paused_sepia",
+    @Test("the narration speaker button renders the paused state")
+    func narratingSpeakerButtonPausedLight() {
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
+               name: "narrating_speaker_button_paused_light",
                narrationState: .paused, narrationCitation: "1 Peter 2:9")
     }
 

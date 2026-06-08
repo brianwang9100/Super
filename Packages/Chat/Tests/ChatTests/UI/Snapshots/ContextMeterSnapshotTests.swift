@@ -24,7 +24,7 @@ struct ContextMeterSnapshotTests {
 
     @Test("over budget")
     func overBudget() {
-        verify(used: 40_000, max: 32_000, theme: .sepiaLight, name: "meter_over_sepia")
+        verify(used: 40_000, max: 32_000, theme: .vellumLight, name: "meter_over_light")
     }
 
     @Test("dynamic type XXL light")

@@ -45,16 +45,6 @@ struct AnnotationBlockSnapshotTests {
         )
     }
 
-    @Test("text card renders in the sepia theme")
-    func textSepia() {
-        verify(
-            theme: .sepiaLight,
-            title: "Author",
-            content: .text(Self.shortBody),
-            name: "text_sepia"
-        )
-    }
-
     @Test("reference card with parsed target shows pill button")
     func referenceParsedLight() {
         let target = BibleCitationParser.ParsedCitation(
@@ -85,21 +75,6 @@ struct AnnotationBlockSnapshotTests {
         )
     }
 
-    @Test("reference card with parsed target renders the pill in sepia")
-    func referenceParsedSepia() {
-        let target = BibleCitationParser.ParsedCitation(
-            position: BiblePosition(bookId: "JHN", chapterNumber: 1),
-            verseStart: 14, verseEnd: 14
-        )
-        verify(
-            theme: .sepiaLight,
-            category: .reference,
-            title: "Cross-reference",
-            content: .reference(label: "John 1:14", target: target),
-            name: "reference_parsed_sepia"
-        )
-    }
-
     @Test("reference card with parse failure falls back to plain text")
     func referenceUnparsedLight() {
         verify(
@@ -119,17 +94,6 @@ struct AnnotationBlockSnapshotTests {
             title: "Parse failed",
             content: .reference(label: "John 14, verse twelve", target: nil),
             name: "reference_unparsed_dark"
-        )
-    }
-
-    @Test("reference parse-failure fallback renders in sepia")
-    func referenceUnparsedSepia() {
-        verify(
-            theme: .sepiaLight,
-            category: .reference,
-            title: "Parse failed",
-            content: .reference(label: "John 14, verse twelve", target: nil),
-            name: "reference_unparsed_sepia"
         )
     }
 
@@ -154,18 +118,6 @@ struct AnnotationBlockSnapshotTests {
             content: .text(Self.longBody),
             height: 280,
             name: "long_body_dark"
-        )
-    }
-
-    @Test("long body wraps in the sepia theme")
-    func longBodySepia() {
-        verify(
-            theme: .sepiaLight,
-            category: .clarification,
-            title: "Reformed reading",
-            content: .text(Self.longBody),
-            height: 280,
-            name: "long_body_sepia"
         )
     }
 

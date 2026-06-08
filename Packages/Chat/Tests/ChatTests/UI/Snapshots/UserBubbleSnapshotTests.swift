@@ -67,18 +67,6 @@ struct UserBubbleSnapshotTests {
         )
     }
 
-    @Test("text with one verse pill — sepia")
-    func textWithPillSepia() {
-        recordOrCompare(
-            view: host(
-                text: "What does this teach about love?",
-                references: [pill("r1", "John 3:16 (WEB)")],
-                theme: .sepiaLight
-            ),
-            name: "userbubble_pill_sepia"
-        )
-    }
-
     @Test("text with multiple verse pills — light")
     func textWithMultiplePillsLight() {
         recordOrCompare(

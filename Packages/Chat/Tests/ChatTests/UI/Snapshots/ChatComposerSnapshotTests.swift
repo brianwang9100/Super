@@ -27,11 +27,6 @@ struct ChatComposerSnapshotTests {
         verify(text: "", isStreaming: false, theme: .vellumDark, name: "composer_empty_dark")
     }
 
-    @Test("empty composer in sepia theme")
-    func emptySepia() {
-        verify(text: "", isStreaming: false, theme: .sepiaLight, name: "composer_empty_sepia")
-    }
-
     @Test("typed composer flips to send")
     func typedFlipsToSend() {
         verify(text: "Hello world", isStreaming: false, theme: .vellumLight, name: "composer_typed_light")
@@ -74,17 +69,6 @@ struct ChatComposerSnapshotTests {
         recordOrCompare(view: view, name: "composer_recording_dark", function: function)
     }
 
-    @Test("recording state in sepia theme")
-    func recordingSepia() {
-        let function = #function
-        // Sepia's accent differs from light/dark, so this baseline
-        // catches accent-fill regressions on the recording stop button
-        // that the light/dark variants would miss. Per Chat CLAUDE.md
-        // the per-state matrix is light/dark/sepia × default/Dynamic Type XXL.
-        let view = makeComposer(text: "", isRecording: true, theme: .sepiaLight)
-        recordOrCompare(view: view, name: "composer_recording_sepia", function: function)
-    }
-
     @Test("recording state with reduce motion suppresses the pulse overlay")
     func recordingReduceMotion() {
         let function = #function
@@ -102,13 +86,6 @@ struct ChatComposerSnapshotTests {
         let function = #function
         let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .vellumLight)
         recordOrCompare(view: view, name: "composer_mic_unavailable_light", function: function)
-    }
-
-    @Test("dimmed mic in sepia theme")
-    func micUnavailableSepia() {
-        let function = #function
-        let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .sepiaLight)
-        recordOrCompare(view: view, name: "composer_mic_unavailable_sepia", function: function)
     }
 
     @Test("recording state at dynamic type XXL")
@@ -176,26 +153,6 @@ struct ChatComposerSnapshotTests {
         .superTheme(.make(.vellumDark))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_pill_dark", function: function)
-    }
-
-    /// Sepia variant for the pill extreme — completes the
-    /// light/dark/sepia matrix required by `Packages/Chat/AGENTS.md`
-    /// for snapshot tests.
-    @Test("composer at progress 0 renders as the minimized pill — sepia")
-    func pillModeSepia() {
-        let function = #function
-        let view = FocusHostingChatComposer(
-            text: "",
-            isStreaming: false,
-            modelOptions: models,
-            selectedModelId: "gpt-4o",
-            usedTokens: 1_200,
-            maxTokens: 128_000,
-            progress: 0
-        )
-        .superTheme(.make(.sepiaLight))
-        .frame(width: 402)
-        recordOrCompare(view: view, name: "composer_pill_sepia", function: function)
     }
 
     /// Mid-morph baseline that pins the cross-fade between the pill
@@ -283,29 +240,6 @@ struct ChatComposerSnapshotTests {
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_font_scale_max_dark", function: function)
-    }
-
-    /// Sepia counterpart to ``fontScaleMax`` — Chat AGENTS.md's snapshot
-    /// matrix is `light/dark/sepia × default/Dynamic Type XXL` and every
-    /// other composer baseline covers the warm sepia palette. Catches
-    /// regressions where the scaled editor interacts with sepia's
-    /// composer fill, focus border, and accent button specifically.
-    @Test("font scale max sepia")
-    func fontScaleMaxSepia() {
-        let function = #function
-        let view = FocusHostingChatComposer(
-            text: "Hello world",
-            isStreaming: false,
-            modelOptions: models,
-            selectedModelId: "gpt-4o",
-            usedTokens: 1_200,
-            maxTokens: 128_000
-        )
-        .superTheme(.make(.sepiaLight))
-        .chatAppearance(ChatAppearance(fontScale: 1.20))
-        .superTypography(.make(.serif, fontScale: 1.20))
-        .frame(width: 402)
-        recordOrCompare(view: view, name: "composer_font_scale_max_sepia", function: function)
     }
 
     /// The extreme upper-bound: maxed font slider stacked on top of XXL

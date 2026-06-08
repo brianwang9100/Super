@@ -63,15 +63,6 @@ struct SettingsMemoryPaneSnapshotTests {
         )
     }
 
-    @Test("populated in sepia")
-    func populatedSepia() async throws {
-        try await verify(
-            theme: .sepiaLight,
-            memories: Self.sampleMemories(),
-            name: "settings_memory_populated_sepia"
-        )
-    }
-
     @Test("dynamic type XXL on populated")
     func populatedXXL() async throws {
         try await verify(

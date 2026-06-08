@@ -27,11 +27,6 @@ struct BibleTranslationSheetSnapshotTests {
         verify(theme: .vellumDark, name: "dark")
     }
 
-    @Test("the picker renders in the sepia theme")
-    func sepia() {
-        verify(theme: .sepiaLight, name: "sepia")
-    }
-
     private func verify(
         theme themeID: SuperTheme.Identifier,
         name: String,

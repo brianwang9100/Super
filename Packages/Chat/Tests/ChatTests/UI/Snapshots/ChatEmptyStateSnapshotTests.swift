@@ -23,11 +23,6 @@ struct ChatEmptyStateSnapshotTests {
         verify(greeting: "How can I help you this afternoon?", theme: .vellumDark, name: "empty_afternoon_dark")
     }
 
-    @Test("evening greeting in sepia")
-    func eveningSepia() {
-        verify(greeting: "How can I help you this evening?", theme: .sepiaLight, name: "empty_evening_sepia")
-    }
-
     @Test("tonight greeting in light")
     func tonightLight() {
         verify(greeting: "How can I help you tonight?", theme: .vellumLight, name: "empty_tonight_light")

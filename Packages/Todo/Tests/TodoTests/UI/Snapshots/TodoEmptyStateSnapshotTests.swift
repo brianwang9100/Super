@@ -23,10 +23,6 @@ struct TodoEmptyStateSnapshotTests {
         verify(theme: .vellumDark, name: "empty_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "empty_sepia")
-    }
-
     @Test("dynamic type XXL") func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "empty_light_xxl")
     }

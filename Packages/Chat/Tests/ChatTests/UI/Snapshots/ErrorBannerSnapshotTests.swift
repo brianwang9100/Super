@@ -40,17 +40,11 @@ struct ErrorBannerSnapshotTests {
     @Test("collapsed (Details affordance) — dark")
     func collapsedDark() { verify(expanded: false, theme: .vellumDark, height: 140, name: "error_banner_collapsed_dark") }
 
-    @Test("collapsed (Details affordance) — sepia")
-    func collapsedSepia() { verify(expanded: false, theme: .sepiaLight, height: 140, name: "error_banner_collapsed_sepia") }
-
     @Test("expanded detail — light")
     func expandedLight() { verify(expanded: true, theme: .vellumLight, height: 360, name: "error_banner_expanded_light") }
 
     @Test("expanded detail — dark")
     func expandedDark() { verify(expanded: true, theme: .vellumDark, height: 360, name: "error_banner_expanded_dark") }
-
-    @Test("expanded detail — sepia")
-    func expandedSepia() { verify(expanded: true, theme: .sepiaLight, height: 360, name: "error_banner_expanded_sepia") }
 
     @Test("collapsed at Dynamic Type XXL — light")
     func collapsedXXL() {

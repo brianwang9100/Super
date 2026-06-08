@@ -34,11 +34,6 @@ struct NoteEditorSnapshotTests {
         verify(theme: .vellumDark, mode: .create, initialText: "", name: "create_dark")
     }
 
-    @Test("empty create state renders in the sepia theme")
-    func createSepia() {
-        verify(theme: .sepiaLight, mode: .create, initialText: "", name: "create_sepia")
-    }
-
     @Test("populated create state enables Save without a Delete section")
     func createPopulatedLight() {
         // Create mode with text typed: Save flips to enabled (accent) and
@@ -52,11 +47,6 @@ struct NoteEditorSnapshotTests {
         verify(theme: .vellumDark, mode: .create, initialText: Self.editBody, name: "create_populated_dark")
     }
 
-    @Test("populated create state renders in the sepia theme")
-    func createPopulatedSepia() {
-        verify(theme: .sepiaLight, mode: .create, initialText: Self.editBody, name: "create_populated_sepia")
-    }
-
     @Test("prefilled edit state renders in the light theme")
     func editLight() {
         verify(theme: .vellumLight, mode: .edit, initialText: Self.editBody, name: "edit_light")
@@ -65,11 +55,6 @@ struct NoteEditorSnapshotTests {
     @Test("prefilled edit state renders in the dark theme")
     func editDark() {
         verify(theme: .vellumDark, mode: .edit, initialText: Self.editBody, name: "edit_dark")
-    }
-
-    @Test("prefilled edit state renders in the sepia theme")
-    func editSepia() {
-        verify(theme: .sepiaLight, mode: .edit, initialText: Self.editBody, name: "edit_sepia")
     }
 
     @Test("prefilled edit state holds shape at Dynamic Type XXL")

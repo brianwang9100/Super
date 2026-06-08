@@ -43,11 +43,6 @@ struct SearchConfirmationRowSnapshotTests {
         verify(status: .awaitingConfirmation, theme: .vellumDark, height: 200, name: "search_confirm_awaiting_dark")
     }
 
-    @Test("awaiting, sepia")
-    func awaitingSepia() {
-        verify(status: .awaitingConfirmation, theme: .sepiaLight, height: 200, name: "search_confirm_awaiting_sepia")
-    }
-
     @Test("awaiting, dynamic type XXL")
     func awaitingXXL() {
         verify(
@@ -69,11 +64,6 @@ struct SearchConfirmationRowSnapshotTests {
     @Test("resolved skipped, dark")
     func skippedDark() {
         verify(status: .failed, theme: .vellumDark, height: 80, name: "search_confirm_skipped_dark")
-    }
-
-    @Test("resolved skipped, sepia")
-    func skippedSepia() {
-        verify(status: .failed, theme: .sepiaLight, height: 80, name: "search_confirm_skipped_sepia")
     }
 
     // The skipped summary is single-line in the steady case; pin it at XXL so

@@ -28,10 +28,6 @@ struct TodoTagPickerSnapshotTests {
         verify(theme: .vellumDark, query: "", name: "tag_picker_suggestions_dark")
     }
 
-    @Test("suggestions, sepia") func suggestionsSepia() {
-        verify(theme: .sepiaLight, query: "", name: "tag_picker_suggestions_sepia")
-    }
-
     /// Typed query with no exact match: the accent "＋ Create" call-to-action
     /// glass, across the three themes.
     @Test("create affordance, light") func createLight() {
@@ -40,10 +36,6 @@ struct TodoTagPickerSnapshotTests {
 
     @Test("create affordance, dark") func createDark() {
         verify(theme: .vellumDark, query: "Groceries", name: "tag_picker_create_dark")
-    }
-
-    @Test("create affordance, sepia") func createSepia() {
-        verify(theme: .sepiaLight, query: "Groceries", name: "tag_picker_create_sepia")
     }
 
     /// Chips reflow through `FlowLayout`, so the larger Dynamic Type size

@@ -30,11 +30,6 @@ struct WebSearchCallCellSnapshotTests {
         verify(expanded: false, theme: .vellumDark, height: 70, name: "web_search_cell_collapsed_dark")
     }
 
-    @Test("collapsed, sepia")
-    func collapsedSepia() {
-        verify(expanded: false, theme: .sepiaLight, height: 70, name: "web_search_cell_collapsed_sepia")
-    }
-
     @Test("expanded, light")
     func expandedLight() {
         verify(expanded: true, theme: .vellumLight, height: 240, name: "web_search_cell_expanded_light")
@@ -43,11 +38,6 @@ struct WebSearchCallCellSnapshotTests {
     @Test("expanded, dark")
     func expandedDark() {
         verify(expanded: true, theme: .vellumDark, height: 240, name: "web_search_cell_expanded_dark")
-    }
-
-    @Test("expanded, sepia")
-    func expandedSepia() {
-        verify(expanded: true, theme: .sepiaLight, height: 240, name: "web_search_cell_expanded_sepia")
     }
 
     @Test("expanded dynamic type XXL")

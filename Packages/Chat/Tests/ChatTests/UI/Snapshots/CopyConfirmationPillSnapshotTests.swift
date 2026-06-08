@@ -65,14 +65,6 @@ struct CopyConfirmationPillSnapshotTests {
         )
     }
 
-    @Test("pill — sepia")
-    func pillSepia() {
-        recordOrCompare(
-            view: host(CopyConfirmationPill(), theme: .sepiaLight),
-            name: "copy_pill_sepia"
-        )
-    }
-
     @Test("pill at Dynamic Type XXL")
     func pillXXL() {
         recordOrCompare(

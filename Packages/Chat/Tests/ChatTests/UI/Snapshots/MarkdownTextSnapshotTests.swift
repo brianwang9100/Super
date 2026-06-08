@@ -75,11 +75,6 @@ struct MarkdownTextSnapshotTests {
         verify(theme: .vellumDark, name: "markdown_verse_refs_dark")
     }
 
-    @Test("linkified verse references — sepia")
-    func sepia() {
-        verify(theme: .sepiaLight, name: "markdown_verse_refs_sepia")
-    }
-
     @Test("linkified verse references at Dynamic Type XXL — light")
     func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "markdown_verse_refs_light_xxl")
@@ -93,11 +88,6 @@ struct MarkdownTextSnapshotTests {
     @Test("bulleted list with refs — dark")
     func listDark() {
         verify(theme: .vellumDark, text: Self.listSample, wrap: true, name: "markdown_list_refs_dark")
-    }
-
-    @Test("bulleted list with refs — sepia")
-    func listSepia() {
-        verify(theme: .sepiaLight, text: Self.listSample, wrap: true, name: "markdown_list_refs_sepia")
     }
 
     @Test("bulleted list with refs at the 1.2× font slider — light")

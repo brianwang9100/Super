@@ -147,11 +147,6 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .vellumDark, pane: .root, name: "settings_root_dark")
     }
 
-    @Test("root pane in sepia")
-    func rootSepia() async {
-        await verify(theme: .sepiaLight, pane: .root, name: "settings_root_sepia")
-    }
-
     @Test("models pane populated")
     func modelsPopulated() async {
         await verify(theme: .vellumLight, pane: .models, name: "settings_models_light")
@@ -176,14 +171,6 @@ struct SettingsSheetSnapshotTests {
         await verifyModelsPaneAsModalRoot(
             theme: .vellumDark,
             name: "settings_models_root_dark"
-        )
-    }
-
-    @Test("models pane as modal root (close button, sepia)")
-    func modelsPaneAsModalRootSepia() async {
-        await verifyModelsPaneAsModalRoot(
-            theme: .sepiaLight,
-            name: "settings_models_root_sepia"
         )
     }
 
@@ -355,14 +342,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("models pane with a native-web-search row (sepia)")
-    func modelsPaneWithNativeSearchSepia() async {
-        await verifyModelsPaneWithNativeSearch(
-            theme: .sepiaLight,
-            name: "settings_models_native_search_sepia"
-        )
-    }
-
     private func verifyModelsPaneWithNativeSearch(
         theme: SuperTheme.Identifier,
         name: String,
@@ -437,15 +416,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("models pane title-summarization footer: automatic default (sepia)")
-    func modelsPaneTitlingAutomaticSepia() async {
-        await verifyModelsPaneTitling(
-            theme: .sepiaLight,
-            settings: Self.titleSettings(enabled: true, recordId: nil),
-            name: "settings_models_titling_automatic_sepia"
-        )
-    }
-
     @Test("models pane title-summarization footer: an explicit model is selected")
     func modelsPaneTitlingExplicitModel() async {
         await verifyModelsPaneTitling(
@@ -463,16 +433,6 @@ struct SettingsSheetSnapshotTests {
             availability: .available,
             settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_dark"
-        )
-    }
-
-    @Test("models pane title-summarization footer: explicit model selected (sepia)")
-    func modelsPaneTitlingExplicitModelSepia() async {
-        await verifyModelsPaneTitling(
-            theme: .sepiaLight,
-            availability: .available,
-            settings: Self.titleSettings(enabled: true, recordId: "opus"),
-            name: "settings_models_titling_explicit_sepia"
         )
     }
 
@@ -699,23 +659,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Sepia anchor for the picker UI per Chat AGENTS.md
-    // (light/dark/sepia × default × Dynamic Type XXL matrix). Picks
-    // Custom because it exercises the widest set of form rows the
-    // theme's `inkFaint`/`borderFaint`/`ink` tokens render across; a
-    // sepia regression on the picker chevron or field caps would
-    // show up here.
-    @Test("model detail create flow — Custom selected (sepia)")
-    func modelDetailProviderCustomSepia() async {
-        await verifyCreateWithProvider(
-            theme: .sepiaLight,
-            selection: .custom,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_custom_sepia"
-        )
-    }
-
     // Dynamic Type XXL anchor per Chat AGENTS.md's
     // `light/dark/sepia × default × XXL` matrix. Custom is picked
     // because it exercises the widest set of visible rows (Provider
@@ -915,16 +858,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    // Sepia completes the light/dark/sepia matrix for the picker's headline
-    // (native) state per AGENTS.md §Testing.3.
-    @Test("model detail edit — native web search selected (sepia)")
-    func modelDetailNativeSearchSepia() async {
-        await verifyModelDetailEdit(
-            theme: .sepiaLight, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
-            name: "settings_model_detail_native_search_sepia"
-        )
-    }
-
     // Dynamic Type XXL covers the new "Web search" row's text reflow.
     @Test("dynamic type XXL on model detail edit — native web search selected")
     func modelDetailNativeSearchXXL() async {
@@ -1010,14 +943,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("appearance pane in sepia")
-    func appearancePaneSepia() async {
-        await verify(
-            theme: .sepiaLight, pane: .appearance, name: "settings_appearance_sepia",
-            settings: Self.settings(themeId: .sepiaLight)
-        )
-    }
-
     @Test("dynamic type XXL on appearance pane")
     func appearancePaneXXL() async {
         let function = #function
@@ -1048,14 +973,6 @@ struct SettingsSheetSnapshotTests {
         await verify(
             theme: .vellumDark, pane: .tools, name: "settings_tools_dark",
             settings: Self.settings(themeId: .vellumDark)
-        )
-    }
-
-    @Test("tools pane in sepia")
-    func toolsPaneSepia() async {
-        await verify(
-            theme: .sepiaLight, pane: .tools, name: "settings_tools_sepia",
-            settings: Self.settings(themeId: .sepiaLight)
         )
     }
 
@@ -1100,11 +1017,6 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .vellumDark, pane: .search, name: "settings_search_on_dark")
     }
 
-    @Test("search pane, gate on, sepia")
-    func searchPaneOnSepia() async {
-        await verify(theme: .sepiaLight, pane: .search, name: "settings_search_on_sepia")
-    }
-
     @Test("search pane, gate off, light")
     func searchPaneOffLight() async {
         await verify(
@@ -1117,14 +1029,6 @@ struct SettingsSheetSnapshotTests {
     func searchPaneOffDark() async {
         await verify(
             theme: .vellumDark, pane: .search, name: "settings_search_off_dark",
-            settings: Self.settings(askBeforeSearching: false)
-        )
-    }
-
-    @Test("search pane, gate off, sepia")
-    func searchPaneOffSepia() async {
-        await verify(
-            theme: .sepiaLight, pane: .search, name: "settings_search_off_sepia",
             settings: Self.settings(askBeforeSearching: false)
         )
     }

@@ -50,11 +50,6 @@ struct SplashViewSnapshotTests {
         verify(theme: .vellumDark, name: "splash_dark")
     }
 
-    @Test("sepia")
-    func sepia() {
-        verify(theme: .sepiaLight, name: "splash_sepia")
-    }
-
     @Test("dynamic type XXL light")
     func dynamicTypeXXLLight() {
         let function = #function

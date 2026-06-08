@@ -28,10 +28,6 @@ struct TodoFilterSheetSnapshotTests {
         verify(theme: .vellumDark, name: "filter_sheet_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "filter_sheet_sepia")
-    }
-
     // The sheet scales its type through the app-wide `superFontScale`
     // slider rather than `@ScaledMetric`, so the larger-size variant drives
     // that path instead of Dynamic Type.

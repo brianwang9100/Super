@@ -40,11 +40,6 @@ struct BibleChapterReaderSnapshotTests {
         try verify(theme: .vellumDark, name: "chapter_generating_dark")
     }
 
-    @Test("the chapter title shows the generating bubble in the sepia theme")
-    func chapterGeneratingSepia() throws {
-        try verify(theme: .sepiaLight, name: "chapter_generating_sepia")
-    }
-
     @Test("annotation and note glyphs co-trail a verse and the title, light")
     func coTrailingLight() throws {
         try verifyCoTrailing(theme: .vellumLight, name: "co_trailing_light")
@@ -53,11 +48,6 @@ struct BibleChapterReaderSnapshotTests {
     @Test("annotation and note glyphs co-trail a verse and the title, dark")
     func coTrailingDark() throws {
         try verifyCoTrailing(theme: .vellumDark, name: "co_trailing_dark")
-    }
-
-    @Test("annotation and note glyphs co-trail a verse and the title, sepia")
-    func coTrailingSepia() throws {
-        try verifyCoTrailing(theme: .sepiaLight, name: "co_trailing_sepia")
     }
 
     /// Render 1 Peter 2 with an empty annotation database (so the chapter

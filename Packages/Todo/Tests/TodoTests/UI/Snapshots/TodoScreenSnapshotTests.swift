@@ -36,10 +36,6 @@ struct TodoScreenSnapshotTests {
         try verify(theme: .vellumDark, name: "screen_empty_dark")
     }
 
-    @Test("empty, sepia") func emptySepia() throws {
-        try verify(theme: .sepiaLight, name: "screen_empty_sepia")
-    }
-
     // The screen scales its type through the app-wide `superFontScale`
     // slider rather than `@ScaledMetric`; this variant drives that path.
     @Test("empty, large font scale") func emptyLargeFontScale() throws {
@@ -56,10 +52,6 @@ struct TodoScreenSnapshotTests {
 
     @Test("toast, dark") func toastVisibleDark() throws {
         try verify(theme: .vellumDark, toast: "Saved", name: "screen_toast_dark")
-    }
-
-    @Test("toast, sepia") func toastVisibleSepia() throws {
-        try verify(theme: .sepiaLight, toast: "Saved", name: "screen_toast_sepia")
     }
 
     private func verify(

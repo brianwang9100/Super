@@ -25,11 +25,6 @@ struct NoteGlyphSnapshotTests {
         verify(theme: .vellumDark, state: .filled, name: "filled_dark")
     }
 
-    @Test("filled glyph renders in the sepia theme")
-    func filledSepia() {
-        verify(theme: .sepiaLight, state: .filled, name: "filled_sepia")
-    }
-
     @Test("outline glyph renders in the light theme")
     func outlineLight() {
         verify(theme: .vellumLight, state: .outline, name: "outline_light")
@@ -38,11 +33,6 @@ struct NoteGlyphSnapshotTests {
     @Test("outline glyph renders in the dark theme")
     func outlineDark() {
         verify(theme: .vellumDark, state: .outline, name: "outline_dark")
-    }
-
-    @Test("outline glyph renders in the sepia theme")
-    func outlineSepia() {
-        verify(theme: .sepiaLight, state: .outline, name: "outline_sepia")
     }
 
     private func verify(

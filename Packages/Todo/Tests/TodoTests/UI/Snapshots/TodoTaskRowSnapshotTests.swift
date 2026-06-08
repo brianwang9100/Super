@@ -31,10 +31,6 @@ struct TodoTaskRowSnapshotTests {
         verify(theme: .vellumDark, name: "task_row_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "task_row_sepia")
-    }
-
     @Test("dynamic type XXL") func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "task_row_light_xxl")
     }
@@ -49,10 +45,6 @@ struct TodoTaskRowSnapshotTests {
 
     @Test("many labels truncate, dark") func manyLabelsDark() {
         verify(theme: .vellumDark, rows: manyLabelRows, height: 190, name: "task_row_many_labels_dark")
-    }
-
-    @Test("many labels truncate, sepia") func manyLabelsSepia() {
-        verify(theme: .sepiaLight, rows: manyLabelRows, height: 190, name: "task_row_many_labels_sepia")
     }
 
     // At XXL the chips are physically wider, so fewer fit and the
