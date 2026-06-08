@@ -20,3 +20,8 @@ Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Todo-specifi
 ## Tests
 
 `swift test` from `Packages/Todo/` runs the non-UI suites. SwiftUI snapshot suites are gated behind `#if canImport(UIKit)` and run via `xcodebuild test -scheme Todo` against the CI-pinned simulator; their fixtures live in `Tests/TodoTests/UI/Snapshots/__Snapshots__/`.
+
+Module-specific test patterns (root [`AGENTS.md`](../../AGENTS.md) §Testing.7 carries the shared rules):
+
+- **Test `@Query`/GRDBQuery requests via `Request.fetch(_:)` directly** — the reactive observation wrapper is covered at the view layer, so a unit test exercises the request's fetch synchronously rather than hand-rolling a `ValueObservation` or polling an observation.
+- **Scripted-race doubles over timing** — `CollidingLabelRepository` reproduces the concurrent-create collision deterministically (its `save` always throws, `findActive` returns the raced row) instead of racing real timing.

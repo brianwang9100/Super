@@ -162,8 +162,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("hi")
         try await driver.waitUntilFinished()
-        // Yield once so the @MainActor task posting state changes drains.
-        await yieldUntilNotStreaming(viewModel)
+        // Drain the subscription task on its own completion, not a poll.
+        await viewModel._waitForPendingStreamTask()
 
         #expect(viewModel.isStreaming == false)
         #expect(viewModel.streamingTail == nil)
@@ -193,7 +193,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("hi")
         try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
+        await viewModel._waitForPendingStreamTask()
 
         #expect(viewModel.error?.message.contains("Authentication failed") == true)
     }
@@ -774,15 +774,8 @@ struct ChatScreenViewModelTests {
         // We just need to confirm the flag was true at some point — easier
         // is to keep the stream open by not ending it; here we verify the
         // final state is clean.
-        await yieldUntilNotStreaming(viewModel)
+        await viewModel._waitForPendingStreamTask()
         #expect(viewModel.isStreaming == false)
-    }
-
-    private func yieldUntilNotStreaming(_ viewModel: ChatScreenViewModel) async {
-        for _ in 0..<400 {
-            if !viewModel.isStreaming { return }
-            await Task.yield()
-        }
     }
 
     // MARK: - Auto-title generation
@@ -825,15 +818,17 @@ struct ChatScreenViewModelTests {
             conversationRepository: conversations,
             titleGenerator: titleGen
         )
-        viewModel.onTitleGenerated = { title in
-            Task { await firedTitles.append(title) }
-        }
+        // Both fires land on the main actor (the fallback inside the stream
+        // drain, the LLM title inside the title task), so the spy records them
+        // synchronously — no `Task`-hop, nothing to poll for.
+        viewModel.onTitleGenerated = { title in firedTitles.append(title) }
 
         viewModel.send("Plan a Lisbon trip")
         try await driver.waitUntilFinished()
+        // Stream task first: its completion means the drain ran (firing the
+        // fallback and spawning the title task); then drain the title task.
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
-        await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
 
         #expect(viewModel.headerTitle == "Lisbon trip plan")
         let stored = try await conversations.fetch(id: conversationId)
@@ -841,8 +836,7 @@ struct ChatScreenViewModelTests {
 
         // Two callbacks fire on a fresh chat: the truncation fallback on
         // user-send, then the LLM-generated title on assistant-saved.
-        await yieldUntilFiredCount(firedTitles, atLeast: 2)
-        let firedSnapshot = await firedTitles.values
+        let firedSnapshot = firedTitles.values
         // First user message is 18 chars — under the 20-char threshold —
         // so the fallback fires *without* an ellipsis.
         #expect(firedSnapshot == ["Plan a Lisbon trip", "Lisbon trip plan"])
@@ -889,9 +883,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
-        await yieldUntilHeaderUpdates(viewModel, expected: "Greeting chat")
 
         // Exactly one provider call: the second assistant message must not
         // trigger a re-generation.
@@ -934,8 +927,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Continue")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
 
         let captured = await titleProvider.capturedRequests()
         #expect(captured.isEmpty)
@@ -974,8 +967,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
 
         // Empty assistant content must not touch the provider.
         let captured = await titleProvider.capturedRequests()
@@ -1021,8 +1014,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Hi")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
 
         let stored = try await conversations.fetch(id: conversationId)
         // The truncation fallback wrote "Hi" on user-send. The
@@ -1057,8 +1050,9 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("How do I reset my password on Linux?")
         try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
-        await yieldUntilHeaderUpdates(viewModel, expected: "How do I reset my pa…")
+        // The fallback is applied inside the stream drain, so its task
+        // completing is the signal — no header poll needed.
+        await viewModel._waitForPendingStreamTask()
 
         #expect(viewModel.headerTitle == "How do I reset my pa…")
         let stored = try await conversations.fetch(id: conversationId)
@@ -1102,9 +1096,8 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Plan a Lisbon trip with kids")
         try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
         await viewModel._waitForPendingTitleTask()
-        await yieldUntilNotStreaming(viewModel)
-        await yieldUntilHeaderUpdates(viewModel, expected: "Lisbon trip plan")
 
         let stored = try await conversations.fetch(id: conversationId)
         #expect(stored?.title == "Lisbon trip plan")
@@ -1137,8 +1130,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Plan a Lisbon trip with kids")
         try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
-        await yieldUntilHeaderUpdates(viewModel, expected: "Plan a Lisbon trip w…")
+        await viewModel._waitForPendingStreamTask()
 
         let stored = try await conversations.fetch(id: conversationId)
         // Title locked to the *first* user message's truncation despite
@@ -1172,7 +1164,7 @@ struct ChatScreenViewModelTests {
 
         viewModel.send("Continue")
         try await driver.waitUntilFinished()
-        await yieldUntilNotStreaming(viewModel)
+        await viewModel._waitForPendingStreamTask()
 
         let stored = try await conversations.fetch(id: conversationId)
         #expect(stored?.title == "Trip plan")
@@ -1199,19 +1191,6 @@ struct ChatScreenViewModelTests {
         #expect(ChatScreenViewModel.titleNeedsGeneration("Lisbon trip plan") == false)
     }
 
-    private func yieldUntilHeaderUpdates(_ viewModel: ChatScreenViewModel, expected: String) async {
-        for _ in 0..<400 {
-            if viewModel.headerTitle == expected { return }
-            await Task.yield()
-        }
-    }
-
-    private func yieldUntilFiredCount(_ spy: TitleSpy, atLeast count: Int) async {
-        for _ in 0..<400 {
-            if await spy.values.count >= count { return }
-            await Task.yield()
-        }
-    }
 
     // MARK: - Voice input wiring (M11)
 
@@ -1235,10 +1214,14 @@ struct ChatScreenViewModelTests {
         let voice = VoiceInputController(service: voiceService)
         let viewModel = makeVoiceViewModel(voice: voice)
         viewModel.composerText = "draft"
+        var processed = voice._observeProcessedEvents().makeAsyncIterator()
 
         await viewModel.handleMicTap()
         voiceService.emit(.final("hello"))
-        await yieldUntilVoiceState(voice, .idle)
+        // The controller fires `onFinalTranscript` (which appends to the
+        // composer) inside its event handling, so draining one processed
+        // event is the deterministic signal — no voice-state poll.
+        await processed.next()
 
         #expect(viewModel.composerText == "draft hello")
         #expect(viewModel.committedComposerText == "")
@@ -1337,13 +1320,6 @@ struct ChatScreenViewModelTests {
             availableModels: [SelectableModel(model)],
             voice: voice
         )
-    }
-
-    private func yieldUntilVoiceState(_ voice: VoiceInputController, _ expected: VoiceInputController.State) async {
-        for _ in 0..<400 {
-            if voice.state == expected { return }
-            await Task.yield()
-        }
     }
 
     // MARK: - Verse reference pills
@@ -2049,7 +2025,7 @@ private actor ScriptedDriver: ChatSessionDriver {
     private let pendingSubscribeEvents: [ChatEvent]
     private let pendingSnapshot: ChatSession.LiveTurnSnapshot?
     private var finished = false
-    private var continuation: AsyncStream<Void>.Continuation?
+    private var finishWaiters: [CheckedContinuation<Void, Never>] = []
     private var cancelInvocationCount: Int = 0
     private(set) var retryInvocations: Int = 0
 
@@ -2123,17 +2099,22 @@ private actor ScriptedDriver: ChatSessionDriver {
 
     private func markFinished() {
         finished = true
-        continuation?.yield(())
-        continuation?.finish()
-        continuation = nil
+        let waiters = finishWaiters
+        finishWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
     }
 
-    nonisolated func waitUntilFinished() async throws {
-        // Poll on the actor for completion. Cheap given the finite scripted
-        // sequence, and avoids exposing `finished` via a continuation.
-        for _ in 0..<200 {
-            if await self.finished { return }
-            try await Task.sleep(nanoseconds: 5_000_000)
+    /// Await the scripted sequence finishing on a one-shot signal —
+    /// `markFinished()` resumes every waiter — instead of a `Task.sleep`
+    /// poll. `throws` is kept so the existing `try await` call sites stay
+    /// unchanged; the body never actually throws. This is now actor-isolated
+    /// (the old version was `nonisolated`): the `if finished` check and the
+    /// `withCheckedContinuation` append run under the actor, closing the
+    /// TOCTOU window against `markFinished()` — do not re-add `nonisolated`.
+    func waitUntilFinished() async throws {
+        if finished { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            finishWaiters.append(continuation)
         }
     }
 }
@@ -2343,12 +2324,15 @@ private actor StubConversationRepository: ConversationRepository {
     }
 }
 
-/// Records titles fired through `onTitleGenerated`. The hook itself runs
-/// on `@MainActor`, but we want to inspect the appended values from the
-/// test body without forcing every assertion onto the main actor — so the
-/// spy is an actor and the hook posts via `Task { await spy.append(...) }`.
-private actor TitleSpy {
-    var values: [String] = []
+/// Records titles fired through `onTitleGenerated`. Both fire paths — the
+/// user-send truncation fallback and the LLM-generated title — run on
+/// `@MainActor`, so a `@MainActor` recorder captures them synchronously,
+/// letting the test assert against `values` with no `Task`-hop and nothing
+/// to poll for. `@MainActor` isolation also makes it implicitly `Sendable`
+/// for capture by the `@MainActor` `onTitleGenerated` closure.
+@MainActor
+private final class TitleSpy {
+    private(set) var values: [String] = []
 
     func append(_ value: String) {
         values.append(value)

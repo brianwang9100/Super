@@ -117,8 +117,21 @@ final class PermissionGate: @unchecked Sendable {
     private let lock = NSLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var released = false
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
 
     func wait() async {
+        // Signal entry before parking so a test can deterministically await
+        // "the gated caller has reached the gate" (`waitUntilEntered`) instead
+        // of polling `Task.yield()`. The caller has committed whatever state it
+        // sets synchronously before this `await`, so an entry waiter that
+        // resumes sees that state. Entry is signalled just before the caller
+        // parks on `continuations`; a `release()` that races in before it parks
+        // is still not lost, because `released` latches (checked below).
+        // Locking is done in a synchronous helper — Swift 6 strict concurrency
+        // disallows `NSLock.lock/unlock` directly in an async context.
+        for continuation in markEntered() { continuation.resume() }
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             lock.lock()
             if released {
@@ -126,6 +139,34 @@ final class PermissionGate: @unchecked Sendable {
                 continuation.resume()
             } else {
                 continuations.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    /// Synchronous entry bookkeeping for ``wait()`` — flips `entered` and
+    /// drains the entry waiters under the lock, so the async `wait()` never
+    /// touches `NSLock` directly. Returns the continuations to resume.
+    private func markEntered() -> [CheckedContinuation<Void, Never>] {
+        lock.lock()
+        defer { lock.unlock() }
+        entered = true
+        let pending = entryWaiters
+        entryWaiters.removeAll()
+        return pending
+    }
+
+    /// Suspend until some task has entered ``wait()`` (i.e. reached the gate).
+    /// Returns immediately if entry already happened. Lets a test sequence
+    /// "the gated toggle is parked" before driving the racing second toggle.
+    func waitUntilEntered() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if entered {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                entryWaiters.append(continuation)
                 lock.unlock()
             }
         }

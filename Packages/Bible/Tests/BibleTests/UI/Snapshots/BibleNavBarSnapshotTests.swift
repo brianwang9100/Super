@@ -12,6 +12,8 @@ import Testing
 @Suite("BibleNavBar snapshots")
 @MainActor
 struct BibleNavBarSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("the nav bar renders in the light theme")
     func defaultLight() {
         verify(theme: .light, canStepBackward: true, canStepForward: true, name: "default_light")

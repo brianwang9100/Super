@@ -16,6 +16,8 @@ import Testing
 @Suite("TodoTagPicker snapshots", .serialized)
 @MainActor
 struct TodoTagPickerSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     /// Empty query: the glass input field with one selected chip plus the
     /// frosted suggestion chips for the unselected pool.
     @Test("suggestions, light") func suggestionsLight() {

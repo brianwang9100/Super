@@ -16,7 +16,12 @@ import Testing
 /// The *populated* list rendering — grouped section headers and task rows —
 /// is covered deterministically by `TodoSectionHeaderSnapshotTests` and
 /// `TodoTaskRowSnapshotTests` instead.
-@Suite("TodoScreen snapshots")
+///
+/// `.serialized` matches every sibling Todo snapshot suite: image snapshots
+/// read/write the shared on-disk `__Snapshots__/` directory and touch
+/// process-global font registration, so the suites run serially to keep that
+/// setup deterministic — not to paper over a race in the code under test.
+@Suite("TodoScreen snapshots", .serialized)
 @MainActor
 struct TodoScreenSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }

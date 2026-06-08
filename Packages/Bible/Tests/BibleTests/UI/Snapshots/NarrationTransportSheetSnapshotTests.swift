@@ -18,6 +18,8 @@ import Testing
 @Suite("NarrationTransportSheet snapshots")
 @MainActor
 struct NarrationTransportSheetSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("the transport card renders while speaking in the light theme")
     func speakingLight() {
         verify(theme: .light, state: .speaking, currentVerse: 9, name: "speaking_light")

@@ -64,14 +64,17 @@ struct VoiceInputControllerTests {
     func partialTranscriptReflectsServiceEvents() async {
         let service = FakeVoiceInputService()
         let controller = VoiceInputController(service: service)
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
         await controller.toggle()
 
         service.emit(.partial("hel"))
-        await yieldUntil { controller.partialTranscript == "hel" }
+        await processed.next()
+        #expect(controller.partialTranscript == "hel")
         service.emit(.partial("hello"))
-        await yieldUntil { controller.partialTranscript == "hello" }
+        await processed.next()
+        #expect(controller.partialTranscript == "hello")
         service.emit(.partial("hello there"))
-        await yieldUntil { controller.partialTranscript == "hello there" }
+        await processed.next()
 
         #expect(controller.partialTranscript == "hello there")
         #expect(controller.state == .listening)
@@ -83,11 +86,13 @@ struct VoiceInputControllerTests {
         let controller = VoiceInputController(service: service)
         let recorded = TranscriptRecorder()
         controller.onFinalTranscript = { text in recorded.append(text) }
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
 
         await controller.toggle()
         service.emit(.partial("hel"))
+        await processed.next()
         service.emit(.final("hello world"))
-        await yieldUntil { controller.state == .idle }
+        await processed.next()
 
         #expect(recorded.values == ["hello world"])
         #expect(controller.partialTranscript == "")
@@ -98,15 +103,14 @@ struct VoiceInputControllerTests {
     func streamFailureSetsFailedState() async {
         let service = FakeVoiceInputService()
         let controller = VoiceInputController(service: service)
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
 
         await controller.toggle()
         service.emit(.partial("typing"))
-        await yieldUntil { controller.partialTranscript == "typing" }
+        await processed.next()
+        #expect(controller.partialTranscript == "typing")
         service.failNext(with: .recognizerFailed("boom"))
-        await yieldUntil {
-            if case .failed = controller.state { return true }
-            return false
-        }
+        await processed.next()
 
         #expect(controller.state == .failed("boom"))
         #expect(controller.partialTranscript == "")
@@ -118,12 +122,14 @@ struct VoiceInputControllerTests {
         let controller = VoiceInputController(service: service)
         let recorded = TranscriptRecorder()
         controller.onFinalTranscript = { text in recorded.append(text) }
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
 
         await controller.toggle()
         service.emit(.partial("hello"))
-        await yieldUntil { controller.partialTranscript == "hello" }
+        await processed.next()
+        #expect(controller.partialTranscript == "hello")
         service.failNext(with: .silenceTimeout)
-        await yieldUntil { controller.state == .idle }
+        await processed.next()
 
         #expect(recorded.values == ["hello"])
         #expect(controller.state == .idle)
@@ -148,18 +154,22 @@ struct VoiceInputControllerTests {
         let controller = VoiceInputController(service: service)
         let recorded = TranscriptRecorder()
         controller.onFinalTranscript = { text in recorded.append(text) }
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
 
         await controller.toggle()
         // First utterance refines.
         service.emit(.partial("hel"))
+        await processed.next()
         service.emit(.partial("hello"))
-        await yieldUntil { controller.partialTranscript == "hello" }
+        await processed.next()
+        #expect(controller.partialTranscript == "hello")
 
         // Pause boundary: the service's accumulator now contains
         // ["hello"] internally; the next partial carries the merged
         // committed + new-in-flight text.
         service.emit(.partial("hello world"))
-        await yieldUntil { controller.partialTranscript == "hello world" }
+        await processed.next()
+        #expect(controller.partialTranscript == "hello world")
 
         // No `.final` has been delivered — the controller is still
         // listening and `onFinalTranscript` hasn't fired even once.
@@ -169,7 +179,7 @@ struct VoiceInputControllerTests {
         // User taps stop / silence-timeout fires; the accumulated
         // text commits via the normal terminal-event path.
         service.failNext(with: .silenceTimeout)
-        await yieldUntil { controller.state == .idle }
+        await processed.next()
 
         #expect(recorded.values == ["hello world"])
         #expect(controller.partialTranscript == "")
@@ -191,27 +201,25 @@ struct VoiceInputControllerTests {
         let gate = service.gatePermissions()
         let controller = VoiceInputController(service: service)
 
-        async let first: Void = controller.toggle()
-        async let second: Void = controller.toggle()
+        // Launch the winning toggle and await — on an observable signal, not a
+        // yield-spin — until it has set `isStarting` and parked on the gated
+        // `requestPermissions`. The synchronous prefix of `toggle()` runs on
+        // the serial main actor, so exactly one call sets `isStarting` before
+        // suspending here.
+        async let winner: Void = controller.toggle()
+        await gate.waitUntilEntered()
 
-        // Yield enough that both toggles enter `requestPermissions`
-        // and the second one has hit the `isStarting` guard.
-        for _ in 0..<10 { await Task.yield() }
+        // The second toggle now runs with `state == .idle` and
+        // `isStarting == true`, so it hits the guard and returns synchronously
+        // — deterministically exercising the drop without racing the winner.
+        await controller.toggle()
+        #expect(service.startCallCount == 0)
 
         gate.release()
-        _ = await (first, second)
+        await winner
 
         #expect(service.startCallCount == 1)
         #expect(controller.state == .listening)
-    }
-
-    /// Yield to the @MainActor task pool until `condition()` returns
-    /// true or the polling cap is reached.
-    private func yieldUntil(_ condition: () -> Bool) async {
-        for _ in 0..<400 {
-            if condition() { return }
-            await Task.yield()
-        }
     }
 }
 

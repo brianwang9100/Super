@@ -150,7 +150,7 @@ See [`docs/NAMING_CONVENTIONS.md` Part 5 — Persistence schema](./docs/NAMING_C
 
 ## Testing & Testability (enforced on every PR)
 
-Testability is a design requirement, not an afterthought. Every change large enough to warrant a PR must satisfy all five rules below.
+Testability is a design requirement, not an afterthought. Every change large enough to warrant a PR must satisfy every rule below.
 
 ### 1. Design for testability
 
@@ -202,6 +202,35 @@ Before recording new snapshot baselines, confirm the local Xcode + runtime + dev
 ### 6. PR description must state what was tested
 
 Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
+
+### 7. Converged conventions (the patterns the modules already share — follow them in new tests)
+
+These are concrete forms of the rules above. They exist because reviews kept finding the same drift; treat them as a checklist.
+
+**Snapshot suites — required scaffolding.** Every UIKit *view* snapshot suite carries all three:
+
+1. `init { SnapshotFontRegistration.ensureRegistered() }` — **mandatory and universal**, even for glyph/system-face-only views. Registration is process-global and idempotent; calling it in every suite's `init` is what makes the suite render the brand face **independent of suite execution order**. A suite that omits it passes only when some *other* suite happened to register fonts first, and bakes the system fallback when run first or in isolation (the recurring `#161` ghost/shift flake). This is the load-bearing rule — it protects the CI verify path, which reads baselines, so it is non-negotiable.
+2. `#if canImport(UIKit)` — snapshot suites compile out under `swift test` on macOS.
+3. `record: SnapshotEnvironment.isRecording ? .all : nil` — recording is opt-in via the environment seam, never hard-coded.
+
+DB schema-snapshot suites (`GRDBSnapshotTesting`) render no views and are exempt from rule 1.
+
+**`@Suite(..., .serialized)` on snapshot suites is optional but module-consistent.** It is the one sanctioned use of `.serialized` that is *not* the §2 smell: it guards the shared on-disk `__Snapshots__/` directory and process-global font registration against concurrent **recording** writes — not a logic race. But it is not what gives order-independence (rule 1 is; the CI verify path only reads), so a module may adopt it for all its snapshot suites or none — both are fine. **Chat and Todo serialize; Bible and Core do not.** What is *not* fine is intra-module inconsistency (some suites serialized, some not, with no stated reason) — that was Todo's bug. If a module serializes, state the recording-guard reason in a one-line comment; if a suite opts out within a serialized module, say why (e.g. it relies on font registration for order-independence, as a few Chat suites do).
+
+**Sub-pixel tolerance.** The `0.99 / 0.97` precision/perceptualPrecision pair is the *only* sanctioned snapshot tolerance, reserved for documented custom-font anti-aliasing drift (§5) — never to mask a structural regression. Keep it as one named constant, not a per-file magic number.
+
+**Async seams over polling.** §2 bans `Task.yield()`/`Task.sleep` as synchronization; these are the in-tree seams that replace them — drain the work on its own completion signal:
+
+- **Fire-and-forget task → drain seam.** Expose an underscore-prefixed `_waitFor…()` that awaits the task's `.value`, covering *every* observable the task mutates: `ChatScreenViewModel._waitForPendingTitleTask()` / `_waitForPendingStreamTask()`, `CodeBlockCopyController._waitForRevert()`, Bible's `runner._waitUntilIdle()`. Wait for the *stream/subscription* task before the task it spawns (e.g. `_waitForPendingStreamTask()` then `_waitForPendingTitleTask()`) — the spawned task may not exist until the outer one has drained.
+- **`AsyncStream` consumer → per-event signal.** A controller that consumes a stream on an internal `Task` exposes either a synchronous `_simulateEvent(_:)` seam that drives state directly (Bible's `NarrationController`), or a buffered processed-event signal the test drains one-per-event (`VoiceInputController._observeProcessedEvents()`). Never yield-poll the consumer.
+- **Staged concurrency → entry signal.** To sequence racing `async let` work deterministically, await an "I have started / reached the gate" signal between the spawns (`PermissionGate.waitUntilEntered()`, a tool's `awaitFirstCall()`), not a fixed yield count after both have fanned out.
+- **Synchronous `@MainActor` spy.** When a callback fires on the main actor, record it with a `@MainActor` recorder (`TitleSpy`, `TranscriptRecorder`) so the append is synchronous — never wrap it in `Task { await actorSpy.append() }`, which reintroduces fire-and-forget the test then has to poll for.
+
+**Inject the clock and ID generator** (§1) from Core's `FixedClock` / `DeterministicIDGenerator` (`Packages/Core/Sources/Core/Ambient/`) — no `Date.now`/`UUID()` in testable paths. Bible is the model; do not define local copies.
+
+**Per-test HTTP isolation.** HTTP-level tests stub through a per-test `URLProtocolStub` keyed by a unique `stubID` (+ `defer` unregister), never a global stub — keeps the suite parallel without cross-test contamination (Core's pattern).
+
+Module `AGENTS.md` files point back here and add only what's module-specific.
 
 ## Sync
 

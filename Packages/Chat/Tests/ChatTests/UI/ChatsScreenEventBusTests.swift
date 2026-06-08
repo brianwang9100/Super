@@ -28,8 +28,10 @@ struct ChatsScreenEventBusTests {
         await screen._openConversation(id: "row-42")?.value
 
         // The deadline guard now only fires on a genuinely dropped publish
-        // (a real regression), never as the synchronization mechanism.
-        let received = try await firstEvent(from: stream, timeout: .seconds(1))
+        // (a real regression), never as the synchronization mechanism — so it
+        // is set generously (5s, vs the microseconds the buffered drain takes)
+        // to leave headroom for scheduler starvation on a loaded CI runner.
+        let received = try await firstEvent(from: stream, timeout: .seconds(5))
         #expect(received == .openConversationRequested(id: "row-42"))
     }
 
@@ -41,7 +43,7 @@ struct ChatsScreenEventBusTests {
         let screen = ChatsScreen(eventBus: bus)
         await screen._startNewChat()?.value
 
-        let received = try await firstEvent(from: stream, timeout: .seconds(1))
+        let received = try await firstEvent(from: stream, timeout: .seconds(5))
         #expect(received == .newConversationRequested)
     }
 

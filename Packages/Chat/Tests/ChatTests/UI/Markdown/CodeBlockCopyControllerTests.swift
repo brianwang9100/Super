@@ -44,9 +44,9 @@ struct CodeBlockCopyControllerTests {
         // Release the sleep — the revert task wakes, checks Task.isCancelled
         // (false), and writes .idle.
         release.release()
-        // Spin a few yields to let the revert task's `state = .idle`
-        // hop onto the main actor and commit.
-        for _ in 0..<10 { await Task.yield() }
+        // Drain the revert task on an observable signal — its completion is
+        // the `state = .idle` commit — rather than polling `Task.yield()`.
+        await controller._waitForRevert()
 
         #expect(controller.state == .idle)
     }
@@ -70,16 +70,20 @@ struct CodeBlockCopyControllerTests {
         )
 
         controller.copy("first")
-        // Give the first revert task a chance to start its sleep before
-        // the second tap arrives.
-        for _ in 0..<5 { await Task.yield() }
+        // No ordering wait is needed before the second tap: `copy` creates
+        // the first revert task synchronously, so the second `copy` always
+        // cancels it. Cancellation is order-independent of whether that task
+        // has reached its (gated) sleep yet.
         controller.copy("second")
 
         // Releasing the gate now wakes both tasks. The first one's
         // `Task.isCancelled` check will be true (cancelled by the second
         // tap), so it must not flip state. The second one writes .idle.
         release.release()
-        for _ in 0..<10 { await Task.yield() }
+        // Drain the current (second) revert task on an observable signal
+        // instead of polling `Task.yield()`; the cancelled first task never
+        // mutates state, so any later completion can't disturb the assertion.
+        await controller._waitForRevert()
 
         #expect(pasteboard.writes == ["first", "second"])
         #expect(controller.state == .idle)

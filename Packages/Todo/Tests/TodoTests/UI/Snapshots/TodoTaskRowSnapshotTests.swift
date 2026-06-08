@@ -13,6 +13,8 @@ import Testing
 @Suite("TodoTaskRow snapshots", .serialized)
 @MainActor
 struct TodoTaskRowSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     private let utc: Calendar = {

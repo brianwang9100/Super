@@ -11,6 +11,8 @@ import Testing
 @Suite("TodoStateBox snapshots", .serialized)
 @MainActor
 struct TodoStateBoxSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("light theme") func light() {
         verify(theme: .light, name: "state_box_light")
     }

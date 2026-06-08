@@ -10,6 +10,8 @@ import Testing
 @Suite("TodoSectionHeader snapshots", .serialized)
 @MainActor
 struct TodoSectionHeaderSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("light theme") func light() {
         verify(theme: .light, name: "section_header_light")
     }

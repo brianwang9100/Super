@@ -13,6 +13,8 @@ import Testing
 @Suite("AnnotationBubble snapshots")
 @MainActor
 struct AnnotationBubbleSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("filled bubble renders in the light theme")
     func filledLight() {
         verify(theme: .light, state: .filled, name: "filled_light")

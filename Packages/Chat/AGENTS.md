@@ -25,6 +25,11 @@ Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Chat-specifi
 
 Snapshot fixtures live in `Tests/ChatTests/UI/__Snapshots__/`. SSE/LLM fixtures in `Tests/ChatTests/Fixtures/`.
 
+Module-specific test patterns (root [`AGENTS.md`](../../AGENTS.md) §Testing.7 carries the shared rules):
+
+- **`FakeLLMProvider` is the reference strict mock** — it `fatalError`s on an unscripted or empty-queue `stream(...)`. New LLM-path doubles match that contract; never hit a real endpoint.
+- **Orchestration drain seams** — `ChatScreenViewModel._waitForPendingStreamTask()` / `_waitForPendingTitleTask()` (wait for the stream task first, then the title task it spawns) and `VoiceInputController._observeProcessedEvents()` are the canonical fire-and-forget drains. Await them; never yield-poll the observable state.
+
 ## Manual testing in the simulator
 
 When you need to exercise the Chat streaming UI in the simulator — scroll behavior on send/keyboard, code-block render, thinking pill, error banner, anything that depends on a real streaming response — drive it through **`DebugLLMProvider`** (`Sources/Chat/LLM/DebugLLMProvider.swift`), not a real model. Do **not** wire an OpenAI/Gemini/Ollama key into the simulator just to test UI changes — that's slow, costs tokens, and adds a network-flake variable to bugs you're trying to reproduce.

@@ -14,6 +14,8 @@ import Testing
 @Suite("BibleActionSheet snapshots")
 @MainActor
 struct BibleActionSheetSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("the action sheet renders in the light theme")
     func light() {
         verify(theme: .light, citation: "1 Peter 2:9", name: "light")
