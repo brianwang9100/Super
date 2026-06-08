@@ -58,6 +58,20 @@ struct BibleAppletTests {
         #expect(body.contains("Bible applet"))
     }
 
+    /// Regression: the applet briefing must teach the model to reserve
+    /// `bible.annotate` for explicit annotate requests (so a plain
+    /// "give me context on this verse" is answered in chat, not
+    /// silently annotated). Before this guidance the prompt never
+    /// mentioned the tool, so the model annotated on context requests.
+    @Test("systemPrompt steers annotate vs. answering in chat")
+    func systemPromptSteersAnnotateBehavior() {
+        let body = makeApplet().systemPrompt
+        #expect(body.contains("bible.annotate"))
+        #expect(body.lowercased().contains("explicitly asks to *annotate*"))
+        // Free-text note requests route to `bible.note`, not annotate.
+        #expect(body.contains("bible.note"))
+    }
+
     @Test("openRecord event with a verse-range reference navigates the view model")
     func openRecordEventDrivesViewModelNavigation() async throws {
         let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())

@@ -351,7 +351,10 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     Default to 2–4 short annotation cards per target. Classify each card \
     with a `category`: `author`, `summary`, `historical`, \
     `clarification` (concise prose), or `reference` (a single scripture \
-    citation when a parallel passage is genuinely illuminating). Keep \
+    citation, used ONLY when the target text directly quotes, alludes to, \
+    or cites another passage — e.g. a New Testament verse drawing on the \
+    Old Testament; never for a merely thematically similar verse, and \
+    omitted entirely when there is no genuine cross-reference). Keep \
     each body to ~240 characters / ≤2 sentences and give each a \
     plain-language title. When the user message lists sections to cover, \
     aim for one focused card per section. Card display order is fixed by \
@@ -424,9 +427,11 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         case "verseRange":
             """
             For this verse range, aim to cover historical context \
-            (category `historical`), a plain-language clarification \
-            (`clarification`), and any illuminating cross-reference(s) \
-            (`reference`) — one focused card each.
+            (category `historical`) and a plain-language clarification \
+            (`clarification`) — one focused card each. Add a \
+            cross-reference card (`reference`) ONLY if this passage \
+            directly quotes, alludes to, or cites another scripture; omit \
+            it when there is no genuine quotation or allusion.
             """
         default:
             nil
