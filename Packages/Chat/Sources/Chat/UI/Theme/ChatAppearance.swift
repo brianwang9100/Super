@@ -49,6 +49,20 @@ public struct ChatAppearance: Sendable, Equatable {
         interpolate(low: 0.30, mid: 0.39, high: 0.54)
     }
 
+    /// Intra-paragraph line spacing as *points* — ``paragraphLineSpacingEm``
+    /// resolved against ``bodyFontSize`` — for APIs that take an absolute
+    /// `CGFloat` rather than an em. Used for the gap *between* list items
+    /// (`markdownMargin(top:)` is point-valued, not em), so a bulleted or
+    /// numbered list's item-to-item spacing reads with the same rhythm as the
+    /// wrapped lines inside an item instead of bunching at a fixed 2pt. It
+    /// closely tracks — but isn't bit-identical to — the gap
+    /// `relativeLineSpacing(.em:)` actually paints, which MarkdownUI rounds
+    /// internally (≈`round(em · round(bodyFontSize))`); the sub-point
+    /// difference is below visual threshold.
+    public var paragraphLineSpacingPoints: CGFloat {
+        paragraphLineSpacingEm * bodyFontSize
+    }
+
     /// Vertical margin below each markdown paragraph, in points. Drives
     /// the *gap between paragraphs* (distinct from intra-paragraph line
     /// spacing, which `paragraphLineSpacingEm` controls). MarkdownUI's
