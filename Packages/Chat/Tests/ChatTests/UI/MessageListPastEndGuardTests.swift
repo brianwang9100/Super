@@ -68,3 +68,98 @@ struct MessageListPastEndGuardTests {
         #expect(strandedPastEndOffset(content: 1000, container: 600, offset: 480) == 400)
     }
 }
+
+/// Tests for `shouldReSnapPendingBottom` — the pure decision behind the
+/// stream-end settle's per-tick re-snap.
+///
+/// The regression these pin: after dragging the chat handle to a tiny viewport
+/// (keyboard up) and sending, the `LazyVStack` content height thrashes between
+/// two values every layout pass while the offset stays correctly pinned to the
+/// bottom (`isAtBottom == true`). Re-issuing `scrollTo(.bottom)` on each of
+/// those ticks is an offset no-op that re-materializes the lazy rows and
+/// sustains the oscillation that blanks the transcript. The fix only re-snaps
+/// when content moved *and* the viewport isn't already at the bottom — i.e. a
+/// genuine stream-end grow that pushed the bottom out of view.
+@Suite("MessageList pending-bottom re-snap gate")
+struct MessageListPendingBottomReSnapTests {
+    @Test("Content grew and we're no longer at the bottom: re-snap")
+    func growAwayFromBottomReSnaps() {
+        #expect(shouldReSnapPendingBottom(contentHeightChanged: true, alreadyAtBottom: false))
+    }
+
+    @Test("Content changed but already pinned to the bottom: skip (the oscillation tick)")
+    func changeWhileAtBottomSkips() {
+        // The tiny-viewport flip-flop: contentHeight moved but the offset is
+        // already at the bottom — snapping would be a no-op that re-triggers
+        // the lazy relayout.
+        #expect(!shouldReSnapPendingBottom(contentHeightChanged: true, alreadyAtBottom: true))
+    }
+
+    @Test("No content change: never re-snap regardless of position")
+    func noChangeNeverReSnaps() {
+        #expect(!shouldReSnapPendingBottom(contentHeightChanged: false, alreadyAtBottom: false))
+        #expect(!shouldReSnapPendingBottom(contentHeightChanged: false, alreadyAtBottom: true))
+    }
+}
+
+/// Tests for `pendingBottomSnapBudgetExhausted` — the backstop disarm boundary
+/// for the stream-end settle.
+///
+/// The normal settle disarms via a consecutive-content-stable counter, but in
+/// the tiny-viewport oscillation the content height never holds steady, so that
+/// counter never advances and the snap would stay armed forever. The tick
+/// budget guarantees the settle terminates regardless.
+@Suite("MessageList pending-bottom tick budget")
+struct MessageListPendingBottomBudgetTests {
+    @Test("Below the budget stays armed")
+    func belowBudgetStaysArmed() {
+        #expect(!pendingBottomSnapBudgetExhausted(totalTicks: 0, maxTicks: 12))
+        #expect(!pendingBottomSnapBudgetExhausted(totalTicks: 11, maxTicks: 12))
+    }
+
+    @Test("Reaching the budget disarms")
+    func reachingBudgetDisarms() {
+        #expect(pendingBottomSnapBudgetExhausted(totalTicks: 12, maxTicks: 12))
+    }
+
+    @Test("Past the budget disarms")
+    func pastBudgetDisarms() {
+        #expect(pendingBottomSnapBudgetExhausted(totalTicks: 30, maxTicks: 12))
+    }
+}
+
+/// Tests for `shouldLandOnBudgetDisarm` — the one-shot safety-net snap when the
+/// stream-end settle's tick budget fires while the offset is stranded *above*
+/// the last row.
+///
+/// The case this guards: the budget can disarm `pendingBottomSnap` mid-grow,
+/// before the offset has reached the bottom. The stable-disarm path can't strand
+/// the user (it only fires once settled at the bottom), and the past-end guard
+/// only catches strands *past* the end — so a budget disarm with content still
+/// growing below the viewport (`isAtBottom == false`) needs one explicit final
+/// snap. Already-at-bottom (the tiny-viewport oscillation) must get none.
+@Suite("MessageList budget-disarm safety net")
+struct MessageListBudgetDisarmTests {
+    @Test("Budget fired, not settled, stranded above bottom: land it")
+    func budgetStrandedLands() {
+        #expect(shouldLandOnBudgetDisarm(budgetExhausted: true, settled: false, alreadyAtBottom: false))
+    }
+
+    @Test("Budget fired but already at bottom (oscillation tick): no extra snap")
+    func budgetAtBottomNoSnap() {
+        #expect(!shouldLandOnBudgetDisarm(budgetExhausted: true, settled: false, alreadyAtBottom: true))
+    }
+
+    @Test("Stable-path disarm (settled) never triggers the safety net")
+    func settledDisarmNoSnap() {
+        // When `settled` the offset is already at the bottom by definition, so the
+        // net must stay out of the way regardless of the other flags.
+        #expect(!shouldLandOnBudgetDisarm(budgetExhausted: false, settled: true, alreadyAtBottom: true))
+        #expect(!shouldLandOnBudgetDisarm(budgetExhausted: true, settled: true, alreadyAtBottom: false))
+    }
+
+    @Test("No disarm at all: no snap")
+    func noDisarmNoSnap() {
+        #expect(!shouldLandOnBudgetDisarm(budgetExhausted: false, settled: false, alreadyAtBottom: false))
+    }
+}

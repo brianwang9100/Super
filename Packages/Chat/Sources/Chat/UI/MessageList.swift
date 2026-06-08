@@ -306,6 +306,12 @@ public struct MessageList: View {
     /// height change and disarms the pending snap after
     /// ``bottomSnapStableTicksToClear`` consecutive content-stable ticks.
     @State private var bottomSnapStableTickCount = 0
+    /// Total geometry ticks observed since ``pendingBottomSnap`` was armed
+    /// (independent of content stability). Backstop disarm for the
+    /// tiny-viewport case where ``bottomSnapStableTickCount`` never reaches
+    /// its threshold because the `LazyVStack` content height never holds
+    /// steady — see ``bottomSnapMaxTicks``.
+    @State private var pendingBottomSnapTotalTicks = 0
 
     /// What to do with the scroll position while a verbosity-driven
     /// relayout is in flight. See ``verbosityScrollMode``.
@@ -327,6 +333,15 @@ public struct MessageList: View {
     /// concern — the stream-end settle vs. the verbosity-relayout settle)
     /// so tuning one doesn't silently move the other.
     private static let bottomSnapStableTicksToClear: Int = 3
+    /// Hard ceiling on how many geometry ticks ``pendingBottomSnap`` stays
+    /// armed, regardless of whether content height ever settles. The normal
+    /// settle disarms via ``bottomSnapStableTicksToClear`` in 3–6 ticks; this
+    /// budget (~0.5s of layout passes) only fires in the pathological
+    /// tiny-viewport case where the bistable `LazyVStack` content height
+    /// thrashes forever and the stable-tick counter can't advance. Kept well
+    /// above the synthetic harness's per-settle tick count so
+    /// `streamEndPersistLandsAtBottom` still disarms via the stable path.
+    private static let bottomSnapMaxTicks: Int = 12
     /// Reduced, `Equatable` snapshot of the scroll geometry — the
     /// only shape `onScrollGeometryChange`'s transform emits.
     /// `contentHeight` lets the action distinguish content-grow ticks
@@ -480,6 +495,7 @@ public struct MessageList: View {
             // content height holds steady (see `pendingBottomSnap`).
             pendingBottomSnap = true
             bottomSnapStableTickCount = 0
+            pendingBottomSnapTotalTicks = 0
         }
         // `streamingTail` is the whole `StreamingState`, not just
         // `.text` — the tail grows during the pure-thinking phase via
@@ -489,7 +505,13 @@ public struct MessageList: View {
         // Gated on `wasAtBottom` so a user reading history during a
         // long response isn't yanked down on every coalesced delta.
         .onChange(of: streamingTail) { _, _ in
-            guard wasAtBottom else { return }
+            // Suppress while a stream-end settle (`pendingBottomSnap`) owns the
+            // bottom-pin: that settle already re-snaps on each content-stable
+            // tick, and letting the tail observer *also* fire `scrollTo(.bottom)`
+            // adds a second, differently-timed scroll input during the exact
+            // window the tiny-viewport oscillation lives in. One owner during
+            // the settle keeps the scroll cadence single-sourced.
+            guard wasAtBottom, !pendingBottomSnap else { return }
             scrollPosition.scrollTo(edge: .bottom)
         }
         // Verbosity flip relayouts every on-screen `ThinkingBlock` /
@@ -547,7 +569,18 @@ public struct MessageList: View {
                 isAtBottom: distance < Self.bottomFollowThreshold
             )
         } action: { oldValue, newValue in
-            latestSnapshot = newValue
+            // Skip the `@State` write when the snapshot is byte-identical
+            // to the last one. In a tiny viewport the `LazyVStack` reports a
+            // bistable `contentHeight` (two values alternating every layout
+            // pass); the geometry transform still fires on the *unchanged*
+            // ticks in between, and an unconditional write there is a pure
+            // read→write→re-render→read participant in the content-size
+            // oscillation (the "Observation tracking feedback loop detected!"
+            // the snapshot suite logged). `ContainerSnapshot` is `Equatable`,
+            // so the guard is exact and free of false negatives.
+            if latestSnapshot != newValue {
+                latestSnapshot = newValue
+            }
             // Latch the bottom-status only when this tick wasn't a
             // content-grow event. Content-grow flips `isAtBottom`
             // false (the bottom is suddenly further away) *before*
@@ -598,15 +631,67 @@ public struct MessageList: View {
             // also re-fires this — harmless: re-snapping on a resize is
             // wanted, and it still disarms when motion stops.)
             if pendingBottomSnap {
-                if oldValue.contentHeight != newValue.contentHeight {
+                pendingBottomSnapTotalTicks += 1
+                let contentChanged = oldValue.contentHeight != newValue.contentHeight
+                if contentChanged {
                     bottomSnapStableTickCount = 0
-                    scrollPosition.scrollTo(edge: .bottom)
                 } else {
                     bottomSnapStableTickCount += 1
-                    if bottomSnapStableTickCount >= Self.bottomSnapStableTicksToClear {
-                        pendingBottomSnap = false
-                        bottomSnapStableTickCount = 0
+                }
+                // Only re-snap on a content-height-change tick where the
+                // viewport is *not* already pinned to the bottom. Re-snapping
+                // while `isAtBottom` is a no-op for the offset, but in a tiny
+                // viewport (handle dragged to ~90pt, keyboard up) it
+                // re-materializes the `LazyVStack`'s rows every tick — feeding
+                // the bistable `contentHeight` oscillation (observed flip-flop
+                // ~3476↔1280 with the offset correctly pinned `gap≈0`) that
+                // blanks rows mid-relayout. The trace showed `isAtBottom`
+                // already true on every flip-flop tick, so this removes exactly
+                // the redundant snaps without weakening the real stream-end
+                // settle (where content grows past the bottom → `isAtBottom`
+                // false → we still snap).
+                if shouldReSnapPendingBottom(
+                    contentHeightChanged: contentChanged,
+                    alreadyAtBottom: newValue.isAtBottom
+                ) {
+                    scrollPosition.scrollTo(edge: .bottom)
+                }
+                // Disarm on either the normal settle (``bottomSnapStableTicksToClear``
+                // consecutive content-stable ticks) *or* an exhausted tick budget.
+                // The budget is the backstop for the tiny-viewport case where the
+                // bistable content height *never* holds steady, so the stable-tick
+                // counter never reaches its threshold and the snap would otherwise
+                // re-arm forever. A normal viewport settles in 3–6 ticks (well under
+                // the budget), so the budget only bites in the pathological case.
+                //
+                // Evaluated on *every* tick (not only content-stable ones, where the
+                // prior implementation kept it) so the budget can fire mid-thrash —
+                // its whole purpose is to disarm while content height is still moving.
+                let settled = bottomSnapStableTickCount >= Self.bottomSnapStableTicksToClear
+                let budgetSpent = pendingBottomSnapBudgetExhausted(
+                    totalTicks: pendingBottomSnapTotalTicks,
+                    maxTicks: Self.bottomSnapMaxTicks
+                )
+                if settled || budgetSpent {
+                    // Budget-forced-disarm safety net: the stable path only fires
+                    // once we're settled at the bottom, but the budget can fire while
+                    // content is still growing with the offset stranded *above* the
+                    // last row (`isAtBottom == false`). No other observer re-pins that
+                    // case — the past-end guard catches only strands *past* the end,
+                    // and the container auto-follow needs a height change. Land it
+                    // explicitly, once. Skipped when already at the bottom, so the
+                    // tiny-viewport oscillation (`isAtBottom` true every tick) gets no
+                    // extra snap; harmless either way since we disarm immediately after.
+                    if shouldLandOnBudgetDisarm(
+                        budgetExhausted: budgetSpent,
+                        settled: settled,
+                        alreadyAtBottom: newValue.isAtBottom
+                    ) {
+                        scrollPosition.scrollTo(edge: .bottom)
                     }
+                    pendingBottomSnap = false
+                    bottomSnapStableTickCount = 0
+                    pendingBottomSnapTotalTicks = 0
                 }
             }
             // Past-end guard. The bottom-pin observers (`items.count`,
@@ -711,4 +796,43 @@ func strandedPastEndOffset(
     let maxOffset = max(0, content - container)
     guard offset > maxOffset + epsilon else { return nil }
     return maxOffset
+}
+
+/// Whether the pending stream-end bottom-snap should re-issue
+/// `scrollTo(.bottom)` on a given geometry tick. Worth a snap only when the
+/// content height actually moved this tick *and* the viewport isn't already
+/// pinned to the bottom — re-snapping while already at the bottom is a no-op
+/// for the offset that, in a tiny viewport, just re-materializes the
+/// `LazyVStack`'s rows and sustains the content-size oscillation that blanks
+/// the transcript (the handle-drag-to-tiny-viewport bug).
+///
+/// Pure so the decision is unit-testable without a live `ScrollPosition`.
+func shouldReSnapPendingBottom(contentHeightChanged: Bool, alreadyAtBottom: Bool) -> Bool {
+    contentHeightChanged && !alreadyAtBottom
+}
+
+/// Whether the pending stream-end bottom-snap has exhausted its tick budget and
+/// must disarm regardless of whether content height ever settled. The normal
+/// path disarms via a consecutive-content-stable counter; this backstop covers
+/// the tiny-viewport case where the bistable `LazyVStack` content height never
+/// holds steady, so that counter never advances and the snap would re-arm
+/// forever.
+///
+/// Pure so the disarm boundary is unit-testable.
+func pendingBottomSnapBudgetExhausted(totalTicks: Int, maxTicks: Int) -> Bool {
+    totalTicks >= maxTicks
+}
+
+/// Whether a budget-forced disarm of the stream-end settle must issue one final
+/// `scrollTo(.bottom)`. The stable-disarm path only triggers once the viewport
+/// is already settled at the bottom, but the tick-budget backstop can fire while
+/// content is still growing with the offset stranded *above* the last row — a
+/// case no other observer re-pins (the past-end guard catches only strands *past*
+/// the end, and the container auto-follow needs a height change). Skipped when
+/// already at the bottom so the tiny-viewport oscillation (`isAtBottom` true
+/// every tick) gets no extra snap.
+///
+/// Pure so the safety-net condition is unit-testable.
+func shouldLandOnBudgetDisarm(budgetExhausted: Bool, settled: Bool, alreadyAtBottom: Bool) -> Bool {
+    budgetExhausted && !settled && !alreadyAtBottom
 }
