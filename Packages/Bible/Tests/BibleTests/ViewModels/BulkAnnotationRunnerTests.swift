@@ -246,6 +246,30 @@ import Testing
         #expect(generator.receivedReferences.first?.kind == "chapter")
     }
 
+    /// An indeterminate existence read in preserve mode must fail the unit
+    /// rather than silently overwriting — the generator is never called.
+    @Test func readFailureInPreserveModeFailsTheUnitWithoutOverwriting() async throws {
+        let generator = ScriptedBibleAnnotateGenerator()  // must never be called
+        let ledger = GRDBBulkAnnotationLedger(database: try BibleDatabase.makeInMemory())
+        let runner = BulkAnnotationRunner(
+            ledger: ledger,
+            generator: generator,
+            annotationRepository: ThrowingAnnotationRepository(),
+            clock: FixedClock(),
+            idGenerator: DeterministicIDGenerator(),
+            currentModelID: { "model-x" },
+            maxAttemptsPerUnit: 1
+        )
+
+        runner.start(oneBookPlan(chapters: [1]))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units[0].state == .failed)
+        #expect(units[0].errorMessage != nil)
+        #expect(generator.receivedReferences.isEmpty)  // never regenerated/overwrote
+    }
+
     /// The per-run flag is persisted on the run record so a relaunch/resume
     /// honors the choice made at kickoff.
     @Test func overwriteFlagIsPersistedOnTheRunRecord() async throws {
@@ -909,4 +933,15 @@ import Testing
         let orphanUnits = try await ledger.units(runId: "orphan")
         #expect(orphanUnits[0].state == .generating)
     }
+}
+
+/// A repository whose every operation throws — drives the runner's preserve-mode
+/// read-failure branch (the existence check can't be resolved).
+private struct ThrowingAnnotationRepository: BibleAnnotationRepository {
+    struct Boom: Error {}
+    func list(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?) async throws -> [BibleAnnotationRecord] { throw Boom() }
+    func replace(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?, inserting records: [BibleAnnotationRecord]) async throws { throw Boom() }
+    func hasAnnotation(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?) async throws -> Bool { throw Boom() }
+    func deleteOne(id: String) async throws { throw Boom() }
+    func deleteAll() async throws { throw Boom() }
 }

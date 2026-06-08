@@ -168,6 +168,14 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
+    @Test("per-book progress with skipped chapters reflows at Dynamic Type XXL")
+    func progressSkippedXXL() {
+        let vm = makeViewModel(seed: Self.skippedRun())
+        verify(theme: .light, dynamicType: .xxLarge, height: 1000, name: "progress_skipped_light_xxl") {
+            BulkAnnotationProgressScreen(viewModel: vm)
+        }
+    }
+
     @Test("per-book progress reflows at Dynamic Type XXL")
     func progressXXL() {
         let vm = makeViewModel(seed: Self.failedRun())

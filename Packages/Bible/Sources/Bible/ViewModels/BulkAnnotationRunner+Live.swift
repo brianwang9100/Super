@@ -498,13 +498,31 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // bypasses the check and regenerates as before.
             if runRecord?.overwriteExisting == false {
                 let slot = targetSlot(for: units[index])
-                let occupied = (try? await annotationRepository.hasAnnotation(
-                    target: slot.target,
-                    bookId: units[index].bookId,
-                    chapterNumber: slot.chapterNumber,
-                    verseStart: nil,
-                    verseEnd: nil
-                )) ?? false
+                let occupied: Bool
+                do {
+                    occupied = try await annotationRepository.hasAnnotation(
+                        target: slot.target,
+                        bookId: units[index].bookId,
+                        chapterNumber: slot.chapterNumber,
+                        verseStart: nil,
+                        verseEnd: nil
+                    )
+                } catch {
+                    // An indeterminate read must not silently overwrite (the
+                    // whole point of preserve mode) nor silently skip. Surface it
+                    // as a unit failure — offered for manual retry, and a
+                    // systemic DB fault trips the breaker like a failed generate.
+                    if runRecord == nil { return }
+                    if runRecord?.status != .running { return }
+                    failUnit(at: index, message: "Couldn't check existing annotations: \(error.localizedDescription)")
+                    consecutiveFailures += 1
+                    projectSnapshot()
+                    if consecutiveFailures >= consecutiveFailureLimit {
+                        haltRun(reason: .consecutiveFailures)
+                        return
+                    }
+                    continue
+                }
                 // Cancel / pause may have landed during the read; bail the same
                 // way the post-generate block does (leave the unit `.queued` on
                 // pause so resume re-evaluates it).
