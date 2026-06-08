@@ -609,6 +609,50 @@ public struct MessageList: View {
                     }
                 }
             }
+            // Past-end guard. The bottom-pin observers (`items.count`,
+            // `streamingTail`, `pendingBottomSnap`, `verbosity`) each set the
+            // offset against *one* tick's geometry. `LazyVStack` reports
+            // `contentHeight` unstably — it flip-flops between two values on
+            // alternating layout passes (observed swings up to ~1100pt during
+            // the keyboard glide). When `contentHeight` collapses to its
+            // smaller alternate *after* a bottom-pin computed against the larger
+            // one — or when a drag/keyboard resize shrinks the viewport faster
+            // than the offset re-pins — the offset is left below the content's
+            // end and the small keyboard-up viewport renders blank past it: the
+            // transient content-disappears flicker. Detect that geometrically
+            // (offset past `contentHeight - height`) and re-pin to the bottom.
+            // Sits before the auto-follow's early returns below because the
+            // strand appears on content-only ticks the auto-follow would skip.
+            //
+            // Only correct on a tick where the container OR content height
+            // actually changed — never on an offset-only tick. A user flicking
+            // the transcript into the bottom edge rubber-bands `offset` past the
+            // max with the geometry held constant; gating on a geometry change
+            // leaves that legitimate overscroll bounce alone (it would otherwise
+            // be cut short by a snap), while still catching every real strand —
+            // those always coincide with a content-height collapse or a viewport
+            // resize. On-device the live strands fired on resize ticks (the
+            // container shrinking under a stale pin during a drag), which a
+            // content-height-only gate would have wrongly suppressed.
+            //
+            // Loop-safe: this reads the offset only to test the static
+            // invariant `offset <= contentHeight - height` and snaps to that
+            // boundary — it does *not* infer scroll direction from the offset
+            // (the feedback loop the geometry action otherwise avoids). It is
+            // self-disarming: after the snap the offset sits at the boundary,
+            // so the strand predicate is false next tick and it does not
+            // re-fire. It can only move the offset *up* into the valid range,
+            // never past an edge, and never affects a user scrolled up reading
+            // history (they sit above the max offset, never past the end).
+            let geometryChanged = oldValue.height != newValue.height
+                || oldValue.contentHeight != newValue.contentHeight
+            if geometryChanged, strandedPastEndOffset(
+                content: newValue.contentHeight,
+                container: newValue.height,
+                offset: newValue.offsetY
+            ) != nil {
+                scrollPosition.scrollTo(edge: .bottom)
+            }
             // Container-height-driven auto-follow (keyboard show/
             // dismiss). Guard on the live `wasAtBottom` latch rather
             // than `oldValue.isAtBottom`: a prior content-grow tick
@@ -646,4 +690,25 @@ public struct MessageList: View {
             CompactionBanner(summary: summary)
         }
     }
+}
+
+/// The offset to re-pin to when the scroll position is stranded *past the end*
+/// of the content — i.e. the latched `offset` sits below the last point the
+/// viewport can show, leaving a blank region. Returns `nil` when the offset is
+/// within the valid `[0, content - container]` range (no correction needed).
+///
+/// Pulled out as a free function so the past-end guard's arithmetic is unit
+/// testable without a live `ScrollPosition`. `epsilon` absorbs the sub-pixel
+/// `LazyVStack` jitter that routinely leaves the offset a fraction past the max
+/// without any visible void; only a real strand (a multi-point content-height
+/// collapse after a bottom-pin) trips it.
+func strandedPastEndOffset(
+    content: CGFloat,
+    container: CGFloat,
+    offset: CGFloat,
+    epsilon: CGFloat = 4
+) -> CGFloat? {
+    let maxOffset = max(0, content - container)
+    guard offset > maxOffset + epsilon else { return nil }
+    return maxOffset
 }
