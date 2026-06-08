@@ -131,6 +131,24 @@ struct SuperTypographyTests {
         #expect(SuperTypography.Role.caption2.baseSize == 11)
     }
 
+    @Test("readingBodySize is the shared SSOT for long-form reading body")
+    func readingBodySizeIsSSOT() {
+        // Single source of truth for the EB Garamond roman reading body
+        // (assistant messages + Bible verse body). Distinct from Role.body (17),
+        // which sizes system-sans chrome and must not move with reading comfort.
+        #expect(SuperTypography.readingBodySize == 19)
+        #expect(SuperTypography.readingBodySize != SuperTypography.Role.body.baseSize)
+    }
+
+    @Test("readingLeadingEm is the shared intra-line leading ratio (4/17)")
+    func readingLeadingEmIsSSOT() {
+        // Single source of truth for the line gap shared by the assistant body
+        // (ChatAppearance.paragraphLineSpacingEm) and the Bible reader
+        // (BibleReadingMetrics.lineSpacing), so both read as one line rhythm.
+        let expected: CGFloat = 4.0 / 17.0
+        #expect(abs(SuperTypography.readingLeadingEm - expected) < 1e-12)
+    }
+
     @Test("font(_:weight:) threads weight through every role, including display")
     func fontRoleThreadsWeight() {
         // Regression: the .display branch previously routed through display(),

@@ -76,7 +76,10 @@ extension SuperTheme {
         return textStyledTheme
             .code {
                 FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
+                // Inline code sits ~2pt below the body so dense mono spans
+                // (`LazyVStack`, `scrollTo(edge:)`) don't crowd the line.
+                // 0.775 em ≈ 14.7pt against the 19pt reading body.
+                FontSize(.em(0.775))
                 ForegroundColor(theme.codeInlineForeground)
                 BackgroundColor(theme.codeInlineBackground)
             }
