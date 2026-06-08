@@ -145,6 +145,26 @@ public struct BibleScreen: View {
             }
         }
         .task { await viewModel.load() }
+        // Immersive reading: when the scroll reducer flips `isImmersive`,
+        // mirror it to the shell so its hamburger + chat pill hide/show in
+        // sympathy with the local nav bar. Published only on real flips
+        // (`updateScroll` is idempotent), matching the bus's low-frequency
+        // event style.
+        .onChange(of: viewModel.isImmersive) { _, immersive in
+            publishChromeVisibility(!immersive)
+        }
+        // Stepping chapters re-identifies the reader and resets its scroll to
+        // the top; clear immersive so chrome can't strand hidden (the
+        // `isImmersive` change above restores the shell's chrome too).
+        .onChange(of: viewModel.position) { _, _ in
+            viewModel.resetImmersive()
+        }
+        // Leaving the reader restores chrome unconditionally so a non-Bible
+        // applet — or a later re-entry — never inherits a hidden state.
+        .onDisappear {
+            viewModel.resetImmersive()
+            publishChromeVisibility(true)
+        }
         // Foreground-only narration per spec: leaving the app stops
         // playback cleanly so the controller's state matches what the
         // OS would silence anyway.
@@ -315,6 +335,23 @@ public struct BibleScreen: View {
     /// owns the visible confirmation: the chat overlay semi-expands
     /// from minimized and the composer becomes first responder, so we
     /// only clean up the verse selection here — no toast.
+    /// Ask the shell to hide (`false`) or restore (`true`) its global chrome —
+    /// the hamburger and the minimized chat pill — so the reader can claim the
+    /// full screen in immersive mode. A no-op without a bus (previews /
+    /// isolated tests); the shell only complies while the chat is a pill and
+    /// otherwise leaves its chrome put.
+    ///
+    /// Each call is an independent unstructured `Task`, so two flips in quick
+    /// succession have no delivery-order guarantee. That's acceptable here: the
+    /// reducer's hysteresis debounces flips to roughly one per scroll-direction
+    /// change, and an out-of-order pair self-heals on the next user-driven
+    /// scroll sample (or the shell's applet-switch / chat-state reset). It only
+    /// ever lands on a *stale* boolean, never a wrong one.
+    private func publishChromeVisibility(_ visible: Bool) {
+        guard let eventBus else { return }
+        Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }
+    }
+
     private func publishReferenceToChat(_ reference: RecordReference, startNew: Bool) {
         guard let eventBus else {
             withAnimation(motion.animation) { viewModel.presentChatComingSoon() }
@@ -388,7 +425,24 @@ public struct BibleScreen: View {
                 }
             }
         )
+        // Immersive reading: slide the whole bar up off the top edge and fade
+        // it as the user scrolls down into the chapter. `navBarHideDistance`
+        // clears the bar plus the top safe area / Dynamic Island. The shell's
+        // own chrome (hamburger + chat pill) hides in sympathy off the bus
+        // event published below, on the same `chromeReveal` curve so the two
+        // move together.
+        .offset(y: viewModel.isImmersive ? -Self.navBarHideDistance : 0)
+        .opacity(viewModel.isImmersive ? 0 : 1)
+        .animation(
+            SuperMotion.chrome(hiding: viewModel.isImmersive, reduceMotion: reduceMotion),
+            value: viewModel.isImmersive
+        )
     }
+
+    /// How far up to slide the nav bar when it hides — its own height plus a
+    /// generous allowance for the top safe area / Dynamic Island so it clears
+    /// the screen on every iPhone.
+    private static let navBarHideDistance: CGFloat = 120
 
     /// Fire a generation intent for each contiguous range in the current
     /// verse selection. A non-contiguous selection (e.g. 28, 30) produces
@@ -533,6 +587,9 @@ public struct BibleScreen: View {
                 ),
                 onNoteGlyphTap: { spec in
                     withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
+                },
+                onScroll: { offsetY, userDriven in
+                    viewModel.updateScroll(offsetY: offsetY, userDriven: userDriven)
                 }
             )
             // A fresh identity per chapter resets the scroll offset to the

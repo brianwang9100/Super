@@ -56,6 +56,14 @@ struct BibleChapterReader: View {
     private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
+    private let onScroll: (CGFloat, Bool) -> Void
+
+    /// Whether the latest scroll phase is one the *user* drove
+    /// (`.interacting` / `.decelerating`) versus a programmatic `scrollTo`
+    /// (`.animating`) the reader issues for narration follow, selection, and
+    /// deep-link landing. Gates `onScroll`'s `userDriven` flag so an
+    /// auto-scroll never toggles immersive chrome.
+    @State private var scrollIsUserDriven = false
 
     /// - Parameters:
     ///   - bookId: the book whose highlights the `@Query` observes; paired
@@ -117,7 +125,8 @@ struct BibleChapterReader: View {
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil,
-        onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil
+        onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
+        onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in }
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -150,6 +159,7 @@ struct BibleChapterReader: View {
         self.onRequestChapterAnnotation = onRequestChapterAnnotation
         self.chapterDispatchStatus = chapterDispatchStatus
         self.onNoteGlyphTap = onNoteGlyphTap
+        self.onScroll = onScroll
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -279,6 +289,26 @@ struct BibleChapterReader: View {
                 // A tap that misses every verse word clears the selection.
                 .contentShape(Rectangle())
                 .onTapGesture { onClearSelection() }
+            }
+            // Immersive-chrome driver: report the live content offset plus
+            // whether the *user* is driving the scroll. The phase gate keeps
+            // the programmatic `scrollTo` calls below (narration follow,
+            // selection-into-view, deep-link landing — all `.animating`) from
+            // hiding or revealing chrome out from under the reader.
+            .onScrollPhaseChange { _, newPhase in
+                scrollIsUserDriven = newPhase == .interacting || newPhase == .decelerating
+            }
+            // Reads `scrollIsUserDriven` (set above) rather than capturing the
+            // phase in the closure. The two modifiers aren't ordering-guaranteed
+            // by SwiftUI, but phase events arrive with the touch and geometry
+            // changes on the next display pass, so the flag is current here. The
+            // one boundary sample (an `.animating`→`.interacting` turn) that
+            // could read the stale phase is treated as `userDriven: false`,
+            // which only updates the reducer's baseline — chrome can't misfire.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newOffset in
+                onScroll(newOffset, scrollIsUserDriven)
             }
             // When the verse-selection action sheet appears, scroll the
             // just-selected verse up to `y = 0.35` (a third from top — same

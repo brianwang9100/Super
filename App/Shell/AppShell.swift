@@ -91,6 +91,13 @@ struct AppShell: View {
     @State private var typography: SuperTypography = .make(SuperTypography.Identifier.serif)
     @State private var sidebarOpen: Bool = false
     @State private var settingsOpen: Bool = false
+    /// Whether the shell's global chrome — the top-left hamburger and the
+    /// minimized chat pill — is on screen. An applet can request it hidden
+    /// over the bus (`shellChromeVisibilityRequested`) to claim the full
+    /// screen for immersive content; today only the Bible reader does, on
+    /// scroll. Reset to `true` on every applet switch and whenever the chat
+    /// leaves its pill state so a request can never strand chrome off-screen.
+    @State private var shellChromeVisible = true
     @State private var activeConversationId: String?
     /// Composer focus state, owned by the shell so every "user moved away
     /// from the composer" transition (drag-collapse, hamburger open,
@@ -169,6 +176,20 @@ struct AppShell: View {
 
     private var appInfo: SuperAppInfo { .fromBundle() }
 
+    /// Whether the minimized chat pill should slide off the bottom edge for
+    /// immersive reading: an applet asked for chrome hidden *and* the chat is
+    /// in its pill state. A semi/expanded chat is a deliberate state and never
+    /// hides.
+    private var composerHidden: Bool {
+        !shellChromeVisible && chatState == .minimized
+    }
+
+    /// How far down to slide the chat pill when it hides — past the pill's own
+    /// height plus a bottom-safe-area allowance so it clears the screen edge on
+    /// every iPhone.
+    private static let composerHideDistance: CGFloat =
+        ChatPresentationState.minimizedBaseHeight + 140
+
     /// Honoured by the chat-overlay container's spring and by the
     /// backdrop's opacity transition. Reading it here so the sidebar's
     /// programmatic state flip uses the right animation.
@@ -223,7 +244,20 @@ struct AppShell: View {
                 onProgressChange: { chatProgress = $0 },
                 onSemiProgressChange: { chatSemiProgress = $0 }
             )
-            HamburgerLayer(theme: theme, onTap: openSidebar)
+            // Immersive reading: slide the minimized chat pill down off the
+            // bottom edge when an applet requests chrome hidden. Gated on the
+            // pill state so a deliberately semi/expanded chat is untouched —
+            // offsetting the whole layer only moves the pill, since that's the
+            // only visible part of the surface in `.minimized`.
+            .offset(y: composerHidden ? Self.composerHideDistance : 0)
+            .animation(
+                SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
+                value: composerHidden
+            )
+            // Same as the hamburger: the pill is offset off-screen but stays in
+            // the accessibility tree, so hide it from VoiceOver while immersive.
+            .accessibilityHidden(composerHidden)
+            HamburgerLayer(theme: theme, chromeVisible: shellChromeVisible, onTap: openSidebar)
             SidebarLayer(
                 sidebarOpen: $sidebarOpen,
                 sidebarViewModel: sidebarViewModel,
@@ -373,7 +407,19 @@ struct AppShell: View {
         .onChange(of: chatState) { _, newState in
             if newState == .minimized {
                 dismissKeyboard()
+            } else {
+                // Leaving the pill (semi/expanded) takes the composer out of
+                // its hideable state — restore chrome so it can't stay hidden
+                // behind a non-pill chat. The composer-offset call site is
+                // pill-gated anyway; this keeps the hamburger honest too.
+                shellChromeVisible = true
             }
+        }
+        // Any applet switch (sidebar select, See-all, an `openRecord`
+        // deep link) restores chrome so a hidden state set by one applet
+        // never bleeds into the next — the new applet starts with full chrome.
+        .onChange(of: registry.activeID) { _, _ in
+            shellChromeVisible = true
         }
         .onChange(of: chatProgress) { oldValue, newValue in
             if ChatPresentationState.crossedBelowEditorThreshold(from: oldValue, to: newValue) {
@@ -576,6 +622,15 @@ struct AppShell: View {
                     // applets dismiss their native sheets; it has nothing
                     // to do on the receiving side.
                     break
+                case .shellChromeVisibilityRequested(let visible):
+                    // An applet (today only Bible, on scroll) asks the shell
+                    // to hide/show its global chrome. No `withAnimation` here:
+                    // the chrome views carry their own `.animation(value:)` so
+                    // a fresh `reduceMotion` read drives the curve, sidestepping
+                    // this captured task's stale-environment hazard. The
+                    // composer half is additionally gated on the pill state at
+                    // the call site, so a non-pill chat ignores the hide.
+                    shellChromeVisible = visible
                 }
             }
         }
@@ -1160,7 +1215,16 @@ private struct ChatLayer: View {
 /// inside the safe area so the status bar doesn't sit on top of it.
 private struct HamburgerLayer: View {
     let theme: SuperTheme
+    /// `false` while an applet has requested immersive (chrome-hidden)
+    /// content — the button slides up off the top edge and fades out.
+    let chromeVisible: Bool
     let onTap: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// How far up to slide the button when hidden — its height plus the top
+    /// safe area / Dynamic Island so it clears the screen on every iPhone.
+    private static let hideDistance: CGFloat = 120
 
     var body: some View {
         VStack {
@@ -1173,6 +1237,13 @@ private struct HamburgerLayer: View {
         }
         .padding(.leading, 12)
         .padding(.top, 4)
+        .offset(y: chromeVisible ? 0 : -Self.hideDistance)
+        .opacity(chromeVisible ? 1 : 0)
+        .animation(SuperMotion.chrome(hiding: !chromeVisible, reduceMotion: reduceMotion), value: chromeVisible)
+        // Offset + opacity hide the button visually but leave it in the
+        // accessibility tree; drop it from VoiceOver too so a swipe can't
+        // reach an off-screen control while chrome is hidden.
+        .accessibilityHidden(!chromeVisible)
     }
 }
 
