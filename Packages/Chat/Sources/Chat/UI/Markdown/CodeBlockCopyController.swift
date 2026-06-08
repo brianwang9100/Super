@@ -58,4 +58,12 @@ final class CodeBlockCopyController {
             self.state = .idle
         }
     }
+
+    /// Test seam: await the most recently scheduled revert task so a test
+    /// can assert the post-revert `.idle` state on an observable signal
+    /// rather than polling `Task.yield()`. Underscore-prefixed — test-only
+    /// surface, not stable API. No-op when no revert is in flight.
+    func _waitForRevert() async {
+        await revertTask?.value
+    }
 }

@@ -13,6 +13,8 @@ import Testing
 @Suite("NoteGlyph snapshots")
 @MainActor
 struct NoteGlyphSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("filled glyph renders in the light theme")
     func filledLight() {
         verify(theme: .light, state: .filled, name: "filled_light")

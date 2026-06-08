@@ -135,6 +135,7 @@ public final class VoiceInputController {
                 for try await event in stream {
                     guard let self else { return }
                     self.handle(event)
+                    self.signalProcessedEvent()
                 }
                 // Stream ended cleanly without a `.final` event — treat
                 // as a normal stop so the controller doesn't strand in
@@ -146,18 +147,47 @@ public final class VoiceInputController {
                     self.state = .idle
                     self.onFinalTranscript?(committed)
                 }
+                self.signalProcessedEvent()
             } catch is CancellationError {
                 // `stop()` already wrote the terminal state.
                 return
             } catch let error as VoiceInputError {
                 guard let self else { return }
                 self.handle(error)
+                self.signalProcessedEvent()
             } catch {
                 guard let self else { return }
                 self.partialTranscript = ""
                 self.state = .failed(error.localizedDescription)
+                self.signalProcessedEvent()
             }
         }
+    }
+
+    // MARK: - Test seam
+
+    /// Test-only signal stream. When a test installs it via
+    /// ``_observeProcessedEvents()``, the controller yields `()` once after
+    /// every stream event it handles and every stream-driven terminal
+    /// transition — so a test can await the controller's reaction on an
+    /// observable signal instead of polling `Task.yield()`. Left nil in
+    /// production, where the yield is a cheap optional no-op. Underscore
+    /// surface = test-only, not stable API.
+    private var processedEventSignal: AsyncStream<Void>.Continuation?
+
+    /// Install (replacing any prior) the processed-event signal and return the
+    /// stream a test drains — one value per event the stream task handles.
+    /// `AsyncStream` buffers, so a signal emitted before the test reads it is
+    /// not lost; the test may `emit(...)` then `await iterator.next()` in
+    /// either interleaving.
+    func _observeProcessedEvents() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        processedEventSignal = continuation
+        return stream
+    }
+
+    private func signalProcessedEvent() {
+        processedEventSignal?.yield(())
     }
 
     private func handle(_ event: VoiceInputEvent) {
