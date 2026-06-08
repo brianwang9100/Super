@@ -218,8 +218,8 @@ struct AppShell: View {
                 theme: theme,
                 appearance: appearance,
                 typography: typography,
-                onManageModels: { openSettings(initialPane: .models) },
-                onAddModelRequested: { openSettings(initialPane: .modelDetail(id: nil)) },
+                onManageModels: { openSettings(rootedAt: .models) },
+                onAddModelRequested: { openSettings(pushing: .modelDetail(id: nil)) },
                 onProgressChange: { chatProgress = $0 },
                 onSemiProgressChange: { chatSemiProgress = $0 }
             )
@@ -493,13 +493,29 @@ struct AppShell: View {
         #endif
     }
 
-    private func openSettings(initialPane: SettingsSheet.Pane = .root) {
+    /// Open the Settings sheet.
+    ///
+    /// - Parameters:
+    ///   - rootPane: The pane at the base of the sheet's navigation stack. The
+    ///     leading header button is a close-✕ here (dismisses the sheet), so the
+    ///     composer's "Manage models…" passes `.models` to land on Models as its
+    ///     own modal root rather than pushed atop the Settings root.
+    ///   - pushedPane: An optional pane pushed onto `rootPane` — its leading
+    ///     button is a back chevron returning to `rootPane`. The composer's
+    ///     "Add model" pushes `.modelDetail(id: nil)` onto the default `.root`.
+    ///
+    /// `rootPane` is set on every open, so the view model can't carry a stale
+    /// root across presentations.
+    private func openSettings(
+        rootedAt rootPane: SettingsSheet.Pane = .root,
+        pushing pushedPane: SettingsSheet.Pane? = nil
+    ) {
         guard let settingsViewModel else { return }
-        // Seed the nav stack before flipping the visibility binding so the
-        // sheet animates in already on the requested pane (e.g. the
-        // composer's "Manage models…" jumping straight to Models).
-        if initialPane != .root {
-            settingsViewModel.openPane(initialPane)
+        // Seed both the root and any pushed pane before flipping the visibility
+        // binding so the sheet animates in already on the requested pane.
+        settingsViewModel.rootPane = rootPane
+        if let pushedPane {
+            settingsViewModel.openPane(pushedPane)
         }
         settingsOpen = true
     }

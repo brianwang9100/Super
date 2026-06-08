@@ -152,7 +152,7 @@ public struct SettingsSheet: View {
     }
 
     private var currentPane: Pane {
-        viewModel.navigationPath.last ?? .root
+        viewModel.navigationPath.last ?? viewModel.rootPane
     }
 
     @ViewBuilder
@@ -160,7 +160,7 @@ public struct SettingsSheet: View {
         VStack(spacing: 0) {
             SettingsHeader(
                 title: currentPane.title,
-                isRoot: currentPane == .root,
+                isRoot: viewModel.navigationPath.isEmpty,
                 onBack: { viewModel.popPane() },
                 onClose: { close() },
                 // The Models pane carries a trailing glass "+" that opens the
@@ -172,7 +172,7 @@ public struct SettingsSheet: View {
             )
             NavigationStack(path: $viewModel.navigationPath) {
                 ScrollView {
-                    SettingsRootPane(viewModel: viewModel)
+                    paneContent(viewModel.rootPane)
                 }
                 .scrollIndicators(.hidden)
                 .scrollContentBackground(.hidden)
