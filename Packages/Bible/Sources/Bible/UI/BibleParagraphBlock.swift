@@ -57,7 +57,7 @@ struct BibleParagraphBlock: View {
     /// Verse-body base point — matches `VerseWord.verseBodySize` so the line
     /// gap scales on the same two axes (OS Dynamic Type via the metric, the app
     /// slider via `typography.fontScale`) as the words it spaces.
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
     /// Section-heading base point, declared via `@ScaledMetric` so the heading
     /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
@@ -297,7 +297,7 @@ private struct VerseWord: View {
     /// Verse-word base point, declared via `@ScaledMetric` so reading text
     /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
     /// folds in. Base 17 == `.body`, the pre-migration size.
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
     /// Raised verse-marker base point. Base 11 == `.caption2`, the
     /// pre-migration size; tracks the same two axes as the word it precedes.
     @ScaledMetric(relativeTo: .caption2) private var verseNumberSize: CGFloat = 11

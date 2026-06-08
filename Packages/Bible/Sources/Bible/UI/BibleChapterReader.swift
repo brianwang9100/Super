@@ -18,7 +18,7 @@ struct BibleChapterReader: View {
     /// Verse-body base point — matches `BibleParagraphBlock.verseBodySize` so the
     /// between-paragraph margin scales on the same two axes (OS Dynamic Type via
     /// the metric, the app slider via `typography.fontScale`) as the line gaps.
-    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
     @Query<ChapterHighlightsRequest> private var highlights: [BibleHighlightRecord]
     /// Annotation rows for the on-screen chapter. Drives both the
     /// chapter-title bubble (any row with target `.chapter`) and the

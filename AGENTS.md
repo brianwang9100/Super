@@ -232,6 +232,13 @@ DB schema-snapshot suites (`GRDBSnapshotTesting`) render no views and are exempt
 
 Module `AGENTS.md` files point back here and add only what's module-specific.
 
+### 8. No CI runs on a PR? Check for merge conflicts *first*.
+
+GitHub does **not** dispatch workflows for a PR whose head conflicts with its base. The PR sits with **zero** checks and `mergeStateStatus: DIRTY` / `mergeable: CONFLICTING` — which looks identical to an Actions outage or a dropped `pull_request` event, and tempts you into useless nudges (reopen, empty-commit push). None of those help while the conflict stands.
+
+- **Before** blaming GitHub or re-triggering, run `gh pr view <N> --json mergeable,mergeStateStatus`. `CONFLICTING` / `DIRTY` means *resolve the conflict*, full stop — dispatch resumes automatically once the head merges cleanly.
+- A common cause here: branching off another feature branch that later **squash-merges**. The squash gives your base a new SHA, so your branch still carries the pre-squash commits and conflicts with main even though the *content* already landed. Fix by re-homing only your own commits onto current main — `git reset --hard <your-first-commit>` then `git rebase --onto origin/main <your-first-commit>^ HEAD`, or reset to `origin/main` and re-apply just your changed files when they don't intersect what main moved (verify with `git diff <base> origin/main -- <files>`). Then re-record any baselines, since main's intervening merges may have changed the views/theme.
+
 ## Sync
 
 - Custom platform-agnostic sync (not CloudKit)
