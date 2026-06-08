@@ -123,6 +123,7 @@ struct BulkSpinner: View {
 /// The small left-edge marker on a chapter row. Mirrors the `AnnotationBubble`
 /// vocabulary so a row reads the same as the reader's verse-end bubble:
 /// queued → empty bubble · generating → spinner · done → filled bubble ·
+/// skipped → muted minus glyph (slot already annotated, left as-is) ·
 /// failed → alert glyph in the failure hue.
 struct BulkStatusLeaf: View {
     @Environment(\.superTheme) private var theme
@@ -143,6 +144,12 @@ struct BulkStatusLeaf: View {
             AnnotationBubble(state: .empty, size: size)
         case .generating:
             BulkSpinner(size: size)
+        case .skipped:
+            Image(systemName: "minus.circle")
+                .font(.system(size: size - 6, weight: .semibold))
+                .foregroundStyle(theme.inkFaint)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
         case .failed:
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: size - 6, weight: .semibold))

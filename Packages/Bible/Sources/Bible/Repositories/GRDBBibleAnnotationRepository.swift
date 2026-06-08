@@ -72,6 +72,25 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
         }
     }
 
+    public func hasAnnotation(
+        target: BibleAnnotationTarget,
+        bookId: String,
+        chapterNumber: Int?,
+        verseStart: Int?,
+        verseEnd: Int?
+    ) async throws -> Bool {
+        try await queue.read { db in
+            try Self.targetGroupQuery(
+                target: target,
+                bookId: bookId,
+                chapterNumber: chapterNumber,
+                verseStart: verseStart,
+                verseEnd: verseEnd
+            )
+            .isEmpty(db) == false
+        }
+    }
+
     public func deleteOne(id: String) async throws {
         _ = try await queue.write { db in
             try BibleAnnotationRecord.deleteOne(db, key: id)

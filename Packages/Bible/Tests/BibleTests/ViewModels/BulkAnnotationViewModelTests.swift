@@ -82,6 +82,29 @@ import Testing
         #expect(!book.includesBookLevel)
     }
 
+    @Test func generateThreadsTheOverwriteFlagIntoThePlan() throws {
+        let runner = FakeBulkAnnotationRunner(autoAdvance: false)
+        let vm = BulkAnnotationViewModel(runner: runner)
+        vm.toggleChapter(ChapterRef(bookID: "ROM", number: 1))
+        vm.overwriteExisting = true
+
+        vm.generate()
+
+        let plan = try #require(runner.startedPlans.first)
+        #expect(plan.overwriteExisting)
+    }
+
+    @Test func generateDefaultsToPreserveWhenTheToggleIsOff() throws {
+        let runner = FakeBulkAnnotationRunner(autoAdvance: false)
+        let vm = BulkAnnotationViewModel(runner: runner)
+        vm.toggleChapter(ChapterRef(bookID: "ROM", number: 1))
+
+        vm.generate()
+
+        let plan = try #require(runner.startedPlans.first)
+        #expect(!plan.overwriteExisting)
+    }
+
     // MARK: - confirmDeleteAll drives the injected closure
 
     @Test func confirmDeleteAllInvokesTheInjectedClosure() {

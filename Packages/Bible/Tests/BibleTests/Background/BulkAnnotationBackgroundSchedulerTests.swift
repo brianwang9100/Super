@@ -43,6 +43,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: GRDBBibleAnnotationRepository(database: try BibleDatabase.makeInMemory()),
             catalog: .standard,
             translation: .web,
             clock: FixedClock(),
@@ -112,6 +113,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: ScriptedBibleAnnotateGenerator(),
+            annotationRepository: GRDBBibleAnnotationRepository(database: try BibleDatabase.makeInMemory()),
             clock: FixedClock(),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "model-x" }
@@ -155,6 +157,7 @@ import Testing
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: GRDBBibleAnnotationRepository(database: try BibleDatabase.makeInMemory()),
             clock: FixedClock(),
             idGenerator: DeterministicIDGenerator(),
             currentModelID: { "model-x" }

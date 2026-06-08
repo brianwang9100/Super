@@ -42,7 +42,11 @@ public enum BulkRunHaltReason: String, Codable, Sendable, Equatable, CaseIterabl
 /// run produces so a later regenerate can tell bulk rows apart from per-target
 /// taps. `haltReason` is set only when `status == .failed`. `completedAt` is set
 /// only on a terminal status; it's the sort key for the Completed section and
-/// the cutoff axis for `deleteRunsCompleted(before:)`.
+/// the cutoff axis for `deleteRunsCompleted(before:)`. `overwriteExisting` is the
+/// per-run preserve/overwrite choice from the Generate sheet: `false` (the
+/// default) makes the runner skip a unit whose target slot is already annotated;
+/// `true` regenerates and replaces it. Persisted so a relaunched/resumed run
+/// honors the choice made at kickoff.
 public struct BulkAnnotationRunRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bulkAnnotationRun"
 
@@ -53,6 +57,7 @@ public struct BulkAnnotationRunRecord: Codable, FetchableRecord, PersistableReco
     public var createdAt: Date
     public var updatedAt: Date
     public var completedAt: Date?
+    public var overwriteExisting: Bool
 
     public init(
         id: String,
@@ -61,7 +66,8 @@ public struct BulkAnnotationRunRecord: Codable, FetchableRecord, PersistableReco
         haltReason: BulkRunHaltReason? = nil,
         createdAt: Date,
         updatedAt: Date,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        overwriteExisting: Bool = false
     ) {
         self.id = id
         self.status = status
@@ -70,5 +76,6 @@ public struct BulkAnnotationRunRecord: Codable, FetchableRecord, PersistableReco
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.completedAt = completedAt
+        self.overwriteExisting = overwriteExisting
     }
 }

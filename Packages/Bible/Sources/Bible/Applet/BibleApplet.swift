@@ -292,9 +292,13 @@ public struct BibleApplet: MiniApplet {
     ) -> BulkAnnotationWiring? {
         guard let databaseContext, let database else { return nil }
         let ledger = GRDBBulkAnnotationLedger(database: database)
+        // Shared across the runner (preserve-mode skip check + the hub's "Delete
+        // all annotations" reset) — all reading/writing the same `bible.sqlite`.
+        let annotationRepository = GRDBBibleAnnotationRepository(database: database)
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
+            annotationRepository: annotationRepository,
             currentModelID: currentModelID
         )
         // Resume an in-progress run on launch (no-op when none is active).
@@ -304,7 +308,6 @@ public struct BibleApplet: MiniApplet {
         // async clear (the coverage `@Query` reactively redraws to zero). A
         // failed clear is logged rather than swallowed — otherwise the tap
         // would silently look like a no-op (the `@Query` just retains old rows).
-        let annotationRepository = GRDBBibleAnnotationRepository(database: database)
         let contribution = BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
             runner: runner,

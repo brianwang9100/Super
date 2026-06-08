@@ -9,7 +9,7 @@ CREATE TABLE "bibleNote" ("id" TEXT PRIMARY KEY NOT NULL, "target" TEXT NOT NULL
 CREATE INDEX "bibleNote_on_bookId_chapterNumber_verseEnd" ON "bibleNote"("bookId", "chapterNumber", "verseEnd");
 CREATE INDEX "bibleNote_on_target_bookId" ON "bibleNote"("target", "bookId");
 CREATE TABLE "bibleReadingPosition" ("id" TEXT PRIMARY KEY NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "translationId" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL);
-CREATE TABLE "bulkAnnotationRun" ("id" TEXT PRIMARY KEY NOT NULL, "status" TEXT NOT NULL, "modelId" TEXT NOT NULL, "haltReason" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "completedAt" DATETIME, CHECK ((status IN ('completed', 'failed', 'cancelled')) = (completedAt IS NOT NULL)));
+CREATE TABLE "bulkAnnotationRun" ("id" TEXT PRIMARY KEY NOT NULL, "status" TEXT NOT NULL, "modelId" TEXT NOT NULL, "haltReason" TEXT, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "completedAt" DATETIME, "overwriteExisting" BOOLEAN NOT NULL DEFAULT 0, CHECK ((status IN ('completed', 'failed', 'cancelled')) = (completedAt IS NOT NULL)));
 CREATE INDEX "bulkAnnotationRun_on_completedAt" ON "bulkAnnotationRun"("completedAt");
 CREATE INDEX "bulkAnnotationRun_on_status" ON "bulkAnnotationRun"("status");
 CREATE TABLE "bulkAnnotationRunUnit" ("id" TEXT PRIMARY KEY NOT NULL, "runId" TEXT NOT NULL REFERENCES "bulkAnnotationRun"("id") ON DELETE CASCADE, "ordinal" INTEGER NOT NULL, "kind" TEXT NOT NULL, "bookId" TEXT NOT NULL, "bookName" TEXT NOT NULL, "chapterNumber" INTEGER, "state" TEXT NOT NULL, "attemptCount" INTEGER NOT NULL DEFAULT 0, "producedCount" INTEGER NOT NULL DEFAULT 0, "errorMessage" TEXT, "updatedAt" DATETIME NOT NULL);

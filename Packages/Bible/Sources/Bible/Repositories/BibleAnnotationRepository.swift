@@ -43,6 +43,18 @@ public protocol BibleAnnotationRepository: Sendable {
         inserting records: [BibleAnnotationRecord]
     ) async throws
 
+    /// `true` when at least one annotation row already occupies the given
+    /// target slot. The bulk runner's preserve mode reads this to skip a unit
+    /// before generating (no LLM call) when its slot is already annotated.
+    /// `verseStart`/`verseEnd` are `nil` for chapter and book slots.
+    func hasAnnotation(
+        target: BibleAnnotationTarget,
+        bookId: String,
+        chapterNumber: Int?,
+        verseStart: Int?,
+        verseEnd: Int?
+    ) async throws -> Bool
+
     /// Delete one annotation row by id. No-op if no such row exists.
     func deleteOne(id: String) async throws
 

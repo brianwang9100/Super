@@ -51,6 +51,10 @@ struct BulkChapterRow: View {
             Text("queued")
                 .font(typography.mono(11.5))
                 .foregroundStyle(theme.inkMute)
+        case .skipped:
+            Text("skipped")
+                .font(typography.mono(11.5))
+                .foregroundStyle(theme.inkFaint)
         case .failed:
             BulkRetryButton(action: onRetry)
         }
@@ -61,6 +65,7 @@ struct BulkChapterRow: View {
         case .done: return "\(chapter.producedCount) annotations"
         case .generating: return "generating"
         case .queued: return "queued"
+        case .skipped: return "skipped, already annotated"
         case .failed: return "failed"
         }
     }
