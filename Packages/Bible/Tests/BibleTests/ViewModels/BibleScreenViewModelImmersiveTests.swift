@@ -70,7 +70,7 @@ struct BibleScreenViewModelImmersiveTests {
         #expect(viewModel.isImmersive == false)
     }
 
-    @Test("a small upward jitter does not reveal, but accumulates across reversals")
+    @Test("two small upward samples accumulate to cross the reveal threshold")
     func smallUpwardJitterHysteresis() {
         let viewModel = makeViewModel()
         seed(viewModel, at: 200)

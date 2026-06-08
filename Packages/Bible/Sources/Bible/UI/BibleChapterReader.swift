@@ -298,6 +298,13 @@ struct BibleChapterReader: View {
             .onScrollPhaseChange { _, newPhase in
                 scrollIsUserDriven = newPhase == .interacting || newPhase == .decelerating
             }
+            // Reads `scrollIsUserDriven` (set above) rather than capturing the
+            // phase in the closure. The two modifiers aren't ordering-guaranteed
+            // by SwiftUI, but phase events arrive with the touch and geometry
+            // changes on the next display pass, so the flag is current here. The
+            // one boundary sample (an `.animating`→`.interacting` turn) that
+            // could read the stale phase is treated as `userDriven: false`,
+            // which only updates the reducer's baseline — chrome can't misfire.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y
             } action: { _, newOffset in

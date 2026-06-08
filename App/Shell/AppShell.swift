@@ -254,6 +254,9 @@ struct AppShell: View {
                 SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
                 value: composerHidden
             )
+            // Same as the hamburger: the pill is offset off-screen but stays in
+            // the accessibility tree, so hide it from VoiceOver while immersive.
+            .accessibilityHidden(composerHidden)
             HamburgerLayer(theme: theme, chromeVisible: shellChromeVisible, onTap: openSidebar)
             SidebarLayer(
                 sidebarOpen: $sidebarOpen,
@@ -1237,6 +1240,10 @@ private struct HamburgerLayer: View {
         .offset(y: chromeVisible ? 0 : -Self.hideDistance)
         .opacity(chromeVisible ? 1 : 0)
         .animation(SuperMotion.chrome(hiding: !chromeVisible, reduceMotion: reduceMotion), value: chromeVisible)
+        // Offset + opacity hide the button visually but leave it in the
+        // accessibility tree; drop it from VoiceOver too so a swipe can't
+        // reach an off-screen control while chrome is hidden.
+        .accessibilityHidden(!chromeVisible)
     }
 }
 
