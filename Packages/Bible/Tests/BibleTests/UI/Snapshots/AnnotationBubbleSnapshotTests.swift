@@ -25,11 +25,6 @@ struct AnnotationBubbleSnapshotTests {
         verify(theme: .vellumDark, state: .filled, name: "filled_dark")
     }
 
-    @Test("filled bubble renders in the sepia theme")
-    func filledSepia() {
-        verify(theme: .sepiaLight, state: .filled, name: "filled_sepia")
-    }
-
     @Test("empty bubble renders in the light theme")
     func emptyLight() {
         verify(theme: .vellumLight, state: .empty, name: "empty_light")

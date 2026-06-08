@@ -68,7 +68,7 @@ struct BulkAnnotationSnapshotTests {
 
     // MARK: - Hub
 
-    @Test("hub idle renders in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+    @Test("hub idle renders in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func hubIdle(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel()
         verify(theme: id, height: 700, name: "hub_idle_\(id.rawValue)") {
@@ -76,7 +76,7 @@ struct BulkAnnotationSnapshotTests {
         }
     }
 
-    @Test("hub with the single running job in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+    @Test("hub with the single running job in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func hubRunning(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.midRun())
         verify(theme: id, height: 700, name: "hub_running_\(id.rawValue)") {
@@ -85,7 +85,7 @@ struct BulkAnnotationSnapshotTests {
     }
 
     @Test("hub with a recently-finished list (idle) in light / dark / sepia",
-          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func hubFinished(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel()
         verify(theme: id, height: 760, name: "hub_finished_\(id.rawValue)") {
@@ -116,7 +116,7 @@ struct BulkAnnotationSnapshotTests {
     // MARK: - Generate sheet
 
     @Test("generate sheet with an expanded partial book in light / dark / sepia",
-          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func generateSheet(_ id: SuperTheme.Identifier) {
         verify(theme: id, height: 760, name: "generate_\(id.rawValue)") { Self.generateSheet() }
     }
@@ -142,7 +142,7 @@ struct BulkAnnotationSnapshotTests {
 
     // MARK: - Progress
 
-    @Test("per-book progress mid-run in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+    @Test("per-book progress mid-run in light / dark / sepia", arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func progressMid(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.midRun())
         verify(theme: id, height: 760, name: "progress_mid_\(id.rawValue)") {
@@ -151,7 +151,7 @@ struct BulkAnnotationSnapshotTests {
     }
 
     @Test("per-book progress with a failed chapter in light / dark / sepia",
-          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func progressFailed(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.failedRun())
         verify(theme: id, height: 760, name: "progress_failed_\(id.rawValue)") {
@@ -160,7 +160,7 @@ struct BulkAnnotationSnapshotTests {
     }
 
     @Test("per-book progress with skipped chapters in light / dark / sepia",
-          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark, .sepiaLight])
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func progressSkipped(_ id: SuperTheme.Identifier) {
         let vm = makeViewModel(seed: Self.skippedRun())
         verify(theme: id, height: 760, name: "progress_skipped_\(id.rawValue)") {

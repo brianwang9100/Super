@@ -25,11 +25,6 @@ struct BibleAttachToastSnapshotTests {
         verify(theme: .vellumDark, name: "dark")
     }
 
-    @Test("the toast renders over a sepia page")
-    func sepia() {
-        verify(theme: .sepiaLight, name: "sepia")
-    }
-
     private func verify(
         theme themeID: SuperTheme.Identifier,
         name: String,

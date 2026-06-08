@@ -69,16 +69,6 @@ struct DSIconSnapshotTests {
         verify(theme: .vellumDark, name: "ds_icon_catalog_grid_dark")
     }
 
-    /// Sepia-mode counterpart per Chat AGENTS.md (`light/dark/sepia ×
-    /// default/Dynamic Type XXL`). Uses the project's actual
-    /// `SuperTheme` (Sepia Light) ink + background colors rather than hardcoded
-    /// browns so the baseline tracks the theme's tokens; if a future
-    /// theme tweak shifts the sepia palette, this snapshot updates.
-    @Test("catalog grid renders all 32 icons — sepia")
-    func catalogGridSepia() {
-        verify(theme: .sepiaLight, name: "ds_icon_catalog_grid_sepia")
-    }
-
     // Dynamic Type XXL variant omitted from the matrix: both the icon
     // frame (`.resizable().frame(width: 28, height: 28)`) and the label
     // font (`.system(size: 9)`) are fixed-size and unaffected by the

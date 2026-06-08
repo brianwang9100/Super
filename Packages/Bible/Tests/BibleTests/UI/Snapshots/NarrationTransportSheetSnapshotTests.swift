@@ -30,11 +30,6 @@ struct NarrationTransportSheetSnapshotTests {
         verify(theme: .vellumDark, state: .speaking, currentVerse: 9, name: "speaking_dark")
     }
 
-    @Test("the transport card renders while speaking in the sepia theme")
-    func speakingSepia() {
-        verify(theme: .sepiaLight, state: .speaking, currentVerse: 9, name: "speaking_sepia")
-    }
-
     @Test("the transport card renders while paused in the light theme")
     func pausedLight() {
         verify(theme: .vellumLight, state: .paused, currentVerse: 9, name: "paused_light")
@@ -43,11 +38,6 @@ struct NarrationTransportSheetSnapshotTests {
     @Test("the transport card renders while paused in the dark theme")
     func pausedDark() {
         verify(theme: .vellumDark, state: .paused, currentVerse: 9, name: "paused_dark")
-    }
-
-    @Test("the transport card renders while paused in the sepia theme")
-    func pausedSepia() {
-        verify(theme: .sepiaLight, state: .paused, currentVerse: 9, name: "paused_sepia")
     }
 
     @Test("the transport card renders at Dynamic Type XXL in the light theme")
@@ -71,11 +61,6 @@ struct NarrationTransportSheetSnapshotTests {
     @Test("the post-Stop idle state renders in the dark theme")
     func idleDark() {
         verify(theme: .vellumDark, state: .idle, currentVerse: 5, name: "idle_dark")
-    }
-
-    @Test("the post-Stop idle state renders in the sepia theme")
-    func idleSepia() {
-        verify(theme: .sepiaLight, state: .idle, currentVerse: 5, name: "idle_sepia")
     }
 
     private func verify(

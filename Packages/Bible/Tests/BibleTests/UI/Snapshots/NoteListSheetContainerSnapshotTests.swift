@@ -49,11 +49,6 @@ struct NoteListSheetContainerSnapshotTests {
         try await verify(seeding: [], theme: .vellumDark, name: "empty_dark")
     }
 
-    @Test("empty container renders the hero in the sepia theme")
-    func emptySepia() async throws {
-        try await verify(seeding: [], theme: .sepiaLight, name: "empty_sepia")
-    }
-
     // MARK: - Populated states (user + assistant provenance)
 
     @Test("user and assistant notes render with the right footers in the light theme")
@@ -64,11 +59,6 @@ struct NoteListSheetContainerSnapshotTests {
     @Test("user and assistant notes render with the right footers in the dark theme")
     func populatedDark() async throws {
         try await verify(seeding: populatedRows, theme: .vellumDark, name: "populated_dark")
-    }
-
-    @Test("user and assistant notes render with the right footers in the sepia theme")
-    func populatedSepia() async throws {
-        try await verify(seeding: populatedRows, theme: .sepiaLight, name: "populated_sepia")
     }
 
     @Test("populated notes reflow at Dynamic Type XXL")

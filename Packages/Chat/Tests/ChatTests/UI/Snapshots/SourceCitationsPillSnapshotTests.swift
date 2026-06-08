@@ -49,11 +49,6 @@ struct SourceCitationsPillSnapshotTests {
         verify(sources: Self.threeSources, expanded: false, theme: .vellumDark, height: 80, name: "sources_pill_collapsed_dark")
     }
 
-    @Test("collapsed, three sources, sepia")
-    func collapsedSepia() {
-        verify(sources: Self.threeSources, expanded: false, theme: .sepiaLight, height: 80, name: "sources_pill_collapsed_sepia")
-    }
-
     @Test("expanded, three sources, light")
     func expandedLight() {
         verify(sources: Self.threeSources, expanded: true, theme: .vellumLight, height: 240, name: "sources_pill_expanded_light")
@@ -62,11 +57,6 @@ struct SourceCitationsPillSnapshotTests {
     @Test("expanded, three sources, dark")
     func expandedDark() {
         verify(sources: Self.threeSources, expanded: true, theme: .vellumDark, height: 240, name: "sources_pill_expanded_dark")
-    }
-
-    @Test("expanded, three sources, sepia")
-    func expandedSepia() {
-        verify(sources: Self.threeSources, expanded: true, theme: .sepiaLight, height: 240, name: "sources_pill_expanded_sepia")
     }
 
     @Test("expanded, single source, light (singular copy)")

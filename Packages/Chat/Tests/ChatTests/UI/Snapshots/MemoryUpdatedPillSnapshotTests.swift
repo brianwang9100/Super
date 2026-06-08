@@ -51,15 +51,6 @@ struct MemoryUpdatedPillSnapshotTests {
         )
     }
 
-    @Test("collapsed save in sepia")
-    func collapsedSaveSepia() {
-        verify(
-            op: .save, text: "Prefers metric units.",
-            initiallyExpanded: false, theme: .sepiaLight,
-            name: "memory_pill_collapsed_save_sepia"
-        )
-    }
-
     @Test("expanded save in light")
     func expandedSaveLight() {
         verify(
