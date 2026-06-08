@@ -40,13 +40,22 @@ import SwiftUI
 /// the app slider uses a `@ScaledMetric` base *and* `tracksFontScale: false`.
 /// Reading content (the default `tracksFontScale: true`) gets the slider.
 public struct SuperTypography: Sendable, Equatable {
-    /// Swappable type systems. `.serif` is the brand set (Instrument Serif
-    /// Italic display + JetBrains Mono); `.system` drops to system faces.
-    /// Adding a face set is one new case plus one `make(_:)` arm.
+    /// Swappable type systems. `.serif` is the brand set (EB Garamond
+    /// Italic display + EB Garamond Regular reading body + JetBrains Mono);
+    /// `.system` drops to system faces. Adding a face set is one new case
+    /// plus one `make(_:)` arm.
     public enum Identifier: String, Sendable, CaseIterable, Codable {
         case serif
         case system
     }
+
+    /// Shared family name of the four bundled EB Garamond faces
+    /// (Regular / Italic / SemiBold / SemiBold Italic). Reference *this*
+    /// (rather than a single PostScript name) where weight/italic must
+    /// resolve to the true family member — e.g. MarkdownUI's
+    /// `FontFamily(.custom(_:))` for assistant message body, where `.strong`
+    /// and `.emphasis` apply weight/slant traits the family must satisfy.
+    public static let serifFamily = "EB Garamond"
 
     /// Semantic type roles, mirroring Apple's text styles so migration off
     /// `.font(.system(size:))` is mechanical. `display` is the brand title
@@ -88,8 +97,15 @@ public struct SuperTypography: Sendable, Equatable {
     public let id: Identifier
     /// App-wide font-size multiplier, folded into every accessor.
     public let fontScale: CGFloat
-    /// Brand serif face name (PostScript), or `nil` to use the system serif.
+    /// Brand display face name (PostScript) — the *italic* EB Garamond used
+    /// for wordmarks, titles, and section headings. `nil` to use the system
+    /// serif.
     let displayFace: String?
+    /// Reading/body serif face name (PostScript) — the *roman* EB Garamond
+    /// used for long-form reading content (Bible verse body, assistant
+    /// message body). Distinct from `displayFace` (italic). `nil` to use the
+    /// system serif.
+    let readingFace: String?
     /// Monospaced face name (PostScript), or `nil` to use the system mono.
     let monoFace: String?
 
@@ -106,6 +122,19 @@ public struct SuperTypography: Sendable, Equatable {
         resolve(size: size, relativeTo: relativeTo, weight: nil, design: .serif, tracksFontScale: tracksFontScale)
     }
 
+    /// Reading/body serif (roman) — the long-form reading face, distinct from
+    /// the *italic* brand `display(_:)`. Resolves to `readingFace` (EB
+    /// Garamond Regular) when present, else the system serif. Used by the
+    /// Bible verse body and the assistant message body. Pass `weight:` for an
+    /// emphasized member (e.g. `.semibold`) and `relativeTo: nil` for a fixed
+    /// size; `tracksFontScale: false` to ignore the app font-scale slider.
+    public func reading(_ size: CGFloat,
+                        relativeTo: Font.TextStyle? = .body,
+                        weight: Font.Weight? = nil,
+                        tracksFontScale: Bool = true) -> Font {
+        readingSpec(size: size, relativeTo: relativeTo, weight: weight, tracksFontScale: tracksFontScale).font
+    }
+
     /// A system-sans role at its base size. Scales with `fontScale`; for OS
     /// Dynamic Type the view supplies its own `@ScaledMetric` base via
     /// `font(size:)`. Use `display(_:)` for the brand serif title instead.
@@ -117,8 +146,10 @@ public struct SuperTypography: Sendable, Equatable {
     ///
     /// `weight` is honored for every role, including `.display` — under the
     /// `.system` identity the display role resolves to the system serif, whose
-    /// weight is meaningful (the bundled Instrument Serif face is single-weight,
-    /// so weight is a no-op there, but the API must not silently drop it).
+    /// weight is meaningful. The bundled EB Garamond *italic* display face is a
+    /// single weight, so `.weight(...)` is a no-op on `.display`; the SemiBold
+    /// members are reached via the family name (`serifFamily`) or `reading(_:
+    /// weight:)`, not by re-weighting the display PostScript face.
     public func font(_ role: Role, weight: Font.Weight? = nil) -> Font {
         if role == .display {
             return resolve(size: role.baseSize, relativeTo: .largeTitle, weight: weight, design: .serif)
@@ -204,6 +235,23 @@ public struct SuperTypography: Sendable, Equatable {
         )
     }
 
+    /// Resolution truth for the roman reading face. Mirrors `spec(...)` but
+    /// always picks `readingFace` (the `.serif` design slot is owned by the
+    /// italic `displayFace`, so reading needs its own path). `internal` so
+    /// tests can assert on it.
+    func readingSpec(size: CGFloat,
+                     relativeTo: Font.TextStyle?,
+                     weight: Font.Weight?,
+                     tracksFontScale: Bool = true) -> FontSpec {
+        FontSpec(
+            face: readingFace,
+            size: tracksFontScale ? size * fontScale : size,
+            relativeTo: readingFace != nil ? relativeTo : nil,
+            weight: weight,
+            design: .serif
+        )
+    }
+
     private func resolve(size: CGFloat,
                          relativeTo: Font.TextStyle?,
                          weight: Font.Weight?,
@@ -219,7 +267,8 @@ public struct SuperTypography: Sendable, Equatable {
             return SuperTypography(
                 id: .serif,
                 fontScale: fontScale,
-                displayFace: "InstrumentSerif-Italic",
+                displayFace: "EBGaramond-Italic",
+                readingFace: "EBGaramond-Regular",
                 monoFace: "JetBrainsMono-Regular"
             )
         case .system:
@@ -227,6 +276,7 @@ public struct SuperTypography: Sendable, Equatable {
                 id: .system,
                 fontScale: fontScale,
                 displayFace: nil,
+                readingFace: nil,
                 monoFace: nil
             )
         }

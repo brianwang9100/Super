@@ -25,8 +25,13 @@ enum SnapshotFontRegistration {
         if verified { return }
         verified = true
         Core.registerBundledFonts()
-        if UIFont(name: "InstrumentSerif-Italic", size: 26) == nil {
-            Issue.record("Instrument Serif Italic failed to register — snapshots would bake the system-serif fallback")
+        // Italic display (chapter title / headings) + roman reading (verse
+        // body) + SemiBold (heading weight) must all register, or the reader
+        // baselines bake the system-serif fallback.
+        for face in ["EBGaramond-Italic", "EBGaramond-Regular", "EBGaramond-SemiBold"] {
+            if UIFont(name: face, size: 26) == nil {
+                Issue.record("\(face) failed to register — snapshots would bake the system-serif fallback")
+            }
         }
         if UIFont(name: "JetBrainsMono-Regular", size: 10.5) == nil {
             Issue.record("JetBrains Mono Regular failed to register — snapshots would bake the system-mono fallback")

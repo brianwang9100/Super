@@ -16,11 +16,13 @@ let package = Package(
     targets: [
         .target(
             name: "Core",
-            // Bundles the Instrument Serif Italic + JetBrains Mono Regular
-            // .ttf files that `SplashView` and other branded surfaces ask
-            // for via `Font.custom(...)`. Registration is wired through
-            // `Core.registerBundledFonts()`; callers must invoke it once
-            // at process start before the first SwiftUI render.
+            // Bundles the four EB Garamond faces (Regular / Italic /
+            // SemiBold / SemiBold Italic) + JetBrains Mono Regular .ttf
+            // files that `SplashView`, the Bible reader, assistant message
+            // text, and other branded surfaces ask for via `Font.custom(...)`.
+            // Registration is wired through `Core.registerBundledFonts()`;
+            // callers must invoke it once at process start before the first
+            // SwiftUI render.
             resources: [
                 .process("Resources"),
             ],

@@ -238,7 +238,7 @@ struct ChatScreenSnapshotTests {
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
-        // The empty state's `Instrument Serif` greeting renders with
+        // The empty state's `EB Garamond` greeting renders with
         // small sub-pixel differences between iOS 26.2 (CI's pre-installed
         // simulator runtime, bundled with Xcode 26.3) and iOS 26.3 (the
         // local recording runtime). System-font surfaces don't drift;

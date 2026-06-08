@@ -11,7 +11,7 @@ struct SuperOSApp: App {
     @State private var state: SuperOSBootstrapState = .loading
 
     init() {
-        // Register Instrument Serif Italic + JetBrains Mono Regular before
+        // Register EB Garamond Italic + JetBrains Mono Regular before
         // SwiftUI's first render — `SplashView` and the chat chrome both
         // ask for them via `Font.custom(...)`. The call is idempotent.
         Core.registerBundledFonts()

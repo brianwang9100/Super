@@ -9,13 +9,17 @@ public struct TodoEmptyState: View {
     @ScaledMetric(relativeTo: .subheadline) private var captionSize: CGFloat = 15
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public init() {}
 
     public var body: some View {
         VStack(spacing: 6) {
             Text("Nothing here.")
-                .font(.custom("InstrumentSerif-Italic", size: headlineSize * fontScale))
+                // Brand italic display face (EB Garamond Italic), Dynamic-Type
+                // inert to match the prior fixed-size mark; `display` folds the
+                // app font-scale slider in via `@ScaledMetric headlineSize`.
+                .font(typography.display(headlineSize, relativeTo: nil))
                 .foregroundStyle(theme.inkSoft)
             Text("Adjust your filter or tap ＋ to add a task.")
                 .font(.system(size: captionSize * fontScale))

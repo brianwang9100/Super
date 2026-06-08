@@ -22,7 +22,7 @@ struct SplashViewSnapshotTests {
     init() {
         // SwiftUI snapshot tests run in a fresh xctest process that never
         // hits `SuperOSApp.init()`, so the bundled `.ttf`s are unregistered
-        // and `Font.custom("InstrumentSerif-Italic", …)` silently falls
+        // and `Font.custom("EBGaramond-Italic", …)` silently falls
         // back to system sans-serif. The static-let inside is idempotent,
         // so calling per-test costs nothing after the first hit.
         Core.registerBundledFonts()
@@ -31,8 +31,8 @@ struct SplashViewSnapshotTests {
         // it in as the source of truth. `UIFont(name:size:)` returns nil
         // when the PostScript name is unresolved.
         precondition(
-            UIFont(name: "InstrumentSerif-Italic", size: 38) != nil,
-            "Instrument Serif Italic failed to register — snapshots would capture fallback faces"
+            UIFont(name: "EBGaramond-Italic", size: 38) != nil,
+            "EBGaramond-Italic failed to register — snapshots would capture fallback faces"
         )
         precondition(
             UIFont(name: "JetBrainsMono-Regular", size: 10.5) != nil,

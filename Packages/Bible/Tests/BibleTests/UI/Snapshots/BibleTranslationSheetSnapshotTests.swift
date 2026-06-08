@@ -12,7 +12,7 @@ import Testing
 @MainActor
 struct BibleTranslationSheetSnapshotTests {
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// Instrument Serif chrome faces resolve instead of baking the system
+    /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
     /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }

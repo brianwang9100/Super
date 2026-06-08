@@ -19,7 +19,7 @@ struct SuperBibleApp: App {
     private let backgroundController = BulkAnnotationBackgroundController()
 
     init() {
-        // Register Instrument Serif Italic + JetBrains Mono Regular before
+        // Register EB Garamond Italic + JetBrains Mono Regular before
         // SwiftUI's first render. Idempotent and shared with SuperOS — both
         // apps consume the same Core font registration.
         Core.registerBundledFonts()

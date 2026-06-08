@@ -10,7 +10,7 @@ import SwiftUI
 /// reference canvas, lockup vertically centered on the *screen* (not the
 /// safe area), footer 58 pt above the bottom safe-area inset.
 ///
-/// Fonts required: `InstrumentSerif-Italic` and `JetBrainsMono-Regular`. The
+/// Fonts required: `EBGaramond-Italic` and `JetBrainsMono-Regular`. The
 /// host must call `Core.registerBundledFonts()` before the first render or
 /// SwiftUI will fall back to system faces.
 public struct SplashView: View {

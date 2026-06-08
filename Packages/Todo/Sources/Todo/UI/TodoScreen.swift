@@ -17,6 +17,7 @@ public struct TodoScreen: View {
 
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public init(viewModel: TodoScreenViewModel) {
         _viewModel = State(initialValue: viewModel)
@@ -98,7 +99,9 @@ public struct TodoScreen: View {
         let counts = stateCounts
         return VStack(alignment: .leading, spacing: 5) {
             Text("Tasks")
-                .font(.custom("InstrumentSerif-Italic", size: 36 * fontScale))
+                // Brand italic display face (EB Garamond Italic); `display`
+                // folds the app font-scale slider in, Dynamic-Type inert.
+                .font(typography.display(36, relativeTo: nil))
                 .foregroundStyle(theme.ink)
             HStack(spacing: 6) {
                 Text("\(counts.open) open").foregroundStyle(theme.inkFaint)
