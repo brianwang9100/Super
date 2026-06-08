@@ -82,6 +82,23 @@ struct OverlayContentDragLocatorTests {
         #expect(index == 1)
     }
 
+    @Test("coversWindowVertically flags the backdrop but never the inset transcript")
+    func coversWindowVerticallyClassifies() {
+        // Backdrop: spans top-to-bottom → full-window.
+        #expect(coversWindowVertically(backdrop, windowHeight: windowHeight))
+        // Sub-point safe-area rounding on the backdrop is still full-window.
+        #expect(coversWindowVertically(
+            CGRect(x: 0, y: 0.5, width: 400, height: 799.3), windowHeight: windowHeight
+        ))
+        // Transcript inset below the chrome, even reaching the bottom edge → not.
+        #expect(!coversWindowVertically(
+            CGRect(x: 0, y: 116, width: 400, height: 684), windowHeight: windowHeight
+        ))
+        #expect(!coversWindowVertically(
+            CGRect(x: 0, y: 60, width: 400, height: 740), windowHeight: windowHeight
+        ))
+    }
+
     @Test("Full-window exclusion uses a 1-point epsilon for backdrop rounding")
     func fullWindowEpsilon() {
         let point = CGPoint(x: 200, y: 400)
