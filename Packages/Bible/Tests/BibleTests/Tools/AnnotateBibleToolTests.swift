@@ -50,6 +50,34 @@ struct AnnotateBibleToolTests {
         #expect(items["properties"] != nil)
     }
 
+    // MARK: - Descriptor prompt steering
+
+    /// Regression: the descriptor must steer the model to reserve
+    /// `bible.annotate` for explicit annotate requests (it writes
+    /// persistent cards) rather than firing on plain context/explain
+    /// questions. Asserts the load-bearing steer words, not whole
+    /// sentences, so wording can be polished without churning the test.
+    @Test("descriptor reserves the tool for explicit annotate requests")
+    func descriptorSteersExplicitAnnotateOnly() {
+        let description = AnnotateBibleTool.descriptor.description.lowercased()
+        #expect(description.contains("only when the user explicitly asks to annotate"))
+        #expect(description.contains("answer in the conversation"))
+        // Free-text note requests belong to `bible.note`, not annotate.
+        #expect(description.contains("bible.note"))
+    }
+
+    /// Regression: a `reference` card is only for a genuine intertextual
+    /// link (quotation / allusion / citation), never a merely thematically
+    /// similar verse. Guards against the prior "illuminating"-only wording
+    /// that produced junk "see this similar verse" references.
+    @Test("descriptor restricts reference cards to genuine cross-references")
+    func descriptorRestrictsReferenceCards() {
+        let description = AnnotateBibleTool.descriptor.description.lowercased()
+        #expect(description.contains("genuine cross-reference"))
+        #expect(description.contains("alludes to"))
+        #expect(description.contains("thematically"))
+    }
+
     // MARK: - Happy path
 
     @Test("verse-target call inserts records with the parsed category and stamped fields")

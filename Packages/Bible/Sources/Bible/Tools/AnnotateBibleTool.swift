@@ -45,6 +45,16 @@ public struct AnnotateBibleTool: ToolExecutor {
         id: AnnotateBibleTool.toolID,
         name: "bible.annotate",
         description: """
+        Call this ONLY when the user explicitly asks to annotate a \
+        passage — to "annotate" or "add study annotations to" a book, \
+        chapter, or verse range. It writes persistent, formatted \
+        study-annotation cards into the Bible reader. When the user just \
+        asks you to explain, give context on, or summarize a passage, \
+        answer in the conversation instead — do not call this tool (you \
+        may offer annotating as a next step). For a free-text personal \
+        note or reflection ("save a note", "note that…"), use the \
+        `bible.note` tool instead, NOT this one.
+
         Produce one or more annotation cards for a book, chapter, or \
         verse range. Each card is a short, focused note classified by \
         `category`. Keep each body to ~240 characters / ≤2 sentences \
@@ -57,9 +67,15 @@ public struct AnnotateBibleTool: ToolExecutor {
         clarification → reference) and its rendering:
         - `reference`: the body MUST be a single bare scripture citation \
         like `"Heb 4:15"` or `"Romans 8:28-30"` — nothing else — so it \
-        renders as a tappable navigation link. If what you want to say is \
-        prose *about* a passage, use `clarification` and cite the passage \
-        inside the sentence instead.
+        renders as a tappable navigation link. Use a `reference` card \
+        ONLY for a genuine cross-reference — a passage the target text \
+        directly quotes, alludes to, or cites (e.g. a New Testament verse \
+        quoting the Old Testament it draws on). Do NOT add a reference \
+        for a merely thematically or conceptually similar verse ("see \
+        this other verse about love"); omit the reference card entirely \
+        when there is no real intertextual link. If what you want to say \
+        is prose *about* a passage, use `clarification` and cite the \
+        passage inside the sentence instead.
         - every other category: the body is markdown prose.
         Use clear, plain-language titles (e.g. `"Author"`, \
         `"Historical context"`, `"See also"`).
