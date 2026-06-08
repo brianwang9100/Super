@@ -5,13 +5,18 @@ import os
 public extension Core {
     /// Register the brand fonts shipped in `Bundle.module/Resources/Fonts/`
     /// with the Core Text font manager so callers can resolve them via
-    /// `Font.custom("InstrumentSerif-Italic", size:)` and similar.
+    /// `Font.custom("EBGaramond-Italic", size:)` and similar.
     ///
     /// Idempotent: re-entry is a no-op. The host must call this once before
     /// the first SwiftUI render that asks for a bundled face.
     ///
-    /// Bundled fonts:
-    /// - `InstrumentSerif-Italic.ttf` — splash wordmark + brand display
+    /// Bundled fonts (all four EB Garamond faces share the family name
+    /// `"EB Garamond"`, so weight/italic traits resolve to the right member
+    /// when a caller references the *family* — see `SuperTypography`):
+    /// - `EBGaramond-Italic.ttf` — splash wordmark + brand display (italic)
+    /// - `EBGaramond-Regular.ttf` — reading body (Bible verses, assistant text)
+    /// - `EBGaramond-SemiBold.ttf` / `EBGaramond-SemiBoldItalic.ttf` —
+    ///   markdown **strong** / section-heading weight (+ strong-emphasis)
     /// - `JetBrainsMono-Regular.ttf` — splash version mark + numeric chrome
     static func registerBundledFonts() {
         _ = FontRegistration.didRegister
@@ -23,7 +28,7 @@ public extension Core {
 ///
 /// Each font is looked up by name+subdirectory rather than scanning the
 /// bundle for any `.ttf`. A missing or renamed file therefore surfaces as
-/// a *named* failure ("InstrumentSerif-Italic.ttf not found"), not as an
+/// a *named* failure ("EBGaramond-Italic.ttf not found"), not as an
 /// empty enumeration result the caller can mistake for "no fonts to
 /// register." Registration failures (sandbox denial, CoreText rejecting the
 /// table layout) are surfaced two ways: `assertionFailure` halts debug
@@ -33,8 +38,14 @@ public extension Core {
 private enum FontRegistration {
     /// Font face name (matches PostScript name, used at the `Font.custom`
     /// call site) → file path under `Bundle.module/Resources/Fonts/`.
+    /// The four EB Garamond faces share family `"EB Garamond"` with distinct
+    /// weights/slants so `Font.custom("EB Garamond").weight(_:)` / `.italic()`
+    /// select the true member instead of synthesizing one.
     private static let bundledFaces: [(name: String, fileName: String)] = [
-        ("InstrumentSerif-Italic", "InstrumentSerif-Italic"),
+        ("EBGaramond-Regular", "EBGaramond-Regular"),
+        ("EBGaramond-Italic", "EBGaramond-Italic"),
+        ("EBGaramond-SemiBold", "EBGaramond-SemiBold"),
+        ("EBGaramond-SemiBoldItalic", "EBGaramond-SemiBoldItalic"),
         ("JetBrainsMono-Regular", "JetBrainsMono-Regular"),
     ]
 
@@ -45,7 +56,7 @@ private enum FontRegistration {
             // SwiftPM `.process("Resources")` flattens the source tree
             // (`Resources/Fonts/*.ttf`) into the bundle root, so we look up
             // by file name without a subdirectory. Confirmed by inspecting
-            // the built `Core_Core.bundle` — both .ttfs sit at the root.
+            // the built `Core_Core.bundle` — all the .ttfs sit at the root.
             guard let url = Bundle.module.url(
                 forResource: face.fileName,
                 withExtension: "ttf"
