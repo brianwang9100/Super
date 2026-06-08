@@ -23,7 +23,15 @@ public struct BulkRunPlan: Sendable, Equatable {
 
     public let books: [Book]
 
-    public init(books: [Book]) { self.books = books }
+    /// When `false` (the default), the runner skips a unit whose target slot is
+    /// already annotated — preserving the existing card without an LLM call. When
+    /// `true`, every unit regenerates and replaces its slot (the prior behavior).
+    public let overwriteExisting: Bool
+
+    public init(books: [Book], overwriteExisting: Bool = false) {
+        self.books = books
+        self.overwriteExisting = overwriteExisting
+    }
 
     public var isEmpty: Bool { books.allSatisfy { $0.chapters.isEmpty } }
 }

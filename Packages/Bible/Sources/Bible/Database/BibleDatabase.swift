@@ -299,7 +299,7 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.column("bookName", .text).notNull()
             // Null for bookPrologue units.
             t.column("chapterNumber", .integer)
-            // BulkUnitState: queued | generating | done | failed.
+            // BulkUnitState: queued | generating | done | failed | skipped.
             t.column("state", .text).notNull()
             t.column("attemptCount", .integer).notNull().defaults(to: 0)
             t.column("producedCount", .integer).notNull().defaults(to: 0)
@@ -313,5 +313,16 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             on: "bulkAnnotationRunUnit",
             columns: ["runId", "ordinal"]
         )
+    }
+
+    migrator.registerMigration("v7_bulkRunOverwriteFlag") { db in
+        // Per-run preserve/overwrite toggle from the Generate sheet. Default 0
+        // (PRESERVE) so existing rows and resumed runs keep the new default of
+        // skipping a unit whose target slot is already annotated. A constant
+        // default leaves v6's `(status…) = (completedAt IS NOT NULL)` CHECK
+        // untouched (ADD COLUMN doesn't rebuild the table).
+        try db.alter(table: "bulkAnnotationRun") { t in
+            t.add(column: "overwriteExisting", .boolean).notNull().defaults(to: false)
+        }
     }
 }

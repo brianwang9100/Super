@@ -20,6 +20,11 @@ public final class BulkAnnotationViewModel {
     public var selection = BulkSelection()
     /// Books expanded to reveal chapters in the Generate sheet.
     public var expandedBookIDs: Set<String> = []
+    /// The Generate sheet's "Overwrite existing annotations" toggle. `false` (the
+    /// default) preserves already-annotated slots — the runner skips them; `true`
+    /// regenerates and replaces. Kept sticky across sheet opens (not reset by
+    /// `generate()`), so a user who wants overwrite doesn't re-flip it each run.
+    public var overwriteExisting = false
 
     /// Chapters that already carry annotations — drives the "Done" badges.
     /// Injected from a query (or a fake in previews); empty by default.
@@ -126,7 +131,7 @@ public final class BulkAnnotationViewModel {
             )
         }
         guard !books.isEmpty else { return }
-        runner.start(BulkRunPlan(books: books))
+        runner.start(BulkRunPlan(books: books, overwriteExisting: overwriteExisting))
         selection = BulkSelection()
         expandedBookIDs = []
     }

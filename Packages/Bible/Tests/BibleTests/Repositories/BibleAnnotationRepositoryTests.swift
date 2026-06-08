@@ -133,6 +133,64 @@ struct BibleAnnotationRepositoryTests {
         #expect(listed.first?.verseStart == nil)
     }
 
+    // MARK: - Existence (preserve-mode skip check)
+
+    @Test("hasAnnotation is false on an empty slot and true once it's filled")
+    func hasAnnotationReflectsOccupancy() async throws {
+        let (repository, _) = try makeFixture()
+        let empty = try await repository.hasAnnotation(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil
+        )
+        #expect(empty == false)
+
+        try await repository.replace(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
+                    category: .summary, title: "S", body: "B",
+                    source: .user, modelId: "test", createdAt: t0
+                )
+            ]
+        )
+        let filled = try await repository.hasAnnotation(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil
+        )
+        #expect(filled == true)
+    }
+
+    @Test("hasAnnotation is slot-specific across chapter and target kind")
+    func hasAnnotationIsSlotSpecific() async throws {
+        let (repository, _) = try makeFixture()
+        // Annotate chapter 8 only.
+        try await repository.replace(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil,
+            inserting: [
+                BibleAnnotationRecord(
+                    id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
+                    category: .summary, title: "S", body: "B",
+                    source: .user, modelId: "test", createdAt: t0
+                )
+            ]
+        )
+        // A different chapter is still empty.
+        let otherChapter = try await repository.hasAnnotation(
+            target: .chapter, bookId: "ROM", chapterNumber: 9,
+            verseStart: nil, verseEnd: nil
+        )
+        #expect(otherChapter == false)
+        // The book-level slot is a different target kind — still empty.
+        let bookSlot = try await repository.hasAnnotation(
+            target: .book, bookId: "ROM", chapterNumber: nil,
+            verseStart: nil, verseEnd: nil
+        )
+        #expect(bookSlot == false)
+    }
+
     // MARK: - Ordering
 
     @Test("rows of equal category sort by createdAt then id")

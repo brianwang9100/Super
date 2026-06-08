@@ -13,6 +13,10 @@ public enum BulkUnitState: String, Sendable, Equatable, Codable {
     case done
     /// Exhausted automatic retries — offered for manual retry.
     case failed
+    /// Preserve mode: an annotation already occupied this unit's target slot, so
+    /// the runner skipped it without an LLM call. Terminal — counted as neither
+    /// produced nor failed.
+    case skipped
 }
 
 /// One chapter's progress within a running book. `producedCount` is the
@@ -57,10 +61,13 @@ public struct BulkBookProgress: Sendable, Equatable, Identifiable {
         chapters.reduce(0) { $0 + $1.producedCount }
     }
 
-    /// Fraction of chapters that have reached a terminal state (done or failed).
+    /// Fraction of chapters that have reached a terminal state (done, failed, or
+    /// skipped). A skipped chapter is finished work — it counts toward the ring.
     public var fractionComplete: Double {
         guard !chapters.isEmpty else { return 0 }
-        let terminal = chapters.filter { $0.state == .done || $0.state == .failed }.count
+        let terminal = chapters.filter {
+            $0.state == .done || $0.state == .failed || $0.state == .skipped
+        }.count
         return Double(terminal) / Double(chapters.count)
     }
 
