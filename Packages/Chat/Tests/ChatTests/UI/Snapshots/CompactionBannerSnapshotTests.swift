@@ -39,22 +39,22 @@ struct CompactionBannerSnapshotTests {
 
     @Test("collapsed banner in light theme")
     func collapsedLight() {
-        verify(initiallyExpanded: false, theme: .light, name: "compaction_collapsed_light")
+        verify(initiallyExpanded: false, theme: .vellumLight, name: "compaction_collapsed_light")
     }
 
     @Test("collapsed banner in dark theme")
     func collapsedDark() {
-        verify(initiallyExpanded: false, theme: .dark, name: "compaction_collapsed_dark")
+        verify(initiallyExpanded: false, theme: .vellumDark, name: "compaction_collapsed_dark")
     }
 
     @Test("expanded banner in light theme")
     func expandedLight() {
-        verify(initiallyExpanded: true, theme: .light, name: "compaction_expanded_light")
+        verify(initiallyExpanded: true, theme: .vellumLight, name: "compaction_expanded_light")
     }
 
     @Test("expanded banner in dark theme")
     func expandedDark() {
-        verify(initiallyExpanded: true, theme: .dark, name: "compaction_expanded_dark")
+        verify(initiallyExpanded: true, theme: .vellumDark, name: "compaction_expanded_dark")
     }
 
     // AGENTS.md §Testing.3 calls for a Reduce Motion snapshot on any view

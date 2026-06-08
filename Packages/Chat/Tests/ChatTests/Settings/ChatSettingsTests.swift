@@ -191,7 +191,7 @@ struct ChatSettingsStoreTests {
         let repo = InMemorySettingRepository()
         let store = ChatSettingsStore(repository: repo)
 
-        try await store.setTheme(.dark)
+        try await store.setTheme(.vellumDark)
         try await store.setTypography(.system)
         try await store.setUserPersonalization("custom")
         try await store.setDefaultVerbosity(.verbose)
@@ -204,7 +204,7 @@ struct ChatSettingsStoreTests {
         try await store.setTitleModelId("system-default")
 
         let settings = await store.load()
-        #expect(settings.themeId == .dark)
+        #expect(settings.themeId == .vellumDark)
         #expect(settings.typographyID == .system)
         #expect(settings.userPersonalization == "custom")
         #expect(settings.defaultVerbosity == .verbose)
@@ -215,6 +215,44 @@ struct ChatSettingsStoreTests {
         #expect(settings.askBeforeSearching == false)
         #expect(settings.summarizeTitlesEnabled == false)
         #expect(settings.titleModelId == "system-default")
+    }
+}
+
+/// Migration coverage for the theme-overhaul rename: the pre-overhaul
+/// `light`/`dark`/`sepia` persisted strings must map forward onto the
+/// 8-variant enum, and a fresh / unrecognized value defaults to Vellum Light.
+@Suite("ChatSettingsStore theme migration")
+struct ChatSettingsStoreThemeMigrationTests {
+    @Test("legacy three-theme strings map onto the new variants")
+    func legacyStringsMigrate() {
+        #expect(ChatSettingsStore.migrateThemeID("light") == .vellumLight)
+        #expect(ChatSettingsStore.migrateThemeID("dark") == .vellumDark)
+        #expect(ChatSettingsStore.migrateThemeID("sepia") == .sepiaLight)
+    }
+
+    @Test("a current variant string decodes unchanged")
+    func currentStringsRoundTrip() {
+        for id in ChatSettings.ThemeID.allCases {
+            #expect(ChatSettingsStore.migrateThemeID(id.rawValue) == id)
+        }
+    }
+
+    @Test("absent or unrecognized values fall back to the Vellum Light default")
+    func unknownFallsBackToDefault() {
+        #expect(ChatSettingsStore.migrateThemeID(nil) == .vellumLight)
+        #expect(ChatSettingsStore.migrateThemeID("emerald") == .vellumLight)
+        #expect(ChatSettings.default.themeId == .vellumLight)
+    }
+
+    @Test("load() migrates a persisted legacy theme string end-to-end")
+    func loadMigratesLegacyTheme() async throws {
+        let repo = InMemorySettingRepository()
+        try await repo.set(ChatSettingsStore.Keys.themeId, value: "sepia")
+
+        let store = ChatSettingsStore(repository: repo)
+        let settings = await store.load()
+
+        #expect(settings.themeId == .sepiaLight)
     }
 }
 

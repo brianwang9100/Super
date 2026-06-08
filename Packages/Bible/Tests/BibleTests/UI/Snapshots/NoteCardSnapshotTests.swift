@@ -27,48 +27,48 @@ struct NoteCardSnapshotTests {
 
     @Test("user note renders in the light theme")
     func userLight() {
-        verify(theme: .light, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_light")
+        verify(theme: .vellumLight, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_light")
     }
 
     @Test("user note renders in the dark theme")
     func userDark() {
-        verify(theme: .dark, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_dark")
+        verify(theme: .vellumDark, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_dark")
     }
 
     @Test("user note renders in the sepia theme")
     func userSepia() {
-        verify(theme: .sepia, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_sepia")
+        verify(theme: .sepiaLight, date: "May 24, 2026", text: Self.userBody, author: nil, name: "user_sepia")
     }
 
     @Test("assistant note shows the provenance footer")
     func assistantLight() {
-        verify(theme: .light, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_light")
+        verify(theme: .vellumLight, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_light")
     }
 
     @Test("assistant note shows the provenance footer in the dark theme")
     func assistantDark() {
-        verify(theme: .dark, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_dark")
+        verify(theme: .vellumDark, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_dark")
     }
 
     @Test("assistant note shows the provenance footer in the sepia theme")
     func assistantSepia() {
-        verify(theme: .sepia, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_sepia")
+        verify(theme: .sepiaLight, date: "May 28, 2026", text: Self.assistantBody, author: "Claude", name: "assistant_sepia")
     }
 
     @Test("a long body clamps to four lines with an ellipsis")
     func longBodyLight() {
-        verify(theme: .light, date: "May 20, 2026", text: Self.longBody, author: nil, height: 180, name: "long_body_light")
+        verify(theme: .vellumLight, date: "May 20, 2026", text: Self.longBody, author: nil, height: 180, name: "long_body_light")
     }
 
     @Test("a long body clamps to four lines at Dynamic Type XXL")
     func longBodyLightXXL() {
-        verify(theme: .light, date: "May 20, 2026", text: Self.longBody, author: nil,
+        verify(theme: .vellumLight, date: "May 20, 2026", text: Self.longBody, author: nil,
                height: 280, dynamicType: .xxLarge, name: "long_body_light_xxl")
     }
 
     @Test("an assistant note holds shape at Dynamic Type XXL")
     func assistantLightXXL() {
-        verify(theme: .light, date: "May 28, 2026", text: Self.assistantBody, author: "Claude",
+        verify(theme: .vellumLight, date: "May 28, 2026", text: Self.assistantBody, author: "Claude",
                height: 320, dynamicType: .xxLarge, name: "assistant_light_xxl")
     }
 

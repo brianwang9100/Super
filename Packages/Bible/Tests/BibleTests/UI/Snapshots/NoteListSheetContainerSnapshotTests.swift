@@ -41,39 +41,39 @@ struct NoteListSheetContainerSnapshotTests {
 
     @Test("empty container renders the hero in the light theme")
     func emptyLight() async throws {
-        try await verify(seeding: [], theme: .light, name: "empty_light")
+        try await verify(seeding: [], theme: .vellumLight, name: "empty_light")
     }
 
     @Test("empty container renders the hero in the dark theme")
     func emptyDark() async throws {
-        try await verify(seeding: [], theme: .dark, name: "empty_dark")
+        try await verify(seeding: [], theme: .vellumDark, name: "empty_dark")
     }
 
     @Test("empty container renders the hero in the sepia theme")
     func emptySepia() async throws {
-        try await verify(seeding: [], theme: .sepia, name: "empty_sepia")
+        try await verify(seeding: [], theme: .sepiaLight, name: "empty_sepia")
     }
 
     // MARK: - Populated states (user + assistant provenance)
 
     @Test("user and assistant notes render with the right footers in the light theme")
     func populatedLight() async throws {
-        try await verify(seeding: populatedRows, theme: .light, name: "populated_light")
+        try await verify(seeding: populatedRows, theme: .vellumLight, name: "populated_light")
     }
 
     @Test("user and assistant notes render with the right footers in the dark theme")
     func populatedDark() async throws {
-        try await verify(seeding: populatedRows, theme: .dark, name: "populated_dark")
+        try await verify(seeding: populatedRows, theme: .vellumDark, name: "populated_dark")
     }
 
     @Test("user and assistant notes render with the right footers in the sepia theme")
     func populatedSepia() async throws {
-        try await verify(seeding: populatedRows, theme: .sepia, name: "populated_sepia")
+        try await verify(seeding: populatedRows, theme: .sepiaLight, name: "populated_sepia")
     }
 
     @Test("populated notes reflow at Dynamic Type XXL")
     func populatedLightXXL() async throws {
-        try await verify(seeding: populatedRows, theme: .light, dynamicType: .xxLarge,
+        try await verify(seeding: populatedRows, theme: .vellumLight, dynamicType: .xxLarge,
                          height: 760, name: "populated_light_xxl")
     }
 

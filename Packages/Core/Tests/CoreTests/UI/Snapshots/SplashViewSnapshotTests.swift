@@ -42,24 +42,24 @@ struct SplashViewSnapshotTests {
 
     @Test("light")
     func light() {
-        verify(theme: .light, name: "splash_light")
+        verify(theme: .vellumLight, name: "splash_light")
     }
 
     @Test("dark")
     func dark() {
-        verify(theme: .dark, name: "splash_dark")
+        verify(theme: .vellumDark, name: "splash_dark")
     }
 
     @Test("sepia")
     func sepia() {
-        verify(theme: .sepia, name: "splash_sepia")
+        verify(theme: .sepiaLight, name: "splash_sepia")
     }
 
     @Test("dynamic type XXL light")
     func dynamicTypeXXLLight() {
         let function = #function
         let view = SplashView(name: "Super", version: "1.0", skipEntranceAnimation: true)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
 

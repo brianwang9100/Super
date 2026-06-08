@@ -32,8 +32,7 @@ public struct ChatSettingsStore: Sendable {
         let raw = (try? await repository.all()) ?? [:]
         let personalization = await resolveUserPersonalization(raw: raw)
         return ChatSettings(
-            themeId: raw[Keys.themeId].flatMap(ChatSettings.ThemeID.init(rawValue:))
-                ?? ChatSettings.default.themeId,
+            themeId: Self.migrateThemeID(raw[Keys.themeId]),
             typographyID: raw[Keys.typographyID].flatMap(ChatSettings.TypographyID.init(rawValue:))
                 ?? ChatSettings.default.typographyID,
             userPersonalization: personalization,
@@ -106,6 +105,24 @@ public struct ChatSettingsStore: Sendable {
         from: .module,
         resource: "LegacyDefaultSystemPromptV1"
     )
+
+    /// Resolve a persisted theme-id string into a current `ThemeID`, mapping
+    /// the pre-overhaul values forward. The old three-theme release stored
+    /// `"light"` / `"dark"` / `"sepia"`; those no longer decode against the
+    /// 8-variant enum, so an upgrading user would otherwise snap to the
+    /// default. Map them to the nearest new variant — `light → vellumLight`,
+    /// `dark → vellumDark`, `sepia → sepiaLight` — and fall back to the
+    /// default (Vellum Light) for an absent or unrecognized value.
+    static func migrateThemeID(_ raw: String?) -> ChatSettings.ThemeID {
+        guard let raw else { return ChatSettings.default.themeId }
+        if let current = ChatSettings.ThemeID(rawValue: raw) { return current }
+        switch raw {
+        case "light": return .vellumLight
+        case "dark": return .vellumDark
+        case "sepia": return .sepiaLight
+        default: return ChatSettings.default.themeId
+        }
+    }
 
     public func setTheme(_ themeId: ChatSettings.ThemeID) async throws {
         try await repository.set(Keys.themeId, value: themeId.rawValue)

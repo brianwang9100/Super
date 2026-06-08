@@ -19,17 +19,17 @@ struct BibleTranslationSheetSnapshotTests {
 
     @Test("the picker renders in the light theme")
     func light() {
-        verify(theme: .light, name: "light")
+        verify(theme: .vellumLight, name: "light")
     }
 
     @Test("the picker renders in the dark theme")
     func dark() {
-        verify(theme: .dark, name: "dark")
+        verify(theme: .vellumDark, name: "dark")
     }
 
     @Test("the picker renders in the sepia theme")
     func sepia() {
-        verify(theme: .sepia, name: "sepia")
+        verify(theme: .sepiaLight, name: "sepia")
     }
 
     private func verify(

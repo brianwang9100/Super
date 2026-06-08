@@ -67,37 +67,37 @@ struct MarkdownTextSnapshotTests {
 
     @Test("linkified verse references — light")
     func light() {
-        verify(theme: .light, name: "markdown_verse_refs_light")
+        verify(theme: .vellumLight, name: "markdown_verse_refs_light")
     }
 
     @Test("linkified verse references — dark")
     func dark() {
-        verify(theme: .dark, name: "markdown_verse_refs_dark")
+        verify(theme: .vellumDark, name: "markdown_verse_refs_dark")
     }
 
     @Test("linkified verse references — sepia")
     func sepia() {
-        verify(theme: .sepia, name: "markdown_verse_refs_sepia")
+        verify(theme: .sepiaLight, name: "markdown_verse_refs_sepia")
     }
 
     @Test("linkified verse references at Dynamic Type XXL — light")
     func dynamicTypeXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, name: "markdown_verse_refs_light_xxl")
+        verify(theme: .vellumLight, dynamicType: .xxLarge, name: "markdown_verse_refs_light_xxl")
     }
 
     @Test("bulleted list with refs — light")
     func listLight() {
-        verify(theme: .light, text: Self.listSample, wrap: true, name: "markdown_list_refs_light")
+        verify(theme: .vellumLight, text: Self.listSample, wrap: true, name: "markdown_list_refs_light")
     }
 
     @Test("bulleted list with refs — dark")
     func listDark() {
-        verify(theme: .dark, text: Self.listSample, wrap: true, name: "markdown_list_refs_dark")
+        verify(theme: .vellumDark, text: Self.listSample, wrap: true, name: "markdown_list_refs_dark")
     }
 
     @Test("bulleted list with refs — sepia")
     func listSepia() {
-        verify(theme: .sepia, text: Self.listSample, wrap: true, name: "markdown_list_refs_sepia")
+        verify(theme: .sepiaLight, text: Self.listSample, wrap: true, name: "markdown_list_refs_sepia")
     }
 
     @Test("bulleted list with refs at the 1.2× font slider — light")
@@ -107,7 +107,7 @@ struct MarkdownTextSnapshotTests {
         // `MarkdownText`'s body size reads the slider, not Dynamic Type. This
         // pins the spacious end where the line-spacing/inter-item match is
         // most visible.
-        verify(theme: .light, appearance: ChatAppearance(fontScale: 1.2), text: Self.listSample, wrap: true, name: "markdown_list_refs_light_scale120")
+        verify(theme: .vellumLight, appearance: ChatAppearance(fontScale: 1.2), text: Self.listSample, wrap: true, name: "markdown_list_refs_light_scale120")
     }
 
     /// - Parameter wrap: forces the markdown to wrap to the 402pt width

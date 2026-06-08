@@ -50,34 +50,34 @@ struct SidebarDrawerSnapshotTests {
 
     @Test("open empty in light")
     func openEmptyLight() {
-        verify(theme: .light, chats: [], activeId: nil, name: "sidebar_open_empty_light")
+        verify(theme: .vellumLight, chats: [], activeId: nil, name: "sidebar_open_empty_light")
     }
 
     @Test("open populated in light")
     func openPopulatedLight() {
-        verify(theme: .light, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_light")
+        verify(theme: .vellumLight, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_light")
     }
 
     @Test("open populated in dark")
     func openPopulatedDark() {
-        verify(theme: .dark, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_dark")
+        verify(theme: .vellumDark, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_dark")
     }
 
     @Test("open populated in sepia")
     func openPopulatedSepia() {
-        verify(theme: .sepia, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_sepia")
+        verify(theme: .sepiaLight, chats: Self.sampleChats, activeId: "c1", name: "sidebar_open_populated_sepia")
     }
 
     @Test("active row highlighted in dark")
     func activeRowHighlightedDark() {
-        verify(theme: .dark, chats: Self.sampleChats, activeId: "c2", name: "sidebar_active_dark")
+        verify(theme: .vellumDark, chats: Self.sampleChats, activeId: "c2", name: "sidebar_active_dark")
     }
 
     @Test("running spinner shows on streaming row")
     func runningSpinner() {
         var chats = Self.sampleChats
         chats[1] = .init(id: "c2", title: chats[1].title, updatedAt: chats[1].updatedAt, running: true)
-        verify(theme: .light, chats: chats, activeId: "c1", name: "sidebar_running_light")
+        verify(theme: .vellumLight, chats: chats, activeId: "c1", name: "sidebar_running_light")
     }
 
     // AGENTS.md §Testing.2 calls for a Reduce Motion snapshot on any view
@@ -116,7 +116,7 @@ struct SidebarDrawerSnapshotTests {
             onSelectApplet: { _ in },
             onSeeAllChats: {}
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "sidebar_see_all_row_light", function: function)
     }
@@ -141,7 +141,7 @@ struct SidebarDrawerSnapshotTests {
             onSelectApplet: { _ in },
             onSeeAllChats: {}
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "sidebar_open_populated_light_xxl", function: function)
@@ -159,20 +159,20 @@ struct SidebarDrawerSnapshotTests {
     /// `@ScaledMetric` bases; this render is at the default content-size category.
     @Test("font scale max — drawer scales with slider")
     func fontScaleMaxRowsScale() {
-        verifyFontScaleMax(theme: .light, name: "sidebar_font_scale_max_light")
+        verifyFontScaleMax(theme: .vellumLight, name: "sidebar_font_scale_max_light")
     }
 
     /// Dark-theme counterpart to ``fontScaleMaxRowsScale`` — completes the
     /// `light/dark/sepia` matrix with its own scaled baseline.
     @Test("font scale max — drawer scales with slider (dark)")
     func fontScaleMaxRowsScaleDark() {
-        verifyFontScaleMax(theme: .dark, name: "sidebar_font_scale_max_dark")
+        verifyFontScaleMax(theme: .vellumDark, name: "sidebar_font_scale_max_dark")
     }
 
     /// Sepia-theme counterpart to ``fontScaleMaxRowsScale``.
     @Test("font scale max — drawer scales with slider (sepia)")
     func fontScaleMaxRowsScaleSepia() {
-        verifyFontScaleMax(theme: .sepia, name: "sidebar_font_scale_max_sepia")
+        verifyFontScaleMax(theme: .sepiaLight, name: "sidebar_font_scale_max_sepia")
     }
 
     /// Renders the drawer with the font-scale slider pinned to its maximum

@@ -619,5 +619,5 @@ public struct BibleScreen: View {
 
 #Preview {
     BibleScreen(viewModel: BibleScreenViewModel(textLoader: DatabaseBibleTextLoader()))
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
 }

@@ -37,7 +37,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func collapsedSaveLight() {
         verify(
             op: .save, text: "Prefers metric units.",
-            initiallyExpanded: false, theme: .light,
+            initiallyExpanded: false, theme: .vellumLight,
             name: "memory_pill_collapsed_save_light"
         )
     }
@@ -46,7 +46,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func collapsedSaveDark() {
         verify(
             op: .save, text: "Prefers metric units.",
-            initiallyExpanded: false, theme: .dark,
+            initiallyExpanded: false, theme: .vellumDark,
             name: "memory_pill_collapsed_save_dark"
         )
     }
@@ -55,7 +55,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func collapsedSaveSepia() {
         verify(
             op: .save, text: "Prefers metric units.",
-            initiallyExpanded: false, theme: .sepia,
+            initiallyExpanded: false, theme: .sepiaLight,
             name: "memory_pill_collapsed_save_sepia"
         )
     }
@@ -64,7 +64,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func expandedSaveLight() {
         verify(
             op: .save, text: "Prefers metric units.",
-            initiallyExpanded: true, theme: .light,
+            initiallyExpanded: true, theme: .vellumLight,
             name: "memory_pill_expanded_save_light"
         )
     }
@@ -73,7 +73,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func expandedUpdateLight() {
         verify(
             op: .update, text: "Prefers SI units.",
-            initiallyExpanded: true, theme: .light,
+            initiallyExpanded: true, theme: .vellumLight,
             name: "memory_pill_expanded_update_light"
         )
     }
@@ -87,7 +87,7 @@ struct MemoryUpdatedPillSnapshotTests {
         // LLM would never produce, masking the production rendering.
         verify(
             op: .forget, text: nil,
-            initiallyExpanded: true, theme: .light,
+            initiallyExpanded: true, theme: .vellumLight,
             name: "memory_pill_expanded_forget_light"
         )
     }
@@ -96,7 +96,7 @@ struct MemoryUpdatedPillSnapshotTests {
     func xxLargeExpanded() {
         verify(
             op: .save, text: "Prefers metric units.",
-            initiallyExpanded: true, theme: .light,
+            initiallyExpanded: true, theme: .vellumLight,
             dynamicType: .xxLarge,
             name: "memory_pill_expanded_save_light_xxl"
         )

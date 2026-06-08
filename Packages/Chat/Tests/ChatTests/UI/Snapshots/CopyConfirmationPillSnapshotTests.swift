@@ -52,7 +52,7 @@ struct CopyConfirmationPillSnapshotTests {
     @Test("pill — light")
     func pillLight() {
         recordOrCompare(
-            view: host(CopyConfirmationPill(), theme: .light),
+            view: host(CopyConfirmationPill(), theme: .vellumLight),
             name: "copy_pill_light"
         )
     }
@@ -60,7 +60,7 @@ struct CopyConfirmationPillSnapshotTests {
     @Test("pill — dark")
     func pillDark() {
         recordOrCompare(
-            view: host(CopyConfirmationPill(), theme: .dark),
+            view: host(CopyConfirmationPill(), theme: .vellumDark),
             name: "copy_pill_dark"
         )
     }
@@ -68,7 +68,7 @@ struct CopyConfirmationPillSnapshotTests {
     @Test("pill — sepia")
     func pillSepia() {
         recordOrCompare(
-            view: host(CopyConfirmationPill(), theme: .sepia),
+            view: host(CopyConfirmationPill(), theme: .sepiaLight),
             name: "copy_pill_sepia"
         )
     }
@@ -76,7 +76,7 @@ struct CopyConfirmationPillSnapshotTests {
     @Test("pill at Dynamic Type XXL")
     func pillXXL() {
         recordOrCompare(
-            view: host(CopyConfirmationPill(), theme: .light)
+            view: host(CopyConfirmationPill(), theme: .vellumLight)
                 .dynamicTypeSize(.xxLarge),
             name: "copy_pill_light_xxl"
         )

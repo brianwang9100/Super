@@ -139,22 +139,22 @@ struct SettingsSheetSnapshotTests {
 
     @Test("root pane in light")
     func rootLight() async {
-        await verify(theme: .light, pane: .root, name: "settings_root_light")
+        await verify(theme: .vellumLight, pane: .root, name: "settings_root_light")
     }
 
     @Test("root pane in dark")
     func rootDark() async {
-        await verify(theme: .dark, pane: .root, name: "settings_root_dark")
+        await verify(theme: .vellumDark, pane: .root, name: "settings_root_dark")
     }
 
     @Test("root pane in sepia")
     func rootSepia() async {
-        await verify(theme: .sepia, pane: .root, name: "settings_root_sepia")
+        await verify(theme: .sepiaLight, pane: .root, name: "settings_root_sepia")
     }
 
     @Test("models pane populated")
     func modelsPopulated() async {
-        await verify(theme: .light, pane: .models, name: "settings_models_light")
+        await verify(theme: .vellumLight, pane: .models, name: "settings_models_light")
     }
 
     // Models pane presented as the sheet's *modal root* — the composer's
@@ -166,7 +166,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane as modal root (close button)")
     func modelsPaneAsModalRoot() async {
         await verifyModelsPaneAsModalRoot(
-            theme: .light,
+            theme: .vellumLight,
             name: "settings_models_root_light"
         )
     }
@@ -174,7 +174,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane as modal root (close button, dark)")
     func modelsPaneAsModalRootDark() async {
         await verifyModelsPaneAsModalRoot(
-            theme: .dark,
+            theme: .vellumDark,
             name: "settings_models_root_dark"
         )
     }
@@ -182,7 +182,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane as modal root (close button, sepia)")
     func modelsPaneAsModalRootSepia() async {
         await verifyModelsPaneAsModalRoot(
-            theme: .sepia,
+            theme: .sepiaLight,
             name: "settings_models_root_sepia"
         )
     }
@@ -215,7 +215,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is available")
     func modelsPaneWithAFMAvailable() async {
         await verifyModelsPaneWithAFM(
-            theme: .light,
+            theme: .vellumLight,
             availability: .available,
             name: "settings_models_afm_available_light"
         )
@@ -224,7 +224,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is available (dark)")
     func modelsPaneWithAFMAvailableDark() async {
         await verifyModelsPaneWithAFM(
-            theme: .dark,
+            theme: .vellumDark,
             availability: .available,
             name: "settings_models_afm_available_dark"
         )
@@ -233,7 +233,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is unavailable (modelNotReady)")
     func modelsPaneWithAFMModelNotReady() async {
         await verifyModelsPaneWithAFM(
-            theme: .light,
+            theme: .vellumLight,
             availability: .unavailable(.modelNotReady),
             name: "settings_models_afm_model_not_ready_light"
         )
@@ -242,7 +242,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is unavailable (deviceNotEligible)")
     func modelsPaneWithAFMDeviceNotEligible() async {
         await verifyModelsPaneWithAFM(
-            theme: .light,
+            theme: .vellumLight,
             availability: .unavailable(.deviceNotEligible),
             name: "settings_models_afm_device_not_eligible_light"
         )
@@ -251,7 +251,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is unavailable (modelNotReady, dark)")
     func modelsPaneWithAFMModelNotReadyDark() async {
         await verifyModelsPaneWithAFM(
-            theme: .dark,
+            theme: .vellumDark,
             availability: .unavailable(.modelNotReady),
             name: "settings_models_afm_model_not_ready_dark"
         )
@@ -260,7 +260,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with AFM row when AFM is unavailable (appleIntelligenceNotEnabled)")
     func modelsPaneWithAFMAppleIntelligenceNotEnabled() async {
         await verifyModelsPaneWithAFM(
-            theme: .light,
+            theme: .vellumLight,
             availability: .unavailable(.appleIntelligenceNotEnabled),
             name: "settings_models_afm_apple_intelligence_off_light"
         )
@@ -273,7 +273,7 @@ struct SettingsSheetSnapshotTests {
     @Test("dynamic type XXL on models pane with AFM row")
     func modelsPaneWithAFMXXL() async {
         await verifyModelsPaneWithAFM(
-            theme: .light,
+            theme: .vellumLight,
             availability: .available,
             name: "settings_models_afm_available_light_xxl",
             dynamicType: .xxLarge
@@ -293,7 +293,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with debug provider row")
     func modelsPaneWithDebug() async {
         await verifyModelsPaneWithDebug(
-            theme: .light,
+            theme: .vellumLight,
             name: "settings_models_debug_light"
         )
     }
@@ -301,7 +301,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with debug provider row (dark)")
     func modelsPaneWithDebugDark() async {
         await verifyModelsPaneWithDebug(
-            theme: .dark,
+            theme: .vellumDark,
             name: "settings_models_debug_dark"
         )
     }
@@ -342,7 +342,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with a native-web-search row")
     func modelsPaneWithNativeSearch() async {
         await verifyModelsPaneWithNativeSearch(
-            theme: .light,
+            theme: .vellumLight,
             name: "settings_models_native_search_light"
         )
     }
@@ -350,7 +350,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with a native-web-search row (dark)")
     func modelsPaneWithNativeSearchDark() async {
         await verifyModelsPaneWithNativeSearch(
-            theme: .dark,
+            theme: .vellumDark,
             name: "settings_models_native_search_dark"
         )
     }
@@ -358,7 +358,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane with a native-web-search row (sepia)")
     func modelsPaneWithNativeSearchSepia() async {
         await verifyModelsPaneWithNativeSearch(
-            theme: .sepia,
+            theme: .sepiaLight,
             name: "settings_models_native_search_sepia"
         )
     }
@@ -404,7 +404,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: off (no model list)")
     func modelsPaneTitlingOff() async {
         await verifyModelsPaneTitling(
-            theme: .light,
+            theme: .vellumLight,
             settings: Self.titleSettings(enabled: false),
             name: "settings_models_titling_off_light"
         )
@@ -413,7 +413,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: off (dark)")
     func modelsPaneTitlingOffDark() async {
         await verifyModelsPaneTitling(
-            theme: .dark,
+            theme: .vellumDark,
             settings: Self.titleSettings(enabled: false),
             name: "settings_models_titling_off_dark"
         )
@@ -422,7 +422,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: automatic default highlights the AFM row")
     func modelsPaneTitlingAutomatic() async {
         await verifyModelsPaneTitling(
-            theme: .light,
+            theme: .vellumLight,
             settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_light"
         )
@@ -431,7 +431,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: automatic default (dark)")
     func modelsPaneTitlingAutomaticDark() async {
         await verifyModelsPaneTitling(
-            theme: .dark,
+            theme: .vellumDark,
             settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_dark"
         )
@@ -440,7 +440,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: automatic default (sepia)")
     func modelsPaneTitlingAutomaticSepia() async {
         await verifyModelsPaneTitling(
-            theme: .sepia,
+            theme: .sepiaLight,
             settings: Self.titleSettings(enabled: true, recordId: nil),
             name: "settings_models_titling_automatic_sepia"
         )
@@ -449,7 +449,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: an explicit model is selected")
     func modelsPaneTitlingExplicitModel() async {
         await verifyModelsPaneTitling(
-            theme: .light,
+            theme: .vellumLight,
             availability: .available,
             settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_light"
@@ -459,7 +459,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: explicit model selected (dark)")
     func modelsPaneTitlingExplicitModelDark() async {
         await verifyModelsPaneTitling(
-            theme: .dark,
+            theme: .vellumDark,
             availability: .available,
             settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_dark"
@@ -469,7 +469,7 @@ struct SettingsSheetSnapshotTests {
     @Test("models pane title-summarization footer: explicit model selected (sepia)")
     func modelsPaneTitlingExplicitModelSepia() async {
         await verifyModelsPaneTitling(
-            theme: .sepia,
+            theme: .sepiaLight,
             availability: .available,
             settings: Self.titleSettings(enabled: true, recordId: "opus"),
             name: "settings_models_titling_explicit_sepia"
@@ -543,7 +543,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Apple Intelligence selected")
     func modelDetailProviderApple() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .apple,
             availability: .available,
             existingAppleFoundation: false,
@@ -554,7 +554,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Apple Intelligence selected (dark)")
     func modelDetailProviderAppleDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .apple,
             availability: .available,
             existingAppleFoundation: false,
@@ -565,7 +565,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — OpenAI selected")
     func modelDetailProviderOpenAI() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .openAI,
             availability: .available,
             existingAppleFoundation: false,
@@ -576,7 +576,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — OpenAI selected (dark)")
     func modelDetailProviderOpenAIDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .openAI,
             availability: .available,
             existingAppleFoundation: false,
@@ -587,7 +587,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Anthropic selected")
     func modelDetailProviderAnthropic() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .anthropic,
             availability: .available,
             existingAppleFoundation: false,
@@ -598,7 +598,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Anthropic selected (dark)")
     func modelDetailProviderAnthropicDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .anthropic,
             availability: .available,
             existingAppleFoundation: false,
@@ -609,7 +609,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Google selected")
     func modelDetailProviderGoogle() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .google,
             availability: .available,
             existingAppleFoundation: false,
@@ -620,7 +620,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Google selected (dark)")
     func modelDetailProviderGoogleDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .google,
             availability: .available,
             existingAppleFoundation: false,
@@ -631,7 +631,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — xAI selected")
     func modelDetailProviderXAI() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .xai,
             availability: .available,
             existingAppleFoundation: false,
@@ -642,7 +642,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — xAI selected (dark)")
     func modelDetailProviderXAIDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .xai,
             availability: .available,
             existingAppleFoundation: false,
@@ -653,7 +653,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Custom selected (all fields visible)")
     func modelDetailProviderCustom() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .custom,
             availability: .available,
             existingAppleFoundation: false,
@@ -664,7 +664,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Custom selected (dark)")
     func modelDetailProviderCustomDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .custom,
             availability: .available,
             existingAppleFoundation: false,
@@ -680,7 +680,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Apple provider locked (AFM unavailable)")
     func modelDetailProviderAppleDisabled() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .custom,
             availability: .unavailable(.appleIntelligenceNotEnabled),
             existingAppleFoundation: false,
@@ -691,7 +691,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Apple provider locked (dark)")
     func modelDetailProviderAppleDisabledDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .custom,
             availability: .unavailable(.appleIntelligenceNotEnabled),
             existingAppleFoundation: false,
@@ -708,7 +708,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — Custom selected (sepia)")
     func modelDetailProviderCustomSepia() async {
         await verifyCreateWithProvider(
-            theme: .sepia,
+            theme: .sepiaLight,
             selection: .custom,
             availability: .available,
             existingAppleFoundation: false,
@@ -726,7 +726,7 @@ struct SettingsSheetSnapshotTests {
     @Test("dynamic type XXL on model detail create flow — Custom")
     func modelDetailProviderCustomXXL() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .custom,
             availability: .available,
             existingAppleFoundation: false,
@@ -743,7 +743,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — context-window over-cap error (light)")
     func modelDetailProviderContextWindowError() async {
         await verifyCreateWithProvider(
-            theme: .light,
+            theme: .vellumLight,
             selection: .google,
             availability: .available,
             existingAppleFoundation: false,
@@ -755,7 +755,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail create flow — context-window over-cap error (dark)")
     func modelDetailProviderContextWindowErrorDark() async {
         await verifyCreateWithProvider(
-            theme: .dark,
+            theme: .vellumDark,
             selection: .google,
             availability: .available,
             existingAppleFoundation: false,
@@ -797,7 +797,7 @@ struct SettingsSheetSnapshotTests {
 
     @Test("model detail seeded form (edit flow)")
     func modelDetailEdit() async {
-        await verify(theme: .light, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
+        await verify(theme: .vellumLight, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
     // Locks in the `baseURL == nil` init path introduced by the
@@ -805,26 +805,26 @@ struct SettingsSheetSnapshotTests {
     // to the placeholder default when the row's URL is nil.
     @Test("model detail seeded form for Apple Foundation row")
     func modelDetailAppleFoundation() async {
-        await verifyAppleFoundation(theme: .light, name: "settings_model_detail_afm_light")
+        await verifyAppleFoundation(theme: .vellumLight, name: "settings_model_detail_afm_light")
     }
 
     // Dark companion per AGENTS.md §Testing.3.
     @Test("model detail seeded form for Apple Foundation row (dark)")
     func modelDetailAppleFoundationDark() async {
-        await verifyAppleFoundation(theme: .dark, name: "settings_model_detail_afm_dark")
+        await verifyAppleFoundation(theme: .vellumDark, name: "settings_model_detail_afm_dark")
     }
 
     // Dynamic Type XXL companion per AGENTS.md §Testing.3.
     @Test("dynamic type XXL on Apple Foundation model detail pane")
     func modelDetailAppleFoundationXXL() async {
-        await verifyAppleFoundationXXL(theme: .light, name: "settings_model_detail_afm_light_xxl")
+        await verifyAppleFoundationXXL(theme: .vellumLight, name: "settings_model_detail_afm_light_xxl")
     }
 
     // Dark + XXL cell to fill the `light/dark/sepia × default/Dynamic
     // Type XXL` matrix called out in `Packages/Chat/CLAUDE.md`.
     @Test("dynamic type XXL on Apple Foundation model detail pane (dark)")
     func modelDetailAppleFoundationXXLDark() async {
-        await verifyAppleFoundationXXL(theme: .dark, name: "settings_model_detail_afm_dark_xxl")
+        await verifyAppleFoundationXXL(theme: .vellumDark, name: "settings_model_detail_afm_dark_xxl")
     }
 
     private func verifyAppleFoundationXXL(
@@ -873,7 +873,7 @@ struct SettingsSheetSnapshotTests {
     // Dark companion for modelDetailEdit; locks in white-bullet contrast in dark per AGENTS.md §Testing.3.
     @Test("model detail seeded form (edit flow) in dark")
     func modelDetailEditDark() async {
-        await verify(theme: .dark, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_dark")
+        await verify(theme: .vellumDark, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_dark")
     }
 
     // Dynamic Type XXL companion for modelDetailEdit; covers the "at minimum one larger Dynamic Type size" half of AGENTS.md §Testing.3.
@@ -891,7 +891,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .modelDetail(id: "opus")
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_model_detail_edit_light_xxl", function: function)
@@ -902,7 +902,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail edit — native web search selected (light)")
     func modelDetailNativeSearch() async {
         await verifyModelDetailEdit(
-            theme: .light, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            theme: .vellumLight, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
             name: "settings_model_detail_native_search_light"
         )
     }
@@ -910,7 +910,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail edit — native web search selected (dark)")
     func modelDetailNativeSearchDark() async {
         await verifyModelDetailEdit(
-            theme: .dark, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            theme: .vellumDark, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
             name: "settings_model_detail_native_search_dark"
         )
     }
@@ -920,7 +920,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail edit — native web search selected (sepia)")
     func modelDetailNativeSearchSepia() async {
         await verifyModelDetailEdit(
-            theme: .sepia, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
+            theme: .sepiaLight, models: Self.sampleModelsWithNativeOpenAI, id: "openai-native",
             name: "settings_model_detail_native_search_sepia"
         )
     }
@@ -940,7 +940,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .modelDetail(id: "openai-native")
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_model_detail_native_search_light_xxl", function: function)
@@ -950,7 +950,7 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail edit — debug mock search selected (light)")
     func modelDetailDebugSearch() async {
         await verifyModelDetailEdit(
-            theme: .light, models: Self.sampleModelsWithDebugSearch, id: "debug-mock-search",
+            theme: .vellumLight, models: Self.sampleModelsWithDebugSearch, id: "debug-mock-search",
             name: "settings_model_detail_debug_search_light"
         )
     }
@@ -984,17 +984,17 @@ struct SettingsSheetSnapshotTests {
 
     @Test("personalization pane")
     func personalizationPane() async {
-        await verify(theme: .light, pane: .personalization, name: "settings_personalization_light")
+        await verify(theme: .vellumLight, pane: .personalization, name: "settings_personalization_light")
     }
 
     @Test("default verbosity pane")
     func verbosityPane() async {
-        await verify(theme: .light, pane: .verbosity, name: "settings_verbosity_light")
+        await verify(theme: .vellumLight, pane: .verbosity, name: "settings_verbosity_light")
     }
 
     @Test("appearance pane")
     func appearancePane() async {
-        await verify(theme: .light, pane: .appearance, name: "settings_appearance_light")
+        await verify(theme: .vellumLight, pane: .appearance, name: "settings_appearance_light")
     }
 
     // The merged Appearance pane owns the theme grid, so it carries the
@@ -1005,16 +1005,16 @@ struct SettingsSheetSnapshotTests {
     @Test("appearance pane in dark")
     func appearancePaneDark() async {
         await verify(
-            theme: .dark, pane: .appearance, name: "settings_appearance_dark",
-            settings: Self.settings(themeId: .dark)
+            theme: .vellumDark, pane: .appearance, name: "settings_appearance_dark",
+            settings: Self.settings(themeId: .vellumDark)
         )
     }
 
     @Test("appearance pane in sepia")
     func appearancePaneSepia() async {
         await verify(
-            theme: .sepia, pane: .appearance, name: "settings_appearance_sepia",
-            settings: Self.settings(themeId: .sepia)
+            theme: .sepiaLight, pane: .appearance, name: "settings_appearance_sepia",
+            settings: Self.settings(themeId: .sepiaLight)
         )
     }
 
@@ -1032,7 +1032,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .appearance
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_appearance_light_xxl", function: function)
@@ -1040,22 +1040,22 @@ struct SettingsSheetSnapshotTests {
 
     @Test("tools pane")
     func toolsPane() async {
-        await verify(theme: .light, pane: .tools, name: "settings_tools_light")
+        await verify(theme: .vellumLight, pane: .tools, name: "settings_tools_light")
     }
 
     @Test("tools pane in dark")
     func toolsPaneDark() async {
         await verify(
-            theme: .dark, pane: .tools, name: "settings_tools_dark",
-            settings: Self.settings(themeId: .dark)
+            theme: .vellumDark, pane: .tools, name: "settings_tools_dark",
+            settings: Self.settings(themeId: .vellumDark)
         )
     }
 
     @Test("tools pane in sepia")
     func toolsPaneSepia() async {
         await verify(
-            theme: .sepia, pane: .tools, name: "settings_tools_sepia",
-            settings: Self.settings(themeId: .sepia)
+            theme: .sepiaLight, pane: .tools, name: "settings_tools_sepia",
+            settings: Self.settings(themeId: .sepiaLight)
         )
     }
 
@@ -1073,7 +1073,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .tools
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_tools_light_xxl", function: function)
@@ -1081,7 +1081,7 @@ struct SettingsSheetSnapshotTests {
 
     @Test("compaction pane")
     func compactionPane() async {
-        await verify(theme: .light, pane: .compaction, name: "settings_compaction_light")
+        await verify(theme: .vellumLight, pane: .compaction, name: "settings_compaction_light")
     }
 
     // Search pane — the two key states are the cost gate ON (default) and
@@ -1092,23 +1092,23 @@ struct SettingsSheetSnapshotTests {
     // flag an accidental reintroduction of Dynamic Type scaling here).
     @Test("search pane, gate on, light")
     func searchPaneOnLight() async {
-        await verify(theme: .light, pane: .search, name: "settings_search_on_light")
+        await verify(theme: .vellumLight, pane: .search, name: "settings_search_on_light")
     }
 
     @Test("search pane, gate on, dark")
     func searchPaneOnDark() async {
-        await verify(theme: .dark, pane: .search, name: "settings_search_on_dark")
+        await verify(theme: .vellumDark, pane: .search, name: "settings_search_on_dark")
     }
 
     @Test("search pane, gate on, sepia")
     func searchPaneOnSepia() async {
-        await verify(theme: .sepia, pane: .search, name: "settings_search_on_sepia")
+        await verify(theme: .sepiaLight, pane: .search, name: "settings_search_on_sepia")
     }
 
     @Test("search pane, gate off, light")
     func searchPaneOffLight() async {
         await verify(
-            theme: .light, pane: .search, name: "settings_search_off_light",
+            theme: .vellumLight, pane: .search, name: "settings_search_off_light",
             settings: Self.settings(askBeforeSearching: false)
         )
     }
@@ -1116,7 +1116,7 @@ struct SettingsSheetSnapshotTests {
     @Test("search pane, gate off, dark")
     func searchPaneOffDark() async {
         await verify(
-            theme: .dark, pane: .search, name: "settings_search_off_dark",
+            theme: .vellumDark, pane: .search, name: "settings_search_off_dark",
             settings: Self.settings(askBeforeSearching: false)
         )
     }
@@ -1124,7 +1124,7 @@ struct SettingsSheetSnapshotTests {
     @Test("search pane, gate off, sepia")
     func searchPaneOffSepia() async {
         await verify(
-            theme: .sepia, pane: .search, name: "settings_search_off_sepia",
+            theme: .sepiaLight, pane: .search, name: "settings_search_off_sepia",
             settings: Self.settings(askBeforeSearching: false)
         )
     }
@@ -1135,7 +1135,7 @@ struct SettingsSheetSnapshotTests {
         let viewModel = makeViewModel()
         viewModel._setSnapshotState(settings: .default)
         let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .search)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_search_on_light_xxl", function: function)
@@ -1143,12 +1143,12 @@ struct SettingsSheetSnapshotTests {
 
     @Test("data pane")
     func dataPane() async {
-        await verify(theme: .light, pane: .data, name: "settings_data_light")
+        await verify(theme: .vellumLight, pane: .data, name: "settings_data_light")
     }
 
     @Test("about pane")
     func aboutPane() async {
-        await verify(theme: .light, pane: .about, name: "settings_about_light")
+        await verify(theme: .vellumLight, pane: .about, name: "settings_about_light")
     }
 
     @Test("dynamic type XXL on root pane")
@@ -1165,7 +1165,7 @@ struct SettingsSheetSnapshotTests {
             viewModel: viewModel,
             initialPane: .root
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_root_light_xxl", function: function)
