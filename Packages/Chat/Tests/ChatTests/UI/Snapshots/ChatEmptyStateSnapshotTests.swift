@@ -15,29 +15,29 @@ struct ChatEmptyStateSnapshotTests {
 
     @Test("morning greeting in light")
     func morningLight() {
-        verify(greeting: "How can I help you this morning?", theme: .light, name: "empty_morning_light")
+        verify(greeting: "How can I help you this morning?", theme: .vellumLight, name: "empty_morning_light")
     }
 
     @Test("afternoon greeting in dark")
     func afternoonDark() {
-        verify(greeting: "How can I help you this afternoon?", theme: .dark, name: "empty_afternoon_dark")
+        verify(greeting: "How can I help you this afternoon?", theme: .vellumDark, name: "empty_afternoon_dark")
     }
 
     @Test("evening greeting in sepia")
     func eveningSepia() {
-        verify(greeting: "How can I help you this evening?", theme: .sepia, name: "empty_evening_sepia")
+        verify(greeting: "How can I help you this evening?", theme: .sepiaLight, name: "empty_evening_sepia")
     }
 
     @Test("tonight greeting in light")
     func tonightLight() {
-        verify(greeting: "How can I help you tonight?", theme: .light, name: "empty_tonight_light")
+        verify(greeting: "How can I help you tonight?", theme: .vellumLight, name: "empty_tonight_light")
     }
 
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
         let view = ChatEmptyState(greeting: "How can I help you this morning?")
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 600)
 

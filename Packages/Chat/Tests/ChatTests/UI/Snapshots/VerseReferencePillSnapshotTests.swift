@@ -37,7 +37,7 @@ struct VerseReferencePillSnapshotTests {
     @Test("removable pill — light")
     func removableLight() {
         recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .light),
+            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .vellumLight),
             name: "pill_removable_light"
         )
     }
@@ -45,7 +45,7 @@ struct VerseReferencePillSnapshotTests {
     @Test("removable pill — dark")
     func removableDark() {
         recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .dark),
+            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .vellumDark),
             name: "pill_removable_dark"
         )
     }
@@ -53,7 +53,7 @@ struct VerseReferencePillSnapshotTests {
     @Test("removable pill — sepia")
     func removableSepia() {
         recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .sepia),
+            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .sepiaLight),
             name: "pill_removable_sepia"
         )
     }
@@ -61,7 +61,7 @@ struct VerseReferencePillSnapshotTests {
     @Test("read-only pill (no remove control) — light")
     func readOnlyLight() {
         recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: nil), theme: .light),
+            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: nil), theme: .vellumLight),
             name: "pill_readonly_light"
         )
     }
@@ -72,7 +72,7 @@ struct VerseReferencePillSnapshotTests {
             view: host(
                 VerseReferencePill(label: "1 Corinthians 13:1-13 (WEB)", onRemove: {})
                     .frame(width: 160, alignment: .leading),
-                theme: .light
+                theme: .vellumLight
             ),
             name: "pill_long_label_truncated_light"
         )
@@ -81,7 +81,7 @@ struct VerseReferencePillSnapshotTests {
     @Test("removable pill at Dynamic Type XXL")
     func removableXXL() {
         recordOrCompare(
-            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .light)
+            view: host(VerseReferencePill(label: "John 3:16-17 (WEB)", onRemove: {}), theme: .vellumLight)
                 .dynamicTypeSize(.xxLarge),
             name: "pill_removable_light_xxl"
         )

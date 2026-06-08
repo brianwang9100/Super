@@ -40,44 +40,78 @@ struct OKLCHTests {
     }
 }
 
-/// Smoke tests on `SuperTheme.make(_:)`. Verifies that all three themes
-/// build without crashing and that `isDark` matches the design's intent.
+/// Smoke tests on `SuperTheme.make(_:)`. Verifies that all eight variants
+/// (four families × light/dark) build without crashing, that `isDark` /
+/// `family` / `displayName` track the identifier, and that a few transcribed
+/// palette values land where the design file puts them.
 @Suite("SuperTheme construction")
 struct SuperThemeTests {
-    @Test("light theme is not dark")
-    func lightIsNotDark() {
-        #expect(SuperTheme.make(.light).isDark == false)
+    @Test("every variant builds and isDark matches its mode")
+    func allVariantsBuildWithCorrectMode() {
+        for id in SuperTheme.Identifier.allCases {
+            #expect(SuperTheme.make(id).isDark == id.isDark)
+        }
     }
 
-    @Test("dark theme is dark")
-    func darkIsDark() {
-        #expect(SuperTheme.make(.dark).isDark == true)
+    @Test("there are exactly eight variants — four families × light/dark")
+    func eightVariants() {
+        #expect(SuperTheme.Identifier.allCases.count == 8)
+        #expect(SuperTheme.Identifier.Family.allCases.count == 4)
+        for family in SuperTheme.Identifier.Family.allCases {
+            let variants = SuperTheme.Identifier.allCases.filter { $0.family == family }
+            #expect(variants.count == 2)
+            #expect(variants.filter(\.isDark).count == 1)
+        }
     }
 
-    @Test("sepia theme is not dark")
-    func sepiaIsNotDark() {
-        #expect(SuperTheme.make(.sepia).isDark == false)
+    @Test("the default theme is Vellum Light")
+    func defaultIsVellumLight() {
+        #expect(SuperThemeKey.defaultValue.id == .vellumLight)
+        #expect(SuperThemeKey.defaultValue.isDark == false)
     }
 
-    @Test("custom accent hue is propagated")
+    @Test("custom accent hue is propagated to the saturated accent")
     func accentHueIsParameterized() {
-        let baseline = SuperTheme.make(.light)
-        let shifted = SuperTheme.make(.light, accentHue: 30)
+        let baseline = SuperTheme.make(.vellumLight)
+        let shifted = SuperTheme.make(.vellumLight, accentHue: 30)
         #expect(baseline.accent != shifted.accent)
+        #expect(baseline.accentDark != shifted.accentDark)
     }
 
-    @Test("accent hue is exposed and defaults to the per-theme baseline")
+    @Test("accent hue is exposed and defaults to the variant's design baseline")
     func accentHueIsExposed() {
-        #expect(SuperTheme.make(.light).accentHue == 150)
-        #expect(SuperTheme.make(.dark).accentHue == 150)
-        #expect(SuperTheme.make(.sepia).accentHue == 80)
-        #expect(SuperTheme.make(.light, accentHue: 30).accentHue == 30)
+        // Design accent hues from `palettes.jsx`.
+        #expect(SuperTheme.make(.vellumLight).accentHue == 52)
+        #expect(SuperTheme.make(.vellumDark).accentHue == 60)
+        #expect(SuperTheme.make(.sepiaLight).accentHue == 50)
+        #expect(SuperTheme.make(.scriptoriumLight).accentHue == 128)
+        #expect(SuperTheme.make(.slateDark).accentHue == 52)
+        #expect(SuperTheme.make(.vellumLight, accentHue: 30).accentHue == 30)
     }
 
-    @Test("display name matches identifier")
-    func displayNameMatchesId() {
-        #expect(SuperTheme.make(.light).displayName == "Light")
-        #expect(SuperTheme.make(.dark).displayName == "Dark")
-        #expect(SuperTheme.make(.sepia).displayName == "Sepia")
+    @Test("display name is the family name; mode label tracks light/dark")
+    func displayNameIsFamily() {
+        #expect(SuperTheme.make(.vellumLight).displayName == "Vellum")
+        #expect(SuperTheme.make(.vellumDark).displayName == "Vellum")
+        #expect(SuperTheme.make(.sepiaLight).displayName == "Sepia")
+        #expect(SuperTheme.make(.scriptoriumDark).displayName == "Scriptorium")
+        #expect(SuperTheme.make(.slateLight).displayName == "Slate")
+        #expect(SuperTheme.Identifier.vellumLight.modeName == "Light")
+        #expect(SuperTheme.Identifier.vellumDark.modeName == "Dark")
+    }
+
+    @Test("family grouping maps each variant to its family")
+    func familyGrouping() {
+        #expect(SuperTheme.Identifier.vellumDark.family == .vellum)
+        #expect(SuperTheme.Identifier.sepiaLight.family == .sepia)
+        #expect(SuperTheme.Identifier.scriptoriumDark.family == .scriptorium)
+        #expect(SuperTheme.Identifier.slateLight.family == .slate)
+    }
+
+    @Test("Scriptorium's accent sits in the moss-olive band, replacing green")
+    func scriptoriumAccentHueIsMossOlive() {
+        // The old green accent was hue 150; Scriptorium pulls it to ~128–134.
+        #expect(SuperTheme.make(.scriptoriumLight).accentHue == 128)
+        #expect(SuperTheme.make(.scriptoriumDark).accentHue == 134)
     }
 }

@@ -17,24 +17,24 @@ struct ChatHeaderSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
     @Test("light theme")
     func lightTheme() {
-        verify(theme: .light, name: "header_light")
+        verify(theme: .vellumLight, name: "header_light")
     }
 
     @Test("dark theme")
     func darkTheme() {
-        verify(theme: .dark, name: "header_dark")
+        verify(theme: .vellumDark, name: "header_dark")
     }
 
     @Test("sepia theme")
     func sepiaTheme() {
-        verify(theme: .sepia, name: "header_sepia")
+        verify(theme: .sepiaLight, name: "header_sepia")
     }
 
     @Test("very long title truncates")
     func longTitleTruncates() {
         let long = "An overly long conversation title that should ellipsis"
         let view = ChatHeader(title: long)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_long_title")
     }
@@ -42,7 +42,7 @@ struct ChatHeaderSnapshotTests {
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402)
         recordOrCompare(view: view, name: "header_light_xxl")
@@ -57,7 +57,7 @@ struct ChatHeaderSnapshotTests {
     @Test("font scale max light")
     func fontScaleMax() {
         let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
@@ -71,7 +71,7 @@ struct ChatHeaderSnapshotTests {
     @Test("font scale max dark")
     func fontScaleMaxDark() {
         let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.dark))
+            .superTheme(.make(.vellumDark))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
@@ -86,7 +86,7 @@ struct ChatHeaderSnapshotTests {
     @Test("font scale max sepia")
     func fontScaleMaxSepia() {
         let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.sepia))
+            .superTheme(.make(.sepiaLight))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .superTypography(.make(.serif, fontScale: 1.20))
             .frame(width: 402)
@@ -103,7 +103,7 @@ struct ChatHeaderSnapshotTests {
     @Test("font scale max at dynamic type XXL")
     func fontScaleMaxXXL() {
         let view = ChatHeader(title: "New chat")
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .superTypography(.make(.serif, fontScale: 1.20))
             .dynamicTypeSize(.xxLarge)

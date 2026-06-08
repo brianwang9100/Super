@@ -22,50 +22,50 @@ struct TodoTaskEditorSheetSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     @Test("create mode, light") func createLight() {
-        verify(theme: .light, mode: .create, draft: .empty, name: "editor_create_light")
+        verify(theme: .vellumLight, mode: .create, draft: .empty, name: "editor_create_light")
     }
 
     @Test("create mode, dark") func createDark() {
-        verify(theme: .dark, mode: .create, draft: .empty, name: "editor_create_dark")
+        verify(theme: .vellumDark, mode: .create, draft: .empty, name: "editor_create_dark")
     }
 
     @Test("create mode, sepia") func createSepia() {
-        verify(theme: .sepia, mode: .create, draft: .empty, name: "editor_create_sepia")
+        verify(theme: .sepiaLight, mode: .create, draft: .empty, name: "editor_create_sepia")
     }
 
     @Test("edit mode, light") func editLight() {
-        verify(theme: .light, mode: .edit, draft: populatedDraft, name: "editor_edit_light")
+        verify(theme: .vellumLight, mode: .edit, draft: populatedDraft, name: "editor_edit_light")
     }
 
     @Test("edit mode, dark") func editDark() {
-        verify(theme: .dark, mode: .edit, draft: populatedDraft, name: "editor_edit_dark")
+        verify(theme: .vellumDark, mode: .edit, draft: populatedDraft, name: "editor_edit_dark")
     }
 
     @Test("edit mode, sepia") func editSepia() {
-        verify(theme: .sepia, mode: .edit, draft: populatedDraft, name: "editor_edit_sepia")
+        verify(theme: .sepiaLight, mode: .edit, draft: populatedDraft, name: "editor_edit_sepia")
     }
 
     // The sheet scales its type through the app-wide `superFontScale`
     // slider rather than `@ScaledMetric`; this variant drives that path.
     @Test("create mode, large font scale") func createLargeFontScale() {
-        verify(theme: .light, mode: .create, draft: .empty, fontScale: 1.5, name: "editor_create_light_large")
+        verify(theme: .vellumLight, mode: .create, draft: .empty, fontScale: 1.5, name: "editor_create_light_large")
     }
 
     // A draft with enough labels that the chip row can't fit on one line —
     // the tag picker must wrap them rather than widen the whole sheet.
     // Captured in every theme so the wrapped chip colors are verified.
     @Test("labels wrap, light") func editManyLabels() {
-        verify(theme: .light, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+        verify(theme: .vellumLight, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
                name: "editor_edit_many_labels")
     }
 
     @Test("labels wrap, dark") func editManyLabelsDark() {
-        verify(theme: .dark, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+        verify(theme: .vellumDark, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
                name: "editor_edit_many_labels_dark")
     }
 
     @Test("labels wrap, sepia") func editManyLabelsSepia() {
-        verify(theme: .sepia, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+        verify(theme: .sepiaLight, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
                name: "editor_edit_many_labels_sepia")
     }
 
@@ -74,7 +74,7 @@ struct TodoTaskEditorSheetSnapshotTests {
     // large-font variant uses an empty draft, so wrapping is never exercised
     // at scale.
     @Test("labels wrap, large font scale") func editManyLabelsLargeFontScale() {
-        verify(theme: .light, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
+        verify(theme: .vellumLight, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
                fontScale: 1.5, name: "editor_edit_many_labels_large")
     }
 
@@ -82,15 +82,15 @@ struct TodoTaskEditorSheetSnapshotTests {
     // date rather than the neutral prompt, and reads as selected. Captured
     // in every theme so the pill's selected coloring is verified.
     @Test("custom due date, light") func editCustomDate() {
-        verify(theme: .light, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date")
+        verify(theme: .vellumLight, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date")
     }
 
     @Test("custom due date, dark") func editCustomDateDark() {
-        verify(theme: .dark, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_dark")
+        verify(theme: .vellumDark, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_dark")
     }
 
     @Test("custom due date, sepia") func editCustomDateSepia() {
-        verify(theme: .sepia, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_sepia")
+        verify(theme: .sepiaLight, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_sepia")
     }
 
     private var populatedDraft: TaskDraft {

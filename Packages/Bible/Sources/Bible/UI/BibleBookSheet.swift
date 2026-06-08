@@ -499,5 +499,5 @@ struct BibleBookSheet: View {
         onRequestBookAnnotations: { _ in },
         onPresentBookNotes: { _ in }
     )
-    .superTheme(.make(.light))
+    .superTheme(.make(.vellumLight))
 }

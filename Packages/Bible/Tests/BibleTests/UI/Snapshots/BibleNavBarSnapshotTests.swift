@@ -16,46 +16,46 @@ struct BibleNavBarSnapshotTests {
 
     @Test("the nav bar renders in the light theme")
     func defaultLight() {
-        verify(theme: .light, canStepBackward: true, canStepForward: true, name: "default_light")
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true, name: "default_light")
     }
 
     @Test("the nav bar renders in the dark theme")
     func defaultDark() {
-        verify(theme: .dark, canStepBackward: true, canStepForward: true, name: "default_dark")
+        verify(theme: .vellumDark, canStepBackward: true, canStepForward: true, name: "default_dark")
     }
 
     @Test("the nav bar renders in the sepia theme")
     func defaultSepia() {
-        verify(theme: .sepia, canStepBackward: true, canStepForward: true, name: "default_sepia")
+        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true, name: "default_sepia")
     }
 
     @Test("the previous arrow is disabled at the start of the canon")
     func previousDisabled() {
-        verify(theme: .light, canStepBackward: false, canStepForward: true,
+        verify(theme: .vellumLight, canStepBackward: false, canStepForward: true,
                name: "previous_disabled_light")
     }
 
     @Test("the next arrow is disabled at the end of the canon")
     func nextDisabled() {
-        verify(theme: .light, canStepBackward: true, canStepForward: false,
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: false,
                name: "next_disabled_light")
     }
 
     @Test("selection mode collapses the centre group to a citation pill")
     func selectionLight() {
-        verify(theme: .light, canStepBackward: true, canStepForward: true,
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
                name: "selection_light", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
     @Test("selection mode renders in the dark theme")
     func selectionDark() {
-        verify(theme: .dark, canStepBackward: true, canStepForward: true,
+        verify(theme: .vellumDark, canStepBackward: true, canStepForward: true,
                name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
     @Test("selection mode renders in the sepia theme")
     func selectionSepia() {
-        verify(theme: .sepia, canStepBackward: true, canStepForward: true,
+        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true,
                name: "selection_sepia", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
@@ -63,28 +63,28 @@ struct BibleNavBarSnapshotTests {
 
     @Test("the narration speaker button renders in the light theme while speaking")
     func narratingSpeakerButtonSpeakingLight() {
-        verify(theme: .light, canStepBackward: true, canStepForward: true,
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
                name: "narrating_speaker_button_speaking_light",
                narrationState: .speaking, narrationCitation: "1 Peter 2:9")
     }
 
     @Test("the narration speaker button renders in the dark theme while speaking")
     func narratingSpeakerButtonSpeakingDark() {
-        verify(theme: .dark, canStepBackward: true, canStepForward: true,
+        verify(theme: .vellumDark, canStepBackward: true, canStepForward: true,
                name: "narrating_speaker_button_speaking_dark",
                narrationState: .speaking, narrationCitation: "1 Peter 2:9")
     }
 
     @Test("the narration speaker button renders in the sepia theme while paused")
     func narratingSpeakerButtonPausedSepia() {
-        verify(theme: .sepia, canStepBackward: true, canStepForward: true,
+        verify(theme: .sepiaLight, canStepBackward: true, canStepForward: true,
                name: "narrating_speaker_button_paused_sepia",
                narrationState: .paused, narrationCitation: "1 Peter 2:9")
     }
 
     @Test("the narration speaker button keeps the red selection dot when verses are selected")
     func narratingSpeakerButtonWithSelectionDotLight() {
-        verify(theme: .light, canStepBackward: true, canStepForward: true,
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
                name: "narrating_speaker_button_with_selection_light",
                selectionCitation: "1 Peter 2:4-6, 9",
                narrationState: .speaking, narrationCitation: "1 Peter 2:4")

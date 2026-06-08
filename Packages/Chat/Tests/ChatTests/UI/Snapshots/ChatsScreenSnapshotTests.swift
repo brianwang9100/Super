@@ -42,23 +42,23 @@ struct ChatsScreenSnapshotTests {
 
     @Test("populated, light")
     func populatedLight() async throws {
-        try await verify(theme: .light, name: "chats_populated_light")
+        try await verify(theme: .vellumLight, name: "chats_populated_light")
     }
 
     @Test("populated, dark")
     func populatedDark() async throws {
-        try await verify(theme: .dark, name: "chats_populated_dark")
+        try await verify(theme: .vellumDark, name: "chats_populated_dark")
     }
 
     @Test("populated, sepia")
     func populatedSepia() async throws {
-        try await verify(theme: .sepia, name: "chats_populated_sepia")
+        try await verify(theme: .sepiaLight, name: "chats_populated_sepia")
     }
 
     @Test("populated, large font scale")
     func populatedLargeFontScale() async throws {
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             fontScale: 1.5,
             dynamicType: .accessibility3,
             name: "chats_populated_light_xxl"
@@ -71,7 +71,7 @@ struct ChatsScreenSnapshotTests {
         // this baseline guards that weight (.medium) and color (ink vs
         // inkFaint) keep the two lines distinguishable.
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             dynamicType: .xSmall,
             name: "chats_populated_light_xsmall"
         )
@@ -83,7 +83,7 @@ struct ChatsScreenSnapshotTests {
         // result, so the result-count line should render in the singular
         // ("1 match").
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             initialSearchText: "snow",
             name: "chats_search_matches_light"
         )
@@ -95,7 +95,7 @@ struct ChatsScreenSnapshotTests {
         // back to the italic-serif "No matches." empty state with the
         // quoted-query caption.
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             initialSearchText: "zzz",
             name: "chats_search_no_matches_light"
         )
@@ -109,7 +109,7 @@ struct ChatsScreenSnapshotTests {
         // helper to skip the fixture insert so `@Query` resolves to
         // zero rows.
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             seedConversations: false,
             name: "chats_empty_light"
         )

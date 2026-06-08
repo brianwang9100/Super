@@ -54,7 +54,7 @@ struct DSIconSnapshotTests {
     /// glyph) registers as a diff in this one test.
     @Test("catalog grid renders all 32 icons — light")
     func catalogGridLight() {
-        verify(theme: .light, name: "ds_icon_catalog_grid")
+        verify(theme: .vellumLight, name: "ds_icon_catalog_grid")
     }
 
     /// Dark-mode counterpart per Chat AGENTS.md (`light/dark/sepia ×
@@ -66,17 +66,17 @@ struct DSIconSnapshotTests {
     /// mode instead of tinting white, which only a dark baseline pins.
     @Test("catalog grid renders all 32 icons — dark")
     func catalogGridDark() {
-        verify(theme: .dark, name: "ds_icon_catalog_grid_dark")
+        verify(theme: .vellumDark, name: "ds_icon_catalog_grid_dark")
     }
 
     /// Sepia-mode counterpart per Chat AGENTS.md (`light/dark/sepia ×
     /// default/Dynamic Type XXL`). Uses the project's actual
-    /// `SuperTheme.sepia` ink + background colors rather than hardcoded
+    /// `SuperTheme` (Sepia Light) ink + background colors rather than hardcoded
     /// browns so the baseline tracks the theme's tokens; if a future
     /// theme tweak shifts the sepia palette, this snapshot updates.
     @Test("catalog grid renders all 32 icons — sepia")
     func catalogGridSepia() {
-        verify(theme: .sepia, name: "ds_icon_catalog_grid_sepia")
+        verify(theme: .sepiaLight, name: "ds_icon_catalog_grid_sepia")
     }
 
     // Dynamic Type XXL variant omitted from the matrix: both the icon

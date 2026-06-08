@@ -29,21 +29,21 @@ struct TodoScreenSnapshotTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
     @Test("empty, light") func emptyLight() throws {
-        try verify(theme: .light, name: "screen_empty_light")
+        try verify(theme: .vellumLight, name: "screen_empty_light")
     }
 
     @Test("empty, dark") func emptyDark() throws {
-        try verify(theme: .dark, name: "screen_empty_dark")
+        try verify(theme: .vellumDark, name: "screen_empty_dark")
     }
 
     @Test("empty, sepia") func emptySepia() throws {
-        try verify(theme: .sepia, name: "screen_empty_sepia")
+        try verify(theme: .sepiaLight, name: "screen_empty_sepia")
     }
 
     // The screen scales its type through the app-wide `superFontScale`
     // slider rather than `@ScaledMetric`; this variant drives that path.
     @Test("empty, large font scale") func emptyLargeFontScale() throws {
-        try verify(theme: .light, fontScale: 1.5, name: "screen_empty_light_large")
+        try verify(theme: .vellumLight, fontScale: 1.5, name: "screen_empty_light_large")
     }
 
     // The toast layer renders in a bottom overlay. These variants pin a
@@ -51,15 +51,15 @@ struct TodoScreenSnapshotTests {
     // the bottom edge where the shell docks its minimized chat bar, not
     // flush against it — across all themes so its dark pill stays legible.
     @Test("toast, light") func toastVisible() throws {
-        try verify(theme: .light, toast: "Saved", name: "screen_toast")
+        try verify(theme: .vellumLight, toast: "Saved", name: "screen_toast")
     }
 
     @Test("toast, dark") func toastVisibleDark() throws {
-        try verify(theme: .dark, toast: "Saved", name: "screen_toast_dark")
+        try verify(theme: .vellumDark, toast: "Saved", name: "screen_toast_dark")
     }
 
     @Test("toast, sepia") func toastVisibleSepia() throws {
-        try verify(theme: .sepia, toast: "Saved", name: "screen_toast_sepia")
+        try verify(theme: .sepiaLight, toast: "Saved", name: "screen_toast_sepia")
     }
 
     private func verify(

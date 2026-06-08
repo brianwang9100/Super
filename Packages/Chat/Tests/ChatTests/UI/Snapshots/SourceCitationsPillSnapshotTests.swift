@@ -41,38 +41,38 @@ struct SourceCitationsPillSnapshotTests {
 
     @Test("collapsed, three sources, light")
     func collapsedLight() {
-        verify(sources: Self.threeSources, expanded: false, theme: .light, height: 80, name: "sources_pill_collapsed_light")
+        verify(sources: Self.threeSources, expanded: false, theme: .vellumLight, height: 80, name: "sources_pill_collapsed_light")
     }
 
     @Test("collapsed, three sources, dark")
     func collapsedDark() {
-        verify(sources: Self.threeSources, expanded: false, theme: .dark, height: 80, name: "sources_pill_collapsed_dark")
+        verify(sources: Self.threeSources, expanded: false, theme: .vellumDark, height: 80, name: "sources_pill_collapsed_dark")
     }
 
     @Test("collapsed, three sources, sepia")
     func collapsedSepia() {
-        verify(sources: Self.threeSources, expanded: false, theme: .sepia, height: 80, name: "sources_pill_collapsed_sepia")
+        verify(sources: Self.threeSources, expanded: false, theme: .sepiaLight, height: 80, name: "sources_pill_collapsed_sepia")
     }
 
     @Test("expanded, three sources, light")
     func expandedLight() {
-        verify(sources: Self.threeSources, expanded: true, theme: .light, height: 240, name: "sources_pill_expanded_light")
+        verify(sources: Self.threeSources, expanded: true, theme: .vellumLight, height: 240, name: "sources_pill_expanded_light")
     }
 
     @Test("expanded, three sources, dark")
     func expandedDark() {
-        verify(sources: Self.threeSources, expanded: true, theme: .dark, height: 240, name: "sources_pill_expanded_dark")
+        verify(sources: Self.threeSources, expanded: true, theme: .vellumDark, height: 240, name: "sources_pill_expanded_dark")
     }
 
     @Test("expanded, three sources, sepia")
     func expandedSepia() {
-        verify(sources: Self.threeSources, expanded: true, theme: .sepia, height: 240, name: "sources_pill_expanded_sepia")
+        verify(sources: Self.threeSources, expanded: true, theme: .sepiaLight, height: 240, name: "sources_pill_expanded_sepia")
     }
 
     @Test("expanded, single source, light (singular copy)")
     func expandedSingleLight() {
         verify(
-            sources: [Self.threeSources[0]], expanded: true, theme: .light, height: 120,
+            sources: [Self.threeSources[0]], expanded: true, theme: .vellumLight, height: 120,
             name: "sources_pill_expanded_single_light"
         )
     }
@@ -80,7 +80,7 @@ struct SourceCitationsPillSnapshotTests {
     @Test("expanded dynamic type XXL")
     func expandedXXL() {
         verify(
-            sources: Self.threeSources, expanded: true, theme: .light, dynamicType: .xxLarge, height: 360,
+            sources: Self.threeSources, expanded: true, theme: .vellumLight, dynamicType: .xxLarge, height: 360,
             name: "sources_pill_expanded_light_xxl"
         )
     }

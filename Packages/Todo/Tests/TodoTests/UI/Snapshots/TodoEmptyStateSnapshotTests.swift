@@ -16,19 +16,19 @@ struct TodoEmptyStateSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("light theme") func light() {
-        verify(theme: .light, name: "empty_light")
+        verify(theme: .vellumLight, name: "empty_light")
     }
 
     @Test("dark theme") func dark() {
-        verify(theme: .dark, name: "empty_dark")
+        verify(theme: .vellumDark, name: "empty_dark")
     }
 
     @Test("sepia theme") func sepia() {
-        verify(theme: .sepia, name: "empty_sepia")
+        verify(theme: .sepiaLight, name: "empty_sepia")
     }
 
     @Test("dynamic type XXL") func dynamicTypeXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, name: "empty_light_xxl")
+        verify(theme: .vellumLight, dynamicType: .xxLarge, name: "empty_light_xxl")
     }
 
     private func verify(

@@ -24,19 +24,19 @@ struct TodoTaskRowSnapshotTests {
     }()
 
     @Test("light theme") func light() {
-        verify(theme: .light, name: "task_row_light")
+        verify(theme: .vellumLight, name: "task_row_light")
     }
 
     @Test("dark theme") func dark() {
-        verify(theme: .dark, name: "task_row_dark")
+        verify(theme: .vellumDark, name: "task_row_dark")
     }
 
     @Test("sepia theme") func sepia() {
-        verify(theme: .sepia, name: "task_row_sepia")
+        verify(theme: .sepiaLight, name: "task_row_sepia")
     }
 
     @Test("dynamic type XXL") func dynamicTypeXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, name: "task_row_light_xxl")
+        verify(theme: .vellumLight, dynamicType: .xxLarge, name: "task_row_light_xxl")
     }
 
     // A row with more labels than fit on one line: the chips must keep
@@ -44,15 +44,15 @@ struct TodoTaskRowSnapshotTests {
     // a trailing "…", with the due badge still pinned at the end. Captured
     // in every theme so the chip and ellipsis colors are verified.
     @Test("many labels truncate, light") func manyLabels() {
-        verify(theme: .light, rows: manyLabelRows, height: 190, name: "task_row_many_labels")
+        verify(theme: .vellumLight, rows: manyLabelRows, height: 190, name: "task_row_many_labels")
     }
 
     @Test("many labels truncate, dark") func manyLabelsDark() {
-        verify(theme: .dark, rows: manyLabelRows, height: 190, name: "task_row_many_labels_dark")
+        verify(theme: .vellumDark, rows: manyLabelRows, height: 190, name: "task_row_many_labels_dark")
     }
 
     @Test("many labels truncate, sepia") func manyLabelsSepia() {
-        verify(theme: .sepia, rows: manyLabelRows, height: 190, name: "task_row_many_labels_sepia")
+        verify(theme: .sepiaLight, rows: manyLabelRows, height: 190, name: "task_row_many_labels_sepia")
     }
 
     // At XXL the chips are physically wider, so fewer fit and the
@@ -60,7 +60,7 @@ struct TodoTaskRowSnapshotTests {
     // at natural width and pin the due badge. The default-type variants
     // above can't catch a Dynamic-Type regression in the new layout.
     @Test("many labels truncate, dynamic type XXL") func manyLabelsXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, rows: manyLabelRows, height: 260,
+        verify(theme: .vellumLight, dynamicType: .xxLarge, rows: manyLabelRows, height: 260,
                name: "task_row_many_labels_xxl")
     }
 

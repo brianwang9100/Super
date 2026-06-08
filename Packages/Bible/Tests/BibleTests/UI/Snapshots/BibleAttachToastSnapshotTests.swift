@@ -17,17 +17,17 @@ struct BibleAttachToastSnapshotTests {
 
     @Test("the toast renders over a light page")
     func light() {
-        verify(theme: .light, name: "light")
+        verify(theme: .vellumLight, name: "light")
     }
 
     @Test("the toast renders over a dark page")
     func dark() {
-        verify(theme: .dark, name: "dark")
+        verify(theme: .vellumDark, name: "dark")
     }
 
     @Test("the toast renders over a sepia page")
     func sepia() {
-        verify(theme: .sepia, name: "sepia")
+        verify(theme: .sepiaLight, name: "sepia")
     }
 
     private func verify(

@@ -121,45 +121,45 @@ struct AnnotationSheetSnapshotTests {
 
     @Test("empty sheet renders in the light theme")
     func emptyLight() {
-        verify(theme: .light, cards: [], name: "empty_light")
+        verify(theme: .vellumLight, cards: [], name: "empty_light")
     }
 
     @Test("empty sheet renders in the dark theme")
     func emptyDark() {
-        verify(theme: .dark, cards: [], name: "empty_dark")
+        verify(theme: .vellumDark, cards: [], name: "empty_dark")
     }
 
     @Test("empty sheet renders in the sepia theme")
     func emptySepia() {
-        verify(theme: .sepia, cards: [], name: "empty_sepia")
+        verify(theme: .sepiaLight, cards: [], name: "empty_sepia")
     }
 
     @Test("generating empty sheet shows the spinner-state bubble")
     func generatingLight() {
-        verify(theme: .light, cards: [], isGenerating: true, name: "generating_light")
+        verify(theme: .vellumLight, cards: [], isGenerating: true, name: "generating_light")
     }
 
     @Test("a regenerate over populated cards hides them behind the generating state in light")
     func generatingOverPopulatedLight() {
-        verify(theme: .light, cards: Self.threeCards, isGenerating: true,
+        verify(theme: .vellumLight, cards: Self.threeCards, isGenerating: true,
                name: "generating_over_populated_light")
     }
 
     @Test("a regenerate over populated cards hides them behind the generating state in dark")
     func generatingOverPopulatedDark() {
-        verify(theme: .dark, cards: Self.threeCards, isGenerating: true,
+        verify(theme: .vellumDark, cards: Self.threeCards, isGenerating: true,
                name: "generating_over_populated_dark")
     }
 
     @Test("a regenerate over populated cards hides them behind the generating state in sepia")
     func generatingOverPopulatedSepia() {
-        verify(theme: .sepia, cards: Self.threeCards, isGenerating: true,
+        verify(theme: .sepiaLight, cards: Self.threeCards, isGenerating: true,
                name: "generating_over_populated_sepia")
     }
 
     @Test("the generating-over-populated state reflows its label at Dynamic Type XXL")
     func generatingOverPopulatedLightXXL() {
-        verify(theme: .light, cards: Self.threeCards, isGenerating: true,
+        verify(theme: .vellumLight, cards: Self.threeCards, isGenerating: true,
                dynamicType: .xxLarge, height: 720,
                name: "generating_over_populated_light_xxl")
     }
@@ -171,74 +171,74 @@ struct AnnotationSheetSnapshotTests {
         // Per ANNOTATIONS.md §10 the populated-state matrix is 0 / 1 /
         // 3 / 8 cards. The single-card case isolates per-card chrome
         // from the inter-card spacing the multi-card variants exercise.
-        verify(theme: .light, cards: [Self.threeCards[0]], name: "one_card_light")
+        verify(theme: .vellumLight, cards: [Self.threeCards[0]], name: "one_card_light")
     }
 
     @Test("one card renders in the dark theme")
     func oneCardDark() {
-        verify(theme: .dark, cards: [Self.threeCards[0]], name: "one_card_dark")
+        verify(theme: .vellumDark, cards: [Self.threeCards[0]], name: "one_card_dark")
     }
 
     @Test("one card renders in the sepia theme")
     func oneCardSepia() {
-        verify(theme: .sepia, cards: [Self.threeCards[0]], name: "one_card_sepia")
+        verify(theme: .sepiaLight, cards: [Self.threeCards[0]], name: "one_card_sepia")
     }
 
     @Test("three cards render in the light theme")
     func threeCardsLight() {
-        verify(theme: .light, cards: Self.threeCards, name: "three_cards_light")
+        verify(theme: .vellumLight, cards: Self.threeCards, name: "three_cards_light")
     }
 
     @Test("three cards render in the dark theme")
     func threeCardsDark() {
-        verify(theme: .dark, cards: Self.threeCards, name: "three_cards_dark")
+        verify(theme: .vellumDark, cards: Self.threeCards, name: "three_cards_dark")
     }
 
     @Test("three cards render in the sepia theme")
     func threeCardsSepia() {
-        verify(theme: .sepia, cards: Self.threeCards, name: "three_cards_sepia")
+        verify(theme: .sepiaLight, cards: Self.threeCards, name: "three_cards_sepia")
     }
 
     @Test("eight cards overflow the visible sheet area")
     func eightCardsLight() {
-        verify(theme: .light, cards: Self.eightCards, name: "eight_cards_light")
+        verify(theme: .vellumLight, cards: Self.eightCards, name: "eight_cards_light")
     }
 
     @Test("eight cards overflow in the dark theme")
     func eightCardsDark() {
-        verify(theme: .dark, cards: Self.eightCards, name: "eight_cards_dark")
+        verify(theme: .vellumDark, cards: Self.eightCards, name: "eight_cards_dark")
     }
 
     @Test("eight cards overflow in the sepia theme")
     func eightCardsSepia() {
-        verify(theme: .sepia, cards: Self.eightCards, name: "eight_cards_sepia")
+        verify(theme: .sepiaLight, cards: Self.eightCards, name: "eight_cards_sepia")
     }
 
     @Test("one card per category renders every badge glyph in light")
     func categoryCardsLight() {
-        verify(theme: .light, cards: Self.categoryCards, height: 760, name: "category_cards_light")
+        verify(theme: .vellumLight, cards: Self.categoryCards, height: 760, name: "category_cards_light")
     }
 
     @Test("one card per category renders every badge glyph in dark")
     func categoryCardsDark() {
-        verify(theme: .dark, cards: Self.categoryCards, height: 760, name: "category_cards_dark")
+        verify(theme: .vellumDark, cards: Self.categoryCards, height: 760, name: "category_cards_dark")
     }
 
     @Test("one card per category renders every badge glyph in sepia")
     func categoryCardsSepia() {
-        verify(theme: .sepia, cards: Self.categoryCards, height: 760, name: "category_cards_sepia")
+        verify(theme: .sepiaLight, cards: Self.categoryCards, height: 760, name: "category_cards_sepia")
     }
 
     @Test("per-category cards reflow their prose bodies at Dynamic Type XXL")
     func categoryCardsLightXXL() {
-        verify(theme: .light, cards: Self.categoryCards, dynamicType: .xxLarge,
+        verify(theme: .vellumLight, cards: Self.categoryCards, dynamicType: .xxLarge,
                height: 1180, name: "category_cards_light_xxl")
     }
 
     @Test("three cards render at Dynamic Type XXL")
     func threeCardsLightXXL() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             cards: Self.threeCards,
             dynamicType: .xxLarge,
             height: 720,
@@ -249,7 +249,7 @@ struct AnnotationSheetSnapshotTests {
     @Test("the failed-dispatch state renders the message and retry button in light")
     func failedDispatchLight() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             cards: [],
             errorMessage: "No model is selected. Pick a model in Settings, then try again.",
             name: "failed_dispatch_light"
@@ -259,7 +259,7 @@ struct AnnotationSheetSnapshotTests {
     @Test("the failed-dispatch state renders the message and retry button in dark")
     func failedDispatchDark() {
         verify(
-            theme: .dark,
+            theme: .vellumDark,
             cards: [],
             errorMessage: "No model is selected. Pick a model in Settings, then try again.",
             name: "failed_dispatch_dark"
@@ -269,7 +269,7 @@ struct AnnotationSheetSnapshotTests {
     @Test("the failed-dispatch state renders the message and retry button in sepia")
     func failedDispatchSepia() {
         verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             cards: [],
             errorMessage: "No model is selected. Pick a model in Settings, then try again.",
             name: "failed_dispatch_sepia"
@@ -279,7 +279,7 @@ struct AnnotationSheetSnapshotTests {
     @Test("the failed-dispatch state reflows the message + retry button at Dynamic Type XXL")
     func failedDispatchLightXXL() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             cards: [],
             errorMessage: "No model is selected. Pick a model in Settings, then try again.",
             dynamicType: .xxLarge,

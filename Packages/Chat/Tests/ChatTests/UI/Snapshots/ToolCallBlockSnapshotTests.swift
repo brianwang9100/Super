@@ -50,17 +50,17 @@ struct ToolCallBlockSnapshotTests {
 
     @Test("awaiting confirmation badge, light")
     func awaitingLight() {
-        verify(call: awaitingCall(), theme: .light, name: "toolcall_awaiting_light")
+        verify(call: awaitingCall(), theme: .vellumLight, name: "toolcall_awaiting_light")
     }
 
     @Test("awaiting confirmation badge, dark")
     func awaitingDark() {
-        verify(call: awaitingCall(), theme: .dark, name: "toolcall_awaiting_dark")
+        verify(call: awaitingCall(), theme: .vellumDark, name: "toolcall_awaiting_dark")
     }
 
     @Test("awaiting confirmation badge, sepia")
     func awaitingSepia() {
-        verify(call: awaitingCall(), theme: .sepia, name: "toolcall_awaiting_sepia")
+        verify(call: awaitingCall(), theme: .sepiaLight, name: "toolcall_awaiting_sepia")
     }
 
     // FUNCTION-detail card across the light / dark / sepia × default Dynamic
@@ -69,23 +69,23 @@ struct ToolCallBlockSnapshotTests {
     // FUNCTION row above INPUT.
     @Test("friendly display name surfaces the FUNCTION detail, light")
     func functionDetailLight() {
-        verify(call: renamedCall(), theme: .light, name: "toolcall_function_detail_light", height: 180)
+        verify(call: renamedCall(), theme: .vellumLight, name: "toolcall_function_detail_light", height: 180)
     }
 
     @Test("friendly display name surfaces the FUNCTION detail, dark")
     func functionDetailDark() {
-        verify(call: renamedCall(), theme: .dark, name: "toolcall_function_detail_dark", height: 180)
+        verify(call: renamedCall(), theme: .vellumDark, name: "toolcall_function_detail_dark", height: 180)
     }
 
     @Test("friendly display name surfaces the FUNCTION detail, sepia")
     func functionDetailSepia() {
-        verify(call: renamedCall(), theme: .sepia, name: "toolcall_function_detail_sepia", height: 180)
+        verify(call: renamedCall(), theme: .sepiaLight, name: "toolcall_function_detail_sepia", height: 180)
     }
 
     @Test("dynamic type XXL on the FUNCTION detail card")
     func functionDetailXXL() {
         verify(
-            call: renamedCall(), theme: .light, name: "toolcall_function_detail_light_xxl",
+            call: renamedCall(), theme: .vellumLight, name: "toolcall_function_detail_light_xxl",
             height: 300, dynamicType: .xxLarge
         )
     }

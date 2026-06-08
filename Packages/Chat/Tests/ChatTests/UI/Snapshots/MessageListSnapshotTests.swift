@@ -40,17 +40,17 @@ struct MessageListSnapshotTests {
 
     @Test("populated list in light theme")
     func populatedLight() {
-        verify(theme: .light, name: "list_populated_light")
+        verify(theme: .vellumLight, name: "list_populated_light")
     }
 
     @Test("populated list in dark theme")
     func populatedDark() {
-        verify(theme: .dark, name: "list_populated_dark")
+        verify(theme: .vellumDark, name: "list_populated_dark")
     }
 
     @Test("populated list in sepia theme")
     func populatedSepia() {
-        verify(theme: .sepia, name: "list_populated_sepia")
+        verify(theme: .sepiaLight, name: "list_populated_sepia")
     }
 
     @Test("streaming tail with plain prose")
@@ -66,7 +66,7 @@ struct MessageListSnapshotTests {
             streamingTail: tail,
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_streaming_light", function: function)
     }
@@ -89,7 +89,7 @@ struct MessageListSnapshotTests {
             let total = items.reduce(0, +)
             print(total)
             """,
-            theme: .light,
+            theme: .vellumLight,
             name: "list_streaming_midfence_light"
         )
     }
@@ -104,7 +104,7 @@ struct MessageListSnapshotTests {
             let total = items.reduce(0, +)
             print(total)
             """,
-            theme: .dark,
+            theme: .vellumDark,
             name: "list_streaming_midfence_dark"
         )
     }
@@ -119,7 +119,7 @@ struct MessageListSnapshotTests {
             let total = items.reduce(0, +)
             print(total)
             """,
-            theme: .sepia,
+            theme: .sepiaLight,
             name: "list_streaming_midfence_sepia"
         )
     }
@@ -128,7 +128,7 @@ struct MessageListSnapshotTests {
     func streamingTailMidBold() {
         verifyStreamingMarkdown(
             text: "The key insight is that **partial markdown",
-            theme: .light,
+            theme: .vellumLight,
             name: "list_streaming_midbold_light"
         )
     }
@@ -137,7 +137,7 @@ struct MessageListSnapshotTests {
     func streamingTailMidBoldDark() {
         verifyStreamingMarkdown(
             text: "The key insight is that **partial markdown",
-            theme: .dark,
+            theme: .vellumDark,
             name: "list_streaming_midbold_dark"
         )
     }
@@ -152,7 +152,7 @@ struct MessageListSnapshotTests {
             - second item complete
             - third item
             """,
-            theme: .light,
+            theme: .vellumLight,
             name: "list_streaming_midlist_light"
         )
     }
@@ -167,7 +167,7 @@ struct MessageListSnapshotTests {
             - second item complete
             - third item
             """,
-            theme: .dark,
+            theme: .vellumDark,
             name: "list_streaming_midlist_dark"
         )
     }
@@ -176,7 +176,7 @@ struct MessageListSnapshotTests {
     func streamingTailMidInlineCode() {
         verifyStreamingMarkdown(
             text: "Wrap the value in `Array(",
-            theme: .light,
+            theme: .vellumLight,
             name: "list_streaming_midcode_light"
         )
     }
@@ -185,7 +185,7 @@ struct MessageListSnapshotTests {
     func streamingTailMidInlineCodeDark() {
         verifyStreamingMarkdown(
             text: "Wrap the value in `Array(",
-            theme: .dark,
+            theme: .vellumDark,
             name: "list_streaming_midcode_dark"
         )
     }
@@ -221,7 +221,7 @@ struct MessageListSnapshotTests {
             items: [.userBubble(id: "u1", text: "What now?", references: [])],
             error: .init(message: "Authentication failed. Check the API key in Settings.")
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 400)
         recordOrCompare(view: view, name: "list_error_light", function: function)
     }
@@ -241,7 +241,7 @@ struct MessageListSnapshotTests {
                 action: {}
             )
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 400)
         recordOrCompare(view: view, name: "list_error_banner_with_action_light", function: function)
     }
@@ -256,7 +256,7 @@ struct MessageListSnapshotTests {
             .userBubble(id: "u2", text: "follow-up", references: []),
         ]
         let view = MessageList(items: withBanner, verbosity: .verbose)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_compaction_light", function: function)
     }
@@ -285,7 +285,7 @@ struct MessageListSnapshotTests {
             ],
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: "list_markdown_light", function: function)
     }
@@ -319,7 +319,7 @@ struct MessageListSnapshotTests {
             ],
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: "list_codeblock_light", function: function)
     }
@@ -344,7 +344,7 @@ struct MessageListSnapshotTests {
             ],
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 500)
         recordOrCompare(view: view, name: "list_table_light", function: function)
     }
@@ -363,7 +363,7 @@ struct MessageListSnapshotTests {
             .compactionBanner(id: "b1", summary: summary),
             .userBubble(id: "u2", text: "follow-up", references: []),
         ], verbosity: .verbose)
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_compaction_markdown_light", function: function)
     }
@@ -392,7 +392,7 @@ struct MessageListSnapshotTests {
                 toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
             ),
         ], verbosity: .verbose)
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 600)
         recordOrCompare(view: view, name: "list_thinking_markdown_light", function: function)
     }
@@ -431,7 +431,7 @@ struct MessageListSnapshotTests {
         verifyAppearance(
             fontScale: 1.20,
             name: "list_scale_max_dark",
-            theme: .dark
+            theme: .vellumDark
         )
     }
 
@@ -444,7 +444,7 @@ struct MessageListSnapshotTests {
         verifyAppearance(
             fontScale: 1.20,
             name: "list_scale_max_sepia",
-            theme: .sepia
+            theme: .sepiaLight
         )
     }
 
@@ -456,7 +456,7 @@ struct MessageListSnapshotTests {
     func appearanceScaleMaxXXL() {
         let function = #function
         let view = MessageList(items: items, verbosity: .verbose)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .chatAppearance(ChatAppearance(fontScale: 1.20))
             .superTypography(.make(.serif, fontScale: 1.20))
             .dynamicTypeSize(.xxLarge)
@@ -468,7 +468,7 @@ struct MessageListSnapshotTests {
     func dynamicTypeXXL() {
         let function = #function
         let view = MessageList(items: items, verbosity: .verbose)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 700)
         recordOrCompare(view: view, name: "list_populated_light_xxl", function: function)
@@ -503,7 +503,7 @@ struct MessageListSnapshotTests {
             ],
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: 402, height: 900)
         recordOrCompare(view: view, name: "list_markdown_light_xxl", function: function)
@@ -534,7 +534,7 @@ struct MessageListSnapshotTests {
             streamingTail: tail,
             verbosity: .verbose
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: 402, height: 900)
         recordOrCompare(view: view, name: "list_streaming_midlist_light_xxl", function: function)
@@ -558,7 +558,7 @@ struct MessageListSnapshotTests {
             ```swift
             let total = items.reduce(
             """,
-            theme: .light,
+            theme: .vellumLight,
             name: "list_streaming_thinking_midfence_light"
         )
     }
@@ -572,7 +572,7 @@ struct MessageListSnapshotTests {
             ```swift
             let total = items.reduce(
             """,
-            theme: .dark,
+            theme: .vellumDark,
             name: "list_streaming_thinking_midfence_dark"
         )
     }
@@ -630,17 +630,17 @@ struct MessageListSnapshotTests {
     /// identity per chat — that path is covered by manual verification.
     @Test("freshly mounted long transcript anchors at bottom (light)")
     func freshlyMountedLongTranscriptLight() {
-        verifyLongTranscript(theme: .light, name: "list_long_transcript_anchored_bottom")
+        verifyLongTranscript(theme: .vellumLight, name: "list_long_transcript_anchored_bottom")
     }
 
     @Test("freshly mounted long transcript anchors at bottom (dark)")
     func freshlyMountedLongTranscriptDark() {
-        verifyLongTranscript(theme: .dark, name: "list_long_transcript_anchored_bottom_dark")
+        verifyLongTranscript(theme: .vellumDark, name: "list_long_transcript_anchored_bottom_dark")
     }
 
     @Test("freshly mounted long transcript anchors at bottom (sepia)")
     func freshlyMountedLongTranscriptSepia() {
-        verifyLongTranscript(theme: .sepia, name: "list_long_transcript_anchored_bottom_sepia")
+        verifyLongTranscript(theme: .sepiaLight, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
     // **No XXL variant for the anchor-at-bottom test.** At XXL Dynamic
@@ -705,7 +705,7 @@ struct MessageListSnapshotTests {
     private func verifyAppearance(
         fontScale: Double,
         name: String,
-        theme: SuperTheme.Identifier = .light,
+        theme: SuperTheme.Identifier = .vellumLight,
         function: String = #function
     ) {
         let view = MessageList(items: items, verbosity: .verbose)

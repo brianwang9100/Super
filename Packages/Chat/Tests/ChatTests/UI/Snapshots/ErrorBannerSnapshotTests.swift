@@ -35,31 +35,31 @@ struct ErrorBannerSnapshotTests {
     }
 
     @Test("collapsed (Details affordance) — light")
-    func collapsedLight() { verify(expanded: false, theme: .light, height: 140, name: "error_banner_collapsed_light") }
+    func collapsedLight() { verify(expanded: false, theme: .vellumLight, height: 140, name: "error_banner_collapsed_light") }
 
     @Test("collapsed (Details affordance) — dark")
-    func collapsedDark() { verify(expanded: false, theme: .dark, height: 140, name: "error_banner_collapsed_dark") }
+    func collapsedDark() { verify(expanded: false, theme: .vellumDark, height: 140, name: "error_banner_collapsed_dark") }
 
     @Test("collapsed (Details affordance) — sepia")
-    func collapsedSepia() { verify(expanded: false, theme: .sepia, height: 140, name: "error_banner_collapsed_sepia") }
+    func collapsedSepia() { verify(expanded: false, theme: .sepiaLight, height: 140, name: "error_banner_collapsed_sepia") }
 
     @Test("expanded detail — light")
-    func expandedLight() { verify(expanded: true, theme: .light, height: 360, name: "error_banner_expanded_light") }
+    func expandedLight() { verify(expanded: true, theme: .vellumLight, height: 360, name: "error_banner_expanded_light") }
 
     @Test("expanded detail — dark")
-    func expandedDark() { verify(expanded: true, theme: .dark, height: 360, name: "error_banner_expanded_dark") }
+    func expandedDark() { verify(expanded: true, theme: .vellumDark, height: 360, name: "error_banner_expanded_dark") }
 
     @Test("expanded detail — sepia")
-    func expandedSepia() { verify(expanded: true, theme: .sepia, height: 360, name: "error_banner_expanded_sepia") }
+    func expandedSepia() { verify(expanded: true, theme: .sepiaLight, height: 360, name: "error_banner_expanded_sepia") }
 
     @Test("collapsed at Dynamic Type XXL — light")
     func collapsedXXL() {
-        verify(expanded: false, theme: .light, dynamicType: .xxLarge, height: 200, name: "error_banner_collapsed_light_xxl")
+        verify(expanded: false, theme: .vellumLight, dynamicType: .xxLarge, height: 200, name: "error_banner_collapsed_light_xxl")
     }
 
     @Test("expanded detail at Dynamic Type XXL — light (detail text reflows)")
     func expandedXXL() {
-        verify(expanded: true, theme: .light, dynamicType: .xxLarge, height: 520, name: "error_banner_expanded_light_xxl")
+        verify(expanded: true, theme: .vellumLight, dynamicType: .xxLarge, height: 520, name: "error_banner_expanded_light_xxl")
     }
 
     private func verify(

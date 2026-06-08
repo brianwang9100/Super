@@ -22,37 +22,37 @@ struct WebSearchCallCellSnapshotTests {
 
     @Test("collapsed, light")
     func collapsedLight() {
-        verify(expanded: false, theme: .light, height: 70, name: "web_search_cell_collapsed_light")
+        verify(expanded: false, theme: .vellumLight, height: 70, name: "web_search_cell_collapsed_light")
     }
 
     @Test("collapsed, dark")
     func collapsedDark() {
-        verify(expanded: false, theme: .dark, height: 70, name: "web_search_cell_collapsed_dark")
+        verify(expanded: false, theme: .vellumDark, height: 70, name: "web_search_cell_collapsed_dark")
     }
 
     @Test("collapsed, sepia")
     func collapsedSepia() {
-        verify(expanded: false, theme: .sepia, height: 70, name: "web_search_cell_collapsed_sepia")
+        verify(expanded: false, theme: .sepiaLight, height: 70, name: "web_search_cell_collapsed_sepia")
     }
 
     @Test("expanded, light")
     func expandedLight() {
-        verify(expanded: true, theme: .light, height: 240, name: "web_search_cell_expanded_light")
+        verify(expanded: true, theme: .vellumLight, height: 240, name: "web_search_cell_expanded_light")
     }
 
     @Test("expanded, dark")
     func expandedDark() {
-        verify(expanded: true, theme: .dark, height: 240, name: "web_search_cell_expanded_dark")
+        verify(expanded: true, theme: .vellumDark, height: 240, name: "web_search_cell_expanded_dark")
     }
 
     @Test("expanded, sepia")
     func expandedSepia() {
-        verify(expanded: true, theme: .sepia, height: 240, name: "web_search_cell_expanded_sepia")
+        verify(expanded: true, theme: .sepiaLight, height: 240, name: "web_search_cell_expanded_sepia")
     }
 
     @Test("expanded dynamic type XXL")
     func expandedXXL() {
-        verify(expanded: true, theme: .light, dynamicType: .xxLarge, height: 360, name: "web_search_cell_expanded_light_xxl")
+        verify(expanded: true, theme: .vellumLight, dynamicType: .xxLarge, height: 360, name: "web_search_cell_expanded_light_xxl")
     }
 
     private func verify(

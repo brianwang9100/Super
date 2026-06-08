@@ -36,12 +36,12 @@ struct AnnotationSheetContainerSnapshotTests {
 
     @Test("empty container renders the empty-state copy in the light theme")
     func emptyLight() async throws {
-        try await verify(seeding: [], theme: .light, name: "empty_light")
+        try await verify(seeding: [], theme: .vellumLight, name: "empty_light")
     }
 
     @Test("empty container with isGenerating shows the spinner-state bubble")
     func emptyGeneratingLight() async throws {
-        try await verify(seeding: [], theme: .light, isGenerating: true,
+        try await verify(seeding: [], theme: .vellumLight, isGenerating: true,
                          name: "empty_generating_light")
     }
 
@@ -49,7 +49,7 @@ struct AnnotationSheetContainerSnapshotTests {
     func emptyFailedLight() async throws {
         try await verify(
             seeding: [],
-            theme: .light,
+            theme: .vellumLight,
             dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
             name: "empty_failed_light"
         )
@@ -59,7 +59,7 @@ struct AnnotationSheetContainerSnapshotTests {
     func emptyFailedDark() async throws {
         try await verify(
             seeding: [],
-            theme: .dark,
+            theme: .vellumDark,
             dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
             name: "empty_failed_dark"
         )
@@ -69,7 +69,7 @@ struct AnnotationSheetContainerSnapshotTests {
     func emptyFailedSepia() async throws {
         try await verify(
             seeding: [],
-            theme: .sepia,
+            theme: .sepiaLight,
             dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
             name: "empty_failed_sepia"
         )
@@ -79,7 +79,7 @@ struct AnnotationSheetContainerSnapshotTests {
     func emptyFailedLightXXL() async throws {
         try await verify(
             seeding: [],
-            theme: .light,
+            theme: .vellumLight,
             dispatchStatus: .failed(message: "The model didn't call bible.annotate. Try again or pick a different model."),
             dynamicType: .xxLarge,
             height: 760,
@@ -91,42 +91,42 @@ struct AnnotationSheetContainerSnapshotTests {
 
     @Test("text + reference cards render in the light theme")
     func populatedLight() async throws {
-        try await verify(seeding: populatedRows, theme: .light, name: "populated_light")
+        try await verify(seeding: populatedRows, theme: .vellumLight, name: "populated_light")
     }
 
     @Test("text + reference cards render in the dark theme")
     func populatedDark() async throws {
-        try await verify(seeding: populatedRows, theme: .dark, name: "populated_dark")
+        try await verify(seeding: populatedRows, theme: .vellumDark, name: "populated_dark")
     }
 
     @Test("text + reference cards render in the sepia theme")
     func populatedSepia() async throws {
-        try await verify(seeding: populatedRows, theme: .sepia, name: "populated_sepia")
+        try await verify(seeding: populatedRows, theme: .sepiaLight, name: "populated_sepia")
     }
 
     // MARK: - Regenerate-over-populated states
 
     @Test("a running dispatch over seeded rows hides the cards behind the generating state in light")
     func generatingOverPopulatedLight() async throws {
-        try await verify(seeding: populatedRows, theme: .light, isGenerating: true,
+        try await verify(seeding: populatedRows, theme: .vellumLight, isGenerating: true,
                          name: "generating_over_populated_light")
     }
 
     @Test("a running dispatch over seeded rows hides the cards behind the generating state in dark")
     func generatingOverPopulatedDark() async throws {
-        try await verify(seeding: populatedRows, theme: .dark, isGenerating: true,
+        try await verify(seeding: populatedRows, theme: .vellumDark, isGenerating: true,
                          name: "generating_over_populated_dark")
     }
 
     @Test("a running dispatch over seeded rows hides the cards behind the generating state in sepia")
     func generatingOverPopulatedSepia() async throws {
-        try await verify(seeding: populatedRows, theme: .sepia, isGenerating: true,
+        try await verify(seeding: populatedRows, theme: .sepiaLight, isGenerating: true,
                          name: "generating_over_populated_sepia")
     }
 
     @Test("the running-over-populated state reflows its label at Dynamic Type XXL")
     func generatingOverPopulatedLightXXL() async throws {
-        try await verify(seeding: populatedRows, theme: .light, isGenerating: true,
+        try await verify(seeding: populatedRows, theme: .vellumLight, isGenerating: true,
                          dynamicType: .xxLarge, height: 760,
                          name: "generating_over_populated_light_xxl")
     }
@@ -142,7 +142,7 @@ struct AnnotationSheetContainerSnapshotTests {
                 source: .user, modelId: "afm-3.0", createdAt: Self.now
             )
         ]
-        try await verify(seeding: rows, theme: .light, name: "unparseable_reference_light")
+        try await verify(seeding: rows, theme: .vellumLight, name: "unparseable_reference_light")
     }
 
     // MARK: - Fixtures

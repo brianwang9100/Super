@@ -17,27 +17,27 @@ struct AnnotationBubbleSnapshotTests {
 
     @Test("filled bubble renders in the light theme")
     func filledLight() {
-        verify(theme: .light, state: .filled, name: "filled_light")
+        verify(theme: .vellumLight, state: .filled, name: "filled_light")
     }
 
     @Test("filled bubble renders in the dark theme")
     func filledDark() {
-        verify(theme: .dark, state: .filled, name: "filled_dark")
+        verify(theme: .vellumDark, state: .filled, name: "filled_dark")
     }
 
     @Test("filled bubble renders in the sepia theme")
     func filledSepia() {
-        verify(theme: .sepia, state: .filled, name: "filled_sepia")
+        verify(theme: .sepiaLight, state: .filled, name: "filled_sepia")
     }
 
     @Test("empty bubble renders in the light theme")
     func emptyLight() {
-        verify(theme: .light, state: .empty, name: "empty_light")
+        verify(theme: .vellumLight, state: .empty, name: "empty_light")
     }
 
     @Test("generating bubble renders in the light theme")
     func generatingLight() {
-        verify(theme: .light, state: .generating, name: "generating_light")
+        verify(theme: .vellumLight, state: .generating, name: "generating_light")
     }
 
     /// Three filled bubbles side-by-side — the composition `BibleChapterReader`
@@ -48,7 +48,7 @@ struct AnnotationBubbleSnapshotTests {
     /// stack directly without re-deriving the metrics.
     @Test("three bubbles stack horizontally after one verse")
     func multiStackLight() {
-        let theme = SuperTheme.make(.light)
+        let theme = SuperTheme.make(.vellumLight)
         let view = ZStack {
             theme.background
             HStack(spacing: 3) {

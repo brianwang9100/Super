@@ -22,38 +22,38 @@ struct NarrationTransportSheetSnapshotTests {
 
     @Test("the transport card renders while speaking in the light theme")
     func speakingLight() {
-        verify(theme: .light, state: .speaking, currentVerse: 9, name: "speaking_light")
+        verify(theme: .vellumLight, state: .speaking, currentVerse: 9, name: "speaking_light")
     }
 
     @Test("the transport card renders while speaking in the dark theme")
     func speakingDark() {
-        verify(theme: .dark, state: .speaking, currentVerse: 9, name: "speaking_dark")
+        verify(theme: .vellumDark, state: .speaking, currentVerse: 9, name: "speaking_dark")
     }
 
     @Test("the transport card renders while speaking in the sepia theme")
     func speakingSepia() {
-        verify(theme: .sepia, state: .speaking, currentVerse: 9, name: "speaking_sepia")
+        verify(theme: .sepiaLight, state: .speaking, currentVerse: 9, name: "speaking_sepia")
     }
 
     @Test("the transport card renders while paused in the light theme")
     func pausedLight() {
-        verify(theme: .light, state: .paused, currentVerse: 9, name: "paused_light")
+        verify(theme: .vellumLight, state: .paused, currentVerse: 9, name: "paused_light")
     }
 
     @Test("the transport card renders while paused in the dark theme")
     func pausedDark() {
-        verify(theme: .dark, state: .paused, currentVerse: 9, name: "paused_dark")
+        verify(theme: .vellumDark, state: .paused, currentVerse: 9, name: "paused_dark")
     }
 
     @Test("the transport card renders while paused in the sepia theme")
     func pausedSepia() {
-        verify(theme: .sepia, state: .paused, currentVerse: 9, name: "paused_sepia")
+        verify(theme: .sepiaLight, state: .paused, currentVerse: 9, name: "paused_sepia")
     }
 
     @Test("the transport card renders at Dynamic Type XXL in the light theme")
     func speakingLightDTXXL() {
         verify(
-            theme: .light, state: .speaking, currentVerse: 9,
+            theme: .vellumLight, state: .speaking, currentVerse: 9,
             name: "speaking_light_dt_xxl", dynamicType: .xxLarge
         )
     }
@@ -65,17 +65,17 @@ struct NarrationTransportSheetSnapshotTests {
         // can't no-op it), and the big play button is still tappable
         // — calling it triggers the `onRestart` callback the screen
         // wires to a fresh Narrate run.
-        verify(theme: .light, state: .idle, currentVerse: 5, name: "idle_light")
+        verify(theme: .vellumLight, state: .idle, currentVerse: 5, name: "idle_light")
     }
 
     @Test("the post-Stop idle state renders in the dark theme")
     func idleDark() {
-        verify(theme: .dark, state: .idle, currentVerse: 5, name: "idle_dark")
+        verify(theme: .vellumDark, state: .idle, currentVerse: 5, name: "idle_dark")
     }
 
     @Test("the post-Stop idle state renders in the sepia theme")
     func idleSepia() {
-        verify(theme: .sepia, state: .idle, currentVerse: 5, name: "idle_sepia")
+        verify(theme: .sepiaLight, state: .idle, currentVerse: 5, name: "idle_sepia")
     }
 
     private func verify(

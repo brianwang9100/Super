@@ -273,9 +273,14 @@ private struct HiddenNavigationBarModifier: ViewModifier {
 public extension SuperTheme {
     static func make(_ id: ChatSettings.ThemeID) -> SuperTheme {
         switch id {
-        case .light: return .make(SuperTheme.Identifier.light)
-        case .dark: return .make(SuperTheme.Identifier.dark)
-        case .sepia: return .make(SuperTheme.Identifier.sepia)
+        case .vellumLight: return .make(SuperTheme.Identifier.vellumLight)
+        case .vellumDark: return .make(SuperTheme.Identifier.vellumDark)
+        case .sepiaLight: return .make(SuperTheme.Identifier.sepiaLight)
+        case .sepiaDark: return .make(SuperTheme.Identifier.sepiaDark)
+        case .scriptoriumLight: return .make(SuperTheme.Identifier.scriptoriumLight)
+        case .scriptoriumDark: return .make(SuperTheme.Identifier.scriptoriumDark)
+        case .slateLight: return .make(SuperTheme.Identifier.slateLight)
+        case .slateDark: return .make(SuperTheme.Identifier.slateDark)
         }
     }
 }

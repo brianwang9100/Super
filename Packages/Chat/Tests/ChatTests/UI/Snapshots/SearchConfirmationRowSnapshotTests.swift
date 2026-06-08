@@ -35,23 +35,23 @@ struct SearchConfirmationRowSnapshotTests {
 
     @Test("awaiting, light")
     func awaitingLight() {
-        verify(status: .awaitingConfirmation, theme: .light, height: 200, name: "search_confirm_awaiting_light")
+        verify(status: .awaitingConfirmation, theme: .vellumLight, height: 200, name: "search_confirm_awaiting_light")
     }
 
     @Test("awaiting, dark")
     func awaitingDark() {
-        verify(status: .awaitingConfirmation, theme: .dark, height: 200, name: "search_confirm_awaiting_dark")
+        verify(status: .awaitingConfirmation, theme: .vellumDark, height: 200, name: "search_confirm_awaiting_dark")
     }
 
     @Test("awaiting, sepia")
     func awaitingSepia() {
-        verify(status: .awaitingConfirmation, theme: .sepia, height: 200, name: "search_confirm_awaiting_sepia")
+        verify(status: .awaitingConfirmation, theme: .sepiaLight, height: 200, name: "search_confirm_awaiting_sepia")
     }
 
     @Test("awaiting, dynamic type XXL")
     func awaitingXXL() {
         verify(
-            status: .awaitingConfirmation, theme: .light, dynamicType: .xxLarge, height: 320,
+            status: .awaitingConfirmation, theme: .vellumLight, dynamicType: .xxLarge, height: 320,
             name: "search_confirm_awaiting_light_xxl"
         )
     }
@@ -63,17 +63,17 @@ struct SearchConfirmationRowSnapshotTests {
 
     @Test("resolved skipped, light")
     func skippedLight() {
-        verify(status: .failed, theme: .light, height: 80, name: "search_confirm_skipped_light")
+        verify(status: .failed, theme: .vellumLight, height: 80, name: "search_confirm_skipped_light")
     }
 
     @Test("resolved skipped, dark")
     func skippedDark() {
-        verify(status: .failed, theme: .dark, height: 80, name: "search_confirm_skipped_dark")
+        verify(status: .failed, theme: .vellumDark, height: 80, name: "search_confirm_skipped_dark")
     }
 
     @Test("resolved skipped, sepia")
     func skippedSepia() {
-        verify(status: .failed, theme: .sepia, height: 80, name: "search_confirm_skipped_sepia")
+        verify(status: .failed, theme: .sepiaLight, height: 80, name: "search_confirm_skipped_sepia")
     }
 
     // The skipped summary is single-line in the steady case; pin it at XXL so
@@ -81,7 +81,7 @@ struct SearchConfirmationRowSnapshotTests {
     @Test("resolved skipped, dynamic type XXL")
     func skippedXXL() {
         verify(
-            status: .failed, theme: .light, dynamicType: .xxLarge, height: 140,
+            status: .failed, theme: .vellumLight, dynamicType: .xxLarge, height: 140,
             name: "search_confirm_skipped_light_xxl"
         )
     }

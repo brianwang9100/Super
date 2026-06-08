@@ -44,51 +44,51 @@ struct ChatOverlaySnapshotTests {
 
     @Test("expanded — light")
     func expandedLight() {
-        verify(state: .expanded, theme: .light, name: "overlay_expanded_light")
+        verify(state: .expanded, theme: .vellumLight, name: "overlay_expanded_light")
     }
 
     @Test("expanded — dark")
     func expandedDark() {
-        verify(state: .expanded, theme: .dark, name: "overlay_expanded_dark")
+        verify(state: .expanded, theme: .vellumDark, name: "overlay_expanded_dark")
     }
 
     @Test("expanded — sepia")
     func expandedSepia() {
-        verify(state: .expanded, theme: .sepia, name: "overlay_expanded_sepia")
+        verify(state: .expanded, theme: .sepiaLight, name: "overlay_expanded_sepia")
     }
 
     // MARK: - Semi-expanded
 
     @Test("semi-expanded — light")
     func semiExpandedLight() {
-        verify(state: .semiExpanded, theme: .light, name: "overlay_semi_expanded_light")
+        verify(state: .semiExpanded, theme: .vellumLight, name: "overlay_semi_expanded_light")
     }
 
     @Test("semi-expanded — dark")
     func semiExpandedDark() {
-        verify(state: .semiExpanded, theme: .dark, name: "overlay_semi_expanded_dark")
+        verify(state: .semiExpanded, theme: .vellumDark, name: "overlay_semi_expanded_dark")
     }
 
     @Test("semi-expanded — sepia")
     func semiExpandedSepia() {
-        verify(state: .semiExpanded, theme: .sepia, name: "overlay_semi_expanded_sepia")
+        verify(state: .semiExpanded, theme: .sepiaLight, name: "overlay_semi_expanded_sepia")
     }
 
     // MARK: - Minimized
 
     @Test("minimized — light")
     func minimizedLight() {
-        verify(state: .minimized, theme: .light, name: "overlay_minimized_light")
+        verify(state: .minimized, theme: .vellumLight, name: "overlay_minimized_light")
     }
 
     @Test("minimized — dark")
     func minimizedDark() {
-        verify(state: .minimized, theme: .dark, name: "overlay_minimized_dark")
+        verify(state: .minimized, theme: .vellumDark, name: "overlay_minimized_dark")
     }
 
     @Test("minimized — sepia")
     func minimizedSepia() {
-        verify(state: .minimized, theme: .sepia, name: "overlay_minimized_sepia")
+        verify(state: .minimized, theme: .sepiaLight, name: "overlay_minimized_sepia")
     }
 
     // MARK: - Mid-drag morph
@@ -115,7 +115,7 @@ struct ChatOverlaySnapshotTests {
             viewModel: viewModel,
             _injectedDragHeight: 240
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: Self.frame.width, height: Self.frame.height)
 
         let failure = verifySnapshot(
@@ -144,17 +144,17 @@ struct ChatOverlaySnapshotTests {
     /// clipping, composer hoist).
     @Test("semi-expanded with the keyboard up — light")
     func semiExpandedKeyboardLight() {
-        verifyKeyboardSemi(theme: .light, name: "overlay_semi_expanded_keyboard_light")
+        verifyKeyboardSemi(theme: .vellumLight, name: "overlay_semi_expanded_keyboard_light")
     }
 
     @Test("semi-expanded with the keyboard up — dark")
     func semiExpandedKeyboardDark() {
-        verifyKeyboardSemi(theme: .dark, name: "overlay_semi_expanded_keyboard_dark")
+        verifyKeyboardSemi(theme: .vellumDark, name: "overlay_semi_expanded_keyboard_dark")
     }
 
     @Test("semi-expanded with the keyboard up — sepia")
     func semiExpandedKeyboardSepia() {
-        verifyKeyboardSemi(theme: .sepia, name: "overlay_semi_expanded_keyboard_sepia")
+        verifyKeyboardSemi(theme: .sepiaLight, name: "overlay_semi_expanded_keyboard_sepia")
     }
 
     private func verifyKeyboardSemi(

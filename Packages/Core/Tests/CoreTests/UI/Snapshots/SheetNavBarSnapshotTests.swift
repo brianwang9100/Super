@@ -42,17 +42,17 @@ struct SheetNavBarSnapshotTests {
 
     @Test("light")
     func light() {
-        verify(theme: .light, name: "navbar_light")
+        verify(theme: .vellumLight, name: "navbar_light")
     }
 
     @Test("dark")
     func dark() {
-        verify(theme: .dark, name: "navbar_dark")
+        verify(theme: .vellumDark, name: "navbar_dark")
     }
 
     @Test("sepia")
     func sepia() {
-        verify(theme: .sepia, name: "navbar_sepia")
+        verify(theme: .sepiaLight, name: "navbar_sepia")
     }
 
     @Test("trailing control keeps the title centered")
@@ -61,7 +61,7 @@ struct SheetNavBarSnapshotTests {
         // the trailing control; the zero-inset `.fitsContent` axis is owned
         // solely by the `fitsContent` test below. One `themeID` local ties the
         // trailing ink and the snapshot theme together so they can't drift.
-        let themeID = SuperTheme.Identifier.light
+        let themeID = SuperTheme.Identifier.vellumLight
         let bar = SheetNavBar(title: "John 3", onClose: {}) {
             Image(systemName: "stop.fill")
                 .font(.system(size: 15, weight: .semibold))
@@ -73,17 +73,17 @@ struct SheetNavBarSnapshotTests {
 
     @Test("subtitle — light")
     func subtitleLight() {
-        verify(subtitleBar(theme: .light), theme: .light, name: "navbar_subtitle_light")
+        verify(subtitleBar(theme: .vellumLight), theme: .vellumLight, name: "navbar_subtitle_light")
     }
 
     @Test("subtitle — dark")
     func subtitleDark() {
-        verify(subtitleBar(theme: .dark), theme: .dark, name: "navbar_subtitle_dark")
+        verify(subtitleBar(theme: .vellumDark), theme: .vellumDark, name: "navbar_subtitle_dark")
     }
 
     @Test("subtitle — sepia")
     func subtitleSepia() {
-        verify(subtitleBar(theme: .sepia), theme: .sepia, name: "navbar_subtitle_sepia")
+        verify(subtitleBar(theme: .sepiaLight), theme: .sepiaLight, name: "navbar_subtitle_sepia")
     }
 
     @Test("subtitle — font scale max grows the title and subtitle together")
@@ -92,7 +92,7 @@ struct SheetNavBarSnapshotTests {
         // the `1.20` maximum grows both. Locks that the caption scales *with*
         // the title (not independently) — the live counterpart to the inert OS
         // Dynamic Type axis the bar deliberately opts out of.
-        let view = chrome(subtitleBar(theme: .light), theme: .light)
+        let view = chrome(subtitleBar(theme: .vellumLight), theme: .vellumLight)
             .superTypography(.make(.serif, fontScale: 1.20))
         record(view, named: "navbar_subtitle_font_scale_max_light", function: #function)
     }
@@ -101,7 +101,7 @@ struct SheetNavBarSnapshotTests {
     func fitsContent() {
         verify(
             SheetNavBar(title: "Translation", sizing: .fitsContent, onClose: {}),
-            theme: .light,
+            theme: .vellumLight,
             name: "navbar_fits_content"
         )
     }
@@ -110,7 +110,7 @@ struct SheetNavBarSnapshotTests {
     func longTitle() {
         verify(
             SheetNavBar(title: "Ecclesiastes 12 · King James Version", onClose: {}),
-            theme: .light,
+            theme: .vellumLight,
             name: "navbar_long_title"
         )
     }
@@ -120,7 +120,7 @@ struct SheetNavBarSnapshotTests {
         let function = #function
         let view = chrome(
             SheetNavBar(title: "John 3", onClose: {}),
-            theme: .light
+            theme: .vellumLight
         )
         .dynamicTypeSize(.xxLarge)
 
@@ -131,17 +131,17 @@ struct SheetNavBarSnapshotTests {
 
     @Test("font scale max — title scales with the slider")
     func fontScaleMax() {
-        verifyFontScaleMax(theme: .light, name: "navbar_font_scale_max_light")
+        verifyFontScaleMax(theme: .vellumLight, name: "navbar_font_scale_max_light")
     }
 
     @Test("font scale max — title scales with the slider (dark)")
     func fontScaleMaxDark() {
-        verifyFontScaleMax(theme: .dark, name: "navbar_font_scale_max_dark")
+        verifyFontScaleMax(theme: .vellumDark, name: "navbar_font_scale_max_dark")
     }
 
     @Test("font scale max — title scales with the slider (sepia)")
     func fontScaleMaxSepia() {
-        verifyFontScaleMax(theme: .sepia, name: "navbar_font_scale_max_sepia")
+        verifyFontScaleMax(theme: .sepiaLight, name: "navbar_font_scale_max_sepia")
     }
 
     // MARK: - Helpers

@@ -18,27 +18,27 @@ struct BibleChapterFooterSnapshotTests {
 
     @Test("both cards render in the light theme")
     func bothLight() {
-        verify(theme: .light, previous: "1 Peter 1", next: "1 Peter 3", name: "both_light")
+        verify(theme: .vellumLight, previous: "1 Peter 1", next: "1 Peter 3", name: "both_light")
     }
 
     @Test("both cards render in the dark theme")
     func bothDark() {
-        verify(theme: .dark, previous: "1 Peter 1", next: "1 Peter 3", name: "both_dark")
+        verify(theme: .vellumDark, previous: "1 Peter 1", next: "1 Peter 3", name: "both_dark")
     }
 
     @Test("both cards render in the sepia theme")
     func bothSepia() {
-        verify(theme: .sepia, previous: "1 Peter 1", next: "1 Peter 3", name: "both_sepia")
+        verify(theme: .sepiaLight, previous: "1 Peter 1", next: "1 Peter 3", name: "both_sepia")
     }
 
     @Test("only the previous card renders at the end of the canon")
     func previousOnly() {
-        verify(theme: .light, previous: "Revelation 21", next: nil, name: "previous_only_light")
+        verify(theme: .vellumLight, previous: "Revelation 21", next: nil, name: "previous_only_light")
     }
 
     @Test("only the next card renders at the start of the canon")
     func nextOnly() {
-        verify(theme: .light, previous: nil, next: "Genesis 2", name: "next_only_light")
+        verify(theme: .vellumLight, previous: nil, next: "Genesis 2", name: "next_only_light")
     }
 
     private func verify(

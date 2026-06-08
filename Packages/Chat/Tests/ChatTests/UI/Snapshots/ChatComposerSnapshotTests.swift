@@ -19,27 +19,27 @@ struct ChatComposerSnapshotTests {
 
     @Test("empty composer in light theme")
     func emptyLight() {
-        verify(text: "", isStreaming: false, theme: .light, name: "composer_empty_light")
+        verify(text: "", isStreaming: false, theme: .vellumLight, name: "composer_empty_light")
     }
 
     @Test("empty composer in dark theme")
     func emptyDark() {
-        verify(text: "", isStreaming: false, theme: .dark, name: "composer_empty_dark")
+        verify(text: "", isStreaming: false, theme: .vellumDark, name: "composer_empty_dark")
     }
 
     @Test("empty composer in sepia theme")
     func emptySepia() {
-        verify(text: "", isStreaming: false, theme: .sepia, name: "composer_empty_sepia")
+        verify(text: "", isStreaming: false, theme: .sepiaLight, name: "composer_empty_sepia")
     }
 
     @Test("typed composer flips to send")
     func typedFlipsToSend() {
-        verify(text: "Hello world", isStreaming: false, theme: .light, name: "composer_typed_light")
+        verify(text: "Hello world", isStreaming: false, theme: .vellumLight, name: "composer_typed_light")
     }
 
     @Test("streaming shows stop")
     func streamingShowsStop() {
-        verify(text: "", isStreaming: true, theme: .light, name: "composer_streaming_light")
+        verify(text: "", isStreaming: true, theme: .vellumLight, name: "composer_streaming_light")
     }
 
     @Test("near-max context fills meter")
@@ -53,7 +53,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 120_000,
             maxTokens: 128_000
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_near_max_light", function: function)
     }
@@ -63,14 +63,14 @@ struct ChatComposerSnapshotTests {
     @Test("recording state in light theme")
     func recordingLight() {
         let function = #function
-        let view = makeComposer(text: "", isRecording: true, theme: .light)
+        let view = makeComposer(text: "", isRecording: true, theme: .vellumLight)
         recordOrCompare(view: view, name: "composer_recording_light", function: function)
     }
 
     @Test("recording state in dark theme")
     func recordingDark() {
         let function = #function
-        let view = makeComposer(text: "", isRecording: true, theme: .dark)
+        let view = makeComposer(text: "", isRecording: true, theme: .vellumDark)
         recordOrCompare(view: view, name: "composer_recording_dark", function: function)
     }
 
@@ -81,7 +81,7 @@ struct ChatComposerSnapshotTests {
         // catches accent-fill regressions on the recording stop button
         // that the light/dark variants would miss. Per Chat CLAUDE.md
         // the per-state matrix is light/dark/sepia × default/Dynamic Type XXL.
-        let view = makeComposer(text: "", isRecording: true, theme: .sepia)
+        let view = makeComposer(text: "", isRecording: true, theme: .sepiaLight)
         recordOrCompare(view: view, name: "composer_recording_sepia", function: function)
     }
 
@@ -92,7 +92,7 @@ struct ChatComposerSnapshotTests {
         // so we route through the composer's `\.chatComposerReduceMotionOverride`
         // shim that defaults to nil and falls back to the system value
         // in production. Lets us pin the no-pulse rendering.
-        let view = makeComposer(text: "", isRecording: true, theme: .light)
+        let view = makeComposer(text: "", isRecording: true, theme: .vellumLight)
             .environment(\.chatComposerReduceMotionOverride, true)
         recordOrCompare(view: view, name: "composer_recording_reduce_motion", function: function)
     }
@@ -100,21 +100,21 @@ struct ChatComposerSnapshotTests {
     @Test("mic button rendered dimmed when on-device recognition is unavailable")
     func micUnavailableLight() {
         let function = #function
-        let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .light)
+        let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .vellumLight)
         recordOrCompare(view: view, name: "composer_mic_unavailable_light", function: function)
     }
 
     @Test("dimmed mic in sepia theme")
     func micUnavailableSepia() {
         let function = #function
-        let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .sepia)
+        let view = makeComposer(text: "", isRecording: false, isMicAvailable: false, theme: .sepiaLight)
         recordOrCompare(view: view, name: "composer_mic_unavailable_sepia", function: function)
     }
 
     @Test("recording state at dynamic type XXL")
     func recordingXXL() {
         let function = #function
-        let view = makeComposer(text: "", isRecording: true, theme: .light)
+        let view = makeComposer(text: "", isRecording: true, theme: .vellumLight)
             .dynamicTypeSize(.xxLarge)
         recordOrCompare(view: view, name: "composer_recording_xxl", function: function)
     }
@@ -153,7 +153,7 @@ struct ChatComposerSnapshotTests {
             maxTokens: 128_000,
             progress: 0
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_pill_light", function: function)
     }
@@ -173,7 +173,7 @@ struct ChatComposerSnapshotTests {
             maxTokens: 128_000,
             progress: 0
         )
-        .superTheme(.make(.dark))
+        .superTheme(.make(.vellumDark))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_pill_dark", function: function)
     }
@@ -193,7 +193,7 @@ struct ChatComposerSnapshotTests {
             maxTokens: 128_000,
             progress: 0
         )
-        .superTheme(.make(.sepia))
+        .superTheme(.make(.sepiaLight))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_pill_sepia", function: function)
     }
@@ -216,7 +216,7 @@ struct ChatComposerSnapshotTests {
             maxTokens: 128_000,
             progress: 0.15
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_mid_morph_light", function: function)
     }
@@ -232,7 +232,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 1_200,
             maxTokens: 128_000
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .dynamicTypeSize(.xxLarge)
         .frame(width: 402)
         recordOrCompare(view: view, name: "composer_typed_light_xxl", function: function)
@@ -255,7 +255,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 1_200,
             maxTokens: 128_000
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
@@ -278,7 +278,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 1_200,
             maxTokens: 128_000
         )
-        .superTheme(.make(.dark))
+        .superTheme(.make(.vellumDark))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
@@ -301,7 +301,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 1_200,
             maxTokens: 128_000
         )
-        .superTheme(.make(.sepia))
+        .superTheme(.make(.sepiaLight))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .frame(width: 402)
@@ -326,7 +326,7 @@ struct ChatComposerSnapshotTests {
             usedTokens: 1_200,
             maxTokens: 128_000
         )
-        .superTheme(.make(.light))
+        .superTheme(.make(.vellumLight))
         .chatAppearance(ChatAppearance(fontScale: 1.20))
         .superTypography(.make(.serif, fontScale: 1.20))
         .dynamicTypeSize(.xxLarge)
@@ -360,7 +360,7 @@ struct ChatComposerSnapshotTests {
         let view = composerWithReferences(
             [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
             text: "What does this mean?",
-            theme: .light
+            theme: .vellumLight
         )
         recordOrCompare(view: view, name: "composer_reference_pill_light", function: function)
     }
@@ -371,7 +371,7 @@ struct ChatComposerSnapshotTests {
         let view = composerWithReferences(
             [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
             text: "What does this mean?",
-            theme: .dark
+            theme: .vellumDark
         )
         recordOrCompare(view: view, name: "composer_reference_pill_dark", function: function)
     }
@@ -384,7 +384,7 @@ struct ChatComposerSnapshotTests {
                 VerseReferencePillModel(id: "r1", label: "John 3:16 (WEB)"),
                 VerseReferencePillModel(id: "r2", label: "Romans 8:28 (WEB)"),
             ],
-            theme: .light
+            theme: .vellumLight
         )
         recordOrCompare(view: view, name: "composer_reference_pills_multiple_light", function: function)
     }
@@ -395,7 +395,7 @@ struct ChatComposerSnapshotTests {
         let view = composerWithReferences(
             [VerseReferencePillModel(id: "r1", label: "John 3:16-17 (WEB)")],
             text: "What does this mean?",
-            theme: .light
+            theme: .vellumLight
         )
         .dynamicTypeSize(.xxLarge)
         recordOrCompare(view: view, name: "composer_reference_pill_light_xxl", function: function)

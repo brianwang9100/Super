@@ -20,7 +20,7 @@ struct MarkdownThemeTests {
         // `.text` itself (only on `.code`), so this should remain nil —
         // asserting that pin keeps a future contributor from accidentally
         // painting the body text against a colored background.
-        let theme = SuperTheme.make(.light).markdownTheme()
+        let theme = SuperTheme.make(.vellumLight).markdownTheme()
         #expect(theme.textBackgroundColor == nil)
     }
 
@@ -30,8 +30,8 @@ struct MarkdownThemeTests {
         // opaque, so we can only verify the builder doesn't crash on
         // each variant. The intent is to flag if a future change makes
         // one of the three themes throw or precondition.
-        _ = SuperTheme.make(.light).markdownTheme()
-        _ = SuperTheme.make(.dark).markdownTheme()
-        _ = SuperTheme.make(.sepia).markdownTheme()
+        _ = SuperTheme.make(.vellumLight).markdownTheme()
+        _ = SuperTheme.make(.vellumDark).markdownTheme()
+        _ = SuperTheme.make(.sepiaLight).markdownTheme()
     }
 }

@@ -39,127 +39,127 @@ struct BibleScreenSnapshotTests {
     @Test("1 Peter 2 renders in the light theme")
     func populatedLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .light, name: "populated_light")
+               theme: .vellumLight, name: "populated_light")
     }
 
     @Test("1 Peter 2 renders in the dark theme")
     func populatedDark() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .dark, name: "populated_dark")
+               theme: .vellumDark, name: "populated_dark")
     }
 
     @Test("1 Peter 2 renders in the sepia theme")
     func populatedSepia() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .sepia, name: "populated_sepia")
+               theme: .sepiaLight, name: "populated_sepia")
     }
 
     @Test("1 Peter 2 renders in the light theme at Dynamic Type XXL")
     func populatedLightXXL() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .light, dynamicType: .xxLarge, name: "populated_light_xxl")
+               theme: .vellumLight, dynamicType: .xxLarge, name: "populated_light_xxl")
     }
 
     @Test("1 Peter 2 renders in the dark theme at Dynamic Type XXL")
     func populatedDarkXXL() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .dark, dynamicType: .xxLarge, name: "populated_dark_xxl")
+               theme: .vellumDark, dynamicType: .xxLarge, name: "populated_dark_xxl")
     }
 
     @Test("1 Peter 2 renders in the sepia theme at Dynamic Type XXL")
     func populatedSepiaXXL() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .sepia, dynamicType: .xxLarge, name: "populated_sepia_xxl")
+               theme: .sepiaLight, dynamicType: .xxLarge, name: "populated_sepia_xxl")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at max in the light theme")
     func populatedFontScaleMaxLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .light, fontScale: 1.2, name: "populated_font_scale_max_light")
+               theme: .vellumLight, fontScale: 1.2, name: "populated_font_scale_max_light")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at max in the dark theme")
     func populatedFontScaleMaxDark() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .dark, fontScale: 1.2, name: "populated_font_scale_max_dark")
+               theme: .vellumDark, fontScale: 1.2, name: "populated_font_scale_max_dark")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at max in the sepia theme")
     func populatedFontScaleMaxSepia() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .sepia, fontScale: 1.2, name: "populated_font_scale_max_sepia")
+               theme: .sepiaLight, fontScale: 1.2, name: "populated_font_scale_max_sepia")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at min in the light theme")
     func populatedFontScaleMinLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .light, fontScale: 0.8, name: "populated_font_scale_min_light")
+               theme: .vellumLight, fontScale: 0.8, name: "populated_font_scale_min_light")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at min in the dark theme")
     func populatedFontScaleMinDark() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .dark, fontScale: 0.8, name: "populated_font_scale_min_dark")
+               theme: .vellumDark, fontScale: 0.8, name: "populated_font_scale_min_dark")
     }
 
     @Test("1 Peter 2 scales with the app font-scale slider at min in the sepia theme")
     func populatedFontScaleMinSepia() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .sepia, fontScale: 0.8, name: "populated_font_scale_min_sepia")
+               theme: .sepiaLight, fontScale: 0.8, name: "populated_font_scale_min_sepia")
     }
 
     @Test("Genesis 1 disables the previous arrow and drops the previous footer card")
     func genesisStart() async throws {
         verify(await screen(at: BiblePosition(bookId: "GEN", chapterNumber: 1)),
-               theme: .light, name: "genesis_start_light")
+               theme: .vellumLight, name: "genesis_start_light")
     }
 
     @Test("Revelation 22 disables the next arrow and drops the next footer card")
     func revelationEnd() async throws {
         verify(await screen(at: BiblePosition(bookId: "REV", chapterNumber: 22)),
-               theme: .light, name: "revelation_end_light")
+               theme: .vellumLight, name: "revelation_end_light")
     }
 
     @Test("the unavailable state renders in the light theme")
     func unavailableLight() async {
-        verify(await unavailableScreen(), theme: .light, name: "unavailable_light")
+        verify(await unavailableScreen(), theme: .vellumLight, name: "unavailable_light")
     }
 
     @Test("the unavailable state renders in the dark theme")
     func unavailableDark() async {
-        verify(await unavailableScreen(), theme: .dark, name: "unavailable_dark")
+        verify(await unavailableScreen(), theme: .vellumDark, name: "unavailable_dark")
     }
 
     @Test("selected verses show the citation pill and the selection underline")
     func selectionActiveLight() async {
-        verify(await selectionScreen(), theme: .light, name: "selection_active_light")
+        verify(await selectionScreen(), theme: .vellumLight, name: "selection_active_light")
     }
 
     @Test("verse selection renders in the dark theme")
     func selectionActiveDark() async {
-        verify(await selectionScreen(), theme: .dark, name: "selection_active_dark")
+        verify(await selectionScreen(), theme: .vellumDark, name: "selection_active_dark")
     }
 
     @Test("verse selection renders in the sepia theme")
     func selectionActiveSepia() async {
-        verify(await selectionScreen(), theme: .sepia, name: "selection_active_sepia")
+        verify(await selectionScreen(), theme: .sepiaLight, name: "selection_active_sepia")
     }
 
     @Test("verse selection renders in the light theme at Dynamic Type XXL")
     func selectionActiveLightXXL() async {
-        verify(await selectionScreen(), theme: .light, dynamicType: .xxLarge,
+        verify(await selectionScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "selection_active_light_xxl")
     }
 
     @Test("verse selection renders in the dark theme at Dynamic Type XXL")
     func selectionActiveDarkXXL() async {
-        verify(await selectionScreen(), theme: .dark, dynamicType: .xxLarge,
+        verify(await selectionScreen(), theme: .vellumDark, dynamicType: .xxLarge,
                name: "selection_active_dark_xxl")
     }
 
     @Test("verse selection renders in the sepia theme at Dynamic Type XXL")
     func selectionActiveSepiaXXL() async {
-        verify(await selectionScreen(), theme: .sepia, dynamicType: .xxLarge,
+        verify(await selectionScreen(), theme: .sepiaLight, dynamicType: .xxLarge,
                name: "selection_active_sepia_xxl")
     }
 
@@ -168,73 +168,73 @@ struct BibleScreenSnapshotTests {
     /// The weight is theme-independent, so one theme locks the behaviour.
     @Test("verse selection underline thins to its 1pt floor at the min font scale")
     func selectionActiveFontScaleMinLight() async {
-        verify(await selectionScreen(), theme: .light, fontScale: 0.8,
+        verify(await selectionScreen(), theme: .vellumLight, fontScale: 0.8,
                name: "selection_active_font_scale_min_light")
     }
 
     @Test("the chat stub raises the coming-soon toast over the reader")
     func chatToastLight() async {
-        verify(await toastScreen(), theme: .light, name: "chat_toast_light")
+        verify(await toastScreen(), theme: .vellumLight, name: "chat_toast_light")
     }
 
     @Test("the chat toast renders in the dark theme")
     func chatToastDark() async {
-        verify(await toastScreen(), theme: .dark, name: "chat_toast_dark")
+        verify(await toastScreen(), theme: .vellumDark, name: "chat_toast_dark")
     }
 
     @Test("the chat toast renders in the sepia theme")
     func chatToastSepia() async {
-        verify(await toastScreen(), theme: .sepia, name: "chat_toast_sepia")
+        verify(await toastScreen(), theme: .sepiaLight, name: "chat_toast_sepia")
     }
 
     @Test("the chat toast renders in the light theme at Dynamic Type XXL")
     func chatToastLightXXL() async {
-        verify(await toastScreen(), theme: .light, dynamicType: .xxLarge,
+        verify(await toastScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "chat_toast_light_xxl")
     }
 
     @Test("the chat toast renders in the dark theme at Dynamic Type XXL")
     func chatToastDarkXXL() async {
-        verify(await toastScreen(), theme: .dark, dynamicType: .xxLarge,
+        verify(await toastScreen(), theme: .vellumDark, dynamicType: .xxLarge,
                name: "chat_toast_dark_xxl")
     }
 
     @Test("the chat toast renders in the sepia theme at Dynamic Type XXL")
     func chatToastSepiaXXL() async {
-        verify(await toastScreen(), theme: .sepia, dynamicType: .xxLarge,
+        verify(await toastScreen(), theme: .sepiaLight, dynamicType: .xxLarge,
                name: "chat_toast_sepia_xxl")
     }
 
     @Test("persisted highlights paint their verses in the light theme")
     func highlightedLight() async throws {
-        verify(try await highlightedScreen(), theme: .light, name: "highlighted_light")
+        verify(try await highlightedScreen(), theme: .vellumLight, name: "highlighted_light")
     }
 
     @Test("persisted highlights render in the dark theme")
     func highlightedDark() async throws {
-        verify(try await highlightedScreen(), theme: .dark, name: "highlighted_dark")
+        verify(try await highlightedScreen(), theme: .vellumDark, name: "highlighted_dark")
     }
 
     @Test("persisted highlights render in the sepia theme")
     func highlightedSepia() async throws {
-        verify(try await highlightedScreen(), theme: .sepia, name: "highlighted_sepia")
+        verify(try await highlightedScreen(), theme: .sepiaLight, name: "highlighted_sepia")
     }
 
     @Test("persisted highlights render in the light theme at Dynamic Type XXL")
     func highlightedLightXXL() async throws {
-        verify(try await highlightedScreen(), theme: .light, dynamicType: .xxLarge,
+        verify(try await highlightedScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "highlighted_light_xxl")
     }
 
     @Test("persisted highlights render in the dark theme at Dynamic Type XXL")
     func highlightedDarkXXL() async throws {
-        verify(try await highlightedScreen(), theme: .dark, dynamicType: .xxLarge,
+        verify(try await highlightedScreen(), theme: .vellumDark, dynamicType: .xxLarge,
                name: "highlighted_dark_xxl")
     }
 
     @Test("persisted highlights render in the sepia theme at Dynamic Type XXL")
     func highlightedSepiaXXL() async throws {
-        verify(try await highlightedScreen(), theme: .sepia, dynamicType: .xxLarge,
+        verify(try await highlightedScreen(), theme: .sepiaLight, dynamicType: .xxLarge,
                name: "highlighted_sepia_xxl")
     }
 
@@ -245,19 +245,19 @@ struct BibleScreenSnapshotTests {
     // word's wash matches. These guard that fix.
     @Test("persisted highlights paint a seamless band at the min font scale (light)")
     func highlightedFontScaleMinLight() async throws {
-        verify(try await highlightedScreen(), theme: .light, fontScale: 0.8,
+        verify(try await highlightedScreen(), theme: .vellumLight, fontScale: 0.8,
                name: "highlighted_font_scale_min_light")
     }
 
     @Test("persisted highlights paint a seamless band at the min font scale (dark)")
     func highlightedFontScaleMinDark() async throws {
-        verify(try await highlightedScreen(), theme: .dark, fontScale: 0.8,
+        verify(try await highlightedScreen(), theme: .vellumDark, fontScale: 0.8,
                name: "highlighted_font_scale_min_dark")
     }
 
     @Test("persisted highlights paint a seamless band at the min font scale (sepia)")
     func highlightedFontScaleMinSepia() async throws {
-        verify(try await highlightedScreen(), theme: .sepia, fontScale: 0.8,
+        verify(try await highlightedScreen(), theme: .sepiaLight, fontScale: 0.8,
                name: "highlighted_font_scale_min_sepia")
     }
 
@@ -265,34 +265,34 @@ struct BibleScreenSnapshotTests {
 
     @Test("scrolling down hides the nav bar for immersive reading (light)")
     func immersiveLight() async {
-        verify(await immersiveScreen(), theme: .light, name: "immersive_light")
+        verify(await immersiveScreen(), theme: .vellumLight, name: "immersive_light")
     }
 
     @Test("the immersive (nav-bar-hidden) state renders in the dark theme")
     func immersiveDark() async {
-        verify(await immersiveScreen(), theme: .dark, name: "immersive_dark")
+        verify(await immersiveScreen(), theme: .vellumDark, name: "immersive_dark")
     }
 
     @Test("the immersive (nav-bar-hidden) state renders in the sepia theme")
     func immersiveSepia() async {
-        verify(await immersiveScreen(), theme: .sepia, name: "immersive_sepia")
+        verify(await immersiveScreen(), theme: .sepiaLight, name: "immersive_sepia")
     }
 
     @Test("the immersive state renders at Dynamic Type XXL (light) — taller bar still clears")
     func immersiveLightXXL() async {
-        verify(await immersiveScreen(), theme: .light, dynamicType: .xxLarge,
+        verify(await immersiveScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "immersive_light_xxl")
     }
 
     @Test("the immersive state renders at Dynamic Type XXL in the dark theme")
     func immersiveDarkXXL() async {
-        verify(await immersiveScreen(), theme: .dark, dynamicType: .xxLarge,
+        verify(await immersiveScreen(), theme: .vellumDark, dynamicType: .xxLarge,
                name: "immersive_dark_xxl")
     }
 
     @Test("the immersive state renders at Dynamic Type XXL in the sepia theme")
     func immersiveSepiaXXL() async {
-        verify(await immersiveScreen(), theme: .sepia, dynamicType: .xxLarge,
+        verify(await immersiveScreen(), theme: .sepiaLight, dynamicType: .xxLarge,
                name: "immersive_sepia_xxl")
     }
 
@@ -316,22 +316,22 @@ struct BibleScreenSnapshotTests {
 
     @Test("annotation bubbles render after the chapter title and after annotated verses")
     func annotatedLight() async throws {
-        verify(try await annotatedScreen(), theme: .light, name: "annotated_light")
+        verify(try await annotatedScreen(), theme: .vellumLight, name: "annotated_light")
     }
 
     @Test("annotation bubbles render in the dark theme")
     func annotatedDark() async throws {
-        verify(try await annotatedScreen(), theme: .dark, name: "annotated_dark")
+        verify(try await annotatedScreen(), theme: .vellumDark, name: "annotated_dark")
     }
 
     @Test("annotation bubbles render in the sepia theme")
     func annotatedSepia() async throws {
-        verify(try await annotatedScreen(), theme: .sepia, name: "annotated_sepia")
+        verify(try await annotatedScreen(), theme: .sepiaLight, name: "annotated_sepia")
     }
 
     @Test("annotation bubbles render at Dynamic Type XXL")
     func annotatedLightXXL() async throws {
-        verify(try await annotatedScreen(), theme: .light, dynamicType: .xxLarge,
+        verify(try await annotatedScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "annotated_light_xxl")
     }
 
@@ -396,39 +396,39 @@ struct BibleScreenSnapshotTests {
     @Test("narration underlines the active verse in the reader (light)")
     func narratingLight() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .light, name: "narrating_light")
+               theme: .vellumLight, name: "narrating_light")
     }
 
     @Test("the active-verse underline renders in the dark theme")
     func narratingDark() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .dark, name: "narrating_dark")
+               theme: .vellumDark, name: "narrating_dark")
     }
 
     @Test("the active-verse underline renders in the sepia theme")
     func narratingSepia() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .sepia, name: "narrating_sepia")
+               theme: .sepiaLight, name: "narrating_sepia")
     }
 
     @Test("the active-verse underline renders at Dynamic Type XXL")
     func narratingLightXXL() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .light, dynamicType: .xxLarge,
+               theme: .vellumLight, dynamicType: .xxLarge,
                name: "narrating_light_xxl")
     }
 
     @Test("the active-verse underline renders at Dynamic Type XXL in the dark theme")
     func narratingDarkXXL() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .dark, dynamicType: .xxLarge,
+               theme: .vellumDark, dynamicType: .xxLarge,
                name: "narrating_dark_xxl")
     }
 
     @Test("the active-verse underline renders at Dynamic Type XXL in the sepia theme")
     func narratingSepiaXXL() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .sepia, dynamicType: .xxLarge,
+               theme: .sepiaLight, dynamicType: .xxLarge,
                name: "narrating_sepia_xxl")
     }
 
@@ -437,7 +437,7 @@ struct BibleScreenSnapshotTests {
     @Test("the active-verse dashed underline thins to its 1pt floor at the min font scale")
     func narratingFontScaleMinLight() async {
         verify(await narratingScreen(currentVerse: 4),
-               theme: .light, fontScale: 0.8,
+               theme: .vellumLight, fontScale: 0.8,
                name: "narrating_font_scale_min_light")
     }
 

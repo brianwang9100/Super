@@ -403,7 +403,7 @@ private struct VerseWord: View {
     private var wordHighlightBand: some View {
         if let highlightColor {
             Rectangle()
-                .fill(highlightColor.verseTint(forDarkPage: theme.id == .dark).color)
+                .fill(highlightColor.verseTint(forDarkPage: theme.isDark).color)
                 .frame(height: highlightBandHeight)
         }
     }

@@ -18,27 +18,27 @@ struct BibleActionSheetSnapshotTests {
 
     @Test("the action sheet renders in the light theme")
     func light() {
-        verify(theme: .light, citation: "1 Peter 2:9", name: "light")
+        verify(theme: .vellumLight, citation: "1 Peter 2:9", name: "light")
     }
 
     @Test("the action sheet renders in the dark theme")
     func dark() {
-        verify(theme: .dark, citation: "1 Peter 2:9", name: "dark")
+        verify(theme: .vellumDark, citation: "1 Peter 2:9", name: "dark")
     }
 
     @Test("the action sheet renders in the sepia theme")
     func sepia() {
-        verify(theme: .sepia, citation: "1 Peter 2:9", name: "sepia")
+        verify(theme: .sepiaLight, citation: "1 Peter 2:9", name: "sepia")
     }
 
     @Test("the action sheet renders a multi-range citation")
     func multiRange() {
-        verify(theme: .light, citation: "1 Peter 2:4-6, 9", name: "multi_range_light")
+        verify(theme: .vellumLight, citation: "1 Peter 2:4-6, 9", name: "multi_range_light")
     }
 
     @Test("the action sheet renders at Dynamic Type XXL")
     func lightXXL() {
-        verify(theme: .light, citation: "1 Peter 2:9", dynamicType: .xxLarge,
+        verify(theme: .vellumLight, citation: "1 Peter 2:9", dynamicType: .xxLarge,
                name: "light_xxl")
     }
 

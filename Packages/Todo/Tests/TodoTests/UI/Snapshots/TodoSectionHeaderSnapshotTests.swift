@@ -13,19 +13,19 @@ struct TodoSectionHeaderSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("light theme") func light() {
-        verify(theme: .light, name: "section_header_light")
+        verify(theme: .vellumLight, name: "section_header_light")
     }
 
     @Test("dark theme") func dark() {
-        verify(theme: .dark, name: "section_header_dark")
+        verify(theme: .vellumDark, name: "section_header_dark")
     }
 
     @Test("sepia theme") func sepia() {
-        verify(theme: .sepia, name: "section_header_sepia")
+        verify(theme: .sepiaLight, name: "section_header_sepia")
     }
 
     @Test("dynamic type XXL") func dynamicTypeXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, name: "section_header_light_xxl")
+        verify(theme: .vellumLight, dynamicType: .xxLarge, name: "section_header_light_xxl")
     }
 
     private func verify(

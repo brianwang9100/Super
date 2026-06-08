@@ -1,13 +1,13 @@
 import Core
 import SwiftUI
 
-/// Appearance pane. Two stacked controls for how the app looks:
-/// a 3-column theme grid (Light / Dark / Sepia) of preview cards, and a
-/// three-stop font-scale slider snapping to 0.80× / 1.00× / 1.20×
-/// (Small / Medium / Large). Spacing (line-spacing, paragraph margin,
-/// bubble paddings) is derived from the slider value inside
-/// `ChatAppearance`, so larger text automatically gets more breathing
-/// room and the pane stays to one knob.
+/// Appearance pane. Two stacked controls for how the app looks: a grouped
+/// theme picker (one section per family — Vellum / Sepia / Scriptorium / Slate
+/// — each with a Light and Dark preview card), and a three-stop font-scale
+/// slider snapping to 0.80× / 1.00× / 1.20× (Small / Medium / Large). Spacing
+/// (line-spacing, paragraph margin, bubble paddings) is derived from the
+/// slider value inside `ChatAppearance`, so larger text automatically gets
+/// more breathing room and the pane stays to one knob.
 struct SettingsAppearancePane: View {
     @Bindable var viewModel: SettingsViewModel
 
@@ -19,20 +19,28 @@ struct SettingsAppearancePane: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
-    private static let order: [ChatSettings.ThemeID] = [.light, .dark, .sepia]
+    private static let families = SuperTheme.Identifier.Family.allCases
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Theme")
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 12)
 
-            themeGrid
-                .padding(.horizontal, 16)
-                .padding(.bottom, 20)
+            ForEach(Self.families, id: \.self) { family in
+                familyLabel(family.displayName)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                themeRow(family: family)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
+            .padding(.bottom, 4)
 
             sectionLabel("Font size")
                 .padding(.horizontal, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 8)
 
             fontScaleCard
@@ -50,29 +58,40 @@ struct SettingsAppearancePane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Theme grid
+    /// Per-family section header (e.g. "Vellum") above its Light/Dark cards.
+    private func familyLabel(_ text: String) -> some View {
+        Text(text)
+            .font(typography.font(.subheadline, weight: .semibold))
+            .foregroundStyle(theme.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-    /// 3-column grid (Light / Dark / Sepia) of preview cards. Each card
-    /// paints a miniature of the target theme and gets a 2pt accent
-    /// border + 3pt accent halo when selected.
-    private var themeGrid: some View {
+    // MARK: - Theme rows
+
+    /// A family's Light + Dark preview cards, side by side. `allCases` is
+    /// ordered light-then-dark per family, so the filter preserves that.
+    private func themeRow(family: SuperTheme.Identifier.Family) -> some View {
+        let variants = SuperTheme.Identifier.allCases.filter { $0.family == family }
         let columns = [
-            GridItem(.flexible(), spacing: 10),
             GridItem(.flexible(), spacing: 10),
             GridItem(.flexible(), spacing: 10),
         ]
         return LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(Self.order, id: \.self) { id in
-                themeCard(id: id, palette: SuperTheme.make(id))
+            ForEach(variants, id: \.self) { variant in
+                themeCard(variant: variant, palette: SuperTheme.make(variant))
             }
         }
     }
 
-    private func themeCard(id: ChatSettings.ThemeID, palette: SuperTheme) -> some View {
-        let isSelected = viewModel.settings.themeId == id
+    private func themeCard(variant: SuperTheme.Identifier, palette: SuperTheme) -> some View {
+        // `ThemeID` and `SuperTheme.Identifier` share rawValues, so we bridge
+        // by rawValue for selection state and the persisted write.
+        let isSelected = viewModel.settings.themeId.rawValue == variant.rawValue
+        let label = variant.modeName
 
         return Button(action: {
-            Task { await viewModel.setTheme(id) }
+            guard let themeId = ChatSettings.ThemeID(rawValue: variant.rawValue) else { return }
+            Task { await viewModel.setTheme(themeId) }
         }) {
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
@@ -107,7 +126,7 @@ struct SettingsAppearancePane: View {
                 }
 
                 HStack(spacing: 6) {
-                    Text(palette.displayName)
+                    Text(label)
                         .font(typography.font(.footnote, weight: .medium))
                         .foregroundStyle(theme.ink)
                     Spacer(minLength: 0)
@@ -139,7 +158,7 @@ struct SettingsAppearancePane: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(palette.displayName)
+        .accessibilityLabel("\(palette.displayName) \(label)")
         .accessibilityValue(isSelected ? "Selected" : "")
     }
 

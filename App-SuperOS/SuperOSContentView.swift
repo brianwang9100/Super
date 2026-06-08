@@ -21,7 +21,7 @@ struct SuperOSContentView: View {
             case .loading:
                 // Pin Light: matches the Info.plist SplashBackground colorset.
                 SplashView()
-                    .superTheme(.make(.light))
+                    .superTheme(.make(.vellumLight))
                     .transition(.opacity)
             case .failed(let message):
                 FailureScreen(message: message)

@@ -43,47 +43,47 @@ struct ChatScreenSnapshotTests {
 
     @Test("empty state in light theme")
     func emptyLight() {
-        verifyEmpty(theme: .light, name: "screen_empty_light")
+        verifyEmpty(theme: .vellumLight, name: "screen_empty_light")
     }
 
     @Test("empty state in dark theme")
     func emptyDark() {
-        verifyEmpty(theme: .dark, name: "screen_empty_dark")
+        verifyEmpty(theme: .vellumDark, name: "screen_empty_dark")
     }
 
     @Test("empty state in sepia theme")
     func emptySepia() {
-        verifyEmpty(theme: .sepia, name: "screen_empty_sepia")
+        verifyEmpty(theme: .sepiaLight, name: "screen_empty_sepia")
     }
 
     @Test("populated transcript in light theme")
     func populatedLight() {
-        verifyPopulated(theme: .light, name: "screen_populated_light")
+        verifyPopulated(theme: .vellumLight, name: "screen_populated_light")
     }
 
     @Test("populated transcript in dark theme")
     func populatedDark() {
-        verifyPopulated(theme: .dark, name: "screen_populated_dark")
+        verifyPopulated(theme: .vellumDark, name: "screen_populated_dark")
     }
 
     @Test("populated transcript in sepia theme")
     func populatedSepia() {
-        verifyPopulated(theme: .sepia, name: "screen_populated_sepia")
+        verifyPopulated(theme: .sepiaLight, name: "screen_populated_sepia")
     }
 
     @Test("no-model error banner over empty state, light")
     func noModelErrorLight() {
-        verifyNoModelError(theme: .light, name: "screen_no_model_error_light")
+        verifyNoModelError(theme: .vellumLight, name: "screen_no_model_error_light")
     }
 
     @Test("no-model error banner over empty state, dark")
     func noModelErrorDark() {
-        verifyNoModelError(theme: .dark, name: "screen_no_model_error_dark")
+        verifyNoModelError(theme: .vellumDark, name: "screen_no_model_error_dark")
     }
 
     @Test("no-model error banner over empty state, sepia")
     func noModelErrorSepia() {
-        verifyNoModelError(theme: .sepia, name: "screen_no_model_error_sepia")
+        verifyNoModelError(theme: .sepiaLight, name: "screen_no_model_error_sepia")
     }
 
     @Test("no-model error banner over empty state at dynamic type XXL")
@@ -106,7 +106,7 @@ struct ChatScreenSnapshotTests {
         viewModel.send("hi")
 
         let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
         recordOrCompareWithFontTolerance(view: view, name: "screen_no_model_error_empty_xxl", function: function)
@@ -114,17 +114,17 @@ struct ChatScreenSnapshotTests {
 
     @Test("no-model error banner over populated transcript, light")
     func noModelErrorPopulatedLight() {
-        verifyNoModelErrorPopulated(theme: .light, name: "screen_no_model_error_populated_light")
+        verifyNoModelErrorPopulated(theme: .vellumLight, name: "screen_no_model_error_populated_light")
     }
 
     @Test("no-model error banner over populated transcript, dark")
     func noModelErrorPopulatedDark() {
-        verifyNoModelErrorPopulated(theme: .dark, name: "screen_no_model_error_populated_dark")
+        verifyNoModelErrorPopulated(theme: .vellumDark, name: "screen_no_model_error_populated_dark")
     }
 
     @Test("no-model error banner over populated transcript, sepia")
     func noModelErrorPopulatedSepia() {
-        verifyNoModelErrorPopulated(theme: .sepia, name: "screen_no_model_error_populated_sepia")
+        verifyNoModelErrorPopulated(theme: .sepiaLight, name: "screen_no_model_error_populated_sepia")
     }
 
     // The populated-transcript + no-model-error state at Dynamic Type
@@ -222,7 +222,7 @@ struct ChatScreenSnapshotTests {
         )
 
         let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
         recordOrCompare(view: view, name: "screen_populated_light_xxl", function: function)

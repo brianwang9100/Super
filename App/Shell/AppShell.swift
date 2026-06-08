@@ -82,7 +82,7 @@ struct AppShell: View {
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
-    @State private var theme: SuperTheme = .make(.light)
+    @State private var theme: SuperTheme = .make(.vellumLight)
     @State private var appearance: ChatAppearance = .default
     /// Active typography (brand serif faces + folded-in font scale).
     /// Rebuilt alongside `theme`/`appearance` from settings at load and on
@@ -1200,7 +1200,7 @@ private struct ChatLayer: View {
                 // user settings load, so the fallback during the brief
                 // pre-ensureViewModel window doesn't flash a wrong theme.
                 SplashView()
-                    .superTheme(.make(.light))
+                    .superTheme(.make(.vellumLight))
                     .transition(.opacity)
             }
         }

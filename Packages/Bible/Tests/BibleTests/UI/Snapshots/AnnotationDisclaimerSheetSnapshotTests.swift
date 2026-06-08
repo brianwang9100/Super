@@ -19,22 +19,22 @@ struct AnnotationDisclaimerSheetSnapshotTests {
 
     @Test("disclaimer renders in the light theme")
     func light() {
-        verify(theme: .light, name: "light")
+        verify(theme: .vellumLight, name: "light")
     }
 
     @Test("disclaimer renders in the dark theme")
     func dark() {
-        verify(theme: .dark, name: "dark")
+        verify(theme: .vellumDark, name: "dark")
     }
 
     @Test("disclaimer renders in the sepia theme")
     func sepia() {
-        verify(theme: .sepia, name: "sepia")
+        verify(theme: .sepiaLight, name: "sepia")
     }
 
     @Test("disclaimer renders at Dynamic Type XXL")
     func lightXXL() {
-        verify(theme: .light, dynamicType: .xxLarge, height: 480, name: "light_xxl")
+        verify(theme: .vellumLight, dynamicType: .xxLarge, height: 480, name: "light_xxl")
     }
 
     private func verify(

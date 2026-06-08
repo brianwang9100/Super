@@ -28,7 +28,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("text card renders in the light theme")
     func textLight() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             title: "Author",
             content: .text(Self.shortBody),
             name: "text_light"
@@ -38,7 +38,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("text card renders in the dark theme")
     func textDark() {
         verify(
-            theme: .dark,
+            theme: .vellumDark,
             title: "Author",
             content: .text(Self.shortBody),
             name: "text_dark"
@@ -48,7 +48,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("text card renders in the sepia theme")
     func textSepia() {
         verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             title: "Author",
             content: .text(Self.shortBody),
             name: "text_sepia"
@@ -62,7 +62,7 @@ struct AnnotationBlockSnapshotTests {
             verseStart: 14, verseEnd: 14
         )
         verify(
-            theme: .light,
+            theme: .vellumLight,
             category: .reference,
             title: "Cross-reference",
             content: .reference(label: "John 1:14", target: target),
@@ -77,7 +77,7 @@ struct AnnotationBlockSnapshotTests {
             verseStart: 14, verseEnd: 14
         )
         verify(
-            theme: .dark,
+            theme: .vellumDark,
             category: .reference,
             title: "Cross-reference",
             content: .reference(label: "John 1:14", target: target),
@@ -92,7 +92,7 @@ struct AnnotationBlockSnapshotTests {
             verseStart: 14, verseEnd: 14
         )
         verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             category: .reference,
             title: "Cross-reference",
             content: .reference(label: "John 1:14", target: target),
@@ -103,7 +103,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("reference card with parse failure falls back to plain text")
     func referenceUnparsedLight() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             category: .reference,
             title: "Parse failed",
             content: .reference(label: "John 14, verse twelve", target: nil),
@@ -114,7 +114,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("reference parse-failure fallback renders in dark")
     func referenceUnparsedDark() {
         verify(
-            theme: .dark,
+            theme: .vellumDark,
             category: .reference,
             title: "Parse failed",
             content: .reference(label: "John 14, verse twelve", target: nil),
@@ -125,7 +125,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("reference parse-failure fallback renders in sepia")
     func referenceUnparsedSepia() {
         verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             category: .reference,
             title: "Parse failed",
             content: .reference(label: "John 14, verse twelve", target: nil),
@@ -136,7 +136,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("long body wraps without truncation")
     func longBodyLight() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             category: .clarification,
             title: "Reformed reading",
             content: .text(Self.longBody),
@@ -148,7 +148,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("long body wraps in the dark theme")
     func longBodyDark() {
         verify(
-            theme: .dark,
+            theme: .vellumDark,
             category: .clarification,
             title: "Reformed reading",
             content: .text(Self.longBody),
@@ -160,7 +160,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("long body wraps in the sepia theme")
     func longBodySepia() {
         verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             category: .clarification,
             title: "Reformed reading",
             content: .text(Self.longBody),
@@ -172,7 +172,7 @@ struct AnnotationBlockSnapshotTests {
     @Test("long body renders at Dynamic Type XXL")
     func longBodyLightXXL() {
         verify(
-            theme: .light,
+            theme: .vellumLight,
             category: .clarification,
             title: "Reformed reading",
             content: .text(Self.longBody),

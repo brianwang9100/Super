@@ -46,52 +46,52 @@ struct NoteListSheetSnapshotTests {
 
     @Test("empty list renders the hero in the light theme")
     func emptyLight() {
-        verify(theme: .light, items: [], name: "empty_light")
+        verify(theme: .vellumLight, items: [], name: "empty_light")
     }
 
     @Test("empty list renders the hero in the dark theme")
     func emptyDark() {
-        verify(theme: .dark, items: [], name: "empty_dark")
+        verify(theme: .vellumDark, items: [], name: "empty_dark")
     }
 
     @Test("empty list renders the hero in the sepia theme")
     func emptySepia() {
-        verify(theme: .sepia, items: [], name: "empty_sepia")
+        verify(theme: .sepiaLight, items: [], name: "empty_sepia")
     }
 
     @Test("a single note renders the singular subtitle")
     func oneLight() {
-        verify(theme: .light, items: [Self.many[1]], name: "one_light")
+        verify(theme: .vellumLight, items: [Self.many[1]], name: "one_light")
     }
 
     @Test("a single note renders the singular subtitle in the dark theme")
     func oneDark() {
-        verify(theme: .dark, items: [Self.many[1]], name: "one_dark")
+        verify(theme: .vellumDark, items: [Self.many[1]], name: "one_dark")
     }
 
     @Test("a single note renders the singular subtitle in the sepia theme")
     func oneSepia() {
-        verify(theme: .sepia, items: [Self.many[1]], name: "one_sepia")
+        verify(theme: .sepiaLight, items: [Self.many[1]], name: "one_sepia")
     }
 
     @Test("many notes scroll in the light theme")
     func manyLight() {
-        verify(theme: .light, items: Self.many, name: "many_light")
+        verify(theme: .vellumLight, items: Self.many, name: "many_light")
     }
 
     @Test("many notes scroll in the dark theme")
     func manyDark() {
-        verify(theme: .dark, items: Self.many, name: "many_dark")
+        verify(theme: .vellumDark, items: Self.many, name: "many_dark")
     }
 
     @Test("many notes scroll in the sepia theme")
     func manySepia() {
-        verify(theme: .sepia, items: Self.many, name: "many_sepia")
+        verify(theme: .sepiaLight, items: Self.many, name: "many_sepia")
     }
 
     @Test("many notes hold shape at Dynamic Type XXL")
     func manyLightXXL() {
-        verify(theme: .light, items: Self.many, dynamicType: .xxLarge, name: "many_light_xxl")
+        verify(theme: .vellumLight, items: Self.many, dynamicType: .xxLarge, name: "many_light_xxl")
     }
 
     private func verify(
