@@ -54,6 +54,10 @@ struct BibleParagraphBlock: View {
     let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    /// Verse-body base point — matches `VerseWord.verseBodySize` so the line
+    /// gap scales on the same two axes (OS Dynamic Type via the metric, the app
+    /// slider via `typography.fontScale`) as the words it spaces.
+    @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = 17
     @ScaledMetric(relativeTo: .body) private var trailingBubbleSize: CGFloat = 18
     /// Section-heading base point, declared via `@ScaledMetric` so the heading
     /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
@@ -81,7 +85,7 @@ struct BibleParagraphBlock: View {
                 isPoetry: false
             )
         case .poetry(let verses):
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: readingLineSpacing) {
                 let lines = VerseTokenizer.poetryLines(
                     verses,
                     numberedEarlier: numberedEarlier,
@@ -96,6 +100,14 @@ struct BibleParagraphBlock: View {
         }
     }
 
+    /// Gap between wrapped prose lines and between poetry lines, scaled the
+    /// same two axes as the body words it spaces — `verseBodySize` folds in OS
+    /// Dynamic Type, `fontScale` folds in the app slider — so the gap grows
+    /// with the text instead of staying pinned at the historical 5pt.
+    private var readingLineSpacing: CGFloat {
+        BibleReadingMetrics.lineSpacing(bodySize: verseBodySize, fontScale: typography.fontScale)
+    }
+
     private func flow(_ tokens: [VerseWordToken], isPoetry: Bool) -> some View {
         // Interleave verse words with trailing annotation bubbles as a flat
         // list of `FlowItem`s, then `ForEach` over the items so each one is
@@ -104,7 +116,7 @@ struct BibleParagraphBlock: View {
         // tap targets and line-wrap; this projection keeps every item as
         // its own placement candidate.
         let items = flowItems(tokens)
-        return VerseFlowLayout {
+        return VerseFlowLayout(lineSpacing: readingLineSpacing) {
             ForEach(items.indices, id: \.self) { index in
                 flowCell(items[index], isPoetry: isPoetry)
             }
