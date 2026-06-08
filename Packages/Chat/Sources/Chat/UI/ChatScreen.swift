@@ -538,6 +538,15 @@ public struct ChatScreen: View {
                 dismissKeyboard()
             }
         }
+        // A send (or retry) starts a turn — `send()` flips `isStreaming`
+        // true synchronously once its guards pass. Tear the keyboard down
+        // so it doesn't stay wedged over the transcript after the message
+        // goes out. Reuses the same `dismissKeyboard()` the drag-collapse
+        // and transcript-tap paths use; a harmless no-op for the
+        // re-attach/retry flows where the composer isn't focused.
+        .onChange(of: viewModel.isStreaming) { _, isStreaming in
+            if isStreaming { dismissKeyboard() }
+        }
         // A verse added from Bible while this screen is already on-screen
         // grows the inbox; adopt it without waiting for a remount.
         .onChange(of: viewModel.inboxPendingCount) { _, _ in
