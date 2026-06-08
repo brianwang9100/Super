@@ -429,9 +429,17 @@ private struct VerseWord: View {
     /// once. A trailing space is baked in so the word's cell — and the
     /// `underlineRule` drawn under it — extends to meet the next word.
     private var styledText: Text {
-        let wordFont = typography.font(size: verseBodySize)
+        // Verse body is the roman reading face (EB Garamond Regular under the
+        // serif identity, system serif under system). Poetry uses the true
+        // italic brand face (EB Garamond Italic) rather than a synthesized
+        // slant. Both are sized off `verseBodySize` (already `@ScaledMetric`
+        // for OS Dynamic Type) with `relativeTo: nil` so the scale isn't
+        // applied twice; `fontScale` is folded in by the accessors. Verse
+        // numbers stay system-sans below.
+        let wordFont = typography.reading(verseBodySize, relativeTo: nil)
+        let poetryFont = typography.display(verseBodySize, relativeTo: nil)
         var word = AttributedString(token.word + " ")
-        word.font = isPoetry ? wordFont.italic() : wordFont
+        word.font = isPoetry ? poetryFont : wordFont
         word.foregroundColor = theme.ink
         guard token.showsVerseNumber else { return Text(word) }
         // Raise the marker proportionally to its resolved point size so it sits
