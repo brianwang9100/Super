@@ -148,11 +148,8 @@ func overlayDragProjection(velocityY: CGFloat, decelerationRate: CGFloat = 0.998
 /// sits under the touch. Factored out of the UIKit walk so it's unit-tested on
 /// macOS without a `UIView` hierarchy.
 ///
-/// "Full-window backdrop" is a frame that spans the window **top-to-bottom**
-/// (origin at the top, extending to the bottom edge). The chat transcript is
-/// always inset below the surface chrome (handle/header) so its frame starts
-/// below the top — it is never excluded, even when it reaches the bottom edge.
-/// The 1-point epsilons absorb sub-point safe-area rounding on the backdrop.
+/// See ``coversWindowVertically(_:windowHeight:)`` for what "full-window
+/// backdrop" means and why the inset transcript is never one.
 func frontmostInsetScrollIndex(
     frames: [CGRect],
     containing point: CGPoint,
@@ -162,10 +159,26 @@ func frontmostInsetScrollIndex(
     // that's the frontmost match (the transcript composited over the backdrop).
     for index in frames.indices.reversed() {
         let frame = frames[index]
-        let coversWindow = frame.minY <= 1 && frame.maxY >= windowHeight - 1
-        if !coversWindow, frame.contains(point) { return index }
+        if !coversWindowVertically(frame, windowHeight: windowHeight),
+           frame.contains(point) {
+            return index
+        }
     }
     return nil
+}
+
+/// Whether `frame` (window coordinates) spans the window **top-to-bottom** —
+/// origin at the top, extending to the bottom edge. That's the signature of the
+/// full-window backdrop applet behind the chat overlay; the chat transcript is
+/// always inset below the surface chrome (handle/header), so its frame starts
+/// below the top and is never "full-window" even when it reaches the bottom.
+/// The 1-point epsilons absorb sub-point safe-area rounding on the backdrop.
+///
+/// Used to keep the content-drag locator off the backdrop on **both** paths:
+/// the hit-test result (a touch on a transparent empty-state gap passes through
+/// to the backdrop) and the geometric fallback.
+func coversWindowVertically(_ frame: CGRect, windowHeight: CGFloat) -> Bool {
+    frame.minY <= 1 && frame.maxY >= windowHeight - 1
 }
 
 extension View {
@@ -475,14 +488,25 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         ///
         /// Returns `nil` for the empty state (no inset scroll view under the
         /// touch), which the caller reads as "not scrollable" and drives
-        /// immediately.
+        /// immediately — so dragging the empty chat always resizes it, never
+        /// arms from the backdrop the hit-test may have passed through to.
         static func transcriptScrollView(in view: UIView, at location: CGPoint) -> UIScrollView? {
-            if let hit = view.hitTest(location, with: nil),
-               let enclosing = enclosingScrollView(of: hit) {
-                return enclosing
-            }
             let point = view.convert(location, to: nil)
             let windowHeight = view.convert(view.bounds, to: nil).height
+            // 1. Hit-test the frontmost view under the finger. Accept its
+            //    enclosing scroll view only if it's the inset transcript — *not*
+            //    the full-window backdrop. In the empty state the touch can fall
+            //    on a transparent gap and hit-test straight through to the
+            //    backdrop's scroll view; returning that would arm the resize
+            //    from the backdrop's scroll position (the reported flakiness),
+            //    so drop it and let the fallback resolve to nil instead.
+            if let hit = view.hitTest(location, with: nil),
+               let enclosing = enclosingScrollView(of: hit) {
+                let frame = enclosing.superview?.convert(enclosing.frame, to: nil) ?? enclosing.frame
+                if !coversWindowVertically(frame, windowHeight: windowHeight) {
+                    return enclosing
+                }
+            }
             // Collect every scroll view in back-to-front (subview) order with
             // its window frame, then let the pure picker choose the frontmost
             // inset one containing the touch (never the full-window backdrop).
