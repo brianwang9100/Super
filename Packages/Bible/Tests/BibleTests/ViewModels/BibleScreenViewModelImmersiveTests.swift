@@ -84,6 +84,27 @@ struct BibleScreenViewModelImmersiveTests {
         #expect(viewModel.isImmersive == false)
     }
 
+    @Test("a small downward jitter past the gate does not hide")
+    func smallDownwardJitterKeepsChrome() {
+        let viewModel = makeViewModel()
+        seed(viewModel, at: 200)
+        // +8pt — past the min-offset gate but below the hide threshold.
+        viewModel.updateScroll(offsetY: 208, userDriven: true)
+        #expect(viewModel.isImmersive == false)
+    }
+
+    @Test("re-hides after a reveal — the accumulator resets on each reversal")
+    func reHideAfterReveal() {
+        let viewModel = makeViewModel()
+        seed(viewModel, at: 200)
+        viewModel.updateScroll(offsetY: 240, userDriven: true) // down → hide
+        #expect(viewModel.isImmersive == true)
+        viewModel.updateScroll(offsetY: 200, userDriven: true) // up → reveal
+        #expect(viewModel.isImmersive == false)
+        viewModel.updateScroll(offsetY: 240, userDriven: true) // down again → re-hide
+        #expect(viewModel.isImmersive == true)
+    }
+
     @Test("programmatic (non-user) scroll never flips immersive")
     func programmaticScrollIgnored() {
         let viewModel = makeViewModel()

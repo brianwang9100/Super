@@ -340,6 +340,13 @@ public struct BibleScreen: View {
     /// full screen in immersive mode. A no-op without a bus (previews /
     /// isolated tests); the shell only complies while the chat is a pill and
     /// otherwise leaves its chrome put.
+    ///
+    /// Each call is an independent unstructured `Task`, so two flips in quick
+    /// succession have no delivery-order guarantee. That's acceptable here: the
+    /// reducer's hysteresis debounces flips to roughly one per scroll-direction
+    /// change, and an out-of-order pair self-heals on the next user-driven
+    /// scroll sample (or the shell's applet-switch / chat-state reset). It only
+    /// ever lands on a *stale* boolean, never a wrong one.
     private func publishChromeVisibility(_ visible: Bool) {
         guard let eventBus else { return }
         Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }

@@ -255,6 +255,24 @@ struct BibleScreenSnapshotTests {
         verify(await immersiveScreen(), theme: .sepia, name: "immersive_sepia")
     }
 
+    @Test("the immersive state renders at Dynamic Type XXL (light) — taller bar still clears")
+    func immersiveLightXXL() async {
+        verify(await immersiveScreen(), theme: .light, dynamicType: .xxLarge,
+               name: "immersive_light_xxl")
+    }
+
+    @Test("the immersive state renders at Dynamic Type XXL in the dark theme")
+    func immersiveDarkXXL() async {
+        verify(await immersiveScreen(), theme: .dark, dynamicType: .xxLarge,
+               name: "immersive_dark_xxl")
+    }
+
+    @Test("the immersive state renders at Dynamic Type XXL in the sepia theme")
+    func immersiveSepiaXXL() async {
+        verify(await immersiveScreen(), theme: .sepia, dynamicType: .xxLarge,
+               name: "immersive_sepia_xxl")
+    }
+
     /// A `BibleScreen` on 1 Peter 2 driven into immersive mode: a user-driven
     /// downward scroll run past the hide gate flips `isImmersive`, sliding the
     /// nav bar up off screen and fading it out. The reader itself still renders
