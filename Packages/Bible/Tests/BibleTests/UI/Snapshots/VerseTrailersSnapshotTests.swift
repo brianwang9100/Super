@@ -17,47 +17,47 @@ struct VerseTrailersSnapshotTests {
 
     @Test("annotation + note co-trail in stable order, light")
     func bothLight() {
-        verify(theme: .light, hasAnnotation: true, hasNote: true, name: "both_light")
+        verify(theme: .vellumLight, hasAnnotation: true, hasNote: true, name: "both_light")
     }
 
     @Test("annotation + note co-trail in stable order, dark")
     func bothDark() {
-        verify(theme: .dark, hasAnnotation: true, hasNote: true, name: "both_dark")
+        verify(theme: .vellumDark, hasAnnotation: true, hasNote: true, name: "both_dark")
     }
 
     @Test("annotation + note co-trail in stable order, sepia")
     func bothSepia() {
-        verify(theme: .sepia, hasAnnotation: true, hasNote: true, name: "both_sepia")
+        verify(theme: .sepiaLight, hasAnnotation: true, hasNote: true, name: "both_sepia")
     }
 
     @Test("note glyph alone collapses the annotation slot")
     func noteOnlyLight() {
-        verify(theme: .light, hasAnnotation: false, hasNote: true, name: "note_only_light")
+        verify(theme: .vellumLight, hasAnnotation: false, hasNote: true, name: "note_only_light")
     }
 
     @Test("note glyph alone collapses the annotation slot, dark")
     func noteOnlyDark() {
-        verify(theme: .dark, hasAnnotation: false, hasNote: true, name: "note_only_dark")
+        verify(theme: .vellumDark, hasAnnotation: false, hasNote: true, name: "note_only_dark")
     }
 
     @Test("note glyph alone collapses the annotation slot, sepia")
     func noteOnlySepia() {
-        verify(theme: .sepia, hasAnnotation: false, hasNote: true, name: "note_only_sepia")
+        verify(theme: .sepiaLight, hasAnnotation: false, hasNote: true, name: "note_only_sepia")
     }
 
     @Test("annotation bubble alone collapses the note slot")
     func annotationOnlyLight() {
-        verify(theme: .light, hasAnnotation: true, hasNote: false, name: "annotation_only_light")
+        verify(theme: .vellumLight, hasAnnotation: true, hasNote: false, name: "annotation_only_light")
     }
 
     @Test("annotation bubble alone collapses the note slot, dark")
     func annotationOnlyDark() {
-        verify(theme: .dark, hasAnnotation: true, hasNote: false, name: "annotation_only_dark")
+        verify(theme: .vellumDark, hasAnnotation: true, hasNote: false, name: "annotation_only_dark")
     }
 
     @Test("annotation bubble alone collapses the note slot, sepia")
     func annotationOnlySepia() {
-        verify(theme: .sepia, hasAnnotation: true, hasNote: false, name: "annotation_only_sepia")
+        verify(theme: .sepiaLight, hasAnnotation: true, hasNote: false, name: "annotation_only_sepia")
     }
 
     private func verify(

@@ -44,7 +44,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowIdleLight() {
         verify(
             isStreaming: false,
-            theme: .light,
+            theme: .vellumLight,
             name: "assistant_actions_idle_light"
         )
     }
@@ -53,7 +53,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowIdleDark() {
         verify(
             isStreaming: false,
-            theme: .dark,
+            theme: .vellumDark,
             name: "assistant_actions_idle_dark"
         )
     }
@@ -62,7 +62,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowStreamingLight() {
         verify(
             isStreaming: true,
-            theme: .light,
+            theme: .vellumLight,
             name: "assistant_actions_streaming_light"
         )
     }
@@ -71,7 +71,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowStreamingDark() {
         verify(
             isStreaming: true,
-            theme: .dark,
+            theme: .vellumDark,
             name: "assistant_actions_streaming_dark"
         )
     }
@@ -80,7 +80,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowIdleSepia() {
         verify(
             isStreaming: false,
-            theme: .sepia,
+            theme: .sepiaLight,
             name: "assistant_actions_idle_sepia"
         )
     }
@@ -89,7 +89,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowStreamingSepia() {
         verify(
             isStreaming: true,
-            theme: .sepia,
+            theme: .sepiaLight,
             name: "assistant_actions_streaming_sepia"
         )
     }
@@ -98,7 +98,7 @@ struct AssistantMessageSnapshotTests {
     func actionRowStreamingXXL() {
         verify(
             isStreaming: true,
-            theme: .light,
+            theme: .vellumLight,
             dynamicType: .xxLarge,
             name: "assistant_actions_streaming_light_xxl"
         )
@@ -106,17 +106,17 @@ struct AssistantMessageSnapshotTests {
 
     @Test("grounded answer with the sources pill below the text (light)")
     func withSourcesLight() {
-        verify(isStreaming: false, theme: .light, sources: Self.sampleSources, name: "assistant_with_sources_light")
+        verify(isStreaming: false, theme: .vellumLight, sources: Self.sampleSources, name: "assistant_with_sources_light")
     }
 
     @Test("grounded answer with the sources pill below the text (dark)")
     func withSourcesDark() {
-        verify(isStreaming: false, theme: .dark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
+        verify(isStreaming: false, theme: .vellumDark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
     }
 
     @Test("grounded answer with the sources pill below the text (sepia)")
     func withSourcesSepia() {
-        verify(isStreaming: false, theme: .sepia, sources: Self.sampleSources, name: "assistant_with_sources_sepia")
+        verify(isStreaming: false, theme: .sepiaLight, sources: Self.sampleSources, name: "assistant_with_sources_sepia")
     }
 
     @Test("grounded answer with the sources pill, Dynamic Type XXL")
@@ -128,7 +128,7 @@ struct AssistantMessageSnapshotTests {
         // antialiasing drift the default exact compare flags (a structural
         // regression > ~3% perceptual still fails). See AGENTS.md §Testing 5.
         verify(
-            isStreaming: false, theme: .light, dynamicType: .xxLarge,
+            isStreaming: false, theme: .vellumLight, dynamicType: .xxLarge,
             sources: Self.sampleSources, precision: 0.99, perceptualPrecision: 0.97,
             name: "assistant_with_sources_light_xxl"
         )

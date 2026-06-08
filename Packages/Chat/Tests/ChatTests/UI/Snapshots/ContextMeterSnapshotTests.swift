@@ -14,24 +14,24 @@ struct ContextMeterSnapshotTests {
 
     @Test("empty meter")
     func empty() {
-        verify(used: 0, max: 32_000, theme: .light, name: "meter_empty_light")
+        verify(used: 0, max: 32_000, theme: .vellumLight, name: "meter_empty_light")
     }
 
     @Test("half full")
     func halfFull() {
-        verify(used: 16_000, max: 32_000, theme: .dark, name: "meter_half_dark")
+        verify(used: 16_000, max: 32_000, theme: .vellumDark, name: "meter_half_dark")
     }
 
     @Test("over budget")
     func overBudget() {
-        verify(used: 40_000, max: 32_000, theme: .sepia, name: "meter_over_sepia")
+        verify(used: 40_000, max: 32_000, theme: .sepiaLight, name: "meter_over_sepia")
     }
 
     @Test("dynamic type XXL light")
     func dynamicTypeXXL() {
         let function = #function
         let view = ContextMeter(usedTokens: 16_000, maxTokens: 32_000)
-            .superTheme(.make(.light))
+            .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .padding(20)
         let failure = verifySnapshot(

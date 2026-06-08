@@ -12,7 +12,7 @@ import Testing
 struct SplashHighlighterTests {
     @Test("palette derives from the active SuperTheme")
     func paletteUsesThemeForeground() {
-        let theme = SuperTheme.make(.light)
+        let theme = SuperTheme.make(.vellumLight)
         let palette = CodePalette.from(theme)
         // Plain text uses the theme's code foreground so the highlighted
         // body matches the surrounding chrome — design tokens, not magic.
@@ -23,7 +23,7 @@ struct SplashHighlighterTests {
 
     @Test("token type → palette color: every case maps to its dedicated slot")
     func paletteCoversEveryTokenType() {
-        let palette = CodePalette.from(.make(.dark))
+        let palette = CodePalette.from(.make(.vellumDark))
         #expect(palette.color(for: .keyword)       == palette.keyword)
         #expect(palette.color(for: .string)        == palette.string)
         #expect(palette.color(for: .type)          == palette.type)

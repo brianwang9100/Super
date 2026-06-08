@@ -49,7 +49,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "What does this teach about love?",
                 references: [pill("r1", "John 3:16 (WEB)")],
-                theme: .light
+                theme: .vellumLight
             ),
             name: "userbubble_pill_light"
         )
@@ -61,7 +61,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "What does this teach about love?",
                 references: [pill("r1", "John 3:16 (WEB)")],
-                theme: .dark
+                theme: .vellumDark
             ),
             name: "userbubble_pill_dark"
         )
@@ -73,7 +73,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "What does this teach about love?",
                 references: [pill("r1", "John 3:16 (WEB)")],
-                theme: .sepia
+                theme: .sepiaLight
             ),
             name: "userbubble_pill_sepia"
         )
@@ -85,7 +85,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "Compare these two passages.",
                 references: [pill("r1", "John 3:16 (WEB)"), pill("r2", "Romans 8:28 (WEB)")],
-                theme: .light
+                theme: .vellumLight
             ),
             name: "userbubble_multiple_pills_light"
         )
@@ -97,7 +97,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "",
                 references: [pill("r1", "John 3:16-17 (WEB)")],
-                theme: .light
+                theme: .vellumLight
             ),
             name: "userbubble_pills_only_light"
         )
@@ -109,7 +109,7 @@ struct UserBubbleSnapshotTests {
             view: host(
                 text: "What does this teach about love?",
                 references: [pill("r1", "John 3:16 (WEB)")],
-                theme: .light
+                theme: .vellumLight
             )
             .dynamicTypeSize(.xxLarge),
             name: "userbubble_pill_light_xxl"

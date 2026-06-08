@@ -93,5 +93,5 @@ struct BibleTranslationSheet: View {
         onSelect: { _ in },
         onClose: {}
     )
-    .superTheme(.make(.light))
+    .superTheme(.make(.vellumLight))
 }

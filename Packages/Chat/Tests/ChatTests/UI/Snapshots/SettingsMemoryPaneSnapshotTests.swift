@@ -42,13 +42,13 @@ struct SettingsMemoryPaneSnapshotTests {
 
     @Test("empty state in light")
     func emptyLight() async throws {
-        try await verify(theme: .light, memories: [], name: "settings_memory_empty_light")
+        try await verify(theme: .vellumLight, memories: [], name: "settings_memory_empty_light")
     }
 
     @Test("populated in light")
     func populatedLight() async throws {
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             memories: Self.sampleMemories(),
             name: "settings_memory_populated_light"
         )
@@ -57,7 +57,7 @@ struct SettingsMemoryPaneSnapshotTests {
     @Test("populated in dark")
     func populatedDark() async throws {
         try await verify(
-            theme: .dark,
+            theme: .vellumDark,
             memories: Self.sampleMemories(),
             name: "settings_memory_populated_dark"
         )
@@ -66,7 +66,7 @@ struct SettingsMemoryPaneSnapshotTests {
     @Test("populated in sepia")
     func populatedSepia() async throws {
         try await verify(
-            theme: .sepia,
+            theme: .sepiaLight,
             memories: Self.sampleMemories(),
             name: "settings_memory_populated_sepia"
         )
@@ -75,7 +75,7 @@ struct SettingsMemoryPaneSnapshotTests {
     @Test("dynamic type XXL on populated")
     func populatedXXL() async throws {
         try await verify(
-            theme: .light,
+            theme: .vellumLight,
             memories: Self.sampleMemories(),
             dynamicType: .xxLarge,
             name: "settings_memory_populated_light_xxl"

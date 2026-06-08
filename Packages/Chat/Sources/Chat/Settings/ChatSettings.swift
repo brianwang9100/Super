@@ -100,7 +100,7 @@ public struct ChatSettings: Sendable, Equatable {
     /// `## User personalization` section entirely when the field is
     /// empty.
     public static let `default` = ChatSettings(
-        themeId: .light,
+        themeId: .vellumLight,
         typographyID: .serif,
         userPersonalization: "",
         defaultVerbosity: .simple,
@@ -139,13 +139,20 @@ public struct ChatSettings: Sendable, Equatable {
         self.titleModelId = titleModelId
     }
 
-    /// Mirror of `SuperTheme.Identifier`. Re-declared (rather than typealiased)
-    /// so persistence string values stay stable even if the SuperTheme enum
-    /// gains a fourth case the store doesn't recognize yet.
+    /// Mirror of `SuperTheme.Identifier` (8 variants: four families ×
+    /// light/dark). Re-declared (rather than typealiased) so persistence
+    /// string values stay stable even if the SuperTheme enum gains a case the
+    /// store doesn't recognize yet. Legacy persisted strings (`light`/`dark`/
+    /// `sepia`) are migrated to these in `ChatSettingsStore.migrateThemeID`.
     public enum ThemeID: String, Sendable, Equatable, CaseIterable, Codable {
-        case light
-        case dark
-        case sepia
+        case vellumLight
+        case vellumDark
+        case sepiaLight
+        case sepiaDark
+        case scriptoriumLight
+        case scriptoriumDark
+        case slateLight
+        case slateDark
     }
 
     /// Mirror of `SuperTypography.Identifier`. Re-declared (rather than
