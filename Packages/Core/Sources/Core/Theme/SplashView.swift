@@ -121,7 +121,7 @@ public struct SplashView: View {
         .superTheme(.make(.vellumDark))
 }
 
-#Preview("Sepia Light") {
+#Preview("Lapis Light") {
     SplashView()
-        .superTheme(.make(.sepiaLight))
+        .superTheme(.make(.lapisLight))
 }

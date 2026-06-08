@@ -83,7 +83,7 @@ struct SuperThemeTests {
         // Design accent hues from `palettes.jsx`.
         #expect(SuperTheme.make(.vellumLight).accentHue == 52)
         #expect(SuperTheme.make(.vellumDark).accentHue == 60)
-        #expect(SuperTheme.make(.sepiaLight).accentHue == 50)
+        #expect(SuperTheme.make(.lapisLight).accentHue == 75)
         #expect(SuperTheme.make(.scriptoriumLight).accentHue == 128)
         #expect(SuperTheme.make(.slateDark).accentHue == 52)
         #expect(SuperTheme.make(.vellumLight, accentHue: 30).accentHue == 30)
@@ -93,7 +93,7 @@ struct SuperThemeTests {
     func displayNameIsFamily() {
         #expect(SuperTheme.make(.vellumLight).displayName == "Vellum")
         #expect(SuperTheme.make(.vellumDark).displayName == "Vellum")
-        #expect(SuperTheme.make(.sepiaLight).displayName == "Sepia")
+        #expect(SuperTheme.make(.lapisLight).displayName == "Lapis")
         #expect(SuperTheme.make(.scriptoriumDark).displayName == "Scriptorium")
         #expect(SuperTheme.make(.slateLight).displayName == "Slate")
         #expect(SuperTheme.Identifier.vellumLight.modeName == "Light")
@@ -103,7 +103,7 @@ struct SuperThemeTests {
     @Test("family grouping maps each variant to its family")
     func familyGrouping() {
         #expect(SuperTheme.Identifier.vellumDark.family == .vellum)
-        #expect(SuperTheme.Identifier.sepiaLight.family == .sepia)
+        #expect(SuperTheme.Identifier.lapisLight.family == .lapis)
         #expect(SuperTheme.Identifier.scriptoriumDark.family == .scriptorium)
         #expect(SuperTheme.Identifier.slateLight.family == .slate)
     }

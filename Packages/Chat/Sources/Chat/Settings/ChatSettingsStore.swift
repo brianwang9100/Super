@@ -107,19 +107,21 @@ public struct ChatSettingsStore: Sendable {
     )
 
     /// Resolve a persisted theme-id string into a current `ThemeID`, mapping
-    /// the pre-overhaul values forward. The old three-theme release stored
-    /// `"light"` / `"dark"` / `"sepia"`; those no longer decode against the
-    /// 8-variant enum, so an upgrading user would otherwise snap to the
-    /// default. Map them to the nearest new variant — `light → vellumLight`,
-    /// `dark → vellumDark`, `sepia → sepiaLight` — and fall back to the
-    /// default (Vellum Light) for an absent or unrecognized value.
+    /// retired values forward. The old three-theme release stored
+    /// `"light"` / `"dark"` / `"sepia"`, and the first 8-variant release shipped
+    /// a now-removed Sepia family (`"sepiaLight"` / `"sepiaDark"`); none of those
+    /// decode against the current enum, so an upgrading user would otherwise snap
+    /// to the default. Map them to the nearest surviving variant — `light` and
+    /// the warm Sepia tones fold onto Vellum (`sepia`/`sepiaLight → vellumLight`,
+    /// `sepiaDark → vellumDark`), since Sepia was retired for being too close to
+    /// Vellum and its cool Lapis replacement is the wrong neighbour — and fall
+    /// back to the default (Vellum Light) for an absent or unrecognized value.
     static func migrateThemeID(_ raw: String?) -> ChatSettings.ThemeID {
         guard let raw else { return ChatSettings.default.themeId }
         if let current = ChatSettings.ThemeID(rawValue: raw) { return current }
         switch raw {
-        case "light": return .vellumLight
-        case "dark": return .vellumDark
-        case "sepia": return .sepiaLight
+        case "light", "sepia", "sepiaLight": return .vellumLight
+        case "dark", "sepiaDark": return .vellumDark
         default: return ChatSettings.default.themeId
         }
     }

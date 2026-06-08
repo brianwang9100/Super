@@ -218,16 +218,23 @@ struct ChatSettingsStoreTests {
     }
 }
 
-/// Migration coverage for the theme-overhaul rename: the pre-overhaul
-/// `light`/`dark`/`sepia` persisted strings must map forward onto the
-/// 8-variant enum, and a fresh / unrecognized value defaults to Vellum Light.
+/// Migration coverage for the theme-overhaul renames: the pre-overhaul
+/// `light`/`dark`/`sepia` persisted strings — and the retired Sepia family's
+/// `sepiaLight`/`sepiaDark` — must map forward onto the current 8-variant enum,
+/// and a fresh / unrecognized value defaults to Vellum Light.
 @Suite("ChatSettingsStore theme migration")
 struct ChatSettingsStoreThemeMigrationTests {
     @Test("legacy three-theme strings map onto the new variants")
     func legacyStringsMigrate() {
         #expect(ChatSettingsStore.migrateThemeID("light") == .vellumLight)
         #expect(ChatSettingsStore.migrateThemeID("dark") == .vellumDark)
-        #expect(ChatSettingsStore.migrateThemeID("sepia") == .sepiaLight)
+        #expect(ChatSettingsStore.migrateThemeID("sepia") == .vellumLight)
+    }
+
+    @Test("the retired Sepia family folds onto Vellum, preserving mode")
+    func retiredSepiaMigrates() {
+        #expect(ChatSettingsStore.migrateThemeID("sepiaLight") == .vellumLight)
+        #expect(ChatSettingsStore.migrateThemeID("sepiaDark") == .vellumDark)
     }
 
     @Test("a current variant string decodes unchanged")
@@ -252,7 +259,7 @@ struct ChatSettingsStoreThemeMigrationTests {
         let store = ChatSettingsStore(repository: repo)
         let settings = await store.load()
 
-        #expect(settings.themeId == .sepiaLight)
+        #expect(settings.themeId == .vellumLight)
     }
 }
 

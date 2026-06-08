@@ -32,7 +32,7 @@ struct MarkdownThemeTests {
         // one of the three themes throw or precondition.
         _ = SuperTheme.make(.vellumLight).markdownTheme()
         _ = SuperTheme.make(.vellumDark).markdownTheme()
-        _ = SuperTheme.make(.sepiaLight).markdownTheme()
+        _ = SuperTheme.make(.lapisLight).markdownTheme()
     }
 
     @Test("builds with a serif reading family and with the system fallback")

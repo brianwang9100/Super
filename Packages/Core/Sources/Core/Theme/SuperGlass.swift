@@ -20,8 +20,8 @@ public struct GlassMorphID {
 /// Theme-tinted Liquid Glass helpers — the single owner of how Super's nav
 /// chrome adopts iOS 26 glass, the way `SuperTypography` owns font-face
 /// resolution and `SuperTheme` owns color. Every glass control routes through
-/// these so the per-theme tint (especially Sepia's warmth) is decided once,
-/// not copied across call sites.
+/// these so the per-theme tint (the warm families' warmth, Lapis's cool
+/// indigo) is decided once, not copied across call sites.
 ///
 /// Glass tracks the system light/dark scheme and samples the content behind it;
 /// the `glassTint` from the active `SuperTheme` biases that frosted material

@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Resolved palette for one of Super's four "historical study bible" theme
-/// families — **Vellum**, **Sepia**, **Scriptorium**, **Slate** — each with a
+/// families — **Vellum**, **Lapis**, **Scriptorium**, **Slate** — each with a
 /// light and a dark variant (8 concrete variants). Vellum Light is the
-/// default.
+/// default; Lapis is the lone cool (indigo) family.
 ///
 /// Token values are transcribed verbatim from the design artifact
 /// `docs/design/palettes.jsx` (the `oklch(L C H)` triplets use the same
@@ -27,8 +27,8 @@ public struct SuperTheme: Sendable, Equatable {
     public enum Identifier: String, Sendable, CaseIterable, Codable {
         case vellumLight
         case vellumDark
-        case sepiaLight
-        case sepiaDark
+        case lapisLight
+        case lapisDark
         case scriptoriumLight
         case scriptoriumDark
         case slateLight
@@ -38,14 +38,14 @@ public struct SuperTheme: Sendable, Equatable {
         /// these as section headers; each family supplies a Light + Dark card.
         public enum Family: String, Sendable, CaseIterable, Codable {
             case vellum
-            case sepia
+            case lapis
             case scriptorium
             case slate
 
             public var displayName: String {
                 switch self {
                 case .vellum: "Vellum"
-                case .sepia: "Sepia"
+                case .lapis: "Lapis"
                 case .scriptorium: "Scriptorium"
                 case .slate: "Slate"
                 }
@@ -57,7 +57,7 @@ public struct SuperTheme: Sendable, Equatable {
         public var family: Family {
             switch self {
             case .vellumLight, .vellumDark: .vellum
-            case .sepiaLight, .sepiaDark: .sepia
+            case .lapisLight, .lapisDark: .lapis
             case .scriptoriumLight, .scriptoriumDark: .scriptorium
             case .slateLight, .slateDark: .slate
             }
@@ -66,8 +66,8 @@ public struct SuperTheme: Sendable, Equatable {
         /// Whether this variant is the dark mode of its family.
         public var isDark: Bool {
             switch self {
-            case .vellumDark, .sepiaDark, .scriptoriumDark, .slateDark: true
-            case .vellumLight, .sepiaLight, .scriptoriumLight, .slateLight: false
+            case .vellumDark, .lapisDark, .scriptoriumDark, .slateDark: true
+            case .vellumLight, .lapisLight, .scriptoriumLight, .slateLight: false
             }
         }
 
@@ -76,7 +76,7 @@ public struct SuperTheme: Sendable, Equatable {
     }
 
     public let id: Identifier
-    /// The family name ("Vellum" / "Sepia" / "Scriptorium" / "Slate"). The
+    /// The family name ("Vellum" / "Lapis" / "Scriptorium" / "Slate"). The
     /// Settings card shows the mode ("Light"/"Dark") separately via
     /// `id.modeName`.
     public let displayName: String
@@ -117,10 +117,11 @@ public struct SuperTheme: Sendable, Equatable {
     public let borderFaint: Color
 
     /// Low-alpha tint biasing the frosted Liquid Glass on chrome and sheets
-    /// toward this theme's character — most load-bearing for the warm families,
-    /// whose warmth the system glass (which only tracks light/dark) would
-    /// otherwise drop. The alpha is deliberately low: the tint nudges the
-    /// glass, it does not paint it. Read by `superGlassButton`/`superGlassSurface`.
+    /// toward this theme's character — the chromatic cast the system glass
+    /// (which only tracks light/dark) would otherwise drop: the warmth of the
+    /// warm families and, for Lapis, its cool indigo. The alpha is deliberately
+    /// low: the tint nudges the glass, it does not paint it. Read by
+    /// `superGlassButton`/`superGlassSurface`.
     public let glassTint: Color
 
     // Code
@@ -189,7 +190,8 @@ public struct SuperTheme: Sendable, Equatable {
     ///   lightness for high-contrast marks.
     /// - `glassTint` — the variant's `bgRaised` at a low alpha (lighter in
     ///   light mode, slightly stronger in dark).
-    /// - fenced-code slab — a dark warm slab keyed to the variant's bg hue.
+    /// - fenced-code slab — a dark slab keyed to the variant's bg hue (so it
+    ///   stays warm for the warm families and cool for Lapis).
     /// - error reds — the fixed light/dark warm-red set for this mode.
     private static func assemble(id: Identifier, palette p: Palette, accentHue h: Double) -> SuperTheme {
         let darkMode = p.isDark
@@ -233,8 +235,8 @@ public struct SuperTheme: Sendable, Equatable {
         switch id {
         case .vellumLight: vellumLight
         case .vellumDark: vellumDark
-        case .sepiaLight: sepiaLight
-        case .sepiaDark: sepiaDark
+        case .lapisLight: lapisLight
+        case .lapisDark: lapisDark
         case .scriptoriumLight: scriptoriumLight
         case .scriptoriumDark: scriptoriumDark
         case .slateLight: slateLight
@@ -270,31 +272,32 @@ public struct SuperTheme: Sendable, Equatable {
         isDark: true
     )
 
-    /// Sepia — an antique photograph, browner and warmer than vellum, with
-    /// the patina of a much-handled book. Accent ~hue 50.
-    private static let sepiaLight = Palette(
-        bg: OKLCH(0.918, 0.034, 75), bgRaised: OKLCH(0.947, 0.027, 75),
-        bgSunken: OKLCH(0.892, 0.040, 72), sidebar: OKLCH(0.902, 0.037, 73),
-        ink: OKLCH(0.320, 0.035, 50), inkSoft: OKLCH(0.460, 0.034, 50),
-        inkFaint: OKLCH(0.585, 0.029, 55), inkMute: OKLCH(0.720, 0.024, 60),
-        accent: OKLCH(0.500, 0.100, 50), accentInk: OKLCH(0.970, 0.020, 80),
-        accentSoft: OKLCH(0.852, 0.055, 65),
-        border: OKLCH(0.812, 0.030, 65), borderFaint: OKLCH(0.862, 0.025, 68),
-        codeInlineBg: OKLCH(0.862, 0.040, 65), codeInlineFg: OKLCH(0.400, 0.075, 48),
-        bubbleUser: OKLCH(0.860, 0.050, 68), bubbleInk: OKLCH(0.300, 0.035, 50),
+    /// Lapis — lapis and gold, the illuminated manuscript: a cool indigo ground
+    /// (hue ~255–262) lit by antique gilt. The only cool family and the most
+    /// nocturnal. Gold accent (~hue 75).
+    private static let lapisLight = Palette(
+        bg: OKLCH(0.945, 0.012, 255), bgRaised: OKLCH(0.972, 0.009, 255),
+        bgSunken: OKLCH(0.922, 0.017, 255), sidebar: OKLCH(0.934, 0.014, 255),
+        ink: OKLCH(0.312, 0.035, 262), inkSoft: OKLCH(0.455, 0.034, 262),
+        inkFaint: OKLCH(0.590, 0.028, 258), inkMute: OKLCH(0.750, 0.018, 256),
+        accent: OKLCH(0.585, 0.095, 75), accentInk: OKLCH(0.260, 0.030, 262),
+        accentSoft: OKLCH(0.880, 0.045, 80),
+        border: OKLCH(0.855, 0.015, 255), borderFaint: OKLCH(0.908, 0.010, 255),
+        codeInlineBg: OKLCH(0.905, 0.022, 255), codeInlineFg: OKLCH(0.400, 0.060, 265),
+        bubbleUser: OKLCH(0.895, 0.028, 255), bubbleInk: OKLCH(0.290, 0.035, 262),
         isDark: false
     )
 
-    private static let sepiaDark = Palette(
-        bg: OKLCH(0.270, 0.022, 60), bgRaised: OKLCH(0.315, 0.024, 60),
-        bgSunken: OKLCH(0.230, 0.020, 60), sidebar: OKLCH(0.250, 0.022, 60),
-        ink: OKLCH(0.902, 0.025, 75), inkSoft: OKLCH(0.742, 0.025, 70),
-        inkFaint: OKLCH(0.582, 0.022, 65), inkMute: OKLCH(0.442, 0.020, 60),
-        accent: OKLCH(0.682, 0.090, 55), accentInk: OKLCH(0.192, 0.020, 55),
-        accentSoft: OKLCH(0.360, 0.045, 58),
-        border: OKLCH(0.372, 0.022, 60), borderFaint: OKLCH(0.320, 0.020, 60),
-        codeInlineBg: OKLCH(0.330, 0.026, 60), codeInlineFg: OKLCH(0.820, 0.070, 65),
-        bubbleUser: OKLCH(0.380, 0.035, 60), bubbleInk: OKLCH(0.902, 0.025, 75),
+    private static let lapisDark = Palette(
+        bg: OKLCH(0.250, 0.030, 262), bgRaised: OKLCH(0.298, 0.034, 262),
+        bgSunken: OKLCH(0.212, 0.028, 262), sidebar: OKLCH(0.232, 0.030, 262),
+        ink: OKLCH(0.910, 0.018, 250), inkSoft: OKLCH(0.750, 0.020, 252),
+        inkFaint: OKLCH(0.595, 0.022, 255), inkMute: OKLCH(0.450, 0.024, 258),
+        accent: OKLCH(0.760, 0.085, 78), accentInk: OKLCH(0.220, 0.030, 262),
+        accentSoft: OKLCH(0.355, 0.045, 70),
+        border: OKLCH(0.360, 0.028, 262), borderFaint: OKLCH(0.308, 0.026, 262),
+        codeInlineBg: OKLCH(0.325, 0.034, 262), codeInlineFg: OKLCH(0.830, 0.075, 80),
+        bubbleUser: OKLCH(0.375, 0.038, 262), bubbleInk: OKLCH(0.910, 0.018, 250),
         isDark: true
     )
 

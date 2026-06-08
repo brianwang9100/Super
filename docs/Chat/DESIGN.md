@@ -22,12 +22,12 @@ Chat's look is warm, paper-like, and quiet — closer to a Reader / Notes aesthe
 
 ### 2.1 Themes
 
-Four "study bible" theme families — **Vellum, Sepia, Scriptorium, Slate** — each with a light and a dark variant (8 variants). All palettes are expressed in OKLCH so accent-hue shifts stay perceptually stable. **Vellum Light is the default.** The full per-variant token set is transcribed verbatim in [`docs/design/palettes.jsx`](../design/palettes.jsx).
+Four "study bible" theme families — **Vellum, Lapis, Scriptorium, Slate** — each with a light and a dark variant (8 variants). All palettes are expressed in OKLCH so accent-hue shifts stay perceptually stable. **Vellum Light is the default.** The full per-variant token set is transcribed verbatim in [`docs/design/palettes.jsx`](../design/palettes.jsx).
 
 | Family | Light background | Accent | Feel |
 |--------|------------------|--------|------|
 | **Vellum** (default) | Warm parchment cream `oklch(0.957 0.018 85)` | Clay `oklch(0.520 0.090 52)` | The brightest, softest reading surface |
-| **Sepia** | Browner cream `oklch(0.918 0.034 75)` | Warm brown `oklch(0.500 0.100 50)` | A much-handled book |
+| **Lapis** | Cool indigo `oklch(0.945 0.012 255)` | Gold `oklch(0.585 0.095 75)` | The illuminated manuscript — the lone cool family |
 | **Scriptorium** | Study sage `oklch(0.956 0.012 135)` | Moss-olive `oklch(0.480 0.070 128)` | The green, taken to seminary |
 | **Slate** | Warm grey `oklch(0.957 0.004 80)` | Clay `oklch(0.522 0.080 48)` | The most restrained — one accent does the talking |
 
@@ -398,7 +398,7 @@ MVP ships with four preconfigured models that users can enable/disable: **Opus 4
 
 ### 7.4 Theme Pane
 
-Theme previews grouped by family — one section per family (Vellum, Sepia, Scriptorium, Slate), each with a **Light** and a **Dark** preview card. Each preview is a rounded card showing a miniature of the variant's bg, accent bar, ink bars, and a faux input pill; the selected variant gets a 2pt accent border plus a 3pt accent-tinted outline and a "✓" marker in its label row.
+Theme previews grouped by family — one section per family (Vellum, Lapis, Scriptorium, Slate), each with a **Light** and a **Dark** preview card. Each preview is a rounded card showing a miniature of the variant's bg, accent bar, ink bars, and a faux input pill; the selected variant gets a 2pt accent border plus a 3pt accent-tinted outline and a "✓" marker in its label row.
 
 Accent hue is globally tunable via the Tweaks dev panel (0–360°) during design iteration; users don't see a hue slider in MVP.
 

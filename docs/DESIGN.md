@@ -382,12 +382,12 @@ Mini-app emits notification
 
 ### 8.1 Brand & Palette
 
-Super's identity is a **warm "study bible" palette system** — four families (Vellum, Sepia, Scriptorium, Slate), each with a light and a dark variant (8 variants total). **Vellum Light is the default.** The accent and background tokens are shared across all mini-apps so the whole app reads as one surface, not five (see `Chat/DESIGN.md` §10 for the token list; exact OKLCH values live in [`docs/design/palettes.jsx`](./design/palettes.jsx)).
+Super's identity is a **"study bible" palette system** — four families (Vellum, Lapis, Scriptorium, Slate), mostly warm with one cool indigo family (Lapis), each with a light and a dark variant (8 variants total). **Vellum Light is the default.** The accent and background tokens are shared across all mini-apps so the whole app reads as one surface, not five (see `Chat/DESIGN.md` §10 for the token list; exact OKLCH values live in [`docs/design/palettes.jsx`](./design/palettes.jsx)).
 
 | Family | Character | Accent |
 |--------|-----------|--------|
 | Vellum (default) | Warm parchment cream | Clay |
-| Sepia | Browner, much-handled book | Warm brown |
+| Lapis | Cool indigo, the illuminated manuscript | Gold |
 | Scriptorium | Muted study sage (replaces the old green) | Moss-olive |
 | Slate | Near-neutral warm grey | Clay |
 

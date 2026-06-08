@@ -47,7 +47,7 @@ Super is unapologetically design-oriented. Three rules, enforced everywhere:
 
 - **Hide until expanded.** Assistant thinking, tool calls, record details, focused-view actions — all collapsed by default, one tap to reveal. No cluttered dashboards.
 - **Animate the causality.** Every AI action is accompanied by a materialize/transfer/pulse animation that ties the chat card to the record in the mini-app, so the user *sees* cause and effect.
-- **Responsive over dense.** Wide whitespace, generous touch targets, warm "study bible" palettes (Vellum / Sepia / Scriptorium / Slate), EB Garamond display + Geist body. Information appears when asked for; the UI is quiet otherwise.
+- **Responsive over dense.** Wide whitespace, generous touch targets, "study bible" palettes (Vellum / Lapis / Scriptorium / Slate), EB Garamond display + Geist body. Information appears when asked for; the UI is quiet otherwise.
 
 ### 2.6 Offline-First
 
