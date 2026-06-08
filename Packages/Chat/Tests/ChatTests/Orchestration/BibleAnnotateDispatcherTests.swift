@@ -619,4 +619,25 @@ struct BibleAnnotateDispatcherTests {
             #expect(briefing.contains(token), "briefing should name the '\(token)' category")
         }
     }
+
+    @Test("the dispatcher briefing restricts references to genuine cross-references")
+    func briefingRestrictsReferenceCards() {
+        // A `reference` card must be a real intertextual link — a passage
+        // the target quotes/alludes to/cites — never a merely thematically
+        // similar verse. Guards against the prior "genuinely illuminating"
+        // wording that produced junk "see this similar verse" references.
+        let briefing = BibleAnnotateDispatcher.dispatcherBriefing.lowercased()
+        #expect(briefing.contains("alludes to"))
+        #expect(briefing.contains("thematically"))
+        #expect(!briefing.contains("illuminating"))
+    }
+
+    @Test("verse-range section guidance makes the reference card conditional")
+    func verseRangeReferenceGuidanceIsConditional() {
+        // The reference card is no longer one we always "aim to cover" for
+        // a verse range — it's added only on a genuine quotation/allusion.
+        let guidance = BibleAnnotateDispatcher.sectionGuidance(forKind: "verseRange")?.lowercased()
+        #expect(guidance?.contains("only if") == true)
+        #expect(guidance?.contains("omit it") == true)
+    }
 }
