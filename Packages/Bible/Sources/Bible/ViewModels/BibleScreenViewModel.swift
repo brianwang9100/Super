@@ -354,6 +354,101 @@ public final class BibleScreenViewModel {
         return pendingScrollVerse
     }
 
+    // MARK: - Immersive reading (scroll-driven chrome)
+
+    /// Whether the reader is in immersive mode: the user has scrolled down
+    /// into the chapter, so the Bible nav bar slides up off screen and the
+    /// shell hides its own chrome (hamburger + chat pill) in sympathy. Driven
+    /// purely by ``updateScroll(offsetY:userDriven:)`` from the chapter
+    /// reader's scroll geometry; `BibleScreen` animates its nav bar off this
+    /// and republishes the change to the shell over the event bus.
+    public private(set) var isImmersive = false
+
+    /// At or above the top by this many points, chrome is always shown —
+    /// reaching the top of a chapter reveals the bar regardless of the
+    /// in-flight scroll direction.
+    static let immersiveTopRevealThreshold: CGFloat = 8
+    /// Net downward travel (points, since the last direction reversal)
+    /// required to hide chrome. Small enough to feel responsive, large
+    /// enough that a one-finger settle jitter doesn't trip it.
+    static let immersiveHideThreshold: CGFloat = 12
+    /// Net upward travel required to reveal chrome again — any deliberate
+    /// upward scroll brings it back (standard immersive pattern).
+    static let immersiveRevealThreshold: CGFloat = 8
+    /// Chrome only hides once the reader is scrolled past this offset, so the
+    /// first lines of a chapter keep the bar even on a quick downward flick.
+    static let immersiveMinOffsetToHide: CGFloat = 64
+
+    /// Last observed content offset, and the signed run of travel since the
+    /// last direction reversal (`+` = scrolling down / content moving up).
+    /// Scratch state for the direction hysteresis in ``updateScroll``.
+    private var lastScrollOffsetY: CGFloat?
+    private var scrollTravelSinceReversal: CGFloat = 0
+
+    /// Fold a chapter-reader scroll sample into ``isImmersive``. Pure and
+    /// synchronous so it's unit-testable without rendering: feed offsets +
+    /// the user-driven flag and assert the transitions.
+    ///
+    /// - `userDriven == false` (programmatic `scrollTo` for narration
+    ///   follow, selection-into-view, deep-link landing) only refreshes the
+    ///   baseline offset — it never flips immersive, so an auto-scroll can't
+    ///   hide or reveal the chrome out from under the user.
+    /// - Reaching the top (`offsetY <= immersiveTopRevealThreshold`) always
+    ///   reveals.
+    /// - A net downward run past ``immersiveHideThreshold`` (once scrolled
+    ///   past ``immersiveMinOffsetToHide``) hides; a net upward run past
+    ///   ``immersiveRevealThreshold`` reveals. The run resets on each
+    ///   direction reversal so a small jitter needn't overcome a long
+    ///   opposite stretch.
+    ///
+    /// Idempotent: it only mutates ``isImmersive`` on a real flip, so the
+    /// screen's `.onChange(of:)` publish fires once per transition.
+    public func updateScroll(offsetY: CGFloat, userDriven: Bool) {
+        guard userDriven else {
+            lastScrollOffsetY = offsetY
+            return
+        }
+        defer { lastScrollOffsetY = offsetY }
+
+        if offsetY <= Self.immersiveTopRevealThreshold {
+            scrollTravelSinceReversal = 0
+            setImmersive(false)
+            return
+        }
+
+        guard let last = lastScrollOffsetY else { return }
+        let delta = offsetY - last
+        guard delta != 0 else { return }
+
+        // Reset the run when direction reverses so the new direction starts
+        // accumulating from zero rather than fighting the prior stretch.
+        if (delta > 0) != (scrollTravelSinceReversal > 0) {
+            scrollTravelSinceReversal = 0
+        }
+        scrollTravelSinceReversal += delta
+
+        if scrollTravelSinceReversal >= Self.immersiveHideThreshold,
+           offsetY > Self.immersiveMinOffsetToHide {
+            setImmersive(true)
+        } else if scrollTravelSinceReversal <= -Self.immersiveRevealThreshold {
+            setImmersive(false)
+        }
+    }
+
+    /// Force chrome back on and clear the scroll scratch state. The screen
+    /// calls this when the reader disappears or steps chapters so chrome can
+    /// never strand hidden after leaving a scrolled chapter.
+    public func resetImmersive() {
+        scrollTravelSinceReversal = 0
+        lastScrollOffsetY = nil
+        setImmersive(false)
+    }
+
+    private func setImmersive(_ value: Bool) {
+        guard isImmersive != value else { return }
+        isImmersive = value
+    }
+
     /// Toggle a verse's membership in the selection. The first tap enters
     /// selection mode (the nav-bar citation pill and the action sheet);
     /// clearing the last verse leaves it.

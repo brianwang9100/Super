@@ -37,6 +37,29 @@ public enum SuperMotion {
     /// enough to feel immediate; just enough give to feel alive.
     public static let press: Animation = .spring(response: 0.28, dampingFraction: 0.68)
 
+    /// Immersive chrome **reveal** glide — the scroll-driven slide of nav
+    /// chrome *into* view (the Bible nav bar, and the shell's hamburger +
+    /// minimized chat pill). A plain smooth ease with no overshoot, because
+    /// the bar toggles frequently as the user scrolls and `snap`'s late-phase
+    /// bounce would read as a wobble on a content-hiding bar. Suppress under
+    /// Reduce Motion at the call site (pass the ``reducedMotion`` token).
+    public static let chromeReveal: Animation = .smooth(duration: 0.4)
+
+    /// Immersive chrome **hide** glide — deliberately longer than
+    /// ``chromeReveal``. The hidden chrome travels off the screen edge (and
+    /// fades) so its *visible* portion finishes well before the curve does;
+    /// stretching the duration keeps the dismiss reading as slow as the
+    /// reveal rather than snapping away.
+    public static let chromeHide: Animation = .smooth(duration: 0.6)
+
+    /// The chrome glide for the current direction + motion preference —
+    /// ``chromeHide`` when the chrome is leaving, ``chromeReveal`` when it's
+    /// returning, ``reducedMotion`` under Reduce Motion.
+    public static func chrome(hiding: Bool, reduceMotion: Bool) -> Animation {
+        guard !reduceMotion else { return reducedMotion }
+        return hiding ? chromeHide : chromeReveal
+    }
+
     /// Returns the appropriate animation for the current motion
     /// preference. Callers pass the environment's
     /// `\.accessibilityReduceMotion` value; this enum stays

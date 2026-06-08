@@ -50,4 +50,17 @@ public enum SuperEvent: Sendable, Equatable {
     /// becomes the topmost surface. Subscribers dismiss any native sheet
     /// they're presenting.
     case sidebarOpened
+
+    /// Any applet → shell: hide (`visible: false`) or restore
+    /// (`visible: true`) the shell's global chrome — the top-left
+    /// hamburger button and the minimized chat pill — so a reading /
+    /// content surface can claim the full screen. Deliberately
+    /// applet-agnostic (Core stays domain-free): the applet decides *when*
+    /// to ask; the shell decides *how* to comply. The shell honours it
+    /// only while the chat is in its minimized pill state and resets to
+    /// visible whenever the active applet changes or the chat leaves the
+    /// pill, so a request can never strand chrome off-screen. Today's sole
+    /// driver is the Bible reader hiding chrome as the user scrolls into a
+    /// chapter and restoring it on scroll-up / at the top.
+    case shellChromeVisibilityRequested(visible: Bool)
 }
