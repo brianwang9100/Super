@@ -238,6 +238,29 @@ struct BibleScreenSnapshotTests {
                name: "highlighted_sepia_xxl")
     }
 
+    // The min slider (0.8×) is where the wash's height divergence on the
+    // verse-number cell was largest — its raised marker inflated that cell's box,
+    // and a box-filling `.background` washed it taller than its neighbors, breaking
+    // the seam. The wash is now a baseline-anchored fixed-height band, so every
+    // word's wash matches. These guard that fix.
+    @Test("persisted highlights paint a seamless band at the min font scale (light)")
+    func highlightedFontScaleMinLight() async throws {
+        verify(try await highlightedScreen(), theme: .light, fontScale: 0.8,
+               name: "highlighted_font_scale_min_light")
+    }
+
+    @Test("persisted highlights paint a seamless band at the min font scale (dark)")
+    func highlightedFontScaleMinDark() async throws {
+        verify(try await highlightedScreen(), theme: .dark, fontScale: 0.8,
+               name: "highlighted_font_scale_min_dark")
+    }
+
+    @Test("persisted highlights paint a seamless band at the min font scale (sepia)")
+    func highlightedFontScaleMinSepia() async throws {
+        verify(try await highlightedScreen(), theme: .sepia, fontScale: 0.8,
+               name: "highlighted_font_scale_min_sepia")
+    }
+
     // MARK: - Annotations
 
     @Test("annotation bubbles render after the chapter title and after annotated verses")
