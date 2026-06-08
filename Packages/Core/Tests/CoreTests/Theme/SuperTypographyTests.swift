@@ -114,6 +114,15 @@ struct SuperTypographyTests {
         #expect(SuperTypography.serifFamily == "EB Garamond")
     }
 
+    @Test("readingFamily exposes the family name under serif, nil under system")
+    func readingFamilyResolution() {
+        // The MarkdownUI body bridge selects italic/semibold members by
+        // family name, so serif resolves to the shared family and system
+        // resolves to nil (use the system default body face).
+        #expect(SuperTypography.make(.serif).readingFamily == "EB Garamond")
+        #expect(SuperTypography.make(.system).readingFamily == nil)
+    }
+
     @Test("Role base sizes match Apple's text-style point sizes")
     func roleBaseSizes() {
         #expect(SuperTypography.Role.display.baseSize == 36)

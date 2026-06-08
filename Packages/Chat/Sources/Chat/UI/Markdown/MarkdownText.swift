@@ -28,6 +28,7 @@ struct MarkdownText: View {
     let treatAsPartial: Bool
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
     @State private var cachedTheme: MarkdownUI.Theme?
 
@@ -75,7 +76,11 @@ struct MarkdownText: View {
         // First render before `.task` fires uses an inline build; the
         // task primes the cache so subsequent renders skip the rebuild.
         Markdown(_resolvedText)
-            .markdownTheme(cachedTheme ?? theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance))
+            .markdownTheme(cachedTheme ?? theme.markdownTheme(
+                bodyStyle: bodyStyleOverride,
+                appearance: appearance,
+                readingFamily: typography.readingFamily
+            ))
             // Selection lets the user copy a partial run from a code
             // block or a sentence from prose without invoking the
             // full-message Copy button.
@@ -87,7 +92,11 @@ struct MarkdownText: View {
                 // instead of painting one frame against the prior cached
                 // theme — visible as a flash during slider drags.
                 cachedTheme = nil
-                cachedTheme = theme.markdownTheme(bodyStyle: bodyStyleOverride, appearance: appearance)
+                cachedTheme = theme.markdownTheme(
+                    bodyStyle: bodyStyleOverride,
+                    appearance: appearance,
+                    readingFamily: typography.readingFamily
+                )
             }
     }
 
@@ -106,6 +115,9 @@ struct MarkdownText: View {
         case .none: "default"
         }
         let scale = String(format: "%.3f", appearance.fontScale)
-        return "\(theme.id.rawValue):\(style):\(scale)"
+        // Include the reading family so a serif↔system typeface switch
+        // invalidates the cached MarkdownUI theme (the body face changes).
+        let face = typography.readingFamily ?? "system"
+        return "\(theme.id.rawValue):\(style):\(scale):\(face)"
     }
 }

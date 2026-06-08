@@ -109,6 +109,15 @@ public struct SuperTypography: Sendable, Equatable {
     /// Monospaced face name (PostScript), or `nil` to use the system mono.
     let monoFace: String?
 
+    /// The font *family* name for body reading text — for callers that select
+    /// weight/italic members by family (the MarkdownUI bridge) rather than by a
+    /// single PostScript face. Resolves to `serifFamily` ("EB Garamond") in the
+    /// serif identity (so `.italic()` / `.semibold()` pick the true family
+    /// members) and `nil` in the system identity (use the system body face).
+    public var readingFamily: String? {
+        readingFace != nil ? Self.serifFamily : nil
+    }
+
     // MARK: Accessors
 
     /// Brand display title (e.g. "Tasks", "Chats", "John 3"). Resolves to the

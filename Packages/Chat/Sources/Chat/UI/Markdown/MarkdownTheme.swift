@@ -33,9 +33,19 @@ extension SuperTheme {
     @MainActor
     func markdownTheme(
         bodyStyle: MarkdownText.BodyStyle? = nil,
-        appearance: ChatAppearance = .default
+        appearance: ChatAppearance = .default,
+        readingFamily: String? = nil
     ) -> MarkdownUI.Theme {
         let theme = self
+        // The body reading face. In the serif identity `readingFamily` is
+        // "EB Garamond" (a registered family), so `FontStyle(.italic)` /
+        // `FontWeight(.semibold)` below resolve to the true Italic / SemiBold
+        // members rather than synthesizing a slant or bold. In the system
+        // identity it's nil → the system default family (no visual change from
+        // before this PR). Applied to body prose and headings; inline + fenced
+        // code keep their monospaced family.
+        let bodyFamily: FontFamily = readingFamily
+            .map { FontFamily(.custom($0)) } ?? FontFamily(.system(.default))
         // Result-builder branching inside `.text { ... }` doesn't
         // propagate `FontStyle(.italic)` reliably, so the .text slot is
         // built up-front per body style, then chained into the rest of
@@ -44,17 +54,20 @@ extension SuperTheme {
             switch bodyStyle {
             case .thinking:
                 return MarkdownUI.Theme().text {
+                    bodyFamily
                     ForegroundColor(theme.inkSoft)
                     FontSize(15 * appearance.fontScale)
                     FontStyle(.italic)
                 }
             case .banner:
                 return MarkdownUI.Theme().text {
+                    bodyFamily
                     ForegroundColor(theme.inkSoft)
                     FontSize(15 * appearance.fontScale)
                 }
             case .none:
                 return MarkdownUI.Theme().text {
+                    bodyFamily
                     ForegroundColor(theme.ink)
                     FontSize(appearance.bodyFontSize)
                 }
@@ -73,6 +86,7 @@ extension SuperTheme {
             .heading1 { configuration in
                 configuration.label
                     .markdownTextStyle {
+                        bodyFamily
                         FontWeight(.semibold)
                         FontSize(.em(1.6))
                         ForegroundColor(theme.ink)
@@ -82,6 +96,7 @@ extension SuperTheme {
             .heading2 { configuration in
                 configuration.label
                     .markdownTextStyle {
+                        bodyFamily
                         FontWeight(.semibold)
                         FontSize(.em(1.35))
                         ForegroundColor(theme.ink)
@@ -91,6 +106,7 @@ extension SuperTheme {
             .heading3 { configuration in
                 configuration.label
                     .markdownTextStyle {
+                        bodyFamily
                         FontWeight(.semibold)
                         FontSize(.em(1.15))
                         ForegroundColor(theme.ink)

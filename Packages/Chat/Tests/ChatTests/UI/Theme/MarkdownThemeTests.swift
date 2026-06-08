@@ -34,4 +34,20 @@ struct MarkdownThemeTests {
         _ = SuperTheme.make(.vellumDark).markdownTheme()
         _ = SuperTheme.make(.sepiaLight).markdownTheme()
     }
+
+    @Test("builds with a serif reading family and with the system fallback")
+    func buildsAcrossReadingFamilies() {
+        // The body/heading slots fold in `readingFamily` (the EB Garamond
+        // family in the serif identity, nil → system default). Both paths
+        // must build without trapping; the glyph-level result is covered by
+        // the assistant-message snapshots.
+        _ = SuperTheme.make(.vellumLight).markdownTheme(readingFamily: SuperTypography.serifFamily)
+        _ = SuperTheme.make(.vellumLight).markdownTheme(readingFamily: nil)
+        for style in [MarkdownText.BodyStyle.thinking, .banner] {
+            _ = SuperTheme.make(.vellumDark).markdownTheme(
+                bodyStyle: style,
+                readingFamily: SuperTypography.serifFamily
+            )
+        }
+    }
 }
