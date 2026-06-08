@@ -117,8 +117,12 @@ extension SuperTheme {
                     }
             }
             .listItem { configuration in
+                // Match the gap *between* items to the intra-paragraph line
+                // spacing (in points) so the list reads with one uniform
+                // rhythm and scales with the slider — a fixed 2pt bunched the
+                // bullets together while their own wrapped lines breathed.
                 configuration.label
-                    .markdownMargin(top: 2)
+                    .markdownMargin(top: appearance.paragraphLineSpacingPoints)
             }
             .table { configuration in
                 // Horizontal scroll keeps wide tables from clipping on a
