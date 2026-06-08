@@ -127,7 +127,9 @@ struct BibleAppletTests {
         // Dispatch through the registry against the real bundled KJV text.
         let result = try await registry.execute(
             toolID: ReadBibleTool.toolID,
-            input: ["book": .string("John"), "chapter": .int(3), "startVerse": .int(16)]
+            input: ["references": .array([
+                .object(["book": .string("John"), "chapter": .int(3), "startVerse": .int(16)]),
+            ])]
         )
         #expect(result.isError == false)
         #expect(result.content.hasPrefix("John 3:16 (KJV)"))

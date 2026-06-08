@@ -107,17 +107,19 @@ public struct DebugReadLLMProvider: LLMProvider {
     // MARK: - Canned payload
 
     /// Build the `bible.read` `JSONValue` input for `target`, matching
-    /// `ReadBibleTool.descriptor`'s parameter schema. A `book` target carries no
-    /// chapter, so it defaults to chapter 1 (the tool requires one); verse
-    /// bounds are passed only when the reference named them.
+    /// `ReadBibleTool.descriptor`'s parameter schema: a single-element
+    /// `references` array. A `book` target carries no chapter, so it defaults to
+    /// chapter 1 (the tool requires one); verse bounds are passed only when the
+    /// reference named them. `translation` is omitted, so the read uses the
+    /// user's currently selected translation.
     static func readInput(for target: DebugBibleTarget) -> JSONValue {
-        var fields: [String: JSONValue] = [
+        var reference: [String: JSONValue] = [
             "book": .string(target.bookId),
             "chapter": .int(target.chapterNumber ?? 1),
         ]
-        if let verseStart = target.verseStart { fields["startVerse"] = .int(verseStart) }
-        if let verseEnd = target.verseEnd { fields["endVerse"] = .int(verseEnd) }
-        return .object(fields)
+        if let verseStart = target.verseStart { reference["startVerse"] = .int(verseStart) }
+        if let verseEnd = target.verseEnd { reference["endVerse"] = .int(verseEnd) }
+        return .object(["references": .array([.object(reference)])])
     }
 }
 #endif

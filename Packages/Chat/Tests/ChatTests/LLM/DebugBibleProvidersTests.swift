@@ -159,10 +159,11 @@ struct DebugBibleProvidersTests {
         let call = try #require(Self.firstToolUse(in: events))
         #expect(call.name == "bible.read")
         let input = try #require(Self.object(call.input))
-        #expect(input["book"] == .string("ROM"))
-        #expect(input["chapter"] == .int(8))
-        #expect(input["startVerse"] == .int(28))
-        #expect(input["endVerse"] == .int(30))
+        let reference = try #require(Self.firstReference(input))
+        #expect(reference["book"] == .string("ROM"))
+        #expect(reference["chapter"] == .int(8))
+        #expect(reference["startVerse"] == .int(28))
+        #expect(reference["endVerse"] == .int(30))
         // No translation argument → the tool uses the current selection.
         #expect(input["translation"] == nil)
     }
@@ -176,11 +177,12 @@ struct DebugBibleProvidersTests {
 
         let call = try #require(Self.firstToolUse(in: events))
         let input = try #require(Self.object(call.input))
-        #expect(input["book"] == .string("PSA"))
-        #expect(input["chapter"] == .int(23))
+        let reference = try #require(Self.firstReference(input))
+        #expect(reference["book"] == .string("PSA"))
+        #expect(reference["chapter"] == .int(23))
         // No verse bounds → whole chapter.
-        #expect(input["startVerse"] == nil)
-        #expect(input["endVerse"] == nil)
+        #expect(reference["startVerse"] == nil)
+        #expect(reference["endVerse"] == nil)
     }
 
     @Test func readProviderDefaultsABareBookReferenceToChapterOne() async throws {
@@ -192,10 +194,11 @@ struct DebugBibleProvidersTests {
 
         let call = try #require(Self.firstToolUse(in: events))
         let input = try #require(Self.object(call.input))
-        #expect(input["book"] == .string("ROM"))
+        let reference = try #require(Self.firstReference(input))
+        #expect(reference["book"] == .string("ROM"))
         // bible.read requires a chapter; a whole-book reference defaults to 1.
-        #expect(input["chapter"] == .int(1))
-        #expect(input["startVerse"] == nil)
+        #expect(reference["chapter"] == .int(1))
+        #expect(reference["startVerse"] == nil)
     }
 
     @Test func searchProviderEmitsBibleSearchToolCallFromUserText() async throws {
@@ -348,10 +351,11 @@ struct DebugBibleProvidersTests {
 
         #expect(await executor.executionCount() == 1)
         let input = try #require(await executor.capturedInputs().first)
-        #expect(input["book"] == .string("JHN"))
-        #expect(input["chapter"] == .int(3))
-        #expect(input["startVerse"] == .int(16))
-        #expect(input["endVerse"] == .int(17))
+        let reference = try #require(Self.firstReference(input))
+        #expect(reference["book"] == .string("JHN"))
+        #expect(reference["chapter"] == .int(3))
+        #expect(reference["startVerse"] == .int(16))
+        #expect(reference["endVerse"] == .int(17))
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }
@@ -425,6 +429,13 @@ struct DebugBibleProvidersTests {
     private static func object(_ value: JSONValue) -> [String: JSONValue]? {
         if case .object(let dict) = value { return dict }
         return nil
+    }
+
+    /// The first element of a `bible.read` input's `references` array, as an object.
+    private static func firstReference(_ input: [String: JSONValue]) -> [String: JSONValue]? {
+        guard case .array(let references)? = input["references"],
+              case .object(let first)? = references.first else { return nil }
+        return first
     }
 
     private static func tool(id: String) -> LLMTool {
