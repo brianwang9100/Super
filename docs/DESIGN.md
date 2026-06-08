@@ -387,7 +387,7 @@ Super's identity is a **"study bible" palette system** — four families (Vellum
 | Family | Character | Accent |
 |--------|-----------|--------|
 | Vellum (default) | Warm parchment cream | Clay |
-| Lapis | Cool indigo, the illuminated manuscript | Gold |
+| Lapis | Cool indigo, the illuminated manuscript | Yellow-gold |
 | Scriptorium | Muted study sage (replaces the old green) | Moss-olive |
 | Slate | Near-neutral warm grey | Clay |
 
