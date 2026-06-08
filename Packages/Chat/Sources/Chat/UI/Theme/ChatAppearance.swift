@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// User-tunable chat-reading appearance, controlled by a single
@@ -39,14 +40,16 @@ public struct ChatAppearance: Sendable, Equatable {
     /// SwiftUI's environment. Plain `Text` views that want Dynamic Type
     /// on top of `fontScale` should declare a local `@ScaledMetric`
     /// (see ``UserBubble`` for the pattern).
-    public var bodyFontSize: CGFloat { 17 * fontScale }
+    public var bodyFontSize: CGFloat { SuperTypography.readingBodySize * fontScale }
 
     /// Paragraph line-spacing as an em multiplier passed to MarkdownUI's
-    /// `relativeLineSpacing`. Resolves against `bodyFontSize`, so the
-    /// gap grows in both absolute and relative terms as the slider
-    /// moves toward spacious.
+    /// `relativeLineSpacing`. A constant `SuperTypography.readingLeadingEm`
+    /// (≈0.235 em) shared with the Bible reader so both EB Garamond reading
+    /// surfaces have identical line rhythm. Resolves against `bodyFontSize`,
+    /// so the gap still grows in absolute points as the slider enlarges the
+    /// body — but the *ratio* stays fixed rather than loosening with the slider.
     public var paragraphLineSpacingEm: CGFloat {
-        interpolate(low: 0.30, mid: 0.39, high: 0.54)
+        SuperTypography.readingLeadingEm
     }
 
     /// Intra-paragraph line spacing as *points* — ``paragraphLineSpacingEm``
@@ -65,12 +68,15 @@ public struct ChatAppearance: Sendable, Equatable {
 
     /// Vertical margin below each markdown paragraph, in points. Drives
     /// the *gap between paragraphs* (distinct from intra-paragraph line
-    /// spacing, which `paragraphLineSpacingEm` controls). MarkdownUI's
-    /// `markdownMargin(bottom:)` takes a fixed CGFloat — at body size
-    /// 17pt, comfortable (16pt) reads as roughly a full empty line
-    /// between paragraphs, matching the rhythm of Claude's iOS chat.
+    /// spacing, which `paragraphLineSpacingEm` controls). A constant `16/17`
+    /// em (≈0.94) of ``bodyFontSize`` — like the leading, the *ratio* is fixed
+    /// and only the body it multiplies grows with the slider, so the gap holds
+    /// at ≈0.76 of a line at every slider position instead of swelling toward a
+    /// full empty line at the top end. Resolves to ≈14.3 / 17.9 / 21.5pt at the
+    /// 0.8× / 1.0× / 1.2× slider over the 19pt body. Reads as a comfortable
+    /// three-quarter-line gap, matching the rhythm of Claude's iOS chat.
     public var paragraphSpacing: CGFloat {
-        interpolate(low: 10, mid: 16, high: 25)
+        (16.0 / 17.0) * bodyFontSize
     }
 
     /// Vertical padding inside the user-bubble shape (between the bubble

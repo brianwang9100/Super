@@ -359,17 +359,19 @@ struct MessageListDeclarativeScrollTests {
         // content-height-stable ticks, well before the settle finishes.
         settle(controller: controller, iterations: 30)
 
-        // Tolerance of 60pt accommodates `LazyVStack`'s row-height
+        // Tolerance of 70pt accommodates `LazyVStack`'s row-height
         // refinement: it can overestimate `contentHeight` on the
         // last visible scroll tick and refine downward later, after
         // ``verbosityScrollMode`` has cleared. The realistic UX
         // outcome is the user lands within one row of their previous
         // position — meaningfully better than the no-handler baseline
         // (where distance would be off by the full ~1500pt of newly-
-        // expanded content above them).
+        // expanded content above them). "One row" tracks the reading
+        // body size, so this scales with `SuperTypography.readingBodySize`
+        // (≈67pt = 60 × 19/17 at the 19pt body; rounded up for headroom).
         let afterDistance = distanceFromBottom(scrollView)
         #expect(
-            abs(afterDistance - 300) < 60,
+            abs(afterDistance - 300) < 70,
             "expected distance from bottom preserved (~300pt) across verbosity expand, got \(afterDistance)"
         )
     }

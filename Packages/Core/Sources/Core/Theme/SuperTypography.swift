@@ -57,6 +57,23 @@ public struct SuperTypography: Sendable, Equatable {
     /// and `.emphasis` apply weight/slant traits the family must satisfy.
     public static let serifFamily = "EB Garamond"
 
+    /// Base point size for long-form *reading* body — the EB Garamond roman
+    /// text of the Bible verse body and assistant message body. The single
+    /// source of truth for that size: the Bible reader's `@ScaledMetric`
+    /// base and Chat's `bodyFontSize` both read it, so a reading-size tweak
+    /// is one edit here. Distinct from `Role.body.baseSize` (17), which sizes
+    /// system-sans chrome and must not move with reading-comfort changes.
+    public static let readingBodySize: CGFloat = 19
+
+    /// Intra-paragraph leading (gap between wrapped lines) as a fraction of the
+    /// rendered reading-body size — the shared line rhythm of the Bible reader
+    /// and the assistant message body, so both EB Garamond reading surfaces
+    /// read as one typographic system. Authored as `4/17` (≈0.235 em): 4pt of
+    /// leading per 17pt of body. Constant across the font-scale slider — the
+    /// leading grows only because the body it multiplies grows, never because
+    /// the ratio itself loosens.
+    public static let readingLeadingEm: CGFloat = 4.0 / 17.0
+
     /// Semantic type roles, mirroring Apple's text styles so migration off
     /// `.font(.system(size:))` is mechanical. `display` is the brand title
     /// role (serif, larger than `largeTitle`); the rest are system-sans body
