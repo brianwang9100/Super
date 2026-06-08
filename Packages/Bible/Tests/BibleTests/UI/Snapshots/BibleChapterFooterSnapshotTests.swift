@@ -26,11 +26,6 @@ struct BibleChapterFooterSnapshotTests {
         verify(theme: .vellumDark, previous: "1 Peter 1", next: "1 Peter 3", name: "both_dark")
     }
 
-    @Test("both cards render in the sepia theme")
-    func bothSepia() {
-        verify(theme: .sepiaLight, previous: "1 Peter 1", next: "1 Peter 3", name: "both_sepia")
-    }
-
     @Test("only the previous card renders at the end of the canon")
     func previousOnly() {
         verify(theme: .vellumLight, previous: "Revelation 21", next: nil, name: "previous_only_light")

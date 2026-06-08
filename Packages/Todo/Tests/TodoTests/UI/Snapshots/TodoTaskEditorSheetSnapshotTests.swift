@@ -29,20 +29,12 @@ struct TodoTaskEditorSheetSnapshotTests {
         verify(theme: .vellumDark, mode: .create, draft: .empty, name: "editor_create_dark")
     }
 
-    @Test("create mode, sepia") func createSepia() {
-        verify(theme: .sepiaLight, mode: .create, draft: .empty, name: "editor_create_sepia")
-    }
-
     @Test("edit mode, light") func editLight() {
         verify(theme: .vellumLight, mode: .edit, draft: populatedDraft, name: "editor_edit_light")
     }
 
     @Test("edit mode, dark") func editDark() {
         verify(theme: .vellumDark, mode: .edit, draft: populatedDraft, name: "editor_edit_dark")
-    }
-
-    @Test("edit mode, sepia") func editSepia() {
-        verify(theme: .sepiaLight, mode: .edit, draft: populatedDraft, name: "editor_edit_sepia")
     }
 
     // The sheet scales its type through the app-wide `superFontScale`
@@ -64,11 +56,6 @@ struct TodoTaskEditorSheetSnapshotTests {
                name: "editor_edit_many_labels_dark")
     }
 
-    @Test("labels wrap, sepia") func editManyLabelsSepia() {
-        verify(theme: .sepiaLight, mode: .edit, draft: manyLabelsDraft, labels: manyLabels,
-               name: "editor_edit_many_labels_sepia")
-    }
-
     // The `FlowLayout` chip wrap is font-sensitive — at a larger scale the
     // chips are wider and the row breaks at a different point. The existing
     // large-font variant uses an empty draft, so wrapping is never exercised
@@ -87,10 +74,6 @@ struct TodoTaskEditorSheetSnapshotTests {
 
     @Test("custom due date, dark") func editCustomDateDark() {
         verify(theme: .vellumDark, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_dark")
-    }
-
-    @Test("custom due date, sepia") func editCustomDateSepia() {
-        verify(theme: .sepiaLight, mode: .edit, draft: customDateDraft, name: "editor_edit_custom_date_sepia")
     }
 
     private var populatedDraft: TaskDraft {

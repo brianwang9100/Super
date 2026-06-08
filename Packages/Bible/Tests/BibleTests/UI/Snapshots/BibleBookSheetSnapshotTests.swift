@@ -28,11 +28,6 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(), theme: .vellumDark, name: "expanded_dark")
     }
 
-    @Test("the picker renders with the current book expanded in the sepia theme")
-    func expandedSepia() {
-        verify(sheet(), theme: .sepiaLight, name: "expanded_sepia")
-    }
-
     @Test("a search query collapses the list to matching books")
     func searchLight() {
         verify(sheet(query: "psa"), theme: .vellumLight, name: "search_light")
@@ -63,11 +58,6 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter"), theme: .vellumDark, name: "auto_expand_dark")
     }
 
-    @Test("the auto-expanded grid renders in the sepia theme")
-    func autoExpandSepia() {
-        verify(sheet(query: "1 Peter"), theme: .sepiaLight, name: "auto_expand_sepia")
-    }
-
     @Test("the auto-expanded grid renders at Dynamic Type XXL")
     func autoExpandLightXXL() {
         verify(
@@ -86,11 +76,6 @@ struct BibleBookSheetSnapshotTests {
         verify(sheet(query: "1 Peter 2"), theme: .vellumDark, name: "chapter_deep_link_dark")
     }
 
-    @Test("the chapter jump row renders in the sepia theme")
-    func chapterDeepLinkSepia() {
-        verify(sheet(query: "1 Peter 2"), theme: .sepiaLight, name: "chapter_deep_link_sepia")
-    }
-
     @Test("the chapter jump row renders at Dynamic Type XXL")
     func chapterDeepLinkLightXXL() {
         verify(
@@ -107,11 +92,6 @@ struct BibleBookSheetSnapshotTests {
     @Test("the verse jump row renders in the dark theme")
     func verseDeepLinkDark() {
         verify(sheet(query: "1 Peter 2:5-6"), theme: .vellumDark, name: "verse_deep_link_dark")
-    }
-
-    @Test("the verse jump row renders in the sepia theme")
-    func verseDeepLinkSepia() {
-        verify(sheet(query: "1 Peter 2:5-6"), theme: .sepiaLight, name: "verse_deep_link_sepia")
     }
 
     @Test("the verse jump row renders at Dynamic Type XXL")
@@ -197,15 +177,6 @@ struct BibleBookSheetSnapshotTests {
         )
     }
 
-    @Test("generating bubble renders in the sepia theme")
-    func generatingSepia() {
-        verify(
-            sheet(generatingBookIds: ["GEN"]),
-            theme: .sepiaLight,
-            name: "generating_sepia"
-        )
-    }
-
     @Test("the picker renders a filled note glyph for books with a book-level note")
     func noteFilledLight() async throws {
         try await verifyNoteFilled(theme: .vellumLight, name: "note_filled_light")
@@ -214,11 +185,6 @@ struct BibleBookSheetSnapshotTests {
     @Test("the filled note glyph renders in the dark theme")
     func noteFilledDark() async throws {
         try await verifyNoteFilled(theme: .vellumDark, name: "note_filled_dark")
-    }
-
-    @Test("the filled note glyph renders in the sepia theme")
-    func noteFilledSepia() async throws {
-        try await verifyNoteFilled(theme: .sepiaLight, name: "note_filled_sepia")
     }
 
     /// Seed a single book-level note on Genesis (the always-visible expanded

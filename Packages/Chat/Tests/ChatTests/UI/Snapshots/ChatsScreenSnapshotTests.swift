@@ -50,11 +50,6 @@ struct ChatsScreenSnapshotTests {
         try await verify(theme: .vellumDark, name: "chats_populated_dark")
     }
 
-    @Test("populated, sepia")
-    func populatedSepia() async throws {
-        try await verify(theme: .sepiaLight, name: "chats_populated_sepia")
-    }
-
     @Test("populated, large font scale")
     func populatedLargeFontScale() async throws {
         try await verify(

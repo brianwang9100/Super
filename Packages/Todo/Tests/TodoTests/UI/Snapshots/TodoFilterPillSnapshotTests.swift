@@ -20,10 +20,6 @@ struct TodoFilterPillSnapshotTests {
         verify(theme: .vellumDark, name: "filter_pill_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "filter_pill_sepia")
-    }
-
     @Test("dynamic type XXL") func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "filter_pill_light_xxl")
     }

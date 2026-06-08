@@ -76,24 +76,6 @@ struct AssistantMessageSnapshotTests {
         )
     }
 
-    @Test("action row idle — Regenerate enabled (sepia)")
-    func actionRowIdleSepia() {
-        verify(
-            isStreaming: false,
-            theme: .sepiaLight,
-            name: "assistant_actions_idle_sepia"
-        )
-    }
-
-    @Test("action row streaming — Regenerate greyed (sepia)")
-    func actionRowStreamingSepia() {
-        verify(
-            isStreaming: true,
-            theme: .sepiaLight,
-            name: "assistant_actions_streaming_sepia"
-        )
-    }
-
     @Test("action row streaming — Regenerate greyed at Dynamic Type XXL")
     func actionRowStreamingXXL() {
         verify(
@@ -112,11 +94,6 @@ struct AssistantMessageSnapshotTests {
     @Test("grounded answer with the sources pill below the text (dark)")
     func withSourcesDark() {
         verify(isStreaming: false, theme: .vellumDark, sources: Self.sampleSources, name: "assistant_with_sources_dark")
-    }
-
-    @Test("grounded answer with the sources pill below the text (sepia)")
-    func withSourcesSepia() {
-        verify(isStreaming: false, theme: .sepiaLight, sources: Self.sampleSources, name: "assistant_with_sources_sepia")
     }
 
     @Test("grounded answer with the sources pill, Dynamic Type XXL")

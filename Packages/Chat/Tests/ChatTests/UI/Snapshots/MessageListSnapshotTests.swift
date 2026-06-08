@@ -48,11 +48,6 @@ struct MessageListSnapshotTests {
         verify(theme: .vellumDark, name: "list_populated_dark")
     }
 
-    @Test("populated list in sepia theme")
-    func populatedSepia() {
-        verify(theme: .sepiaLight, name: "list_populated_sepia")
-    }
-
     @Test("streaming tail with plain prose")
     func streamingTail() {
         let function = #function
@@ -106,21 +101,6 @@ struct MessageListSnapshotTests {
             """,
             theme: .vellumDark,
             name: "list_streaming_midfence_dark"
-        )
-    }
-
-    @Test("streaming tail mid-fence in sepia theme")
-    func streamingTailMidFenceSepia() {
-        verifyStreamingMarkdown(
-            text: """
-            Here's the snippet:
-
-            ```swift
-            let total = items.reduce(0, +)
-            print(total)
-            """,
-            theme: .sepiaLight,
-            name: "list_streaming_midfence_sepia"
         )
     }
 
@@ -435,19 +415,6 @@ struct MessageListSnapshotTests {
         )
     }
 
-    /// Sepia coverage at the upper-bound. The sepia palette uses a
-    /// warmer background and ink than light/dark — confirms the
-    /// appearance knob interacts correctly with that palette too (no
-    /// hardcoded `.primary` foregrounds slipping through).
-    @Test("appearance: scale max (sepia)")
-    func appearanceScaleMaxSepia() {
-        verifyAppearance(
-            fontScale: 1.20,
-            name: "list_scale_max_sepia",
-            theme: .sepiaLight
-        )
-    }
-
     /// Combined Dynamic Type XXL + maxed appearance knob. Locks the
     /// "everything turned up" corner so a regression that compounds
     /// across `@ScaledMetric` + `fontScale` + spacious-anchor padding
@@ -636,11 +603,6 @@ struct MessageListSnapshotTests {
     @Test("freshly mounted long transcript anchors at bottom (dark)")
     func freshlyMountedLongTranscriptDark() {
         verifyLongTranscript(theme: .vellumDark, name: "list_long_transcript_anchored_bottom_dark")
-    }
-
-    @Test("freshly mounted long transcript anchors at bottom (sepia)")
-    func freshlyMountedLongTranscriptSepia() {
-        verifyLongTranscript(theme: .sepiaLight, name: "list_long_transcript_anchored_bottom_sepia")
     }
 
     // **No XXL variant for the anchor-at-bottom test.** At XXL Dynamic

@@ -22,21 +22,22 @@ Chat's look is warm, paper-like, and quiet — closer to a Reader / Notes aesthe
 
 ### 2.1 Themes
 
-Three themes. All palettes are expressed in OKLCH so accent-hue shifts stay perceptually stable.
+Four "study bible" theme families — **Vellum, Sepia, Scriptorium, Slate** — each with a light and a dark variant (8 variants). All palettes are expressed in OKLCH so accent-hue shifts stay perceptually stable. **Vellum Light is the default.** The full per-variant token set is transcribed verbatim in [`docs/design/palettes.jsx`](../design/palettes.jsx).
 
-| Theme | Background | Ink | Accent | Feel |
-|-------|-----------|-----|--------|------|
-| **Light** (default) | Soft pastel green `oklch(0.965 0.018 150)` | Warm gray `oklch(0.32 0.015 200)` | Deeper pastel green `oklch(0.52 0.09 155)` | Subtle, daylight-friendly |
-| **Dark** | Deep green `oklch(0.22 0.025 155)` | Near-white `oklch(0.94 0.01 150)` | Muted mint `oklch(0.75 0.1 150)` | Calm, low-glare |
-| **Sepia** | Warm cream `oklch(0.95 0.035 80)` | Brown-gray `oklch(0.32 0.03 60)` | Terracotta `oklch(0.55 0.13 45)` | Reading-mode |
+| Family | Light background | Accent | Feel |
+|--------|------------------|--------|------|
+| **Vellum** (default) | Warm parchment cream `oklch(0.957 0.018 85)` | Clay `oklch(0.520 0.090 52)` | The brightest, softest reading surface |
+| **Sepia** | Browner cream `oklch(0.918 0.034 75)` | Warm brown `oklch(0.500 0.100 50)` | A much-handled book |
+| **Scriptorium** | Study sage `oklch(0.956 0.012 135)` | Moss-olive `oklch(0.480 0.070 128)` | The green, taken to seminary |
+| **Slate** | Warm grey `oklch(0.957 0.004 80)` | Clay `oklch(0.522 0.080 48)` | The most restrained — one accent does the talking |
 
-The full token set is in [§10 Design Tokens](#10-design-tokens).
+Each family's dark variant inverts the surfaces while keeping the accent character. The full token set is in [§10 Design Tokens](#10-design-tokens).
 
 ### 2.2 Typography
 
 | Role | Face | Notes |
 |------|------|-------|
-| Wordmark, greetings, h3 | **Instrument Serif** (italic for wordmark) | Display only — never body text |
+| Wordmark, greetings, h3 | **EB Garamond** (italic for wordmark) | Display only — never body text |
 | UI, body, messages | **Geist** | Primary typeface, 17pt body |
 | Code, context meter, tool names, version strings | **JetBrains Mono** | Lowercase, subtle letter-spacing |
 
@@ -218,7 +219,7 @@ Assistant text parts support a minimal markdown subset designed for chat, render
 - `**bold**`
 - `` `inline code` `` — 0.88em, JetBrains Mono, tinted background (`--code-inline-bg`)
 - Fenced code blocks → a full **Code Block** component (see [§4.7](#47-code-block))
-- `### Heading` → Instrument Serif, 24pt, 400 weight (used sparingly by the assistant)
+- `### Heading` → EB Garamond, 24pt, 400 weight (used sparingly by the assistant)
 - `<br/>` on single newlines within a paragraph
 
 Links, tables, images, blockquotes, and nested lists are out of scope for MVP.
@@ -323,7 +324,7 @@ The sidebar's applet rail is driven by the shell's `AppletRegistry` (not by Chat
 
 ### 6.1 Header
 
-- **Wordmark** — "Super" in Instrument Serif italic, 36pt, −0.015 letter-spacing, color `--ink`.
+- **Wordmark** — "Super" in EB Garamond italic, 36pt, −0.015 letter-spacing, color `--ink`.
 - **Subtitle** — `v{version} · {tagline}` in JetBrains Mono 10pt, `--ink-faint`.
 
 ### 6.2 Applets
@@ -397,7 +398,7 @@ MVP ships with four preconfigured models that users can enable/disable: **Opus 4
 
 ### 7.4 Theme Pane
 
-A 3-column grid of theme previews (Light, Dark, Sepia). Each preview is a rounded card showing a miniature of the theme's bg, accent bar, ink bars, and a faux input pill; the selected theme gets a 2pt accent border plus a 3pt accent-tinted outline and a "✓" marker in its label row.
+Theme previews grouped by family — one section per family (Vellum, Sepia, Scriptorium, Slate), each with a **Light** and a **Dark** preview card. Each preview is a rounded card showing a miniature of the variant's bg, accent bar, ink bars, and a faux input pill; the selected variant gets a 2pt accent border plus a 3pt accent-tinted outline and a "✓" marker in its label row.
 
 Accent hue is globally tunable via the Tweaks dev panel (0–360°) during design iteration; users don't see a hue slider in MVP.
 
@@ -428,7 +429,7 @@ Selected option shows a trailing accent check. Picking a value changes the verbo
 
 ### 7.9 About Pane
 
-Centered Instrument Serif italic "Super" at 56pt, mono version/build line below, and a short tagline: *"A personal chat app. Your chats stay on device."*
+Centered EB Garamond italic "Super" at 56pt, mono version/build line below, and a short tagline: *"A personal chat app. Your chats stay on device."*
 
 ---
 
@@ -444,7 +445,7 @@ Centered Instrument Serif italic "Super" at 56pt, mono version/build line below,
 │                                         │
 │                 ✦                       │ ← accent spark icon
 │                                         │
-│         How can I help you              │ ← Instrument Serif, 26pt
+│         How can I help you              │ ← EB Garamond, 26pt
 │          this afternoon?                │
 │                                         │
 │                                         │
@@ -471,7 +472,7 @@ If every model in Settings → Models is disabled (or none are configured), the 
   - The settings sheet fades in/out instead of sliding.
   - Streaming text appears without the typing caret.
   - Thinking-dots and spinner animations freeze on a static state icon.
-- **Color-contrast** — at least AA for all ink-on-bg pairs across the three themes. Status is always conveyed by icon + label, never color alone (running spinner + "running", done check + "done").
+- **Color-contrast** — at least AA for all ink-on-bg pairs across every theme variant. Status is always conveyed by icon + label, never color alone (running spinner + "running", done check + "done").
 - **Keyboard (Mac)** — `Cmd+Return` sends, `Cmd+N` starts a new chat, `Cmd+,` opens Settings, `Esc` closes sidebar/settings/modal dialogs.
 
 ---

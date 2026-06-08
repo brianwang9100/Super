@@ -382,13 +382,16 @@ Mini-app emits notification
 
 ### 8.1 Brand & Palette
 
-Super's identity is a **pastel green system**, applied globally to the chat surface and inherited by mini-apps. The accent color and background tokens are the same across all mini-apps so the whole app reads as one surface, not five (see `Chat/DESIGN.md` §10 for the token list).
+Super's identity is a **warm "study bible" palette system** — four families (Vellum, Sepia, Scriptorium, Slate), each with a light and a dark variant (8 variants total). **Vellum Light is the default.** The accent and background tokens are shared across all mini-apps so the whole app reads as one surface, not five (see `Chat/DESIGN.md` §10 for the token list; exact OKLCH values live in [`docs/design/palettes.jsx`](./design/palettes.jsx)).
 
-| Theme | Background | Accent |
-|-------|-----------|--------|
-| Light (default) | Soft pastel green | Deeper pastel green |
-| Dark | Deep green | Muted mint |
-| Sepia | Warm cream | Terracotta |
+| Family | Character | Accent |
+|--------|-----------|--------|
+| Vellum (default) | Warm parchment cream | Clay |
+| Sepia | Browner, much-handled book | Warm brown |
+| Scriptorium | Muted study sage (replaces the old green) | Moss-olive |
+| Slate | Near-neutral warm grey | Clay |
+
+Each family ships a light and a dark variant; the user picks an exact variant in Settings → Appearance.
 
 ### 8.2 Mini-App Accents
 
@@ -396,17 +399,17 @@ Each mini-app has a **secondary accent** used only for its own iconography and c
 
 | Mini-App | Icon | Secondary Accent |
 |----------|------|------------------|
-| Chat | ✦ spark (Instrument Serif) | Pastel green (primary) |
+| Chat | ✦ spark (EB Garamond) | Clay (primary) |
 | ToDo | ☑ checklist | Cobalt |
 | Recipes | 🍳 pan | Warm ochre |
 | Bible | ✝ cross | Plum |
 | Finance | ▵ triangle | Deep teal |
 
-Secondary accents are muted derivatives (OKLCH-shifted) of the primary palette — not raw bright colors — so they coexist with the pastel green base.
+Secondary accents are muted derivatives (OKLCH-shifted) of the primary palette — not raw bright colors — so they coexist with the warm base.
 
 ### 8.3 Typography
 
-Inherits directly from Chat (see [`Chat/DESIGN.md`](./Chat/DESIGN.md) §2.2). Mini-apps use the same stack: Instrument Serif (display), Geist (body), JetBrains Mono (code/numbers). Mini-apps MUST NOT introduce additional typefaces.
+Inherits directly from Chat (see [`Chat/DESIGN.md`](./Chat/DESIGN.md) §2.2). Mini-apps use the same stack: EB Garamond (display), Geist (body), JetBrains Mono (code/numbers). Mini-apps MUST NOT introduce additional typefaces.
 
 ### 8.4 Density & Information Hiding
 
@@ -464,4 +467,4 @@ Each mini-app manages its own settings screen. Reached either from a gear inside
 - **Dynamic Type:** typography scales across all three chat states and all mini-apps. Floating chat panel height adjusts to fit larger text.
 - **Reduce Motion:** spring state transitions become instant crossfades. The bubble's unread pulse becomes a static dot. Chat-card materialize animations become simple fade-ins.
 - **Switch Control / Voice Control:** every interactive element has accessibility identifiers, including the chat bubble and the long-press record actions.
-- **Contrast:** at least AA for all ink-on-bg pairs across the three themes; focused-view sheets darken the backdrop behind them for clear separation without relying on blur alone.
+- **Contrast:** at least AA for all ink-on-bg pairs across every theme variant; focused-view sheets darken the backdrop behind them for clear separation without relying on blur alone.

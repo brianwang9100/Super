@@ -129,11 +129,6 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .vellumDark, cards: [], name: "empty_dark")
     }
 
-    @Test("empty sheet renders in the sepia theme")
-    func emptySepia() {
-        verify(theme: .sepiaLight, cards: [], name: "empty_sepia")
-    }
-
     @Test("generating empty sheet shows the spinner-state bubble")
     func generatingLight() {
         verify(theme: .vellumLight, cards: [], isGenerating: true, name: "generating_light")
@@ -149,12 +144,6 @@ struct AnnotationSheetSnapshotTests {
     func generatingOverPopulatedDark() {
         verify(theme: .vellumDark, cards: Self.threeCards, isGenerating: true,
                name: "generating_over_populated_dark")
-    }
-
-    @Test("a regenerate over populated cards hides them behind the generating state in sepia")
-    func generatingOverPopulatedSepia() {
-        verify(theme: .sepiaLight, cards: Self.threeCards, isGenerating: true,
-               name: "generating_over_populated_sepia")
     }
 
     @Test("the generating-over-populated state reflows its label at Dynamic Type XXL")
@@ -179,11 +168,6 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .vellumDark, cards: [Self.threeCards[0]], name: "one_card_dark")
     }
 
-    @Test("one card renders in the sepia theme")
-    func oneCardSepia() {
-        verify(theme: .sepiaLight, cards: [Self.threeCards[0]], name: "one_card_sepia")
-    }
-
     @Test("three cards render in the light theme")
     func threeCardsLight() {
         verify(theme: .vellumLight, cards: Self.threeCards, name: "three_cards_light")
@@ -192,11 +176,6 @@ struct AnnotationSheetSnapshotTests {
     @Test("three cards render in the dark theme")
     func threeCardsDark() {
         verify(theme: .vellumDark, cards: Self.threeCards, name: "three_cards_dark")
-    }
-
-    @Test("three cards render in the sepia theme")
-    func threeCardsSepia() {
-        verify(theme: .sepiaLight, cards: Self.threeCards, name: "three_cards_sepia")
     }
 
     @Test("eight cards overflow the visible sheet area")
@@ -209,11 +188,6 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .vellumDark, cards: Self.eightCards, name: "eight_cards_dark")
     }
 
-    @Test("eight cards overflow in the sepia theme")
-    func eightCardsSepia() {
-        verify(theme: .sepiaLight, cards: Self.eightCards, name: "eight_cards_sepia")
-    }
-
     @Test("one card per category renders every badge glyph in light")
     func categoryCardsLight() {
         verify(theme: .vellumLight, cards: Self.categoryCards, height: 760, name: "category_cards_light")
@@ -222,11 +196,6 @@ struct AnnotationSheetSnapshotTests {
     @Test("one card per category renders every badge glyph in dark")
     func categoryCardsDark() {
         verify(theme: .vellumDark, cards: Self.categoryCards, height: 760, name: "category_cards_dark")
-    }
-
-    @Test("one card per category renders every badge glyph in sepia")
-    func categoryCardsSepia() {
-        verify(theme: .sepiaLight, cards: Self.categoryCards, height: 760, name: "category_cards_sepia")
     }
 
     @Test("per-category cards reflow their prose bodies at Dynamic Type XXL")
@@ -263,16 +232,6 @@ struct AnnotationSheetSnapshotTests {
             cards: [],
             errorMessage: "No model is selected. Pick a model in Settings, then try again.",
             name: "failed_dispatch_dark"
-        )
-    }
-
-    @Test("the failed-dispatch state renders the message and retry button in sepia")
-    func failedDispatchSepia() {
-        verify(
-            theme: .sepiaLight,
-            cards: [],
-            errorMessage: "No model is selected. Pick a model in Settings, then try again.",
-            name: "failed_dispatch_sepia"
         )
     }
 

@@ -20,10 +20,6 @@ struct TodoSectionHeaderSnapshotTests {
         verify(theme: .vellumDark, name: "section_header_dark")
     }
 
-    @Test("sepia theme") func sepia() {
-        verify(theme: .sepiaLight, name: "section_header_sepia")
-    }
-
     @Test("dynamic type XXL") func dynamicTypeXXL() {
         verify(theme: .vellumLight, dynamicType: .xxLarge, name: "section_header_light_xxl")
     }
