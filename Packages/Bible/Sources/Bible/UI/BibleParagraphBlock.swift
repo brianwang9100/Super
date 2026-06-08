@@ -347,9 +347,13 @@ private struct VerseWord: View {
             // row (`VerseFlowLayout` aligns on `firstTextBaseline`), so making
             // `.bottom` baseline-relative keeps every word's rule on one line.
             .alignmentGuide(.bottom) { $0[.firstTextBaseline] + baselineDrop }
+            // The highlight wash is bottom-anchored to that same baseline-relative
+            // guide and given a constant height — for the identical reason the
+            // underline is. A box-filling `.background` washed the marker-inflated
+            // verse-number cell taller than its neighbors and broke the seam.
+            .background(alignment: .bottom) { wordHighlightBand }
             .overlay(alignment: .bottom) { underlineRule }
             .padding(.vertical, 1.5)
-            .background(wordBackground)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
         if token.isVerseStart {
@@ -371,16 +375,42 @@ private struct VerseWord: View {
             : "Selects the verse for highlight, copy, and share"
     }
 
-    /// The wash behind the word: the persisted highlight colour, otherwise
-    /// nothing. Selection is drawn as a solid underline (see `underlineRule`),
-    /// not a wash, so a selected *and* highlighted verse shows both at once —
-    /// the underline over the highlight colour.
-    private var wordBackground: Color {
+    /// The wash behind the word: a fixed-height band in the persisted highlight
+    /// colour, or nothing when the verse isn't highlighted. Bottom-anchored (in
+    /// `identifiedWord`) to the same baseline-relative `.bottom` guide as the
+    /// underline and given a constant `highlightBandHeight`, so every word's wash
+    /// — verse-number cell included — is the same height. A plain `.background`
+    /// fill instead tracked each cell's natural box, and the raised verse-number
+    /// marker inflates that box upward, so the marker cell washed taller than its
+    /// neighbors and broke the seam (worst at fractional font scales). The
+    /// trailing space baked into `styledText` makes adjacent cells abut, so the
+    /// bands join into one continuous wash — the same mechanism `underlineRule`
+    /// relies on. Selection is a solid line *over* the wash, so a selected *and*
+    /// highlighted verse shows both at once.
+    @ViewBuilder
+    private var wordHighlightBand: some View {
         if let highlightColor {
-            return highlightColor.verseTint(forDarkPage: theme.id == .dark).color
+            Rectangle()
+                .fill(highlightColor.verseTint(forDarkPage: theme.id == .dark).color)
+                .frame(height: highlightBandHeight)
         }
-        return .clear
     }
+
+    /// Height of the highlight wash: the cap/ascent extent above the baseline plus
+    /// `underlineBaselineDrop` below it. Both terms are scale-aware the same way as
+    /// the underline metrics — `verseBodySize` folds in OS Dynamic Type, `fontScale`
+    /// the app slider. Anchored at `baseline + drop` and extending upward by this
+    /// height, the band's top lands a fixed distance above the baseline on *every*
+    /// cell, independent of the verse-number marker's box inflation.
+    private var highlightBandHeight: CGFloat {
+        verseBodySize * typography.fontScale * Self.highlightAscentRatio + underlineBaselineDrop
+    }
+
+    /// Above-baseline extent of the wash as a fraction of the rendered body point
+    /// size — the wash counterpart to `underlineDescentRatio`. Tuned so the band
+    /// clears the glyph cap height with a little breathing room at the default
+    /// reading size; below the baseline the band reuses the underline's descent.
+    private static let highlightAscentRatio: CGFloat = 1.0
 
     /// The word `Text`, prefixed with the raised verse marker on the word that
     /// carries the verse number — a verse straddling a paragraph break draws it
