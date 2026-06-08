@@ -13,6 +13,8 @@ import Testing
 @Suite("BibleAttachToast snapshots")
 @MainActor
 struct BibleAttachToastSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("the toast renders over a light page")
     func light() {
         verify(theme: .light, name: "light")

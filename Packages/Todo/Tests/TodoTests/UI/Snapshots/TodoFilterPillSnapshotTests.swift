@@ -10,6 +10,8 @@ import Testing
 @Suite("TodoFilterPill snapshots", .serialized)
 @MainActor
 struct TodoFilterPillSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("light theme") func light() {
         verify(theme: .light, name: "filter_pill_light")
     }
