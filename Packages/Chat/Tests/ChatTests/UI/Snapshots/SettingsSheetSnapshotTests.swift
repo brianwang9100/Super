@@ -157,6 +157,61 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .light, pane: .models, name: "settings_models_light")
     }
 
+    // Models pane presented as the sheet's *modal root* — the composer's
+    // "Manage models…" entry. Unlike `modelsPopulated` (pushed atop the
+    // Settings root, back chevron), the leading header button here is a
+    // close-✕ that dismisses the whole sheet. Light / dark / sepia covers the
+    // theme branches (the AGENTS.md §3 minimum matrix); the card list itself
+    // is already pinned across Dynamic Type by the pushed `models` variants.
+    @Test("models pane as modal root (close button)")
+    func modelsPaneAsModalRoot() async {
+        await verifyModelsPaneAsModalRoot(
+            theme: .light,
+            name: "settings_models_root_light"
+        )
+    }
+
+    @Test("models pane as modal root (close button, dark)")
+    func modelsPaneAsModalRootDark() async {
+        await verifyModelsPaneAsModalRoot(
+            theme: .dark,
+            name: "settings_models_root_dark"
+        )
+    }
+
+    @Test("models pane as modal root (close button, sepia)")
+    func modelsPaneAsModalRootSepia() async {
+        await verifyModelsPaneAsModalRoot(
+            theme: .sepia,
+            name: "settings_models_root_sepia"
+        )
+    }
+
+    private func verifyModelsPaneAsModalRoot(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        // Seed the modal root before building the harness so the sheet renders
+        // Models at the base of the stack with a close-✕ leading button.
+        viewModel.rootPane = .models
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .models,
+            presentAsRoot: true
+        )
+        .superTheme(.make(theme))
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     @Test("models pane with AFM row when AFM is available")
     func modelsPaneWithAFMAvailable() async {
         await verifyModelsPaneWithAFM(
@@ -1227,6 +1282,12 @@ private struct SettingsSheetSnapshotHarness: View {
     /// Forwarded to `SettingsSheet`'s test seam for snapshotting the
     /// Max-Context inline-error state without driving a Save tap.
     var initialModelDetailContextWindowError: String?
+    /// When `true`, render `initialPane` as the sheet's *modal root* (empty
+    /// navigation path, `viewModel.rootPane` pre-seeded) — the close-✕ leading
+    /// header state used by the composer's "Manage models…". When `false`
+    /// (default), the pane is rendered *pushed* via the `initialPane:` seam,
+    /// which shows the back chevron.
+    var presentAsRoot = false
 
     @State private var presented = true
     @Environment(\.superTheme) private var theme
@@ -1235,6 +1296,25 @@ private struct SettingsSheetSnapshotHarness: View {
         ZStack {
             theme.background
                 .ignoresSafeArea()
+            sheet
+        }
+        // Mirror the production composition root (`AppShell`), which builds
+        // `.superTypography` from the persisted settings. Without this the
+        // panes would render with the environment-default typography and a
+        // future font-scale variant would silently snapshot the wrong scale.
+        .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
+    }
+
+    @ViewBuilder
+    private var sheet: some View {
+        if presentAsRoot {
+            // Use the *public* init with an empty navigation path so the leading
+            // header renders the close-✕ (the composer's "Manage models…" entry
+            // point). The caller seeds `viewModel.rootPane = initialPane` before
+            // constructing the harness — mutating it here would write the model
+            // during view-body evaluation.
+            SettingsSheet(isPresented: $presented, viewModel: viewModel)
+        } else {
             SettingsSheet(
                 isPresented: $presented,
                 viewModel: viewModel,
@@ -1243,11 +1323,6 @@ private struct SettingsSheetSnapshotHarness: View {
                 initialModelDetailContextWindowError: initialModelDetailContextWindowError
             )
         }
-        // Mirror the production composition root (`AppShell`), which builds
-        // `.superTypography` from the persisted settings. Without this the
-        // panes would render with the environment-default typography and a
-        // future font-scale variant would silently snapshot the wrong scale.
-        .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
     }
 }
 

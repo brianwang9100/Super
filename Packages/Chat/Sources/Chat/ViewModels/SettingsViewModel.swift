@@ -135,12 +135,20 @@ public final class SettingsViewModel {
     /// wondering why no row appeared.
     public private(set) var modelEditError: String?
 
-    /// Stack of pushed sub-panes. Empty means the root is showing.
+    /// Stack of pushed sub-panes. Empty means the root pane is showing.
     /// Bound to `SettingsSheet`'s `NavigationStack(path:)`, which is what
     /// produces the native push/pop slide animation. Public so external
     /// callers (e.g. a chat-side affordance) can deep-link into a pane:
     /// `viewModel.openPane(.modelDetail(id: nil))`.
     public var navigationPath: [SettingsSheet.Pane] = []
+
+    /// The pane shown at the base of the navigation stack. `.root` for the
+    /// normal Settings entry; a deep-linked pane (e.g. `.models` from the
+    /// composer's "Manage models…") presented as its own modal root. The
+    /// leading header button is a close-✕ at this base pane and a back chevron
+    /// once `navigationPath` pushes deeper. The host sets this on every open,
+    /// so it can't go stale across presentations.
+    public var rootPane: SettingsSheet.Pane = .root
 
     /// Bundle metadata surfaced in the About pane and the root pane row.
     /// Injected so snapshot tests get a stable string instead of the host
