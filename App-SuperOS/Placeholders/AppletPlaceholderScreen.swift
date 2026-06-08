@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Empty-state backdrop rendered by each of the four M2 placeholder applets
 /// (Todo, Recipes, Bible, Finance). Centered icon + display name in
-/// Instrument Serif + a one-line caption — enough to verify the applet
+/// EB Garamond + a one-line caption — enough to verify the applet
 /// switching path and to give M3's chat overlay something to sit on top of.
 ///
 /// The accent strip and icon tint come from the applet's `accentColor` so

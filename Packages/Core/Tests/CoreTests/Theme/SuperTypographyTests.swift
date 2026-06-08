@@ -17,10 +17,10 @@ struct SuperTypographyTests {
     func serifDisplay() {
         let t = SuperTypography.make(.serif)
         #expect(t.spec(size: 38, relativeTo: nil, weight: nil, design: .serif)
-            == .init(face: "InstrumentSerif-Italic", size: 38, relativeTo: nil, weight: nil, design: .serif))
+            == .init(face: "EBGaramond-Italic", size: 38, relativeTo: nil, weight: nil, design: .serif))
         // With a Dynamic Type anchor the custom face carries relativeTo.
         #expect(t.spec(size: 36, relativeTo: .largeTitle, weight: nil, design: .serif)
-            == .init(face: "InstrumentSerif-Italic", size: 36, relativeTo: .largeTitle, weight: nil, design: .serif))
+            == .init(face: "EBGaramond-Italic", size: 36, relativeTo: .largeTitle, weight: nil, design: .serif))
     }
 
     @Test("system identity falls back to the system serif (no custom face)")
@@ -85,8 +85,33 @@ struct SuperTypographyTests {
         let t = SuperTypography.make(.serif)
         // display(_:) defaults relativeTo to .largeTitle.
         let viaAccessor = t.spec(size: 36, relativeTo: .largeTitle, weight: nil, design: .serif)
-        #expect(viaAccessor.face == "InstrumentSerif-Italic")
+        #expect(viaAccessor.face == "EBGaramond-Italic")
         #expect(viaAccessor.relativeTo == .largeTitle)
+    }
+
+    @Test("reading() routes to the roman body face, distinct from the italic display")
+    func readingResolution() {
+        let serif = SuperTypography.make(.serif)
+        // The reading body face is the roman EB Garamond — NOT the italic
+        // display face — so long-form content reads upright.
+        #expect(serif.readingSpec(size: 17, relativeTo: .body, weight: nil)
+            == .init(face: "EBGaramond-Regular", size: 17, relativeTo: .body, weight: nil, design: .serif))
+        // A weight threads through (markdown strong / Bible section heading).
+        #expect(serif.readingSpec(size: 15, relativeTo: nil, weight: .semibold).weight == .semibold)
+        // fontScale folds in like every other accessor.
+        let scaled = SuperTypography.make(.serif, fontScale: 2)
+        #expect(scaled.readingSpec(size: 16, relativeTo: nil, weight: nil).size == 32)
+        // tracksFontScale: false renders at the base size.
+        #expect(scaled.readingSpec(size: 16, relativeTo: nil, weight: nil, tracksFontScale: false).size == 16)
+        // The system identity drops to the system serif (nil face, no anchor).
+        let sys = SuperTypography.make(.system)
+        #expect(sys.readingSpec(size: 17, relativeTo: .body, weight: nil)
+            == .init(face: nil, size: 17, relativeTo: nil, weight: nil, design: .serif))
+    }
+
+    @Test("serifFamily is the shared EB Garamond family name")
+    func serifFamilyConstant() {
+        #expect(SuperTypography.serifFamily == "EB Garamond")
     }
 
     @Test("Role base sizes match Apple's text-style point sizes")
@@ -105,7 +130,7 @@ struct SuperTypographyTests {
         let display = t.spec(size: SuperTypography.Role.display.baseSize,
                              relativeTo: .largeTitle, weight: .bold, design: .serif)
         #expect(display.weight == .bold)
-        #expect(display.face == "InstrumentSerif-Italic")
+        #expect(display.face == "EBGaramond-Italic")
 
         let body = t.spec(size: SuperTypography.Role.body.baseSize,
                           relativeTo: nil, weight: .semibold, design: .default)

@@ -384,7 +384,7 @@ struct BibleChapterReader: View {
     /// tapping presents the popover.
     @ViewBuilder
     private var chapterTitle: some View {
-        // The brand display face (Instrument Serif Italic) is inherently
+        // The brand display face (EB Garamond Italic) is inherently
         // italic, so no `.italic()` modifier is needed — matching the
         // sidebar wordmark's `display(_:)` usage. `relativeTo: .largeTitle`
         // carries OS Dynamic Type on the custom face; `SuperTypography` folds
