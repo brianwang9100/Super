@@ -28,3 +28,8 @@ Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Bible-specif
 ## Tests
 
 Snapshot fixtures live in `Tests/BibleTests/UI/Snapshots/__Snapshots__/`.
+
+Module-specific test patterns (root [`AGENTS.md`](../../AGENTS.md) §Testing.7 carries the shared rules):
+
+- **Gated/scripted generators** — `FakeBibleAnnotateGenerator` is the reference for proving single-flight and landing a cancel mid-flight without sleeps: `ScriptedBibleAnnotateGenerator` `fatalError`s on over-call; `GatedBibleAnnotateGenerator` exposes `releaseNext`/`awaitCall` and a `maxInFlight` high-water mark.
+- **Synchronous stream seam** — state-bearing tests of a stream consumer drive it through the controller's `_simulateEvent(_:)` seam, not by yielding through the fake's `AsyncStream` and polling. Drain view-model async paths via their `_waitForPending*` seams before asserting.

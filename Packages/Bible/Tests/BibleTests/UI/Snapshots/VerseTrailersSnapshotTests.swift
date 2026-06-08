@@ -13,6 +13,8 @@ import Testing
 @Suite("VerseTrailers snapshots")
 @MainActor
 struct VerseTrailersSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("annotation + note co-trail in stable order, light")
     func bothLight() {
         verify(theme: .light, hasAnnotation: true, hasNote: true, name: "both_light")

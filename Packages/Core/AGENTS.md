@@ -21,3 +21,8 @@ Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Core-specifi
 ## Tests
 
 Tests live in `Tests/CoreTests/` mirroring the source layout.
+
+Module-specific test patterns (root [`AGENTS.md`](../../AGENTS.md) §Testing.7 carries the shared rules):
+
+- **Per-test HTTP isolation** — HTTP/SSE tests stub through `URLProtocolStub` keyed by a fresh per-test `stubID` (+ `defer` unregister), never a global stub, so the suite stays parallel without cross-test contamination.
+- **Await the bus, don't poll it** — `SuperEventBus` tests synchronize by awaiting the stream iterator's `next()`; `events()` registers the subscriber synchronously before it returns, so a subscribe-then-assert needs no sleep.

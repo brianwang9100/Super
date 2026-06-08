@@ -14,6 +14,8 @@ import Testing
 @Suite("BibleChapterFooter snapshots")
 @MainActor
 struct BibleChapterFooterSnapshotTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
+
     @Test("both cards render in the light theme")
     func bothLight() {
         verify(theme: .light, previous: "1 Peter 1", next: "1 Peter 3", name: "both_light")
