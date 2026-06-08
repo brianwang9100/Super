@@ -47,6 +47,32 @@ struct ChatAppearanceTests {
         #expect(ChatAppearance(fontScale: 1.20).paragraphSpacing == 25)
     }
 
+    @Test("line-spacing-in-points equals the em line spacing resolved against body size")
+    func lineSpacingPointsResolvesEmAgainstBody() {
+        // The point value the list-item margin uses is the em line spacing
+        // resolved against the body size, so the gap between list items tracks
+        // the wrapped-line gap inside an item. (MarkdownUI rounds the gap it
+        // actually paints, so the two differ by a sub-point — below visual
+        // threshold; see paragraphLineSpacingPoints' doc.)
+        for scale in [0.80, 0.90, 1.00, 1.10, 1.20] {
+            let a = ChatAppearance(fontScale: scale)
+            #expect(a.paragraphLineSpacingPoints == a.paragraphLineSpacingEm * a.bodyFontSize)
+        }
+        // Anchor points: 0.30×13.6 / 0.39×17 / 0.54×20.4.
+        #expect(abs(ChatAppearance(fontScale: 0.80).paragraphLineSpacingPoints - 4.08) < 0.0001)
+        #expect(abs(ChatAppearance(fontScale: 1.00).paragraphLineSpacingPoints - 6.63) < 0.0001)
+        #expect(abs(ChatAppearance(fontScale: 1.20).paragraphLineSpacingPoints - 11.016) < 0.0001)
+    }
+
+    @Test("line-spacing-in-points grows monotonically with the font slider")
+    func lineSpacingPointsIsMonotonic() {
+        let small = ChatAppearance(fontScale: 0.80).paragraphLineSpacingPoints
+        let mid = ChatAppearance(fontScale: 1.00).paragraphLineSpacingPoints
+        let large = ChatAppearance(fontScale: 1.20).paragraphLineSpacingPoints
+        #expect(small < mid)
+        #expect(mid < large)
+    }
+
     @Test("paragraph line-spacing grows monotonically with the font slider")
     func lineSpacingIsMonotonic() {
         let small = ChatAppearance(fontScale: 0.80).paragraphLineSpacingEm
