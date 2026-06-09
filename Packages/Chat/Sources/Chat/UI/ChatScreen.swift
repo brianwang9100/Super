@@ -113,6 +113,10 @@ public struct ChatScreen: View {
     /// receive. `nil` in snapshot/preview hosts; the router silently
     /// no-ops there.
     @Environment(\.superEventBus) private var superEventBus
+    /// Applet-contributed empty-state starter actions, aggregated by the shell
+    /// from the registered applet set. Empty in snapshot/preview hosts unless
+    /// injected; the empty-state buttons render only when non-empty.
+    @Environment(\.appletSuggestedChatActions) private var suggestedChatActions
     /// Fallback focus state used only when no external binding is passed in
     /// (snapshot tests, previews). The composer reads
     /// ``composerIsFocused`` which prefers the external binding when
@@ -703,6 +707,17 @@ public struct ChatScreen: View {
         // either.
         if viewModel.items.isEmpty && !viewModel.isStreaming && viewModel.error == nil {
             ChatEmptyState()
+                // Bottom-right starter buttons float just above the composer.
+                // They live in `content` (which carries `.opacity(contentOpacity)`)
+                // so they fade with the rest of the empty state in pill mode, and
+                // sending collapses the empty state so they disappear naturally.
+                .overlay(alignment: .bottomTrailing) {
+                    if !suggestedChatActions.isEmpty {
+                        SuggestedActions(actions: suggestedChatActions, onSend: viewModel.send)
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 14)
+                    }
+                }
         } else {
             // The streaming tail observation is confined to
             // `TranscriptObserver` so token-delta writes only invalidate
