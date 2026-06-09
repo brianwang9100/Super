@@ -1,67 +1,62 @@
 import Core
-import Foundation
 import SwiftUI
 
-/// Centered greeting shown when a conversation has no messages.
+/// Centered brand glyph shown when a conversation has no messages.
 ///
-/// The greeting text varies by hour-of-day (`How can I help you this
-/// morning?` / `…afternoon?` / `…evening?` / `…tonight?`). The clock is
-/// injected so snapshot tests are deterministic.
-///
-/// Mirrors `EmptyState` in `.design-tmp/chat/project/src/chat-view.jsx`.
+/// The glyph is chosen per-target through `\.chatEmptyStateGlyph`: SuperOS
+/// keeps its `SparkIcon`, SuperBible overrides to the `StarIcon` (Star of
+/// Bethlehem). Accent-tinted, solid, no text.
 public struct ChatEmptyState: View {
-    public let greeting: String
-
-    public init(greeting: String) {
-        self.greeting = greeting
-    }
-
-    /// Convenience that derives the greeting from `clock.now()` against the
-    /// current calendar. The view itself stays pure; the time-of-day logic
-    /// lives in `Self.greeting(for:calendar:)` so both the view and the
-    /// composition root call into the same function.
-    public init(clock: any Clock = SystemClock(), calendar: Calendar = .current) {
-        self.greeting = Self.greeting(for: clock.now(), calendar: calendar)
-    }
+    public init() {}
 
     @Environment(\.superTheme) private var theme
-    @Environment(\.superTypography) private var typography
+    @Environment(\.chatEmptyStateGlyph) private var glyph
 
     public var body: some View {
-        VStack(spacing: 0) {
-            SparkIcon(size: 36)
-                .foregroundStyle(theme.accent)
-                .opacity(0.8)
-                .padding(.bottom, 18)
-            Text(greeting)
-                .font(typography.display(26, relativeTo: .title))
-                // System identity resolves display() to an upright system serif;
-                // .italic() restores the slant the brand face bakes in (no-op
-                // under the serif identity, matching wordmarkHeader).
-                .italic()
-                .tracking(-0.26)
-                .lineSpacing(2)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(theme.ink)
-                .frame(maxWidth: 300)
+        Group {
+            switch glyph {
+            // SuperOS's spark, accent-tinted at 0.8 — same treatment as the
+            // streaming `WaitingSpark` spinner. `SparkIcon`'s `Canvas` strokes
+            // with its `color` argument (an ancestor `.foregroundStyle` never
+            // reaches it), so the tint is passed explicitly. Without the text
+            // that used to anchor it, a bare `.primary` spark went nearly
+            // invisible on the dark theme background.
+            case .spark: SparkIcon(size: 36, color: theme.accent).opacity(0.8)
+            // SuperBible's solid accent Star of Bethlehem. `StarIcon` fills
+            // `.foreground`, which `.foregroundStyle(theme.accent)` resolves.
+            case .star:  StarIcon(size: 40).foregroundStyle(theme.accent)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 28)
     }
+}
 
-    /// Map an hour-of-day to one of the four greeting strings. Pure so
-    /// snapshot tests can drive every branch with a `FixedClock`. Marked
-    /// `nonisolated` because the SwiftUI `View` conformance otherwise
-    /// inherits `@MainActor`, which forced every test caller into an
-    /// actor-isolated context (Swift 6 stricter toolchains rejected this).
-    nonisolated public static func greeting(for date: Date, calendar: Calendar = .current) -> String {
-        let hour = calendar.component(.hour, from: date)
-        switch hour {
-        case ..<5:    return "How can I help you tonight?"
-        case 5..<12:  return "How can I help you this morning?"
-        case 12..<17: return "How can I help you this afternoon?"
-        case 17..<21: return "How can I help you this evening?"
-        default:      return "How can I help you tonight?"
-        }
+/// Which brand mark the chat empty state renders. Defaults to `.spark`
+/// (SuperOS); SuperBible injects `.star` at its composition root.
+public enum ChatEmptyStateGlyph: Sendable {
+    case spark
+    case star
+}
+
+/// SwiftUI environment plumbing — only the `\.chatEmptyStateGlyph` accessor
+/// and `View.chatEmptyStateGlyph(_:)` modifier are public surface. The key
+/// stays internal so it isn't re-exported as API.
+struct ChatEmptyStateGlyphKey: EnvironmentKey {
+    static let defaultValue: ChatEmptyStateGlyph = .spark
+}
+
+public extension EnvironmentValues {
+    var chatEmptyStateGlyph: ChatEmptyStateGlyph {
+        get { self[ChatEmptyStateGlyphKey.self] }
+        set { self[ChatEmptyStateGlyphKey.self] = newValue }
+    }
+}
+
+public extension View {
+    /// Inject the chat empty-state brand glyph for this subtree. SuperBible
+    /// sets `.star` at its `AppShell`; SuperOS leaves the `.spark` default.
+    func chatEmptyStateGlyph(_ glyph: ChatEmptyStateGlyph) -> some View {
+        environment(\.chatEmptyStateGlyph, glyph)
     }
 }

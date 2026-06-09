@@ -8,9 +8,9 @@ import Testing
 
 /// Top-level screen snapshots. Each scenario constructs the view model
 /// with a no-op driver and stub repositories so the view renders entirely
-/// from in-memory state — no GRDB, no network. The empty-state greeting
-/// is pinned to a fixed afternoon timestamp so baselines don't drift
-/// across the morning/afternoon/evening hour buckets at record time.
+/// from in-memory state — no GRDB, no network. The empty state renders the
+/// `ChatEmptyState` brand glyph (default `.spark` here), so these baselines
+/// no longer depend on a pinned clock.
 @Suite("ChatScreen snapshots", .serialized)
 @MainActor
 struct ChatScreenSnapshotTests {
@@ -23,23 +23,6 @@ struct ChatScreenSnapshotTests {
         supportsTools: true,
         maxContextTokens: 128_000
     )
-
-    /// Wed 2026-01-14 14:00:00 UTC — sits squarely in the "afternoon"
-    /// hour bucket *when interpreted in UTC*. Pinning the clock removes
-    /// wall-clock drift; pairing it with `snapshotCalendar` below
-    /// removes timezone drift (PDT/UTC) between developer machines and
-    /// CI runners, which previously rendered a different greeting.
-    private let snapshotClock = FixedClock(Date(timeIntervalSince1970: 1_768_485_600))
-
-    /// UTC calendar so the empty-state greeting's hour-of-day lookup
-    /// is identical on any machine that runs this suite. Without this,
-    /// 14:00 UTC lands in the "afternoon" bucket on a UTC sim and the
-    /// "morning" bucket on a PDT sim — and the baselines diverge.
-    private let snapshotCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal
-    }()
 
     @Test("empty state in light theme")
     func emptyLight() {
@@ -90,7 +73,7 @@ struct ChatScreenSnapshotTests {
         viewModel.composerText = "hi"
         viewModel.send("hi")
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -131,7 +114,7 @@ struct ChatScreenSnapshotTests {
         // empty so the composer's model pill correctly reads
         // "No model", consistent with the banner state.
         let viewModel = makeNoModelErrorPopulatedViewModel()
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
         recordOrCompareWithFontTolerance(view: view, name: name, function: function)
@@ -167,7 +150,7 @@ struct ChatScreenSnapshotTests {
     ) {
         // Fresh build: zero models configured, user typed something and
         // tapped send. `ChatScreenViewModel.send` sets the no-model error;
-        // `ChatScreen.content` switches from the empty-state greeting to
+        // `ChatScreen.content` switches from the empty-state glyph to
         // `MessageList` so the banner renders above the composer.
         let viewModel = ChatScreenViewModel(
             conversationId: "c",
@@ -181,7 +164,7 @@ struct ChatScreenSnapshotTests {
         viewModel.composerText = "hi"
         viewModel.send("hi")
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
         recordOrCompareWithFontTolerance(view: view, name: name, function: function)
@@ -201,7 +184,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(.vellumLight))
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
@@ -214,17 +197,15 @@ struct ChatScreenSnapshotTests {
         function: String = #function
     ) {
         let viewModel = makeViewModel(initialMessages: [])
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
-        // The empty state's `EB Garamond` greeting renders with
-        // small sub-pixel differences between iOS 26.2 (CI's pre-installed
-        // simulator runtime, bundled with Xcode 26.3) and iOS 26.3 (the
-        // local recording runtime). System-font surfaces don't drift;
-        // only the custom serif body does. Allow a small fraction of
-        // pixels (the anti-aliasing fringes around glyph edges) to differ
-        // — and within those, accept a small perceptual delta. Scoped to
+        // The empty state's full chrome (system-font header + composer
+        // placeholder) drifts by a sub-pixel amount between the local
+        // recording Mac and the macos-26 CI runner — same anti-aliasing
+        // fringe the `noModelError*` fixtures hit. Allow a small fraction
+        // of pixels to differ within a small perceptual delta. Scoped to
         // `verifyEmpty` so the rest of the suite stays pixel-exact.
         let failure = verifySnapshot(
             of: view,
@@ -254,7 +235,7 @@ struct ChatScreenSnapshotTests {
             usedTokens: 1_200
         )
 
-        let view = ChatScreen(viewModel: viewModel, clock: snapshotClock, calendar: snapshotCalendar)
+        let view = ChatScreen(viewModel: viewModel)
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
         recordOrCompare(view: view, name: name, function: function)
