@@ -663,6 +663,10 @@ struct AppShell: View {
             userPersonalizationReceiver: dependencies.chatSessionStore,
             autoCompactPolicyReceiver: dependencies.chatSessionStore,
             webSearchPolicyReceiver: dependencies.chatSessionStore,
+            // Power the Data pane's "Export all chats" job. Both repos already
+            // live on `AppShellDependencies`; `clock` defaults to SystemClock.
+            messageRepository: dependencies.messageRepository,
+            toolCallRepository: dependencies.toolCallRepository,
             // Required for SettingsMemoryPane edit/delete/clear-all
             // to reach the GRDB store. Optional in the type so test
             // fixtures can construct the VM without one — production
