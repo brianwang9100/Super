@@ -1,3 +1,4 @@
+import Chat
 import Core
 import SwiftUI
 
@@ -44,6 +45,9 @@ struct SuperBibleContentView: View {
             case .ready(let dependencies):
                 AppShell(dependencies: dependencies.shellDependencies)
                     .environment(\.appletSettingsContributions, dependencies.appletSettingsContributions)
+                    // SuperBible's chat empty state shows the Star of Bethlehem
+                    // brand mark; SuperOS keeps the default spark.
+                    .chatEmptyStateGlyph(.star)
                     .transition(.opacity)
             }
         }
