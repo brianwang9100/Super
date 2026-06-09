@@ -26,18 +26,6 @@ public struct ChatScreen: View {
     /// model dropdown. The host typically opens the Settings sheet
     /// pre-routed to the Models pane.
     public let onManageModels: () -> Void
-    /// Clock used by the empty-state greeting. Production wires
-    /// `SystemClock()`; snapshot tests pass a `FixedClock` so the
-    /// baselines don't drift across the morning/afternoon/evening
-    /// hour buckets at recording time.
-    private let clock: any Clock
-    /// Calendar used by the empty-state greeting's hour-of-day lookup.
-    /// Production wires `.current` (system timezone); snapshot tests
-    /// pin it to UTC so the hour bucket is identical on developer
-    /// machines (typically America/Los_Angeles) and on CI runners
-    /// (typically UTC) — otherwise the same `FixedClock` instant lands
-    /// in different hour buckets and baselines mismatch.
-    private let calendar: Calendar
 
     /// `0` renders the surface as the minimized pill (only the morphing
     /// `ChatComposer` shows, panel surround hidden, transcript faded);
@@ -99,9 +87,7 @@ public struct ChatScreen: View {
         onSurfaceTapped: (() -> Void)? = nil,
         onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
         onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
-        dragResetToken: Int = 0,
-        clock: any Clock = SystemClock(),
-        calendar: Calendar = .current
+        dragResetToken: Int = 0
     ) {
         self.viewModel = viewModel
         self.progress = progress
@@ -112,8 +98,6 @@ public struct ChatScreen: View {
         self.onDragChanged = onDragChanged
         self.onDragEnded = onDragEnded
         self.dragResetToken = dragResetToken
-        self.clock = clock
-        self.calendar = calendar
         viewModel.onAddModelRequested = onAddModelRequested
     }
 
@@ -368,7 +352,7 @@ public struct ChatScreen: View {
                 .clipped()
             content
                 // `minHeight: 0` overrides the inner view's intrinsic
-                // floor (`ChatEmptyState`'s ~90pt icon+greeting,
+                // floor (`ChatEmptyState`'s centered glyph,
                 // `MessageList`'s row stack) so the content slot takes
                 // *exactly* the leftover space between handle and
                 // composer at every progress. Without this override
@@ -699,7 +683,7 @@ public struct ChatScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        // Render `MessageList` (not the empty-state greeting) whenever
+        // Render `MessageList` (not the empty-state glyph) whenever
         // an error banner needs a surface, even in a brand-new chat
         // with zero items. `MessageList` owns the `ErrorBanner`, so an
         // active error in the empty branch would otherwise have nowhere
@@ -718,7 +702,7 @@ public struct ChatScreen: View {
         // preconditions the pair so test fixtures can't violate it
         // either.
         if viewModel.items.isEmpty && !viewModel.isStreaming && viewModel.error == nil {
-            ChatEmptyState(clock: clock, calendar: calendar)
+            ChatEmptyState()
         } else {
             // The streaming tail observation is confined to
             // `TranscriptObserver` so token-delta writes only invalidate
