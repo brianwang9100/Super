@@ -28,4 +28,18 @@ struct TodoTests {
         #expect(!body.isEmpty)
         #expect(body.contains("Todo applet"))
     }
+
+    @Test("suggestedChatActions contributes non-empty Todo chat starters")
+    func suggestedChatActions() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(
+            path: "todo-actions-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let actions = TodoApplet(dependencies: try TodoDependencies.live(in: directory)).suggestedChatActions
+        #expect(!actions.isEmpty)
+        #expect(actions.allSatisfy { !$0.label.isEmpty && !$0.message.isEmpty })
+        #expect(actions.contains { $0.label == "Add a task" })
+    }
 }

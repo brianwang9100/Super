@@ -244,6 +244,14 @@ struct AppShell: View {
                 onProgressChange: { chatProgress = $0 },
                 onSemiProgressChange: { chatSemiProgress = $0 }
             )
+            // Empty-state starter buttons: each registered applet contributes
+            // its own actions, aggregated here from the registry so each target
+            // surfaces exactly the applets it ships (SuperBible → Bible only;
+            // SuperOS → Bible + Todo). Propagates down to `ChatScreen`.
+            .environment(
+                \.appletSuggestedChatActions,
+                SuggestedChatAction.merged(registry.applets.map(\.suggestedChatActions))
+            )
             // Immersive reading: slide the minimized chat pill down off the
             // bottom edge when an applet requests chrome hidden. Gated on the
             // pill state so a deliberately semi/expanded chat is untouched —

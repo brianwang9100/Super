@@ -72,6 +72,15 @@ struct BibleAppletTests {
         #expect(body.contains("bible.note"))
     }
 
+    @Test("suggestedChatActions contributes non-empty Bible chat starters")
+    func suggestedChatActions() {
+        let actions = makeApplet().suggestedChatActions
+        #expect(!actions.isEmpty)
+        // Labels are short button text; messages are the prompts actually sent.
+        #expect(actions.allSatisfy { !$0.label.isEmpty && !$0.message.isEmpty })
+        #expect(actions.contains { $0.label == "Today's reading" })
+    }
+
     @Test("openRecord event with a verse-range reference navigates the view model")
     func openRecordEventDrivesViewModelNavigation() async throws {
         let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
