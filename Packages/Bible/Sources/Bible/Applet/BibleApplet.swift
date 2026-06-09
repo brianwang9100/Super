@@ -30,6 +30,16 @@ public struct BibleApplet: MiniApplet {
     public var accentColor: Color { Self.accentColor }
     public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
 
+    /// Bible-flavored empty-state prompts. The shell surfaces these (alongside
+    /// any other registered applet's) as tappable chat-starter buttons.
+    public var suggestedChatActions: [SuggestedChatAction] {
+        [
+            SuggestedChatAction(label: "Explain a verse", message: "Explain a Bible verse to me."),
+            SuggestedChatAction(label: "Today's reading", message: "What should I read in the Bible today?"),
+            SuggestedChatAction(label: "Write a prayer", message: "Write a short prayer for me."),
+        ]
+    }
+
     /// The single view model backing the reading surface. Held here (not
     /// rebuilt per `rootView()` call) so navigation state persists while the
     /// applet is the active backdrop.

@@ -53,4 +53,16 @@ public protocol MiniApplet: Sendable {
     /// applet that has no behavioral guidance yet — the registry drops
     /// empty bodies, so no block is injected in that case.
     var systemPrompt: String { get }
+
+    /// Ready-made chat prompts this applet contributes to the chat empty state.
+    /// The shell aggregates these across the registered applet set (see
+    /// `SuggestedChatAction.merged`), so each target surfaces only the actions
+    /// for the applets it ships. Defaults to `[]`; applets with no actions
+    /// inherit it.
+    var suggestedChatActions: [SuggestedChatAction] { get }
+}
+
+public extension MiniApplet {
+    /// Applets contribute no chat actions by default; Bible and Todo override.
+    var suggestedChatActions: [SuggestedChatAction] { [] }
 }

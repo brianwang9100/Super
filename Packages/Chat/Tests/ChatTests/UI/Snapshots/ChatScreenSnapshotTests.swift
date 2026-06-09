@@ -34,6 +34,23 @@ struct ChatScreenSnapshotTests {
         verifyEmpty(theme: .vellumDark, name: "screen_empty_dark")
     }
 
+    @Test("empty state with suggested actions, light")
+    func emptyWithActionsLight() {
+        verifyEmptyWithActions(theme: .vellumLight, name: "screen_empty_actions_light")
+    }
+
+    @Test("empty state with suggested actions, dark")
+    func emptyWithActionsDark() {
+        verifyEmptyWithActions(theme: .vellumDark, name: "screen_empty_actions_dark")
+    }
+
+    @Test("empty state with suggested actions at dynamic type XXL")
+    func emptyWithActionsXXL() {
+        // The starter buttons grow with the label text at XXL; this catches the
+        // stack overflowing or colliding with the composer (§Testing.3 reflow).
+        verifyEmptyWithActions(theme: .vellumLight, name: "screen_empty_actions_xxl", dynamicType: .xxLarge)
+    }
+
     @Test("populated transcript in light theme")
     func populatedLight() {
         verifyPopulated(theme: .vellumLight, name: "screen_populated_light")
@@ -207,6 +224,39 @@ struct ChatScreenSnapshotTests {
         // fringe the `noModelError*` fixtures hit. Allow a small fraction
         // of pixels to differ within a small perceptual delta. Scoped to
         // `verifyEmpty` so the rest of the suite stays pixel-exact.
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
+    }
+
+    /// Empty state with the applet-contributed starter buttons injected via the
+    /// environment (the shell does this from the registry in production). Uses
+    /// the same font tolerance as `verifyEmpty` — the surface includes the
+    /// system-font header/composer chrome.
+    private func verifyEmptyWithActions(
+        theme: SuperTheme.Identifier,
+        name: String,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) {
+        let viewModel = makeViewModel(initialMessages: [])
+        let view = ChatScreen(viewModel: viewModel)
+            .environment(\.appletSuggestedChatActions, [
+                SuggestedChatAction(label: "Explain a verse", message: "Explain a Bible verse to me."),
+                SuggestedChatAction(label: "Today's reading", message: "What should I read in the Bible today?"),
+                SuggestedChatAction(label: "Write a prayer", message: "Write a short prayer for me."),
+            ])
+            .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicType)
+            .frame(width: 402, height: 874)
+
         let failure = verifySnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),

@@ -13,6 +13,15 @@ public struct TodoApplet: MiniApplet {
     public var accentColor: Color { Color(red: 0.30, green: 0.45, blue: 0.78) }
     public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
 
+    /// Todo-flavored empty-state prompts, surfaced by the shell (SuperOS only —
+    /// SuperBible doesn't register Todo) as tappable chat-starter buttons.
+    public var suggestedChatActions: [SuggestedChatAction] {
+        [
+            SuggestedChatAction(label: "Add a task", message: "Add a task to my to-do list."),
+            SuggestedChatAction(label: "What's due", message: "What tasks do I have coming up?"),
+        ]
+    }
+
     private let dependencies: TodoDependencies
 
     /// The single view model backing the task surface. Held here, not
