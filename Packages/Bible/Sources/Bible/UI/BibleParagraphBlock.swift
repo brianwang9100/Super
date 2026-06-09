@@ -294,6 +294,9 @@ private struct VerseWord: View {
     let theme: SuperTheme
     let onTap: (Int) -> Void
     @Environment(\.superTypography) private var typography
+    /// Drives whether the highlight wash cross-fades on apply/clear/recolour
+    /// (`nil` animation when Reduce Motion is on, so the wash repaints instantly).
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Verse-word base point, declared via `@ScaledMetric` so reading text
     /// composes OS Dynamic Type on top of the app font-scale `SuperTypography`
     /// folds in. Base 17 == `.body`, the pre-migration size.
@@ -368,6 +371,17 @@ private struct VerseWord: View {
             .padding(.vertical, 1.5)
             .contentShape(Rectangle())
             .onTapGesture { onTap(token.verseNumber) }
+            // Cross-fade the wash when the verse's highlight changes. The write
+            // is async (the `@Query` republishes outside any `withAnimation`
+            // transaction), so the fade has to be driven by an explicit
+            // value-keyed animation here rather than at the call site. Keyed to
+            // `highlightColor` so only the wash animates — selection underline,
+            // narration dashes, and font-scale changes are untouched.
+            // `BibleHighlightWashMotion` resolves to `nil` under Reduce Motion.
+            .animation(
+                BibleHighlightWashMotion(reduceMotion: reduceMotion).animation,
+                value: highlightColor
+            )
         if token.isVerseStart {
             word.id(VerseAnchor(verseNumber: token.verseNumber))
         } else {
@@ -387,25 +401,30 @@ private struct VerseWord: View {
             : "Selects the verse for highlight, copy, and share"
     }
 
-    /// The wash behind the word: a fixed-height band in the persisted highlight
-    /// colour, or nothing when the verse isn't highlighted. Bottom-anchored (in
-    /// `identifiedWord`) to the same baseline-relative `.bottom` guide as the
-    /// underline and given a constant `highlightBandHeight`, so every word's wash
-    /// — verse-number cell included — is the same height. A plain `.background`
-    /// fill instead tracked each cell's natural box, and the raised verse-number
-    /// marker inflates that box upward, so the marker cell washed taller than its
-    /// neighbors and broke the seam (worst at fractional font scales). The
-    /// trailing space baked into `styledText` makes adjacent cells abut, so the
-    /// bands join into one continuous wash — the same mechanism `underlineRule`
-    /// relies on. Selection is a solid line *over* the wash, so a selected *and*
-    /// highlighted verse shows both at once.
-    @ViewBuilder
+    /// The wash behind the word: a fixed-height band filled with the persisted
+    /// highlight colour, or `.clear` when the verse isn't highlighted.
+    /// Bottom-anchored (in `identifiedWord`) to the same baseline-relative
+    /// `.bottom` guide as the underline and given a constant `highlightBandHeight`,
+    /// so every word's wash — verse-number cell included — is the same height. A
+    /// plain `.background` fill instead tracked each cell's natural box, and the
+    /// raised verse-number marker inflates that box upward, so the marker cell
+    /// washed taller than its neighbors and broke the seam (worst at fractional
+    /// font scales). The trailing space baked into `styledText` makes adjacent
+    /// cells abut, so the bands join into one continuous wash — the same mechanism
+    /// `underlineRule` relies on. Selection is a solid line *over* the wash, so a
+    /// selected *and* highlighted verse shows both at once.
+    ///
+    /// The band is **always present** with a `.clear` fallback rather than a
+    /// conditional view: a stable identity turns a highlight apply/clear/recolour
+    /// into an *animatable `Color` value change* that `identifiedWord`'s
+    /// `.animation(_, value: highlightColor)` cross-fades. A conditional band
+    /// (`if let`) instead *inserts/removes* the view, which pops in with no
+    /// transition — the regression #252 introduced when it replaced the old
+    /// always-present `Color` background with this band.
     private var wordHighlightBand: some View {
-        if let highlightColor {
-            Rectangle()
-                .fill(highlightColor.verseTint(forDarkPage: theme.isDark).color)
-                .frame(height: highlightBandHeight)
-        }
+        Rectangle()
+            .fill(highlightColor.map { $0.verseTint(forDarkPage: theme.isDark).color } ?? Color.clear)
+            .frame(height: highlightBandHeight)
     }
 
     /// Height of the highlight wash: the cap/ascent extent above the baseline plus
