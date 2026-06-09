@@ -274,14 +274,14 @@ public struct SuperTheme: Sendable, Equatable {
 
     /// Lapis — lapis and gold, the illuminated manuscript: a cool indigo ground
     /// (hue ~255–262) lit by antique gilt. The only cool family and the most
-    /// nocturnal. Yellow-gold accent (~hue 92–96).
+    /// nocturnal. Gold accent (~hue 75).
     private static let lapisLight = Palette(
         bg: OKLCH(0.945, 0.012, 255), bgRaised: OKLCH(0.972, 0.009, 255),
         bgSunken: OKLCH(0.922, 0.017, 255), sidebar: OKLCH(0.934, 0.014, 255),
         ink: OKLCH(0.312, 0.035, 262), inkSoft: OKLCH(0.455, 0.034, 262),
         inkFaint: OKLCH(0.590, 0.028, 258), inkMute: OKLCH(0.750, 0.018, 256),
-        accent: OKLCH(0.745, 0.142, 96), accentInk: OKLCH(0.260, 0.030, 262),
-        accentSoft: OKLCH(0.900, 0.062, 96),
+        accent: OKLCH(0.585, 0.095, 75), accentInk: OKLCH(0.260, 0.030, 262),
+        accentSoft: OKLCH(0.880, 0.045, 80),
         border: OKLCH(0.855, 0.015, 255), borderFaint: OKLCH(0.908, 0.010, 255),
         codeInlineBg: OKLCH(0.905, 0.022, 255), codeInlineFg: OKLCH(0.400, 0.060, 265),
         bubbleUser: OKLCH(0.895, 0.028, 255), bubbleInk: OKLCH(0.290, 0.035, 262),
@@ -293,10 +293,10 @@ public struct SuperTheme: Sendable, Equatable {
         bgSunken: OKLCH(0.212, 0.028, 262), sidebar: OKLCH(0.232, 0.030, 262),
         ink: OKLCH(0.910, 0.018, 250), inkSoft: OKLCH(0.750, 0.020, 252),
         inkFaint: OKLCH(0.595, 0.022, 255), inkMute: OKLCH(0.450, 0.024, 258),
-        accent: OKLCH(0.805, 0.105, 92), accentInk: OKLCH(0.220, 0.030, 262),
-        accentSoft: OKLCH(0.360, 0.052, 90),
+        accent: OKLCH(0.760, 0.085, 78), accentInk: OKLCH(0.220, 0.030, 262),
+        accentSoft: OKLCH(0.355, 0.045, 70),
         border: OKLCH(0.360, 0.028, 262), borderFaint: OKLCH(0.308, 0.026, 262),
-        codeInlineBg: OKLCH(0.325, 0.034, 262), codeInlineFg: OKLCH(0.840, 0.090, 92),
+        codeInlineBg: OKLCH(0.325, 0.034, 262), codeInlineFg: OKLCH(0.830, 0.075, 80),
         bubbleUser: OKLCH(0.375, 0.038, 262), bubbleInk: OKLCH(0.910, 0.018, 250),
         isDark: true
     )
