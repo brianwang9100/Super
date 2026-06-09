@@ -27,7 +27,7 @@ Four "study bible" theme families — **Vellum, Lapis, Scriptorium, Slate** — 
 | Family | Light background | Accent | Feel |
 |--------|------------------|--------|------|
 | **Vellum** (default) | Warm parchment cream `oklch(0.957 0.018 85)` | Clay `oklch(0.520 0.090 52)` | The brightest, softest reading surface |
-| **Lapis** | Cool indigo `oklch(0.945 0.012 255)` | Yellow-gold `oklch(0.745 0.142 96)` | The illuminated manuscript — the lone cool family |
+| **Lapis** | Cool indigo `oklch(0.945 0.012 255)` | Gold `oklch(0.585 0.095 75)` | The illuminated manuscript — the lone cool family |
 | **Scriptorium** | Study sage `oklch(0.956 0.012 135)` | Moss-olive `oklch(0.480 0.070 128)` | The green, taken to seminary |
 | **Slate** | Warm grey `oklch(0.957 0.004 80)` | Clay `oklch(0.522 0.080 48)` | The most restrained — one accent does the talking |
 

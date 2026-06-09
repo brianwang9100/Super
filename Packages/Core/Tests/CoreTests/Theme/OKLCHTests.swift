@@ -83,7 +83,7 @@ struct SuperThemeTests {
         // Design accent hues from `palettes.jsx`.
         #expect(SuperTheme.make(.vellumLight).accentHue == 52)
         #expect(SuperTheme.make(.vellumDark).accentHue == 60)
-        #expect(SuperTheme.make(.lapisLight).accentHue == 96)
+        #expect(SuperTheme.make(.lapisLight).accentHue == 75)
         #expect(SuperTheme.make(.scriptoriumLight).accentHue == 128)
         #expect(SuperTheme.make(.slateDark).accentHue == 52)
         #expect(SuperTheme.make(.vellumLight, accentHue: 30).accentHue == 30)
