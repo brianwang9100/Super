@@ -1045,9 +1045,47 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_search_on_light_xxl", function: function)
     }
 
-    @Test("data pane")
-    func dataPane() async {
-        await verify(theme: .vellumLight, pane: .data, name: "settings_data_light")
+    @Test("data pane — export idle")
+    func dataPaneIdle() {
+        verifyDataPane(theme: .vellumLight, phase: .idle, name: "settings_data_idle_light")
+        verifyDataPane(theme: .vellumDark, phase: .idle, name: "settings_data_idle_dark")
+    }
+
+    @Test("data pane — exporting")
+    func dataPaneExporting() {
+        verifyDataPane(theme: .vellumLight, phase: .exporting, name: "settings_data_exporting_light")
+        verifyDataPane(theme: .vellumDark, phase: .exporting, name: "settings_data_exporting_dark")
+    }
+
+    @Test("data pane — export finished")
+    func dataPaneFinished() {
+        let url = URL(fileURLWithPath: "/tmp/super-chats-2027-01-15-0800.json")
+        let phase = ChatExportController.Phase.finished(url: url, conversationCount: 7)
+        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_finished_light")
+        verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_finished_dark")
+    }
+
+    @Test("data pane — export failed")
+    func dataPaneFailed() {
+        let phase = ChatExportController.Phase.failed(message: "Could not write the export file.")
+        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_failed_light")
+        verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_failed_dark")
+    }
+
+    /// Render the Data pane with the export controller forced into `phase`.
+    private func verifyDataPane(
+        theme: SuperTheme.Identifier,
+        phase: ChatExportController.Phase,
+        name: String,
+        function: String = #function
+    ) {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(settings: .default, chatCount: 7)
+        viewModel.exportController._setSnapshotPhase(phase)
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .data)
+            .superTheme(.make(theme))
+            .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     @Test("about pane")

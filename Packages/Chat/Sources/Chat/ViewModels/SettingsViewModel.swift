@@ -159,6 +159,11 @@ public final class SettingsViewModel {
     private let modelRepository: any ModelConfigurationRepository
     private let conversationRepository: any ConversationRepository
     private let toolRegistry: ToolRegistry
+
+    /// Drives the Data pane's "Export all chats" job (background export →
+    /// download/share). Constructed in `init` from the repositories; the Data
+    /// pane reads `exportController.phase` and calls `start()`/`cancel()`.
+    public let exportController: ChatExportController
     /// Persistence boundary for the memory pane's mutations. Optional so
     /// snapshot tests and previews can construct the VM without standing
     /// up a memory store; the production composition root wires the
@@ -217,6 +222,13 @@ public final class SettingsViewModel {
         userPersonalizationReceiver: any UserPersonalizationReceiver,
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         webSearchPolicyReceiver: any WebSearchPolicyReceiver,
+        // Optional (mirrors `memoryRepository`) so snapshot/preview fixtures
+        // construct the VM without standing up the full repository graph;
+        // production wires both. When either is nil the export controller gets
+        // an inert exporter — fixtures drive its phase via the snapshot seam.
+        messageRepository: (any MessageRepository)? = nil,
+        toolCallRepository: (any ToolCallRepository)? = nil,
+        clock: any Clock = SystemClock(),
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
@@ -229,6 +241,18 @@ public final class SettingsViewModel {
         self.modelRepository = modelRepository
         self.conversationRepository = conversationRepository
         self.toolRegistry = toolRegistry
+        let exporter: any ChatExporter
+        if let messageRepository, let toolCallRepository {
+            exporter = LiveChatExporter(
+                conversationRepository: conversationRepository,
+                messageRepository: messageRepository,
+                toolCallRepository: toolCallRepository,
+                clock: clock
+            )
+        } else {
+            exporter = EmptyChatExporter(clock: clock)
+        }
+        self.exportController = ChatExportController(exporter: exporter, clock: clock)
         self.memoryRepository = memoryRepository
         self.llmProviderRegistry = llmProviderRegistry
         self.userPersonalizationReceiver = userPersonalizationReceiver
