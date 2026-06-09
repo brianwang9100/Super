@@ -49,8 +49,13 @@ public final class ChatExportController {
             do {
                 let archive = try await exporter.export()
                 try Task.checkCancellation()
-                let data = try archive.encoded()
-                let url = try Self.writeTempFile(data, now: clock.now())
+                // Encode + write off the main actor: this Task inherits
+                // @MainActor from `start()`, and a large archive would
+                // otherwise block the main thread on the JSON encode + file
+                // write. `ChatArchive`/`URL`/`Date` are Sendable.
+                let url = try await Task.detached(priority: .utility) {
+                    try Self.writeTempFile(archive.encoded(), now: clock.now())
+                }.value
                 guard let self, !Task.isCancelled else {
                     try? FileManager.default.removeItem(at: url)
                     return
@@ -88,7 +93,8 @@ public final class ChatExportController {
     }
 
     /// Write `data` to a uniquely-named file in the temporary directory.
-    private static func writeTempFile(_ data: Data, now: Date) throws -> URL {
+    /// `nonisolated` so the encode + write can run off the main actor.
+    private nonisolated static func writeTempFile(_ data: Data, now: Date) throws -> URL {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)

@@ -1065,6 +1065,13 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_finished_dark")
     }
 
+    @Test("data pane — export failed")
+    func dataPaneFailed() {
+        let phase = ChatExportController.Phase.failed(message: "Could not write the export file.")
+        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_failed_light")
+        verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_failed_dark")
+    }
+
     /// Render the Data pane with the export controller forced into `phase`.
     private func verifyDataPane(
         theme: SuperTheme.Identifier,
