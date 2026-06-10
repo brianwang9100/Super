@@ -140,4 +140,41 @@ struct AVSpeechSynthesizerNarrationServiceTests {
         service.speechSynthesizer(unusedSynth, didFinish: cancelledVerseOne)
         #expect(fake.spokenTexts == ["one", "two"])
     }
+
+    @Test("skipBackward restarts the current verse without advancing")
+    func skipBackwardRestartsCurrentVerse() {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+
+        _ = service.startSpeaking(
+            [utterance(1, "one"), utterance(2, "two")], rate: 1, voice: nil
+        )
+        service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
+
+        let stopsBeforeBack = fake.stopCount
+        service.skipBackward()
+        #expect(fake.stopCount == stopsBeforeBack + 1)
+        // The current verse (1) is re-spoken — not advanced to verse 2.
+        #expect(fake.spokenTexts == ["one", "one"])
+    }
+
+    @Test("changing voice restarts the current verse under the new voice")
+    func setVoiceRequeuesCurrentVerseWithNewVoice() throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+
+        _ = service.startSpeaking(
+            [utterance(1, "one"), utterance(2, "two")], rate: 1, voice: nil
+        )
+        service.speechSynthesizer(unusedSynth, didStart: fake.lastUtterance!)
+
+        let voice = try #require(AVSpeechSynthesisVoice(language: "en-US"))
+        let stopsBeforeVoice = fake.stopCount
+        service.setVoice(voice)
+        #expect(fake.stopCount == stopsBeforeVoice + 1)
+        // The current verse (1) restarts — not advanced — and carries the
+        // new voice so the change is audible from this verse, not the next.
+        #expect(fake.spokenTexts == ["one", "one"])
+        #expect(fake.lastUtterance?.voice?.identifier == voice.identifier)
+    }
 }

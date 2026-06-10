@@ -6,10 +6,12 @@ import os
 /// Wraps the synthesizer's delegate callbacks into the
 /// `AsyncStream<NarrationEvent>` the controller iterates.
 ///
-/// One session at a time. Each `startSpeaking(_:rate:voice:)` builds a
-/// fresh `[AVSpeechUtterance]` and feeds it to a single shared synth;
-/// the delegate routes per-utterance start/finish callbacks back into
-/// the active continuation. Audio Session: switches to
+/// One session at a time, and **one utterance in the synth's queue at a
+/// time**: `startSpeaking(_:rate:voice:)` speaks only the first verse and
+/// the delegate's `didFinish` queues the next, so the synth never holds a
+/// batch it could reorder or drop (see ``speakVerse(at:expectedVersion:)``).
+/// The delegate routes per-utterance start/finish callbacks back into the
+/// active continuation. Audio Session: switches to
 /// `.playback` / `.spokenAudio` / `.duckOthers` on session start and
 /// restores the saved category on tear-down — TTS = text-to-speech.
 public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationService, @unchecked Sendable {
@@ -129,7 +131,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
                 return
             }
 
-            lock.withLock { state in
+            let version = lock.withLock { state -> Int in
                 state.continuation = continuation
                 state.pendingUtterances = utterances
                 state.currentIndex = 0
@@ -138,11 +140,12 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
                 state.sessionVersion += 1
                 state.utteranceVerse.removeAll(keepingCapacity: true)
                 state.didEmitTerminal = false
+                return state.sessionVersion
             }
             continuation.onTermination = { [weak self] _ in
                 self?.releaseAudioSession()
             }
-            speakVerse(at: 0)
+            speakVerse(at: 0, expectedVersion: version)
         }
     }
 
@@ -233,13 +236,14 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     /// fall through: they can neither terminate the session nor advance
     /// it. Only then is the new verse queued.
     private func requeue(from index: Int) {
-        lock.withLock { state in
+        let version = lock.withLock { state -> Int in
             state.sessionVersion += 1
             state.currentIndex = index
             state.utteranceVerse.removeAll(keepingCapacity: true)
+            return state.sessionVersion
         }
         synth.stopSpeaking(at: .immediate)
-        speakVerse(at: index)
+        speakVerse(at: index, expectedVersion: version)
     }
 
     /// Speak exactly the verse at `index` — never the rest of the
@@ -253,18 +257,28 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     /// verse short on a device whose Enhanced/Premium voice streams in
     /// mid-queue (audible as "started on verse 6", then "jumped back to
     /// verse 5"). A no-op once `index` runs past the last verse.
-    private func speakVerse(at index: Int) {
+    ///
+    /// - Parameter expectedVersion: the session version live at the
+    ///   caller's decision point (the lock pass where it set
+    ///   `currentIndex`). `didFinish` is delivered on the AVSpeech
+    ///   delegate thread while the main actor may be in
+    ///   `requeue` (skip / rate / voice), so a requeue can bump the
+    ///   version in the gap between *deciding* to speak this verse and
+    ///   actually registering it — or between this method's own two lock
+    ///   passes. Both lock passes below bail unless the version still
+    ///   matches, so a superseded verse is never queued and two
+    ///   utterances can't end up live at once.
+    private func speakVerse(at index: Int, expectedVersion: Int) {
         // Read the verse + current rate/voice under the lock (all
         // `Sendable`), then build the `AVSpeechUtterance` outside it —
         // `AVSpeechUtterance` isn't `Sendable`, so it can't cross the
-        // lock's return. Registration of the entry happens in a second
-        // short pass under the live session version, mirroring the
-        // original per-utterance build-then-register flow.
+        // lock's return.
         let prepared: (
             text: String, preDelay: TimeInterval, verseNumber: Int,
             rate: Float, voice: AVSpeechSynthesisVoice?
         )? = lock.withLock { state in
-            guard index < state.pendingUtterances.count else { return nil }
+            guard state.sessionVersion == expectedVersion,
+                  index < state.pendingUtterances.count else { return nil }
             let verse = state.pendingUtterances[index]
             return (verse.text, verse.preDelay, verse.verseNumber, state.currentRate, state.currentVoice)
         }
@@ -277,13 +291,18 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         }
         // `ObjectIdentifier` is `Sendable`; compute it out here so the
         // lock closure doesn't capture the non-`Sendable` utterance.
+        // Re-check the version: a requeue may have landed while the
+        // utterance was being built, which would make this verse stale.
         let key = ObjectIdentifier(utterance)
-        lock.withLock { state in
+        let shouldSpeak = lock.withLock { state -> Bool in
+            guard state.sessionVersion == expectedVersion else { return false }
             state.utteranceVerse[key] = UtteranceEntry(
                 verseNumber: prepared.verseNumber,
-                sessionVersion: state.sessionVersion
+                sessionVersion: expectedVersion
             )
+            return true
         }
+        guard shouldSpeak else { return }
         synth.speak(utterance)
     }
 
@@ -419,7 +438,10 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         // `currentIndex`, so completion is a clean index check rather
         // than the old "is the map empty and was this the last verse?"
         // heuristic that depended on the synth's queue ordering.
-        enum Advance { case speak(Int); case complete }
+        // `.speak` carries the session version it was decided under, so
+        // `speakVerse` can reject it if a requeue supersedes the advance
+        // in the gap before the next verse is actually queued.
+        enum Advance { case speak(index: Int, version: Int); case complete }
         let outcome: (
             verseNumber: Int,
             continuation: AsyncStream<NarrationEvent>.Continuation,
@@ -437,15 +459,15 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
             let nextIndex = state.currentIndex + 1
             if nextIndex < state.pendingUtterances.count {
                 state.currentIndex = nextIndex
-                return (entry.verseNumber, continuation, .speak(nextIndex))
+                return (entry.verseNumber, continuation, .speak(index: nextIndex, version: state.sessionVersion))
             }
             return (entry.verseNumber, continuation, .complete)
         }
         guard let outcome else { return }
         outcome.continuation.yield(.finishedVerse(verseNumber: outcome.verseNumber))
         switch outcome.next {
-        case .speak(let index):
-            speakVerse(at: index)
+        case .speak(let index, let version):
+            speakVerse(at: index, expectedVersion: version)
         case .complete:
             teardownActiveSession(emit: .completed)
         }
