@@ -1051,19 +1051,29 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: .idle, name: "settings_data_idle_dark")
     }
 
+    /// Dynamic Type XXL sentinel for the label/status reflow column. Settings
+    /// text is DT-inert (`typography.font(role)` with `relativeTo: nil`), so
+    /// this is byte-identical to the default-DT idle baseline — a guard against
+    /// accidentally reintroducing OS Dynamic Type scaling to settings chrome.
+    @Test("data pane — export idle, Dynamic Type XXL")
+    func dataPaneIdleXXL() {
+        verifyDataPane(
+            theme: .vellumLight,
+            phase: .idle,
+            name: "settings_data_idle_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
     @Test("data pane — exporting")
     func dataPaneExporting() {
         verifyDataPane(theme: .vellumLight, phase: .exporting, name: "settings_data_exporting_light")
         verifyDataPane(theme: .vellumDark, phase: .exporting, name: "settings_data_exporting_dark")
     }
 
-    @Test("data pane — export finished")
-    func dataPaneFinished() {
-        let url = URL(fileURLWithPath: "/tmp/super-chats-2027-01-15-0800.json")
-        let phase = ChatExportController.Phase.finished(url: url, conversationCount: 7)
-        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_finished_light")
-        verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_finished_dark")
-    }
+    // Note: the `.finished` phase no longer renders an in-pane row — it
+    // auto-presents the system share sheet (out of scope for these content
+    // snapshots), so there is no `dataPaneFinished` case.
 
     @Test("data pane — export failed")
     func dataPaneFailed() {
@@ -1077,6 +1087,7 @@ struct SettingsSheetSnapshotTests {
         theme: SuperTheme.Identifier,
         phase: ChatExportController.Phase,
         name: String,
+        dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) {
         let viewModel = makeViewModel()
@@ -1084,6 +1095,7 @@ struct SettingsSheetSnapshotTests {
         viewModel.exportController._setSnapshotPhase(phase)
         let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .data)
             .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicType)
             .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }
