@@ -94,7 +94,7 @@ extension TokenEstimator {
     private static func schemaText(of schema: ToolValueSchema) -> String {
         switch schema {
         case .scalar(let type, let enumValues):
-            return type.rawValue + " " + (enumValues?.joined(separator: " ") ?? "")
+            return ([type.rawValue] + (enumValues ?? [])).joined(separator: " ")
         case .object(let parameters):
             return schemaText(of: parameters)
         case .array(let element):
