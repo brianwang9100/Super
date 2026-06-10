@@ -1057,13 +1057,9 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: .exporting, name: "settings_data_exporting_dark")
     }
 
-    @Test("data pane — export finished")
-    func dataPaneFinished() {
-        let url = URL(fileURLWithPath: "/tmp/super-chats-2027-01-15-0800.json")
-        let phase = ChatExportController.Phase.finished(url: url, conversationCount: 7)
-        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_finished_light")
-        verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_finished_dark")
-    }
+    // Note: the `.finished` phase no longer renders an in-pane row — it
+    // auto-presents the system share sheet (out of scope for these content
+    // snapshots), so there is no `dataPaneFinished` case.
 
     @Test("data pane — export failed")
     func dataPaneFailed() {
