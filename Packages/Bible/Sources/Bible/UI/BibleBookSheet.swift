@@ -91,6 +91,9 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 20
+    /// Fixed search-field height so focus, the editing caret, or the
+    /// appearing/disappearing clear button can't resize the bar.
+    @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 44
 
     /// Required content + callbacks come first per the AGENTS.md
     /// "Default parameter values" rule; the lone `bottomInset` default
@@ -149,6 +152,7 @@ struct BibleBookSheet: View {
             TextField("Search — e.g. 1 Peter 2:5", text: $viewModel.query)
                 .font(typography.font(size: mediumSize))
                 .foregroundStyle(theme.ink)
+                .lineLimit(1)
                 .autocorrectionDisabled()
 
             if !viewModel.query.isEmpty {
@@ -162,8 +166,10 @@ struct BibleBookSheet: View {
             }
         }
         .padding(.horizontal, 12)
-        // Taller bar (was 9) — a roomier, more tappable search field.
-        .padding(.vertical, 13)
+        // Fixed height (not vertical padding) so the bar can't resize when the
+        // field gains focus / the caret appears or the clear button shows/hides —
+        // its old height was derived from the tallest child's intrinsic metrics.
+        .frame(height: searchFieldHeight)
         // Interactive glass — the field still owns its own focus tap; the glass
         // just adds the press response the rest of the sheet's controls have.
         .superGlassButton(in: RoundedRectangle(cornerRadius: 12))
