@@ -7,13 +7,17 @@ import AVFoundation
 /// ever queued at a time**, then drive the synthesizer delegate
 /// callbacks by hand — no real synthesizer, no audio hardware, no
 /// real-time waiting.
-final class FakeSpeechSynthesizer: SpeechSynthesizing, @unchecked Sendable {
+final class FakeSpeechSynthesizer: SpeechSynthesizing {
     weak var delegate: AVSpeechSynthesizerDelegate?
 
+    // The tests drive the synthesizer synchronously on one thread (they
+    // fire the delegate callbacks by hand), so these recorders are never
+    // raced — `nonisolated(unsafe)` states that plainly rather than
+    // claiming a false `@unchecked Sendable` conformance.
     /// Every utterance passed to `speak(_:)`, in call order.
-    private(set) var spokenUtterances: [AVSpeechUtterance] = []
+    nonisolated(unsafe) private(set) var spokenUtterances: [AVSpeechUtterance] = []
     /// Number of `stopSpeaking(at:)` calls.
-    private(set) var stopCount = 0
+    nonisolated(unsafe) private(set) var stopCount = 0
 
     /// The spoken verses' text, in order — the readable assertion target.
     var spokenTexts: [String] { spokenUtterances.map(\.speechString) }

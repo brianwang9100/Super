@@ -266,8 +266,10 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     ///   version in the gap between *deciding* to speak this verse and
     ///   actually registering it — or between this method's own two lock
     ///   passes. Both lock passes below bail unless the version still
-    ///   matches, so a superseded verse is never queued and two
-    ///   utterances can't end up live at once.
+    ///   matches, so a superseded verse's entry is never registered. The
+    ///   synth may momentarily hold such a ghost utterance, but with no
+    ///   entry its callbacks are all dropped — it can't advance or
+    ///   complete the session.
     private func speakVerse(at index: Int, expectedVersion: Int) {
         // Read the verse + current rate/voice under the lock (all
         // `Sendable`), then build the `AVSpeechUtterance` outside it —
@@ -386,12 +388,13 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         // `.began` → pause and emit .paused. `.ended` is ignored — per
         // Apple's HIG we don't auto-resume; the user re-taps the pill.
         guard type == .began else { return }
-        // `NotificationCenter` delivers `interruptionNotification` on
-        // an arbitrary thread (commonly the audio I/O thread). Every
-        // other `synth.*` call in this class reaches the synthesizer
-        // from a main-actor context — `AVSpeechSynthesizer` isn't
-        // documented thread-safe, so funnel this one through the main
-        // actor too.
+        // `NotificationCenter` delivers `interruptionNotification` on an
+        // arbitrary thread (commonly the audio I/O thread).
+        // `AVSpeechSynthesizer` isn't documented thread-safe; our other
+        // `synth.*` calls run either on the main actor (start / skip /
+        // rate / voice) or on the AVSpeech delegate thread that owns the
+        // chain (`speakVerse` from `didFinish`). This handler is on
+        // neither, so funnel it through the main actor.
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.synth.pauseSpeaking(at: .word)
