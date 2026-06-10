@@ -6,14 +6,16 @@ import os
 /// Wraps the synthesizer's delegate callbacks into the
 /// `AsyncStream<NarrationEvent>` the controller iterates.
 ///
-/// One session at a time. Each `startSpeaking(_:rate:voice:)` builds a
-/// fresh `[AVSpeechUtterance]` and feeds it to a single shared synth;
-/// the delegate routes per-utterance start/finish callbacks back into
-/// the active continuation. Audio Session: switches to
+/// One session at a time, and **one utterance in the synth's queue at a
+/// time**: `startSpeaking(_:rate:voice:)` speaks only the first verse and
+/// the delegate's `didFinish` queues the next, so the synth never holds a
+/// batch it could reorder or drop (see ``speakVerse(at:expectedVersion:)``).
+/// The delegate routes per-utterance start/finish callbacks back into the
+/// active continuation. Audio Session: switches to
 /// `.playback` / `.spokenAudio` / `.duckOthers` on session start and
 /// restores the saved category on tear-down — TTS = text-to-speech.
 public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationService, @unchecked Sendable {
-    private let synth = AVSpeechSynthesizer()
+    private let synth: any SpeechSynthesizing
     private let lock = OSAllocatedUnfairLock(initialState: State())
     private weak var coordinator: (any NarrationAudioCoordinator)?
 
@@ -59,8 +61,16 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         let sessionVersion: Int
     }
 
-    public init(coordinator: (any NarrationAudioCoordinator)? = nil) {
+    public convenience init(coordinator: (any NarrationAudioCoordinator)? = nil) {
+        self.init(coordinator: coordinator, synthesizer: AVSpeechSynthesizer())
+    }
+
+    /// Designated initializer with an injectable synthesizer — `internal`
+    /// so the seam stays out of the public surface; tests reach it via
+    /// `@testable import`.
+    init(coordinator: (any NarrationAudioCoordinator)?, synthesizer: any SpeechSynthesizing) {
         self.coordinator = coordinator
+        self.synth = synthesizer
         super.init()
         synth.delegate = self
         #if os(iOS)
@@ -121,7 +131,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
                 return
             }
 
-            lock.withLock { state in
+            let version = lock.withLock { state -> Int in
                 state.continuation = continuation
                 state.pendingUtterances = utterances
                 state.currentIndex = 0
@@ -130,11 +140,12 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
                 state.sessionVersion += 1
                 state.utteranceVerse.removeAll(keepingCapacity: true)
                 state.didEmitTerminal = false
+                return state.sessionVersion
             }
             continuation.onTermination = { [weak self] _ in
                 self?.releaseAudioSession()
             }
-            enqueue(from: 0, rate: rate, voice: voice)
+            speakVerse(at: 0, expectedVersion: version)
         }
     }
 
@@ -157,7 +168,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             return candidate < state.pendingUtterances.count ? candidate : nil
         }
         if let nextIndex {
-            synth.stopSpeaking(at: .immediate)
+            // `requeue` owns the stop → re-speak ordering.
             requeue(from: nextIndex)
         } else {
             // Past the last verse — finish the session as a normal
@@ -169,7 +180,6 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
 
     public func skipBackward() {
         let restartIndex = lock.withLock { state in state.currentIndex }
-        synth.stopSpeaking(at: .immediate)
         requeue(from: restartIndex)
     }
 
@@ -182,7 +192,6 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             return state.currentIndex - 1
         }
         guard let targetIndex else { return }
-        synth.stopSpeaking(at: .immediate)
         requeue(from: targetIndex)
     }
 
@@ -197,7 +206,6 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             return (state.currentIndex, state.continuation != nil)
         }
         if live {
-            synth.stopSpeaking(at: .immediate)
             requeue(from: restartIndex)
         }
     }
@@ -213,61 +221,91 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             return (state.currentIndex, state.continuation != nil)
         }
         if live {
-            synth.stopSpeaking(at: .immediate)
             requeue(from: restartIndex)
         }
     }
 
     // MARK: Queue management
 
-    /// Build `AVSpeechUtterance`s for the verses at `index..<count` and
-    /// feed them to the synth, bumping the session version so stale
-    /// callbacks from prior queues fall through.
+    /// Rewind the live session to `index` and speak that verse next —
+    /// the shared path for skip, restart, and rate/voice changes.
+    ///
+    /// Bumps the session version and clears the in-flight entry *before*
+    /// stopping the synth, so the cancelled utterance's stale
+    /// `didCancel` / `didFinish` callbacks find no matching entry and
+    /// fall through: they can neither terminate the session nor advance
+    /// it. Only then is the new verse queued.
     private func requeue(from index: Int) {
-        let (utterances, rate, voice) = lock.withLock { state -> (
-            [NarrationVerseUtterance], Float, AVSpeechSynthesisVoice?
-        ) in
+        let version = lock.withLock { state -> Int in
             state.sessionVersion += 1
             state.currentIndex = index
             state.utteranceVerse.removeAll(keepingCapacity: true)
-            return (state.pendingUtterances, state.currentRate, state.currentVoice)
+            return state.sessionVersion
         }
-        enqueue(from: index, in: utterances, rate: rate, voice: voice)
+        synth.stopSpeaking(at: .immediate)
+        speakVerse(at: index, expectedVersion: version)
     }
 
-    private func enqueue(
-        from index: Int,
-        rate: Float,
-        voice: AVSpeechSynthesisVoice?
-    ) {
-        let utterances = lock.withLock { $0.pendingUtterances }
-        enqueue(from: index, in: utterances, rate: rate, voice: voice)
-    }
-
-    private func enqueue(
-        from index: Int,
-        in utterances: [NarrationVerseUtterance],
-        rate: Float,
-        voice: AVSpeechSynthesisVoice?
-    ) {
-        guard index < utterances.count else { return }
-        let absoluteRate = Self.absoluteRate(forMultiple: rate)
-        for verse in utterances[index...] {
-            let utterance = AVSpeechUtterance(string: verse.text)
-            utterance.rate = absoluteRate
-            utterance.preUtteranceDelay = verse.preDelay
-            if let voice {
-                utterance.voice = voice
-            }
-            let key = ObjectIdentifier(utterance)
-            lock.withLock { state in
-                state.utteranceVerse[key] = UtteranceEntry(
-                    verseNumber: verse.verseNumber,
-                    sessionVersion: state.sessionVersion
-                )
-            }
-            synth.speak(utterance)
+    /// Speak exactly the verse at `index` — never the rest of the
+    /// chapter. The next verse is queued only when this one's
+    /// `didFinish` lands (see the delegate), so **at most one utterance
+    /// is ever in the synthesizer's queue**. That makes
+    /// ``State/currentIndex`` the single source of truth for playback
+    /// position: the synthesizer can't reorder or drop a verse we never
+    /// handed it. This is the regression this design closes — queuing a
+    /// whole chapter at once let the synth come back out of order or a
+    /// verse short on a device whose Enhanced/Premium voice streams in
+    /// mid-queue (audible as "started on verse 6", then "jumped back to
+    /// verse 5"). A no-op once `index` runs past the last verse.
+    ///
+    /// - Parameter expectedVersion: the session version live at the
+    ///   caller's decision point (the lock pass where it set
+    ///   `currentIndex`). `didFinish` is delivered on the AVSpeech
+    ///   delegate thread while the main actor may be in
+    ///   `requeue` (skip / rate / voice), so a requeue can bump the
+    ///   version in the gap between *deciding* to speak this verse and
+    ///   actually registering it — or between this method's own two lock
+    ///   passes. Both lock passes below bail unless the version still
+    ///   matches, so a superseded verse's entry is never registered. The
+    ///   synth may momentarily hold such a ghost utterance, but with no
+    ///   entry its callbacks are all dropped — it can't advance or
+    ///   complete the session.
+    private func speakVerse(at index: Int, expectedVersion: Int) {
+        // Read the verse + current rate/voice under the lock (all
+        // `Sendable`), then build the `AVSpeechUtterance` outside it —
+        // `AVSpeechUtterance` isn't `Sendable`, so it can't cross the
+        // lock's return.
+        let prepared: (
+            text: String, preDelay: TimeInterval, verseNumber: Int,
+            rate: Float, voice: AVSpeechSynthesisVoice?
+        )? = lock.withLock { state in
+            guard state.sessionVersion == expectedVersion,
+                  index < state.pendingUtterances.count else { return nil }
+            let verse = state.pendingUtterances[index]
+            return (verse.text, verse.preDelay, verse.verseNumber, state.currentRate, state.currentVoice)
         }
+        guard let prepared else { return }
+        let utterance = AVSpeechUtterance(string: prepared.text)
+        utterance.rate = Self.absoluteRate(forMultiple: prepared.rate)
+        utterance.preUtteranceDelay = prepared.preDelay
+        if let voice = prepared.voice {
+            utterance.voice = voice
+        }
+        // `ObjectIdentifier` is `Sendable`; compute it out here so the
+        // lock closure doesn't capture the non-`Sendable` utterance.
+        // Re-check the version: a requeue may have landed while the
+        // utterance was being built, which would make this verse stale.
+        let key = ObjectIdentifier(utterance)
+        let shouldSpeak = lock.withLock { state -> Bool in
+            guard state.sessionVersion == expectedVersion else { return false }
+            state.utteranceVerse[key] = UtteranceEntry(
+                verseNumber: prepared.verseNumber,
+                sessionVersion: expectedVersion
+            )
+            return true
+        }
+        guard shouldSpeak else { return }
+        synth.speak(utterance)
     }
 
     // MARK: Rate mapping
@@ -350,12 +388,13 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         // `.began` → pause and emit .paused. `.ended` is ignored — per
         // Apple's HIG we don't auto-resume; the user re-taps the pill.
         guard type == .began else { return }
-        // `NotificationCenter` delivers `interruptionNotification` on
-        // an arbitrary thread (commonly the audio I/O thread). Every
-        // other `synth.*` call in this class reaches the synthesizer
-        // from a main-actor context — `AVSpeechSynthesizer` isn't
-        // documented thread-safe, so funnel this one through the main
-        // actor too.
+        // `NotificationCenter` delivers `interruptionNotification` on an
+        // arbitrary thread (commonly the audio I/O thread).
+        // `AVSpeechSynthesizer` isn't documented thread-safe; our other
+        // `synth.*` calls run either on the main actor (start / skip /
+        // rate / voice) or on the AVSpeech delegate thread that owns the
+        // chain (`speakVerse` from `didFinish`). This handler is on
+        // neither, so funnel it through the main actor.
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.synth.pauseSpeaking(at: .word)
@@ -376,17 +415,14 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         let key = ObjectIdentifier(utterance)
         let (verseNumber, continuation) = lock.withLock {
             state -> (Int?, AsyncStream<NarrationEvent>.Continuation?) in
-            // Drop stale callbacks (left over from a `stopSpeaking +
-            // requeue` pivot) so they don't shift `currentIndex` or
-            // yield a phantom `.started` for a verse the current
-            // session isn't on.
+            // `currentIndex` is set when the verse is queued (see
+            // `speakVerse(at:)`), so there's nothing to remap here — just
+            // drop stale callbacks left over from a cancelled queue so
+            // they don't yield a phantom `.started` for a verse the
+            // current session has already moved past.
             guard let entry = state.utteranceVerse[key],
                   entry.sessionVersion == state.sessionVersion else {
                 return (nil, nil)
-            }
-            if let index = state.pendingUtterances
-                .firstIndex(where: { $0.verseNumber == entry.verseNumber }) {
-                state.currentIndex = index
             }
             return (entry.verseNumber, state.continuation)
         }
@@ -399,31 +435,43 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         didFinish utterance: AVSpeechUtterance
     ) {
         let key = ObjectIdentifier(utterance)
-        let (verseNumber, continuation, isLast) = lock.withLock {
-            state -> (Int?, AsyncStream<NarrationEvent>.Continuation?, Bool) in
+        // What follows this verse: speak the next one, or — when it was
+        // the last — complete the session. Because verses are queued one
+        // at a time, the finished utterance is always the one at
+        // `currentIndex`, so completion is a clean index check rather
+        // than the old "is the map empty and was this the last verse?"
+        // heuristic that depended on the synth's queue ordering.
+        // `.speak` carries the session version it was decided under, so
+        // `speakVerse` can reject it if a requeue supersedes the advance
+        // in the gap before the next verse is actually queued.
+        enum Advance { case speak(index: Int, version: Int); case complete }
+        let outcome: (
+            verseNumber: Int,
+            continuation: AsyncStream<NarrationEvent>.Continuation,
+            next: Advance
+        )? = lock.withLock { state in
             guard let entry = state.utteranceVerse.removeValue(forKey: key) else {
-                return (nil, nil, false)
+                return nil
             }
-            // Stale callbacks consume their entry for hygiene but
-            // can't drive completion of the live session.
-            guard entry.sessionVersion == state.sessionVersion else {
-                return (nil, nil, false)
+            // Stale callback from a cancelled/requeued queue — consumed
+            // for hygiene, but it can't advance or complete the session.
+            guard entry.sessionVersion == state.sessionVersion,
+                  let continuation = state.continuation else {
+                return nil
             }
-            // Completion depends on the synth delivering `didFinish`
-            // for utterances in the order they were `speak()`d.
-            // AVSpeechSynthesizer doesn't formally document strict
-            // FIFO ordering, but its implementation reads one
-            // utterance at a time from a serial queue, so an
-            // out-of-order delivery would require the synth to
-            // restructure how it dispatches — load-bearing for the
-            // `.completed` event but not at risk in practice.
-            let isLast = state.utteranceVerse.isEmpty
-                && (entry.verseNumber == state.pendingUtterances.last?.verseNumber)
-            return (entry.verseNumber, state.continuation, isLast)
+            let nextIndex = state.currentIndex + 1
+            if nextIndex < state.pendingUtterances.count {
+                state.currentIndex = nextIndex
+                return (entry.verseNumber, continuation, .speak(index: nextIndex, version: state.sessionVersion))
+            }
+            return (entry.verseNumber, continuation, .complete)
         }
-        guard let verseNumber, let continuation else { return }
-        continuation.yield(.finishedVerse(verseNumber: verseNumber))
-        if isLast {
+        guard let outcome else { return }
+        outcome.continuation.yield(.finishedVerse(verseNumber: outcome.verseNumber))
+        switch outcome.next {
+        case .speak(let index, let version):
+            speakVerse(at: index, expectedVersion: version)
+        case .complete:
             teardownActiveSession(emit: .completed)
         }
     }
@@ -448,15 +496,14 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         _ synthesizer: AVSpeechSynthesizer,
         didCancel utterance: AVSpeechUtterance
     ) {
-        // The synth fires didCancel once per pending utterance after
-        // `stopSpeaking`. `teardownActiveSession` is idempotent, so the
-        // first callback that lands while a session is live emits
-        // `.cancelled` and the rest fall through.
-        //
-        // Stale callbacks (from a `stopSpeaking + requeue` pivot)
-        // would otherwise see an empty map + live continuation and
-        // fire `.cancelled` against the new session — the
-        // `sessionVersion` check below is what blocks that race.
+        // With one utterance in flight at a time, a matching `didCancel`
+        // means the live verse was stopped by something *other* than our
+        // own requeue (an external interruption / preemption) — `stop()`
+        // and `startSpeaking` emit their terminal explicitly first, so
+        // `didEmitTerminal` is already set on those paths. A requeue
+        // bumps `sessionVersion` and clears the entry *before* stopping,
+        // so its cancelled utterance fails both guards below and can't
+        // fire a spurious `.cancelled` against the new verse.
         let key = ObjectIdentifier(utterance)
         let shouldEmit = lock.withLock {
             state -> Bool in
@@ -481,3 +528,22 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         }
     }
 }
+
+// MARK: Synthesizer seam
+
+/// The slice of `AVSpeechSynthesizer` that
+/// ``AVSpeechSynthesizerNarrationService`` drives. Exists as a protocol
+/// so tests can substitute a fake that records `speak` / `stopSpeaking`
+/// calls and fires the delegate callbacks synchronously — a real
+/// synthesizer needs audio hardware and speaks in real time, so the
+/// "one utterance queued at a time" invariant can't otherwise be
+/// asserted. Production uses `AVSpeechSynthesizer` unchanged.
+protocol SpeechSynthesizing: AnyObject {
+    var delegate: AVSpeechSynthesizerDelegate? { get set }
+    func speak(_ utterance: AVSpeechUtterance)
+    @discardableResult func stopSpeaking(at boundary: AVSpeechBoundary) -> Bool
+    @discardableResult func pauseSpeaking(at boundary: AVSpeechBoundary) -> Bool
+    @discardableResult func continueSpeaking() -> Bool
+}
+
+extension AVSpeechSynthesizer: SpeechSynthesizing {}
