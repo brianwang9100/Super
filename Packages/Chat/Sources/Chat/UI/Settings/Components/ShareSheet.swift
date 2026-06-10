@@ -8,7 +8,7 @@ import UIKit
 /// can't front a spinner-then-share flow. UIKit-only; the package's macOS
 /// `swift build`/`swift test` compile this file out.
 struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
+    let items: [URL]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: items, applicationActivities: nil)

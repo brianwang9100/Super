@@ -1051,6 +1051,20 @@ struct SettingsSheetSnapshotTests {
         verifyDataPane(theme: .vellumDark, phase: .idle, name: "settings_data_idle_dark")
     }
 
+    /// Dynamic Type XXL sentinel for the label/status reflow column. Settings
+    /// text is DT-inert (`typography.font(role)` with `relativeTo: nil`), so
+    /// this is byte-identical to the default-DT idle baseline — a guard against
+    /// accidentally reintroducing OS Dynamic Type scaling to settings chrome.
+    @Test("data pane — export idle, Dynamic Type XXL")
+    func dataPaneIdleXXL() {
+        verifyDataPane(
+            theme: .vellumLight,
+            phase: .idle,
+            name: "settings_data_idle_light_xxl",
+            dynamicType: .xxLarge
+        )
+    }
+
     @Test("data pane — exporting")
     func dataPaneExporting() {
         verifyDataPane(theme: .vellumLight, phase: .exporting, name: "settings_data_exporting_light")
@@ -1073,6 +1087,7 @@ struct SettingsSheetSnapshotTests {
         theme: SuperTheme.Identifier,
         phase: ChatExportController.Phase,
         name: String,
+        dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) {
         let viewModel = makeViewModel()
@@ -1080,6 +1095,7 @@ struct SettingsSheetSnapshotTests {
         viewModel.exportController._setSnapshotPhase(phase)
         let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .data)
             .superTheme(.make(theme))
+            .dynamicTypeSize(dynamicType)
             .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
     }

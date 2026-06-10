@@ -96,8 +96,8 @@ struct SettingsDataPane: View {
             }
             .buttonStyle(.plain)
             .disabled(isExporting)
-            .accessibilityLabel("Export and share all chats")
-            .accessibilityHint(isFailed ? statusMessage : "Builds a fresh .json and opens the share sheet.")
+            .accessibilityLabel(isExporting ? "Exporting chats" : "Export and share all chats")
+            .accessibilityHint(exportAccessibilityHint)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
@@ -142,6 +142,12 @@ struct SettingsDataPane: View {
     private var statusMessage: String {
         if case let .failed(message) = exportController.phase { return message }
         return ".json"
+    }
+
+    private var exportAccessibilityHint: String {
+        if isExporting { return "Export is in progress." }
+        if isFailed { return statusMessage }
+        return "Builds a fresh .json and opens the share sheet."
     }
 }
 
