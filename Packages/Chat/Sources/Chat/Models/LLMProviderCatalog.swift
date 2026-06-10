@@ -275,4 +275,49 @@ public enum LLMProviderCatalog {
         }
         return nil
     }
+
+    /// Context-window cap assigned to a fetched model id that isn't in the
+    /// catalog. A conservative middle-of-the-road default — the user can
+    /// edit the Context Window field up or down once the model is picked.
+    public static let defaultFetchedMaxContextTokens = 200_000
+
+    /// Merge a live "list models" result for `providerID` into the
+    /// `LLMCatalogModel` list the Add-Model "Model" dropdown renders.
+    ///
+    /// A fetched id that matches a catalog model keeps that model's curated
+    /// metadata (`displayName`, `maxContextTokens`, `supportsThinking`);
+    /// a fetched id with no catalog match becomes a default
+    /// `LLMCatalogModel` (display name = the raw id,
+    /// `defaultFetchedMaxContextTokens` cap, thinking off) the user can
+    /// still edit. Duplicate fetched ids collapse to first occurrence.
+    ///
+    /// Ordering keeps the curated models on top: catalog-known ids appear
+    /// first **in catalog order** (not fetch order — the catalog is the
+    /// editorial ranking), then the unknown ids alphabetically. Pure, so
+    /// the reconciliation is unit-testable without any network.
+    public static func reconcile(providerID: String, fetchedModelIDs: [String]) -> [LLMCatalogModel] {
+        // Collapse duplicates, preserving first-seen order for the unknown
+        // tail's stability before the final sort.
+        var seen = Set<String>()
+        let uniqueFetched = fetchedModelIDs.filter { seen.insert($0).inserted }
+        let fetchedSet = Set(uniqueFetched)
+
+        let catalogModels = entry(forID: providerID)?.models ?? []
+        // Known: catalog models the API actually returned, in catalog order.
+        let known = catalogModels.filter { fetchedSet.contains($0.id) }
+        let knownIDs = Set(known.map(\.id))
+        // Unknown: fetched ids with no catalog entry, alphabetized.
+        let unknown = uniqueFetched
+            .filter { !knownIDs.contains($0) }
+            .sorted()
+            .map {
+                LLMCatalogModel(
+                    id: $0,
+                    displayName: $0,
+                    maxContextTokens: defaultFetchedMaxContextTokens,
+                    supportsThinking: false
+                )
+            }
+        return known + unknown
+    }
 }

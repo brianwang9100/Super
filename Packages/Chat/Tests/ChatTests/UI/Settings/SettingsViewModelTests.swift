@@ -1215,6 +1215,99 @@ struct SettingsViewModelTests {
 
     // MARK: - Builders
 
+    // MARK: - loadAvailableModels (live model-list cache)
+
+    @Test("A successful fetch reconciles ids against the catalog and caches them")
+    func loadAvailableModelsSuccessReconciles() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5", "mystery-model"]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+
+        let cached = vm.fetchedModels["openai"]
+        #expect(cached?.map(\.id) == ["gpt-5.5", "mystery-model"])
+        // Known id keeps curated metadata; unknown id gets defaults.
+        #expect(cached?.first?.maxContextTokens == 1_000_000)
+        #expect(cached?.last?.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
+        #expect(vm.modelListNote["openai"] == nil)
+        #expect(vm.loadingModelsProviderID == nil)
+        #expect(await service.callCount == 1)
+        // The entered key is passed through (trimmed) to the service.
+        #expect(await service.lastAPIKey == "sk-test")
+    }
+
+    @Test("A cache hit avoids a second network call unless forced")
+    func loadAvailableModelsCacheHit() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        #expect(await service.callCount == 1)
+    }
+
+    @Test("force re-fetches even when the cache is populated")
+    func loadAvailableModelsForceRefetches() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: true)
+        #expect(await service.callCount == 2)
+    }
+
+    @Test("An empty/nil key short-circuits without a network call (catalog fallback)")
+    func loadAvailableModelsEmptyKeyNoCall() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "   ", force: false)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: nil, force: true)
+        #expect(await service.callCount == 0)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
+    @Test("A failure records the fallback note and leaves the cache empty")
+    func loadAvailableModelsFailureSetsNote() async {
+        let service = ScriptedModelListingService(.failure(.transport("HTTP 401")))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-bad", force: false)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+        #expect(vm.loadingModelsProviderID == nil)
+    }
+
+    @Test("An empty result is a soft failure — note set, cache left empty")
+    func loadAvailableModelsEmptyResultSetsNote() async {
+        let service = ScriptedModelListingService(.ids([]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+    }
+
+    @Test("A forced refresh that fails clears the prior cached list (note stays truthful)")
+    func loadAvailableModelsForcedFailureClearsStaleCache() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5", "mystery-model"]))
+        let vm = makeViewModel(modelListingService: service)
+        // First fetch succeeds and caches a live list (incl. a non-catalog id).
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5", "mystery-model"])
+        // A forced refresh now fails — the stale list must be dropped so the
+        // dropdown falls back to the catalog and the note isn't a lie.
+        await service.setOutcome(.failure(.transport("HTTP 500")))
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: true)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+    }
+
+    @Test("Providers with no list endpoint (Custom, Apple) never call the service")
+    func loadAvailableModelsNonListableProvidersNoCall() async {
+        let service = ScriptedModelListingService(.ids(["x"]))
+        let vm = makeViewModel(modelListingService: service)
+        // Custom has no defaultBaseURL; Apple's kind has no list endpoint.
+        await vm.loadAvailableModels(providerID: LLMProviderCatalog.customProviderID, apiKey: "sk", force: true)
+        await vm.loadAvailableModels(providerID: LLMProviderCatalog.appleProviderID, apiKey: "sk", force: true)
+        #expect(await service.callCount == 0)
+    }
+
     private func makeViewModel(
         settingRepository: any SettingRepository = InMemorySettingRepository(),
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
@@ -1226,6 +1319,7 @@ struct SettingsViewModelTests {
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
+        modelListingService: (any ModelListingService)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
     ) -> SettingsViewModel {
         // The availability default is *deliberately* a fixed unavailable
@@ -1246,6 +1340,7 @@ struct SettingsViewModelTests {
             memoryRepository: memoryRepository,
             llmProviderRegistry: llmProviderRegistry,
             httpClient: httpClient,
+            modelListingService: modelListingService,
             appleFoundationAvailability: appleFoundationAvailability
         )
     }
@@ -1260,6 +1355,36 @@ private actor InMemorySettingRepository: SettingRepository {
     func set(_ key: String, value: String) async throws { storage[key] = value }
     func delete(_ key: String) async throws { storage.removeValue(forKey: key) }
     func all() async throws -> [String: String] { storage }
+}
+
+/// Scripted `ModelListingService` double for `loadAvailableModels` tests.
+/// Returns a fixed outcome and records the call count + last key so a test
+/// can assert the cache/short-circuit/refresh logic without any network. An
+/// actor so the cross-`await` counter is race-free.
+private actor ScriptedModelListingService: ModelListingService {
+    enum Outcome {
+        case ids([String])
+        case failure(ModelListingError)
+    }
+
+    private var outcome: Outcome
+    private(set) var callCount = 0
+    private(set) var lastAPIKey: String?
+
+    init(_ outcome: Outcome) { self.outcome = outcome }
+
+    /// Swap the scripted outcome between calls (e.g. success then failure on
+    /// a forced refresh).
+    func setOutcome(_ outcome: Outcome) { self.outcome = outcome }
+
+    func listModelIDs(kind: LLMProviderKind, baseURL: URL, apiKey: String?) async throws -> [String] {
+        callCount += 1
+        lastAPIKey = apiKey
+        switch outcome {
+        case let .ids(ids): return ids
+        case let .failure(error): throw error
+        }
+    }
 }
 
 private final class StubModelRepository: ModelConfigurationRepository, @unchecked Sendable {

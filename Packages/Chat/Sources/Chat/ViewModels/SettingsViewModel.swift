@@ -135,6 +135,25 @@ public final class SettingsViewModel {
     /// wondering why no row appeared.
     public private(set) var modelEditError: String?
 
+    /// In-memory, session-scoped cache of live "list models" results, keyed
+    /// by Add-Model provider id (e.g. `"openai"`). Populated by `loadModels`;
+    /// `SettingsModelDetailPane` reads it to drive the Model dropdown, falling
+    /// back to the static `LLMProviderCatalog` when a provider has no entry.
+    /// Deliberately not persisted — a fresh launch re-fetches on demand (the
+    /// user asked for an in-memory cache, not a stored one).
+    public private(set) var fetchedModels: [String: [LLMCatalogModel]] = [:]
+
+    /// Provider id whose model list is currently being fetched, or `nil` when
+    /// no fetch is in flight. The detail pane swaps the refresh affordance for
+    /// a spinner while this matches the visible provider.
+    public private(set) var loadingModelsProviderID: String?
+
+    /// Per-provider note shown under the Model dropdown when the live list
+    /// couldn't load (no/bad key, offline, missing endpoint) and the catalog
+    /// fallback is showing instead. Keyed by provider id; cleared on a
+    /// successful fetch.
+    public private(set) var modelListNote: [String: String] = [:]
+
     /// Stack of pushed sub-panes. Empty means the root pane is showing.
     /// Bound to `SettingsSheet`'s `NavigationStack(path:)`, which is what
     /// produces the native push/pop slide animation. Public so external
@@ -171,6 +190,12 @@ public final class SettingsViewModel {
     private let memoryRepository: (any MemoryRepository)?
     private let llmProviderRegistry: LLMProviderRegistry?
     private let httpClient: (any HTTPClient)?
+    /// Issues the live `GET …/models` call behind `loadModels`. Resolved in
+    /// `init` to a `LiveModelListingService` over the injected `httpClient`
+    /// when not supplied directly; `nil` only when there's no HTTP client
+    /// (snapshot/preview fixtures), in which case `loadModels` no-ops and the
+    /// dropdown stays on the catalog. Tests inject a strict fake.
+    private let modelListingService: (any ModelListingService)?
     /// Receiver that runtime-pushes user-personalization edits into
     /// orchestration (production: `ChatSessionStore`). Protocol-typed
     /// per AGENTS.md §Testing §1 so tests can verify the fan-out hop
@@ -232,6 +257,7 @@ public final class SettingsViewModel {
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
+        modelListingService: (any ModelListingService)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
@@ -259,6 +285,10 @@ public final class SettingsViewModel {
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
         self.webSearchPolicyReceiver = webSearchPolicyReceiver
         self.httpClient = httpClient
+        // Default the listing service to a live one over the injected HTTP
+        // client so neither app bootstrap has to wire it explicitly; fixtures
+        // that pass neither get a nil service and `loadModels` no-ops.
+        self.modelListingService = modelListingService ?? httpClient.map { LiveModelListingService(http: $0) }
         self.appleFoundationAvailability = appleFoundationAvailability
     }
 
@@ -284,6 +314,19 @@ public final class SettingsViewModel {
         self.tools = tools
         self.chatCount = chatCount
         self.hasLoaded = true
+    }
+
+    /// Snapshot seam for the live model-list states the Add-Model dropdown
+    /// renders (loaded list / in-flight spinner / fallback note) without a
+    /// real fetch. Underscore-prefixed: test-only surface, not stable API.
+    func _setModelListSnapshotState(
+        fetchedModels: [String: [LLMCatalogModel]] = [:],
+        loadingModelsProviderID: String? = nil,
+        modelListNote: [String: String] = [:]
+    ) {
+        self.fetchedModels = fetchedModels
+        self.loadingModelsProviderID = loadingModelsProviderID
+        self.modelListNote = modelListNote
     }
 
     /// Re-read every datasource. Called from the sheet's `.task` so the
@@ -332,6 +375,61 @@ public final class SettingsViewModel {
         }
         models = rows
     }
+
+    /// Fetch the live "list models" result for `providerID` into
+    /// `fetchedModels`, the in-memory source the Add-Model "Model" dropdown
+    /// reads. Distinct from the private `loadModels()` above, which loads the
+    /// user's *configured* model rows.
+    ///
+    /// Behavior (matches the chosen UX — auto-fetch on provider select, manual
+    /// refresh icon, catalog fallback on failure):
+    /// - **Cache hit + `!force`** → returns immediately; the session cache is
+    ///   authoritative until the user taps refresh.
+    /// - **Empty/whitespace key** → no network call. Built-in listing needs a
+    ///   key; the dropdown stays on the catalog fallback until one is entered
+    ///   (the refresh icon is the post-key fetch path).
+    /// - **No catalog entry / no base URL** (Apple, Custom) → no-op; those
+    ///   providers don't list.
+    /// - **Success** → store the reconciled list and clear any note.
+    /// - **Empty result / failure** → clear any stale cache entry and record
+    ///   the fallback note. Clearing matters on a *forced* refresh after an
+    ///   earlier success: without it the dropdown would keep showing the old
+    ///   live list while the note claims "showing built-in list" — so the
+    ///   cache is dropped to make the catalog fallback (and the note) honest.
+    public func loadAvailableModels(providerID: String, apiKey: String?, force: Bool) async {
+        guard let service = modelListingService else { return }
+        if !force, fetchedModels[providerID] != nil { return }
+        let key = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        guard let entry = LLMProviderCatalog.entry(forID: providerID),
+              let baseURL = entry.defaultBaseURL else { return }
+
+        loadingModelsProviderID = providerID
+        // Guard the reset so a concurrent fetch for a *different* provider
+        // can't clear this one's spinner (and vice versa). Two forced fetches
+        // for the *same* provider still share the flag — the first to finish
+        // clears it — but that's a benign quick-double-tap edge, and the
+        // cache write is last-writer-wins regardless.
+        defer { if loadingModelsProviderID == providerID { loadingModelsProviderID = nil } }
+        do {
+            let ids = try await service.listModelIDs(kind: entry.kind, baseURL: baseURL, apiKey: key)
+            let reconciled = LLMProviderCatalog.reconcile(providerID: providerID, fetchedModelIDs: ids)
+            if reconciled.isEmpty {
+                fetchedModels[providerID] = nil
+                modelListNote[providerID] = Self.modelListFallbackNote
+            } else {
+                fetchedModels[providerID] = reconciled
+                modelListNote[providerID] = nil
+            }
+        } catch {
+            fetchedModels[providerID] = nil
+            modelListNote[providerID] = Self.modelListFallbackNote
+        }
+    }
+
+    /// Inline note shown under the Model dropdown when the live list can't load
+    /// and the curated catalog is showing instead.
+    static let modelListFallbackNote = "Couldn't load live models — showing built-in list."
 
     private func loadTools() async {
         let registrations = await toolRegistry.allRegistrations()
