@@ -849,6 +849,13 @@ public actor ChatSession {
         async let toolCalls = toolCallRepository.fetchByConversation(conversationId)
         async let checkpoint = checkpointRepository.liveCheckpoint(for: conversationId)
         async let memories = currentMemories()
+        // The enabled tool schemas are part of every request and count against
+        // the window, so include them in the budget the compaction gates read.
+        // `enabledTools()` (provider-agnostic) is equivalent to
+        // `enabledTools(for:)` today and `assemble` has no provider in scope;
+        // this counts the base registered tools, not the transient per-turn
+        // web-search proposal/sentinel tools (a small, deliberate undercount).
+        async let tools = toolRegistry.enabledTools()
         return try await contextAssembler.assemble(
             messages: messages,
             toolCalls: toolCalls,
@@ -857,7 +864,8 @@ public actor ChatSession {
             chatBriefing: chatBriefing,
             appletBriefings: appletBriefings,
             userPersonalization: currentUserPersonalization,
-            memories: memories
+            memories: memories,
+            tools: tools
         )
     }
 

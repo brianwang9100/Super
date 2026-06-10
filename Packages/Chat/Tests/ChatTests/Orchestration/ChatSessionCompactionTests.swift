@@ -53,7 +53,8 @@ struct ChatSessionCompactionTests {
         autoCompactThreshold: Double = 0.75,
         manualCompactMinThreshold: Double = 0.0,
         model: LLMModel? = nil,
-        conversationId: String = "conv-1"
+        conversationId: String = "conv-1",
+        tools: [LLMTool] = []
     ) async throws -> Setup {
         let database = try ChatDatabase.makeInMemory()
         let conversationRepo = GRDBConversationRepository(database: database)
@@ -68,6 +69,14 @@ struct ChatSessionCompactionTests {
         let llmRegistry = LLMProviderRegistry()
         await llmRegistry.register(provider)
         let toolRegistry = ToolRegistry()
+        for tool in tools {
+            // The assistant scripts never call these — they exist only so
+            // `enabledTools()` reports their schemas to the budget meter — so a
+            // throwaway executor suffices.
+            let executor = FakeToolExecutor(toolID: tool.id)
+            await executor.setResult(ToolResult(toolID: tool.id, content: "", isError: false))
+            await toolRegistry.register(ToolRegistration(tool: tool, execution: .local(executor)))
+        }
         let compactor = OrchestrationFixtures.makeCompactor(
             database: database,
             llmRegistry: llmRegistry,
@@ -190,6 +199,114 @@ struct ChatSessionCompactionTests {
         // Two LLM stream calls were issued: summarization, then turn.
         let captured = await setup.provider.capturedRequests()
         #expect(captured.count == 2)
+    }
+
+    private func seedShortHistory(setup: Setup) async throws {
+        // Deliberately tiny: a handful of words so the message-only token
+        // estimate sits far below any sane threshold. The tool schemas are
+        // what move the needle in the regression below.
+        for index in 1...3 {
+            try await setup.messageRepo.save(MessageRecord(
+                id: "s-u\(index)",
+                conversationId: setup.conversation.id,
+                role: .user,
+                content: "msg \(index)",
+                createdAt: setup.clock.now()
+            ))
+            try await setup.messageRepo.save(MessageRecord(
+                id: "s-a\(index)",
+                conversationId: setup.conversation.id,
+                role: .assistant,
+                content: "reply \(index)",
+                createdAt: setup.clock.now()
+            ))
+        }
+    }
+
+    private func firedCompaction(_ events: [ChatEvent]) -> Bool {
+        events.contains { event in
+            switch event {
+            case .compactionStarted, .compactionCompleted: return true
+            default: return false
+            }
+        }
+    }
+
+    @Test func toolSchemasTipBorderlineConversationIntoAutoCompaction() async throws {
+        // Regression for the AFM silent-overflow: a conversation that reads as
+        // *under* the auto-compact threshold when only messages are counted
+        // must tip *over* once the verbose tool schemas it actually ships are
+        // folded into the budget — so compaction fires before the on-device
+        // window overflows. Identical history + model + threshold in both
+        // arms; the only variable is whether a tool is registered.
+        //
+        // Before the fix `estimate(messages:)` ignored tool definitions, so
+        // both arms read identically under-threshold and the tool arm never
+        // compacted → AFM then overflowed mid-turn.
+        let verboseTool = LLMTool(
+            id: "bible.annotate",
+            name: "bible.annotate",
+            description: String(repeating: "Create a study annotation for a passage. ", count: 40),
+            category: .mutation,
+            parameters: [
+                LLMToolParameter(
+                    name: "target", type: .string,
+                    description: "Scripture unit to annotate.",
+                    enumValues: ["book", "chapter", "verse"]
+                ),
+                LLMToolParameter(name: "body", type: .string, description: "The annotation body text."),
+            ],
+            appletId: "bible"
+        )
+        // Window sized so the short history is ~3% full, but the tool schema
+        // (~400 tokens) alone overruns it.
+        let model = LLMModel(
+            id: "afm", displayName: "AFM", supportsThinking: false,
+            supportsTools: true, maxContextTokens: 300
+        )
+        let finalTurn: [LLMStreamEvent] = [
+            .messageStart(id: "m-final", model: "afm"),
+            .textDelta(index: 0, text: "ok"),
+            .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+        ]
+        let summaryTurn: [LLMStreamEvent] = [
+            .messageStart(id: "sum", model: "afm"),
+            .textDelta(index: 0, text: "Concise summary of the older turns."),
+            .messageComplete(usage: TokenUsage(inputTokens: 40, outputTokens: 6)),
+        ]
+
+        // Arm 1 — no tools registered → message-only budget is under 0.5 → no
+        // compaction (only the assistant turn streams).
+        let bare = try await makeSetup(
+            scripts: [finalTurn],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.5,
+            model: model,
+            conversationId: "conv-bare"
+        )
+        try await seedShortHistory(setup: bare)
+        let bareEvents = await collect(await bare.session.send(text: "next prompt", model: model))
+        await bare.session.waitUntilFinished()
+        #expect(firedCompaction(bareEvents) == false)
+        let bareCheckpoint = try await bare.checkpointRepo.liveCheckpoint(for: bare.conversation.id)
+        #expect(bareCheckpoint == nil)
+
+        // Arm 2 — same history, but the verbose tool is registered → its
+        // schema pushes the budget over 0.5 → compaction fires first.
+        let withTool = try await makeSetup(
+            scripts: [summaryTurn, finalTurn],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.5,
+            model: model,
+            conversationId: "conv-tool",
+            tools: [verboseTool]
+        )
+        try await seedShortHistory(setup: withTool)
+        let toolEvents = await collect(await withTool.session.send(text: "next prompt", model: model))
+        await withTool.session.waitUntilFinished()
+        #expect(firedCompaction(toolEvents) == true)
+        let toolCheckpoint = try await withTool.checkpointRepo.liveCheckpoint(for: withTool.conversation.id)
+        #expect(toolCheckpoint != nil)
     }
 
     @Test func autoCompactionEmptySummaryDuringSendBroadcastsCuratedError() async throws {

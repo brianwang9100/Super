@@ -83,6 +83,11 @@ public struct ContextAssembler: Sendable {
     ///     where it didn't perform the original `save` and therefore
     ///     has no other source for the id. Empty array = no block
     ///     injected.
+    ///   - tools: Tool definitions sent alongside the prompt. Their schema
+    ///     cost is added to `totalTokens` so the context meter reflects the
+    ///     fixed tool overhead the provider counts against the window.
+    ///     Defaults to empty (no tool overhead) so non-tool callers and the
+    ///     post-compaction projection are unaffected.
     public func assemble(
         messages: [MessageRecord],
         toolCalls: [ToolCallRecord],
@@ -91,7 +96,8 @@ public struct ContextAssembler: Sendable {
         chatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
         userPersonalization: String = "",
-        memories: [MemoryEntry] = []
+        memories: [MemoryEntry] = [],
+        tools: [LLMTool] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
         var prompt = try project(messages: kept, toolCalls: toolCalls)
@@ -145,7 +151,13 @@ public struct ContextAssembler: Sendable {
         // provider with a stricter single-system contract is added,
         // merge these blocks into a single newline-joined `.system`
         // entry at this insertion point.
-        let total = estimator.estimate(messages: prompt)
+        // Tool *definitions* ride alongside the prompt in every provider
+        // request and count against the model's context window, but they live
+        // outside `prompt` — so fold their schema cost into the budget here.
+        // Without it the meter undercounts by the fixed tool overhead, which
+        // on a small-window model (AFM) can silently overflow before
+        // auto-compaction ever fires.
+        let total = estimator.estimate(messages: prompt) + estimator.estimate(tools: tools)
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,

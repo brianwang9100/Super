@@ -41,6 +41,56 @@ struct ContextAssemblerTests {
         )
     }
 
+    private func makeTool(name: String, description: String) -> LLMTool {
+        LLMTool(
+            id: name,
+            name: name,
+            description: description,
+            category: .query,
+            parameters: [
+                LLMToolParameter(name: "query", type: .string, description: "What to look up."),
+            ],
+            appletId: "test"
+        )
+    }
+
+    @Test func toolSchemasRaiseTotalTokens() throws {
+        let assembler = ContextAssembler()
+        let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
+        let withoutTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: makeModel()
+        )
+        let withTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: makeModel(),
+            tools: [makeTool(name: "search", description: "Search the corpus for a phrase.")]
+        )
+        // The same prompt with tools advertised must cost more — the schema
+        // weight is folded into the budget the compaction gates read.
+        #expect(withTools.totalTokens > withoutTools.totalTokens)
+    }
+
+    @Test func toolSchemasCanTipOverThreshold() throws {
+        // Regression for the AFM silent-overflow: a prompt comfortably under
+        // the window with no tool counting must be pushed over once the
+        // verbose tool schemas it actually ships are counted.
+        let assembler = ContextAssembler()
+        let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
+        let model = makeModel(maxContextTokens: 40)
+        let verboseTool = makeTool(
+            name: "annotate",
+            description: String(repeating: "Annotate a passage with study notes. ", count: 6)
+        )
+        let withoutTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: model
+        )
+        let withTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: model,
+            tools: [verboseTool]
+        )
+        #expect(withoutTools.isOverThreshold(0.85) == false)
+        #expect(withTools.isOverThreshold(0.85) == true)
+    }
+
     @Test func noCheckpointReturnsAllMessagesProjected() throws {
         let assembler = ContextAssembler()
         let messages: [MessageRecord] = [
