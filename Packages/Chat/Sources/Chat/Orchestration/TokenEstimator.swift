@@ -46,6 +46,61 @@ extension TokenEstimator {
         }
         return total
     }
+
+    /// Sum the token cost of the tool *definitions* sent alongside the prompt.
+    /// Tool schemas (name + LLM-facing description + the full parameter shape)
+    /// are serialized into every provider request and counted against the
+    /// model's context window, yet they live outside `[LLMMessage]` — so a
+    /// context meter that only sums `messages` silently undercounts by the
+    /// fixed tool overhead (≈1–1.5K tokens for an applet with several verbose
+    /// tools), which on a small-window model like the Apple Foundation Model
+    /// is the difference between "well under budget" and an overflow. Counting
+    /// the descriptive text via the same `chars/4` heuristic gives a floor:
+    /// it ignores per-provider JSON-Schema scaffolding (braces, keys), which
+    /// only makes the estimate more conservative.
+    public func estimate(tools: [LLMTool]) -> Int {
+        var total = 0
+        for tool in tools {
+            total += estimate(tool.name)
+            total += estimate(tool.description)
+            total += estimate(Self.schemaText(of: tool.parameters))
+        }
+        return total
+    }
+
+    /// Flatten a tool's parameters (and any nested `.array` / `.object`
+    /// `valueSchema`) into a single string whose length stands in for the
+    /// serialized JSON-Schema weight. Captures every field the model actually
+    /// reads — each parameter's name, type, description, and enum constraint —
+    /// recursing into nested element schemas so a deeply-shaped parameter
+    /// (e.g. `read`'s array-of-objects `passages`) isn't undercounted.
+    private static func schemaText(of parameters: [LLMToolParameter]) -> String {
+        var pieces: [String] = []
+        for parameter in parameters {
+            pieces.append(parameter.name)
+            pieces.append(parameter.type.rawValue)
+            pieces.append(parameter.description)
+            if let enumValues = parameter.enumValues {
+                pieces.append(enumValues.joined(separator: " "))
+            }
+            if let valueSchema = parameter.valueSchema {
+                pieces.append(schemaText(of: valueSchema))
+            }
+        }
+        return pieces.joined(separator: " ")
+    }
+
+    /// Recurse a nested element schema into its flattened text.
+    private static func schemaText(of schema: ToolValueSchema) -> String {
+        switch schema {
+        case .scalar(let type, let enumValues):
+            return type.rawValue + " " + (enumValues?.joined(separator: " ") ?? "")
+        case .object(let parameters):
+            return schemaText(of: parameters)
+        case .array(let element):
+            return schemaText(of: element)
+        }
+    }
 }
 
 /// chars/4 heuristic. This roughly matches `cl100k_base` for English prose

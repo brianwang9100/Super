@@ -46,10 +46,18 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     public static let defaultModelID = "system-default"
     /// User-facing display name.
     public static let defaultModelDisplayName = "Apple Intelligence"
-    /// Context-window cap on iOS 26.0–26.3 (the hard 4096-token limit).
-    /// iOS 26.4 lifts this via `SystemLanguageModel.contextSize`; we
-    /// keep the conservative value until that runtime read lands.
+    /// Fallback context-window size for the on-device model, used only when a
+    /// live runtime read is unavailable (tests, and as the designated init's
+    /// default). Matches the pre-iOS-26.4 hard cap. The production path reads
+    /// the real window from `SystemLanguageModel.contextSize` instead — see
+    /// `maxContextTokens` and the production `init(id:availability:toolRegistry:)`.
     public static let defaultMaxContextTokens = 4_096
+
+    /// The context-window size advertised on this provider's `LLMModel`. The
+    /// production init reads it once from `SystemLanguageModel.contextSize`
+    /// (8192 on iOS 26.4+, 4096 on 26.0–26.3 via Apple's back-deployed
+    /// fallback); tests inject a fixed value through the designated init.
+    private let maxContextTokens: Int
 
     /// The model surface exposed to the orchestrator. `supportsTools`
     /// reflects whether a `ToolRegistry` was wired into this provider
@@ -62,7 +70,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
             displayName: Self.defaultModelDisplayName,
             supportsThinking: false,
             supportsTools: toolRegistry != nil,
-            maxContextTokens: Self.defaultMaxContextTokens
+            maxContextTokens: maxContextTokens
         )]
     }
 
@@ -76,7 +84,8 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         id: String = "apple-foundation",
         displayName: String = "Apple Intelligence",
         idGenerator: any IDGenerator = UUIDGenerator(),
-        toolRegistry: ToolRegistry? = nil
+        toolRegistry: ToolRegistry? = nil,
+        maxContextTokens: Int = defaultMaxContextTokens
     ) {
         self.id = id
         self.displayName = displayName
@@ -84,6 +93,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.sessionFactory = sessionFactory
         self.idGenerator = idGenerator
         self.toolRegistry = toolRegistry
+        self.maxContextTokens = maxContextTokens
     }
 
     /// Production convenience used by the composition root.
@@ -99,6 +109,11 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         availability: AppleFoundationAvailability,
         toolRegistry: ToolRegistry? = nil
     ) {
+        // Read the on-device window from the framework. `contextSize` is
+        // `@available(iOS 26.0)` with an Apple-provided `@backDeployed`
+        // fallback that returns 4096 on 26.0–26.3 and the true window (8192+)
+        // on 26.4+, so no `#available` guard is needed at our 26.0 target.
+        let resolvedContextTokens = SystemLanguageModel.default.contextSize
         self.init(
             availability: availability,
             sessionFactory: { transcript, tools in
@@ -108,7 +123,8 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                 ))
             },
             id: id,
-            toolRegistry: toolRegistry
+            toolRegistry: toolRegistry,
+            maxContextTokens: resolvedContextTokens
         )
     }
 
