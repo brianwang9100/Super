@@ -57,6 +57,7 @@ struct BibleChapterReader: View {
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
+    private let onFooterVisible: (Bool) -> Void
 
     /// Whether the latest scroll phase is one the *user* drove
     /// (`.interacting` / `.decelerating`) versus a programmatic `scrollTo`
@@ -126,7 +127,8 @@ struct BibleChapterReader: View {
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil,
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
-        onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in }
+        onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
+        onFooterVisible: @escaping (Bool) -> Void = { _ in }
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -160,6 +162,7 @@ struct BibleChapterReader: View {
         self.chapterDispatchStatus = chapterDispatchStatus
         self.onNoteGlyphTap = onNoteGlyphTap
         self.onScroll = onScroll
+        self.onFooterVisible = onFooterVisible
     }
 
     /// Highlight colour keyed by verse number, decoded from the observed rows.
@@ -309,6 +312,19 @@ struct BibleChapterReader: View {
                 geometry.contentOffset.y
             } action: { _, newOffset in
                 onScroll(newOffset, scrollIsUserDriven)
+            }
+            // Whether the chapter footer's prev / next cards are scrolled into
+            // view, so the screen can hide the (now-redundant) hovering composer
+            // chevrons. `footerRevealThreshold` covers the bottom scroll reserve
+            // plus the footer cards, so this trips as those cards enter the
+            // viewport rather than only when the content is pinned to the very
+            // bottom. Unlike immersive, it's not gated on user-driven scrolling —
+            // a programmatic landing at the chapter end should hide them too.
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                let maxY = geometry.contentSize.height - geometry.containerSize.height
+                return maxY > 0 && geometry.contentOffset.y >= maxY - Self.footerRevealThreshold
+            } action: { _, footerVisible in
+                onFooterVisible(footerVisible)
             }
             // When the verse-selection action sheet appears, scroll the
             // just-selected verse up to `y = 0.35` (a third from top — same
@@ -489,6 +505,12 @@ struct BibleChapterReader: View {
     /// always reserves at the bottom of its scroll content, so the chapter
     /// footer settles above the pill rather than behind it.
     static let chatPillHeight: CGFloat = 76
+
+    /// Distance from the bottom of the scroll content within which the chapter
+    /// footer's prev / next cards are considered "on screen" — the `chatPillHeight`
+    /// reserve below the footer plus roughly the cards' own height. Crossing it
+    /// reports the footer visible so the redundant hovering composer chevrons hide.
+    static let footerRevealThreshold: CGFloat = chatPillHeight + 120
 
     /// Breathing room added above a presented sheet's height in the reader's
     /// bottom scroll reserve, so the last verse rests a comfortable gap above

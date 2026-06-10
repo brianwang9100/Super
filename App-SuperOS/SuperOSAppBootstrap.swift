@@ -78,7 +78,10 @@ struct SuperOSAppDependencies {
             // SuperOS keeps the standard launch policy: chat opens
             // expanded over the user's last-used applet (restored by
             // `UserDefaults` lookup further down in `bootstrap()`).
-            launchBehavior: .standard
+            launchBehavior: .standard,
+            // SuperOS doesn't use the composer's hovering flank buttons —
+            // the Bible reader's chapter chevrons stay in its nav bar here.
+            composerAccessoryStore: nil
         )
     }
 }

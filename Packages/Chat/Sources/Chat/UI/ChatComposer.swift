@@ -213,10 +213,14 @@ public struct ChatComposer: View {
 
     /// Outer padding around the capsule: in pill mode the chat-surface
     /// itself is small (no transcript fade above), so we drop the top
-    /// padding; in full mode we restore the 10/14 ring that matches the
+    /// padding; in full mode we restore the top/bottom ring that matches the
     /// prior composer.
     private var outerTopPadding: CGFloat { Self.lerp(progress, 0, 10) }
-    private var outerSidePadding: CGFloat { Self.lerp(progress, 12, 14) }
+    /// A flat 16pt at every progress (was 12 pill / 14 full): a slightly
+    /// narrower pill so its edges line up with the accessory flank chevrons'
+    /// own 20pt screen-edge inset (see `ComposerAccessoryLayer`). Applies to
+    /// both targets — SuperOS's composer narrows by the same few points.
+    private var outerSidePadding: CGFloat { Self.lerp(progress, 16, 16) }
     private var outerBottomPadding: CGFloat { Self.lerp(progress, 14, 14) }
 
     public var body: some View {

@@ -5,10 +5,13 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleNavBar` — the reading surface's top bar in its default
-/// state across the three themes, with each chapter arrow disabled at the
-/// canon's two ends, and in selection mode where the centre group collapses
-/// to a citation pill.
+/// Snapshots of `BibleNavBar` — the reading surface's top bar. Covers the
+/// chevron-bearing form (SuperOS, `showsChapterChevrons: true`) in its default
+/// state across the two default-family themes, with each chapter arrow disabled
+/// at the canon's two ends, and in selection mode where the centre group
+/// collapses to a citation pill; plus the chevron-less form (SuperBible,
+/// `showsChapterChevrons: false`), where the chevrons hover above the chat
+/// composer instead (see `ComposerAccessoryFlankSnapshotTests`).
 @Suite("BibleNavBar snapshots")
 @MainActor
 struct BibleNavBarSnapshotTests {
@@ -48,6 +51,20 @@ struct BibleNavBarSnapshotTests {
                name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
+    // MARK: - Chevron-less form (SuperBible — chevrons hover above the composer)
+
+    @Test("the chevron-less bar centres the pill in the light theme")
+    func noChevronsLight() {
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
+               name: "no_chevrons_light", showsChapterChevrons: false)
+    }
+
+    @Test("the chevron-less bar centres the pill in the dark theme")
+    func noChevronsDark() {
+        verify(theme: .vellumDark, canStepBackward: true, canStepForward: true,
+               name: "no_chevrons_dark", showsChapterChevrons: false)
+    }
+
     // MARK: - Narration trailing-control states
 
     @Test("the narration speaker button renders in the light theme while speaking")
@@ -85,6 +102,7 @@ struct BibleNavBarSnapshotTests {
         canStepForward: Bool,
         name: String,
         selectionCitation: String? = nil,
+        showsChapterChevrons: Bool = true,
         narrationState: NarrationController.State = .idle,
         narrationCitation: String? = nil,
         function: String = #function
@@ -97,6 +115,7 @@ struct BibleNavBarSnapshotTests {
                 chapterNumber: 2,
                 translation: .web,
                 selectionCitation: selectionCitation,
+                showsChapterChevrons: showsChapterChevrons,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,
                 narrationState: narrationState,

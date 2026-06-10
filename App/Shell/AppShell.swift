@@ -231,6 +231,12 @@ struct AppShell: View {
             // this whole body) doesn't re-evaluate the backdrop and rebuild
             // the hosted applet's view tree. See `BackdropLayer.==`.
             .equatable()
+            // Inject the shared composer-accessory store into the backdrop
+            // subtree so the active applet (today the Bible reader) can publish
+            // its composer flank controls. `nil` on SuperOS — the default env
+            // value, a no-op. The store reference is stable, so this doesn't
+            // defeat `BackdropLayer`'s `.equatable()` skip.
+            .composerAccessoryStore(dependencies.composerAccessoryStore)
             ChatLayer(
                 viewModel: viewModel,
                 bootstrapError: bootstrapError,
@@ -265,6 +271,21 @@ struct AppShell: View {
             // Same as the hamburger: the pill is offset off-screen but stays in
             // the accessibility tree, so hide it from VoiceOver while immersive.
             .accessibilityHidden(composerHidden)
+            // Composer flank buttons (e.g. Bible prev / next chapter), hovering
+            // above the minimized pill. A sibling of `ChatLayer`, so it is NOT
+            // subject to the immersive `.offset` above — when the pill slides
+            // off, these buttons stay and drop into the vacated slot. Only
+            // present on a target that supplies a store (SuperBible).
+            if let composerAccessoryStore = dependencies.composerAccessoryStore {
+                ComposerAccessoryLayer(
+                    store: composerAccessoryStore,
+                    chatProgress: chatProgress,
+                    composerHidden: composerHidden,
+                    theme: theme,
+                    typography: typography,
+                    reduceMotion: reduceMotion
+                )
+            }
             HamburgerLayer(theme: theme, chromeVisible: shellChromeVisible, onTap: openSidebar)
             SidebarLayer(
                 sidebarOpen: $sidebarOpen,
@@ -1276,6 +1297,94 @@ private struct HamburgerLayer: View {
         // accessibility tree; drop it from VoiceOver too so a swipe can't
         // reach an off-screen control while chrome is hidden.
         .accessibilityHidden(!chromeVisible)
+    }
+}
+
+/// Composer-accessory layer: the optional hovering flank buttons (today the
+/// Bible reader's previous / next chapter chevrons) above the minimized chat
+/// pill. A ZStack sibling of `ChatLayer`, deliberately NOT subject to the
+/// immersive `.offset` that slides the pill off — so when the pill hides on
+/// scroll, these buttons stay and drop into the slot it vacated.
+///
+/// Reads `store.buttons` (an applet writes it) for the glyphs / actions and the
+/// shell's live `chatProgress` / `composerHidden` for visibility and the
+/// vertical anchor. Renders nothing when the store is empty. Chat owns the glass
+/// chrome via ``ComposerAccessoryFlank``; this layer only positions it.
+private struct ComposerAccessoryLayer: View {
+    let store: ComposerAccessoryStore
+    /// Live chat morph (0 = pill … 1 = expanded). Drives the fade-out as the
+    /// chat opens; holds at 0 through immersive scroll so the buttons stay.
+    let chatProgress: Double
+    /// True when the minimized pill has slid off for immersive reading. Drops
+    /// the buttons down into the vacated slot.
+    let composerHidden: Bool
+    let theme: SuperTheme
+    let typography: SuperTypography
+    let reduceMotion: Bool
+
+    /// Horizontal inset of each chevron from the screen edge — aligned with the
+    /// composer capsule's own outer side padding so the chevrons line up with
+    /// the pill's edges.
+    private static let sidePadding: CGFloat = 20
+    /// Resting bottom inset (measured from the safe-area bottom, i.e. above the
+    /// home indicator — the same region the composer occupies). The minimized
+    /// pill occupies the bottom `minimizedBaseHeight` of that region, so this
+    /// clears the pill and lifts the chevrons to hover above it.
+    private static let restingInset: CGFloat = ChatPresentationState.minimizedBaseHeight + 36
+    /// Bottom inset when the buttons occupy the vacated pill slot (pill hidden
+    /// in immersive mode) — roughly the composer capsule's own resting bottom
+    /// padding, so they land where the pill was.
+    private static let vacatedInset: CGFloat = 16
+
+    /// Full at the pill, fading out as the chat expands. Continuous in
+    /// `chatProgress` so a drag up fades the chevrons with the morph (same
+    /// cadence as the composer's own pill label) rather than snapping at a
+    /// state boundary. Stays 1 through immersive scroll (progress holds at 0).
+    private var accessoryOpacity: Double {
+        1 - Self.smoothstep(chatProgress, from: 0, to: 0.12)
+    }
+
+    var body: some View {
+        let buttons = store.buttons
+        if !buttons.isEmpty {
+            // Evaluated here in the body so a closure over the publishing
+            // applet's `@Observable` state stays reactive (Observation records
+            // the read and re-renders this layer when it flips). The Bible
+            // reader uses it to hide the chevrons once its footer prev/next
+            // cards are on screen.
+            let suppressed = buttons.shouldHide?() ?? false
+            let opacity = suppressed ? 0 : accessoryOpacity
+            // No `.ignoresSafeArea()`: the layer lives inside the safe area so
+            // the bottom inset is measured from the home-indicator top (where
+            // the composer content begins), matching the pill's own frame.
+            ComposerAccessoryFlank(buttons: buttons)
+                .superTheme(theme)
+                .superTypography(typography)
+                .padding(.horizontal, Self.sidePadding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, composerHidden ? Self.vacatedInset : Self.restingInset)
+                .opacity(opacity)
+                // Gate hit-testing and VoiceOver on the same threshold so a
+                // faded chevron is never tappable-but-invisible to a screen
+                // reader during the expand / footer fade.
+                .allowsHitTesting(opacity > 0.5)
+                .accessibilityHidden(opacity < 0.5)
+                .animation(
+                    SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
+                    value: composerHidden
+                )
+                .animation(
+                    SuperMotion.chrome(hiding: suppressed, reduceMotion: reduceMotion),
+                    value: suppressed
+                )
+        }
+    }
+
+    /// Hermite smoothstep — 0 below `lo`, 1 above `hi`, eased between.
+    private static func smoothstep(_ x: Double, from lo: Double, to hi: Double) -> Double {
+        guard hi > lo else { return x < lo ? 0 : 1 }
+        let t = min(1, max(0, (x - lo) / (hi - lo)))
+        return t * t * (3 - 2 * t)
     }
 }
 

@@ -364,6 +364,13 @@ public final class BibleScreenViewModel {
     /// and republishes the change to the shell over the event bus.
     public private(set) var isImmersive = false
 
+    /// Whether the chapter's previous/next footer cards are scrolled into view.
+    /// Driven by ``updateFooterVisibility(_:)`` from the reader's scroll
+    /// geometry; `BibleScreen` reads it to hide the hovering composer chevrons
+    /// once the footer's own chapter-step controls are on screen (they'd be
+    /// redundant). Resets to `false` on a chapter step via ``resetImmersive()``.
+    public private(set) var isChapterFooterVisible = false
+
     /// At or above the top by this many points, chrome is always shown —
     /// reaching the top of a chapter reveals the bar regardless of the
     /// in-flight scroll direction.
@@ -437,11 +444,22 @@ public final class BibleScreenViewModel {
 
     /// Force chrome back on and clear the scroll scratch state. The screen
     /// calls this when the reader disappears or steps chapters so chrome can
-    /// never strand hidden after leaving a scrolled chapter.
+    /// never strand hidden after leaving a scrolled chapter. Also clears
+    /// ``isChapterFooterVisible`` so a freshly stepped chapter (scroll reset to
+    /// the top) starts with the composer chevrons shown.
     public func resetImmersive() {
         scrollTravelSinceReversal = 0
         lastScrollOffsetY = nil
         setImmersive(false)
+        updateFooterVisibility(false)
+    }
+
+    /// Fold a chapter-reader "footer cards visible" sample into
+    /// ``isChapterFooterVisible``. Idempotent — mutates only on a real flip so
+    /// the screen's reactive readers fire once per transition.
+    public func updateFooterVisibility(_ visible: Bool) {
+        guard isChapterFooterVisible != visible else { return }
+        isChapterFooterVisible = visible
     }
 
     private func setImmersive(_ value: Bool) {

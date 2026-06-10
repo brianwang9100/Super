@@ -1,25 +1,28 @@
 import Core
 import SwiftUI
 
-/// The reading surface's top bar: menu, chapter stepping, and the
-/// book / translation pill.
+/// The reading surface's top bar: chapter stepping (optional), the book /
+/// translation pill, and the trailing action control.
 ///
 /// The prev / next arrows step chapters and the pill's two segments open the
 /// book and translation pickers. The arrows flank the pill as one centred glass
 /// cluster (a shared `glassEffectID` namespace), with the leading hamburger
 /// placeholder and the trailing action pushed to the edges so the cluster stays
-/// centred; a longer book name widens the cluster symmetrically about the pill.
-/// When verses are selected (`selectionCitation` is non-`nil`) the arrows morph
-/// *into* the centre pill and the centre slot becomes a citation pill with a
-/// clear control — the arrows resolve toward the pill, not the outer islands. The
-/// trailing slot is a sparkles `Menu` while narration is idle (Annotate / Add
-/// to chat / Start a new chat / Narrate); while narration is speaking or paused
-/// the same 44pt Liquid Glass circle stays, the sparkles glyph swaps for a
-/// speaker glyph, and tapping it toggles the transport card. The live verse citation
-/// is intentionally not shown here — it lives in the transport card's header
-/// so the nav bar stays a stable, fixed-width row of three circles.
-/// The sidebar entry point is the shell's own floating hamburger, so this
-/// bar deliberately has none.
+/// centred. When verses are selected (`selectionCitation` is non-`nil`) the
+/// arrows morph *into* the centre pill and the centre slot becomes a citation
+/// pill with a clear control. The trailing slot is a sparkles `Menu` while
+/// narration is idle (Annotate / Add to chat / Start a new chat / Narrate);
+/// while narration is speaking or paused the same 44pt Liquid Glass circle
+/// stays, the sparkles glyph swaps for a speaker glyph, and tapping it toggles
+/// the transport card. The sidebar entry point is the shell's own floating
+/// hamburger, so this bar deliberately has none.
+///
+/// `showsChapterChevrons` gates the prev / next arrows. SuperOS keeps them here
+/// (the chat opens expanded, so there's no minimized pill to hover above);
+/// SuperBible hides them and instead hovers them above the minimized chat
+/// composer pill (published through `ComposerAccessoryStore`, rendered by Chat's
+/// `ComposerAccessoryFlank`). When hidden, the centre cluster collapses to just
+/// the pill and the `onPrevious` / `onNext` / `canStep*` inputs go unused.
 struct BibleNavBar: View {
     /// Action chosen from the green sparkles dropdown menu — the screen
     /// dispatches each to its corresponding view-model / event-bus path.
@@ -46,6 +49,11 @@ struct BibleNavBar: View {
     /// The selection's citation, or `nil` when no verse is selected — its
     /// presence switches the centre group into selection mode.
     let selectionCitation: String?
+    /// Whether the prev / next chapter chevrons render in this bar. SuperOS
+    /// passes `true`; SuperBible passes `false` (the chevrons hover above the
+    /// chat composer pill instead). When `false`, `canStep*` / `onPrevious` /
+    /// `onNext` are unused.
+    let showsChapterChevrons: Bool
     let canStepBackward: Bool
     let canStepForward: Bool
     /// `.idle` shows the sparkles menu; `.speaking` / `.paused` swap it
@@ -76,14 +84,15 @@ struct BibleNavBar: View {
 
                 Spacer(minLength: 0)
 
-                // The centre cluster: arrows hug the pill and share one glass
-                // namespace, so on selection the arrows morph into the pill
-                // (toward the centre, not the outer islands) and the book pill
-                // morphs into the citation pill. The flanking `Spacer`s keep the
-                // cluster centred and far enough from the hamburger / trailing
-                // control that their glass never merges with the arrows.
+                // The centre cluster: the book / translation pill (or the
+                // citation pill while verses are selected, sharing one glass
+                // namespace so they morph across the transition), optionally
+                // flanked by the prev / next chevrons that hug the pill and
+                // morph into it on selection. The flanking `Spacer`s keep the
+                // cluster centred and clear of the hamburger gap and the
+                // trailing control.
                 HStack(spacing: 8) {
-                    if selectionCitation == nil {
+                    if showsChapterChevrons, selectionCitation == nil {
                         circleButton(systemImage: "chevron.left", action: onPrevious, morphID: "nav.prev")
                             .disabled(!canStepBackward)
                             .opacity(canStepBackward ? 1 : 0.35)
@@ -96,7 +105,7 @@ struct BibleNavBar: View {
                         pill
                     }
 
-                    if selectionCitation == nil {
+                    if showsChapterChevrons, selectionCitation == nil {
                         circleButton(systemImage: "chevron.right", action: onNext, morphID: "nav.next")
                             .disabled(!canStepForward)
                             .opacity(canStepForward ? 1 : 0.35)
