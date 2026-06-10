@@ -160,10 +160,15 @@ public enum LLMProviderCatalog {
     public static let all: [LLMProviderCatalogEntry] = [
         LLMProviderCatalogEntry(
             id: appleProviderID,
-            displayName: "Apple Intelligence",
+            displayName: "Apple",
             kind: .appleFoundation,
             defaultBaseURL: nil,
             models: [
+                // `maxContextTokens` here is only a static cap fallback; AFM's
+                // real, read-only window is read live via
+                // `AppleFoundationLLMProvider.deviceContextTokens` (surfaced in
+                // the detail pane and seed row), so the detail pane never
+                // exercises this 4096 for the Apple kind.
                 LLMCatalogModel(
                     id: "system-default",
                     displayName: "Apple Intelligence",

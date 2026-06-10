@@ -168,6 +168,13 @@ struct SettingsModelDetailPane: View {
         // callers always pass nil and the error is set in `save()`
         // on an over-cap value.
         _contextWindowError = State(initialValue: initialContextWindowError)
+        // Apple Intelligence's context window is device-managed: override the
+        // catalog/seed/persisted value with the live on-device window so the
+        // (read-only) Max-context field shows the truth and Save persists it.
+        // Keeps `isValid`'s numeric parse of `maxContextText` satisfied.
+        if LLMProviderCatalog.entry(forID: _providerID.wrappedValue)?.kind == .appleFoundation {
+            _maxContextText = State(initialValue: String(viewModel.appleFoundationContextTokens))
+        }
     }
 
     // MARK: - Selection helpers
@@ -325,12 +332,12 @@ struct SettingsModelDetailPane: View {
 
     /// Header text rendered above the form in edit mode when the row
     /// resolves to a built-in provider+model. Nil for Custom (no
-    /// header — full editable form) and for unknown configs.
+    /// header — full editable form) and for unknown configs. AFM rows
+    /// always resolve to the `system-default` catalog model (see the
+    /// edit-mode `init`), so they render the same `Provider · Model`
+    /// form as the others — "Apple · Apple Intelligence".
     private var editHeaderLabel: String? {
         guard isEditing else { return nil }
-        if isApple {
-            return currentProvider.displayName
-        }
         if let model = currentCatalogModel {
             return "\(currentProvider.displayName) · \(model.displayName)"
         }
@@ -402,16 +409,20 @@ struct SettingsModelDetailPane: View {
                 if showsAPIKeyField {
                     apiKeyFieldRow()
                 }
-                fieldRow(
-                    label: "Max context",
-                    placeholder: "200000",
-                    text: $maxContextText,
-                    keyboard: .numberPad,
-                    borderBottom: showsThinkingToggle || showsSearchPicker,
-                    monospaced: true
-                )
-                if let errorMessage = contextWindowError {
-                    contextWindowErrorRow(errorMessage)
+                if isApple {
+                    appleContextRow()
+                } else {
+                    fieldRow(
+                        label: "Max context",
+                        placeholder: "200000",
+                        text: $maxContextText,
+                        keyboard: .numberPad,
+                        borderBottom: showsThinkingToggle || showsSearchPicker,
+                        monospaced: true
+                    )
+                    if let errorMessage = contextWindowError {
+                        contextWindowErrorRow(errorMessage)
+                    }
                 }
                 if showsThinkingToggle {
                     toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: showsSearchPicker)
@@ -726,6 +737,31 @@ struct SettingsModelDetailPane: View {
         }
     }
 
+    /// Read-only Max-context row for Apple Intelligence. The on-device
+    /// window is device-managed — the AFM provider reads it live at init and
+    /// ignores any stored value — so we surface it as a non-editable value
+    /// (sourced from `viewModel.appleFoundationContextTokens`) rather than an
+    /// editable input. It's the last field for AFM, so no bottom border.
+    @ViewBuilder
+    private func appleContextRow() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Max context")
+                .font(typography.font(.caption, weight: .medium))
+                .foregroundStyle(theme.inkFaint)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Text(viewModel.appleFoundationContextTokens.formatted(.number))
+                .font(typography.mono(16, relativeTo: .callout))
+                .foregroundStyle(theme.ink)
+            Text("Managed on-device by Apple Intelligence.")
+                .font(typography.font(.caption))
+                .foregroundStyle(theme.inkFaint)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// Dedicated row for the API-key `SecureField`. Owns the focus
     /// binding and the placeholder-bullet bookkeeping so the rest of
     /// the form keeps using the plain `fieldRow` helper. On first focus
@@ -916,6 +952,13 @@ struct SettingsModelDetailPane: View {
         baseURLText = seeded.baseURLText
         modelId = seeded.modelId
         maxContextText = seeded.maxContextText
+        // AFM's window is device-managed and read-only: override the catalog's
+        // static seed with the live value (mirrors the edit/create `init`) so
+        // the read-only display, `isValid`'s parse, and Save all agree on one
+        // source of truth rather than relying on the catalog 4096 staying valid.
+        if seeded.providerID == LLMProviderCatalog.appleProviderID {
+            maxContextText = String(viewModel.appleFoundationContextTokens)
+        }
         supportsThinking = seeded.supportsThinking
         // Reset to Off — native availability is provider-specific, so a
         // "native" choice can't carry across a provider swap.
@@ -1119,6 +1162,10 @@ struct SettingsModelDetailPane: View {
 
     private func save() {
         guard isValid else { return }
+        // `maxCtx` drives the non-Apple cap check + persisted value. For AFM
+        // it's effectively unused — the cap check is skipped below and Save
+        // persists `viewModel.appleFoundationContextTokens` — but the parse
+        // still succeeds because AFM seeds `maxContextText` to the live value.
         guard let maxCtx = Int(maxContextText) else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         // Context-window cap is the one validation that surfaces as
@@ -1126,7 +1173,10 @@ struct SettingsModelDetailPane: View {
         // Custom and unknown-modelId edits skip it (no catalog
         // entry → no cap). Editing a built-in row uses the catalog
         // model resolved from `modelId` at init time.
-        if let cap = currentCatalogModel?.maxContextTokens, maxCtx > cap {
+        // AFM's window is device-managed and read-only (no editable field, no
+        // catalog cap), so skip the cap check for it — otherwise a live window
+        // larger than the static catalog 4096 would falsely block Save.
+        if !isApple, let cap = currentCatalogModel?.maxContextTokens, maxCtx > cap {
             contextWindowError = "Maximum context for this model is \(cap.formatted(.number)) tokens."
             return
         } else {
@@ -1154,7 +1204,9 @@ struct SettingsModelDetailPane: View {
                         modelId: modelId,
                         apiKey: "",
                         supportsThinking: supportsThinking,
-                        maxContextTokens: maxCtx
+                        // Persist the live on-device window, not the (read-only,
+                        // possibly stale) text field — keeps the row honest.
+                        maxContextTokens: viewModel.appleFoundationContextTokens
                     )
                     if viewModel.modelEditError == nil {
                         viewModel.popPane()
@@ -1165,7 +1217,7 @@ struct SettingsModelDetailPane: View {
                     await viewModel.createAppleFoundationModel(
                         name: trimmedName,
                         supportsThinking: supportsThinking,
-                        maxContextTokens: maxCtx
+                        maxContextTokens: viewModel.appleFoundationContextTokens
                     )
                     if viewModel.modelEditError == nil {
                         viewModel.popPane()

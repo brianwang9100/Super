@@ -44,7 +44,10 @@ public enum ModelConfigurationSeeding {
                 createdAt: clock.now(),
                 kind: .appleFoundation,
                 supportsThinking: false,
-                maxContextTokens: AppleFoundationLLMProvider.defaultMaxContextTokens,
+                // Persist the real on-device window so the row is honest. The
+                // AFM provider re-reads it live at init regardless, so this is
+                // cosmetic for budgeting — but it keeps the stored value true.
+                maxContextTokens: AppleFoundationLLMProvider.deviceContextTokens,
                 isSelected: true
             )
         }

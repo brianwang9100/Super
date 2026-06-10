@@ -308,6 +308,15 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(seeds.baseURLText == "")
     }
 
+    @Test("Apple provider reads 'Apple'; its model reads 'Apple Intelligence'")
+    func appleProviderAndModelNamesAreDistinct() {
+        let entry = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)
+        #expect(entry?.displayName == "Apple", "provider should mirror Google/Gemini — provider name is 'Apple'")
+        #expect(entry?.kind == .appleFoundation)
+        #expect(entry?.models.count == 1)
+        #expect(entry?.models.first?.displayName == "Apple Intelligence", "the single model is 'Apple Intelligence'")
+    }
+
     @Test("Google seeds Gemini 3 Pro with the native generateContent URL")
     func googleSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "google")
