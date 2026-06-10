@@ -77,4 +77,100 @@ struct TokenEstimatorTests {
         ])
         #expect(estimator.estimate(messages: [large]) > estimator.estimate(messages: [small]))
     }
+
+    // MARK: - Tool-schema estimation
+
+    private func tool(
+        name: String,
+        description: String,
+        parameters: [LLMToolParameter]
+    ) -> LLMTool {
+        LLMTool(
+            id: name,
+            name: name,
+            description: description,
+            category: .query,
+            parameters: parameters,
+            appletId: "test"
+        )
+    }
+
+    @Test func emptyToolsReturnZero() {
+        let estimator = HeuristicTokenEstimator()
+        #expect(estimator.estimate(tools: []) == 0)
+    }
+
+    @Test func toolCostCountsNameDescriptionAndParams() {
+        let estimator = HeuristicTokenEstimator()
+        let echo = tool(
+            name: "echo",
+            description: "Echoes the input text back to the caller.",
+            parameters: [
+                LLMToolParameter(name: "text", type: .string, description: "What to echo."),
+            ]
+        )
+        let cost = estimator.estimate(tools: [echo])
+        // The estimate must include at least the name + description + the
+        // parameter's own description — proving none of the three are dropped.
+        let floor = estimator.estimate("echo")
+            + estimator.estimate("Echoes the input text back to the caller.")
+            + estimator.estimate("What to echo.")
+        #expect(cost >= floor)
+        #expect(cost > 0)
+    }
+
+    @Test func toolParametersIncreaseTheEstimate() {
+        // A tool that declares parameters costs more than the same tool with
+        // none — the parameter schema is real window weight.
+        let estimator = HeuristicTokenEstimator()
+        let bare = tool(name: "noop", description: "Does nothing.", parameters: [])
+        let withParams = tool(
+            name: "noop",
+            description: "Does nothing.",
+            parameters: [
+                LLMToolParameter(name: "mode", type: .string, description: "Operating mode.", enumValues: ["fast", "slow"]),
+            ]
+        )
+        #expect(estimator.estimate(tools: [withParams]) > estimator.estimate(tools: [bare]))
+    }
+
+    @Test func nestedValueSchemaIsCounted() {
+        // A parameter whose elements carry a nested object schema must cost
+        // more than the same parameter without it — the recursion can't drop
+        // deeply-shaped parameters (e.g. read's array-of-objects passages).
+        let estimator = HeuristicTokenEstimator()
+        let flat = tool(
+            name: "read",
+            description: "Reads passages.",
+            parameters: [
+                LLMToolParameter(name: "passages", type: .array, description: "Passages to read."),
+            ]
+        )
+        let nested = tool(
+            name: "read",
+            description: "Reads passages.",
+            parameters: [
+                LLMToolParameter(
+                    name: "passages",
+                    type: .array,
+                    description: "Passages to read.",
+                    valueSchema: .array(element: .object([
+                        LLMToolParameter(name: "book", type: .string, description: "Book to read."),
+                        LLMToolParameter(name: "chapter", type: .integer, description: "Chapter number."),
+                    ]))
+                ),
+            ]
+        )
+        #expect(estimator.estimate(tools: [nested]) > estimator.estimate(tools: [flat]))
+    }
+
+    @Test func toolsArrayRollsUpAcrossTools() {
+        let estimator = HeuristicTokenEstimator()
+        let a = tool(name: "a", description: "First tool.", parameters: [])
+        let b = tool(name: "b", description: "Second tool.", parameters: [])
+        #expect(
+            estimator.estimate(tools: [a, b])
+                == estimator.estimate(tools: [a]) + estimator.estimate(tools: [b])
+        )
+    }
 }

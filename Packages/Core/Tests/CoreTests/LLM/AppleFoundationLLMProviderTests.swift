@@ -24,6 +24,32 @@ struct AppleFoundationLLMProviderTests {
     )
 
     @Test
+    func injectedContextWindowSurfacesOnSupportedModel() {
+        // The designated init's `maxContextTokens` seam lets a caller pin the
+        // window deterministically (the production init reads the real
+        // `SystemLanguageModel.contextSize` instead). Mirrors how an iOS 26.4+
+        // device advertises the lifted 8192-token window.
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) },
+            maxContextTokens: 8_192
+        )
+        #expect(provider.supportedModels.count == 1)
+        #expect(provider.supportedModels[0].maxContextTokens == 8_192)
+    }
+
+    @Test
+    func contextWindowDefaultsToFallbackWhenNotInjected() {
+        // Omitting the seam falls back to the documented pre-26.4 floor, so
+        // existing tests and registry-less startup stay byte-identical.
+        let provider = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots([])) }
+        )
+        #expect(provider.supportedModels[0].maxContextTokens == AppleFoundationLLMProvider.defaultMaxContextTokens)
+    }
+
+    @Test
     func happyPathStreamYieldsMonotonicTextDeltas() async throws {
         let session = MockLanguageSession(outcome: .snapshots(["Hello", "Hello world"]))
         let provider = AppleFoundationLLMProvider(
