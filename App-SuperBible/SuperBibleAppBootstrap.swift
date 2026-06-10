@@ -45,6 +45,12 @@ struct SuperBibleAppDependencies {
     /// database failed to open (bulk generation is then unavailable anyway).
     let bulkAnnotationBackground: BulkAnnotationBackgroundScheduler?
 
+    /// Shared holder for the chat composer's hovering flank buttons. The Bible
+    /// reader publishes its previous / next chapter chevrons here so they render
+    /// above the minimized composer pill; the shell injects it into the backdrop
+    /// subtree (writer) and the composer-accessory layer (reader). SuperBible-only.
+    let composerAccessoryStore: ComposerAccessoryStore
+
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
     /// to the shell is the applet set inside `appletRegistry`.
@@ -69,7 +75,10 @@ struct SuperBibleAppDependencies {
             // is enforced separately in `bootstrap()` (UserDefaults skip
             // + `applets.first?.appletID`); this knob covers the chat
             // anchor only. See App-SuperBible/AGENTS.md § Launch behavior.
-            launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized)
+            launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized),
+            // SuperBible hovers the Bible reader's chapter chevrons above the
+            // composer pill; the same store the Bible backdrop writes to.
+            composerAccessoryStore: composerAccessoryStore
         )
     }
 }
@@ -322,6 +331,11 @@ enum SuperBibleAppBootstrap {
         )
         let bibleSettingsContributions = bulkWiring.map { [$0.settingsContribution] } ?? []
 
+        // Shared composer-flank holder: the Bible reader writes its prev / next
+        // chapter chevrons here and the shell renders them above the composer
+        // pill. Created once for the app session.
+        let composerAccessoryStore = ComposerAccessoryStore()
+
         return SuperBibleAppDependencies(
             chatDatabase: database,
             chatSessionStore: chatSessionStore,
@@ -339,7 +353,8 @@ enum SuperBibleAppBootstrap {
             appleFoundationAvailability: bootAvailability,
             bibleAnnotateDispatcher: bibleAnnotateDispatcher,
             appletSettingsContributions: bibleSettingsContributions,
-            bulkAnnotationBackground: bulkWiring?.background
+            bulkAnnotationBackground: bulkWiring?.background,
+            composerAccessoryStore: composerAccessoryStore
         )
     }
 }

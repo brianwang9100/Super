@@ -36,4 +36,12 @@ struct AppShellDependencies {
     /// `AppShellLaunchBehavior(initialChatState: .minimized)` so Bible
     /// is visible and the chat sits as a pill on every cold launch.
     let launchBehavior: AppShellLaunchBehavior
+    /// Shared holder for the chat composer's hovering flank buttons (e.g. the
+    /// Bible reader's previous / next chapter chevrons). Non-`nil` only on
+    /// targets that opt into the behavior (SuperBible); SuperOS passes `nil`,
+    /// so the shell renders no accessory row and injects nothing into the
+    /// backdrop. The shell injects this into the backdrop subtree (so the
+    /// active applet can publish controls) and reads it for the composer
+    /// accessory layer.
+    let composerAccessoryStore: ComposerAccessoryStore?
 }

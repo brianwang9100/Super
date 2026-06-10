@@ -25,6 +25,12 @@ public struct BibleScreen: View {
     /// and isolated tests — the chat hand-off then falls back to the
     /// "coming soon" toast.
     @Environment(\.superEventBus) private var eventBus
+    /// Shared holder for the chat composer's hovering flank buttons, injected by
+    /// the shell on targets that opt in (SuperBible). The reader publishes its
+    /// previous / next chapter chevrons here so they render above the composer
+    /// pill. `nil` on SuperOS, in previews, and in isolated tests — publishing
+    /// is then a no-op and the chevrons simply don't appear.
+    @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
 
     /// Work to run once the currently-presented sheet finishes dismissing.
@@ -144,7 +150,13 @@ public struct BibleScreen: View {
                 .transition(motion.transition)
             }
         }
-        .task { await viewModel.load() }
+        .task {
+            await viewModel.load()
+            // Publish the prev / next chevrons so they hover above the chat
+            // composer pill once the chapter (and its canon-end availability)
+            // is loaded.
+            publishComposerAccessories()
+        }
         // Immersive reading: when the scroll reducer flips `isImmersive`,
         // mirror it to the shell so its hamburger + chat pill hide/show in
         // sympathy with the local nav bar. Published only on real flips
@@ -158,12 +170,17 @@ public struct BibleScreen: View {
         // `isImmersive` change above restores the shell's chrome too).
         .onChange(of: viewModel.position) { _, _ in
             viewModel.resetImmersive()
+            // Stepping a chapter can flip the canon-end availability, so
+            // refresh the hovering chevrons' enabled state.
+            publishComposerAccessories()
         }
         // Leaving the reader restores chrome unconditionally so a non-Bible
-        // applet — or a later re-entry — never inherits a hidden state.
+        // applet — or a later re-entry — never inherits a hidden state. Clear
+        // the composer chevrons too so they don't outlive the reader.
         .onDisappear {
             viewModel.resetImmersive()
             publishChromeVisibility(true)
+            clearComposerAccessories()
         }
         // Foreground-only narration per spec: leaving the app stops
         // playback cleanly so the controller's state matches what the
@@ -352,6 +369,42 @@ public struct BibleScreen: View {
         Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }
     }
 
+    /// Publish the reader's previous / next chapter chevrons into the shared
+    /// composer-accessory store so they hover above the chat composer pill
+    /// (leading = previous, trailing = next). The `isEnabled` flags track the
+    /// canon ends and the actions step the chapter. A no-op without a store
+    /// (SuperOS, previews, isolated tests) — the chevrons then simply don't
+    /// appear, and the in-reader footer prev / next cards remain the only
+    /// stepping affordance.
+    private func publishComposerAccessories() {
+        guard let composerAccessoryStore else { return }
+        composerAccessoryStore.buttons = ComposerAccessoryButtons(
+            leading: ComposerAccessoryButton(
+                systemImage: "chevron.left",
+                accessibilityLabel: "Previous chapter",
+                isEnabled: viewModel.canStepBackward,
+                action: { viewModel.stepChapter(.previous) }
+            ),
+            trailing: ComposerAccessoryButton(
+                systemImage: "chevron.right",
+                accessibilityLabel: "Next chapter",
+                isEnabled: viewModel.canStepForward,
+                action: { viewModel.stepChapter(.next) }
+            ),
+            // Hide the hovering chevrons once the chapter's own prev / next
+            // footer cards scroll into view — they'd be redundant. Read inside
+            // the renderer's body, so this stays reactive as the user scrolls
+            // without republishing.
+            shouldHide: { viewModel.isChapterFooterVisible }
+        )
+    }
+
+    /// Clear the composer flank chevrons when the reader leaves so a non-Bible
+    /// backdrop never inherits them.
+    private func clearComposerAccessories() {
+        composerAccessoryStore?.buttons = .none
+    }
+
     private func publishReferenceToChat(_ reference: RecordReference, startNew: Bool) {
         guard let eventBus else {
             withAnimation(motion.animation) { viewModel.presentChatComingSoon() }
@@ -405,6 +458,10 @@ public struct BibleScreen: View {
             chapterNumber: viewModel.position.chapterNumber,
             translation: viewModel.translation,
             selectionCitation: viewModel.selectionCitation,
+            // SuperBible (a composer-accessory store is injected) hovers the
+            // chevrons above the chat composer pill, so the bar hides them;
+            // SuperOS (no store) keeps them in the bar.
+            showsChapterChevrons: composerAccessoryStore == nil,
             canStepBackward: viewModel.canStepBackward,
             canStepForward: viewModel.canStepForward,
             narrationState: viewModel.narration.state,
@@ -590,6 +647,9 @@ public struct BibleScreen: View {
                 },
                 onScroll: { offsetY, userDriven in
                     viewModel.updateScroll(offsetY: offsetY, userDriven: userDriven)
+                },
+                onFooterVisible: { visible in
+                    viewModel.updateFooterVisibility(visible)
                 }
             )
             // A fresh identity per chapter resets the scroll offset to the
