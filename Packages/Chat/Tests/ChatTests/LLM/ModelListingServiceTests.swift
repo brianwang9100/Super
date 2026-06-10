@@ -97,10 +97,12 @@ struct ModelListingServiceTests {
         #expect(http.observed.all.isEmpty)
     }
 
-    @Test("A non-2xx status maps to .transport carrying the body")
+    @Test("A non-2xx status maps to .transport carrying the assembled body")
     func badStatusMapsToTransport() async throws {
         let http = FakeHTTPClient(error: HTTPError.badStatus(401, body: "invalid api key"))
-        await #expect(throws: ModelListingError.self) {
+        // Pin the exact case + message so a regression in `describe(_:)`'s
+        // "HTTP <code>: <body>" assembly is caught, not just "some error".
+        await #expect(throws: ModelListingError.transport("HTTP 401: invalid api key")) {
             try await service(http).listModelIDs(
                 kind: .openAICompatible,
                 baseURL: URL(string: "https://api.openai.com/v1")!,

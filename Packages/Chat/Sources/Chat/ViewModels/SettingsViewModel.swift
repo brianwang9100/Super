@@ -405,9 +405,11 @@ public final class SettingsViewModel {
               let baseURL = entry.defaultBaseURL else { return }
 
         loadingModelsProviderID = providerID
-        // Guard the reset so a same-provider double-fetch (or a concurrent
-        // fetch for a different provider) can't clear another in-flight
-        // spinner — only the load that owns the flag clears it.
+        // Guard the reset so a concurrent fetch for a *different* provider
+        // can't clear this one's spinner (and vice versa). Two forced fetches
+        // for the *same* provider still share the flag — the first to finish
+        // clears it — but that's a benign quick-double-tap edge, and the
+        // cache write is last-writer-wins regardless.
         defer { if loadingModelsProviderID == providerID { loadingModelsProviderID = nil } }
         do {
             let ids = try await service.listModelIDs(kind: entry.kind, baseURL: baseURL, apiKey: key)
