@@ -238,6 +238,14 @@ public final class SettingsViewModel {
     /// requires an app relaunch to take effect.
     public let appleFoundationAvailability: AppleFoundationAvailability
 
+    /// The on-device AFM context window surfaced to the panes so the
+    /// `.appleFoundation` detail row can render (read-only) and persist the
+    /// real window. Snapshotted once at init from
+    /// `AppleFoundationLLMProvider.deviceContextTokens` (or the injected
+    /// override in tests/fixtures, which keeps snapshots deterministic without
+    /// touching the real device API).
+    public let appleFoundationContextTokens: Int
+
     public init(
         appInfo: SuperAppInfo,
         settingRepository: any SettingRepository,
@@ -260,7 +268,8 @@ public final class SettingsViewModel {
         modelListingService: (any ModelListingService)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
-        )
+        ),
+        appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens
     ) {
         self.appInfo = appInfo
         self.store = ChatSettingsStore(repository: settingRepository)
@@ -290,6 +299,7 @@ public final class SettingsViewModel {
         // that pass neither get a nil service and `loadModels` no-ops.
         self.modelListingService = modelListingService ?? httpClient.map { LiveModelListingService(http: $0) }
         self.appleFoundationAvailability = appleFoundationAvailability
+        self.appleFoundationContextTokens = appleFoundationContextTokens
     }
 
     /// `true` once `load()` has populated state from any source — the

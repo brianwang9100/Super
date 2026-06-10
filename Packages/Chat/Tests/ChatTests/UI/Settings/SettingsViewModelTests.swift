@@ -498,6 +498,16 @@ struct SettingsViewModelTests {
         #expect(vm.hasAppleFoundationModel == true)
     }
 
+    @Test("appleFoundationContextTokens surfaces the injected on-device window")
+    func appleFoundationContextTokensIsInjected() async {
+        // The detail pane renders + persists this value for AFM rows (the
+        // field is read-only). Injecting it keeps the pane deterministic and
+        // off the real device API; a distinctive value proves it's wired
+        // through rather than a hardcoded 4096.
+        let vm = makeViewModel(appleFoundationContextTokens: 9_999)
+        #expect(vm.appleFoundationContextTokens == 9_999)
+    }
+
     @Test("createAppleFoundationModel writes AFM-shaped row and skips keychain")
     func createAppleFoundationModelPersists() async {
         let modelRepo = StubModelRepository(rows: [])
@@ -1320,7 +1330,8 @@ struct SettingsViewModelTests {
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
         modelListingService: (any ModelListingService)? = nil,
-        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
+        appleFoundationContextTokens: Int = 4_096
     ) -> SettingsViewModel {
         // The availability default is *deliberately* a fixed unavailable
         // case rather than the SDK's `SystemLanguageModel.default
@@ -1341,7 +1352,8 @@ struct SettingsViewModelTests {
             llmProviderRegistry: llmProviderRegistry,
             httpClient: httpClient,
             modelListingService: modelListingService,
-            appleFoundationAvailability: appleFoundationAvailability
+            appleFoundationAvailability: appleFoundationAvailability,
+            appleFoundationContextTokens: appleFoundationContextTokens
         )
     }
 }
