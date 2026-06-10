@@ -368,4 +368,76 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(seeds.providerID == LLMProviderCatalog.customProviderID)
         #expect(seeds.modelId == "")
     }
+
+    // MARK: - reconcile (live model list ⨉ catalog metadata)
+
+    @Test("A fetched id matching the catalog keeps its curated metadata")
+    func reconcileKnownKeepsCatalogMetadata() {
+        let merged = LLMProviderCatalog.reconcile(
+            providerID: "openai",
+            fetchedModelIDs: ["gpt-5.5"]
+        )
+        #expect(merged.count == 1)
+        let model = merged[0]
+        // Curated values from the catalog, not the fetched-default fallback.
+        #expect(model.id == "gpt-5.5")
+        #expect(model.displayName == "GPT-5.5")
+        #expect(model.maxContextTokens == 1_000_000)
+        #expect(model.supportsThinking == true)
+    }
+
+    @Test("A fetched id with no catalog entry gets editable defaults")
+    func reconcileUnknownGetsDefaults() {
+        let merged = LLMProviderCatalog.reconcile(
+            providerID: "openai",
+            fetchedModelIDs: ["gpt-6-preview"]
+        )
+        #expect(merged.count == 1)
+        let model = merged[0]
+        #expect(model.id == "gpt-6-preview")
+        // Display name falls back to the raw wire id.
+        #expect(model.displayName == "gpt-6-preview")
+        #expect(model.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
+        #expect(model.supportsThinking == false)
+    }
+
+    @Test("Known ids sort first in catalog order, unknown ids alphabetically after")
+    func reconcileOrdersCuratedFirst() {
+        // Fetch order deliberately shuffles known + unknown to prove the
+        // result is re-ordered (catalog order for known, alpha for unknown).
+        let merged = LLMProviderCatalog.reconcile(
+            providerID: "openai",
+            fetchedModelIDs: ["zeta-model", "gpt-5.4-mini", "alpha-model", "gpt-5.5"]
+        )
+        let ids = merged.map(\.id)
+        // gpt-5.5 precedes gpt-5.4-mini in the catalog, so known order is
+        // [gpt-5.5, gpt-5.4-mini]; unknowns follow sorted: [alpha, zeta].
+        #expect(ids == ["gpt-5.5", "gpt-5.4-mini", "alpha-model", "zeta-model"])
+    }
+
+    @Test("Duplicate fetched ids collapse to a single entry")
+    func reconcileDedupesFetched() {
+        let merged = LLMProviderCatalog.reconcile(
+            providerID: "openai",
+            fetchedModelIDs: ["gpt-5.5", "gpt-5.5", "dup-x", "dup-x"]
+        )
+        #expect(merged.map(\.id) == ["gpt-5.5", "dup-x"])
+    }
+
+    @Test("An unknown providerID treats every fetched id as a default model")
+    func reconcileUnknownProvider() {
+        let merged = LLMProviderCatalog.reconcile(
+            providerID: "vapor-cloud-9000",
+            fetchedModelIDs: ["b-model", "a-model"]
+        )
+        // No catalog entry ⇒ nothing is "known"; all sort alphabetically.
+        #expect(merged.map(\.id) == ["a-model", "b-model"])
+        #expect(merged.allSatisfy { $0.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens })
+    }
+
+    @Test("An empty fetch yields an empty list (caller falls back to catalog)")
+    func reconcileEmptyFetch() {
+        let merged = LLMProviderCatalog.reconcile(providerID: "openai", fetchedModelIDs: [])
+        #expect(merged.isEmpty)
+    }
 }
