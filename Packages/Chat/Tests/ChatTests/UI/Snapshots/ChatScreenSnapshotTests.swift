@@ -246,13 +246,17 @@ struct ChatScreenSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) {
+        let actions = [
+            SuggestedChatAction(label: "Explain a verse", message: "Explain a Bible verse to me."),
+            SuggestedChatAction(label: "Today's reading", message: "What should I read in the Bible today?"),
+            SuggestedChatAction(label: "Write a prayer", message: "Write a short prayer for me."),
+        ]
         let viewModel = makeViewModel(initialMessages: [])
+        // Drive the resolved set directly (ChatScreen renders `viewModel.suggestions`);
+        // mirror it in the env fallback so any async load resolves to the same list.
+        viewModel._setSnapshotSuggestions(actions)
         let view = ChatScreen(viewModel: viewModel)
-            .environment(\.appletSuggestedChatActions, [
-                SuggestedChatAction(label: "Explain a verse", message: "Explain a Bible verse to me."),
-                SuggestedChatAction(label: "Today's reading", message: "What should I read in the Bible today?"),
-                SuggestedChatAction(label: "Write a prayer", message: "Write a short prayer for me."),
-            ])
+            .environment(\.appletSuggestedChatActions, actions)
             .superTheme(.make(theme))
             .dynamicTypeSize(dynamicType)
             .frame(width: 402, height: 874)
