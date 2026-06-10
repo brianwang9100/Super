@@ -191,12 +191,23 @@ struct SettingsModelDetailPane: View {
             )
     }
 
+    /// Models the "Model" dropdown renders: the live, reconciled list for
+    /// this provider when one has been fetched into the view model's
+    /// in-memory cache, otherwise the hand-curated catalog (the fallback
+    /// when no key is entered yet or the live fetch failed). Single source
+    /// of truth for the picker, `currentCatalogModel`, and selection.
+    private var displayedModels: [LLMCatalogModel] {
+        viewModel.fetchedModels[providerID] ?? currentProvider.models
+    }
+
     /// The selected catalog model when the user is on a built-in
     /// provider, or nil when the provider is Custom (no catalog
-    /// models). Used by visibility + cap-validation paths.
+    /// models). Used by visibility + cap-validation paths. Resolves against
+    /// `displayedModels` so a fetched-but-uncurated model id (no catalog
+    /// entry) still resolves to its default-metadata row.
     private var currentCatalogModel: LLMCatalogModel? {
         guard !isCustom, !modelCatalogID.isEmpty else { return nil }
-        return currentProvider.models.first(where: { $0.id == modelCatalogID })
+        return displayedModels.first(where: { $0.id == modelCatalogID })
     }
 
     /// `true` when the active provider is the Apple Intelligence
@@ -439,6 +450,19 @@ struct SettingsModelDetailPane: View {
             // Clear any stale message from a previous attempt so it
             // doesn't flash on this open.
             viewModel.clearModelEditError()
+            // Create mode only: prime the live model list for the initial
+            // built-in provider. Edit mode hides the dropdowns and its key
+            // is placeholder bullets, so a fetch there would be wasteful.
+            if !isEditing { loadModelList(force: false) }
+        }
+        .onChange(of: viewModel.fetchedModels[providerID]) { _, newModels in
+            // After a fetch, if the previously-selected model isn't in the
+            // live list, drop back to the "Select model…" placeholder rather
+            // than leaving a stale pick that the dropdown can't show.
+            guard let newModels, !modelCatalogID.isEmpty else { return }
+            if !newModels.contains(where: { $0.id == modelCatalogID }) {
+                modelCatalogID = ""
+            }
         }
         .onDisappear { viewModel.beforePopCleanup = nil }
         .onChange(of: maxContextText) { _, _ in
@@ -508,12 +532,76 @@ struct SettingsModelDetailPane: View {
         // which would otherwise look identical and let Save commit
         // a value the user didn't choose.
         let label = currentCatalogModel?.displayName ?? "Select model…"
-        pickerRow(label: "Model", value: label, borderBottom: borderBottom) {
-            ForEach(currentProvider.models) { model in
-                Button(action: { applyModelSelection(model.id) }) {
-                    Text(model.displayName)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                Menu {
+                    ForEach(displayedModels) { model in
+                        Button(action: { applyModelSelection(model.id) }) {
+                            Text(model.displayName)
+                        }
+                    }
+                } label: {
+                    pickerLabelContent(label: "Model", value: label)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Model")
+                .accessibilityValue(label)
+
+                // The refresh affordance lists models live for built-in
+                // providers. Apple's single on-device model has no endpoint
+                // to refresh against, so it's omitted there.
+                if !isApple {
+                    modelRefreshAffordance
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .bottom) {
+                if borderBottom {
+                    Rectangle()
+                        .fill(theme.borderFaint)
+                        .frame(height: 1)
+                        .padding(.leading, 18)
+                }
+            }
+
+            if let note = viewModel.modelListNote[providerID] {
+                Text(note)
+                    .font(typography.font(.footnote))
+                    .foregroundStyle(theme.inkFaint)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 10)
+                    .accessibilityIdentifier("modelDetail.modelListNote")
+            }
+        }
+    }
+
+    /// Trailing accessory on the Model row: a refresh button that force
+    /// re-fetches the provider's live model list with the currently-typed
+    /// key, swapped for a spinner while that provider's fetch is in flight.
+    @ViewBuilder
+    private var modelRefreshAffordance: some View {
+        if viewModel.loadingModelsProviderID == providerID {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 28, height: 28)
+                .accessibilityLabel("Loading models")
+                .accessibilityIdentifier("modelDetail.modelsLoading")
+        } else {
+            Button(action: { loadModelList(force: true) }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(typography.font(.footnote, weight: .semibold))
+                    .foregroundStyle(theme.inkSoft)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Refresh models")
+            .accessibilityIdentifier("modelDetail.refreshModels")
         }
     }
 
@@ -545,39 +633,48 @@ struct SettingsModelDetailPane: View {
         Menu {
             menuContent()
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(label)
-                    .font(typography.font(.caption, weight: .medium))
-                    .foregroundStyle(theme.inkFaint)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
-                HStack(spacing: 8) {
-                    Text(value)
-                        .font(typography.font(.callout))
-                        .foregroundStyle(theme.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(typography.font(.footnote, weight: .semibold))
-                        .foregroundStyle(theme.inkFaint)
+            pickerLabelContent(label: label, value: value)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .overlay(alignment: .bottom) {
+                    if borderBottom {
+                        Rectangle()
+                            .fill(theme.borderFaint)
+                            .frame(height: 1)
+                            .padding(.leading, 18)
+                    }
                 }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .overlay(alignment: .bottom) {
-                if borderBottom {
-                    Rectangle()
-                        .fill(theme.borderFaint)
-                        .frame(height: 1)
-                        .padding(.leading, 18)
-                }
-            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityValue(value)
+    }
+
+    /// The label cap + current-value + chevron stack shared by every picker
+    /// row. Extracted so the Model row can compose it alongside a trailing
+    /// refresh affordance while the Provider/Web-search rows keep using the
+    /// padded `pickerRow` wrapper.
+    @ViewBuilder
+    private func pickerLabelContent(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(typography.font(.caption, weight: .medium))
+                .foregroundStyle(theme.inkFaint)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            HStack(spacing: 8) {
+                Text(value)
+                    .font(typography.font(.callout))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(typography.font(.footnote, weight: .semibold))
+                    .foregroundStyle(theme.inkFaint)
+            }
+        }
     }
 
     /// Static "Provider · Model" header rendered in edit mode in
@@ -826,6 +923,20 @@ struct SettingsModelDetailPane: View {
         apiKey = ""
         apiKeyIsPlaceholder = false
         contextWindowError = nil
+        // Auto-fetch the new provider's live model list (no-op for Apple /
+        // Custom, or when the cache already holds it / no key is entered).
+        loadModelList(force: false)
+    }
+
+    /// Kick off a live model-list fetch for the current provider. Wrapped so
+    /// the auto-fetch (provider select / appear) and the manual refresh icon
+    /// share one path. No-ops for Apple and Custom — neither lists models.
+    /// The view model itself guards the cache-hit / empty-key / failure cases.
+    private func loadModelList(force: Bool) {
+        guard !isCustom, !isApple else { return }
+        let providerID = providerID
+        let apiKey = apiKey
+        Task { await viewModel.loadAvailableModels(providerID: providerID, apiKey: apiKey, force: force) }
     }
 
     /// Pick a different catalog model within the current provider.
@@ -834,7 +945,7 @@ struct SettingsModelDetailPane: View {
     /// per-model). Custom never enters this path — its Model ID is a
     /// text field, not a picker.
     private func applyModelSelection(_ catalogID: String) {
-        guard let entry = currentProvider.models.first(where: { $0.id == catalogID }) else { return }
+        guard let entry = displayedModels.first(where: { $0.id == catalogID }) else { return }
         guard catalogID != modelCatalogID else { return }
         modelCatalogID = catalogID
         name = entry.displayName

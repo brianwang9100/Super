@@ -707,6 +707,50 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    // The live model-list fetch fell back to the curated catalog (no/bad key,
+    // offline, etc.): the inline note renders under the Model dropdown.
+    @Test("model detail create flow — live model-list fallback note (light)")
+    func modelDetailModelListFallbackNote() async {
+        await verifyCreateWithModelListNote(
+            theme: .vellumLight,
+            name: "settings_model_detail_model_list_note_light"
+        )
+    }
+
+    @Test("model detail create flow — live model-list fallback note (dark)")
+    func modelDetailModelListFallbackNoteDark() async {
+        await verifyCreateWithModelListNote(
+            theme: .vellumDark,
+            name: "settings_model_detail_model_list_note_dark"
+        )
+    }
+
+    private func verifyCreateWithModelListNote(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: .available)
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        viewModel._setModelListSnapshotState(
+            modelListNote: ["openai": SettingsViewModel.modelListFallbackNote]
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: nil),
+            initialModelDetailSelection: .openAI
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(.large)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     private func verifyCreateWithProvider(
         theme: SuperTheme.Identifier,
         selection: SettingsModelDetailPane.InitialSelection,
