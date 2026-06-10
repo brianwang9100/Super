@@ -133,6 +133,62 @@ struct ChatScreenViewModelTests {
         #expect(vm.activeModel?.id == shared)
     }
 
+    // MARK: - Empty-state suggestions
+
+    @Test("loadSuggestionsIfNeeded resolves the provider's suggestions into state")
+    func loadsGeneratedSuggestions() async {
+        let scripted = [SuggestedChatAction(label: "Read a psalm", message: "Read a psalm")]
+        let vm = makeEmptyViewModel(suggestionsProvider: FakeChatSuggestionsProvider(scripted: scripted))
+        vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "FB", message: "FB")])
+        await vm._waitForPendingSuggestionsTask()
+        #expect(vm.suggestions == scripted)
+    }
+
+    @Test("loadSuggestionsIfNeeded is idempotent — the second call is a no-op")
+    func loadSuggestionsIsIdempotent() async {
+        let vm = makeEmptyViewModel(suggestionsProvider: StaticChatSuggestionsProvider())
+        vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "first", message: "first")])
+        await vm._waitForPendingSuggestionsTask()
+        // A second call with a different fallback must not re-run.
+        vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "second", message: "second")])
+        await vm._waitForPendingSuggestionsTask()
+        #expect(vm.suggestions.map(\.label) == ["first"])
+    }
+
+    @Test("the static provider yields the fallback suggestions verbatim")
+    func staticProviderYieldsFallback() async {
+        let fb = [SuggestedChatAction(label: "FB", message: "FB")]
+        let vm = makeEmptyViewModel(suggestionsProvider: StaticChatSuggestionsProvider())
+        vm.loadSuggestionsIfNeeded(fallback: fb)
+        await vm._waitForPendingSuggestionsTask()
+        #expect(vm.suggestions == fb)
+    }
+
+    @Test("suggestions are not surfaced once the conversation has messages")
+    func noSuggestionsWhenNotEmpty() async {
+        let vm = makeEmptyViewModel(suggestionsProvider: StaticChatSuggestionsProvider())
+        let msg = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "hi", createdAt: Date(timeIntervalSince1970: 0))
+        vm._setSnapshotState(items: ChatScreenViewModel.project(messages: [msg], toolCalls: [], checkpoint: nil))
+        vm.loadSuggestionsIfNeeded(fallback: [SuggestedChatAction(label: "FB", message: "FB")])
+        await vm._waitForPendingSuggestionsTask()
+        #expect(vm.suggestions.isEmpty)
+    }
+
+    private func makeEmptyViewModel(
+        suggestionsProvider: any ChatSuggestionsProvider
+    ) -> ChatScreenViewModel {
+        ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [],
+            suggestionsProvider: suggestionsProvider
+        )
+    }
+
     @Test("send accumulates streaming text into the tail until completion")
     func streamingTextAccumulatesThenClears() async throws {
         let driver = ScriptedDriver(events: [
@@ -2194,6 +2250,13 @@ private actor RecordingDriver: ChatSessionDriver {
         guard confirmedToolCallIDs.isEmpty, skippedToolCallIDs.isEmpty else { return }
         await withCheckedContinuation { searchDecisionWaiter = $0 }
     }
+}
+
+/// Returns a scripted suggestion list regardless of the fallback — stands in
+/// for the AFM generator in view-model tests.
+private struct FakeChatSuggestionsProvider: ChatSuggestionsProvider {
+    let scripted: [SuggestedChatAction]
+    func suggestions(fallback: [SuggestedChatAction]) async -> [SuggestedChatAction] { scripted }
 }
 
 private actor StubMessageRepository: MessageRepository {

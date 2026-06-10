@@ -25,6 +25,12 @@ public final class ChatScreenViewModel {
     /// `compactionCompleted` event so the view sees post-write state.
     public private(set) var items: [MessageList.Item] = []
 
+    /// Resolved empty-state starter actions. Populated once per conversation by
+    /// `loadSuggestionsIfNeeded(fallback:)` — the AFM-generated set when Apple
+    /// Intelligence is available, otherwise the static applet fallback. Empty
+    /// until resolved (the buttons fade in when it lands).
+    public private(set) var suggestions: [SuggestedChatAction] = []
+
     /// Live streaming overlay (in-flight assistant text/thinking). nil
     /// when no turn is mid-flight.
     public private(set) var streamingTail: MessageList.StreamingState?
@@ -147,8 +153,19 @@ public final class ChatScreenViewModel {
     /// transcript; an unmapped name falls back to itself.
     private let toolDisplayNames: [String: String]
 
+    /// Resolves the empty-state suggestions (AFM-first, static fallback).
+    /// Defaults to `StaticChatSuggestionsProvider` so previews, snapshot tests,
+    /// and view-model unit tests that don't wire one keep PR1's static behavior.
+    private let suggestionsProvider: any ChatSuggestionsProvider
+
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
+    /// The fire-and-forget `Task` that resolves `suggestions`. Held only so
+    /// tests can await it via `_waitForPendingSuggestionsTask()`.
+    private var suggestionsTask: Task<Void, Never>?
+    /// Guards `loadSuggestionsIfNeeded` so the (possibly on-device) generation
+    /// runs at most once per view-model lifetime (i.e. once per conversation).
+    private var didRequestSuggestions = false
     /// Decouples the per-SSE delta rate from the rate at which
     /// `streamingTail.text` repaints — `StreamingTail` renders MarkdownUI,
     /// so reparsing the AST on every delta would compound. Owned here
@@ -199,7 +216,8 @@ public final class ChatScreenViewModel {
         titleGenerator: TitleGenerator? = nil,
         voice: VoiceInputController? = nil,
         referenceInbox: ChatReferenceInbox? = nil,
-        toolDisplayNames: [String: String] = [:]
+        toolDisplayNames: [String: String] = [:],
+        suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider()
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -211,6 +229,7 @@ public final class ChatScreenViewModel {
         self.titleGenerator = titleGenerator
         self.referenceInbox = referenceInbox
         self.toolDisplayNames = toolDisplayNames
+        self.suggestionsProvider = suggestionsProvider
         self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
@@ -338,6 +357,26 @@ public final class ChatScreenViewModel {
         }
     }
 
+    /// Resolve the empty-state starter suggestions, at most once per
+    /// view-model lifetime (so the possibly on-device generation runs once per
+    /// conversation). Spawns the work off the render path; `suggestions`
+    /// updates when it lands, and is only surfaced while the conversation is
+    /// still empty. `fallback` is the static applet-contributed list shown when
+    /// generation is unavailable, errors, or times out.
+    public func loadSuggestionsIfNeeded(fallback: [SuggestedChatAction]) {
+        // Set the once-only flag only when we actually proceed, so a call made
+        // while the conversation already has messages doesn't permanently latch
+        // it off (the empty-state branch is the only caller today, but the
+        // ordering shouldn't depend on that).
+        guard !didRequestSuggestions, items.isEmpty else { return }
+        didRequestSuggestions = true
+        suggestionsTask = Task { [weak self, suggestionsProvider] in
+            let resolved = await suggestionsProvider.suggestions(fallback: fallback)
+            guard let self, self.items.isEmpty else { return }
+            self.suggestions = resolved
+        }
+    }
+
     /// Inject pre-baked transcript state for snapshot tests and SwiftUI
     /// previews. Production callers should never invoke this — `load()`
     /// is the canonical entry point. The seam is internal so test targets
@@ -365,6 +404,13 @@ public final class ChatScreenViewModel {
         self.streamingTail = streamingTail
         self.error = error
         self.isStreaming = isStreaming
+    }
+
+    /// Inject resolved suggestions directly for snapshot tests/previews,
+    /// bypassing `loadSuggestionsIfNeeded`'s async generation so the empty
+    /// state renders deterministically.
+    func _setSnapshotSuggestions(_ suggestions: [SuggestedChatAction]) {
+        self.suggestions = suggestions
     }
 
     /// Test seam: await the in-flight auto-title `Task` so a test can
@@ -407,6 +453,13 @@ public final class ChatScreenViewModel {
     /// polling `pendingRegenerationTargetID` or `isStreaming`.
     func _waitForPendingRegenerationTask() async {
         await regenerationTask?.value
+    }
+
+    /// Test seam: await the in-flight suggestion-resolution `Task` so a test
+    /// can deterministically assert `suggestions` without polling — drains the
+    /// fire-and-forget work `loadSuggestionsIfNeeded` spawns.
+    func _waitForPendingSuggestionsTask() async {
+        await suggestionsTask?.value
     }
 
     /// Submit the current composer text. Silently no-ops when the text
