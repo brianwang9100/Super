@@ -1252,7 +1252,9 @@ struct SettingsSheetSnapshotTests {
         // host's real `SystemLanguageModel.default.availability` (which
         // varies between local dev and CI runners) never leaks into the
         // pixel-comparison. Tests that exercise AFM-specific rendering
-        // pass an explicit availability.
+        // pass an explicit availability. Same reasoning pins
+        // `appleFoundationContextTokens` to a fixed value so the AFM read-only
+        // Max-context row renders a stable number regardless of the host.
         SettingsViewModel(
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
@@ -1262,7 +1264,8 @@ struct SettingsSheetSnapshotTests {
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
             webSearchPolicyReceiver: FakeWebSearchPolicyReceiver(),
-            appleFoundationAvailability: appleFoundationAvailability
+            appleFoundationAvailability: appleFoundationAvailability,
+            appleFoundationContextTokens: 4_096
         )
     }
 }
