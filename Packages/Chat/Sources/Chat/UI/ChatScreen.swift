@@ -711,13 +711,17 @@ public struct ChatScreen: View {
                 // They live in `content` (which carries `.opacity(contentOpacity)`)
                 // so they fade with the rest of the empty state in pill mode, and
                 // sending collapses the empty state so they disappear naturally.
+                // `viewModel.suggestions` is the resolved set (AFM-generated when
+                // available, else the static applet fallback); the env actions are
+                // the fallback handed to the generator.
                 .overlay(alignment: .bottomTrailing) {
-                    if !suggestedChatActions.isEmpty {
-                        SuggestedActions(actions: suggestedChatActions, onSend: viewModel.send)
+                    if !viewModel.suggestions.isEmpty {
+                        SuggestedActions(actions: viewModel.suggestions, onSend: viewModel.send)
                             .padding(.trailing, 20)
                             .padding(.bottom, 14)
                     }
                 }
+                .task { viewModel.loadSuggestionsIfNeeded(fallback: suggestedChatActions) }
         } else {
             // The streaming tail observation is confined to
             // `TranscriptObserver` so token-delta writes only invalidate

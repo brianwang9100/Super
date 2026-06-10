@@ -751,10 +751,29 @@ struct AppShell: View {
         // Friendly tool labels for the transcript's tool-call cards. Built
         // here because the registry has every applet's tools registered; the
         // Chat package can't statically see other applets' descriptors.
-        let toolDisplayNames = await dependencies.toolRegistry.allRegistrations()
+        let registrations = await dependencies.toolRegistry.allRegistrations()
+        let toolDisplayNames = registrations
             .reduce(into: [String: String]()) { map, registration in
                 map[registration.tool.name] = registration.tool.displayName ?? registration.tool.name
             }
+        // Empty-state suggestion generator: AFM-first when Apple Intelligence is
+        // available (its own minimal, context-safe prompt — never the chat
+        // system prompt), with the static applet actions as the fallback.
+        // `capabilities` are the compact, schema-free tool summaries.
+        let suggestionCapabilities = SuggestionCapabilities.compact(
+            from: registrations.filter(\.isEnabled).map(\.tool)
+        )
+        let suggestionsProvider: any ChatSuggestionsProvider =
+            dependencies.appleFoundationAvailability.isAvailable
+            ? AppleFoundationChatSuggestionsProvider(
+                provider: AppleFoundationLLMProvider(
+                    id: "afm-suggestions",
+                    availability: dependencies.appleFoundationAvailability,
+                    toolRegistry: nil
+                ),
+                capabilities: suggestionCapabilities
+            )
+            : StaticChatSuggestionsProvider()
         let newModel = ChatScreenViewModel(
             conversationId: conversation.id,
             conversationTitle: conversation.title ?? "New chat",
@@ -769,7 +788,8 @@ struct AppShell: View {
             titleGenerator: titleGenerator,
             voice: voice,
             referenceInbox: referenceInbox,
-            toolDisplayNames: toolDisplayNames
+            toolDisplayNames: toolDisplayNames,
+            suggestionsProvider: suggestionsProvider
         )
         let registry = dependencies.llmProviderRegistry
         // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.
