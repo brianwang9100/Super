@@ -595,6 +595,62 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(google["thought_signature"] as? String == "SIG-xyz")
     }
 
+    // MARK: - Tool wire-name sanitization (dot-namespaced tool IDs)
+
+    /// Regression: OpenAI's chat/completions enforces the same
+    /// `^[a-zA-Z0-9_-]+$` function-name pattern as the Responses API, so
+    /// Super's `time.now`-style tool IDs must be sanitized on the wire.
+    @Test func dotNamespacedToolNameIsSanitizedInToolDefinitions() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.5
+        ))
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let tools = try #require(decoded["tools"] as? [[String: Any]])
+        let function = try #require(tools[0]["function"] as? [String: Any])
+        #expect(function["name"] as? String == "time_now")
+    }
+
+    @Test func dotNamespacedHistoryToolCallEncodesTheSanitizedWireName() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let messages: [LLMMessage] = [
+            LLMMessage(role: .user, text: "time?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "call_abc", name: "time.now",
+                         input: .object(["timezone": .string("UTC")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "call_abc", content: "12:00 UTC", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: messages, model: model, tools: [.dotNamedTimeTool], temperature: 0.0
+        ))
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        let decoded = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let outgoing = try #require(decoded["messages"] as? [[String: Any]])
+        let toolCalls = try #require((outgoing[1])["tool_calls"] as? [[String: Any]])
+        let function = try #require(toolCalls[0]["function"] as? [String: Any])
+        #expect(function["name"] as? String == "time_now")
+    }
+
+    @Test func streamedToolCallNameIsRestoredToTheRegistryName() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-toolcall-dotname"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "time?")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.0
+        ))
+        let names = events.compactMap { event -> String? in
+            if case .toolUse(_, _, let name, _, _) = event { return name }
+            return nil
+        }
+        #expect(names == ["time.now"])
+    }
+
     private func collectErrorRun(error: Error) async throws -> [LLMStreamEvent] {
         let http = FakeHTTPClient(chunks: [], error: error)
         let provider = makeProvider(http: http)

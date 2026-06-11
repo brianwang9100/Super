@@ -105,6 +105,10 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var reducer = OpenAIResponsesStreamReducer()
+                // OpenAI restricts tool names to `[A-Za-z0-9_-]`; Super's IDs
+                // are dot-namespaced. Encode the sanitized wire name and
+                // restore the registry name on every decoded event.
+                let nameMap = ToolWireNameMap(tools: tools)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -113,7 +117,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                         messages: messages,
                         model: model,
                         tools: tools,
-                        temperature: temperature
+                        temperature: temperature,
+                        nameMap: nameMap
                     )
                     var parser = SSEParser()
                     let decoder = JSONDecoder()
@@ -122,13 +127,13 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                     for try await chunk in http.stream(request) {
                         for event in parser.append(chunk) {
                             for normalized in consume(event.data, into: &reducer, with: decoder) {
-                                continuation.yield(normalized)
+                                continuation.yield(nameMap.restoringToolName(in: normalized))
                             }
                         }
                     }
                     for event in parser.finish() {
                         for normalized in consume(event.data, into: &reducer, with: decoder) {
-                            continuation.yield(normalized)
+                            continuation.yield(nameMap.restoringToolName(in: normalized))
                         }
                     }
                 } catch {
@@ -160,7 +165,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                 }
 
                 for event in reducer.finish() {
-                    continuation.yield(event)
+                    continuation.yield(nameMap.restoringToolName(in: event))
                 }
                 continuation.finish()
             }
@@ -188,7 +193,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         messages: [LLMMessage],
         model: LLMModel,
         tools: [LLMTool],
-        temperature: Double
+        temperature: Double,
+        nameMap: ToolWireNameMap
     ) throws -> URLRequest {
         let url = responsesURL()
         var request = URLRequest(url: url)
@@ -205,14 +211,14 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
             max(temperature, Self.temperatureRange.lowerBound),
             Self.temperatureRange.upperBound
         )
-        let (instructions, input) = try translate(messages)
+        let (instructions, input) = try translate(messages, nameMap: nameMap)
         let body = OpenAIResponsesRequest(
             model: model.id,
             input: input,
             instructions: instructions,
             stream: true,
             temperature: clampedTemperature,
-            tools: translate(tools)
+            tools: translate(tools, nameMap: nameMap)
         )
 
         let encoder = JSONEncoder()
@@ -258,7 +264,10 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     /// assistant tool uses become `function_call` items and tool results
     /// become `function_call_output` items, correlated by the tool-use id
     /// (which the reducer set to the API `call_id`).
-    private func translate(_ messages: [LLMMessage]) throws -> (instructions: String?, input: [OpenAIResponsesInputItem]) {
+    private func translate(
+        _ messages: [LLMMessage],
+        nameMap: ToolWireNameMap
+    ) throws -> (instructions: String?, input: [OpenAIResponsesInputItem]) {
         let argsEncoder = JSONEncoder()
         var instructionParts: [String] = []
         var input: [OpenAIResponsesInputItem] = []
@@ -296,7 +305,11 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                         guard case .toolUse(let id, let name, let toolInput, _) = block else { continue }
                         let argsData = try argsEncoder.encode(toolInput)
                         let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
-                        input.append(.functionCall(callID: id, name: name, argumentsJSON: argsJSON))
+                        input.append(.functionCall(
+                            callID: id,
+                            name: nameMap.wireName(forOriginal: name),
+                            argumentsJSON: argsJSON
+                        ))
                     }
                 }
             }
@@ -310,11 +323,11 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     /// `__native_web_search__` sentinel becomes the `web_search` server tool;
     /// every other tool becomes a `function` tool. Returns `nil` when there
     /// are no tools so the key is omitted entirely.
-    private func translate(_ tools: [LLMTool]) -> [OpenAIResponsesTool]? {
+    private func translate(_ tools: [LLMTool], nameMap: ToolWireNameMap) -> [OpenAIResponsesTool]? {
         let (clientTools, searchEnabled) = NativeWebSearch.partition(tools)
         var out: [OpenAIResponsesTool] = clientTools.map { tool in
             .function(
-                name: tool.name,
+                name: nameMap.wireName(forOriginal: tool.name),
                 description: tool.description,
                 parameters: JSONToolSchema.parametersObject(for: tool.parameters)
             )
