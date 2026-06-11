@@ -94,7 +94,7 @@ I chose the Bible because I couldn't find a free AI Bible-study app that genuine
 | **Web search** | Native web search for the three top frontier models — **OpenAI, Claude, and Gemini**. |
 | **Tools** | Local, on-device tool use — get the current time, annotate a Bible passage, and more. |
 | **Bible** | Four public-domain translations (**WEB, ASV, KJV, BSB**). Highlights, notes, AI study annotations, and voiceover narration. |
-| **Appearance** | Light and dark themes, plus adjustable font scaling. |
+| **Look & Feel** | Light and dark themes, adjustable font scaling, and haptic feedback. |
 | **Privacy** | Everything is persisted on-device — nothing reaches a server. BYOK API keys live in the iOS Keychain and never leave the phone. |
 
 ## Set up & run

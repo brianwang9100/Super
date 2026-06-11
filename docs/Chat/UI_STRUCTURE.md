@@ -172,7 +172,7 @@ SettingsRootPane                        (.../Panes/SettingsRootPane.swift)
 ├── SettingsGroup                       ⟵ "Behavior" group
 │   ├── System Prompt    → .prompt
 │   ├── Default Verbosity→ .verbosity   current verbosity
-│   ├── Appearance       → .appearance
+│   ├── Look & Feel      → .appearance
 │   ├── Tools            → .tools       "N enabled"
 │   └── Compaction       → .compaction  "Auto" / "Manual"
 │

@@ -1114,7 +1114,10 @@ struct SettingsSheetSnapshotTests {
     // off the bottom of the standard 874pt pane snapshots above — so the pane
     // needs a full-height render for the later families to get explicit
     // coverage. These use a tall fixed layout rather than the shared 874 frame
-    // so the whole scroll content lands in one image.
+    // so the whole scroll content lands in one image. The `…Haptics…`
+    // function and baseline names predate the reorder and are kept as-is —
+    // baseline filenames embed the function name, so renaming would orphan
+    // the recorded PNGs.
     @Test("appearance pane — full height shows the whole theme grid")
     func appearancePaneHapticsLight() {
         verifyTallAppearancePane(theme: .vellumLight, name: "settings_appearance_haptics_light")
