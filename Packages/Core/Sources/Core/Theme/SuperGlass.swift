@@ -221,6 +221,9 @@ public struct GlassHapticButtonStyle: ButtonStyle {
             }
         }
 
+        // Explicitly `@MainActor` (the enclosing `View` already is) so it reads
+        // clearly as a valid caller of the `@MainActor`-isolated `play(_:)`.
+        @MainActor
         private func fire(_ wasPressed: Bool, _ isPressed: Bool) {
             guard isPressed, let pattern else { return }
             hapticsEngine.play(pattern)

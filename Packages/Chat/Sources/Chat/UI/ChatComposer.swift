@@ -270,7 +270,11 @@ public struct ChatComposer: View {
         )
         // A simple tap when the composer becomes active (the user tapped in to
         // type). Fires on the focus-gain edge, so it also marks a programmatic
-        // focus (e.g. auto-focus after New Chat) — the composer is now live.
+        // focus (e.g. auto-focus after New Chat). That New Chat path is a
+        // deliberate two-stage feel: `.primary` (heavy) when the create button
+        // is pressed, then this `.selection` (medium) ~a beat later when the
+        // composer is focused and ready — "created … now type." Intentional, not
+        // a stray double-buzz.
         .onChange(of: isFocused) { _, focused in
             if focused { hapticsEngine.play(.selection) }
         }
