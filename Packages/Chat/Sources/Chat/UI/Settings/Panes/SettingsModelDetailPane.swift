@@ -15,12 +15,16 @@ enum SettingsKeyboard {
 
 /// Create / edit form for a single LLM (Large Language Model) endpoint.
 ///
-/// Create mode renders two stacked dropdowns — Provider and Model —
-/// backed by `LLMProviderCatalog`. Picking a built-in provider auto-fills
-/// the row's name, base URL, model id, max-context, and thinking flag
-/// from the catalog and hides those fields. Custom exposes every field
-/// for hand entry. AFM (Apple Foundation Model) hides URL/key/model-id
-/// because the on-device kind has none of those.
+/// Create mode is key-first for built-in non-Apple providers: Provider
+/// and API Key render alone, and the Model dropdown / Max context /
+/// Thinking / Web search rows appear once the key field has content —
+/// typing the key also kicks off a debounced fetch of the provider's
+/// live model list (every list endpoint requires the key). Picking a
+/// built-in provider auto-fills the row's name, base URL, model id,
+/// max-context, and thinking flag from the catalog and hides those
+/// fields. Custom exposes every field for hand entry (no live list).
+/// AFM (Apple Foundation Model) hides URL/key/model-id because the
+/// on-device kind has none of those.
 ///
 /// Edit mode hides the dropdowns (the row's identity is locked once
 /// persisted) and renders a "Provider · Model" header instead, when the
@@ -96,7 +100,8 @@ struct SettingsModelDetailPane: View {
         viewModel: SettingsViewModel,
         editingId: String?,
         initialSelection: InitialSelection = .custom,
-        initialContextWindowError: String? = nil
+        initialContextWindowError: String? = nil,
+        initialAPIKey: String? = nil
     ) {
         self.viewModel = viewModel
         self.editingId = editingId
@@ -160,7 +165,10 @@ struct SettingsModelDetailPane: View {
             _supportsThinking = State(initialValue: seeded.supportsThinking)
             _maxContextText = State(initialValue: seeded.maxContextText)
             _searchBackend = State(initialValue: nil)
-            _apiKey = State(initialValue: "")
+            // `initialAPIKey` is a snapshot-test seam: seeding a key here
+            // renders the unlocked create-mode state (gated fields visible)
+            // without driving the SecureField. Production callers pass nil.
+            _apiKey = State(initialValue: initialAPIKey ?? "")
             _apiKeyIsPlaceholder = State(initialValue: false)
         }
         // Test seam: lets snapshot tests render the inline-error
@@ -265,11 +273,54 @@ struct SettingsModelDetailPane: View {
         if let model = currentCatalogModel { return model.supportsThinking }
         return isCustom
     }
-    /// In create mode, the Model dropdown row is only useful when the
-    /// provider has catalog models. Custom uses a Model ID text field
-    /// instead. Apple has one model but we still render the dropdown
-    /// for consistency (the entry is the only option).
-    private var showsModelDropdown: Bool { !isCustom }
+    /// Apple keeps its Model dropdown beside the Provider row in the
+    /// create-mode picker section: the single on-device entry needs no
+    /// API key, so it's exempt from the key-first gating below and its
+    /// layout stays byte-identical to the pre-gating design.
+    private var showsModelDropdownInPickerSection: Bool { isApple }
+    /// Built-in non-Apple providers surface the Model dropdown inside the
+    /// key-first gated block of the main field group — the live list needs
+    /// the key before it can be fetched, so the picker only appears once
+    /// the key has content. Custom uses a Model ID text field instead, and
+    /// edit mode locks identity behind the `Provider · Model` header.
+    private var showsModelDropdownInForm: Bool { !isEditing && !isApple && !isCustom }
+
+    /// `true` when the user has typed (or pasted) real key material —
+    /// not the synthetic placeholder bullets, not whitespace/newlines.
+    /// Trims `.whitespacesAndNewlines` to match the empty-key gate in
+    /// `SettingsViewModel.loadAvailableModels` — the two must agree or a
+    /// newline-only paste would unlock the fields while every fetch
+    /// silently no-ops.
+    private var keyHasContent: Bool {
+        !apiKeyIsPlaceholder && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Key-first gating for the create flow: Model / Max context /
+    /// Thinking / Web search stay hidden for a built-in non-Apple
+    /// provider until the API key field has content, because every
+    /// provider's live model-list endpoint requires the key. Apple
+    /// (no key), Custom (no list — all fields hand-typed), and edit
+    /// mode (key already stored) are exempt.
+    private var showsGatedCreateFields: Bool {
+        Self.showsGatedCreateFields(
+            isEditing: isEditing,
+            isApple: isApple,
+            isCustom: isCustom,
+            trimmedKeyEmpty: !keyHasContent
+        )
+    }
+
+    /// Pure form of the create-flow gate so the truth table is
+    /// unit-testable without standing up the view (the file's
+    /// established pattern — see `resolveEditProvider`).
+    nonisolated static func showsGatedCreateFields(
+        isEditing: Bool,
+        isApple: Bool,
+        isCustom: Bool,
+        trimmedKeyEmpty: Bool
+    ) -> Bool {
+        isEditing || isApple || isCustom || !trimmedKeyEmpty
+    }
 
     // MARK: - Web search backend picker
 
@@ -364,9 +415,11 @@ struct SettingsModelDetailPane: View {
         }
         // Built-in non-Apple providers: URL + modelId come from the
         // catalog (no field to validate), API key is the only
-        // create-mode requirement.
+        // create-mode requirement. `keyHasContent` (not raw `isEmpty`)
+        // so a whitespace-only key can't enable Save while the gated
+        // rows are still hidden.
         if !isCustom {
-            if !isEditing, apiKey.isEmpty { return false }
+            if !isEditing, !keyHasContent { return false }
             // Defence in depth — the catalog's URL must still parse
             // AND pass the cleartext-safety gate. If a future edit
             // ships a malformed or HTTP-on-non-local URL the form
@@ -382,7 +435,7 @@ struct SettingsModelDetailPane: View {
         guard let url = URL(string: baseURLText.trimmingCharacters(in: .whitespaces)),
               isCleartextSafeForCredentials(url) else { return false }
         guard !modelId.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        if !isEditing, apiKey.isEmpty { return false }
+        if !isEditing, !keyHasContent { return false }
         return true
     }
 
@@ -407,28 +460,33 @@ struct SettingsModelDetailPane: View {
                     fieldRow(label: "Model ID", placeholder: "gpt-5.5", text: $modelId)
                 }
                 if showsAPIKeyField {
-                    apiKeyFieldRow()
+                    apiKeyFieldRow(borderBottom: showsGatedCreateFields)
                 }
-                if isApple {
-                    appleContextRow()
-                } else {
-                    fieldRow(
-                        label: "Max context",
-                        placeholder: "200000",
-                        text: $maxContextText,
-                        keyboard: .numberPad,
-                        borderBottom: showsThinkingToggle || showsSearchPicker,
-                        monospaced: true
-                    )
-                    if let errorMessage = contextWindowError {
-                        contextWindowErrorRow(errorMessage)
+                if showsGatedCreateFields {
+                    if showsModelDropdownInForm {
+                        modelPickerRow(borderBottom: true)
                     }
-                }
-                if showsThinkingToggle {
-                    toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: showsSearchPicker)
-                }
-                if showsSearchPicker {
-                    searchBackendPickerRow(borderBottom: false)
+                    if isApple {
+                        appleContextRow()
+                    } else {
+                        fieldRow(
+                            label: "Max context",
+                            placeholder: "200000",
+                            text: $maxContextText,
+                            keyboard: .numberPad,
+                            borderBottom: showsThinkingToggle || showsSearchPicker,
+                            monospaced: true
+                        )
+                        if let errorMessage = contextWindowError {
+                            contextWindowErrorRow(errorMessage)
+                        }
+                    }
+                    if showsThinkingToggle {
+                        toggleRow(label: "Supports thinking", isOn: $supportsThinking, borderBottom: showsSearchPicker)
+                    }
+                    if showsSearchPicker {
+                        searchBackendPickerRow(borderBottom: false)
+                    }
                 }
             }
             .padding(.top, 16)
@@ -475,6 +533,21 @@ struct SettingsModelDetailPane: View {
                 modelCatalogID = ""
             }
         }
+        .task(id: apiKey) {
+            // Debounced live model-list fetch as the user types/pastes the
+            // key — `.task(id:)` cancels the previous task on every change,
+            // so the sleep IS the debounce (in-tree pattern, see
+            // `BibleChapterReader`), and it's the *only* typed-key trigger:
+            // an additional `.onSubmit` fetch would race the still-armed
+            // debounce (Return doesn't change `apiKey`) and double-hit the
+            // endpoint. `force: true` is required: the view model's fetch
+            // cache is keyed by provider only, so a corrected key after a
+            // prior success must bypass the cache hit.
+            guard showsModelDropdownInForm, keyHasContent else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await viewModel.loadAvailableModels(providerID: providerID, apiKey: apiKey, force: true)
+        }
         .onDisappear { viewModel.beforePopCleanup = nil }
         .onChange(of: maxContextText) { _, _ in
             // Don't keep a stale "Max for this model is N" error
@@ -505,14 +578,17 @@ struct SettingsModelDetailPane: View {
 
     // MARK: - Picker section (create mode)
 
-    /// Two stacked dropdown rows — Provider and Model — replacing the
-    /// pre-PR preset pill row. Custom collapses the Model dropdown into
-    /// a Model ID text field since there's no catalog to enumerate.
+    /// Create-mode dropdown section. Apple renders Provider + Model
+    /// stacked (its single on-device model needs no key); built-in
+    /// non-Apple providers render Provider alone here — their Model
+    /// dropdown lives in the key-gated block of the main field group.
+    /// Custom collapses the Model dropdown into a Model ID text field
+    /// since there's no catalog to enumerate.
     @ViewBuilder
     private var pickerSection: some View {
         SettingsGroup {
-            providerPickerRow(borderBottom: showsModelDropdown)
-            if showsModelDropdown {
+            providerPickerRow(borderBottom: showsModelDropdownInPickerSection)
+            if showsModelDropdownInPickerSection {
                 modelPickerRow(borderBottom: false)
             }
         }
@@ -770,7 +846,7 @@ struct SettingsModelDetailPane: View {
     /// placeholder flag so we don't accidentally treat user input as
     /// "no change."
     @ViewBuilder
-    private func apiKeyFieldRow() -> some View {
+    private func apiKeyFieldRow(borderBottom: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("API Key")
                 .font(typography.font(.caption, weight: .medium))
@@ -801,10 +877,12 @@ struct SettingsModelDetailPane: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(theme.borderFaint)
-                .frame(height: 1)
-                .padding(.leading, 18)
+            if borderBottom {
+                Rectangle()
+                    .fill(theme.borderFaint)
+                    .frame(height: 1)
+                    .padding(.leading, 18)
+            }
         }
     }
 

@@ -106,6 +106,7 @@ public struct SettingsSheet: View {
         initialPane: Pane,
         initialModelDetailSelection: SettingsModelDetailPane.InitialSelection = .custom,
         initialModelDetailContextWindowError: String? = nil,
+        initialModelDetailAPIKey: String? = nil,
         databaseContext: DatabaseContext? = nil
     ) {
         self._isPresented = isPresented
@@ -113,6 +114,7 @@ public struct SettingsSheet: View {
         self.databaseContext = databaseContext
         self.initialModelDetailSelection = initialModelDetailSelection
         self.initialModelDetailContextWindowError = initialModelDetailContextWindowError
+        self.initialModelDetailAPIKey = initialModelDetailAPIKey
         if initialPane != .root {
             viewModel.navigationPath = [initialPane]
         }
@@ -126,6 +128,10 @@ public struct SettingsSheet: View {
     /// test seam — lets a snapshot capture the inline-error state
     /// without simulating a Save tap.
     private var initialModelDetailContextWindowError: String?
+    /// Backing value for the internal `initialModelDetailAPIKey` test
+    /// seam — seeds the create-mode key field so a snapshot renders the
+    /// unlocked (key-entered) state without driving the SecureField.
+    private var initialModelDetailAPIKey: String?
 
     public var body: some View {
         sheetSurface
@@ -207,7 +213,8 @@ public struct SettingsSheet: View {
                 viewModel: viewModel,
                 editingId: id,
                 initialSelection: initialModelDetailSelection,
-                initialContextWindowError: initialModelDetailContextWindowError
+                initialContextWindowError: initialModelDetailContextWindowError,
+                initialAPIKey: initialModelDetailAPIKey
             )
         case .personalization:
             SettingsPersonalizationPane(viewModel: viewModel)

@@ -449,4 +449,38 @@ struct SettingsModelDetailPaneCatalogTests {
         let merged = LLMProviderCatalog.reconcile(providerID: "openai", fetchedModelIDs: [])
         #expect(merged.isEmpty)
     }
+
+    // MARK: - Key-first create-flow gating
+
+    @Test("Gated create fields hide only for a built-in non-Apple provider with an empty key")
+    func gatedCreateFieldsTruthTable() {
+        // The one hidden combination: create mode, built-in non-Apple
+        // provider, no key typed yet.
+        #expect(!SettingsModelDetailPane.showsGatedCreateFields(
+            isEditing: false, isApple: false, isCustom: false, trimmedKeyEmpty: true
+        ))
+        // Typing the key unlocks.
+        #expect(SettingsModelDetailPane.showsGatedCreateFields(
+            isEditing: false, isApple: false, isCustom: false, trimmedKeyEmpty: false
+        ))
+        // Apple needs no key; Custom has no live list; edit mode has a
+        // stored key — all exempt regardless of the key field.
+        #expect(SettingsModelDetailPane.showsGatedCreateFields(
+            isEditing: false, isApple: true, isCustom: false, trimmedKeyEmpty: true
+        ))
+        #expect(SettingsModelDetailPane.showsGatedCreateFields(
+            isEditing: false, isApple: false, isCustom: true, trimmedKeyEmpty: true
+        ))
+        #expect(SettingsModelDetailPane.showsGatedCreateFields(
+            isEditing: true, isApple: false, isCustom: false, trimmedKeyEmpty: true
+        ))
+    }
+
+    // MARK: - xAI catalog (deprecated-model prune)
+
+    @Test("xAI's catalog carries only Grok 4.3 — grok-4.1-fast was deprecated and pruned")
+    func xaiCatalogPrunedDeprecated() {
+        let entry = LLMProviderCatalog.entry(forID: "xai")
+        #expect(entry?.models.map(\.id) == ["grok-4.3"])
+    }
 }

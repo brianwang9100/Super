@@ -21,8 +21,11 @@ public enum ModelListingError: Error, Sendable, Equatable {
 /// snapshot. Injected as a protocol so the view model substitutes a strict
 /// fake in tests.
 public protocol ModelListingService: Sendable {
-    /// List the wire-level model ids available at `baseURL` for a provider
-    /// of the given `kind`, authenticating with `apiKey` when present.
+    /// List the wire-level **chat-capable** model ids available at `baseURL`
+    /// for a provider of the given `kind`, authenticating with `apiKey` when
+    /// present. Non-chat models (image, audio, embedding, moderation, …) are
+    /// filtered out — the result feeds the Add-Model picker, which only
+    /// configures text-chat models.
     ///
     /// - Throws: `ModelListingError` on an unsupported kind, transport /
     ///   non-2xx failure, or an undecodable body.
@@ -94,12 +97,15 @@ public struct LiveModelListingService: ModelListingService {
             guard let decoded = try? JSONDecoder().decode(OpenAIModelsResponse.self, from: data) else {
                 throw ModelListingError.decoding
             }
-            return decoded.data.map(\.id)
+            return decoded.data.map(\.id).filter(Self.isLikelyChatModelID)
         case .gemini:
             guard let decoded = try? JSONDecoder().decode(GeminiModelsResponse.self, from: data) else {
                 throw ModelListingError.decoding
             }
-            return decoded.models.map { Self.strippedGeminiName($0.name) }
+            return decoded.models
+                .filter { Self.isChatCapableGemini(methods: $0.supportedGenerationMethods) }
+                .map { Self.strippedGeminiName($0.name) }
+                .filter(Self.isLikelyChatModelID)
         }
     }
 
@@ -147,6 +153,42 @@ public struct LiveModelListingService: ModelListingService {
         return components.url ?? baseURL.appending(path: "models")
     }
 
+    /// Id substrings that mark a model as non-chat (speech, image,
+    /// embedding, moderation, legacy completions). Hoisted so the filter
+    /// pass doesn't rebuild the array once per model id.
+    private static let nonChatMarkers = [
+        "whisper", "tts", "dall-e", "embedding", "moderation",
+        "realtime", "audio", "transcribe", "image", "imagine",
+        "sora", "babbage", "davinci",
+    ]
+
+    /// Heuristic chat-model gate for ids with no (or incomplete) modality
+    /// metadata. Case-insensitive substring **exclusion** — unknown ids
+    /// pass, so a future chat model is never hidden by default; only ids
+    /// that advertise a non-chat modality drop out. xAI's
+    /// `/v1/language-models` endpoint returns authoritative modalities,
+    /// but using it would special-case one provider out of the kind-keyed
+    /// wire-format dispatch above — consciously rejected in favor of this
+    /// shared heuristic (xAI's non-chat ids all contain "image"/"imagine").
+    static func isLikelyChatModelID(_ id: String) -> Bool {
+        let lowered = id.lowercased()
+        return !Self.nonChatMarkers.contains(where: lowered.contains)
+    }
+
+    /// Gemini's list endpoint declares capability via
+    /// `supportedGenerationMethods`; chat models support `generateContent`.
+    /// A missing field passes (fail-open for proxies / older API versions);
+    /// embeddings (`embedContent`), Imagen/Veo (`predict*`), and
+    /// live-audio-only (`bidiGenerateContent`) models drop out. This check
+    /// alone is not sufficient — Gemini's TTS and image-generation models
+    /// *also* respond via `generateContent` (with audio/image response
+    /// modalities), so the caller additionally applies the
+    /// `isLikelyChatModelID` id heuristic to the stripped name.
+    static func isChatCapableGemini(methods: [String]?) -> Bool {
+        guard let methods else { return true }
+        return methods.contains("generateContent")
+    }
+
     /// Gemini returns fully-qualified resource names (`models/gemini-3-pro`);
     /// the wire-level id used everywhere else is the trailing segment.
     static func strippedGeminiName(_ name: String) -> String {
@@ -163,8 +205,14 @@ private struct OpenAIModelsResponse: Decodable {
     let data: [Model]
 }
 
-/// Gemini `/v1beta/models` envelope: `{ "models": [{ "name": "models/…" }, …] }`.
+/// Gemini `/v1beta/models` envelope: `{ "models": [{ "name": "models/…",
+/// "supportedGenerationMethods": ["generateContent", …] }, …] }`. The methods
+/// array is optional so proxies / older API versions that omit it still decode.
 private struct GeminiModelsResponse: Decodable {
-    struct Model: Decodable { let name: String }
+    struct Model: Decodable {
+        let name: String
+        let supportedGenerationMethods: [String]?
+    }
+
     let models: [Model]
 }
