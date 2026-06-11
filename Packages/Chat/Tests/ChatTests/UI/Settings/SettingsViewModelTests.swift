@@ -1291,6 +1291,19 @@ struct SettingsViewModelTests {
         #expect(await service.callCount == 2)
     }
 
+    @Test("A forced re-fetch after a key correction passes the NEW key to the service")
+    func loadAvailableModelsForcedRefetchUsesNewKey() async {
+        // The cache is keyed by provider only, so the pane's key-typed
+        // debounce forces — and the corrected key must reach the wire,
+        // not the one that populated the cache.
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let vm = makeViewModel(modelListingService: service)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-first", force: false)
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-corrected", force: true)
+        #expect(await service.callCount == 2)
+        #expect(await service.lastAPIKey == "sk-corrected")
+    }
+
     @Test("An empty/nil key short-circuits without a network call (catalog fallback)")
     func loadAvailableModelsEmptyKeyNoCall() async {
         let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
@@ -1334,6 +1347,24 @@ struct SettingsViewModelTests {
         await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: true)
         #expect(vm.fetchedModels["openai"] == nil)
         #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+    }
+
+    @Test("A cancelled fetch leaves the cache and note untouched (debounce restart is not a failure)")
+    func loadAvailableModelsCancellationIsNotFailure() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let vm = makeViewModel(modelListingService: service)
+        // Populate a good cache first, then cancel a forced re-fetch
+        // mid-flight — the pane's `.task(id: apiKey)` does exactly this on
+        // every keystroke. The cancelled fetch must not wipe the cache or
+        // post the fallback note; the restarted fetch owns the next state.
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-test", force: false)
+        await service.setOutcome(.hang)
+        let inFlight = Task { await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-corrected", force: true) }
+        inFlight.cancel()
+        await inFlight.value
+        #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
+        #expect(vm.modelListNote["openai"] == nil)
+        #expect(vm.loadingModelsProviderID == nil)
     }
 
     @Test("Providers with no list endpoint (Custom, Apple) never call the service")
@@ -1407,6 +1438,9 @@ private actor ScriptedModelListingService: ModelListingService {
     enum Outcome {
         case ids([String])
         case failure(ModelListingError)
+        /// Sleeps until the surrounding task is cancelled — drives the
+        /// cancelled-fetch path (the pane's debounce restarting mid-flight).
+        case hang
     }
 
     private var outcome: Outcome
@@ -1425,6 +1459,9 @@ private actor ScriptedModelListingService: ModelListingService {
         switch outcome {
         case let .ids(ids): return ids
         case let .failure(error): throw error
+        case .hang:
+            try await Task.sleep(for: .seconds(30))
+            return []
         }
     }
 }

@@ -404,7 +404,11 @@ public final class SettingsViewModel {
     ///   authoritative until the user taps refresh.
     /// - **Empty/whitespace key** → no network call. Built-in listing needs a
     ///   key; the dropdown stays on the catalog fallback until one is entered
-    ///   (the refresh icon is the post-key fetch path).
+    ///   (the pane's debounced key-typed fetch and the refresh icon are the
+    ///   post-key fetch paths).
+    /// - **Cancellation** → no state change; the pane's debounce cancels the
+    ///   in-flight fetch on every keystroke and the restarted fetch owns the
+    ///   next state.
     /// - **No catalog entry / no base URL** (Apple, Custom) → no-op; those
     ///   providers don't list.
     /// - **Success** → store the reconciled list and clear any note.
@@ -439,6 +443,13 @@ public final class SettingsViewModel {
                 modelListNote[providerID] = nil
             }
         } catch {
+            // A *cancelled* fetch is not a failure: the pane's debounced
+            // `.task(id: apiKey)` cancels the in-flight request on every
+            // keystroke, and wiping the cache + posting the fallback note
+            // here would flash a false error mid-typing (the service wraps
+            // `CancellationError` into `.transport`, so check the task, not
+            // the error type). The restarted fetch owns the next state.
+            guard !Task.isCancelled else { return }
             fetchedModels[providerID] = nil
             modelListNote[providerID] = Self.modelListFallbackNote
         }
