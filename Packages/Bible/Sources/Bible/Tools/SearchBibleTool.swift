@@ -96,7 +96,14 @@ public struct SearchBibleTool: ToolExecutor {
         ],
         appletId: SearchBibleTool.appletID,
         displayName: "Search scripture",
-        summary: "Finds verses by content from local storage."
+        summary: "Finds verses by content from local storage.",
+        compactDescription: """
+        Search local scripture by topic or phrase ("verses about anxiety"). \
+        Returns ranked verses with full text and correct citations from the \
+        user's translation — quote them directly instead of recalling from \
+        memory. Keyword-based with stemming; optionally scope to `book`; \
+        omit `translation` to use the user's selected one.
+        """
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.

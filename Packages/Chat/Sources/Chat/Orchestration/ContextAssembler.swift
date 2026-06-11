@@ -157,13 +157,40 @@ public struct ContextAssembler: Sendable {
         // Without it the meter undercounts by the fixed tool overhead, which
         // on a small-window model (AFM) can silently overflow before
         // auto-compaction ever fires.
-        let total = estimator.estimate(messages: prompt) + estimator.estimate(tools: tools)
+        var toolTokens = estimator.estimate(tools: tools)
+        var fixedOverheadTokens = 0
+        if ModelContextTier(maxContextTokens: model.maxContextTokens) == .compact {
+            // Small-window models run on-device (Apple Foundation Model),
+            // whose framework counts far more against the window than our
+            // chars/4 heuristic sees: it serializes each tool into a full
+            // JSON-schema declaration with scaffolding, and it prepends its
+            // own base instructions + guardrails we never observe. Measured
+            // on-device (iPhone 15 Pro Max, iOS 27): AFM reported ~11k tokens
+            // for a request our raw heuristic put at ~3k, with tool schemas
+            // dominating the gap. Calibrate so the meter — and therefore the
+            // compaction gates reading it — approximates what the on-device
+            // tokenizer actually counts. Full-tier models are untouched.
+            toolTokens = Int((Double(toolTokens) * Self.compactTierToolSchemaInflation).rounded(.up))
+            fixedOverheadTokens = Self.compactTierFixedOverheadTokens
+        }
+        let total = estimator.estimate(messages: prompt) + toolTokens + fixedOverheadTokens
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,
             maxTokens: model.maxContextTokens
         )
     }
+
+    /// Multiplier applied to the heuristic tool-schema estimate on the
+    /// compact tier, approximating the on-device provider's JSON-schema
+    /// scaffolding + real-tokenizer expansion of each tool declaration
+    /// (the chars/4 heuristic counts only the raw descriptive text).
+    static let compactTierToolSchemaInflation: Double = 1.8
+
+    /// Flat allowance, in tokens, for the on-device provider's own base
+    /// instructions and guardrails — prompt weight Apple injects that we
+    /// can neither read nor count. Added to compact-tier budgets only.
+    static let compactTierFixedOverheadTokens = 800
 
     /// Concatenates the chat-assistant briefing, per-applet briefings, and
     /// user-personalization text into a single labeled markdown body, or

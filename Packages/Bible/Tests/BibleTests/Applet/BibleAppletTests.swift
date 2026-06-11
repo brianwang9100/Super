@@ -72,6 +72,31 @@ struct BibleAppletTests {
         #expect(body.contains("bible.note"))
     }
 
+    @Test("compactSystemPrompt loads the bundled compact variant, not the full briefing")
+    func compactSystemPromptLoaded() {
+        let applet = makeApplet()
+        let compact = applet.compactSystemPrompt
+        // Packaging tripwire (an empty result silently falls back to the
+        // full briefing downstream and forfeits the window savings) +
+        // length guard on the file's reason to exist.
+        #expect(!compact.isEmpty)
+        #expect(compact != applet.systemPrompt)
+        #expect(compact.count < applet.systemPrompt.count / 2)
+    }
+
+    /// The compact tier drops `bible.annotate`/`bible.note` from the tool
+    /// set (Chat's `CompactToolPolicy`), so the compact briefing must not
+    /// describe them — prose about tools the model can't call invites
+    /// hallucinated calls. The kept grounding tools stay covered.
+    @Test("compactSystemPrompt omits dropped-tool guidance, keeps grounding tools")
+    func compactSystemPromptMatchesCompactToolSet() {
+        let compact = makeApplet().compactSystemPrompt
+        #expect(!compact.contains("bible.annotate"))
+        #expect(!compact.contains("bible.note"))
+        #expect(compact.contains("bible.read"))
+        #expect(compact.contains("bible.search"))
+    }
+
     @Test("suggestedChatActions contributes non-empty Bible chat starters")
     func suggestedChatActions() {
         let actions = makeApplet().suggestedChatActions

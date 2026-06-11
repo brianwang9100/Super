@@ -54,6 +54,14 @@ public protocol MiniApplet: Sendable {
     /// empty bodies, so no block is injected in that case.
     var systemPrompt: String { get }
 
+    /// Short variant of `systemPrompt` for small-context-window models
+    /// (`ModelContextTier.compact`), keeping only the behavior-critical rules.
+    /// Conventionally loads `Resources/SystemPrompt.compact.md` via
+    /// `AppletSystemPrompt.load(from: .module, resource:)`. Defaults to
+    /// `systemPrompt`, so applets without a compact variant send their full
+    /// briefing on every tier.
+    var compactSystemPrompt: String { get }
+
     /// Ready-made chat prompts this applet contributes to the chat empty state.
     /// The shell aggregates these across the registered applet set (see
     /// `SuggestedChatAction.merged`), so each target surfaces only the actions
@@ -65,4 +73,8 @@ public protocol MiniApplet: Sendable {
 public extension MiniApplet {
     /// Applets contribute no chat actions by default; Bible and Todo override.
     var suggestedChatActions: [SuggestedChatAction] { [] }
+
+    /// No compact variant by default — small-window models get the full
+    /// briefing.
+    var compactSystemPrompt: String { systemPrompt }
 }

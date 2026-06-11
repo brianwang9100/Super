@@ -37,4 +37,23 @@ enum SuperBibleSystemPromptLoader {
         #endif
         return body
     }
+
+    /// Returns the lean persona variant sent to small-context-window models
+    /// (`ModelContextTier.compact`), from
+    /// `SuperBibleSystemPrompt.compact.md`. A missing resource resolves to
+    /// the empty string, which makes `ChatSession` fall back to the full
+    /// persona — graceful, but it silently forfeits the compact-tier window
+    /// savings, so DEBUG asserts just like `load()`.
+    static func loadCompact() -> String {
+        let body = AppletSystemPrompt.load(from: .main, resource: "SuperBibleSystemPrompt.compact")
+        #if DEBUG
+        if body.isEmpty {
+            assertionFailure(
+                "SuperBibleSystemPrompt.compact.md missing or empty in the App-SuperBible bundle. "
+                + "Check the `buildPhase: resources` entry in `project.yml` for SuperBible."
+            )
+        }
+        #endif
+        return body
+    }
 }

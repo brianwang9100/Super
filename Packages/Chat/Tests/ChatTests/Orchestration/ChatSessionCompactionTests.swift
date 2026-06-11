@@ -248,10 +248,16 @@ struct ChatSessionCompactionTests {
         // the compact tier (CompactToolPolicy keeps read/search/memory). A
         // *dropped* tool like `bible.annotate` would no longer count toward a
         // small-window model's budget, so it can't be used to prove this.
+        //
+        // Arithmetic at the AFM-realistic 4096 window (compact-tier budgets
+        // carry the calibration: tools ×1.8 + the fixed allowance): the bare
+        // arm reads (tiny history + allowance)/4096 ≈ 0.2 — under the 0.5
+        // threshold — while the tool arm's ~1.1k-token raw schema inflates to
+        // ≈2k, landing ≈0.7 — over it.
         let verboseTool = LLMTool(
             id: "bible.read",
             name: "bible.read",
-            description: String(repeating: "Look up the exact text of a Bible passage. ", count: 40),
+            description: String(repeating: "Look up the exact text of a Bible passage. ", count: 100),
             category: .query,
             parameters: [
                 LLMToolParameter(
@@ -263,11 +269,9 @@ struct ChatSessionCompactionTests {
             ],
             appletId: "bible"
         )
-        // Window sized so the short history is ~3% full, but the tool schema
-        // (~400 tokens) alone overruns it.
         let model = LLMModel(
             id: "afm", displayName: "AFM", supportsThinking: false,
-            supportsTools: true, maxContextTokens: 300
+            supportsTools: true, maxContextTokens: 4_096
         )
         let finalTurn: [LLMStreamEvent] = [
             .messageStart(id: "m-final", model: "afm"),
@@ -312,6 +316,77 @@ struct ChatSessionCompactionTests {
         #expect(firedCompaction(toolEvents) == true)
         let toolCheckpoint = try await withTool.checkpointRepo.liveCheckpoint(for: withTool.conversation.id)
         #expect(toolCheckpoint != nil)
+    }
+
+    @Test func compactTierCapsAutoCompactThreshold() async throws {
+        // Small-window models compact at min(userThreshold,
+        // ChatSettings.compactTierAutoCompactThreshold): with the user's
+        // threshold at a loose 0.99, a 4096-window conversation reading
+        // ~0.78 (≈2.4k history tokens + the fixed allowance) must still
+        // compact — while the same history + threshold on a full-tier model
+        // must not (no cap; the ratio is tiny on 100k anyway).
+        let summaryTurn: [LLMStreamEvent] = [
+            .messageStart(id: "sum-cap", model: "afm"),
+            .textDelta(index: 0, text: "Concise summary of the older turns."),
+            .messageComplete(usage: TokenUsage(inputTokens: 40, outputTokens: 6)),
+        ]
+        let finalTurn: [LLMStreamEvent] = [
+            .messageStart(id: "m-cap", model: "afm"),
+            .textDelta(index: 0, text: "ok"),
+            .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+        ]
+        let compactModel = LLMModel(
+            id: "afm", displayName: "AFM", supportsThinking: false,
+            supportsTools: true, maxContextTokens: 4_096
+        )
+
+        func seedHeavyHistory(setup: Setup) async throws {
+            // 12 × ~800 chars ≈ 2.4k tokens — between the 0.6 cap and the
+            // 0.99 user threshold on a 4096 window (with the allowance),
+            // and enough rows beyond keepMostRecent for the compactor.
+            for index in 1...6 {
+                try await setup.messageRepo.save(MessageRecord(
+                    id: "cap-u\(index)",
+                    conversationId: setup.conversation.id,
+                    role: .user,
+                    content: String(repeating: "lorem ipsum ", count: 67),
+                    createdAt: setup.clock.now()
+                ))
+                try await setup.messageRepo.save(MessageRecord(
+                    id: "cap-a\(index)",
+                    conversationId: setup.conversation.id,
+                    role: .assistant,
+                    content: String(repeating: "dolor sit amet ", count: 53),
+                    createdAt: setup.clock.now()
+                ))
+            }
+        }
+
+        let capped = try await makeSetup(
+            scripts: [summaryTurn, finalTurn],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.99,
+            model: compactModel,
+            conversationId: "conv-cap"
+        )
+        try await seedHeavyHistory(setup: capped)
+        let cappedEvents = await collect(await capped.session.send(text: "next", model: compactModel))
+        await capped.session.waitUntilFinished()
+        #expect(firedCompaction(cappedEvents) == true)
+
+        let uncapped = try await makeSetup(
+            scripts: [finalTurn],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.99,
+            model: makeBigModel(),
+            conversationId: "conv-cap-full"
+        )
+        try await seedHeavyHistory(setup: uncapped)
+        let uncappedEvents = await collect(
+            await uncapped.session.send(text: "next", model: uncapped.model)
+        )
+        await uncapped.session.waitUntilFinished()
+        #expect(firedCompaction(uncappedEvents) == false)
     }
 
     @Test func autoCompactionEmptySummaryDuringSendBroadcastsCuratedError() async throws {
@@ -438,10 +513,13 @@ struct ChatSessionCompactionTests {
         // Empty / nearly-empty conversation → ratio is well under the
         // 30% gate → manual /compact must surface a single `.error` event
         // with a user-facing message and never invoke the provider.
+        // Full-tier window: on the compact tier the calibration allowance
+        // alone would push a tiny window past the gate.
         let setup = try await makeSetup(
             scripts: [],
             autoCompactEnabled: false,
-            manualCompactMinThreshold: 0.30
+            manualCompactMinThreshold: 0.30,
+            model: makeBigModel()
         )
 
         let stream = await setup.session.send(text: "/compact", model: setup.model)

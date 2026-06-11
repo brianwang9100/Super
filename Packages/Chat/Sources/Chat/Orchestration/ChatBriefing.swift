@@ -16,4 +16,12 @@ public enum ChatBriefing {
     public static func load() -> String {
         AppletSystemPrompt.load(from: .module, resource: "DefaultSystemPrompt")
     }
+
+    /// Trimmed contents of `DefaultSystemPrompt.compact.md` — the lean
+    /// persona variant `ChatSession` sends to small-context-window models
+    /// (`ModelContextTier.compact`). Empty when absent; the session falls
+    /// back to the full briefing in that case.
+    public static func loadCompact() -> String {
+        AppletSystemPrompt.load(from: .module, resource: "DefaultSystemPrompt.compact")
+    }
 }

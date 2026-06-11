@@ -23,6 +23,12 @@ public struct LLMTool: Sendable, Equatable, Identifiable {
     /// One-line, user-readable description of what the tool does. `nil` hides
     /// the subtitle. Distinct from `description`, which is the LLM prompt.
     public let summary: String?
+    /// Hand-authored short variant of `description` for small-context-window
+    /// models (`ModelContextTier.compact`), where the full prompt's examples
+    /// and nuance cost more window than they're worth. Same contract as
+    /// `description` (LLM-facing, never UI). `nil` means the tool has no
+    /// compact variant and ships `description` on every tier.
+    public let compactDescription: String?
 
     public init(
         id: String,
@@ -32,7 +38,8 @@ public struct LLMTool: Sendable, Equatable, Identifiable {
         parameters: [LLMToolParameter],
         appletId: String,
         displayName: String? = nil,
-        summary: String? = nil
+        summary: String? = nil,
+        compactDescription: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -42,6 +49,7 @@ public struct LLMTool: Sendable, Equatable, Identifiable {
         self.appletId = appletId
         self.displayName = displayName
         self.summary = summary
+        self.compactDescription = compactDescription
     }
 }
 
