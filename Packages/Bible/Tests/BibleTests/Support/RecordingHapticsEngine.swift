@@ -8,11 +8,11 @@ import os
 final class RecordingHapticsEngine: HapticsEngine {
     private let playedState = OSAllocatedUnfairLock<[HapticPattern]>(initialState: [])
 
-    func play(_ pattern: HapticPattern) {
+    @MainActor func play(_ pattern: HapticPattern) {
         playedState.withLock { $0.append(pattern) }
     }
 
-    func setEnabled(_ enabled: Bool) {}
+    @MainActor func setEnabled(_ enabled: Bool) {}
 
     /// Every pattern played, in order.
     var played: [HapticPattern] {

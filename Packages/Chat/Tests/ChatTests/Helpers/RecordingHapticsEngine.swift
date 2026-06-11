@@ -15,11 +15,11 @@ final class RecordingHapticsEngine: HapticsEngine {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
 
-    func play(_ pattern: HapticPattern) {
+    @MainActor func play(_ pattern: HapticPattern) {
         state.withLock { $0.played.append(pattern) }
     }
 
-    func setEnabled(_ enabled: Bool) {
+    @MainActor func setEnabled(_ enabled: Bool) {
         state.withLock { $0.enabledLog.append(enabled) }
     }
 
