@@ -116,6 +116,16 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
+    /// Fetched-list fixture for the unlocked create-flow snapshots: two
+    /// catalog ids plus one unknown id, reconciled once so the light/dark/XXL
+    /// variants render the identical dropdown.
+    private static let openAIUnlockedFetchedModels = [
+        "openai": LLMProviderCatalog.reconcile(
+            providerID: "openai",
+            fetchedModelIDs: ["gpt-5.5", "gpt-5.4-mini", "gpt-6-preview"]
+        ),
+    ]
+
     // `ToolRow.name`/`summary` carry the user-facing display name + short
     // description (resolved from `LLMTool.displayName`/`summary`), never the
     // LLM-facing tool prompt. Two enabled tools so `SettingsRootPane`'s
@@ -495,10 +505,13 @@ struct SettingsSheetSnapshotTests {
 
     // Per-provider create-flow snapshots — one row per entry in
     // `LLMProviderCatalog.all`, light + dark each. Each one captures
-    // the visible-field set the provider's catalog entry dictates:
-    // Apple hides URL/Name/Key/Thinking; OpenAI/Anthropic/Google/xAI
-    // hide URL+Name and show Key + (Thinking iff the default model
-    // supports it); Custom shows every field.
+    // the visible-field set the provider's catalog entry dictates.
+    // OpenAI/Anthropic/Google/xAI render the key-first LOCKED state
+    // (Provider dropdown + API Key only — the Model/Max-context/
+    // Thinking/Web-search rows stay hidden until the key has content;
+    // see the `_unlocked` snapshots for the revealed state). Apple
+    // hides URL/Name/Key/Thinking and keeps Provider + Model stacked;
+    // Custom shows every field (no live list to gate on).
 
     @Test("model detail create flow — Apple Intelligence selected")
     func modelDetailProviderApple() async {
@@ -681,7 +694,8 @@ struct SettingsSheetSnapshotTests {
     // Inline-error state for the Max Context field after the user
     // typed an over-cap value and tapped Save. Uses the test seam
     // `initialModelDetailContextWindowError` to pre-set the error
-    // without simulating a Save tap. Per AGENTS.md §Testing.3 —
+    // without simulating a Save tap (plus a seeded key so the gated
+    // Max-context row renders at all). Per AGENTS.md §Testing.3 —
     // SwiftUI views ship snapshots for their error state.
     @Test("model detail create flow — context-window over-cap error (light)")
     func modelDetailProviderContextWindowError() async {
@@ -691,7 +705,8 @@ struct SettingsSheetSnapshotTests {
             availability: .available,
             existingAppleFoundation: false,
             name: "settings_model_detail_provider_context_error_light",
-            contextWindowError: "Maximum context for this model is 1,000,000 tokens."
+            contextWindowError: "Maximum context for this model is 1,000,000 tokens.",
+            apiKey: "sk-snapshot"
         )
     }
 
@@ -703,7 +718,82 @@ struct SettingsSheetSnapshotTests {
             availability: .available,
             existingAppleFoundation: false,
             name: "settings_model_detail_provider_context_error_dark",
-            contextWindowError: "Maximum context for this model is 1,000,000 tokens."
+            contextWindowError: "Maximum context for this model is 1,000,000 tokens.",
+            apiKey: "sk-snapshot"
+        )
+    }
+
+    // The unlocked create-flow state: key typed, live list fetched. Pins
+    // the full key-first reveal — Provider, API Key, then Model (showing a
+    // live id), Max context, Thinking, Web search — and that a fetched
+    // list (including a non-catalog id) drives the dropdown.
+    @Test("model detail create flow — key entered, live models fetched (light)")
+    func modelDetailProviderOpenAIUnlocked() async {
+        await verifyCreateWithProvider(
+            theme: .vellumLight,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_openai_unlocked_light",
+            apiKey: "sk-snapshot",
+            fetchedModels: Self.openAIUnlockedFetchedModels
+        )
+    }
+
+    @Test("model detail create flow — key entered, live models fetched (dark)")
+    func modelDetailProviderOpenAIUnlockedDark() async {
+        await verifyCreateWithProvider(
+            theme: .vellumDark,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_openai_unlocked_dark",
+            apiKey: "sk-snapshot",
+            fetchedModels: Self.openAIUnlockedFetchedModels
+        )
+    }
+
+    // Dynamic Type XXL on the unlocked state — the changed surface of the
+    // key-first redesign (Custom's XXL anchor covers the ungated layout).
+    @Test("dynamic type XXL on model detail create flow — unlocked OpenAI")
+    func modelDetailProviderOpenAIUnlockedXXL() async {
+        await verifyCreateWithProvider(
+            theme: .vellumLight,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_provider_openai_unlocked_light_xxl",
+            apiKey: "sk-snapshot",
+            fetchedModels: Self.openAIUnlockedFetchedModels,
+            dynamicType: .xxLarge
+        )
+    }
+
+    // Key typed, fetch in flight: the Model row's refresh affordance swaps
+    // to the spinner while the gated rows are already revealed.
+    @Test("model detail create flow — key entered, models loading (light)")
+    func modelDetailProviderOpenAIModelsLoading() async {
+        await verifyCreateWithProvider(
+            theme: .vellumLight,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_models_loading_light",
+            apiKey: "sk-snapshot",
+            loadingModelsProviderID: "openai"
+        )
+    }
+
+    @Test("model detail create flow — key entered, models loading (dark)")
+    func modelDetailProviderOpenAIModelsLoadingDark() async {
+        await verifyCreateWithProvider(
+            theme: .vellumDark,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_models_loading_dark",
+            apiKey: "sk-snapshot",
+            loadingModelsProviderID: "openai"
         )
     }
 
@@ -743,7 +833,10 @@ struct SettingsSheetSnapshotTests {
         let view = SettingsSheetSnapshotHarness(
             viewModel: viewModel,
             initialPane: .modelDetail(id: nil),
-            initialModelDetailSelection: .openAI
+            initialModelDetailSelection: .openAI,
+            // The note renders under the key-gated Model dropdown — seed a
+            // key so the gated rows (and the note) are visible at all.
+            initialModelDetailAPIKey: "sk-snapshot"
         )
         .superTheme(.make(theme))
         .dynamicTypeSize(.large)
@@ -758,6 +851,9 @@ struct SettingsSheetSnapshotTests {
         existingAppleFoundation: Bool,
         name: String,
         contextWindowError: String? = nil,
+        apiKey: String? = nil,
+        fetchedModels: [String: [LLMCatalogModel]] = [:],
+        loadingModelsProviderID: String? = nil,
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) async {
@@ -770,11 +866,18 @@ struct SettingsSheetSnapshotTests {
             tools: Self.sampleTools,
             chatCount: 7
         )
+        if !fetchedModels.isEmpty || loadingModelsProviderID != nil {
+            viewModel._setModelListSnapshotState(
+                fetchedModels: fetchedModels,
+                loadingModelsProviderID: loadingModelsProviderID
+            )
+        }
         let view = SettingsSheetSnapshotHarness(
             viewModel: viewModel,
             initialPane: .modelDetail(id: nil),
             initialModelDetailSelection: selection,
-            initialModelDetailContextWindowError: contextWindowError
+            initialModelDetailContextWindowError: contextWindowError,
+            initialModelDetailAPIKey: apiKey
         )
         .superTheme(.make(theme))
         .dynamicTypeSize(dynamicType)
@@ -1338,6 +1441,10 @@ private struct SettingsSheetSnapshotHarness: View {
     /// Forwarded to `SettingsSheet`'s test seam for snapshotting the
     /// Max-Context inline-error state without driving a Save tap.
     var initialModelDetailContextWindowError: String?
+    /// Forwarded to `SettingsSheet`'s test seam — seeds the create-mode
+    /// API-key field so the key-gated rows (Model / Max context / Thinking /
+    /// Web search) render without driving the SecureField.
+    var initialModelDetailAPIKey: String?
     /// When `true`, render `initialPane` as the sheet's *modal root* (empty
     /// navigation path, `viewModel.rootPane` pre-seeded) — the close-✕ leading
     /// header state used by the composer's "Manage models…". When `false`
@@ -1376,7 +1483,8 @@ private struct SettingsSheetSnapshotHarness: View {
                 viewModel: viewModel,
                 initialPane: initialPane,
                 initialModelDetailSelection: initialModelDetailSelection,
-                initialModelDetailContextWindowError: initialModelDetailContextWindowError
+                initialModelDetailContextWindowError: initialModelDetailContextWindowError,
+                initialModelDetailAPIKey: initialModelDetailAPIKey
             )
         }
     }

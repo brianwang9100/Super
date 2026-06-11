@@ -246,9 +246,10 @@ public enum LLMProviderCatalog {
                 // Grok 4.3 (released 2026-04-30) is xAI's current
                 // flagship — 1M context, three reasoning intensity
                 // levels. Grok 3 and Grok 3 Mini were retired
-                // 2026-05-15.
+                // 2026-05-15; Grok 4.1 Fast is deprecated (pruned
+                // 2026-06-11 — the live list resurfaces it if xAI
+                // still serves the id).
                 LLMCatalogModel(id: "grok-4.3", displayName: "Grok 4.3", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "grok-4.1-fast", displayName: "Grok 4.1 Fast", maxContextTokens: 2_000_000, supportsThinking: false),
             ]
         ),
         LLMProviderCatalogEntry(
