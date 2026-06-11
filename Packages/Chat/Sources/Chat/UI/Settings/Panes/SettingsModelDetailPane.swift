@@ -745,22 +745,22 @@ struct SettingsModelDetailPane: View {
     /// padded `pickerRow` wrapper.
     @ViewBuilder
     private func pickerLabelContent(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(typography.font(.caption, weight: .medium))
-                .foregroundStyle(theme.inkFaint)
-                .textCase(.uppercase)
-                .tracking(0.5)
-            HStack(spacing: 8) {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label)
+                    .font(typography.font(.caption, weight: .medium))
+                    .foregroundStyle(theme.inkFaint)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
                 Text(value)
                     .font(typography.font(.callout))
                     .foregroundStyle(theme.ink)
                     .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(typography.font(.footnote, weight: .semibold))
-                    .foregroundStyle(theme.inkFaint)
             }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(typography.font(.footnote, weight: .semibold))
+                .foregroundStyle(theme.inkFaint)
         }
     }
 
