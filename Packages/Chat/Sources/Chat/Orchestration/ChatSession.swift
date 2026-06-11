@@ -637,7 +637,13 @@ public actor ChatSession {
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
-            var tools = await toolRegistry.enabledTools(for: provider)
+            // Small-window models (on-device AFM) drop the heaviest/lowest-value
+            // tool schemas so the request fits the window — see CompactToolPolicy.
+            // Applied before the per-turn web-search tools (AFM never uses those).
+            var tools = CompactToolPolicy.filter(
+                await toolRegistry.enabledTools(for: provider),
+                tier: ModelContextTier(maxContextTokens: model.maxContextTokens)
+            )
             // Per-turn search wiring:
             //  - native, gate OFF / already approved → append the sentinel so
             //    the adapter attaches its own server search tool.
@@ -856,6 +862,13 @@ public actor ChatSession {
         // this counts the base registered tools, not the transient per-turn
         // web-search proposal/sentinel tools (a small, deliberate undercount).
         async let tools = toolRegistry.enabledTools()
+        // Budget the SAME tier-filtered tool set the live request sends (see the
+        // `runTurnLoop` filter), so the compaction gates don't over-count tools
+        // a small-window model never receives.
+        let budgetedTools = CompactToolPolicy.filter(
+            await tools,
+            tier: ModelContextTier(maxContextTokens: model.maxContextTokens)
+        )
         return try await contextAssembler.assemble(
             messages: messages,
             toolCalls: toolCalls,
@@ -865,7 +878,7 @@ public actor ChatSession {
             appletBriefings: appletBriefings,
             userPersonalization: currentUserPersonalization,
             memories: memories,
-            tools: tools
+            tools: budgetedTools
         )
     }
 
