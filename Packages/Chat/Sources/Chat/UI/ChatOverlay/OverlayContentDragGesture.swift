@@ -529,7 +529,7 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
             //    full-window exclusion drops it (the chain pick resolves nil)
             //    and the fallback below decides instead.
             if let hit = view.hitTest(location, with: nil) {
-                let chain = enclosingScrollViews(of: hit)
+                let chain = enclosingScrollViews(of: hit, stoppingAt: view)
                 let chainFrames = chain.map { $0.superview?.convert($0.frame, to: nil) ?? $0.frame }
                 if let index = outermostInsetScrollIndex(
                     chainFrames: chainFrames, windowHeight: windowHeight
@@ -564,12 +564,18 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         }
 
         /// Every scroll view at or above `view` in the superview chain,
-        /// innermost → outermost, for `outermostInsetScrollIndex` to pick from.
-        private static func enclosingScrollViews(of view: UIView) -> [UIScrollView] {
+        /// innermost → outermost, for `outermostInsetScrollIndex` to pick
+        /// from. The climb stops at `root` (the gesture's hosting view) so a
+        /// scroll view above the gesture's own subtree — window chrome, a
+        /// future UIKit wrapper — can never be picked as "outermost".
+        private static func enclosingScrollViews(
+            of view: UIView, stoppingAt root: UIView
+        ) -> [UIScrollView] {
             var found: [UIScrollView] = []
             var node: UIView? = view
             while let current = node {
                 if let scrollView = current as? UIScrollView { found.append(scrollView) }
+                if current === root { break }
                 node = current.superview
             }
             return found
