@@ -31,6 +31,12 @@ struct AppShellDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
+    /// Shared app-wide haptics engine. One instance per app: injected into the
+    /// SwiftUI environment (sidebar/hamburger taps), the chat + Settings view
+    /// models, and each applet's view models, so the Settings toggle mutes
+    /// every surface at once. Each target's bootstrap also threads the same
+    /// instance into the applets it registers (e.g. `BibleApplet`).
+    let hapticsEngine: any HapticsEngine
     /// Per-target cold-launch defaults. SuperOS passes `.standard`
     /// (chat opens expanded over last-used applet). SuperBible passes
     /// `AppShellLaunchBehavior(initialChatState: .minimized)` so Bible

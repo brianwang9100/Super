@@ -220,6 +220,11 @@ public final class SettingsViewModel {
     /// running sessions until the next app launch.
     private let webSearchPolicyReceiver: any WebSearchPolicyReceiver
 
+    /// Shared app-wide haptics engine. The Settings toggle mutes/unmutes it
+    /// live via `setEnabled(_:)`. Defaults to a no-op so snapshot/preview
+    /// fixtures construct the VM without the real engine.
+    private let hapticsEngine: any HapticsEngine
+
     /// Optional notification fired after the models list changes via
     /// `createModel`/`updateModel`/`deleteModel`. The host wires this so
     /// the chat surface picks up newly added providers without an app
@@ -255,6 +260,7 @@ public final class SettingsViewModel {
         userPersonalizationReceiver: any UserPersonalizationReceiver,
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver,
         webSearchPolicyReceiver: any WebSearchPolicyReceiver,
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
         // Optional (mirrors `memoryRepository`) so snapshot/preview fixtures
         // construct the VM without standing up the full repository graph;
         // production wires both. When either is nil the export controller gets
@@ -293,6 +299,7 @@ public final class SettingsViewModel {
         self.userPersonalizationReceiver = userPersonalizationReceiver
         self.autoCompactPolicyReceiver = autoCompactPolicyReceiver
         self.webSearchPolicyReceiver = webSearchPolicyReceiver
+        self.hapticsEngine = hapticsEngine
         self.httpClient = httpClient
         // Default the listing service to a live one over the injected HTTP
         // client so neither app bootstrap has to wire it explicitly; fixtures
@@ -544,6 +551,15 @@ public final class SettingsViewModel {
     public func setSummarizeTitlesEnabled(_ value: Bool) async {
         settings.summarizeTitlesEnabled = value
         try? await store.setSummarizeTitlesEnabled(value)
+    }
+
+    /// Master on/off for in-app haptic feedback. Persists the flag and mutes
+    /// the shared engine immediately via `setEnabled(_:)` so the change takes
+    /// effect on the next tap without a relaunch.
+    public func setHapticsEnabled(_ value: Bool) async {
+        settings.hapticsEnabled = value
+        hapticsEngine.setEnabled(value)
+        try? await store.setHapticsEnabled(value)
     }
 
     /// Selects the model used to summarize chat titles. Pass `nil` for

@@ -131,6 +131,7 @@ public struct ChatComposer: View {
     @ScaledMetric(relativeTo: .subheadline) private var editorBase: CGFloat = 17
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.chatComposerReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.hapticsEngine) private var hapticsEngine
     @State private var pulseScale: CGFloat = 1.0
     @State private var pulseOpacity: CGFloat = 0.6
 
@@ -267,6 +268,16 @@ public struct ChatComposer: View {
             )
             .opacity(gradientOpacity)
         )
+        // A simple tap when the composer becomes active (the user tapped in to
+        // type). Fires on the focus-gain edge, so it also marks a programmatic
+        // focus (e.g. auto-focus after New Chat). That New Chat path is a
+        // deliberate two-stage feel: `.primary` (heavy) when the create button
+        // is pressed, then this `.selection` (medium) ~a beat later when the
+        // composer is focused and ready — "created … now type." Intentional, not
+        // a stray double-buzz.
+        .onChange(of: isFocused) { _, focused in
+            if focused { hapticsEngine.play(.selection) }
+        }
     }
 
     /// Accent glow shown only while the editor is focused — pure focus
@@ -394,7 +405,7 @@ public struct ChatComposer: View {
                 .frame(width: 34, height: 34)
                 .superGlassButton(in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("Voice input")
     }
 
@@ -439,7 +450,7 @@ public struct ChatComposer: View {
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("Stop recording")
         .accessibilityHint("Double-tap to stop voice input and insert the transcript.")
         .onAppear {

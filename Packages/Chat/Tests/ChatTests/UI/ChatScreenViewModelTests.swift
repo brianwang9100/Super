@@ -2008,6 +2008,104 @@ struct ChatScreenViewModelTests {
     }
 }
 
+/// Covers the haptic fire sites in `ChatScreenViewModel`: `.selection` on a
+/// committed send, `.streamingTick` per visible repaint, and one
+/// `.streamCompleted` at turn end. Lives in this file so it can reuse the
+/// file-private scripted-driver / stub-repository doubles. Drains the stream
+/// task on its own completion signal before asserting.
+@Suite("ChatScreenViewModel haptics")
+@MainActor
+struct ChatScreenHapticsTests {
+    private let conversationId = "conv-haptics"
+    private let model = LLMModel(
+        id: "test-model",
+        displayName: "Test",
+        supportsThinking: false,
+        supportsTools: true,
+        maxContextTokens: 1000
+    )
+
+    @Test("a committed send fires .selection, streaming fires ticks, and the turn ends with one .streamCompleted")
+    func sendStreamAndCompletionFireHaptics() async throws {
+        let driver = ScriptedDriver(events: [
+            .userMessageSaved(MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "hi", createdAt: Date())),
+            // Each delta ends in whitespace, so the coalescer flushes it as a
+            // visible chunk → one `.streamingTick` apiece.
+            .textDelta("Hello "),
+            .textDelta("there "),
+            .assistantMessageSaved(MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello there", createdAt: Date())),
+        ])
+        let messages = StubMessageRepository(initial: [])
+        await messages.set([
+            MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "hi", createdAt: Date()),
+            MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Hello there", createdAt: Date().addingTimeInterval(1)),
+        ])
+        let haptics = RecordingHapticsEngine()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: driver,
+            messageRepository: messages,
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [SelectableModel(model)],
+            hapticsEngine: haptics
+        )
+
+        viewModel.send("hi")
+        try await driver.waitUntilFinished()
+        await viewModel._waitForPendingStreamTask()
+
+        let played = haptics.played
+        // First haptic is the send selection.
+        #expect(played.first == .selection)
+        // Exactly one completion, and it is the last thing played.
+        #expect(played.filter { $0 == .streamCompleted }.count == 1)
+        #expect(played.last == .streamCompleted)
+        // At least one streaming tick landed between send and completion.
+        #expect(played.contains(.streamingTick))
+    }
+
+    @Test("a send rejected for having no model fires no haptic")
+    func rejectedSendFiresNoHaptic() async throws {
+        let haptics = RecordingHapticsEngine()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [],
+            hapticsEngine: haptics
+        )
+
+        viewModel.send("hi")
+
+        // No model → the send bails before committing; nothing should buzz.
+        #expect(haptics.played.isEmpty)
+    }
+
+    @Test("an empty send (no text, no references) fires no haptic")
+    func emptySendFiresNoHaptic() async throws {
+        let haptics = RecordingHapticsEngine()
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId,
+            conversationTitle: "Test",
+            driver: ScriptedDriver(events: []),
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(),
+            availableModels: [SelectableModel(model)],
+            hapticsEngine: haptics
+        )
+
+        viewModel.send("   ")
+
+        #expect(haptics.played.isEmpty)
+    }
+}
+
 /// Sentinel error for fakes that need to drive a throw path.
 private enum StubError: Error { case boom }
 

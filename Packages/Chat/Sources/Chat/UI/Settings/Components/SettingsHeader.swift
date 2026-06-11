@@ -60,7 +60,7 @@ struct SettingsHeader: View {
                 .accessibilityAddTraits(.isHeader)
 
             if let trailingAction {
-                iconButton(action: trailingAction, prominent: true) {
+                iconButton(action: trailingAction, prominent: true, haptic: .primary) {
                     PlusIcon(size: 18)
                         .foregroundStyle(theme.accentInk)
                 }
@@ -84,19 +84,24 @@ struct SettingsHeader: View {
         }
     }
 
-    /// - Parameter prominent: When `true`, the button rides accent-tinted
-    ///   call-to-action glass (the trailing add **+**); otherwise neutral nav
-    ///   glass (the leading close/back).
+    /// - Parameters:
+    ///   - prominent: When `true`, the button rides accent-tinted
+    ///     call-to-action glass (the trailing add **+**); otherwise neutral nav
+    ///     glass (the leading close/back).
+    ///   - haptic: The haptic to play on press, or `nil` to stay silent. The
+    ///     leading close/back and the hidden spacer pass `nil` (dismissal chrome
+    ///     is deliberately silent); the prominent add **+** passes `.primary`.
     @ViewBuilder
     private func iconButton<Content: View>(
         action: @escaping () -> Void,
         prominent: Bool = false,
+        haptic: HapticPattern? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         Button(action: action) {
             iconGlass(content().frame(width: 44, height: 44), prominent: prominent)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(haptic))
     }
 
     @ViewBuilder

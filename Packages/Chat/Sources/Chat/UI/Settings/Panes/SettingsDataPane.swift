@@ -94,7 +94,7 @@ struct SettingsDataPane: View {
             } label: {
                 shareDisc
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.selection))
             .disabled(isExporting)
             .accessibilityLabel(isExporting ? "Exporting chats" : "Export and share all chats")
             .accessibilityHint(exportAccessibilityHint)

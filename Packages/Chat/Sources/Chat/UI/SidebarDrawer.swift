@@ -66,6 +66,7 @@ public struct SidebarDrawer: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    @Environment(\.hapticsEngine) private var hapticsEngine
     /// Base sizes for the drawer's *system-font* nav chrome — "New Chat", the
     /// applet-rail names, and the "CHATS" section label. Declared via
     /// `@ScaledMetric` so the chrome composes OS Dynamic Type, then rendered
@@ -173,7 +174,10 @@ public struct SidebarDrawer: View {
                         ChatRow(
                             chat: chat,
                             isActive: chat.id == viewModel.activeConversationId,
-                            onSelect: { onSelectConversation(chat.id) }
+                            onSelect: {
+                                hapticsEngine.play(.selection)
+                                onSelectConversation(chat.id)
+                            }
                         )
                     }
 
@@ -239,7 +243,7 @@ public struct SidebarDrawer: View {
             )
             .shadow(color: theme.accent.opacity(0.25), radius: 4, x: 0, y: 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
         .padding(.bottom, 6)
     }
 
@@ -247,6 +251,7 @@ public struct SidebarDrawer: View {
     private func appletRow(_ applet: any MiniApplet) -> some View {
         let isActive = applet.appletID == activeAppletID
         Button(action: {
+            hapticsEngine.play(.selection)
             close()
             onSelectApplet(applet.appletID)
         }) {
@@ -299,7 +304,7 @@ public struct SidebarDrawer: View {
                     .frame(width: 44, height: 44)
                     .superGlassButton(in: Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.selection))
             .accessibilityLabel("Settings")
             Spacer(minLength: 0)
         }

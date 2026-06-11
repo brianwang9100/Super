@@ -110,7 +110,7 @@ struct TodoTagPicker: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 10 * fontScale, weight: .bold))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.deselection))
         }
         .padding(.leading, 9)
         .padding(.trailing, 6)
@@ -140,7 +140,7 @@ struct TodoTagPicker: View {
             .background(theme.accentSoft)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
     }
 
     private var suggestionChips: some View {
@@ -166,7 +166,7 @@ struct TodoTagPicker: View {
                     // a wrapping row of chips doesn't glow-flicker on release.
                     .superGlassButton(in: Capsule(), interactive: false)
                 }
-                .buttonStyle(SuperPressButtonStyle())
+                .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
             }
         }
     }

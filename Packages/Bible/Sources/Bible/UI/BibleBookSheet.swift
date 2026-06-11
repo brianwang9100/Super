@@ -444,7 +444,7 @@ struct BibleBookSheet: View {
                     .superGlassButton(in: RoundedRectangle(cornerRadius: 10))
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("\(book.name) chapter \(number)")
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
     }

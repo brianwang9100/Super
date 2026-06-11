@@ -52,6 +52,10 @@ struct SuperOSAppDependencies {
     /// owned by the instance, so dropping the reference would silently
     /// kill the headless dispatch path.
     let bibleAnnotateDispatcher: BibleAnnotateDispatcher
+    /// Shared app-wide haptics engine. One instance threaded into both the
+    /// shell (via `shellDependencies`) and the applets registered here, so
+    /// the Settings toggle mutes every surface at once.
+    let hapticsEngine: any HapticsEngine
 
     /// Slice of this dependency graph that `AppShell` actually reads.
     /// Built on demand so callers don't have to thread every field
@@ -75,6 +79,7 @@ struct SuperOSAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
+            hapticsEngine: hapticsEngine,
             // SuperOS keeps the standard launch policy: chat opens
             // expanded over the user's last-used applet (restored by
             // `UserDefaults` lookup further down in `bootstrap()`).
@@ -152,7 +157,12 @@ enum SuperOSAppBootstrap {
         // tool-execution time, long after hydration.
         let llmProviderRegistry = LLMProviderRegistry()
 
-        let bibleApplet = BibleApplet()
+        // One haptics engine for the whole app — shared by the shell's
+        // environment, the chat + Settings view models, and the applets
+        // registered below.
+        let hapticsEngine = SystemHapticsEngine()
+
+        let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
         await bibleApplet.registerAnnotationTool(
             in: toolRegistry,
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
@@ -361,7 +371,8 @@ enum SuperOSAppBootstrap {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability,
-            bibleAnnotateDispatcher: bibleAnnotateDispatcher
+            bibleAnnotateDispatcher: bibleAnnotateDispatcher,
+            hapticsEngine: hapticsEngine
         )
     }
 

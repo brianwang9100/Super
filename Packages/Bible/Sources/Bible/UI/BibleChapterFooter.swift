@@ -66,7 +66,7 @@ struct BibleChapterFooter: View {
             // glass supplies its own frosted edge and elevation.
             .superGlassButton(in: RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("\(kicker) chapter, \(label)")
     }
 }
