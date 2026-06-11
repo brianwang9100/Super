@@ -26,10 +26,29 @@ enum CompactToolPolicy {
         "bible.note",
     ]
 
-    /// Filter `tools` for `tier`: drops `droppedToolNames` on `.compact`,
-    /// returns the set unchanged on `.full`.
+    /// Filter `tools` for `tier`: on `.compact`, drops `droppedToolNames` and
+    /// swaps each survivor's LLM-facing `description` for its hand-authored
+    /// `compactDescription` (when the tool ships one) — the full descriptions
+    /// alone total ~3.5k characters across the kept set, which a 4096-token
+    /// window can't afford. Returns the set unchanged on `.full`. Parameter
+    /// schemas are never altered, so execution-side validation is unaffected.
     static func filter(_ tools: [LLMTool], tier: ModelContextTier) -> [LLMTool] {
         guard tier == .compact else { return tools }
-        return tools.filter { !droppedToolNames.contains($0.name) }
+        return tools
+            .filter { !droppedToolNames.contains($0.name) }
+            .map { tool in
+                guard let compact = tool.compactDescription else { return tool }
+                return LLMTool(
+                    id: tool.id,
+                    name: tool.name,
+                    description: compact,
+                    category: tool.category,
+                    parameters: tool.parameters,
+                    appletId: tool.appletId,
+                    displayName: tool.displayName,
+                    summary: tool.summary,
+                    compactDescription: compact
+                )
+            }
     }
 }

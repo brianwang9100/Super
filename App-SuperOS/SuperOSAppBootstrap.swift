@@ -297,7 +297,10 @@ enum SuperOSAppBootstrap {
         // within the Chat package so `.module` resolves to Chat's
         // bundle — calling it directly from `App/` would resolve to
         // the App target's bundle, which doesn't ship the markdown.
+        // The `.compact` variant is the lean persona small-window models
+        // (on-device Apple Foundation Model) receive instead.
         let chatBriefing = ChatBriefing.load()
+        let compactChatBriefing = ChatBriefing.loadCompact()
 
         // DEBUG-only: mock-search backend fulfiller so the seeded "Debug
         // (mock search)" model exercises the full search flow with no key.
@@ -318,7 +321,12 @@ enum SuperOSAppBootstrap {
             autoCompactThreshold: initialSettings.autoCompactThreshold,
             askBeforeSearching: initialSettings.askBeforeSearching,
             chatBriefing: chatBriefing,
+            compactChatBriefing: compactChatBriefing,
             appletBriefings: appletBriefings,
+            // Live active-applet accessor: on the compact tier the session
+            // injects only the active applet's briefing — with SuperOS's
+            // multi-applet registry this is most of the briefing savings.
+            activeAppletID: { await appletRegistry.activeID },
             userPersonalization: initialSettings.userPersonalization,
             memoryRepository: memoryRepository,
             webSearchFulfiller: webSearchFulfiller

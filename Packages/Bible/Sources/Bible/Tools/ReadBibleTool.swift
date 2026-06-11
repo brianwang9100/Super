@@ -127,7 +127,15 @@ public struct ReadBibleTool: ToolExecutor {
         ],
         appletId: ReadBibleTool.appletID,
         displayName: "Read scripture",
-        summary: "Looks up exact verse text for one or more passages from local storage."
+        summary: "Looks up exact verse text for one or more passages from local storage.",
+        compactDescription: """
+        Fetch the exact text of Bible passages from local storage. Call \
+        before quoting or explaining any passage whose exact text you don't \
+        already have — never quote scripture from memory. Pass `references` \
+        (array of {book, chapter, optional startVerse/endVerse}); omit \
+        `translation` to use the user's selected one. Don't re-fetch verses \
+        `bible.search` already returned.
+        """
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.

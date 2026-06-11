@@ -31,7 +31,10 @@ struct ContextAssemblerTests {
         )
     }
 
-    private func makeModel(maxContextTokens: Int = 1_000) -> LLMModel {
+    /// Defaults to a full-tier window so shape/budget tests read the raw
+    /// heuristic estimate; tests of the compact-tier calibration pass an
+    /// explicit small window.
+    private func makeModel(maxContextTokens: Int = 100_000) -> LLMModel {
         LLMModel(
             id: "test-model",
             displayName: "Test",
@@ -72,13 +75,16 @@ struct ContextAssemblerTests {
     @Test func toolSchemasCanTipOverThreshold() throws {
         // Regression for the AFM silent-overflow: a prompt comfortably under
         // the window with no tool counting must be pushed over once the
-        // verbose tool schemas it actually ships are counted.
+        // verbose tool schemas it actually ships are counted. Run on a
+        // full-tier window so the raw schema weight is the only variable —
+        // on the compact tier the calibration allowance would tip the
+        // no-tools arm by itself (covered separately below).
         let assembler = ContextAssembler()
         let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
-        let model = makeModel(maxContextTokens: 40)
+        let model = makeModel(maxContextTokens: 10_000)
         let verboseTool = makeTool(
             name: "annotate",
-            description: String(repeating: "Annotate a passage with study notes. ", count: 6)
+            description: String(repeating: "Annotate a passage with study notes. ", count: 1_000)
         )
         let withoutTools = try assembler.assemble(
             messages: messages, toolCalls: [], checkpoint: nil, model: model
@@ -89,6 +95,74 @@ struct ContextAssemblerTests {
         )
         #expect(withoutTools.isOverThreshold(0.85) == false)
         #expect(withTools.isOverThreshold(0.85) == true)
+    }
+
+    @Test func compactTierInflatesToolSchemasAndAddsFixedAllowance() throws {
+        // The compact tier models the on-device provider: tool schemas cost
+        // ~1.8× the raw heuristic (JSON-schema scaffolding + real tokenizer)
+        // and the provider injects base instructions we can't read (flat
+        // allowance). Full tier is the uncalibrated baseline.
+        let assembler = ContextAssembler()
+        let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
+        let tools = [makeTool(name: "search", description: "Search the corpus for a phrase.")]
+
+        let fullNoTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: makeModel()
+        )
+        let fullWithTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: makeModel(), tools: tools
+        )
+        let rawToolTokens = fullWithTools.totalTokens - fullNoTools.totalTokens
+
+        let compactNoTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil,
+            model: makeModel(maxContextTokens: 4_096)
+        )
+        #expect(
+            compactNoTools.totalTokens
+                == fullNoTools.totalTokens + ContextAssembler.compactTierFixedOverheadTokens
+        )
+        #expect(compactNoTools.fixedTokens == ContextAssembler.compactTierFixedOverheadTokens)
+
+        let compactWithTools = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil,
+            model: makeModel(maxContextTokens: 4_096), tools: tools
+        )
+        let inflatedToolTokens = Int(
+            (Double(rawToolTokens) * ContextAssembler.compactTierToolSchemaInflation).rounded(.up)
+        )
+        #expect(
+            compactWithTools.totalTokens
+                == fullNoTools.totalTokens + inflatedToolTokens
+                    + ContextAssembler.compactTierFixedOverheadTokens
+        )
+        // The whole calibrated tool + allowance weight is fixed; only the
+        // projected history is compressible.
+        #expect(
+            compactWithTools.fixedTokens
+                == inflatedToolTokens + ContextAssembler.compactTierFixedOverheadTokens
+        )
+        #expect(compactWithTools.compressibleTokens == fullNoTools.totalTokens)
+        #expect(fullWithTools.fixedTokens == rawToolTokens)
+    }
+
+    @Test func fixedTokensIncludeAssemblerInjectedSystemBlocks() throws {
+        // Briefings (and the other assembler-injected blocks) survive every
+        // compaction checkpoint, so they count as fixed: the compressible
+        // remainder must be just the projected history.
+        let assembler = ContextAssembler()
+        let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(maxContextTokens: 4_096),
+            chatBriefing: String(repeating: "Be concise. ", count: 50)
+        )
+        // "Hi" estimates to 1 token; everything else (leading block +
+        // compact-tier allowance) is floor.
+        #expect(assembly.compressibleTokens == 1)
+        #expect(assembly.fixedTokens == assembly.totalTokens - 1)
     }
 
     @Test func noCheckpointReturnsAllMessagesProjected() throws {
@@ -290,8 +364,8 @@ struct ContextAssemblerTests {
 
     @Test func overThresholdClassificationFiresAtConfiguredFraction() throws {
         let assembler = ContextAssembler()
-        // ~80 chars total → ~20 tokens via chars/4. Model max 100 → 20%
-        // — safely under any sensible threshold.
+        // ~80 chars total → ~20 tokens via chars/4. Model max 100k (full
+        // tier — raw meter) → far under any sensible threshold.
         let lightMessages: [MessageRecord] = [
             makeMessage(id: "m1", role: .user, content: String(repeating: "a", count: 80), offset: 0),
         ]
@@ -299,20 +373,20 @@ struct ContextAssemblerTests {
             messages: lightMessages,
             toolCalls: [],
             checkpoint: nil,
-            model: makeModel(maxContextTokens: 100)
+            model: makeModel(maxContextTokens: 100_000)
         )
         #expect(lightAssembly.isOverThreshold(0.5) == false)
         #expect(lightAssembly.isOverThreshold(0.75) == false)
 
-        // ~400 chars → ~100 tokens vs. 100 max → ratio 1.0.
+        // ~400k chars → ~100k tokens vs. 100k max → ratio 1.0.
         let heavyMessages: [MessageRecord] = [
-            makeMessage(id: "m1", role: .user, content: String(repeating: "a", count: 400), offset: 0),
+            makeMessage(id: "m1", role: .user, content: String(repeating: "a", count: 400_000), offset: 0),
         ]
         let heavyAssembly = try assembler.assemble(
             messages: heavyMessages,
             toolCalls: [],
             checkpoint: nil,
-            model: makeModel(maxContextTokens: 100)
+            model: makeModel(maxContextTokens: 100_000)
         )
         #expect(heavyAssembly.isOverThreshold(0.5))
         #expect(heavyAssembly.isOverThreshold(0.75))

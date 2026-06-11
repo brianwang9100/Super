@@ -194,9 +194,12 @@ targets:
       - path: App/Shell/FixedHamburgerButton.swift
       - path: App/Shell/LazyConversationDriver.swift
       # Bundled chat-briefing markdown. Excluded from the compile phase
-      # by the `**/*.md` glob above; this entry re-adds it as a runtime
-      # resource. `SuperBibleSystemPromptLoader` reads it via Bundle.main.
+      # by the `**/*.md` glob above; these entries re-add it as runtime
+      # resources. `SuperBibleSystemPromptLoader` reads both via Bundle.main
+      # (the `.compact` variant serves small-context-window models).
       - path: App-SuperBible/Resources/SuperBibleSystemPrompt.md
+        buildPhase: resources
+      - path: App-SuperBible/Resources/SuperBibleSystemPrompt.compact.md
         buildPhase: resources
     info:
       path: App-SuperBible/Info.plist

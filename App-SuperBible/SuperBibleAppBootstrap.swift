@@ -247,7 +247,10 @@ enum SuperBibleAppBootstrap {
         // target bundle (i.e., `Bundle.main`), not Chat's SwiftPM
         // bundle — `ChatBriefing.load()` (used by SuperOS) would
         // otherwise return Chat's generic `DefaultSystemPrompt.md`.
+        // The `.compact` variant is the lean persona small-window models
+        // (on-device Apple Foundation Model) receive instead.
         let chatBriefing = SuperBibleSystemPromptLoader.load()
+        let compactChatBriefing = SuperBibleSystemPromptLoader.loadCompact()
 
         // DEBUG-only: mock-search backend fulfiller so the seeded "Debug
         // (mock search)" model exercises the full search flow with no key.
@@ -268,7 +271,11 @@ enum SuperBibleAppBootstrap {
             autoCompactThreshold: initialSettings.autoCompactThreshold,
             askBeforeSearching: initialSettings.askBeforeSearching,
             chatBriefing: chatBriefing,
+            compactChatBriefing: compactChatBriefing,
             appletBriefings: appletBriefings,
+            // Live active-applet accessor: on the compact tier the session
+            // injects only the active applet's briefing.
+            activeAppletID: { await appletRegistry.activeID },
             userPersonalization: initialSettings.userPersonalization,
             memoryRepository: memoryRepository,
             webSearchFulfiller: webSearchFulfiller

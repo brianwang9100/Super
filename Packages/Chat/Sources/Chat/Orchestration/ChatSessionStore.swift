@@ -33,9 +33,16 @@ public actor ChatSessionStore {
     /// Chat-assistant base prompt. Constructor-time state — the Chat
     /// applet author owns its content; no runtime setter.
     private let chatBriefing: String
-    /// Per-applet briefings (already trimmed and sorted by `appletID`).
-    /// Constructor-time state — applets are static at app launch.
+    /// Lean persona variant for small-window models (see
+    /// `ChatSession.compactChatBriefing`). Constructor-time state.
+    private let compactChatBriefing: String
+    /// Per-applet briefings (already trimmed and sorted by `appletID`),
+    /// each carrying its compact body. Constructor-time state — applets
+    /// are static at app launch.
     private let appletBriefings: [AppletBriefing]
+    /// Live active-applet accessor handed to each session (see
+    /// `ChatSession.activeAppletID`). Constructor-time state.
+    private let activeAppletID: (@Sendable () async -> String?)?
     /// Current user-personalization text (was `currentSystemPrompt`).
     /// Mutated via `setUserPersonalization(_:)` and fanned out to every
     /// active session.
@@ -68,7 +75,9 @@ public actor ChatSessionStore {
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
         askBeforeSearching: Bool = true,
         chatBriefing: String = "",
+        compactChatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
+        activeAppletID: (@Sendable () async -> String?)? = nil,
         userPersonalization: String = "",
         memoryRepository: (any MemoryRepository)? = nil,
         webSearchFulfiller: (any WebSearchFulfilling)? = nil
@@ -87,7 +96,9 @@ public actor ChatSessionStore {
         self.manualCompactMinThreshold = manualCompactMinThreshold
         self.askBeforeSearching = askBeforeSearching
         self.chatBriefing = chatBriefing
+        self.compactChatBriefing = compactChatBriefing
         self.appletBriefings = appletBriefings
+        self.activeAppletID = activeAppletID
         self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
         self.webSearchFulfiller = webSearchFulfiller
@@ -114,7 +125,9 @@ public actor ChatSessionStore {
             manualCompactMinThreshold: manualCompactMinThreshold,
             askBeforeSearching: askBeforeSearching,
             chatBriefing: chatBriefing,
+            compactChatBriefing: compactChatBriefing,
             appletBriefings: appletBriefings,
+            activeAppletID: activeAppletID,
             userPersonalization: currentUserPersonalization,
             memoryRepository: memoryRepository,
             webSearchFulfiller: webSearchFulfiller

@@ -43,4 +43,49 @@ struct CompactToolPolicyTests {
         let grounding = ["bible.read", "bible.search"].map(tool)
         #expect(CompactToolPolicy.filter(grounding, tier: .compact).map(\.name) == ["bible.read", "bible.search"])
     }
+
+    @Test("compact tier swaps in compactDescription; full tier keeps the full text")
+    func compactSwapsDescription() {
+        let withCompact = LLMTool(
+            id: "bible.read",
+            name: "bible.read",
+            description: "the long, example-laden full prompt",
+            category: .query,
+            parameters: [],
+            appletId: "bible",
+            compactDescription: "the lean prompt"
+        )
+        let compact = CompactToolPolicy.filter([withCompact], tier: .compact)
+        #expect(compact.first?.description == "the lean prompt")
+        let full = CompactToolPolicy.filter([withCompact], tier: .full)
+        #expect(full.first?.description == "the long, example-laden full prompt")
+    }
+
+    @Test("compact swap preserves identity, schema, and labels; nil compactDescription passes through")
+    func compactSwapPreservesEverythingElse() {
+        let parameters = [
+            LLMToolParameter(name: "query", type: .string, description: "q", isRequired: true),
+        ]
+        let withCompact = LLMTool(
+            id: "bible.search",
+            name: "bible.search",
+            description: "full",
+            category: .query,
+            parameters: parameters,
+            appletId: "bible",
+            displayName: "Search scripture",
+            summary: "Finds verses.",
+            compactDescription: "lean"
+        )
+        let withoutCompact = tool("memory")
+        let result = CompactToolPolicy.filter([withCompact, withoutCompact], tier: .compact)
+        let swapped = result[0]
+        #expect(swapped.id == "bible.search")
+        #expect(swapped.parameters == parameters)
+        #expect(swapped.displayName == "Search scripture")
+        #expect(swapped.summary == "Finds verses.")
+        // No compact variant authored → the tool ships unchanged.
+        #expect(result[1] == withoutCompact)
+        #expect(result[1].description == "desc for memory")
+    }
 }
