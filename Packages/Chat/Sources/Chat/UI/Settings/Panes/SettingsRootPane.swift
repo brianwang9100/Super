@@ -27,7 +27,7 @@ struct SettingsRootPane: View {
                 )
                 SettingsRow(
                     icon: AnyView(ThemeIcon()),
-                    label: "Appearance",
+                    label: "Look & Feel",
                     value: themeName,
                     borderBottom: false,
                     action: { viewModel.openPane(.appearance) }

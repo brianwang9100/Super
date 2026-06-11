@@ -391,7 +391,7 @@ Super's identity is a **"study bible" palette system** — four families (Vellum
 | Scriptorium | Muted study sage (replaces the old green) | Moss-olive |
 | Slate | Near-neutral warm grey | Clay |
 
-Each family ships a light and a dark variant; the user picks an exact variant in Settings → Appearance.
+Each family ships a light and a dark variant; the user picks an exact variant in Settings → Look & Feel.
 
 ### 8.2 Mini-App Accents
 
@@ -448,7 +448,7 @@ Opened from the sidebar's floating gear button (see `Chat/DESIGN.md` §6.4). Pan
 
 - **Account** (username/password, see `AUTH.md`)
 - **Mini-Apps** (install / uninstall / reorder — the Mini-App Manager)
-- **Appearance** (theme, font size — shared across all mini-apps; spacing is derived from font size)
+- **Look & Feel** (theme, font size, haptics — shared across all mini-apps; spacing is derived from font size)
 - **Models** (LLM endpoints + keys)
 - **System Prompt** / **Default Verbosity** (chat defaults)
 - **Notifications** (per-mini-app toggles + global push permission)
