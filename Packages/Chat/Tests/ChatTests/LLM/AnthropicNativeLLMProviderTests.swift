@@ -477,6 +477,61 @@ struct AnthropicNativeLLMProviderTests {
         #expect(assistantContent[0]["type"] as? String == "text")
     }
 
+    // MARK: - Tool wire-name sanitization (dot-namespaced tool IDs)
+
+    /// Regression: Anthropic rejects dot-namespaced names
+    /// (`tools.0.custom.name: String should match pattern
+    /// '^[a-zA-Z0-9_-]{1,128}$'`), which 400'd every turn that advertised
+    /// Super's `time.now`-style tools.
+    @Test func dotNamespacedToolNameIsSanitizedInToolDefinitions() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        #expect(tools.compactMap { $0["name"] as? String } == ["time_now"])
+    }
+
+    @Test func dotNamespacedHistoryToolCallEncodesTheSanitizedWireName() async throws {
+        // The replayed assistant `tool_use` block must carry the same
+        // sanitized wire name as the tool definition.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "time?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "toolu_x", name: "time.now", input: .object([:]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "toolu_x", content: "12:00", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [.dotNamedTimeTool], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
+        let toolUse = try #require(assistantContent.first { $0["type"] as? String == "tool_use" })
+        #expect(toolUse["name"] as? String == "time_now")
+    }
+
+    @Test func streamedToolCallNameIsRestoredToTheRegistryName() async throws {
+        // The model calls back with the wire name; the emitted `.toolUse`
+        // must carry the original dot name for the `ToolRegistry` lookup.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-toolcall-dotname"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "time?")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.0
+        ))
+        let names = events.compactMap { event -> String? in
+            if case .toolUse(_, _, let name, _, _) = event { return name }
+            return nil
+        }
+        #expect(names == ["time.now"])
+    }
+
     // MARK: - Helpers
 
     private static func decodeBody(_ http: FakeHTTPClient) throws -> [String: Any] {

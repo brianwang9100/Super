@@ -120,6 +120,10 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var reducer = AnthropicStreamReducer()
+                // Anthropic restricts tool names to `[A-Za-z0-9_-]` (same as
+                // OpenAI); Super's IDs are dot-namespaced. Encode the sanitized
+                // wire name and restore the registry name on decoded events.
+                let nameMap = ToolWireNameMap(tools: tools)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -128,7 +132,8 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                         messages: messages,
                         model: model,
                         tools: tools,
-                        temperature: temperature
+                        temperature: temperature,
+                        nameMap: nameMap
                     )
                     var parser = SSEParser()
                     let decoder = JSONDecoder()
@@ -137,13 +142,13 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                     for try await chunk in http.stream(request) {
                         for event in parser.append(chunk) {
                             for normalized in consume(event.data, into: &reducer, with: decoder) {
-                                continuation.yield(normalized)
+                                continuation.yield(nameMap.restoringToolName(in: normalized))
                             }
                         }
                     }
                     for event in parser.finish() {
                         for normalized in consume(event.data, into: &reducer, with: decoder) {
-                            continuation.yield(normalized)
+                            continuation.yield(nameMap.restoringToolName(in: normalized))
                         }
                     }
                 } catch {
@@ -166,7 +171,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                 }
 
                 for event in reducer.finish() {
-                    continuation.yield(event)
+                    continuation.yield(nameMap.restoringToolName(in: event))
                 }
                 continuation.finish()
             }
@@ -194,7 +199,8 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         messages: [LLMMessage],
         model: LLMModel,
         tools: [LLMTool],
-        temperature: Double
+        temperature: Double,
+        nameMap: ToolWireNameMap
     ) throws -> URLRequest {
         let url = messagesURL()
         var request = URLRequest(url: url)
@@ -222,7 +228,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             max(temperature, Self.temperatureRange.lowerBound),
             Self.temperatureRange.upperBound
         )
-        let (system, anthropicMessages) = try translate(messages)
+        let (system, anthropicMessages) = try translate(messages, nameMap: nameMap)
         let body = AnthropicMessagesRequest(
             model: model.id,
             maxTokens: maxTokens,
@@ -230,7 +236,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             system: system,
             messages: anthropicMessages,
             temperature: thinkingEnabled ? nil : clampedTemperature,
-            tools: translate(tools),
+            tools: translate(tools, nameMap: nameMap),
             thinking: thinking
         )
 
@@ -283,7 +289,10 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
     /// (PR4). Validate the accepted replay shape (incl. whether a matching
     /// `server_tool_use` block must also be replayed) against `/v1/messages`
     /// then; until then it's covered only by serialization-shape unit tests.
-    private func translate(_ messages: [LLMMessage]) throws -> (system: String?, messages: [AnthropicMessage]) {
+    private func translate(
+        _ messages: [LLMMessage],
+        nameMap: ToolWireNameMap
+    ) throws -> (system: String?, messages: [AnthropicMessage]) {
         var systemParts: [String] = []
         var grouped: [(role: String, blocks: [AnthropicContentBlock])] = []
 
@@ -344,7 +353,11 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                 if message.role == .assistant {
                     for block in message.content {
                         if case .toolUse(let id, let name, let input, _) = block {
-                            blocks.append(.toolUse(id: id, name: name, input: input))
+                            blocks.append(.toolUse(
+                                id: id,
+                                name: nameMap.wireName(forOriginal: name),
+                                input: input
+                            ))
                         }
                     }
                 }
@@ -400,11 +413,11 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
     /// `__native_web_search__` sentinel becomes the `web_search` server tool;
     /// every other tool becomes a custom tool with an `input_schema`. Returns
     /// `nil` when there are no tools so the key is omitted entirely.
-    private func translate(_ tools: [LLMTool]) -> [AnthropicTool]? {
+    private func translate(_ tools: [LLMTool], nameMap: ToolWireNameMap) -> [AnthropicTool]? {
         let (clientTools, searchEnabled) = NativeWebSearch.partition(tools)
         var out: [AnthropicTool] = clientTools.map { tool in
             .function(
-                name: tool.name,
+                name: nameMap.wireName(forOriginal: tool.name),
                 description: tool.description,
                 inputSchema: JSONToolSchema.parametersObject(for: tool.parameters)
             )

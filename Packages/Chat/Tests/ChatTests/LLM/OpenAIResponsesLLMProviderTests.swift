@@ -433,6 +433,60 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(fnCall["arguments"] as? String == "{\"city\":\"Paris\"}")
     }
 
+    // MARK: - Tool wire-name sanitization (dot-namespaced tool IDs)
+
+    /// Regression: OpenAI rejects dot-namespaced names (`Invalid
+    /// 'tools[0].name': string does not match pattern '^[a-zA-Z0-9_-]+$'`),
+    /// which 400'd every turn that advertised Super's `time.now`-style tools.
+    @Test func dotNamespacedToolNameIsSanitizedInToolDefinitions() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let tools = try #require(body["tools"] as? [[String: Any]])
+        #expect(tools.compactMap { $0["name"] as? String } == ["time_now"])
+    }
+
+    @Test func dotNamespacedHistoryToolCallEncodesTheSanitizedWireName() async throws {
+        // Turn 2 of a tool conversation replays the prior `function_call`;
+        // its name must be sanitized the same way as the tool definition.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "time?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "call_xyz", name: "time.now", input: .object([:]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "call_xyz", content: "12:00", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [.dotNamedTimeTool], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let input = try #require(body["input"] as? [[String: Any]])
+        let fnCall = try #require(input.first { $0["type"] as? String == "function_call" })
+        #expect(fnCall["name"] as? String == "time_now")
+    }
+
+    @Test func streamedToolCallNameIsRestoredToTheRegistryName() async throws {
+        // The model calls back with the sanitized wire name; the emitted
+        // `.toolUse` must carry the original dot name so the `ToolRegistry`
+        // exact-match lookup succeeds.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-toolcall-dotname"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "time?")],
+            model: model, tools: [.dotNamedTimeTool], temperature: 0.0
+        ))
+        let names = events.compactMap { event -> String? in
+            if case .toolUse(_, _, let name, _, _) = event { return name }
+            return nil
+        }
+        #expect(names == ["time.now"])
+    }
+
     // MARK: - Helpers
 
     private static func decodeBody(_ http: FakeHTTPClient) throws -> [String: Any] {
@@ -459,6 +513,19 @@ struct OpenAIResponsesLLMProviderTests {
 }
 
 extension LLMTool {
+    /// Convenience for tests: a dot-namespaced tool matching Super's real
+    /// tool-ID convention (`time.now`, `bible.read`, …).
+    static var dotNamedTimeTool: LLMTool {
+        LLMTool(
+            id: "time.now",
+            name: "time.now",
+            description: "Returns the current time.",
+            category: .query,
+            parameters: [],
+            appletId: "chat"
+        )
+    }
+
     /// Convenience for tests: the native-web-search sentinel tool.
     static var nativeSearchSentinel: LLMTool {
         LLMTool(
