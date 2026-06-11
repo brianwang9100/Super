@@ -486,15 +486,50 @@ struct SettingsModelDetailPaneCatalogTests {
 
     // MARK: - Edit-mode model editing
 
-    @Test("Model dropdown shows for built-in non-Apple providers in BOTH create and edit")
-    func modelDropdownTruthTable() {
-        // The gate relaxation this feature ships: edit/create no longer
-        // factor in — a persisted built-in row keeps a pickable model.
-        #expect(SettingsModelDetailPane.showsModelDropdownInForm(isApple: false, isCustom: false))
-        // Apple's single on-device model isn't pickable in the form;
-        // Custom types its wire id into a text field instead.
-        #expect(!SettingsModelDetailPane.showsModelDropdownInForm(isApple: true, isCustom: false))
-        #expect(!SettingsModelDetailPane.showsModelDropdownInForm(isApple: false, isCustom: true))
+    @Test("resolveEditProvider keeps the raw wire id for an off-catalog native row")
+    func resolveEditProviderOffCatalogNativeKeepsWireId() {
+        // A native row whose modelId was pruned from the curated catalog
+        // must resolve to its provider WITH the wire id as the selection —
+        // an empty catalogID would render "Select model…" and permanently
+        // disable Save on an untouched row (isValid requires a selection).
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .geminiNative,
+            modelId: "gemini-2.5-pro",
+            baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")
+        )
+        #expect(resolved.providerID == "google")
+        #expect(resolved.catalogID == "gemini-2.5-pro")
+    }
+
+    @Test("editSeedName heals an empty name from the catalog model or the stored fallback")
+    func editSeedNameHealsEmptyNames() {
+        // Non-empty names pass through untouched.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "My Gemini", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-3-pro", storedFallback: nil
+        ) == "My Gemini")
+        // Empty name + catalog-known model → catalog display name.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "  ", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-3-pro", storedFallback: nil
+        ) == "Gemini 3 Pro")
+        // Empty name + off-catalog model → the stored fallback's display
+        // name (the raw wire id) — the Name field is hidden for built-ins,
+        // so without this heal Save is permanently disabled.
+        let fallback = LLMCatalogModel(
+            id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-2.5-pro", storedFallback: fallback
+        ) == "gemini-2.5-pro")
+        // Custom (nil fallback, off-catalog id): keep the empty name —
+        // the field is visible there for the user to fill in.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "", resolvedProviderID: LLMProviderCatalog.customProviderID,
+            resolvedCatalogID: "", storedFallback: nil
+        ) == "")
     }
 
     @Test("Edit header is provider-only for built-ins, Provider · Model for Apple, nil for Custom/create")
@@ -525,28 +560,6 @@ struct SettingsModelDetailPaneCatalogTests {
             isEditing: false, isApple: false, isCustom: false,
             providerName: "OpenAI", modelName: "GPT-5.5"
         ) == nil)
-    }
-
-    @Test("editSeedModelCatalogID falls back to the wire id for off-catalog built-in rows")
-    func editSeedModelCatalogIDFallsBackToWireId() {
-        // Off-catalog native row (resolveEditProvider returned ""): seed
-        // the raw wire id so the dropdown shows it and Save isn't bricked.
-        #expect(SettingsModelDetailPane.editSeedModelCatalogID(
-            resolvedProviderID: "google", resolvedCatalogID: "", rowModelId: "gemini-2.5-pro"
-        ) == "gemini-2.5-pro")
-        // Catalog hit passes through untouched.
-        #expect(SettingsModelDetailPane.editSeedModelCatalogID(
-            resolvedProviderID: "google", resolvedCatalogID: "gemini-3-pro", rowModelId: "gemini-3-pro"
-        ) == "gemini-3-pro")
-        // Custom/Apple resolutions pass through (Custom's "" stays "").
-        #expect(SettingsModelDetailPane.editSeedModelCatalogID(
-            resolvedProviderID: LLMProviderCatalog.customProviderID,
-            resolvedCatalogID: "", rowModelId: "my-local-model"
-        ) == "")
-        #expect(SettingsModelDetailPane.editSeedModelCatalogID(
-            resolvedProviderID: LLMProviderCatalog.appleProviderID,
-            resolvedCatalogID: "system-default", rowModelId: "system-default"
-        ) == "system-default")
     }
 
     @Test("makeStoredModelFallback prefers curated metadata, synthesizes for off-catalog ids")
@@ -609,12 +622,6 @@ struct SettingsModelDetailPaneCatalogTests {
         )
         #expect(unioned.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
 
-        // Fetched list already contains it → no duplicate.
-        let noDup = SettingsModelDetailPane.displayedModels(
-            fetched: fetched + [stored], catalog: [], storedFallback: stored
-        )
-        #expect(noDup.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
-
         // No fetch yet → catalog base, stored appended when missing.
         let catalogBase = SettingsModelDetailPane.displayedModels(
             fetched: nil, catalog: fetched, storedFallback: stored
@@ -628,31 +635,38 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(createMode.map(\.id) == ["gemini-3-pro"])
     }
 
-    @Test("shouldClearSelection never clears the stored model; clears a dropped transient pick")
-    func shouldClearSelectionNeverClearsStoredModel() {
+    @Test("displayedModels replaces a live-listed stored id with the fallback's authoritative metadata")
+    func displayedModelsReplacesLiveListedStoredModel() {
+        // Regression: when the live fetch RETURNS the stored off-catalog id,
+        // reconcile synthesizes it with the flat 200k default cap and
+        // thinking off. If that entry shadowed the stored fallback,
+        // currentCatalogModel would resolve to it and (a) Save's cap check
+        // would brick an untouched 1M-token row, (b) the Thinking toggle
+        // would vanish, (c) re-picking the model would reseed downgraded
+        // metadata. The fallback must replace the base entry in place.
         let stored = LLMCatalogModel(
             id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
             maxContextTokens: 1_000_000, supportsThinking: true
         )
-        let displayed = [
-            LLMCatalogModel(
-                id: "gemini-3-pro", displayName: "Gemini 3 Pro",
-                maxContextTokens: 1_000_000, supportsThinking: true
-            ),
-            stored,
-        ]
-        // The stored model is in the unioned display list → never cleared.
-        #expect(!SettingsModelDetailPane.shouldClearSelection(
-            selectedID: "gemini-2.5-pro", displayed: displayed
-        ))
-        // A transient pick the refreshed list no longer offers → cleared
-        // back to the "Select model…" placeholder.
-        #expect(SettingsModelDetailPane.shouldClearSelection(
-            selectedID: "gemini-9-preview", displayed: displayed
-        ))
-        // Empty selection (placeholder showing) → nothing to clear.
-        #expect(!SettingsModelDetailPane.shouldClearSelection(
-            selectedID: "", displayed: displayed
-        ))
+        let fetched = LLMProviderCatalog.reconcile(
+            providerID: "google",
+            fetchedModelIDs: ["gemini-3-pro", "gemini-2.5-pro"]
+        )
+        // Precondition: reconcile really does synthesize the off-catalog id
+        // with downgraded defaults (if this stops holding, the replacement
+        // is dead code and this test should be revisited).
+        let synthesized = fetched.first { $0.id == "gemini-2.5-pro" }
+        #expect(synthesized?.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
+        #expect(synthesized?.supportsThinking == false)
+
+        let displayed = SettingsModelDetailPane.displayedModels(
+            fetched: fetched, catalog: [], storedFallback: stored
+        )
+        // No duplicate, original position kept…
+        #expect(displayed.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
+        // …and the entry carries the stored row's metadata, not reconcile's.
+        let resolved = displayed.first { $0.id == "gemini-2.5-pro" }
+        #expect(resolved?.maxContextTokens == 1_000_000)
+        #expect(resolved?.supportsThinking == true)
     }
 }

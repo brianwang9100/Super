@@ -138,35 +138,24 @@ struct SettingsModelDetailPane: View {
             let resolvedProviderID = resolved.providerID
             let resolvedCatalogID = resolved.catalogID
             _providerID = State(initialValue: resolvedProviderID)
-            // Off-catalog native rows resolve to (provider, "") — seed the
-            // raw wire id instead so the dropdown shows the stored model
-            // and `isValid` doesn't brick Save on an untouched row.
-            _modelCatalogID = State(initialValue: Self.editSeedModelCatalogID(
-                resolvedProviderID: resolvedProviderID,
-                resolvedCatalogID: resolvedCatalogID,
-                rowModelId: row.modelId
-            ))
-            storedModelFallback = Self.makeStoredModelFallback(
+            _modelCatalogID = State(initialValue: resolvedCatalogID)
+            let fallback = Self.makeStoredModelFallback(
                 resolvedProviderID: resolvedProviderID,
                 modelId: row.modelId,
                 maxContextTokens: row.maxContextTokens,
                 supportsThinking: row.supportsThinking
             )
-            // Auto-heal the name if the row arrives with an empty
-            // string AND the row resolves to a built-in catalog model
-            // (Name field is hidden in that case, so an empty name
-            // would otherwise permanently disable Save with no UI
-            // surface for the user to fix). Falls back to row.name
-            // for Custom rows (where the field is visible).
-            let resolvedName: String
-            if row.name.trimmingCharacters(in: .whitespaces).isEmpty,
-               let entry = LLMProviderCatalog.entry(forID: resolvedProviderID),
-               let model = entry.models.first(where: { $0.id == resolvedCatalogID }) {
-                resolvedName = model.displayName
-            } else {
-                resolvedName = row.name
-            }
-            _name = State(initialValue: resolvedName)
+            storedModelFallback = fallback
+            // Auto-heal the name if the row arrives with an empty string
+            // and resolves to a built-in provider (Name field is hidden in
+            // that case, so an empty name would otherwise permanently
+            // disable Save with no UI surface for the user to fix).
+            _name = State(initialValue: Self.editSeedName(
+                rowName: row.name,
+                resolvedProviderID: resolvedProviderID,
+                resolvedCatalogID: resolvedCatalogID,
+                storedFallback: fallback
+            ))
             _baseURLText = State(initialValue: row.baseURL?.absoluteString ?? "")
             _modelId = State(initialValue: row.modelId)
             _supportsThinking = State(initialValue: row.supportsThinking)
@@ -311,17 +300,7 @@ struct SettingsModelDetailPane: View {
     /// edit modes (in create the live list needs a typed key first; in
     /// edit the gate is always open and the list fetches with the stored
     /// key). Custom uses a Model ID text field instead.
-    private var showsModelDropdownInForm: Bool {
-        Self.showsModelDropdownInForm(isApple: isApple, isCustom: isCustom)
-    }
-
-    /// Pure form of the dropdown gate so the truth table is unit-testable
-    /// without standing up the view (the file's established pattern — see
-    /// `resolveEditProvider`). Edit/create no longer factor in: built-in
-    /// non-Apple rows keep a pickable model after persisting.
-    nonisolated static func showsModelDropdownInForm(isApple: Bool, isCustom: Bool) -> Bool {
-        !isApple && !isCustom
-    }
+    private var showsModelDropdownInForm: Bool { !isApple && !isCustom }
 
     /// `true` when the user has typed (or pasted) real key material —
     /// not the synthetic placeholder bullets, not whitespace/newlines.
@@ -582,15 +561,16 @@ struct SettingsModelDetailPane: View {
             // entered); edit mode resolves the row's stored Keychain key.
             loadModelList(force: false)
         }
-        .onChange(of: viewModel.fetchedModels[providerID]) { _, newModels in
-            // After a fetch, if the previously-selected model isn't in the
-            // displayed list, drop back to the "Select model…" placeholder
-            // rather than leaving a stale pick that the dropdown can't
-            // show. Checks the unioned `displayedModels` (not the raw
-            // fetch) so an edit row's stored model is never cleared out
-            // from under an untouched form.
-            guard newModels != nil else { return }
-            if Self.shouldClearSelection(selectedID: modelCatalogID, displayed: displayedModels) {
+        .onChange(of: viewModel.fetchedModels[providerID]) { _, _ in
+            // After any fetch-cache change — a fresh list OR a failed
+            // forced refresh clearing it to nil — drop a selection the
+            // dropdown can no longer show back to the "Select model…"
+            // placeholder. Checks the displayed list (not the raw fetch)
+            // so an edit row's stored model, always present via the
+            // fallback, is never cleared out from under an untouched
+            // form; only a transient live-only pick can be dropped.
+            guard !modelCatalogID.isEmpty else { return }
+            if !displayedModels.contains(where: { $0.id == modelCatalogID }) {
                 modelCatalogID = ""
             }
         }
@@ -1174,7 +1154,11 @@ struct SettingsModelDetailPane: View {
     ///    is byte-identical to a compat entry's `defaultBaseURL`, so a
     ///    URL-first match would misfile an `.openAIResponses` row as the
     ///    `"openai"` compat provider and open it in compat-edit mode — where
-    ///    a model-id change on Save could overwrite the native wire id.
+    ///    a model-id change on Save could overwrite the native wire id. A
+    ///    native row whose modelId is no longer in the curated catalog
+    ///    resolves to its provider with the raw wire id as `catalogID` —
+    ///    the dropdown shows it via the stored-model fallback, and Save
+    ///    stays enabled.
     /// 3. **OpenAI-compat** → must match BOTH the catalog model id AND the
     ///    catalog base URL (trailing-slash tolerant); otherwise Custom, so a
     ///    user who points a catalog wire id at their own proxy isn't
@@ -1205,7 +1189,10 @@ struct SettingsModelDetailPane: View {
                 for model in entry.models where model.id == modelId {
                     return (entry.id, model.id)
                 }
-                return (entry.id, "")
+                // Off-catalog wire id (catalog-pruned model): keep the raw
+                // id as the selection so the edit dropdown can show it and
+                // `isValid`'s non-empty guard doesn't brick Save.
+                return (entry.id, modelId)
             }
             return (LLMProviderCatalog.customProviderID, "")
         case .openAICompatible, .appleFoundation:
@@ -1222,22 +1209,25 @@ struct SettingsModelDetailPane: View {
         return (LLMProviderCatalog.customProviderID, "")
     }
 
-    /// Catalog-id seed for the edit form's Model dropdown. Off-catalog
-    /// built-in rows resolve to `(provider, "")` in `resolveEditProvider`
-    /// — seed the raw wire id instead so the dropdown shows the stored
-    /// model (via the unioned fallback) and `isValid`'s non-empty
-    /// requirement doesn't permanently disable Save on an untouched row.
-    /// Custom and Apple resolutions pass through unchanged.
-    nonisolated static func editSeedModelCatalogID(
+    /// Name seed for the edit form. Returns `rowName` untouched when it
+    /// has content; an empty/whitespace name heals to the resolved catalog
+    /// model's display name, or the stored fallback's (the raw wire id)
+    /// for off-catalog built-in rows — the Name field is hidden for
+    /// built-ins, so an empty name would otherwise permanently disable
+    /// Save with no UI surface to fix it. Custom rows (visible field,
+    /// nil fallback) keep the empty name for the user to fill in.
+    nonisolated static func editSeedName(
+        rowName: String,
         resolvedProviderID: String,
         resolvedCatalogID: String,
-        rowModelId: String
+        storedFallback: LLMCatalogModel?
     ) -> String {
-        guard resolvedCatalogID.isEmpty,
-              resolvedProviderID != LLMProviderCatalog.customProviderID,
-              resolvedProviderID != LLMProviderCatalog.appleProviderID
-        else { return resolvedCatalogID }
-        return rowModelId
+        guard rowName.trimmingCharacters(in: .whitespaces).isEmpty else { return rowName }
+        if let entry = LLMProviderCatalog.entry(forID: resolvedProviderID),
+           let model = entry.models.first(where: { $0.id == resolvedCatalogID }) {
+            return model.displayName
+        }
+        return storedFallback?.displayName ?? rowName
     }
 
     /// The edit row's stored model as an `LLMCatalogModel`: the curated
@@ -1270,31 +1260,29 @@ struct SettingsModelDetailPane: View {
     }
 
     /// Dropdown source: the live list when fetched, else the curated
-    /// catalog; the edit row's stored model is appended (matching
-    /// `reconcile`'s unknown-ids-last placement) whenever the base list
-    /// omits it, so the persisted selection is always present.
+    /// catalog — with the edit row's stored model guaranteed present and
+    /// carrying its authoritative metadata. When the base list omits the
+    /// stored id it's appended (matching `reconcile`'s unknown-ids-last
+    /// placement); when the base list *contains* it, the fallback entry
+    /// REPLACES the base one. The replacement matters for off-catalog ids
+    /// the live fetch returns: `reconcile` synthesizes those with the flat
+    /// 200k default cap and thinking off, which would re-brick Save's cap
+    /// check on an untouched 1M-token row and hide its Thinking toggle.
+    /// For catalog-known ids the fallback IS the curated entry, so the
+    /// replacement is a no-op.
     nonisolated static func displayedModels(
         fetched: [LLMCatalogModel]?,
         catalog: [LLMCatalogModel],
         storedFallback: LLMCatalogModel?
     ) -> [LLMCatalogModel] {
         let base = fetched ?? catalog
-        guard let storedFallback,
-              !base.contains(where: { $0.id == storedFallback.id })
-        else { return base }
-        return base + [storedFallback]
-    }
-
-    /// Post-fetch selection-clear rule: clear only when a non-empty
-    /// selection is absent from the *displayed* (unioned) list. Because
-    /// the union always contains the edit row's stored model, only a
-    /// transient in-form pick that the new list dropped can be cleared —
-    /// never the persisted selection of an untouched row.
-    nonisolated static func shouldClearSelection(
-        selectedID: String,
-        displayed: [LLMCatalogModel]
-    ) -> Bool {
-        !selectedID.isEmpty && !displayed.contains { $0.id == selectedID }
+        guard let storedFallback else { return base }
+        guard let index = base.firstIndex(where: { $0.id == storedFallback.id }) else {
+            return base + [storedFallback]
+        }
+        var replaced = base
+        replaced[index] = storedFallback
+        return replaced
     }
 
     /// Trailing-slash tolerant URL comparison. Treats `…/path` and

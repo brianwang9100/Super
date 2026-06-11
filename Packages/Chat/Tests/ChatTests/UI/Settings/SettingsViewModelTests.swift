@@ -1479,6 +1479,47 @@ struct SettingsViewModelTests {
         #expect(await service.callCount == 2)
     }
 
+    @Test("A FORCED stored-key fetch with no resolvable key posts the fallback note (refresh isn't a dead button)")
+    func storedKeyForcedFetchWithoutKeyPostsNote() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
+        // ref-1 intentionally absent from storedKeys (lost Keychain entry).
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: true)
+
+        #expect(await service.callCount == 0)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+    }
+
+    @Test("A stale fetch completing after a newer one discards its writes (generation guard)")
+    func staleFetchCompletionIsDiscarded() async {
+        // The edit pane's stored-key appear-fetch can still be on the wire
+        // when the typed-key debounce fetch starts and finishes. The slow
+        // (stale) completion must not clobber the fresh list — neither its
+        // success result nor a failure's cache-wipe + fallback note.
+        let service = ScriptedModelListingService(.gated(["stale-model"]))
+        let vm = makeViewModel(modelListingService: service)
+
+        let staleTask = Task {
+            await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-old", force: false)
+        }
+        // Entry signal: the stale fetch is suspended at the gate, inside
+        // the network call, BEFORE the newer fetch starts.
+        await service.awaitGateEntered()
+
+        await service.setOutcome(.ids(["gpt-5.5"]))
+        await vm.loadAvailableModels(providerID: "openai", apiKey: "sk-new", force: true)
+        #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
+
+        // Let the stale fetch finish; its (different) result must be dropped.
+        await service.releaseGate()
+        await staleTask.value
+        #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
     private func makeViewModel(
         settingRepository: any SettingRepository = InMemorySettingRepository(),
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
@@ -1543,17 +1584,42 @@ private actor ScriptedModelListingService: ModelListingService {
         /// Sleeps until the surrounding task is cancelled — drives the
         /// cancelled-fetch path (the pane's debounce restarting mid-flight).
         case hang
+        /// Suspends at a gate until `releaseGate()` is called, then returns
+        /// the ids — drives the stale-completion path (a slow fetch landing
+        /// after a newer one already wrote the cache). The test sequences
+        /// the race deterministically: `awaitGateEntered()` is the entry
+        /// signal (AGENTS.md §Testing.7 "staged concurrency"), then the
+        /// newer fetch runs to completion, then `releaseGate()` lets the
+        /// stale one finish.
+        case gated([String])
     }
 
     private var outcome: Outcome
     private(set) var callCount = 0
     private(set) var lastAPIKey: String?
+    private var gateEntered = false
+    private var gateEnteredWaiters: [CheckedContinuation<Void, Never>] = []
+    private var gateWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(_ outcome: Outcome) { self.outcome = outcome }
 
     /// Swap the scripted outcome between calls (e.g. success then failure on
     /// a forced refresh).
     func setOutcome(_ outcome: Outcome) { self.outcome = outcome }
+
+    /// Suspends until a `.gated` call has reached the gate. Returns
+    /// immediately if it already has.
+    func awaitGateEntered() async {
+        if gateEntered { return }
+        await withCheckedContinuation { gateEnteredWaiters.append($0) }
+    }
+
+    /// Releases every call suspended at the `.gated` gate.
+    func releaseGate() {
+        let waiters = gateWaiters
+        gateWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
 
     func listModelIDs(kind: LLMProviderKind, baseURL: URL, apiKey: String?) async throws -> [String] {
         callCount += 1
@@ -1564,6 +1630,13 @@ private actor ScriptedModelListingService: ModelListingService {
         case .hang:
             try await Task.sleep(for: .seconds(30))
             return []
+        case let .gated(ids):
+            gateEntered = true
+            let enteredWaiters = gateEnteredWaiters
+            gateEnteredWaiters = []
+            for waiter in enteredWaiters { waiter.resume() }
+            await withCheckedContinuation { gateWaiters.append($0) }
+            return ids
         }
     }
 }
