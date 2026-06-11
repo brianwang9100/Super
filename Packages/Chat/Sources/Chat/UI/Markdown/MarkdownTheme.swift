@@ -16,12 +16,11 @@ extension SuperTheme {
     /// SwiftUI view modifiers (`markdownMargin`, `markdownTextStyle`,
     /// `relativeLineSpacing`) that are themselves MainActor-isolated.
     ///
-    /// `bodyStyle` controls the `.text` slot — `.thinking` paints in
-    /// `inkSoft` at 15pt and italic, `.banner` paints `inkSoft` at 15pt,
-    /// nil paints the default `ink` at 17pt. Baking the style into the
-    /// theme (rather than layering it via `markdownTextStyle(\.text)`)
-    /// is the only path that reliably propagates `FontStyle(.italic)`
-    /// through MarkdownUI's text composition.
+    /// `bodyStyle` controls the `.text` slot — `.thinking` and `.banner`
+    /// paint in `inkSoft` at 15pt, nil paints the default `ink` at 17pt.
+    /// Baking the style into the theme (rather than layering it via
+    /// `markdownTextStyle(\.text)`) keeps every text attribute resolved
+    /// in one place through MarkdownUI's text composition.
     ///
     /// Body size scales by `appearance.fontScale`; headings (`.em(...)`)
     /// auto-scale because em resolves against the body. Paragraph
@@ -46,20 +45,14 @@ extension SuperTheme {
         // code keep their monospaced family.
         let bodyFamily: FontFamily = readingFamily
             .map { FontFamily(.custom($0)) } ?? FontFamily(.system(.default))
-        // Result-builder branching inside `.text { ... }` doesn't
-        // propagate `FontStyle(.italic)` reliably, so the .text slot is
-        // built up-front per body style, then chained into the rest of
-        // the theme.
+        // The .text slot is built up-front per body style, then chained
+        // into the rest of the theme — result-builder branching inside a
+        // single `.text { ... }` historically failed to propagate
+        // `FontStyle(.italic)`, and keeping the per-style builders avoids
+        // re-tripping that class of MarkdownUI composition bug.
         let textStyledTheme: MarkdownUI.Theme = {
             switch bodyStyle {
-            case .thinking:
-                return MarkdownUI.Theme().text {
-                    bodyFamily
-                    ForegroundColor(theme.inkSoft)
-                    FontSize(15 * appearance.fontScale)
-                    FontStyle(.italic)
-                }
-            case .banner:
+            case .thinking, .banner:
                 return MarkdownUI.Theme().text {
                     bodyFamily
                     ForegroundColor(theme.inkSoft)

@@ -172,13 +172,13 @@ The user can override the default for an individual block by tapping its chevron
 │ 🧠 Thinking                     ▾      │
 │ ─────────────────────────────────────── │
 │ The user has specific constraints:      │
-│ pregnancy (6mo), heat sensitivity...    │  ← italic, softer ink
+│ pregnancy (6mo), heat sensitivity...    │  ← softer ink
 └─────────────────────────────────────────┘
 ```
 
 - Container: 12pt radius, `--bg-sunken` fill, 1pt `--border-faint` border.
 - Header row (always visible): brain icon · label "Thinking" · (if streaming) three pulsing dots · chevron.
-- Body (expanded only): italic, `--ink-soft`, 13pt, 1.55 line-height. Separated from the header by a 1pt hairline.
+- Body (expanded only): `--ink-soft`, 13pt, 1.55 line-height. Separated from the header by a 1pt hairline.
 - While streaming, a typing caret trails the last character inside the expanded body.
 
 ### 4.5 Tool Call Block
