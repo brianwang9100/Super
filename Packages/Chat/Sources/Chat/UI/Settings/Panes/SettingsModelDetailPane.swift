@@ -854,6 +854,10 @@ struct SettingsModelDetailPane: View {
                 .textCase(.uppercase)
                 .tracking(0.5)
             SecureField(isEditing ? "•••• (tap to change)" : "sk-…", text: $apiKey)
+                // .password marks this as a credential field so iOS offers
+                // password-manager AutoFill (1Password et al.) in the
+                // QuickType bar instead of a bare keyboard.
+                .textContentType(.password)
                 .focused($apiKeyFieldFocused)
                 .font(typography.font(.callout))
                 .foregroundStyle(theme.ink)
