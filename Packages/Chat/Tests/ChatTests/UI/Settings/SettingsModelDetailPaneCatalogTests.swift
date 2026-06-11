@@ -483,4 +483,190 @@ struct SettingsModelDetailPaneCatalogTests {
         let entry = LLMProviderCatalog.entry(forID: "xai")
         #expect(entry?.models.map(\.id) == ["grok-4.3"])
     }
+
+    // MARK: - Edit-mode model editing
+
+    @Test("resolveEditProvider keeps the raw wire id for an off-catalog native row")
+    func resolveEditProviderOffCatalogNativeKeepsWireId() {
+        // A native row whose modelId was pruned from the curated catalog
+        // must resolve to its provider WITH the wire id as the selection —
+        // an empty catalogID would render "Select model…" and permanently
+        // disable Save on an untouched row (isValid requires a selection).
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .geminiNative,
+            modelId: "gemini-2.5-pro",
+            baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta")
+        )
+        #expect(resolved.providerID == "google")
+        #expect(resolved.catalogID == "gemini-2.5-pro")
+    }
+
+    @Test("editSeedName heals an empty name from the catalog model or the stored fallback")
+    func editSeedNameHealsEmptyNames() {
+        // Non-empty names pass through untouched.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "My Gemini", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-3-pro", storedFallback: nil
+        ) == "My Gemini")
+        // Empty name + catalog-known model → catalog display name.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "  ", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-3-pro", storedFallback: nil
+        ) == "Gemini 3 Pro")
+        // Empty name + off-catalog model → the stored fallback's display
+        // name (the raw wire id) — the Name field is hidden for built-ins,
+        // so without this heal Save is permanently disabled.
+        let fallback = LLMCatalogModel(
+            id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "", resolvedProviderID: "google",
+            resolvedCatalogID: "gemini-2.5-pro", storedFallback: fallback
+        ) == "gemini-2.5-pro")
+        // Custom (nil fallback, off-catalog id): keep the empty name —
+        // the field is visible there for the user to fill in.
+        #expect(SettingsModelDetailPane.editSeedName(
+            rowName: "", resolvedProviderID: LLMProviderCatalog.customProviderID,
+            resolvedCatalogID: "", storedFallback: nil
+        ) == "")
+    }
+
+    @Test("Edit header is provider-only for built-ins, Provider · Model for Apple, nil for Custom/create")
+    func editHeaderLabelTruthTable() {
+        // Built-in: provider alone — the Model dropdown owns the model name.
+        #expect(SettingsModelDetailPane.editHeaderLabel(
+            isEditing: true, isApple: false, isCustom: false,
+            providerName: "OpenAI", modelName: "GPT-5.5"
+        ) == "OpenAI")
+        // Built-in with an off-catalog model (nil modelName) still gets a
+        // header — regression: such rows previously rendered none.
+        #expect(SettingsModelDetailPane.editHeaderLabel(
+            isEditing: true, isApple: false, isCustom: false,
+            providerName: "Google", modelName: nil
+        ) == "Google")
+        // Apple keeps the full identity header (model not pickable).
+        #expect(SettingsModelDetailPane.editHeaderLabel(
+            isEditing: true, isApple: true, isCustom: false,
+            providerName: "Apple", modelName: "Apple Intelligence"
+        ) == "Apple · Apple Intelligence")
+        // Custom renders the fully-editable form, no header.
+        #expect(SettingsModelDetailPane.editHeaderLabel(
+            isEditing: true, isApple: false, isCustom: true,
+            providerName: "Custom", modelName: nil
+        ) == nil)
+        // Create mode never shows the header.
+        #expect(SettingsModelDetailPane.editHeaderLabel(
+            isEditing: false, isApple: false, isCustom: false,
+            providerName: "OpenAI", modelName: "GPT-5.5"
+        ) == nil)
+    }
+
+    @Test("makeStoredModelFallback prefers curated metadata, synthesizes for off-catalog ids")
+    func makeStoredModelFallbackPrefersCuratedMetadata() {
+        // Catalog-known id → the curated entry (display name + cap).
+        let curated = SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: "google", modelId: "gemini-3-pro",
+            maxContextTokens: 8_192, supportsThinking: true
+        )
+        #expect(curated?.displayName == "Gemini 3 Pro")
+        #expect(curated?.maxContextTokens == 1_000_000)
+
+        // Off-catalog id → synthesized with the raw id as display name.
+        // Stored window above the synthetic default wins (a 1M-token row
+        // must not get capped down to 200k and brick Save)…
+        let bigStored = SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: "google", modelId: "gemini-2.5-pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )
+        #expect(bigStored?.displayName == "gemini-2.5-pro")
+        #expect(bigStored?.maxContextTokens == 1_000_000)
+        #expect(bigStored?.supportsThinking == true)
+        // …and a stored window below the default keeps the default as cap
+        // (the user may raise the field up to it).
+        let smallStored = SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: "google", modelId: "gemini-2.5-flash-lite",
+            maxContextTokens: 8_192, supportsThinking: false
+        )
+        #expect(smallStored?.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
+
+        // Custom/Apple resolutions and empty ids produce no fallback.
+        #expect(SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: LLMProviderCatalog.customProviderID,
+            modelId: "anything", maxContextTokens: 1, supportsThinking: false
+        ) == nil)
+        #expect(SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: LLMProviderCatalog.appleProviderID,
+            modelId: "system-default", maxContextTokens: 1, supportsThinking: false
+        ) == nil)
+        #expect(SettingsModelDetailPane.makeStoredModelFallback(
+            resolvedProviderID: "google", modelId: "",
+            maxContextTokens: 1, supportsThinking: false
+        ) == nil)
+    }
+
+    @Test("displayedModels unions the stored model into whichever base list omits it")
+    func displayedModelsUnionsStoredModel() {
+        let stored = LLMCatalogModel(
+            id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )
+        let fetched = [LLMCatalogModel(
+            id: "gemini-3-pro", displayName: "Gemini 3 Pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )]
+
+        // Fetched list omits the stored model → appended last.
+        let unioned = SettingsModelDetailPane.displayedModels(
+            fetched: fetched, catalog: [], storedFallback: stored
+        )
+        #expect(unioned.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
+
+        // No fetch yet → catalog base, stored appended when missing.
+        let catalogBase = SettingsModelDetailPane.displayedModels(
+            fetched: nil, catalog: fetched, storedFallback: stored
+        )
+        #expect(catalogBase.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
+
+        // Create mode (nil fallback) → base list untouched.
+        let createMode = SettingsModelDetailPane.displayedModels(
+            fetched: fetched, catalog: [], storedFallback: nil
+        )
+        #expect(createMode.map(\.id) == ["gemini-3-pro"])
+    }
+
+    @Test("displayedModels replaces a live-listed stored id with the fallback's authoritative metadata")
+    func displayedModelsReplacesLiveListedStoredModel() {
+        // Regression: when the live fetch RETURNS the stored off-catalog id,
+        // reconcile synthesizes it with the flat 200k default cap and
+        // thinking off. If that entry shadowed the stored fallback,
+        // currentCatalogModel would resolve to it and (a) Save's cap check
+        // would brick an untouched 1M-token row, (b) the Thinking toggle
+        // would vanish, (c) re-picking the model would reseed downgraded
+        // metadata. The fallback must replace the base entry in place.
+        let stored = LLMCatalogModel(
+            id: "gemini-2.5-pro", displayName: "gemini-2.5-pro",
+            maxContextTokens: 1_000_000, supportsThinking: true
+        )
+        let fetched = LLMProviderCatalog.reconcile(
+            providerID: "google",
+            fetchedModelIDs: ["gemini-3-pro", "gemini-2.5-pro"]
+        )
+        // Precondition: reconcile really does synthesize the off-catalog id
+        // with downgraded defaults (if this stops holding, the replacement
+        // is dead code and this test should be revisited).
+        let synthesized = fetched.first { $0.id == "gemini-2.5-pro" }
+        #expect(synthesized?.maxContextTokens == LLMProviderCatalog.defaultFetchedMaxContextTokens)
+        #expect(synthesized?.supportsThinking == false)
+
+        let displayed = SettingsModelDetailPane.displayedModels(
+            fetched: fetched, catalog: [], storedFallback: stored
+        )
+        // No duplicate, original position kept…
+        #expect(displayed.map(\.id) == ["gemini-3-pro", "gemini-2.5-pro"])
+        // …and the entry carries the stored row's metadata, not reconcile's.
+        let resolved = displayed.first { $0.id == "gemini-2.5-pro" }
+        #expect(resolved?.maxContextTokens == 1_000_000)
+        #expect(resolved?.supportsThinking == true)
+    }
 }

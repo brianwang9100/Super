@@ -154,6 +154,15 @@ public final class SettingsViewModel {
     /// successful fetch.
     public private(set) var modelListNote: [String: String] = [:]
 
+    /// Per-provider fetch generation. Bumped when a fetch passes the
+    /// guards and starts; a completion whose generation is no longer
+    /// current discards its writes. Two same-provider fetches can be in
+    /// flight at once — the edit pane's stored-key fetch on appear and
+    /// the typed-key debounce — and without this, a slow stale fetch
+    /// (e.g. a revoked stored key timing out into a 401) would clobber
+    /// the fresh list with the fallback note. Last-STARTED wins.
+    private var modelListFetchGeneration: [String: Int] = [:]
+
     /// Stack of pushed sub-panes. Empty means the root pane is showing.
     /// Bound to `SettingsSheet`'s `NavigationStack(path:)`, which is what
     /// produces the native push/pop slide animation. Public so external
@@ -426,14 +435,20 @@ public final class SettingsViewModel {
               let baseURL = entry.defaultBaseURL else { return }
 
         loadingModelsProviderID = providerID
+        let generation = (modelListFetchGeneration[providerID] ?? 0) + 1
+        modelListFetchGeneration[providerID] = generation
         // Guard the reset so a concurrent fetch for a *different* provider
         // can't clear this one's spinner (and vice versa). Two forced fetches
         // for the *same* provider still share the flag — the first to finish
-        // clears it — but that's a benign quick-double-tap edge, and the
-        // cache write is last-writer-wins regardless.
+        // clears it — but that's a benign quick-double-tap edge; the cache
+        // writes are generation-guarded below.
         defer { if loadingModelsProviderID == providerID { loadingModelsProviderID = nil } }
         do {
             let ids = try await service.listModelIDs(kind: entry.kind, baseURL: baseURL, apiKey: key)
+            // A newer fetch for this provider started while this one was on
+            // the wire (the edit pane's stored-key appear-fetch racing the
+            // typed-key debounce). Its result owns the state; discard ours.
+            guard modelListFetchGeneration[providerID] == generation else { return }
             let reconciled = LLMProviderCatalog.reconcile(providerID: providerID, fetchedModelIDs: ids)
             if reconciled.isEmpty {
                 fetchedModels[providerID] = nil
@@ -450,9 +465,46 @@ public final class SettingsViewModel {
             // `CancellationError` into `.transport`, so check the task, not
             // the error type). The restarted fetch owns the next state.
             guard !Task.isCancelled else { return }
+            // Same staleness rule as the success path: a superseded
+            // fetch's failure must not wipe the newer fetch's list.
+            guard modelListFetchGeneration[providerID] == generation else { return }
             fetchedModels[providerID] = nil
             modelListNote[providerID] = Self.modelListFallbackNote
         }
+    }
+
+    /// Edit-mode companion to ``loadAvailableModels(providerID:apiKey:force:)``:
+    /// resolves the editing row's stored Keychain key (via its `apiKeyRef`)
+    /// and delegates. The detail pane calls this when the key field still
+    /// holds the synthetic placeholder bullets — i.e. the user hasn't typed
+    /// a new key, so the stored one is the only real credential available.
+    ///
+    /// When the row, ref, or stored key is missing: a passive (appear-time,
+    /// `force: false`) fetch is a silent no-op — mirroring create mode's
+    /// empty-key gate, where an absent key means "can't list yet", not
+    /// "listing failed". A *forced* fetch (the user explicitly tapped the
+    /// refresh icon) posts the fallback note instead, so the affordance
+    /// isn't a dead button when the Keychain entry is gone. A fetch
+    /// failure with a resolved key posts the note via the delegate.
+    public func loadAvailableModelsUsingStoredKey(
+        providerID: String,
+        editingModelID: String,
+        force: Bool
+    ) async {
+        guard modelListingService != nil else { return }
+        // Cache-hit short-circuit BEFORE the repo/Keychain round-trip —
+        // the delegate would skip the fetch anyway, but only after we
+        // paid for two async reads.
+        if !force, fetchedModels[providerID] != nil { return }
+        guard let record = try? await modelRepository.fetch(id: editingModelID),
+              let ref = record.apiKeyRef,
+              let key = try? await modelRepository.loadAPIKey(ref: ref),
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            if force { modelListNote[providerID] = Self.modelListFallbackNote }
+            return
+        }
+        await loadAvailableModels(providerID: providerID, apiKey: key, force: force)
     }
 
     /// Inline note shown under the Model dropdown when the live list can't load
