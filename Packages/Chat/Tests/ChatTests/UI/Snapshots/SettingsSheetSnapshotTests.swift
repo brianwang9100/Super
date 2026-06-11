@@ -784,6 +784,19 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
+    @Test("model detail create flow — key entered, models loading (dark)")
+    func modelDetailProviderOpenAIModelsLoadingDark() async {
+        await verifyCreateWithProvider(
+            theme: .vellumDark,
+            selection: .openAI,
+            availability: .available,
+            existingAppleFoundation: false,
+            name: "settings_model_detail_models_loading_dark",
+            apiKey: "sk-snapshot",
+            loadingModelsProviderID: "openai"
+        )
+    }
+
     // The live model-list fetch fell back to the curated catalog (no/bad key,
     // offline, etc.): the inline note renders under the Model dropdown.
     @Test("model detail create flow — live model-list fallback note (light)")
