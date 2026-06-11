@@ -355,6 +355,26 @@ struct MessageListSnapshotTests {
     @Test("thinking trace renders markdown when expanded")
     func thinkingBlockWithMarkdown() {
         let function = #function
+        recordOrCompare(
+            view: thinkingMarkdownList(theme: .vellumLight),
+            name: "list_thinking_markdown_light",
+            function: function
+        )
+    }
+
+    /// Dark companion to ``thinkingBlockWithMarkdown()`` — completes the
+    /// Vellum light/dark matrix for the expanded thinking trace.
+    @Test("thinking trace renders markdown when expanded (dark)")
+    func thinkingBlockWithMarkdownDark() {
+        let function = #function
+        recordOrCompare(
+            view: thinkingMarkdownList(theme: .vellumDark),
+            name: "list_thinking_markdown_dark",
+            function: function
+        )
+    }
+
+    private func thinkingMarkdownList(theme: SuperTheme.Identifier) -> some View {
         let thinking = """
         Thinking through the trip:
 
@@ -362,7 +382,7 @@ struct MessageListSnapshotTests {
         - Belém needs its own half-day
         - Save Sintra for a day trip
         """
-        let view = MessageList(items: [
+        return MessageList(items: [
             .userBubble(id: "u1", text: "Plan a long weekend in Lisbon", references: []),
             .assistantText(
                 id: "a1",
@@ -372,9 +392,8 @@ struct MessageListSnapshotTests {
                 toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
             ),
         ], verbosity: .verbose)
-        .superTheme(.make(.vellumLight))
+        .superTheme(.make(theme))
         .frame(width: 402, height: 600)
-        recordOrCompare(view: view, name: "list_thinking_markdown_light", function: function)
     }
 
     /// Appearance: minimum font scale (0.80×). Covers the lower-bound
