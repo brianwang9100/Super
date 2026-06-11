@@ -27,6 +27,9 @@ If product later wants snap-back semantics on every foreground (`.active` sceneP
 - **Loader:** `App-SuperBible/SuperBibleSystemPromptLoader.swift` exposes `static func load() -> String`. Reads from `Bundle.main` via Core's shared `AppletSystemPrompt.load(from:resource:)` helper. The bootstrap calls it once and hands the result into `ChatSessionStore.init(chatBriefing:)`.
 - **Divergence from SuperOS:** SuperOS uses `ChatBriefing.load()` (reads `DefaultSystemPrompt.md` from the Chat SwiftPM bundle — generic assistant persona). SuperBible substitutes its own biblical-study persona at this seam only; every other Chat surface is identical between the two targets.
 - **Updating the persona later:** if a future revision changes what the assistant claims to be capable of (new tools, new applets, different scope), update `SuperBibleSystemPrompt.md` in the same PR — don't let the prose drift from the actual capabilities.
+- **Persona principles + guardrails + eval:** the doctrinal stance (historic-creedal, non-neutral), the *describe-don't-prescribe* contested-topic guardrail, the crisis-handling rule, the response taxonomy, and the model-tier eval harness all live in [`../docs/SuperBible/PERSONA_EVAL.md`](../docs/SuperBible/PERSONA_EVAL.md). When you change the persona's behavior, re-run the eval (`.claude/workflows/superbible-persona-eval.js` over `eval/superbible-persona/corpus.json`) and keep that doc honest. The tool-routing half of the guardrail also lives in the Bible applet briefing (`../Packages/Bible/Sources/Bible/Resources/SystemPrompt.md`) — keep the two consistent.
+
+> **Note:** Apple Intelligence (AFM) is currently non-functional for this persona — its ~4096-token window can't hold the full prompt + tool schemas. The persona is tuned and evaluated for the BYOK-Claude path; an AFM-specific disclaimer is separate, later work. See PERSONA_EVAL.md § "Out of scope — Apple Intelligence (AFM)".
 
 ## SuperBible-specific rules
 
