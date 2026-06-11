@@ -1377,6 +1377,108 @@ struct SettingsViewModelTests {
         #expect(await service.callCount == 0)
     }
 
+    // MARK: - loadAvailableModelsUsingStoredKey (edit-mode fetch)
+
+    /// Editing row used by the stored-key fetch tests: a built-in OpenAI
+    /// row whose key lives in the Keychain under `ref-1`.
+    private static func storedKeyRow(apiKeyRef: String? = "ref-1") -> ModelConfigurationRecord {
+        .init(
+            id: "row-1",
+            name: "GPT 5.5",
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            apiKeyRef: apiKeyRef,
+            modelId: "gpt-5.5",
+            createdAt: Date(),
+            supportsThinking: true,
+            maxContextTokens: 400_000,
+            isSelected: false
+        )
+    }
+
+    @Test("Resolves the row's Keychain key and fetches with it")
+    func storedKeyFetchResolvesKeychainKeyAndFetches() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
+        modelRepo.storedKeys["ref-1"] = "sk-stored"
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+
+        #expect(await service.callCount == 1)
+        #expect(await service.lastAPIKey == "sk-stored")
+        #expect(vm.fetchedModels["openai"]?.map(\.id) == ["gpt-5.5"])
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
+    @Test("A row without an apiKeyRef is a silent no-op (catalog fallback, no note)")
+    func storedKeyFetchNoRefIsSilent() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow(apiKeyRef: nil)])
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+
+        #expect(await service.callCount == 0)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
+    @Test("A Keychain miss (ref present, no stored key) is a silent no-op")
+    func storedKeyFetchKeychainMissIsSilent() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
+        // ref-1 intentionally absent from storedKeys.
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+
+        #expect(await service.callCount == 0)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
+    @Test("An unknown row id is a silent no-op")
+    func storedKeyFetchUnknownRowIsSilent() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "missing", force: false)
+
+        #expect(await service.callCount == 0)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == nil)
+    }
+
+    @Test("A fetch failure with a resolved key posts the fallback note (delegate behavior)")
+    func storedKeyFetchFailureSetsFallbackNote() async {
+        let service = ScriptedModelListingService(.failure(.transport("HTTP 401")))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
+        modelRepo.storedKeys["ref-1"] = "sk-revoked"
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+
+        #expect(await service.callCount == 1)
+        #expect(vm.fetchedModels["openai"] == nil)
+        #expect(vm.modelListNote["openai"] == SettingsViewModel.modelListFallbackNote)
+    }
+
+    @Test("A cache hit skips the Keychain round-trip and network unless forced")
+    func storedKeyFetchCacheHitSkipsKeychainAndNetworkUnlessForced() async {
+        let service = ScriptedModelListingService(.ids(["gpt-5.5"]))
+        let modelRepo = StubModelRepository(rows: [Self.storedKeyRow()])
+        modelRepo.storedKeys["ref-1"] = "sk-stored"
+        let vm = makeViewModel(modelRepository: modelRepo, modelListingService: service)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: false)
+        #expect(await service.callCount == 1)
+
+        await vm.loadAvailableModelsUsingStoredKey(providerID: "openai", editingModelID: "row-1", force: true)
+        #expect(await service.callCount == 2)
+    }
+
     private func makeViewModel(
         settingRepository: any SettingRepository = InMemorySettingRepository(),
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),

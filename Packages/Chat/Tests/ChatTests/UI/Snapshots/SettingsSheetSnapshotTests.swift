@@ -101,6 +101,24 @@ struct SettingsSheetSnapshotTests {
         ),
     ]
 
+    /// `sampleModels` plus a native Google row whose `modelId` is no longer
+    /// in the curated catalog (a catalog-pruned model). Edited, it must
+    /// render the provider-only "Google" header, the Model dropdown showing
+    /// the raw stored wire id (via the stored-model union), and an enabled
+    /// Save — the state that was Save-bricked before edit-mode model
+    /// editing shipped.
+    private static let sampleModelsWithOffCatalogGoogle: [SettingsViewModel.ModelRow] = sampleModels + [
+        .init(
+            id: "google-legacy", name: "Gemini 2.5 Pro", monogram: "G2",
+            endpoint: "generativelanguage.googleapis.com/v1beta",
+            maxContextTokens: 1_000_000, isEnabled: true,
+            kind: .geminiNative,
+            baseURL: LLMProviderCatalog.geminiNativeBaseURL,
+            modelId: "gemini-2.5-pro", supportsThinking: true, hasAPIKey: true,
+            searchBackend: "native"
+        ),
+    ]
+
     #if DEBUG
     /// `sampleModels` plus a debug row wired to the client-mock search backend
     /// (`searchBackend: "debug"`). Edited, the "Web search" picker shows
@@ -1024,6 +1042,45 @@ struct SettingsSheetSnapshotTests {
         .dynamicTypeSize(.xxLarge)
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_model_detail_native_search_light_xxl", function: function)
+    }
+
+    // MARK: - Edit mode with an off-catalog stored model
+
+    @Test("model detail edit — off-catalog stored model stays selectable (light)")
+    func modelDetailEditOffCatalogModel() async {
+        await verifyModelDetailEdit(
+            theme: .vellumLight, models: Self.sampleModelsWithOffCatalogGoogle, id: "google-legacy",
+            name: "settings_model_detail_edit_offcatalog_light"
+        )
+    }
+
+    @Test("model detail edit — off-catalog stored model stays selectable (dark)")
+    func modelDetailEditOffCatalogModelDark() async {
+        await verifyModelDetailEdit(
+            theme: .vellumDark, models: Self.sampleModelsWithOffCatalogGoogle, id: "google-legacy",
+            name: "settings_model_detail_edit_offcatalog_dark"
+        )
+    }
+
+    // Dynamic Type XXL covers the dropdown row's reflow with a raw wire id.
+    @Test("dynamic type XXL on model detail edit — off-catalog stored model")
+    func modelDetailEditOffCatalogModelXXL() async {
+        let function = #function
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: .default,
+            models: Self.sampleModelsWithOffCatalogGoogle,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel,
+            initialPane: .modelDetail(id: "google-legacy")
+        )
+        .superTheme(.make(.vellumLight))
+        .dynamicTypeSize(.xxLarge)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: "settings_model_detail_edit_offcatalog_light_xxl", function: function)
     }
 
     #if DEBUG

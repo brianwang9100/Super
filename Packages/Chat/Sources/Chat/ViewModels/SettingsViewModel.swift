@@ -455,6 +455,35 @@ public final class SettingsViewModel {
         }
     }
 
+    /// Edit-mode companion to ``loadAvailableModels(providerID:apiKey:force:)``:
+    /// resolves the editing row's stored Keychain key (via its `apiKeyRef`)
+    /// and delegates. The detail pane calls this when the key field still
+    /// holds the synthetic placeholder bullets — i.e. the user hasn't typed
+    /// a new key, so the stored one is the only real credential available.
+    ///
+    /// Silent no-op (catalog fallback, no note) when the row, ref, or stored
+    /// key is missing — mirroring create mode's empty-key gate, where an
+    /// absent key means "can't list yet", not "listing failed". A fetch
+    /// *failure* with a resolved key still posts the fallback note (delegate
+    /// behavior).
+    public func loadAvailableModelsUsingStoredKey(
+        providerID: String,
+        editingModelID: String,
+        force: Bool
+    ) async {
+        guard modelListingService != nil else { return }
+        // Cache-hit short-circuit BEFORE the repo/Keychain round-trip —
+        // the delegate would skip the fetch anyway, but only after we
+        // paid for two async reads.
+        if !force, fetchedModels[providerID] != nil { return }
+        guard let record = try? await modelRepository.fetch(id: editingModelID),
+              let ref = record.apiKeyRef,
+              let key = try? await modelRepository.loadAPIKey(ref: ref),
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        await loadAvailableModels(providerID: providerID, apiKey: key, force: force)
+    }
+
     /// Inline note shown under the Model dropdown when the live list can't load
     /// and the curated catalog is showing instead.
     static let modelListFallbackNote = "Couldn't load live models — showing built-in list."
