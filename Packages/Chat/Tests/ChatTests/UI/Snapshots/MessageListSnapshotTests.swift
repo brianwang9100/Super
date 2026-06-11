@@ -331,8 +331,8 @@ struct MessageListSnapshotTests {
 
     /// Compaction banner whose summary contains markdown (`**bold**` and
     /// inline `code`). Exercises `MarkdownText.BodyStyle.banner` so a
-    /// future tweak to the banner's foreground/font/italic story is
-    /// caught visually rather than only by the unit-level pin.
+    /// future tweak to the banner's foreground/font story is caught
+    /// visually rather than only by the unit-level pin.
     @Test("compaction banner renders markdown in summary text")
     func compactionBannerWithMarkdown() {
         let function = #function
@@ -350,8 +350,8 @@ struct MessageListSnapshotTests {
 
     /// Thinking trace expanded under verbose verbosity, containing
     /// markdown (a bulleted list + **bold**). Exercises
-    /// `MarkdownText.BodyStyle.thinking` so the italic + softer-ink
-    /// styling stays coherent with markdown structure inside the trace.
+    /// `MarkdownText.BodyStyle.thinking` so the softer-ink styling
+    /// stays coherent with markdown structure inside the trace.
     @Test("thinking trace renders markdown when expanded")
     func thinkingBlockWithMarkdown() {
         let function = #function

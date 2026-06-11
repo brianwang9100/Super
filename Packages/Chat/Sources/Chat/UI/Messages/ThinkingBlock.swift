@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Collapsible reasoning trace block. Header shows "Thought for Xs" with
 /// a 1Hz live tick while streaming and a static label once finished;
-/// expanded body renders the trace as italic markdown. `.simple`
+/// expanded body renders the trace as soft-ink markdown. `.simple`
 /// verbosity keeps it collapsed; `.thinking` and `.verbose` open it.
 struct ThinkingBlock: View {
     let text: String
