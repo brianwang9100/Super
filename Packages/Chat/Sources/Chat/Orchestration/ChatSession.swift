@@ -917,6 +917,11 @@ public actor ChatSession {
     /// the active applet's briefing — rules for surfaces the user isn't on
     /// aren't worth window on a 4096-token model. An unknown/`nil` active id
     /// fails open to the whole set.
+    ///
+    /// The accessor is read live on each call, so the compaction gate's
+    /// assembly and the wire request's assembly within one turn could see
+    /// different active applets if the user switches mid-send — a one-turn,
+    /// few-hundred-token discrepancy in the budget, deliberately tolerated.
     private func selectedBriefings(
         for tier: ModelContextTier
     ) async -> (chat: String, applets: [AppletBriefing]) {
@@ -976,17 +981,24 @@ public actor ChatSession {
     private func maybeAutoCompact(model: LLMModel) async throws {
         guard autoCompactEnabled else { return }
         let assembly = try await assemble(model: model)
-        // Small-window models compact much earlier: their fixed overhead
-        // (briefings + tool schemas + the provider's own scaffolding) eats
-        // most of the window, and the heuristic meter undercounts what the
-        // on-device tokenizer actually sees — by the time a 4096-token model
-        // reads 85% it has already overflowed. Caps (not replaces) the
-        // user-set threshold so a *stricter* user setting still wins.
+        // Small-window models compact earlier AND against a different
+        // denominator. Their fixed floor (briefings + tool schemas + the
+        // provider's own scaffolding) eats most of the window and survives
+        // every checkpoint — a total-ratio gate would re-fire compaction on
+        // every turn once the floor alone exceeds the threshold, without
+        // ever bringing the total down. So the compact tier gates the
+        // *compressible* slice (history) against the window that's actually
+        // left after the floor, with the user threshold capped (not
+        // replaced) at the tier ceiling so a stricter user setting wins.
+        // Full-tier models keep the original total-ratio gate unchanged.
         let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
-        let threshold = tier == .compact
-            ? min(autoCompactThreshold, ChatSettings.compactTierAutoCompactThreshold)
-            : autoCompactThreshold
-        guard assembly.isOverThreshold(threshold) else { return }
+        switch tier {
+        case .compact:
+            let threshold = min(autoCompactThreshold, ChatSettings.compactTierAutoCompactThreshold)
+            guard assembly.isCompressibleOverThreshold(threshold) else { return }
+        case .full:
+            guard assembly.isOverThreshold(autoCompactThreshold) else { return }
+        }
         try await runCompactionPass(model: model, keepMostRecent: Compactor.defaultKeepMostRecent)
     }
 
@@ -998,7 +1010,14 @@ public actor ChatSession {
     private func runCompaction(model: LLMModel) async {
         await runGuardedTurn {
             let assembly = try await self.assemble(model: model)
-            guard assembly.ratio >= self.manualCompactMinThreshold else {
+            // Same denominator split as `maybeAutoCompact`: on the compact
+            // tier the fixed floor (briefings + tools + allowance) would
+            // satisfy the gate on an empty conversation, making the
+            // "too short to compact" guard dead — so gate on the
+            // compressible slice there.
+            let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
+            let gateRatio = tier == .compact ? assembly.compressibleRatio : assembly.ratio
+            guard gateRatio >= self.manualCompactMinThreshold else {
                 let pct = Int((self.manualCompactMinThreshold * 100).rounded())
                 self.broadcast(.error(.requestFailed(
                     "Conversation is too short to compact yet — try again once context usage reaches \(pct)%."

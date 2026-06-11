@@ -101,8 +101,9 @@ public struct SearchBibleTool: ToolExecutor {
         Search local scripture by topic or phrase ("verses about anxiety"). \
         Returns ranked verses with full text and correct citations from the \
         user's translation — quote them directly instead of recalling from \
-        memory. Keyword-based with stemming; optionally scope to `book`; \
-        omit `translation` to use the user's selected one.
+        memory. Cite as Book Chapter:Verse with the full book name. \
+        Keyword-based with stemming; optionally scope to `book`; omit \
+        `translation` to use the user's selected one.
         """
     )
 

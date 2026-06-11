@@ -201,28 +201,6 @@ struct ChatSessionCompactionTests {
         #expect(captured.count == 2)
     }
 
-    private func seedShortHistory(setup: Setup) async throws {
-        // Deliberately tiny: a handful of words so the message-only token
-        // estimate sits far below any sane threshold. The tool schemas are
-        // what move the needle in the regression below.
-        for index in 1...3 {
-            try await setup.messageRepo.save(MessageRecord(
-                id: "s-u\(index)",
-                conversationId: setup.conversation.id,
-                role: .user,
-                content: "msg \(index)",
-                createdAt: setup.clock.now()
-            ))
-            try await setup.messageRepo.save(MessageRecord(
-                id: "s-a\(index)",
-                conversationId: setup.conversation.id,
-                role: .assistant,
-                content: "reply \(index)",
-                createdAt: setup.clock.now()
-            ))
-        }
-    }
-
     private func firedCompaction(_ events: [ChatEvent]) -> Bool {
         events.contains { event in
             switch event {
@@ -249,11 +227,13 @@ struct ChatSessionCompactionTests {
         // *dropped* tool like `bible.annotate` would no longer count toward a
         // small-window model's budget, so it can't be used to prove this.
         //
-        // Arithmetic at the AFM-realistic 4096 window (compact-tier budgets
-        // carry the calibration: tools ×1.8 + the fixed allowance): the bare
-        // arm reads (tiny history + allowance)/4096 ≈ 0.2 — under the 0.5
-        // threshold — while the tool arm's ~1.1k-token raw schema inflates to
-        // ≈2k, landing ≈0.7 — over it.
+        // Arithmetic at the AFM-realistic 4096 window (compact tier gates the
+        // compressible history against the window left after the fixed
+        // floor): history ≈ 830 tokens in both arms. Bare arm floor = the
+        // 800-token allowance → 830/3,296 ≈ 0.25, under the 0.5 threshold.
+        // Tool arm floor = allowance + the ~1.1k-token raw schema inflated
+        // ×1.8 ≈ 2,795 → 830/1,301 ≈ 0.64 — the schema shrinks the available
+        // window until the same history must compact.
         let verboseTool = LLMTool(
             id: "bible.read",
             name: "bible.read",
@@ -284,8 +264,29 @@ struct ChatSessionCompactionTests {
             .messageComplete(usage: TokenUsage(inputTokens: 40, outputTokens: 6)),
         ]
 
-        // Arm 1 — no tools registered → message-only budget is under 0.5 → no
-        // compaction (only the assistant turn streams).
+        // ~830 tokens of history (6 × ~550 chars) — the tipping mass.
+        func seedTippingHistory(setup: Setup) async throws {
+            for index in 1...3 {
+                try await setup.messageRepo.save(MessageRecord(
+                    id: "tip-u\(index)",
+                    conversationId: setup.conversation.id,
+                    role: .user,
+                    content: String(repeating: "tell me about verse ", count: 28),
+                    createdAt: setup.clock.now()
+                ))
+                try await setup.messageRepo.save(MessageRecord(
+                    id: "tip-a\(index)",
+                    conversationId: setup.conversation.id,
+                    role: .assistant,
+                    content: String(repeating: "the passage teaches ", count: 28),
+                    createdAt: setup.clock.now()
+                ))
+            }
+        }
+
+        // Arm 1 — no tools registered → history over the bare available
+        // window is under 0.5 → no compaction (only the assistant turn
+        // streams).
         let bare = try await makeSetup(
             scripts: [finalTurn],
             autoCompactEnabled: true,
@@ -293,7 +294,7 @@ struct ChatSessionCompactionTests {
             model: model,
             conversationId: "conv-bare"
         )
-        try await seedShortHistory(setup: bare)
+        try await seedTippingHistory(setup: bare)
         let bareEvents = await collect(await bare.session.send(text: "next prompt", model: model))
         await bare.session.waitUntilFinished()
         #expect(firedCompaction(bareEvents) == false)
@@ -301,7 +302,8 @@ struct ChatSessionCompactionTests {
         #expect(bareCheckpoint == nil)
 
         // Arm 2 — same history, but the verbose tool is registered → its
-        // schema pushes the budget over 0.5 → compaction fires first.
+        // schema shrinks the available window, pushing the history ratio
+        // over 0.5 → compaction fires first.
         let withTool = try await makeSetup(
             scripts: [summaryTurn, finalTurn],
             autoCompactEnabled: true,
@@ -310,7 +312,7 @@ struct ChatSessionCompactionTests {
             conversationId: "conv-tool",
             tools: [verboseTool]
         )
-        try await seedShortHistory(setup: withTool)
+        try await seedTippingHistory(setup: withTool)
         let toolEvents = await collect(await withTool.session.send(text: "next prompt", model: model))
         await withTool.session.waitUntilFinished()
         #expect(firedCompaction(toolEvents) == true)
@@ -320,11 +322,13 @@ struct ChatSessionCompactionTests {
 
     @Test func compactTierCapsAutoCompactThreshold() async throws {
         // Small-window models compact at min(userThreshold,
-        // ChatSettings.compactTierAutoCompactThreshold): with the user's
-        // threshold at a loose 0.99, a 4096-window conversation reading
-        // ~0.78 (≈2.4k history tokens + the fixed allowance) must still
-        // compact — while the same history + threshold on a full-tier model
-        // must not (no cap; the ratio is tiny on 100k anyway).
+        // ChatSettings.compactTierAutoCompactThreshold), gated on the
+        // compressible slice: with the user's threshold at a loose 0.99,
+        // ≈2.4k history tokens over the 3,296 left after the 800-token
+        // allowance reads ≈0.73 — over the 0.6 cap, under the user value —
+        // so the 4096-window model must compact, while the same history +
+        // threshold on a full-tier model must not (no cap; the total ratio
+        // is tiny on 100k anyway).
         let summaryTurn: [LLMStreamEvent] = [
             .messageStart(id: "sum-cap", model: "afm"),
             .textDelta(index: 0, text: "Concise summary of the older turns."),
@@ -341,9 +345,10 @@ struct ChatSessionCompactionTests {
         )
 
         func seedHeavyHistory(setup: Setup) async throws {
-            // 12 × ~800 chars ≈ 2.4k tokens — between the 0.6 cap and the
-            // 0.99 user threshold on a 4096 window (with the allowance),
-            // and enough rows beyond keepMostRecent for the compactor.
+            // 12 × ~800 chars ≈ 2.4k tokens — its compressible ratio sits
+            // between the 0.6 cap and the 0.99 user threshold on a 4096
+            // window, and there are enough rows beyond keepMostRecent for
+            // the compactor.
             for index in 1...6 {
                 try await setup.messageRepo.save(MessageRecord(
                     id: "cap-u\(index)",
@@ -387,6 +392,64 @@ struct ChatSessionCompactionTests {
         )
         await uncapped.session.waitUntilFinished()
         #expect(firedCompaction(uncappedEvents) == false)
+    }
+
+    @Test func compactTierDoesNotRecompactEveryTurnOnceHistoryIsSummarized() async throws {
+        // The compact tier's fixed floor (allowance + briefings + tools)
+        // survives every checkpoint. A gate on the *total* ratio would
+        // therefore stay over threshold forever once the floor is close to
+        // it — re-firing compaction (an extra on-device round-trip + a
+        // banner flash) on every single turn. The compressible gate must go
+        // quiet after one compaction: the summarized history is far below
+        // the cap even though the total never drops.
+        let summaryTurn: [LLMStreamEvent] = [
+            .messageStart(id: "sum-once", model: "afm"),
+            .textDelta(index: 0, text: "Concise summary of the older turns."),
+            .messageComplete(usage: TokenUsage(inputTokens: 40, outputTokens: 6)),
+        ]
+        func assistantTurn(_ id: String) -> [LLMStreamEvent] {
+            [
+                .messageStart(id: id, model: "afm"),
+                .textDelta(index: 0, text: "ok"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ]
+        }
+        let compactModel = LLMModel(
+            id: "afm", displayName: "AFM", supportsThinking: false,
+            supportsTools: true, maxContextTokens: 4_096
+        )
+        let setup = try await makeSetup(
+            scripts: [summaryTurn, assistantTurn("m-first"), assistantTurn("m-second")],
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.99,
+            model: compactModel,
+            conversationId: "conv-once"
+        )
+        // Same ~2.4k-token seed as the cap test — over the 0.6 cap.
+        for index in 1...6 {
+            try await setup.messageRepo.save(MessageRecord(
+                id: "once-u\(index)",
+                conversationId: setup.conversation.id,
+                role: .user,
+                content: String(repeating: "lorem ipsum ", count: 67),
+                createdAt: setup.clock.now()
+            ))
+            try await setup.messageRepo.save(MessageRecord(
+                id: "once-a\(index)",
+                conversationId: setup.conversation.id,
+                role: .assistant,
+                content: String(repeating: "dolor sit amet ", count: 53),
+                createdAt: setup.clock.now()
+            ))
+        }
+
+        let firstEvents = await collect(await setup.session.send(text: "next", model: compactModel))
+        await setup.session.waitUntilFinished()
+        #expect(firedCompaction(firstEvents) == true)
+
+        let secondEvents = await collect(await setup.session.send(text: "again", model: compactModel))
+        await setup.session.waitUntilFinished()
+        #expect(firedCompaction(secondEvents) == false)
     }
 
     @Test func autoCompactionEmptySummaryDuringSendBroadcastsCuratedError() async throws {
@@ -540,6 +603,35 @@ struct ChatSessionCompactionTests {
         // No checkpoint persisted.
         let live = try await setup.checkpointRepo.liveCheckpoint(for: setup.conversation.id)
         #expect(live == nil)
+    }
+
+    @Test func manualCompactBelowMinThresholdErrorsOnCompactTierToo() async throws {
+        // The compact tier's fixed floor (the 800-token allowance, plus
+        // briefings/tools when present) must NOT satisfy the manual gate by
+        // itself — the gate reads the compressible slice there, so a
+        // near-empty AFM-window conversation still gets the "too short"
+        // error instead of summarizing a single message.
+        let setup = try await makeSetup(
+            scripts: [],
+            autoCompactEnabled: false,
+            manualCompactMinThreshold: 0.30,
+            model: LLMModel(
+                id: "afm", displayName: "AFM", supportsThinking: false,
+                supportsTools: true, maxContextTokens: 4_096
+            )
+        )
+
+        let stream = await setup.session.send(text: "/compact", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        guard case let .error(.requestFailed(message)) = events.first else {
+            Issue.record("expected .error(.requestFailed) on a near-empty compact-tier /compact, got \(events)")
+            return
+        }
+        #expect(message.contains("too short"))
+        let calls = await setup.provider.capturedRequests()
+        #expect(calls.isEmpty)
     }
 
     @Test func manualCompactSummarizesEntireHistory() async throws {

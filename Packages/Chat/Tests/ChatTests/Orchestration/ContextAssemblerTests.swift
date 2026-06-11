@@ -122,6 +122,7 @@ struct ContextAssemblerTests {
             compactNoTools.totalTokens
                 == fullNoTools.totalTokens + ContextAssembler.compactTierFixedOverheadTokens
         )
+        #expect(compactNoTools.fixedTokens == ContextAssembler.compactTierFixedOverheadTokens)
 
         let compactWithTools = try assembler.assemble(
             messages: messages, toolCalls: [], checkpoint: nil,
@@ -135,6 +136,33 @@ struct ContextAssemblerTests {
                 == fullNoTools.totalTokens + inflatedToolTokens
                     + ContextAssembler.compactTierFixedOverheadTokens
         )
+        // The whole calibrated tool + allowance weight is fixed; only the
+        // projected history is compressible.
+        #expect(
+            compactWithTools.fixedTokens
+                == inflatedToolTokens + ContextAssembler.compactTierFixedOverheadTokens
+        )
+        #expect(compactWithTools.compressibleTokens == fullNoTools.totalTokens)
+        #expect(fullWithTools.fixedTokens == rawToolTokens)
+    }
+
+    @Test func fixedTokensIncludeAssemblerInjectedSystemBlocks() throws {
+        // Briefings (and the other assembler-injected blocks) survive every
+        // compaction checkpoint, so they count as fixed: the compressible
+        // remainder must be just the projected history.
+        let assembler = ContextAssembler()
+        let messages = [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)]
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: nil,
+            model: makeModel(maxContextTokens: 4_096),
+            chatBriefing: String(repeating: "Be concise. ", count: 50)
+        )
+        // "Hi" estimates to 1 token; everything else (leading block +
+        // compact-tier allowance) is floor.
+        #expect(assembly.compressibleTokens == 1)
+        #expect(assembly.fixedTokens == assembly.totalTokens - 1)
     }
 
     @Test func noCheckpointReturnsAllMessagesProjected() throws {
