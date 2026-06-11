@@ -93,5 +93,13 @@ struct ComposerAccessoryFlankSnapshotTests {
             name: "flank_leading_disabled_dark"
         )
     }
+
+    @Test("trailing chevron disabled — dark (dim glyph on dark glass)")
+    func trailingDisabledDark() {
+        recordOrCompare(
+            view: host(chevrons(trailingEnabled: false), theme: .vellumDark),
+            name: "flank_trailing_disabled_dark"
+        )
+    }
 }
 #endif

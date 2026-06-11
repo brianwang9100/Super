@@ -175,6 +175,34 @@ struct SettingsViewModelTests {
         #expect(stored == "false")
     }
 
+    @Test("setHapticsEnabled persists, updates state, and mutes the shared engine")
+    func setHapticsEnabledPersistsAndMutesEngine() async {
+        let repo = InMemorySettingRepository()
+        let engine = RecordingHapticsEngine()
+        let vm = makeViewModel(settingRepository: repo, hapticsEngine: engine)
+        await vm.setHapticsEnabled(false)
+
+        #expect(vm.settings.hapticsEnabled == false)
+        // The shared engine was muted immediately (live, no relaunch).
+        #expect(engine.enabledLog == [false])
+        // Persisted under the canonical key so the value survives relaunch.
+        let stored = try? await repo.get(ChatSettingsStore.Keys.hapticsEnabled)
+        #expect(stored == "false")
+    }
+
+    @Test("hapticsEnabled round-trips through ChatSettingsStore")
+    func hapticsEnabledRoundTripsThroughStore() async {
+        let repo = InMemorySettingRepository()
+        let store = ChatSettingsStore(repository: repo)
+        // Default is on when the row is absent.
+        let beforeWrite = await store.load()
+        #expect(beforeWrite.hapticsEnabled == true)
+
+        try? await store.setHapticsEnabled(false)
+        let afterWrite = await store.load()
+        #expect(afterWrite.hapticsEnabled == false)
+    }
+
     @Test("setModelEnabled mutates the in-memory row and persists per-model flag")
     func setModelEnabled() async {
         let settingRepo = InMemorySettingRepository()
@@ -1326,6 +1354,7 @@ struct SettingsViewModelTests {
         userPersonalizationReceiver: any UserPersonalizationReceiver = FakeUserPersonalizationReceiver(),
         autoCompactPolicyReceiver: any AutoCompactPolicyReceiver = FakeAutoCompactPolicyReceiver(),
         webSearchPolicyReceiver: any WebSearchPolicyReceiver = FakeWebSearchPolicyReceiver(),
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
         memoryRepository: (any MemoryRepository)? = nil,
         llmProviderRegistry: LLMProviderRegistry? = nil,
         httpClient: (any HTTPClient)? = nil,
@@ -1348,6 +1377,7 @@ struct SettingsViewModelTests {
             userPersonalizationReceiver: userPersonalizationReceiver,
             autoCompactPolicyReceiver: autoCompactPolicyReceiver,
             webSearchPolicyReceiver: webSearchPolicyReceiver,
+            hapticsEngine: hapticsEngine,
             memoryRepository: memoryRepository,
             llmProviderRegistry: llmProviderRegistry,
             httpClient: httpClient,

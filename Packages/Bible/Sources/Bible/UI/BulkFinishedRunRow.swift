@@ -84,7 +84,7 @@ struct BulkFinishedRunRow: View {
                 .padding(.horizontal, 12)
                 .frame(height: 30)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .superGlassButton(in: Capsule())
         .accessibilityLabel("Retry")
     }

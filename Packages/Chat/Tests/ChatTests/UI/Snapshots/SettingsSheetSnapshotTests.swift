@@ -1007,6 +1007,24 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_appearance_light_xxl", function: function)
     }
 
+    // The Haptics toggle sits below the theme grid + font-scale card, off the
+    // bottom of the standard 874pt pane snapshots above — so it needs its own
+    // full-height render to get explicit coverage (a changed view requires a
+    // snapshot). These use a tall fixed layout rather than the shared 874 frame
+    // so the whole scroll content, including the toggle, lands in one image.
+    @Test("appearance pane — full height shows the Haptics toggle")
+    func appearancePaneHapticsLight() {
+        verifyTallAppearancePane(theme: .vellumLight, name: "settings_appearance_haptics_light")
+    }
+
+    @Test("appearance pane full height — Haptics toggle in dark")
+    func appearancePaneHapticsDark() {
+        verifyTallAppearancePane(
+            theme: .vellumDark, name: "settings_appearance_haptics_dark",
+            settings: Self.settings(themeId: .vellumDark)
+        )
+    }
+
     @Test("tools pane")
     func toolsPane() async {
         await verify(theme: .vellumLight, pane: .tools, name: "settings_tools_light")
@@ -1214,6 +1232,43 @@ struct SettingsSheetSnapshotTests {
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
+    }
+
+    /// Tall fixed layout so the full Appearance pane (theme grid + font-scale
+    /// card + the Haptics toggle) renders in one image — the standard 874pt
+    /// frame clips the toggle off the bottom.
+    private static let tallFrame = CGSize(width: 402, height: 1340)
+
+    private func verifyTallAppearancePane(
+        theme: SuperTheme.Identifier,
+        name: String,
+        settings: ChatSettings = .default,
+        function: String = #function
+    ) {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(
+            settings: settings,
+            models: Self.sampleModels,
+            tools: Self.sampleTools,
+            chatCount: 7
+        )
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .appearance)
+            .superTheme(.make(theme))
+            .frame(width: Self.tallFrame.width, height: Self.tallFrame.height)
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(
+                precision: 0.99,
+                perceptualPrecision: 0.97,
+                layout: .fixed(width: Self.tallFrame.width, height: Self.tallFrame.height)
+            ),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
     }
 
     /// Compares (or records) `view` against the named baseline.

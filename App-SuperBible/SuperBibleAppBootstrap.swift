@@ -51,6 +51,10 @@ struct SuperBibleAppDependencies {
     /// subtree (writer) and the composer-accessory layer (reader). SuperBible-only.
     let composerAccessoryStore: ComposerAccessoryStore
 
+    /// Shared app-wide haptics engine. One instance threaded into both the
+    /// shell (via `shellDependencies`) and the applets registered here.
+    let hapticsEngine: any HapticsEngine
+
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
     /// to the shell is the applet set inside `appletRegistry`.
@@ -70,6 +74,7 @@ struct SuperBibleAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
+            hapticsEngine: hapticsEngine,
             // SuperBible diverges from SuperOS: every cold launch opens to
             // Bible with the chat overlay as a pill. The applet override
             // is enforced separately in `bootstrap()` (UserDefaults skip
@@ -147,7 +152,11 @@ enum SuperBibleAppBootstrap {
         // tool-execution time, long after hydration.
         let llmProviderRegistry = LLMProviderRegistry()
 
-        let bibleApplet = BibleApplet()
+        // One haptics engine for the whole app — shared by the shell's
+        // environment, the chat + Settings view models, and the Bible applet.
+        let hapticsEngine = SystemHapticsEngine()
+
+        let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
         await bibleApplet.registerAnnotationTool(
             in: toolRegistry,
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
@@ -354,7 +363,8 @@ enum SuperBibleAppBootstrap {
             bibleAnnotateDispatcher: bibleAnnotateDispatcher,
             appletSettingsContributions: bibleSettingsContributions,
             bulkAnnotationBackground: bulkWiring?.background,
-            composerAccessoryStore: composerAccessoryStore
+            composerAccessoryStore: composerAccessoryStore,
+            hapticsEngine: hapticsEngine
         )
     }
 }

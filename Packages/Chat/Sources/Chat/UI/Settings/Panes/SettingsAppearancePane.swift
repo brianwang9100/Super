@@ -46,8 +46,46 @@ struct SettingsAppearancePane: View {
             fontScaleCard
                 .padding(.horizontal, 16)
                 .padding(.bottom, 20)
+
+            sectionLabel("Haptics")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+
+            SettingsGroup {
+                hapticsToggleRow
+            }
+            .padding(.bottom, 20)
         }
         .padding(.top, 16)
+    }
+
+    /// Master on/off for in-app haptic feedback. Composes with the OS-level
+    /// "System Haptics" switch — both must be on for haptics to play.
+    private var hapticsToggleRow: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Haptic feedback")
+                    .font(typography.font(.subheadline))
+                    .foregroundStyle(theme.ink)
+                Text("Subtle vibrations for taps, selections, and streaming")
+                    .font(typography.font(.caption))
+                    .foregroundStyle(theme.inkFaint)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            SettingsToggle(
+                isOn: Binding(
+                    get: { viewModel.settings.hapticsEnabled },
+                    set: { newValue in
+                        Task { await viewModel.setHapticsEnabled(newValue) }
+                    }
+                ),
+                accessibilityLabel: "Haptic feedback"
+            )
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -157,7 +195,7 @@ struct SettingsAppearancePane: View {
                     .padding(-3)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("\(palette.displayName) \(label)")
         .accessibilityValue(isSelected ? "Selected" : "")
     }

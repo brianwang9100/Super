@@ -79,7 +79,7 @@ struct BibleActionSheet: View {
                         .frame(width: 28, height: 28)
                         .superGlassButton(in: Circle(), tint: color.swatch.color, interactive: false)
                 }
-                .buttonStyle(SuperPressButtonStyle())
+                .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
                 .accessibilityLabel("Highlight \(color.displayName.lowercased())")
             }
             // Plain theme glass (no tint); the xmark glyph carries the "clear"
@@ -91,7 +91,7 @@ struct BibleActionSheet: View {
                     .frame(width: 28, height: 28)
                     .superGlassButton(in: Circle(), interactive: false)
             }
-            .buttonStyle(SuperPressButtonStyle())
+            .buttonStyle(GlassHapticButtonStyle(.deselection, scale: true))
             .accessibilityLabel("Clear highlight")
         }
         .padding(.horizontal, 4)
@@ -153,7 +153,7 @@ struct BibleActionSheet: View {
                 ShareLink(item: shareText) {
                     tileGlassLabel(tint: nil) { sfIcon("square.and.arrow.up", accent: false) }
                 }
-                .buttonStyle(SuperPressButtonStyle())
+                .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
                 .accessibilityLabel("Share")
             }
             // Two hidden tiles fill the trailing 1/4 columns so Copy/Share keep
@@ -198,7 +198,7 @@ struct BibleActionSheet: View {
                 // plain tiles use neutral theme glass.
                 tileGlassLabel(tint: accent ? theme.accentSoft : nil, icon: icon)
             }
-            .buttonStyle(SuperPressButtonStyle())
+            .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
             .accessibilityLabel(label)
         }
     }

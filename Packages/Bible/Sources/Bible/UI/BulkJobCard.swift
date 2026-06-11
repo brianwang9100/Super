@@ -66,7 +66,7 @@ struct BulkJobCard: View {
                 .foregroundStyle(theme.inkSoft)
                 .frame(width: 28, height: 28)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .superGlassButton(in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityLabel(snapshot.isRunning ? "Pause" : "Resume")
     }

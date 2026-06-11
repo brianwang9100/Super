@@ -39,7 +39,7 @@ public struct ComposerAccessoryFlank: View {
                     .frame(width: 44, height: 44)
                     .superGlassButton(in: Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.selection))
             .disabled(!descriptor.isEnabled)
             // Mirrors the prior in-nav-bar chevron dim for the disabled
             // (canon-end) state.

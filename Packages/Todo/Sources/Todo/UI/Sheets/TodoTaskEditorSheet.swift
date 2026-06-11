@@ -95,7 +95,7 @@ struct TodoTaskEditorSheet: View {
                 .superGlassCTAButton(in: Circle())
                 .opacity(titleIsBlank ? 0.6 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
         .disabled(titleIsBlank)
         .accessibilityLabel(mode == .create ? "Add task" : "Save task")
     }
@@ -157,7 +157,7 @@ struct TodoTaskEditorSheet: View {
                             selectedBorder: OKLCH(0.62, 0.14, option.hue).color
                         ))
                     }
-                    .buttonStyle(SuperPressButtonStyle())
+                    .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
                 }
             }
         }
@@ -206,7 +206,7 @@ struct TodoTaskEditorSheet: View {
                     selectedBorder: theme.accent
                 ))
         }
-        .buttonStyle(SuperPressButtonStyle())
+        .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
     }
 
     private var labelsField: some View {
@@ -235,7 +235,7 @@ struct TodoTaskEditorSheet: View {
                                 selectedBorder: theme.accent
                             ))
                     }
-                    .buttonStyle(SuperPressButtonStyle())
+                    .buttonStyle(GlassHapticButtonStyle(.selection, scale: true))
                 }
             }
         }

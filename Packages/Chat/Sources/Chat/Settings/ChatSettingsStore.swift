@@ -49,7 +49,9 @@ public struct ChatSettingsStore: Sendable {
                 ?? ChatSettings.default.askBeforeSearching,
             summarizeTitlesEnabled: raw[Keys.summarizeTitles].flatMap(Self.decodeBool)
                 ?? ChatSettings.default.summarizeTitlesEnabled,
-            titleModelId: raw[Keys.titleModelId]
+            titleModelId: raw[Keys.titleModelId],
+            hapticsEnabled: raw[Keys.hapticsEnabled].flatMap(Self.decodeBool)
+                ?? ChatSettings.default.hapticsEnabled
         )
     }
 
@@ -162,6 +164,10 @@ public struct ChatSettingsStore: Sendable {
         try await repository.set(Keys.summarizeTitles, value: value ? "true" : "false")
     }
 
+    public func setHapticsEnabled(_ value: Bool) async throws {
+        try await repository.set(Keys.hapticsEnabled, value: value ? "true" : "false")
+    }
+
     /// Persists the `LLMModel.id` of the chat-title summarizer. Passing
     /// `nil` deletes the row, restoring the "automatic" default (resolves to
     /// the Apple Foundation Model when available). A stale id (its model has
@@ -257,6 +263,9 @@ public struct ChatSettingsStore: Sendable {
         /// `LLMModel.id` of the chat-title summarizer, or absent for
         /// "automatic" (resolves to the Apple Foundation Model when available).
         public static let titleModelId = "titles.modelId"
+        /// `"true"` / `"false"`. Master on/off for in-app haptic feedback.
+        /// Defaults to `"true"` when absent.
+        public static let hapticsEnabled = "haptics.enabled"
         /// Per-model enabled flag. Keyed by `id` so each row stays
         /// independent of the others.
         public static func modelEnabled(id: String) -> String {

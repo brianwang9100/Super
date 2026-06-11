@@ -79,6 +79,12 @@ public struct ChatSettings: Sendable, Equatable {
     /// `TitleGenerator.resolveTitleModel`. Independent of the chat's active
     /// model — titling can use a different model than the conversation.
     public var titleModelId: String?
+    /// Whether in-app haptic feedback fires (message send/stream, nav taps,
+    /// verse select/deselect). Default `true`. Composes with the OS-level
+    /// "System Haptics" switch — both must be on for haptics to play. Wired
+    /// live: `AppShell` pushes changes to the shared `SystemHapticsEngine`'s
+    /// `setEnabled(_:)` so the toggle takes effect without relaunch.
+    public var hapticsEnabled: Bool
 
     /// Factory default for `autoCompactThreshold` — the fraction of
     /// `model.maxContextTokens` at which background auto-compaction fires.
@@ -110,7 +116,8 @@ public struct ChatSettings: Sendable, Equatable {
         lastSelectedModelId: nil,
         askBeforeSearching: true,
         summarizeTitlesEnabled: true,
-        titleModelId: nil
+        titleModelId: nil,
+        hapticsEnabled: true
     )
 
     public init(
@@ -124,7 +131,8 @@ public struct ChatSettings: Sendable, Equatable {
         lastSelectedModelId: String? = nil,
         askBeforeSearching: Bool = true,
         summarizeTitlesEnabled: Bool = true,
-        titleModelId: String? = nil
+        titleModelId: String? = nil,
+        hapticsEnabled: Bool = true
     ) {
         self.themeId = themeId
         self.typographyID = typographyID
@@ -137,6 +145,7 @@ public struct ChatSettings: Sendable, Equatable {
         self.askBeforeSearching = askBeforeSearching
         self.summarizeTitlesEnabled = summarizeTitlesEnabled
         self.titleModelId = titleModelId
+        self.hapticsEnabled = hapticsEnabled
     }
 
     /// Mirror of `SuperTheme.Identifier` (8 variants: four families ×

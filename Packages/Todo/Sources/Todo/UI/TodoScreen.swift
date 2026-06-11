@@ -134,7 +134,7 @@ public struct TodoScreen: View {
                 .frame(width: 36, height: 36)
                 .superGlassCTAButton(in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
         .padding(.top, 4)
         .padding(.trailing, 12)
         .accessibilityLabel("Add task")

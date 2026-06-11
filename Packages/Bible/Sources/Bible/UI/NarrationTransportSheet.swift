@@ -132,7 +132,7 @@ struct NarrationTransportSheet: View {
                 .frame(width: 44, height: 44)
                 .superGlassButton(in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         // Disabled (and dimmed) when there's no active session to
         // stop. Drag the handle to dismiss the card in that state.
         .disabled(controller.state == .idle)
@@ -199,7 +199,7 @@ struct NarrationTransportSheet: View {
                 .frame(width: 56, height: 56)
                 .superGlassButton(in: Circle(), tint: theme.accent)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel(label)
     }
 
@@ -215,7 +215,7 @@ struct NarrationTransportSheet: View {
                 .frame(width: 44, height: 44)
                 .superGlassButton(in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .disabled(controller.state == .idle)
         .opacity(controller.state == .idle ? 0.35 : 1)
         .accessibilityLabel(accessibilityLabel)

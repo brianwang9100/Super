@@ -112,6 +112,10 @@ public final class BibleScreenViewModel {
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
+    /// Shared app-wide haptics engine. Fires `.selection` when a verse is
+    /// selected and `.deselection` when one is removed. Defaults to a no-op
+    /// so tests/previews stay silent.
+    private let hapticsEngine: any HapticsEngine
 
     /// The shared event bus, set when `attach(to:)` is called once at
     /// applet bootstrap. `nil` for tests that don't exercise the
@@ -179,7 +183,8 @@ public final class BibleScreenViewModel {
         idGenerator: any IDGenerator = UUIDGenerator(),
         disclaimerStore: any AnnotationDisclaimerStore = UserDefaultsAnnotationDisclaimerStore(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition,
-        narration: NarrationController? = nil
+        narration: NarrationController? = nil,
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
     ) {
         self.textLoader = textLoader
         self.catalog = catalog
@@ -190,6 +195,7 @@ public final class BibleScreenViewModel {
         self.clipboard = clipboard
         self.idGenerator = idGenerator
         self.disclaimerStore = disclaimerStore
+        self.hapticsEngine = hapticsEngine
         self.position = initialPosition
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
         // Default to the production synth-backed controller so tests that
@@ -473,14 +479,25 @@ public final class BibleScreenViewModel {
     public func toggleVerse(_ number: Int) {
         if selectedVerses.contains(number) {
             selectedVerses.remove(number)
+            // Distinct from selection so the user can feel the difference
+            // between adding and removing a verse.
+            hapticsEngine.play(.deselection)
         } else {
             selectedVerses.insert(number)
+            hapticsEngine.play(.selection)
         }
     }
 
     /// Drop the whole selection, leaving selection mode. A no-op when empty.
+    /// Plays the ``HapticPattern/deselection`` "disconnect" tap when it
+    /// actually drops a selection — so dismissing the action sheet (its close
+    /// button or a swipe-down, both of which route here) feels like releasing
+    /// the verses. The non-empty guard also dedupes the double call the sheet's
+    /// dismiss binding makes (clear → binding goes nil → clear again).
     public func clearSelection() {
+        guard !selectedVerses.isEmpty else { return }
         selectedVerses.removeAll()
+        hapticsEngine.play(.deselection)
     }
 
     /// The selection's citation, e.g. `"1 Peter 2:4-6, 9"`, or `nil` when no

@@ -95,7 +95,7 @@ public struct BibleApplet: MiniApplet {
     /// heavy, move this open into the bootstrap alongside `ChatDatabase`
     /// rather than blocking the launch path.
     @MainActor
-    public init() {
+    public init(hapticsEngine: any HapticsEngine = NoOpHapticsEngine()) {
         let database = BibleApplet.openDatabase()
         self.database = database
         self.databaseContext = database.map { db in
@@ -131,7 +131,8 @@ public struct BibleApplet: MiniApplet {
             textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
             highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
-            noteRepository: noteRepository
+            noteRepository: noteRepository,
+            hapticsEngine: hapticsEngine
         )
         self.viewModel = viewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
