@@ -33,9 +33,7 @@ struct OverlayContentDragHierarchyTests {
         /// assertions test the wrong thing.
         let window: UIWindow
         let root: UIView
-        let backdrop: UIScrollView
         let transcript: UIScrollView
-        let panel: UIScrollView
     }
 
     private func makeFixture() -> Fixture {
@@ -60,10 +58,7 @@ struct OverlayContentDragHierarchyTests {
         row.addSubview(panel)
         let monospaceContent = UIView(frame: CGRect(x: 0, y: 0, width: 800, height: 80))
         panel.addSubview(monospaceContent)
-        return Fixture(
-            window: window, root: root, backdrop: backdrop,
-            transcript: transcript, panel: panel
-        )
+        return Fixture(window: window, root: root, transcript: transcript)
     }
 
     /// The bug's exact shape: the finger lands on the nested horizontal panel

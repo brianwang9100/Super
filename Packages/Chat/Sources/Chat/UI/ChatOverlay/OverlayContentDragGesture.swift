@@ -491,14 +491,10 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         ///
         /// 1. **Hit-test** the touch point, then take the **outermost** inset
         ///    scroll view in the hit view's superview chain — *not* the
-        ///    nearest. The transcript hosts nested horizontal scroll views
-        ///    (tool-call INPUT/RESULT panels, markdown code blocks); the
-        ///    nearest enclosing scroll view of a finger on one of those is the
-        ///    panel, whose vertical geometry reads "not scrollable" — arming
-        ///    an immediate resize that minimized the chat from mid-transcript.
-        ///    The transcript is always those panels' ancestor, so the
-        ///    outermost inset chain entry is the transcript; the full-window
-        ///    exclusion still drops a backdrop the touch passed through to.
+        ///    nearest, which can be a nested horizontal panel inside the
+        ///    transcript (see `outermostInsetScrollIndex` for the full
+        ///    rationale). The full-window exclusion still drops a backdrop
+        ///    the touch passed through to.
         /// 2. **Geometric fallback.** With the keyboard up, the hit-test can
         ///    resolve to non-scrolling chat chrome (the surface background under
         ///    the keyboard-avoidance layout), yielding no enclosing scroll view
@@ -526,11 +522,9 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
             let point = view.convert(location, to: nil)
             let windowHeight = view.convert(view.bounds, to: nil).height
             // 1. Hit-test the frontmost view under the finger, then resolve the
-            //    *outermost* inset scroll view in its superview chain — never
-            //    the nearest, which can be a nested horizontal panel (tool-call
-            //    INPUT/RESULT, a markdown code block) whose vertical geometry
-            //    misreads "not scrollable" and arms an immediate resize. In the
-            //    empty state the touch can fall on a transparent gap and
+            //    *outermost* inset scroll view in its superview chain (see
+            //    `outermostInsetScrollIndex` for why outermost, not nearest).
+            //    In the empty state the touch can fall on a transparent gap and
             //    hit-test straight through to the backdrop's scroll view; the
             //    full-window exclusion drops it (the chain pick resolves nil)
             //    and the fallback below decides instead.
@@ -547,10 +541,9 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
             // order with their window frames, then let the pure picker choose
             // the frontmost inset one containing the touch (never the
             // full-window backdrop). Deliberately no descent into a scroll
-            // view's subtree: scroll views nested *inside* a candidate (the
-            // horizontal panels inside the transcript) must never be
-            // candidates themselves, or the frontmost pick would prefer the
-            // nested panel under the finger over the transcript containing it.
+            // view's subtree — `frontmostInsetScrollIndex` requires top-level
+            // candidates only, or the frontmost pick would prefer a nested
+            // panel under the finger over the transcript containing it.
             var scrollViews: [UIScrollView] = []
             var frames: [CGRect] = []
             func walk(_ node: UIView) {
@@ -571,9 +564,7 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         }
 
         /// Every scroll view at or above `view` in the superview chain,
-        /// innermost → outermost. The caller picks the outermost inset one
-        /// (see `outermostInsetScrollIndex`) so a nested horizontal panel
-        /// never shadows the transcript that contains it.
+        /// innermost → outermost, for `outermostInsetScrollIndex` to pick from.
         private static func enclosingScrollViews(of view: UIView) -> [UIScrollView] {
             var found: [UIScrollView] = []
             var node: UIView? = view
