@@ -51,7 +51,7 @@ public struct SettingsSheet: View {
             case .modelDetail(let id): return id == nil ? "Add Model" : "Edit Model"
             case .personalization: return "Personalization"
             case .verbosity: return "Default Verbosity"
-            case .appearance: return "Appearance"
+            case .appearance: return "Look & Feel"
             case .tools: return "Tools"
             case .memory: return "Memory"
             case .compaction: return "Compaction"
