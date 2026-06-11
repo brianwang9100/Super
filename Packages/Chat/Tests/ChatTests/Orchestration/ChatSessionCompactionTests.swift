@@ -243,18 +243,23 @@ struct ChatSessionCompactionTests {
         // Before the fix `estimate(messages:)` ignored tool definitions, so
         // both arms read identically under-threshold and the tool arm never
         // compacted → AFM then overflowed mid-turn.
+        //
+        // The tool here is `bible.read` — a grounding tool AFM still ships on
+        // the compact tier (CompactToolPolicy keeps read/search/memory). A
+        // *dropped* tool like `bible.annotate` would no longer count toward a
+        // small-window model's budget, so it can't be used to prove this.
         let verboseTool = LLMTool(
-            id: "bible.annotate",
-            name: "bible.annotate",
-            description: String(repeating: "Create a study annotation for a passage. ", count: 40),
-            category: .mutation,
+            id: "bible.read",
+            name: "bible.read",
+            description: String(repeating: "Look up the exact text of a Bible passage. ", count: 40),
+            category: .query,
             parameters: [
                 LLMToolParameter(
-                    name: "target", type: .string,
-                    description: "Scripture unit to annotate.",
+                    name: "reference", type: .string,
+                    description: "Passage reference to read.",
                     enumValues: ["book", "chapter", "verse"]
                 ),
-                LLMToolParameter(name: "body", type: .string, description: "The annotation body text."),
+                LLMToolParameter(name: "translation", type: .string, description: "Optional translation code."),
             ],
             appletId: "bible"
         )
