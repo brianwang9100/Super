@@ -140,7 +140,10 @@ func overlayDragProjection(velocityY: CGFloat, decelerationRate: CGFloat = 0.998
 /// `Coordinator.transcriptScrollView(in:at:)`): given candidate scroll-view
 /// frames in **back-to-front order** (window coordinates), the index of the
 /// **frontmost** one that contains `point` and is **not** the full-window
-/// backdrop, or `nil` if none qualifies.
+/// backdrop, or `nil` if none qualifies. Callers must pass **top-level**
+/// scroll views only (no scroll views nested inside another candidate) —
+/// the frontmost pick would otherwise prefer a nested horizontal panel under
+/// the finger over the transcript that contains it.
 ///
 /// This encodes the fix's core rule — pick the inset chat transcript under the
 /// finger, never the full-window backdrop applet behind it, and resolve to
@@ -165,6 +168,25 @@ func frontmostInsetScrollIndex(
         }
     }
     return nil
+}
+
+/// Pure geometry behind the content-drag locator's hit-test path (see
+/// `Coordinator.transcriptScrollView(in:at:)`): given the hit view's enclosing
+/// scroll-view frames in **innermost-to-outermost order** (window
+/// coordinates), the index of the **outermost** one that is not the
+/// full-window backdrop, or `nil` if none qualifies.
+///
+/// Outermost — not nearest — because the transcript hosts nested horizontal
+/// scroll views (tool-call INPUT/RESULT panels, markdown code blocks,
+/// web-search query chips): a drag starting on one of those must still arm
+/// from the *transcript's* vertical geometry. The nested panel is never
+/// vertically scrollable, so sampling it misreads "not scrollable" and arms an
+/// immediate resize — the premature-minimize bug on expanded tool/thinking
+/// blocks. Ancestry is the discriminator (not scroll axis) because a panel
+/// whose content happens to fit is geometrically indistinguishable from a
+/// short transcript, while the transcript is always the panels' ancestor.
+func outermostInsetScrollIndex(chainFrames: [CGRect], windowHeight: CGFloat) -> Int? {
+    chainFrames.lastIndex { !coversWindowVertically($0, windowHeight: windowHeight) }
 }
 
 /// Whether `frame` (window coordinates) spans the window **top-to-bottom** —
@@ -467,10 +489,12 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         /// Resolve the transcript's scroll view by *location* instead, in two
         /// steps:
         ///
-        /// 1. **Hit-test** the touch point. The frontmost interactive view under
-        ///    the finger is the chat transcript (composited above the backdrop),
-        ///    so the nearest enclosing scroll view of the hit view is the
-        ///    transcript's. This is the precise path and the common case.
+        /// 1. **Hit-test** the touch point, then take the **outermost** inset
+        ///    scroll view in the hit view's superview chain — *not* the
+        ///    nearest, which can be a nested horizontal panel inside the
+        ///    transcript (see `outermostInsetScrollIndex` for the full
+        ///    rationale). The full-window exclusion still drops a backdrop
+        ///    the touch passed through to.
         /// 2. **Geometric fallback.** With the keyboard up, the hit-test can
         ///    resolve to non-scrolling chat chrome (the surface background under
         ///    the keyboard-avoidance layout), yielding no enclosing scroll view
@@ -481,10 +505,14 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         ///    order), **excluding any full-window scroll view** — the chat
         ///    transcript is always inset by its own chrome (handle, header,
         ///    composer) so it never fills the window, whereas the backdrop
-        ///    applet does. This keeps the fallback off the backdrop both
-        ///    mid-transcript and in the empty state (where only the full-window
-        ///    backdrop is under the finger, so the fallback finds nothing and
-        ///    the caller drives immediately — the intended empty-state path).
+        ///    applet does. Candidates are the hierarchy's **top-level** scroll
+        ///    views only (the walk does not descend into a scroll view's
+        ///    subtree), so a nested panel under the finger can never outrank
+        ///    the transcript that contains it. This keeps the fallback off the
+        ///    backdrop both mid-transcript and in the empty state (where only
+        ///    the full-window backdrop is under the finger, so the fallback
+        ///    finds nothing and the caller drives immediately — the intended
+        ///    empty-state path).
         ///
         /// Returns `nil` for the empty state (no inset scroll view under the
         /// touch), which the caller reads as "not scrollable" and drives
@@ -493,23 +521,29 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
         static func transcriptScrollView(in view: UIView, at location: CGPoint) -> UIScrollView? {
             let point = view.convert(location, to: nil)
             let windowHeight = view.convert(view.bounds, to: nil).height
-            // 1. Hit-test the frontmost view under the finger. Accept its
-            //    enclosing scroll view only if it's the inset transcript — *not*
-            //    the full-window backdrop. In the empty state the touch can fall
-            //    on a transparent gap and hit-test straight through to the
-            //    backdrop's scroll view; returning that would arm the resize
-            //    from the backdrop's scroll position (the reported flakiness),
-            //    so drop it and let the fallback resolve to nil instead.
-            if let hit = view.hitTest(location, with: nil),
-               let enclosing = enclosingScrollView(of: hit) {
-                let frame = enclosing.superview?.convert(enclosing.frame, to: nil) ?? enclosing.frame
-                if !coversWindowVertically(frame, windowHeight: windowHeight) {
-                    return enclosing
+            // 1. Hit-test the frontmost view under the finger, then resolve the
+            //    *outermost* inset scroll view in its superview chain (see
+            //    `outermostInsetScrollIndex` for why outermost, not nearest).
+            //    In the empty state the touch can fall on a transparent gap and
+            //    hit-test straight through to the backdrop's scroll view; the
+            //    full-window exclusion drops it (the chain pick resolves nil)
+            //    and the fallback below decides instead.
+            if let hit = view.hitTest(location, with: nil) {
+                let chain = enclosingScrollViews(of: hit, stoppingAt: view)
+                let chainFrames = chain.map { $0.superview?.convert($0.frame, to: nil) ?? $0.frame }
+                if let index = outermostInsetScrollIndex(
+                    chainFrames: chainFrames, windowHeight: windowHeight
+                ) {
+                    return chain[index]
                 }
             }
-            // Collect every scroll view in back-to-front (subview) order with
-            // its window frame, then let the pure picker choose the frontmost
-            // inset one containing the touch (never the full-window backdrop).
+            // Collect the top-level scroll views in back-to-front (subview)
+            // order with their window frames, then let the pure picker choose
+            // the frontmost inset one containing the touch (never the
+            // full-window backdrop). Deliberately no descent into a scroll
+            // view's subtree — `frontmostInsetScrollIndex` requires top-level
+            // candidates only, or the frontmost pick would prefer a nested
+            // panel under the finger over the transcript containing it.
             var scrollViews: [UIScrollView] = []
             var frames: [CGRect] = []
             func walk(_ node: UIView) {
@@ -517,8 +551,9 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
                     if let scrollView = subview as? UIScrollView {
                         scrollViews.append(scrollView)
                         frames.append(scrollView.superview?.convert(scrollView.frame, to: nil) ?? scrollView.frame)
+                    } else {
+                        walk(subview)
                     }
-                    walk(subview)
                 }
             }
             walk(view)
@@ -528,14 +563,22 @@ struct OverlayContentDragGesture: UIGestureRecognizerRepresentable {
             return scrollViews[index]
         }
 
-        /// The nearest scroll view at or above `view` in the superview chain.
-        private static func enclosingScrollView(of view: UIView) -> UIScrollView? {
+        /// Every scroll view at or above `view` in the superview chain,
+        /// innermost → outermost, for `outermostInsetScrollIndex` to pick
+        /// from. The climb stops at `root` (the gesture's hosting view) so a
+        /// scroll view above the gesture's own subtree — window chrome, a
+        /// future UIKit wrapper — can never be picked as "outermost".
+        private static func enclosingScrollViews(
+            of view: UIView, stoppingAt root: UIView
+        ) -> [UIScrollView] {
+            var found: [UIScrollView] = []
             var node: UIView? = view
             while let current = node {
-                if let scrollView = current as? UIScrollView { return scrollView }
+                if let scrollView = current as? UIScrollView { found.append(scrollView) }
+                if current === root { break }
                 node = current.superview
             }
-            return nil
+            return found
         }
 
         // MARK: UIGestureRecognizerDelegate
