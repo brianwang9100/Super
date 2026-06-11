@@ -17,7 +17,7 @@ import SwiftUI
 struct MarkdownText: View {
     let text: String
     /// Optional override for the default text style — `ThinkingBlock`
-    /// uses this to italicize and re-color the body without forking the
+    /// uses this to shrink and re-color the body without forking the
     /// whole theme builder.
     let bodyStyleOverride: BodyStyle?
     /// When true, the input is routed through ``MarkdownAutocloser``
@@ -65,7 +65,7 @@ struct MarkdownText: View {
     /// Centralized into this enum so the three known consumers share a
     /// single definition rather than each forking their own theme builder.
     enum BodyStyle: Equatable {
-        /// Italic + softer ink for thinking traces.
+        /// Softer ink + smaller body for thinking traces.
         case thinking
         /// Smaller body for the compaction banner — sits under a row of
         /// dividers in the design and doesn't carry headings.
