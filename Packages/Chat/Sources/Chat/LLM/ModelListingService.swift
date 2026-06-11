@@ -36,9 +36,15 @@ public protocol ModelListingService: Sendable {
 /// provider endpoint over the shared streaming `HTTPClient` (the body is
 /// small JSON, so we drain the stream into one `Data` and decode it).
 ///
-/// Two wire formats, dispatched by `kind`:
-/// - `.openAICompatible` (OpenAI, Anthropic's `/v1/openai/` shim, xAI):
-///   `Authorization: Bearer`, response `{ data: [{ id }] }`.
+/// Three wire formats, dispatched by `kind` (plus a host check for Anthropic):
+/// - `.openAICompatible` (OpenAI, xAI): `Authorization: Bearer`, response
+///   `{ data: [{ id }] }`.
+/// - Anthropic (an `.openAICompatible` row whose host is `api.anthropic.com`):
+///   the chat shim base (`…/v1/openai/`) has **no** `/models` endpoint, so the
+///   listing call rewrites to the native `GET /v1/models?limit=1000` with
+///   `x-api-key` + `anthropic-version` headers (Bearer 401s there — verified
+///   by curl 2026-06-11). The response envelope happens to match OpenAI's
+///   `{ data: [{ id }] }`, so decoding is shared.
 /// - `.geminiNative` (Google): `x-goog-api-key`, response
 ///   `{ models: [{ name: "models/…" }] }` — the `models/` prefix is stripped
 ///   to the trailing wire id used everywhere else.
@@ -56,6 +62,7 @@ public struct LiveModelListingService: ModelListingService {
     /// Internal wire-format discriminator so kind is validated exactly once.
     private enum WireFormat {
         case openAICompatible
+        case anthropic
         case gemini
     }
 
@@ -63,7 +70,11 @@ public struct LiveModelListingService: ModelListingService {
         let format: WireFormat
         switch kind {
         case .openAICompatible:
-            format = .openAICompatible
+            // The Anthropic preset is an `.openAICompatible` row (its chat
+            // path goes through the `/v1/openai/` shim), but the shim has no
+            // `/models` endpoint — listing must use the native API. Host
+            // check, not kind, is the only discriminator available here.
+            format = Self.isAnthropicHost(baseURL) ? .anthropic : .openAICompatible
         case .geminiNative:
             format = .gemini
         case .appleFoundation, .anthropicNative, .openAIResponses:
@@ -74,10 +85,27 @@ public struct LiveModelListingService: ModelListingService {
         #endif
         }
 
-        let url = Self.modelsURL(baseURL: baseURL)
+        let url: URL
+        switch format {
+        case .anthropic:
+            url = Self.anthropicModelsURL(baseURL: baseURL)
+        case .openAICompatible, .gemini:
+            url = Self.modelsURL(baseURL: baseURL)
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Exhaustive switch (not `if case`) so adding a wire format forces a
+        // decision about its non-auth headers here.
+        switch format {
+        case .anthropic:
+            request.setValue(
+                AnthropicNativeLLMProvider.anthropicVersion,
+                forHTTPHeaderField: "anthropic-version"
+            )
+        case .openAICompatible, .gemini:
+            break
+        }
         // Same cleartext gate as the completions path: never attach a
         // credential over a non-loopback `http://` endpoint, regardless of
         // header name. See `URLSecurity.swift`.
@@ -85,6 +113,8 @@ public struct LiveModelListingService: ModelListingService {
             switch format {
             case .openAICompatible:
                 request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            case .anthropic:
+                request.setValue(apiKey, forHTTPHeaderField: AnthropicNativeLLMProvider.apiKeyHeaderField)
             case .gemini:
                 request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
             }
@@ -93,7 +123,7 @@ public struct LiveModelListingService: ModelListingService {
         let data = try await drain(request)
 
         switch format {
-        case .openAICompatible:
+        case .openAICompatible, .anthropic:
             guard let decoded = try? JSONDecoder().decode(OpenAIModelsResponse.self, from: data) else {
                 throw ModelListingError.decoding
             }
@@ -139,17 +169,68 @@ public struct LiveModelListingService: ModelListingService {
 
     /// Append `/models` to the provider base, trailing-slash tolerant — the
     /// same canonicalization the completions path applies for
-    /// `/chat/completions`. So `…/v1`, `…/v1/`, and `…/v1/openai/` all yield
-    /// `…/models` correctly.
+    /// `/chat/completions`. So `…/v1` and `…/v1/` both yield `…/v1/models`.
+    /// (Anthropic-host bases never reach this builder — `listModelIDs`
+    /// routes them to `anthropicModelsURL` instead.)
     static func modelsURL(baseURL: URL) -> URL {
+        joinedModelsURL(baseURL: baseURL, stripSuffix: nil, emptyPathDefault: nil, queryItems: nil)
+    }
+
+    /// Whether `url` points at Anthropic's first-party API host (the one host
+    /// where the OpenAI-compat shim serves chat but not `/models`). Compared
+    /// against `LLMProviderCatalog.anthropicNativeBaseURL` so the literal
+    /// lives in exactly one place (an invariant test pins the anthropic
+    /// entry's shim `defaultBaseURL` to this same host). A custom provider on
+    /// any other host — including an Anthropic-compatible proxy — keeps the
+    /// plain OpenAI-compatible listing path.
+    static func isAnthropicHost(_ url: URL) -> Bool {
+        url.host()?.lowercased() == Self.anthropicHost
+    }
+
+    /// Lowercased host of the Anthropic native base, parsed once — the
+    /// constant can't change at runtime, so per-call re-parsing is waste.
+    private static let anthropicHost = LLMProviderCatalog.anthropicNativeBaseURL.host()?.lowercased()
+
+    /// Rewrite an Anthropic base URL to the native models-listing endpoint:
+    /// strip a trailing `/openai` shim segment, append `/models`, and request
+    /// the maximum page size (the endpoint paginates at 20 by default; 1000
+    /// is its documented cap and comfortably covers the catalog, so `has_more`
+    /// is intentionally not walked). `…/v1/openai/`, `…/v1/openai`, `…/v1/`,
+    /// and `…/v1` all yield `…/v1/models?limit=1000`; a bare host (path-less
+    /// user-edited base) is healed to `/v1/models` rather than the
+    /// nonexistent host-root `/models`.
+    static func anthropicModelsURL(baseURL: URL) -> URL {
+        joinedModelsURL(
+            baseURL: baseURL,
+            stripSuffix: "/openai",
+            emptyPathDefault: "/v1",
+            queryItems: [URLQueryItem(name: "limit", value: "1000")]
+        )
+    }
+
+    /// Single canonicalization core behind `modelsURL` and
+    /// `anthropicModelsURL` so trailing-slash/suffix handling can't drift
+    /// between wire formats: strip trailing slashes, optionally strip a
+    /// provider-shim suffix, heal an empty path to `emptyPathDefault`, append
+    /// `/models`, and attach `queryItems` when given (replacing the base's —
+    /// no catalog base carries a query).
+    private static func joinedModelsURL(
+        baseURL: URL,
+        stripSuffix: String?,
+        emptyPathDefault: String?,
+        queryItems: [URLQueryItem]?
+    ) -> URL {
         let suffix = "/models"
         guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             return baseURL.appending(path: "models")
         }
         var path = components.path
         while path.hasSuffix("/") { path.removeLast() }
+        if let stripSuffix, path.hasSuffix(stripSuffix) { path.removeLast(stripSuffix.count) }
+        if path.isEmpty, let emptyPathDefault { path = emptyPathDefault }
         if !path.hasSuffix(suffix) { path += suffix }
         components.path = path
+        if let queryItems { components.queryItems = queryItems }
         return components.url ?? baseURL.appending(path: "models")
     }
 

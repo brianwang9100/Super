@@ -52,6 +52,40 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(custom?.models.isEmpty == true)
     }
 
+    @Test("Every non-Apple catalog model renders its wire id — no curated display names")
+    func modelDisplayNamesAreWireIDs() {
+        // The Add-Model dropdown mixes catalog entries with live-fetched ids;
+        // a curated pretty name next to raw ids reads as two different lists
+        // (removed 2026-06-11). Apple is the one sanctioned override — its
+        // wire id (`system-default`) is an internal token, and that row has
+        // no live fetch to be inconsistent with. This invariant stops the
+        // next model-launch PR from re-adding a displayName by pattern-
+        // matching old catalog diffs.
+        for entry in LLMProviderCatalog.all where entry.id != LLMProviderCatalog.appleProviderID {
+            for model in entry.models {
+                #expect(
+                    model.displayName == model.id,
+                    "\(entry.id)/\(model.id) carries a curated displayName (\(model.displayName))"
+                )
+            }
+        }
+    }
+
+    @Test("Anthropic shim defaultBaseURL and anthropicNativeBaseURL share a host")
+    func anthropicShimAndNativeHostsAgree() {
+        // `LiveModelListingService.isAnthropicHost` reroutes the anthropic
+        // entry's shim base to the native /v1/models endpoint by comparing
+        // its host against `anthropicNativeBaseURL`. The dispatch only works
+        // while these two independently editable constants share a host —
+        // pin that coupling so a future edit to either can't silently break
+        // the live model fetch.
+        let anthropic = LLMProviderCatalog.entry(forID: "anthropic")
+        #expect(
+            anthropic?.defaultBaseURL?.host()?.lowercased()
+                == LLMProviderCatalog.anthropicNativeBaseURL.host()?.lowercased()
+        )
+    }
+
     @Test("Every non-Apple, non-Custom provider has a non-nil defaultBaseURL")
     func openAICompatProvidersHaveURL() {
         for entry in LLMProviderCatalog.all {
@@ -166,7 +200,9 @@ struct SettingsModelDetailPaneCatalogTests {
     func modelLookupHit() {
         let result = LLMProviderCatalog.model(forModelId: "gemini-3-pro")
         #expect(result?.provider.id == "google")
-        #expect(result?.model.displayName == "Gemini 3 Pro")
+        // Curated display names were removed (2026-06-11) — every model
+        // renders its wire id so catalog and live-fetched entries match.
+        #expect(result?.model.displayName == "gemini-3-pro")
         #expect(result?.model.maxContextTokens == 1_000_000)
     }
 
@@ -320,7 +356,9 @@ struct SettingsModelDetailPaneCatalogTests {
     @Test("Google seeds Gemini 3 Pro with the native generateContent URL")
     func googleSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "google")
-        #expect(seeds.name == "Gemini 3 Pro")
+        // Seed names are the wire ids — curated display names were removed
+        // (2026-06-11) so catalog and live-fetched entries render alike.
+        #expect(seeds.name == "gemini-3-pro")
         #expect(seeds.modelId == "gemini-3-pro")
         // Google defaults to the native Gemini base (not the /openai/ shim).
         #expect(seeds.baseURLText == "https://generativelanguage.googleapis.com/v1beta")
@@ -331,7 +369,7 @@ struct SettingsModelDetailPaneCatalogTests {
     @Test("OpenAI seeds GPT-5.5 by default")
     func openAISeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "openai")
-        #expect(seeds.name == "GPT-5.5")
+        #expect(seeds.name == "gpt-5.5")
         #expect(seeds.modelId == "gpt-5.5")
         #expect(seeds.baseURLText == "https://api.openai.com/v1")
         #expect(seeds.maxContextText == "1000000")
@@ -341,7 +379,7 @@ struct SettingsModelDetailPaneCatalogTests {
     @Test("Anthropic seeds Opus 4.7 with the OpenAI-compat shim URL and thinking ON")
     func anthropicSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "anthropic")
-        #expect(seeds.name == "Opus 4.7")
+        #expect(seeds.name == "claude-opus-4-7")
         #expect(seeds.modelId == "claude-opus-4-7")
         #expect(seeds.baseURLText == "https://api.anthropic.com/v1/openai/")
         #expect(seeds.maxContextText == "1000000")
@@ -351,7 +389,7 @@ struct SettingsModelDetailPaneCatalogTests {
     @Test("xAI seeds Grok 4.3 with thinking ON by default")
     func xaiSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "xai")
-        #expect(seeds.name == "Grok 4.3")
+        #expect(seeds.name == "grok-4.3")
         #expect(seeds.modelId == "grok-4.3")
         #expect(seeds.baseURLText == "https://api.x.ai/v1")
         #expect(seeds.maxContextText == "1000000")
@@ -389,8 +427,10 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(merged.count == 1)
         let model = merged[0]
         // Curated values from the catalog, not the fetched-default fallback.
+        // (displayName is always the wire id now; the curated part is the
+        // context cap + thinking capability.)
         #expect(model.id == "gpt-5.5")
-        #expect(model.displayName == "GPT-5.5")
+        #expect(model.displayName == "gpt-5.5")
         #expect(model.maxContextTokens == 1_000_000)
         #expect(model.supportsThinking == true)
     }
@@ -508,11 +548,12 @@ struct SettingsModelDetailPaneCatalogTests {
             rowName: "My Gemini", resolvedProviderID: "google",
             resolvedCatalogID: "gemini-3-pro", storedFallback: nil
         ) == "My Gemini")
-        // Empty name + catalog-known model → catalog display name.
+        // Empty name + catalog-known model → catalog display name (the wire
+        // id, since curated names were removed 2026-06-11).
         #expect(SettingsModelDetailPane.editSeedName(
             rowName: "  ", resolvedProviderID: "google",
             resolvedCatalogID: "gemini-3-pro", storedFallback: nil
-        ) == "Gemini 3 Pro")
+        ) == "gemini-3-pro")
         // Empty name + off-catalog model → the stored fallback's display
         // name (the raw wire id) — the Name field is hidden for built-ins,
         // so without this heal Save is permanently disabled.
@@ -564,12 +605,12 @@ struct SettingsModelDetailPaneCatalogTests {
 
     @Test("makeStoredModelFallback prefers curated metadata, synthesizes for off-catalog ids")
     func makeStoredModelFallbackPrefersCuratedMetadata() {
-        // Catalog-known id → the curated entry (display name + cap).
+        // Catalog-known id → the curated entry (wire-id display name + cap).
         let curated = SettingsModelDetailPane.makeStoredModelFallback(
             resolvedProviderID: "google", modelId: "gemini-3-pro",
             maxContextTokens: 8_192, supportsThinking: true
         )
-        #expect(curated?.displayName == "Gemini 3 Pro")
+        #expect(curated?.displayName == "gemini-3-pro")
         #expect(curated?.maxContextTokens == 1_000_000)
 
         // Off-catalog id → synthesized with the raw id as display name.

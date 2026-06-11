@@ -46,8 +46,15 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
     private static let temperatureRange: ClosedRange<Double> = 0.0...1.0
     /// Hard ceiling on the derived `max_tokens` (§0 #7: `min(ctx/4, 4096)`).
     private static let maxTokensCeiling = 4096
-    /// API version header value pinned per the web-search reference.
-    private static let anthropicVersion = "2023-06-01"
+    /// API version header value pinned per the web-search reference. Internal
+    /// (not private) so `LiveModelListingService` sends the same version on
+    /// the native `/v1/models` listing call.
+    static let anthropicVersion = "2023-06-01"
+    /// Anthropic authenticates with `x-api-key`, never a Bearer token. One
+    /// constant for both the `/v1/messages` path here and the `/v1/models`
+    /// listing in `LiveModelListingService`, so an auth change can't update
+    /// one and strand the other.
+    static let apiKeyHeaderField = "x-api-key"
 
     /// Designated initializer.
     ///
@@ -212,7 +219,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         // belt-and-suspenders cleartext guard the other adapters use: never let
         // a misconfigured `http://` endpoint carry the key.
         if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
-            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            request.setValue(apiKey, forHTTPHeaderField: Self.apiKeyHeaderField)
         }
 
         // `max_tokens` is required by the API. Extended thinking (when the model

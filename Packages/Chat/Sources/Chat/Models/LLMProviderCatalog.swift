@@ -13,6 +13,12 @@ public struct LLMCatalogModel: Equatable, Sendable, Identifiable {
     /// Human-facing label rendered in the dropdown and auto-assigned
     /// as the `ModelConfigurationRecord.name` when the user picks a
     /// built-in provider (the Name field is hidden in that case).
+    /// Defaults to the wire id — the dropdown mixes curated catalog
+    /// entries with live-fetched ids, and a curated pretty name next
+    /// to raw ids read as two different lists. Only Apple overrides
+    /// it ("Apple Intelligence"): its wire id (`system-default`) is an
+    /// internal token no user would recognize, and there's no live
+    /// fetch on that row to be inconsistent with.
     public let displayName: String
     /// Upper bound the Add-Model form enforces on the Context Window
     /// field. Users may set a smaller value but not exceed this.
@@ -24,12 +30,12 @@ public struct LLMCatalogModel: Equatable, Sendable, Identifiable {
 
     public init(
         id: String,
-        displayName: String,
+        displayName: String? = nil,
         maxContextTokens: Int,
         supportsThinking: Bool
     ) {
         self.id = id
-        self.displayName = displayName
+        self.displayName = displayName ?? id
         self.maxContextTokens = maxContextTokens
         self.supportsThinking = supportsThinking
     }
@@ -185,10 +191,10 @@ public enum LLMProviderCatalog {
             models: [
                 // GPT-5.5 (released 2026-04-24) is OpenAI's current
                 // frontier model, 1M-token context, thinking-capable.
-                LLMCatalogModel(id: "gpt-5.5", displayName: "GPT-5.5", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "gpt-5.5-pro", displayName: "GPT-5.5 Pro", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "gpt-5.4-mini", displayName: "GPT-5.4 mini", maxContextTokens: 400_000, supportsThinking: false),
-                LLMCatalogModel(id: "gpt-5.4-nano", displayName: "GPT-5.4 nano", maxContextTokens: 400_000, supportsThinking: false),
+                LLMCatalogModel(id: "gpt-5.5", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "gpt-5.5-pro", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "gpt-5.4-mini", maxContextTokens: 400_000, supportsThinking: false),
+                LLMCatalogModel(id: "gpt-5.4-nano", maxContextTokens: 400_000, supportsThinking: false),
             ],
             nativeSearchAdapter: .openAIResponses,
             nativeSearchBaseURL: openAIResponsesBaseURL
@@ -209,9 +215,9 @@ public enum LLMProviderCatalog {
                 // dateless aliases — using them keeps the catalog
                 // readable and the alias resolves to the current
                 // dated build server-side.
-                LLMCatalogModel(id: "claude-opus-4-7", displayName: "Opus 4.7", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "claude-sonnet-4-6", displayName: "Sonnet 4.6", maxContextTokens: 200_000, supportsThinking: true),
-                LLMCatalogModel(id: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", maxContextTokens: 200_000, supportsThinking: false),
+                LLMCatalogModel(id: "claude-opus-4-7", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "claude-sonnet-4-6", maxContextTokens: 200_000, supportsThinking: true),
+                LLMCatalogModel(id: "claude-haiku-4-5-20251001", maxContextTokens: 200_000, supportsThinking: false),
             ],
             nativeSearchAdapter: .anthropicNative,
             nativeSearchBaseURL: anthropicNativeBaseURL
@@ -230,9 +236,9 @@ public enum LLMProviderCatalog {
                 // Gemini 3.5 Flash is the newest mid-2026 iteration.
                 // Gemini 3 Pro is the flagship; Gemini 3 Flash sits
                 // between them as a faster-but-still-reasoning option.
-                LLMCatalogModel(id: "gemini-3-pro", displayName: "Gemini 3 Pro", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "gemini-3.5-flash", displayName: "Gemini 3.5 Flash", maxContextTokens: 1_000_000, supportsThinking: true),
-                LLMCatalogModel(id: "gemini-3-flash", displayName: "Gemini 3 Flash", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "gemini-3-pro", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "gemini-3.5-flash", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "gemini-3-flash", maxContextTokens: 1_000_000, supportsThinking: true),
             ],
             nativeSearchAdapter: .geminiNative,
             nativeSearchBaseURL: geminiNativeBaseURL
@@ -249,7 +255,7 @@ public enum LLMProviderCatalog {
                 // 2026-05-15; Grok 4.1 Fast is deprecated (pruned
                 // 2026-06-11 — the live list resurfaces it if xAI
                 // still serves the id).
-                LLMCatalogModel(id: "grok-4.3", displayName: "Grok 4.3", maxContextTokens: 1_000_000, supportsThinking: true),
+                LLMCatalogModel(id: "grok-4.3", maxContextTokens: 1_000_000, supportsThinking: true),
             ]
         ),
         LLMProviderCatalogEntry(
@@ -291,11 +297,13 @@ public enum LLMProviderCatalog {
     /// `LLMCatalogModel` list the Add-Model "Model" dropdown renders.
     ///
     /// A fetched id that matches a catalog model keeps that model's curated
-    /// metadata (`displayName`, `maxContextTokens`, `supportsThinking`);
-    /// a fetched id with no catalog match becomes a default
-    /// `LLMCatalogModel` (display name = the raw id,
-    /// `defaultFetchedMaxContextTokens` cap, thinking off) the user can
-    /// still edit. Duplicate fetched ids collapse to first occurrence.
+    /// metadata (`maxContextTokens`, `supportsThinking`); a fetched id with
+    /// no catalog match becomes a default `LLMCatalogModel`
+    /// (`defaultFetchedMaxContextTokens` cap, thinking off) the user can
+    /// still edit. Every entry renders its wire id — curated display names
+    /// were removed (2026-06-11) because the mixed pretty-name/raw-id list
+    /// read as inconsistent. Duplicate fetched ids collapse to first
+    /// occurrence.
     ///
     /// Ordering keeps the curated models on top: catalog-known ids appear
     /// first **in catalog order** (not fetch order — the catalog is the
@@ -319,7 +327,6 @@ public enum LLMProviderCatalog {
             .map {
                 LLMCatalogModel(
                     id: $0,
-                    displayName: $0,
                     maxContextTokens: defaultFetchedMaxContextTokens,
                     supportsThinking: false
                 )
