@@ -1110,17 +1110,20 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_appearance_light_xxl", function: function)
     }
 
-    // The Haptics toggle sits below the theme grid + font-scale card, off the
-    // bottom of the standard 874pt pane snapshots above — so it needs its own
-    // full-height render to get explicit coverage (a changed view requires a
-    // snapshot). These use a tall fixed layout rather than the shared 874 frame
-    // so the whole scroll content, including the toggle, lands in one image.
-    @Test("appearance pane — full height shows the Haptics toggle")
+    // With font-scale + Haptics at the top, the tail of the theme grid runs
+    // off the bottom of the standard 874pt pane snapshots above — so the pane
+    // needs a full-height render for the later families to get explicit
+    // coverage. These use a tall fixed layout rather than the shared 874 frame
+    // so the whole scroll content lands in one image. The `…Haptics…`
+    // function and baseline names predate the reorder and are kept as-is —
+    // baseline filenames embed the function name, so renaming would orphan
+    // the recorded PNGs.
+    @Test("appearance pane — full height shows the whole theme grid")
     func appearancePaneHapticsLight() {
         verifyTallAppearancePane(theme: .vellumLight, name: "settings_appearance_haptics_light")
     }
 
-    @Test("appearance pane full height — Haptics toggle in dark")
+    @Test("appearance pane full height — whole theme grid in dark")
     func appearancePaneHapticsDark() {
         verifyTallAppearancePane(
             theme: .vellumDark, name: "settings_appearance_haptics_dark",
@@ -1337,9 +1340,9 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    /// Tall fixed layout so the full Appearance pane (theme grid + font-scale
-    /// card + the Haptics toggle) renders in one image — the standard 874pt
-    /// frame clips the toggle off the bottom.
+    /// Tall fixed layout so the full Look & Feel pane (font-scale card +
+    /// Haptics toggle + theme grid) renders in one image — the standard 874pt
+    /// frame clips the grid's later families off the bottom.
     private static let tallFrame = CGSize(width: 402, height: 1340)
 
     private func verifyTallAppearancePane(

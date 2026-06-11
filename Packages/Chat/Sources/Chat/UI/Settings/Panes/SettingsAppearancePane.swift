@@ -1,13 +1,14 @@
 import Core
 import SwiftUI
 
-/// Appearance pane. Two stacked controls for how the app looks: a grouped
-/// theme picker (one section per family — Vellum / Lapis / Scriptorium / Slate
-/// — each with a Light and Dark preview card), and a three-stop font-scale
-/// slider snapping to 0.80× / 1.00× / 1.20× (Small / Medium / Large). Spacing
-/// (line-spacing, paragraph margin, bubble paddings) is derived from the
-/// slider value inside `ChatAppearance`, so larger text automatically gets
-/// more breathing room and the pane stays to one knob.
+/// Look & Feel pane. Stacked controls for how the app looks and feels: a
+/// three-stop font-scale slider snapping to 0.80× / 1.00× / 1.20×
+/// (Small / Medium / Large), the haptics master toggle, and a grouped theme
+/// picker (one section per family — Vellum / Lapis / Scriptorium / Slate —
+/// each with a Light and Dark preview card). Spacing (line-spacing,
+/// paragraph margin, bubble paddings) is derived from the slider value
+/// inside `ChatAppearance`, so larger text automatically gets more
+/// breathing room and the pane stays to one knob.
 struct SettingsAppearancePane: View {
     @Bindable var viewModel: SettingsViewModel
 
@@ -23,24 +24,8 @@ struct SettingsAppearancePane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Theme")
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-
-            ForEach(Self.families, id: \.self) { family in
-                familyLabel(family.displayName)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-
-                themeRow(family: family)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-            }
-            .padding(.bottom, 4)
-
             sectionLabel("Font size")
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
                 .padding(.bottom, 8)
 
             fontScaleCard
@@ -55,6 +40,21 @@ struct SettingsAppearancePane: View {
                 hapticsToggleRow
             }
             .padding(.bottom, 20)
+
+            sectionLabel("Theme")
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+
+            ForEach(Self.families, id: \.self) { family in
+                familyLabel(family.displayName)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                themeRow(family: family)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+            }
+            .padding(.bottom, 4)
         }
         .padding(.top, 16)
     }

@@ -41,7 +41,7 @@ Each family's dark variant inverts the surfaces while keeping the accent charact
 | UI, body, messages | **Geist** | Primary typeface, 17pt body |
 | Code, context meter, tool names, version strings | **JetBrains Mono** | Lowercase, subtle letter-spacing |
 
-Body text is 17pt at 1.0× font scale, tuned to match Claude iOS chat. Font scale is user-tunable in Appearance settings (0.80×–1.20×). Paragraph line-spacing and inter-paragraph margin are derived from the same slider via piecewise-linear interpolation between three anchors: 0.80× → 0.30 em line-spacing + 10 pt margin (compact), 1.00× → 0.39 em + 16 pt (comfortable), 1.20× → 0.54 em + 25 pt (spacious). One knob controls the whole reading feel.
+Body text is 17pt at 1.0× font scale, tuned to match Claude iOS chat. Font scale is user-tunable in Look & Feel settings (0.80×–1.20×). Paragraph line-spacing and inter-paragraph margin are derived from the same slider via piecewise-linear interpolation between three anchors: 0.80× → 0.30 em line-spacing + 10 pt margin (compact), 1.00× → 0.39 em + 16 pt (comfortable), 1.20× → 0.54 em + 25 pt (spacious). One knob controls the whole reading feel.
 
 ### 2.3 Motion
 
@@ -374,7 +374,7 @@ The Settings modal is a **bottom sheet**: slides up from the bottom, anchored 40
 ├─────────────────────────────────┤
 │ 📝 System Prompt             › │
 │ 🗣 Default Verbosity Verbose › │
-│ 🪟 Appearance                 › │
+│ 🪟 Look & Feel                › │
 ├─────────────────────────────────┤
 │ 🗃 Data              12 chats › │
 │ ⓘ About              v0.3.1  › │
@@ -417,7 +417,7 @@ Three rows (Simple / Thinking / Verbose) in a grouped card, each showing:
 
 Selected option shows a trailing accent check. Picking a value changes the verbosity for the **open chat** immediately and persists it as the default for newly created chats.
 
-### 7.7 Appearance Pane
+### 7.7 Look & Feel Pane (formerly Appearance)
 
 - **Font size** — a three-stop slider 0.80× / 1.00× / 1.20× (step 0.20), accent-colored track. Labels: Small / {percentage} / Large. The slider snaps to one of the three anchors and scales all body typography live; spacing (line-spacing, inter-paragraph margin, bubble paddings) is derived from the same value so larger text automatically gets more breathing room. No separate density knob.
 
