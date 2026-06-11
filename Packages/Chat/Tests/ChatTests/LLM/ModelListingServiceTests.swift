@@ -4,11 +4,11 @@ import Testing
 @testable import Chat
 
 /// Tests for `LiveModelListingService` — the live `GET …/models` call that
-/// feeds the Add-Model "Model" dropdown. Exercises both wire formats
-/// (OpenAI-compatible `data[]` and Gemini `models[]`), the request shape
-/// (URL, method, auth header per kind), and the error mapping. No real
-/// network — every case replays a canned body or error through
-/// `FakeHTTPClient`.
+/// feeds the Add-Model "Model" dropdown. Exercises all three wire formats
+/// (OpenAI-compatible `data[]`, Anthropic-native `data[]` with its distinct
+/// URL/headers, and Gemini `models[]`), the request shape (URL, method, auth
+/// header per kind), and the error mapping. No real network — every case
+/// replays a canned body or error through `FakeHTTPClient`.
 @Suite("LiveModelListingService")
 struct ModelListingServiceTests {
     private func service(_ http: HTTPClient) -> LiveModelListingService {
@@ -38,17 +38,77 @@ struct ModelListingServiceTests {
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
     }
 
-    @Test("OpenAI-compatible: the Anthropic /v1/openai/ shim base joins to /v1/openai/models")
-    func openAICompatibleTrailingSlashBase() async throws {
-        let http = body(#"{"data":[{"id":"claude-opus-4-7"}]}"#)
+    // MARK: - Anthropic native listing (regression: the /v1/openai/ shim has no /models)
+
+    @Test("Anthropic: the /v1/openai/ shim base rewrites to native /v1/models with x-api-key + anthropic-version")
+    func anthropicShimBaseRewritesToNativeModelsEndpoint() async throws {
+        // Regression for the Add-Model live fetch 404ing on Anthropic: the
+        // chat shim base has no /models endpoint, and the native endpoint
+        // rejects Bearer auth. Verified by curl 2026-06-11 — only
+        // `GET /v1/models` + `x-api-key` + `anthropic-version` succeeds.
+        let http = body(#"{"data":[{"id":"claude-opus-4-7"},{"id":"claude-sonnet-4-6"}]}"#)
         let ids = try await service(http).listModelIDs(
             kind: .openAICompatible,
             baseURL: URL(string: "https://api.anthropic.com/v1/openai/")!,
             apiKey: "sk-ant"
         )
-        #expect(ids == ["claude-opus-4-7"])
+        #expect(ids == ["claude-opus-4-7", "claude-sonnet-4-6"])
+
         let request = try #require(http.observed.all.first)
-        #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/openai/models")
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/models?limit=1000")
+        #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk-ant")
+        #expect(request.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
+        // The native endpoint 401s on Bearer — it must not be attached.
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test("Anthropic: a bare /v1 base also yields /v1/models (no /openai segment to strip)")
+    func anthropicBareV1BaseYieldsNativeModelsEndpoint() async throws {
+        let http = body(#"{"data":[{"id":"claude-haiku-4-5-20251001"}]}"#)
+        _ = try await service(http).listModelIDs(
+            kind: .openAICompatible,
+            baseURL: URL(string: "https://api.anthropic.com/v1")!,
+            apiKey: "sk-ant"
+        )
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/models?limit=1000")
+    }
+
+    @Test("Anthropic: a bare-host base (user-edited, no path) heals to /v1/models")
+    func anthropicBareHostBaseHealsToV1Models() async throws {
+        // The /v1 default exists for user-edited bases: without it a bare
+        // host would yield the nonexistent host-root /models.
+        let http = body(#"{"data":[{"id":"claude-opus-4-7"}]}"#)
+        _ = try await service(http).listModelIDs(
+            kind: .openAICompatible,
+            baseURL: URL(string: "https://api.anthropic.com")!,
+            apiKey: "sk-ant"
+        )
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/models?limit=1000")
+    }
+
+    @Test("OpenAI-compatible: a trailing-slash base joins to /models without a double slash")
+    func openAICompatibleTrailingSlashBaseJoins() async throws {
+        // Pins the generic path's slash canonicalization — previously only
+        // covered via the (since-rerouted) Anthropic shim base.
+        let http = body(#"{"data":[{"id":"local-model"}]}"#)
+        _ = try await service(http).listModelIDs(
+            kind: .openAICompatible,
+            baseURL: URL(string: "http://127.0.0.1:11434/v1/")!,
+            apiKey: nil
+        )
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "http://127.0.0.1:11434/v1/models")
+    }
+
+    @Test("isAnthropicHost gates on the first-party host only — proxies stay OpenAI-compatible")
+    func isAnthropicHostTable() {
+        #expect(LiveModelListingService.isAnthropicHost(URL(string: "https://api.anthropic.com/v1/openai/")!))
+        #expect(LiveModelListingService.isAnthropicHost(URL(string: "https://API.ANTHROPIC.COM/v1")!))
+        #expect(!LiveModelListingService.isAnthropicHost(URL(string: "https://api.openai.com/v1")!))
+        #expect(!LiveModelListingService.isAnthropicHost(URL(string: "https://my-claude-proxy.example.com/v1")!))
     }
 
     @Test("No key: no Authorization header is attached (local/unauthenticated endpoints)")
