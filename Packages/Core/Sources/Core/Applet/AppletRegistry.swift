@@ -74,15 +74,23 @@ public final class AppletRegistry {
     /// so the Anthropic prompt-cache prefix is stable across turns even
     /// if the shell ever re-orders the applet list at launch. The label
     /// is `"\(displayName) applet"`; the body is the trimmed prompt text.
+    /// Each briefing also carries the applet's trimmed `compactSystemPrompt`
+    /// as `compactBody` (falling back to the full body when the compact
+    /// variant is empty), so the orchestrator can select per model tier
+    /// without re-consulting the registry.
     public func resolvedBriefings() -> [AppletBriefing] {
         applets
             .sorted { $0.appletID < $1.appletID }
             .compactMap { applet -> AppletBriefing? in
                 let trimmed = applet.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return nil }
+                let trimmedCompact = applet.compactSystemPrompt
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 return AppletBriefing(
                     label: "\(applet.displayName) applet",
-                    body: trimmed
+                    body: trimmed,
+                    compactBody: trimmedCompact.isEmpty ? nil : trimmedCompact,
+                    appletID: applet.appletID
                 )
             }
     }

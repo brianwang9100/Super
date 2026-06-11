@@ -124,12 +124,28 @@ public actor ChatSession {
     /// state — never changes during a session's lifetime.
     private let chatBriefing: String
 
+    /// Lean persona variant sent to small-window models
+    /// (`ModelContextTier.compact`), from
+    /// `Resources/DefaultSystemPrompt.compact.md`. Empty means "no compact
+    /// variant" — the session falls back to `chatBriefing` on every tier.
+    private let compactChatBriefing: String
+
     /// Per-applet briefings contributed by the registered `MiniApplet`s.
     /// Trimmed and ordered by `AppletRegistry.resolvedBriefings()` at
     /// app launch and threaded through `ChatSessionStore`. Rendered as
     /// labeled `## <Name> applet` sections inside the leading `.system`
     /// block. Constructor-time state — applets are static at launch.
+    /// Each entry also carries its `compactBody`, selected per turn for
+    /// small-window models.
     private let appletBriefings: [AppletBriefing]
+
+    /// Live source of the active applet's id, threaded from the shell's
+    /// `AppletRegistry` (a `@MainActor` type — hence the async hop). On the
+    /// compact tier the session injects **only the active applet's**
+    /// briefing, since a 4096-token model can't afford rules for surfaces
+    /// the user isn't on. `nil` (fixtures, single-briefing targets) keeps
+    /// every briefing on every tier.
+    private let activeAppletID: (@Sendable () async -> String?)?
 
     /// User-authored personalization text (formerly the user-editable
     /// "system prompt"). Free-form preferences about themselves the
@@ -215,9 +231,15 @@ public actor ChatSession {
     ///   - chatBriefing: Chat-assistant base prompt, loaded once at app
     ///     launch from `Resources/DefaultSystemPrompt.md`. Default `""`
     ///     so fixtures that don't carry the Chat bundle keep working.
+    ///   - compactChatBriefing: Lean persona variant for small-window
+    ///     models, from `ChatBriefing.loadCompact()`. Default `""` falls
+    ///     back to `chatBriefing` on every tier.
     ///   - appletBriefings: Per-applet prompts from
     ///     `AppletRegistry.resolvedBriefings()`. Default `[]` for
     ///     fixtures that don't construct a registry.
+    ///   - activeAppletID: Live accessor for the shell's active applet id;
+    ///     scopes compact-tier turns to the active applet's briefing.
+    ///     Default `nil` keeps all briefings on every tier.
     ///   - userPersonalization: User-authored "about me" text — the
     ///     renamed `ChatSettings.systemPrompt` field. Default `""`
     ///     (no injection) for fixtures that don't carry settings.
@@ -237,7 +259,9 @@ public actor ChatSession {
         manualCompactMinThreshold: Double = ChatSettings.defaultManualCompactMinThreshold,
         askBeforeSearching: Bool = true,
         chatBriefing: String = "",
+        compactChatBriefing: String = "",
         appletBriefings: [AppletBriefing] = [],
+        activeAppletID: (@Sendable () async -> String?)? = nil,
         userPersonalization: String = "",
         memoryRepository: (any MemoryRepository)? = nil,
         webSearchFulfiller: (any WebSearchFulfilling)? = nil
@@ -257,7 +281,9 @@ public actor ChatSession {
         self.manualCompactMinThreshold = manualCompactMinThreshold
         self.askBeforeSearching = askBeforeSearching
         self.chatBriefing = chatBriefing
+        self.compactChatBriefing = compactChatBriefing
         self.appletBriefings = appletBriefings
+        self.activeAppletID = activeAppletID
         self.currentUserPersonalization = userPersonalization
         self.memoryRepository = memoryRepository
         self.webSearchFulfiller = webSearchFulfiller
@@ -862,24 +888,57 @@ public actor ChatSession {
         // this counts the base registered tools, not the transient per-turn
         // web-search proposal/sentinel tools (a small, deliberate undercount).
         async let tools = toolRegistry.enabledTools()
+        let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
         // Budget the SAME tier-filtered tool set the live request sends (see the
         // `runTurnLoop` filter), so the compaction gates don't over-count tools
         // a small-window model never receives.
-        let budgetedTools = CompactToolPolicy.filter(
-            await tools,
-            tier: ModelContextTier(maxContextTokens: model.maxContextTokens)
-        )
+        let budgetedTools = CompactToolPolicy.filter(await tools, tier: tier)
+        let briefings = await selectedBriefings(for: tier)
         return try await contextAssembler.assemble(
             messages: messages,
             toolCalls: toolCalls,
             checkpoint: checkpoint,
             model: model,
-            chatBriefing: chatBriefing,
-            appletBriefings: appletBriefings,
+            chatBriefing: briefings.chat,
+            appletBriefings: briefings.applets,
             userPersonalization: currentUserPersonalization,
             memories: memories,
             tools: budgetedTools
         )
+    }
+
+    /// Pick the briefing stack for `tier`, per turn (not per init) so
+    /// switching models mid-conversation re-tiers correctly.
+    ///
+    /// `.full` returns the constructor-time stack untouched — byte-identical
+    /// assembly to before tiers existed. `.compact` swaps in the lean
+    /// variants (falling back to the full text where no compact one exists)
+    /// and, when the shell provided an `activeAppletID` accessor, keeps only
+    /// the active applet's briefing — rules for surfaces the user isn't on
+    /// aren't worth window on a 4096-token model. An unknown/`nil` active id
+    /// fails open to the whole set.
+    ///
+    /// The accessor is read live on each call, so the compaction gate's
+    /// assembly and the wire request's assembly within one turn could see
+    /// different active applets if the user switches mid-send — a one-turn,
+    /// few-hundred-token discrepancy in the budget, deliberately tolerated.
+    private func selectedBriefings(
+        for tier: ModelContextTier
+    ) async -> (chat: String, applets: [AppletBriefing]) {
+        guard tier == .compact else { return (chatBriefing, appletBriefings) }
+        let chat = compactChatBriefing.isEmpty ? chatBriefing : compactChatBriefing
+        var applets = appletBriefings.map { briefing in
+            AppletBriefing(
+                label: briefing.label,
+                body: briefing.compactBody,
+                appletID: briefing.appletID
+            )
+        }
+        if let activeAppletID, let active = await activeAppletID() {
+            let scoped = applets.filter { $0.appletID == active }
+            if !scoped.isEmpty { applets = scoped }
+        }
+        return (chat, applets)
     }
 
     /// Fetch stored memories when the `memory` tool is enabled, otherwise
@@ -922,7 +981,24 @@ public actor ChatSession {
     private func maybeAutoCompact(model: LLMModel) async throws {
         guard autoCompactEnabled else { return }
         let assembly = try await assemble(model: model)
-        guard assembly.isOverThreshold(autoCompactThreshold) else { return }
+        // Small-window models compact earlier AND against a different
+        // denominator. Their fixed floor (briefings + tool schemas + the
+        // provider's own scaffolding) eats most of the window and survives
+        // every checkpoint — a total-ratio gate would re-fire compaction on
+        // every turn once the floor alone exceeds the threshold, without
+        // ever bringing the total down. So the compact tier gates the
+        // *compressible* slice (history) against the window that's actually
+        // left after the floor, with the user threshold capped (not
+        // replaced) at the tier ceiling so a stricter user setting wins.
+        // Full-tier models keep the original total-ratio gate unchanged.
+        let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
+        switch tier {
+        case .compact:
+            let threshold = min(autoCompactThreshold, ChatSettings.compactTierAutoCompactThreshold)
+            guard assembly.isCompressibleOverThreshold(threshold) else { return }
+        case .full:
+            guard assembly.isOverThreshold(autoCompactThreshold) else { return }
+        }
         try await runCompactionPass(model: model, keepMostRecent: Compactor.defaultKeepMostRecent)
     }
 
@@ -934,7 +1010,14 @@ public actor ChatSession {
     private func runCompaction(model: LLMModel) async {
         await runGuardedTurn {
             let assembly = try await self.assemble(model: model)
-            guard assembly.ratio >= self.manualCompactMinThreshold else {
+            // Same denominator split as `maybeAutoCompact`: on the compact
+            // tier the fixed floor (briefings + tools + allowance) would
+            // satisfy the gate on an empty conversation, making the
+            // "too short to compact" guard dead — so gate on the
+            // compressible slice there.
+            let tier = ModelContextTier(maxContextTokens: model.maxContextTokens)
+            let gateRatio = tier == .compact ? assembly.compressibleRatio : assembly.ratio
+            guard gateRatio >= self.manualCompactMinThreshold else {
                 let pct = Int((self.manualCompactMinThreshold * 100).rounded())
                 self.broadcast(.error(.requestFailed(
                     "Conversation is too short to compact yet — try again once context usage reaches \(pct)%."

@@ -93,6 +93,15 @@ public struct ChatSettings: Sendable, Equatable {
     /// defaults can't drift apart.
     public static let defaultAutoCompactThreshold: Double = 0.85
 
+    /// Auto-compaction cap for small-window (`ModelContextTier.compact`)
+    /// models, applied as `min(userThreshold, this)` in
+    /// `ChatSession.maybeAutoCompact`. Their fixed overhead (briefings +
+    /// tool schemas + the provider's own scaffolding) eats most of the
+    /// window and the heuristic meter undercounts the on-device tokenizer,
+    /// so waiting for the default 0.85 means the model has already
+    /// overflowed. Not user-tunable; one home for the value.
+    public static let compactTierAutoCompactThreshold: Double = 0.6
+
     /// Minimum context-usage ratio below which manual `/compact` refuses
     /// to run and surfaces a user-facing error instead. Below this, the
     /// summary would be too short to be worth the round-trip and the

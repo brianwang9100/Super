@@ -98,7 +98,14 @@ public struct MemoryTool: ToolExecutor {
         ],
         appletId: MemoryTool.appletID,
         displayName: "Memory",
-        summary: "Remembers your preferences across conversations."
+        summary: "Remembers your preferences across conversations.",
+        compactDescription: """
+        Persistent memory across conversations. `op:'save'` when the user \
+        shares a stable preference or personal fact; `op:'update'` / \
+        `op:'forget'` (with `id`) to revise or remove one. Don't save \
+        one-off context. Saved memories are surfaced to you automatically \
+        every turn.
+        """
     )
 
     /// Convenience that builds a `ToolRegistration` for a ready-to-use

@@ -29,6 +29,13 @@ public struct BibleApplet: MiniApplet {
     public static let accentColor: Color = Color(red: 0.52, green: 0.32, blue: 0.55)
     public var accentColor: Color { Self.accentColor }
     public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
+    /// Lean briefing for small-context-window models. Deliberately omits the
+    /// `bible.annotate`/`bible.note` guidance — those tools are dropped on the
+    /// compact tier (see Chat's `CompactToolPolicy`), and describing tools the
+    /// model can't call invites hallucinated calls.
+    public var compactSystemPrompt: String {
+        AppletSystemPrompt.load(from: .module, resource: "SystemPrompt.compact")
+    }
 
     /// Bible-flavored empty-state prompts. The shell surfaces these (alongside
     /// any other registered applet's) as tappable chat-starter buttons.

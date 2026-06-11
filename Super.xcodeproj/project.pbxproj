@@ -18,6 +18,7 @@
 		1BEEBD5EF6A7767EE13B55C6 /* Bible in Frameworks */ = {isa = PBXBuildFile; productRef = FB8F97E45F912C4ADC4820AB /* Bible */; };
 		2A12403854675426ABB6397F /* FailureScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7B0EE431B3E74171315822 /* FailureScreen.swift */; };
 		3041CF879C489ACC742D2DCD /* SuperBibleAppBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B2859A07716F10C47D130C7 /* SuperBibleAppBootstrap.swift */; };
+		3823D084286850930FDBE60B /* SuperBibleSystemPrompt.compact.md in Resources */ = {isa = PBXBuildFile; fileRef = F5EB5DE090BCFA2845C8761B /* SuperBibleSystemPrompt.compact.md */; };
 		3C1B1C3052183B3810A8CF5D /* AppShellLaunchBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09AB504FC5956F2BE0C3C813 /* AppShellLaunchBehavior.swift */; };
 		3D957B13FD33BB20787F3F7F /* SuperBibleContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05285BC0D4A64A80798827AE /* SuperBibleContentView.swift */; };
 		3DEAA0D510B10B95793375A7 /* Chat in Frameworks */ = {isa = PBXBuildFile; productRef = EC029F57EBD2257B8FF7A6D6 /* Chat */; };
@@ -71,6 +72,7 @@
 		C41DDF00F0BF6124C2468042 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		CD7B0EE431B3E74171315822 /* FailureScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FailureScreen.swift; sourceTree = "<group>"; };
 		E370D60B9278B442BC918F01 /* PlaceholderApplets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderApplets.swift; sourceTree = "<group>"; };
+		F5EB5DE090BCFA2845C8761B /* SuperBibleSystemPrompt.compact.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SuperBibleSystemPrompt.compact.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -188,6 +190,7 @@
 		BA63ACC5C50B5FF338886BBB /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				F5EB5DE090BCFA2845C8761B /* SuperBibleSystemPrompt.compact.md */,
 				B4A542D995049132FEC7D3ED /* SuperBibleSystemPrompt.md */,
 			);
 			path = Resources;
@@ -309,6 +312,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD50833E303252DED6DDD093 /* Assets.xcassets in Resources */,
+				3823D084286850930FDBE60B /* SuperBibleSystemPrompt.compact.md in Resources */,
 				A4F219F443B47D41DA7B2944 /* SuperBibleSystemPrompt.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -8,14 +8,26 @@ public struct ContextAssembly: Sendable, Equatable {
     /// Prompt projected from the persisted history (with the live
     /// checkpoint, if any, prepended as a synthetic system message).
     public let messages: [LLMMessage]
-    /// Token estimate for `messages` per the assembler's `TokenEstimator`.
+    /// Token estimate for `messages` per the assembler's `TokenEstimator`,
+    /// plus the tool-schema cost (and, on the compact tier, the calibration
+    /// the assembler applies).
     public let totalTokens: Int
+    /// The *incompressible* slice of `totalTokens`: the assembler-injected
+    /// system blocks (briefings, web-search guidance, memories), the tool
+    /// schemas, and the compact-tier fixed allowance. Compaction summarizes
+    /// history only — this floor survives every checkpoint, so gates that
+    /// decide whether compaction is worth running must compare the
+    /// *compressible* remainder against the window that's actually left
+    /// (see `compressibleRatio`). `0` for assemblies built without briefings
+    /// or tools.
+    public let fixedTokens: Int
     /// `LLMModel.maxContextTokens` as supplied at assembly time.
     public let maxTokens: Int
 
-    public init(messages: [LLMMessage], totalTokens: Int, maxTokens: Int) {
+    public init(messages: [LLMMessage], totalTokens: Int, fixedTokens: Int = 0, maxTokens: Int) {
         self.messages = messages
         self.totalTokens = totalTokens
+        self.fixedTokens = fixedTokens
         self.maxTokens = maxTokens
     }
 
@@ -32,6 +44,31 @@ public struct ContextAssembly: Sendable, Equatable {
     /// `ChatSettings.defaultAutoCompactThreshold`.
     public func isOverThreshold(_ threshold: Double) -> Bool {
         ratio >= threshold
+    }
+
+    /// The summarizable slice of the prompt: history rows + the live
+    /// checkpoint summary — everything `totalTokens` counts beyond the
+    /// fixed floor.
+    public var compressibleTokens: Int { max(0, totalTokens - fixedTokens) }
+
+    /// How full the *compressible* budget is: history tokens over the
+    /// window that remains after the fixed floor. This is the honest
+    /// compaction signal on small-window models — their floor alone can
+    /// exceed a total-ratio threshold forever, which would re-fire
+    /// compaction on every turn without ever bringing the total down.
+    /// When the floor consumes the entire window, any history at all
+    /// reads as `.infinity` (compaction is still the only lever left);
+    /// an empty prompt reads 0.
+    public var compressibleRatio: Double {
+        let available = maxTokens - fixedTokens
+        guard available > 0 else { return compressibleTokens > 0 ? .infinity : 0 }
+        return Double(compressibleTokens) / Double(available)
+    }
+
+    /// `true` when `compressibleRatio >= threshold` — the compact-tier
+    /// counterpart of `isOverThreshold(_:)`.
+    public func isCompressibleOverThreshold(_ threshold: Double) -> Bool {
+        compressibleRatio >= threshold
     }
 }
 
@@ -124,8 +161,14 @@ public struct ContextAssembler: Sendable {
         // every time the `memory` tool runs, so they live in their own
         // block immediately after the leading one, isolating the cache
         // bust to just that block.
+        // The assembler-injected system blocks are the *fixed* part of the
+        // prompt — compaction summarizes history, never these — so their
+        // cost is tracked separately and surfaced as
+        // `ContextAssembly.fixedTokens` for the compressible-budget gates.
+        var fixedBlockTokens = 0
         if let memoriesBlock = Self.formatMemoriesBlock(memories) {
             prompt.insert(LLMMessage(role: .system, text: memoriesBlock), at: 0)
+            fixedBlockTokens += estimator.estimate(memoriesBlock)
         }
         // Native-search guidance sits ahead of the volatile memories block
         // (it depends only on the model, so it's stable across turns and
@@ -134,6 +177,7 @@ public struct ContextAssembler: Sendable {
         // them.
         if let webSearchBlock = Self.formatWebSearchBlock(model: model) {
             prompt.insert(LLMMessage(role: .system, text: webSearchBlock), at: 0)
+            fixedBlockTokens += estimator.estimate(webSearchBlock)
         }
         if let leadingBlock = Self.formatLeadingSystemBlock(
             chatBriefing: chatBriefing,
@@ -141,6 +185,7 @@ public struct ContextAssembler: Sendable {
             userPersonalization: userPersonalization
         ) {
             prompt.insert(LLMMessage(role: .system, text: leadingBlock), at: 0)
+            fixedBlockTokens += estimator.estimate(leadingBlock)
         }
         // The projected prompt can carry several consecutive `.system`
         // entries (leading block, memories, historical leading `.system`
@@ -157,13 +202,44 @@ public struct ContextAssembler: Sendable {
         // Without it the meter undercounts by the fixed tool overhead, which
         // on a small-window model (AFM) can silently overflow before
         // auto-compaction ever fires.
-        let total = estimator.estimate(messages: prompt) + estimator.estimate(tools: tools)
+        var toolTokens = estimator.estimate(tools: tools)
+        var allowanceTokens = 0
+        if ModelContextTier(maxContextTokens: model.maxContextTokens) == .compact {
+            // Small-window models typically run on-device (the Apple
+            // Foundation Model), whose framework counts far more against the
+            // window than our chars/4 heuristic sees: it serializes each tool
+            // into a full JSON-schema declaration with scaffolding, and it
+            // prepends its own base instructions + guardrails we never
+            // observe. Measured on-device (iPhone 15 Pro Max, iOS 27): AFM
+            // reported ~11k tokens for a request our raw heuristic put at
+            // ~3k, with tool schemas dominating the gap. Calibrate so the
+            // meter — and therefore the compaction gates reading it —
+            // approximates what the on-device tokenizer actually counts.
+            // (The tier keys on window size, so a user-added ≤8K BYOK model
+            // is calibrated too — a conservative over-count for it.)
+            // Full-tier models are untouched.
+            toolTokens = Int((Double(toolTokens) * Self.compactTierToolSchemaInflation).rounded(.up))
+            allowanceTokens = Self.compactTierFixedOverheadTokens
+        }
+        let total = estimator.estimate(messages: prompt) + toolTokens + allowanceTokens
         return ContextAssembly(
             messages: prompt,
             totalTokens: total,
+            fixedTokens: fixedBlockTokens + toolTokens + allowanceTokens,
             maxTokens: model.maxContextTokens
         )
     }
+
+    /// Multiplier applied to the heuristic tool-schema estimate on the
+    /// compact tier, approximating the on-device provider's JSON-schema
+    /// scaffolding + real-tokenizer expansion of each tool declaration
+    /// (the chars/4 heuristic counts only the raw descriptive text).
+    static let compactTierToolSchemaInflation: Double = 1.8
+
+    /// Flat allowance, in tokens, for the on-device provider's own base
+    /// instructions and guardrails — prompt weight Apple injects that we
+    /// can neither read nor count. Added to compact-tier budgets only.
+    static let compactTierFixedOverheadTokens = 800
 
     /// Concatenates the chat-assistant briefing, per-applet briefings, and
     /// user-personalization text into a single labeled markdown body, or

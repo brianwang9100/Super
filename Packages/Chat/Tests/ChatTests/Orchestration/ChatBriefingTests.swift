@@ -21,4 +21,16 @@ struct ChatBriefingTests {
         // the `## <Applet> applet` convention to the LLM.
         #expect(ChatBriefing.load().contains("## Reading the sections that follow"))
     }
+
+    @Test("loadCompact returns a non-empty body materially shorter than the full one")
+    func loadCompactIsNonEmptyAndLean() {
+        // Same packaging tripwire for `DefaultSystemPrompt.compact.md` —
+        // an empty result silently forfeits the compact-tier window savings
+        // (ChatSession would fall back to the full persona). The length
+        // check guards the point of the file: if the compact variant grows
+        // to rival the full one, it has stopped earning its keep.
+        let compact = ChatBriefing.loadCompact()
+        #expect(compact.isEmpty == false)
+        #expect(compact.count < ChatBriefing.load().count / 2)
+    }
 }
