@@ -152,7 +152,7 @@ struct BibleNavBar: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.selection))
             // Lower priority than the translation segment: when the centre
             // slot is tight the book name compresses (and scales) first.
             .layoutPriority(0)
@@ -179,7 +179,7 @@ struct BibleNavBar: View {
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GlassHapticButtonStyle(.selection))
             .layoutPriority(1)
             .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
@@ -275,7 +275,7 @@ struct BibleNavBar: View {
                 .superGlassButton(in: Circle())
                 .overlay(alignment: .topTrailing) { selectionDotOverlay }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         // Citation is intentionally not on the visual button — VoiceOver
         // still announces what's playing so the screen reader experience
         // doesn't lose context that the sighted user gets from the card.
@@ -311,6 +311,6 @@ struct BibleNavBar: View {
                 .frame(width: 44, height: 44)
                 .superGlassButton(in: Circle(), morph: GlassMorphID(morphID, in: glassNamespace))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
     }
 }

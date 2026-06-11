@@ -104,7 +104,7 @@ struct NoteListSheet: View {
                 .frame(width: 44, height: 44)
                 .superGlassCTAButton(in: Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
         .accessibilityLabel("Write a note")
     }
 

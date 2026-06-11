@@ -18,7 +18,8 @@ struct BibleScreenViewModelTests {
         highlightRepository: (any BibleHighlightRepository)? = nil,
         clipboard: any ClipboardWriter = FakeClipboard(),
         at position: BiblePosition = BibleScreenViewModel.defaultPosition,
-        narration: NarrationController? = nil
+        narration: NarrationController? = nil,
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(
             textLoader: BundledBibleTextLoader(),
@@ -27,7 +28,8 @@ struct BibleScreenViewModelTests {
             clock: FixedClock(now),
             clipboard: clipboard,
             initialPosition: position,
-            narration: narration ?? NarrationController(service: FakeNarrationService())
+            narration: narration ?? NarrationController(service: FakeNarrationService()),
+            hapticsEngine: hapticsEngine
         )
     }
 
@@ -336,6 +338,36 @@ struct BibleScreenViewModelTests {
         viewModel.toggleVerse(9)
         #expect(viewModel.selectedVerses.isEmpty)
         #expect(viewModel.selectionCitation == nil)
+    }
+
+    @Test("selecting a verse fires .selection and deselecting fires the distinct .deselection")
+    func toggleVerseFiresDistinctHaptics() async {
+        let haptics = RecordingHapticsEngine()
+        let viewModel = makeViewModel(hapticsEngine: haptics)
+        await viewModel.load()                          // 1 Peter 2
+
+        viewModel.toggleVerse(9)                        // select
+        viewModel.toggleVerse(9)                        // deselect
+
+        #expect(haptics.played == [.selection, .deselection])
+    }
+
+    @Test("clearing an active selection fires .deselection (the action-sheet dismiss disconnect), but clearing nothing is silent")
+    func clearSelectionFiresDeselectionWhenNonEmpty() async {
+        let haptics = RecordingHapticsEngine()
+        let viewModel = makeViewModel(hapticsEngine: haptics)
+        await viewModel.load()
+
+        // Clearing with nothing selected is a no-op — no disconnect buzz.
+        viewModel.clearSelection()
+        #expect(haptics.played.isEmpty)
+
+        viewModel.toggleVerse(4)                        // .selection
+        viewModel.clearSelection()                      // .deselection (dismiss)
+        // A second clear is a no-op (mirrors the sheet's double dismiss call).
+        viewModel.clearSelection()
+
+        #expect(haptics.played == [.selection, .deselection])
     }
 
     @Test("the selection citation compresses contiguous verses to a range")

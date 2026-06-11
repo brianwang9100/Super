@@ -129,7 +129,7 @@ struct NoteEditor: View {
                 .superGlassCTAButton(in: Circle())
                 .opacity(canSave ? 1 : 0.6)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.primary))
         .disabled(!canSave)
         .accessibilityLabel("Save note")
     }

@@ -158,6 +158,76 @@ public struct SuperPressButtonStyle: ButtonStyle {
     }
 }
 
+/// Fires a haptic on press-onset for a glass control, optionally adding the
+/// same centred press-scale as ``SuperPressButtonStyle``. The single sanctioned
+/// way to give a glass button tactile feedback: the button declares its haptic
+/// *role* (the pattern) and the style reads the shared engine from
+/// `@Environment(\.hapticsEngine)`, so call sites never touch the engine
+/// directly.
+///
+/// - The haptic fires when `isPressed` rises (touch-down), matching the
+///   responsive system feel — not on release.
+/// - Pass `pattern: nil` to opt a control **out** of haptics while still using
+///   the style (e.g. dismiss / back / cancel chrome that should stay silent but
+///   wants the press-scale). A `nil` engine (previews, snapshots) is a no-op.
+/// - `scale: true` subsumes ``SuperPressButtonStyle`` for the inert-glass
+///   clusters that opt out of the liquid `.interactive()` press; interactive
+///   glass buttons keep `scale: false` so the material supplies the press and
+///   this style only adds the haptic.
+public struct GlassHapticButtonStyle: ButtonStyle {
+    private let pattern: HapticPattern?
+    private let scale: Bool
+
+    /// - Parameters:
+    ///   - pattern: The haptic to play on press, or `nil` to stay silent.
+    ///     Defaults to ``HapticPattern/selection`` — the workhorse tap.
+    ///   - scale: Whether to also apply the centred press-scale (for inert
+    ///     glass clusters). Defaults to `false` (haptic only).
+    public init(_ pattern: HapticPattern? = .selection, scale: Bool = false) {
+        self.pattern = pattern
+        self.scale = scale
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        // A nested View so it can read `@Environment` (a `ButtonStyle` can't).
+        // Returned as an opaque `some View` so the helper stays private.
+        PressBody(configuration: configuration, pattern: pattern, scale: scale)
+    }
+
+    private struct PressBody: View {
+        @Environment(\.hapticsEngine) private var hapticsEngine
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: ButtonStyleConfiguration
+        let pattern: HapticPattern?
+        let scale: Bool
+
+        var body: some View {
+            // When `scale` is off this must be a *pure* passthrough — adding a
+            // `.scaleEffect`/`.animation` layer (even at scale 1.0) re-composites
+            // the label and shifts sub-pixel anti-aliasing vs a bare
+            // `.buttonStyle(.plain)`, which trips the pixel-exact snapshots. So
+            // only the inert-cluster (`scale: true`) path carries the press-scale.
+            if scale {
+                configuration.label
+                    .scaleEffect(configuration.isPressed ? 0.9 : 1)
+                    .animation(
+                        reduceMotion ? SuperMotion.reducedMotion : SuperMotion.press,
+                        value: configuration.isPressed
+                    )
+                    .onChange(of: configuration.isPressed, fire)
+            } else {
+                configuration.label
+                    .onChange(of: configuration.isPressed, fire)
+            }
+        }
+
+        private func fire(_ wasPressed: Bool, _ isPressed: Bool) {
+            guard isPressed, let pattern else { return }
+            hapticsEngine.play(pattern)
+        }
+    }
+}
+
 /// Groups child glass surfaces into one shared Liquid Glass sampling region so a
 /// cluster of glass controls (e.g. the chapter grid) reads as one cohesive field
 /// instead of N independently-shadowed pills. Glass samples an area larger than its

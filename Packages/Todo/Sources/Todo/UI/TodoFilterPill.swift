@@ -38,7 +38,7 @@ public struct TodoFilterPill: View {
             // the old raised fill + faint stroke.
             .superGlassButton(in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel("Filter and sort")
         .accessibilityValue(summary)
         .accessibilityHint("Opens the filter options")

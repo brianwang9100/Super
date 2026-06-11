@@ -157,6 +157,10 @@ public final class ChatScreenViewModel {
     /// Defaults to `StaticChatSuggestionsProvider` so previews, snapshot tests,
     /// and view-model unit tests that don't wire one keep PR1's static behavior.
     private let suggestionsProvider: any ChatSuggestionsProvider
+    /// Shared app-wide haptics engine. Fires `.selection` on send,
+    /// `.streamingTick` per visible repaint, and `.streamCompleted` at
+    /// turn end. Defaults to a no-op so fixtures/tests stay silent.
+    private let hapticsEngine: any HapticsEngine
 
     private var streamTask: Task<Void, Never>?
     private var titleTask: Task<Void, Never>?
@@ -217,7 +221,8 @@ public final class ChatScreenViewModel {
         voice: VoiceInputController? = nil,
         referenceInbox: ChatReferenceInbox? = nil,
         toolDisplayNames: [String: String] = [:],
-        suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider()
+        suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -230,6 +235,7 @@ public final class ChatScreenViewModel {
         self.referenceInbox = referenceInbox
         self.toolDisplayNames = toolDisplayNames
         self.suggestionsProvider = suggestionsProvider
+        self.hapticsEngine = hapticsEngine
         self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
@@ -503,6 +509,8 @@ public final class ChatScreenViewModel {
             pendingReferences = []
         }
         error = nil
+        // A real send is committed (non-empty / pills attached, model present).
+        hapticsEngine.play(.selection)
         startStreaming(text: text, references: references, model: model)
     }
 
@@ -916,6 +924,9 @@ public final class ChatScreenViewModel {
         streamingTail = nil
         isStreaming = false
         streamTask = nil
+        // The turn has ended — clean finish, error, or user stop all land
+        // here. One completion buzz regardless (per the product decision).
+        hapticsEngine.play(.streamCompleted)
     }
 
     private func handle(_ event: ChatEvent) async {
@@ -999,6 +1010,10 @@ public final class ChatScreenViewModel {
             text: current.text + chunk,
             isCompacting: current.isCompacting
         )
+        // A subtle tick per visible repaint — the coalescer already gates
+        // these to word boundaries / a ~100ms ceiling, so this is the
+        // natural "text is flowing" cadence.
+        hapticsEngine.play(.streamingTick)
     }
 
     private func appendStreamingThinking(_ chunk: String) {

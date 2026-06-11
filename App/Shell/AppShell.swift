@@ -477,6 +477,7 @@ struct AppShell: View {
         // One bus instance shared by every applet — the Bible backdrop
         // publishes verse references, the Chat overlay's inbox consumes.
         .environment(\.superEventBus, dependencies.eventBus)
+        .hapticsEngine(dependencies.hapticsEngine)
         // External `super://bible/verse?...` deep links — from Safari,
         // Notes, Messages, Spotlight — feed into the same event-bus
         // path the in-transcript `OpenURLAction` interceptor uses, so
@@ -518,6 +519,7 @@ struct AppShell: View {
 
     private func openSidebar() {
         guard let sidebarViewModel else { return }
+        dependencies.hapticsEngine.play(.selection)
         // Mirror the keyboard-dismiss the old in-`ChatScreen` hamburger
         // did. Opening the sidebar with the composer focused would
         // otherwise leave the keyboard up behind the drawer.
@@ -692,6 +694,7 @@ struct AppShell: View {
             userPersonalizationReceiver: dependencies.chatSessionStore,
             autoCompactPolicyReceiver: dependencies.chatSessionStore,
             webSearchPolicyReceiver: dependencies.chatSessionStore,
+            hapticsEngine: dependencies.hapticsEngine,
             // Power the Data pane's "Export all chats" job. Both repos already
             // live on `AppShellDependencies`; `clock` defaults to SystemClock.
             messageRepository: dependencies.messageRepository,
@@ -712,6 +715,11 @@ struct AppShell: View {
         )
         await settings.load()
         settingsViewModel = settings
+        // Seed the shared engine from the persisted toggle so a user who
+        // disabled haptics last session stays silent before they touch
+        // Settings. Live toggles thereafter flow through
+        // `SettingsViewModel.setHapticsEnabled`.
+        dependencies.hapticsEngine.setEnabled(settings.settings.hapticsEnabled)
         theme = .make(settings.settings.themeId)
         appearance = ChatAppearance(fontScale: settings.settings.fontScale)
         typography = .make(settings.settings.typographyID, fontScale: settings.settings.fontScale)
@@ -810,7 +818,8 @@ struct AppShell: View {
             voice: voice,
             referenceInbox: referenceInbox,
             toolDisplayNames: toolDisplayNames,
-            suggestionsProvider: suggestionsProvider
+            suggestionsProvider: suggestionsProvider,
+            hapticsEngine: dependencies.hapticsEngine
         )
         let registry = dependencies.llmProviderRegistry
         // Fire-and-forget: persisting the pick is best-effort; a dropped write falls back to first-available next launch.
