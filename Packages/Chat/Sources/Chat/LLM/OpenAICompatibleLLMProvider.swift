@@ -114,6 +114,10 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var reducer = OpenAIStreamReducer()
+                // OpenAI restricts tool names to `[A-Za-z0-9_-]`; Super's IDs
+                // are dot-namespaced. Encode the sanitized wire name and
+                // restore the registry name on every decoded event.
+                let nameMap = ToolWireNameMap(tools: tools)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -122,7 +126,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                         messages: messages,
                         model: model,
                         tools: tools,
-                        temperature: temperature
+                        temperature: temperature,
+                        nameMap: nameMap
                     )
                     var parser = SSEParser()
                     let decoder = JSONDecoder()
@@ -133,7 +138,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                             if event.isDone { continue }
                             let parsed = try decode(event.data, with: decoder)
                             for normalized in reducer.consume(parsed) {
-                                continuation.yield(normalized)
+                                continuation.yield(nameMap.restoringToolName(in: normalized))
                             }
                         }
                     }
@@ -141,7 +146,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                         if event.isDone { continue }
                         let parsed = try decode(event.data, with: decoder)
                         for normalized in reducer.consume(parsed) {
-                            continuation.yield(normalized)
+                            continuation.yield(nameMap.restoringToolName(in: normalized))
                         }
                     }
                 } catch {
@@ -150,7 +155,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                 }
 
                 for event in reducer.finish() {
-                    continuation.yield(event)
+                    continuation.yield(nameMap.restoringToolName(in: event))
                 }
                 continuation.finish()
             }
@@ -170,7 +175,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         messages: [LLMMessage],
         model: LLMModel,
         tools: [LLMTool],
-        temperature: Double
+        temperature: Double,
+        nameMap: ToolWireNameMap
     ) throws -> URLRequest {
         let url = chatCompletionsURL()
         var request = URLRequest(url: url)
@@ -188,10 +194,10 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         let clampedTemperature = min(max(temperature, Self.temperatureRange.lowerBound), Self.temperatureRange.upperBound)
         let body = OpenAIChatRequest(
             model: model.id,
-            messages: try translate(messages),
+            messages: try translate(messages, nameMap: nameMap),
             stream: true,
             temperature: clampedTemperature,
-            tools: tools.isEmpty ? nil : tools.map(translate),
+            tools: tools.isEmpty ? nil : tools.map { translate($0, nameMap: nameMap) },
             streamOptions: .init(includeUsage: true)
         )
 
@@ -235,7 +241,10 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     /// or `tool_calls` field. Messages with no usable content are dropped
     /// (with a debug-only assertion) since OpenAI rejects assistant rows
     /// that carry neither `content` nor `tool_calls`.
-    private func translate(_ messages: [LLMMessage]) throws -> [OpenAIRequestMessage] {
+    private func translate(
+        _ messages: [LLMMessage],
+        nameMap: ToolWireNameMap
+    ) throws -> [OpenAIRequestMessage] {
         let toolCallEncoder = JSONEncoder()
         var out: [OpenAIRequestMessage] = []
         for message in messages {
@@ -261,7 +270,12 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                     let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
                     // Replay Gemini's thought signature via the `extra_content`
                     // extension — the shim 400s the follow-up turn without it.
-                    return OutgoingToolCall(id: id, name: name, argumentsJSON: argsJSON, thoughtSignature: signature)
+                    return OutgoingToolCall(
+                        id: id,
+                        name: nameMap.wireName(forOriginal: name),
+                        argumentsJSON: argsJSON,
+                        thoughtSignature: signature
+                    )
                 }
                 let joined = texts.joined()
                 if joined.isEmpty && toolUses.isEmpty {
@@ -278,9 +292,9 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         return out
     }
 
-    private func translate(_ tool: LLMTool) -> OpenAITool {
+    private func translate(_ tool: LLMTool, nameMap: ToolWireNameMap) -> OpenAITool {
         OpenAITool(function: OpenAIFunctionDefinition(
-            name: tool.name,
+            name: nameMap.wireName(forOriginal: tool.name),
             description: tool.description,
             parameters: JSONToolSchema.parametersObject(for: tool.parameters)
         ))
