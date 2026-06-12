@@ -139,6 +139,7 @@ public struct BibleApplet: MiniApplet {
             positionRepository: readingPositionRepository,
             highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
             noteRepository: noteRepository,
+            bookmarkRepository: database.map { GRDBBibleBookmarkRepository(database: $0) },
             hapticsEngine: hapticsEngine
         )
         self.viewModel = viewModel

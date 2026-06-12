@@ -103,11 +103,18 @@ public final class BibleScreenViewModel {
     /// "browse this range's notes".
     public var presentedNoteList: BibleNoteListPresentation?
 
+    /// The chapter whose bookmark sheet is presented, or `nil` when no sheet
+    /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Captures the
+    /// chapter and citation at presentation time so the sheet's writes stay
+    /// pinned to the chapter it is titled with.
+    public var presentedBookmarkSheet: BibleBookmarkPresentation?
+
     private let textLoader: any BibleTextLoader
     private let catalog: BibleBookCatalog
     private let positionRepository: (any BibleReadingPositionRepository)?
     private let highlightRepository: (any BibleHighlightRepository)?
     private let noteRepository: (any BibleNoteRepository)?
+    private let bookmarkRepository: (any BibleBookmarkRepository)?
     private let clock: any Clock
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
@@ -154,6 +161,10 @@ public final class BibleScreenViewModel {
     /// them all — the same shape as `highlightTask`.
     private var noteTask: Task<Void, Never>?
 
+    /// In-flight bookmark toggle, retained so tests can await it. Chained
+    /// like `noteTask` so rapid card taps stay ordered.
+    private var bookmarkTask: Task<Void, Never>?
+
     /// In-flight first-Narrate voice pick + start, retained so tests
     /// can await its completion. Production has no need to observe it
     /// — the user sees the card slide in immediately and the first
@@ -170,6 +181,9 @@ public final class BibleScreenViewModel {
     ///     create / edit / delete for the same database-unavailable reason
     ///     (the note glyphs and list sheet still render from the reactive
     ///     `@Query`s, which fall back to empty).
+    ///   - bookmarkRepository: persists the six chapter-bookmark slots; `nil`
+    ///     disables toggling for the same database-unavailable reason (the
+    ///     glyph and sheet still render from the reactive `@Query`s).
     ///   - initialPosition: the position before `load()` reads persisted
     ///     state — defaults to `defaultPosition`.
     public init(
@@ -178,6 +192,7 @@ public final class BibleScreenViewModel {
         positionRepository: (any BibleReadingPositionRepository)? = nil,
         highlightRepository: (any BibleHighlightRepository)? = nil,
         noteRepository: (any BibleNoteRepository)? = nil,
+        bookmarkRepository: (any BibleBookmarkRepository)? = nil,
         clock: any Clock = SystemClock(),
         clipboard: any ClipboardWriter = SystemClipboard(),
         idGenerator: any IDGenerator = UUIDGenerator(),
@@ -191,6 +206,7 @@ public final class BibleScreenViewModel {
         self.positionRepository = positionRepository
         self.highlightRepository = highlightRepository
         self.noteRepository = noteRepository
+        self.bookmarkRepository = bookmarkRepository
         self.clock = clock
         self.clipboard = clipboard
         self.idGenerator = idGenerator
@@ -1238,6 +1254,53 @@ public final class BibleScreenViewModel {
         }
     }
 
+    // MARK: - Bookmarks
+
+    /// Present the bookmark sheet for the on-screen chapter — the tap target
+    /// of the chapter-title bookmark glyph. Captures the position and its
+    /// citation so the sheet stays pinned to this chapter, and clears any
+    /// verse selection first: the scrim-less action sheet keeps the chapter
+    /// title tappable, so presenting the native bookmark sheet over it would
+    /// race the two presentations.
+    public func presentBookmarkSheet() {
+        clearSelection()
+        presentedBookmarkSheet = BibleBookmarkPresentation(
+            bookId: position.bookId,
+            chapterNumber: position.chapterNumber,
+            citation: "\(bookName) \(position.chapterNumber)"
+        )
+    }
+
+    /// Close the bookmark sheet (drag-down or programmatic).
+    public func dismissBookmarkSheet() {
+        presentedBookmarkSheet = nil
+    }
+
+    /// Toggle `color` on the presented chapter — the sheet's single card-tap
+    /// action; the repository resolves it to assign, move, or unassign (see
+    /// `BibleBookmarkRepository.toggle`). The write is asynchronous; every
+    /// bookmark surface repaints through its `@Query` once it lands. A no-op
+    /// without a presented sheet or a bookmark store.
+    public func toggleBookmark(color: BibleBookmarkColor) {
+        guard let presentation = presentedBookmarkSheet,
+              let bookmarkRepository else { return }
+        let now = clock.now()
+        let previous = bookmarkTask
+        bookmarkTask = Task { [weak self] in
+            await previous?.value
+            do {
+                try await bookmarkRepository.toggle(
+                    color: color,
+                    bookId: presentation.bookId,
+                    chapterNumber: presentation.chapterNumber,
+                    at: now
+                )
+            } catch {
+                self?.toast = "Couldn't update the bookmark."
+            }
+        }
+    }
+
     /// Human-readable citation for a note target, used as the list sheet's
     /// header and the editor's "ON …" caption. Examples: `"Romans"` (book),
     /// `"Romans 8"` (chapter), `"Romans 8:28-30"` (range), `"Romans 8:28"`
@@ -1262,6 +1325,12 @@ public final class BibleScreenViewModel {
     /// same chained-drain behaviour as `_waitForPendingHighlightWrite()`.
     public func _waitForPendingNoteWrite() async {
         await noteTask?.value
+    }
+
+    /// Awaits the pending background bookmark toggles. Test-only seam, with
+    /// the same chained-drain behaviour as `_waitForPendingNoteWrite()`.
+    public func _waitForPendingBookmarkWrite() async {
+        await bookmarkTask?.value
     }
 
     // MARK: - Narration
