@@ -276,7 +276,17 @@ public struct MessageList: View {
 
     /// Programmatic scroll-position binding; the observers below
     /// mutate it via `scrollTo` and never via direct assignment.
-    @State private var scrollPosition = ScrollPosition()
+    ///
+    /// Initialized to `edge: .bottom` so a long transcript mounts at its
+    /// latest message. This is the replacement for the removed
+    /// `.defaultScrollAnchor(.bottom)` (see the comment at the modifier's
+    /// old position below) — the *binding's initial value* positions the
+    /// mount exactly once and is then naturally superseded by user scrolls
+    /// and the observers' `scrollTo` writes, whereas the anchor was a
+    /// *standing preference* that kept re-litigating the offset against
+    /// this binding forever after any long-travel snap. Short content is
+    /// unaffected (the `minHeight` floor top-aligns it; nothing scrolls).
+    @State private var scrollPosition = ScrollPosition(edge: .bottom)
     /// `true` when the most recent settled (content-stable) geometry
     /// tick saw the user within ``bottomFollowThreshold`` of the bottom.
     /// Initialized `false` so a mount with an in-flight stream
@@ -315,6 +325,14 @@ public struct MessageList: View {
     /// Counter consumed by the geometry action; resets to 0 on every
     /// content-height change while ``verbosityScrollMode`` is active.
     @State private var verbosityStableTickCount: Int = 0
+    /// Total geometry ticks observed since ``verbosityScrollMode`` was set
+    /// (independent of content stability). Backstop disarm mirroring
+    /// ``pendingBottomSnapTotalTicks``: if the relayout's content height
+    /// never holds steady (the bistable `LazyVStack` regime), the
+    /// stable-tick counter can't advance and the per-tick `scrollTo`
+    /// re-apply would otherwise run unbounded — the same shape as the
+    /// stream-end settle's pathology, reachable through the verbosity door.
+    @State private var verbosityTotalTicks = 0
     /// Armed by `.onChange(of: items.count)` so the geometry action
     /// re-issues a bottom-snap once content height *settles* — the
     /// single immediate snap there lands against transient stream-end
@@ -348,6 +366,16 @@ public struct MessageList: View {
     /// holding the mode through a subsequent independent content
     /// change.
     private static let verbosityStableTicksToClear: Int = 3
+    /// Hard ceiling on how many geometry ticks ``verbosityScrollMode``
+    /// stays active regardless of content stability — the verbosity
+    /// counterpart of ``bottomSnapMaxTicks``, sized much more generously
+    /// because a legitimate verbosity relayout re-measures *every*
+    /// on-screen block and can keep content height moving for dozens of
+    /// ticks (a 30-block expand legitimately exceeded 24). The backstop
+    /// only exists for the bistable never-stable regime, which ticks at
+    /// ~75+/s — 60 ticks still terminates it in under a second of
+    /// wall-time while staying far above any observed legitimate settle.
+    private static let verbosityMaxTicks: Int = 60
     /// Consecutive content-height-stable ticks required to disarm
     /// ``pendingBottomSnap``. Independent of
     /// ``verbosityStableTicksToClear`` (same value today, different
@@ -476,15 +504,24 @@ public struct MessageList: View {
         // offset cases only.
         .scrollDismissesKeyboard(.interactively)
         .scrollPosition($scrollPosition)
-        // `.defaultScrollAnchor(.bottom)` sets the initial position for a
-        // long, overflowing transcript — lands at the bottom on mount.
-        // Short content is top-aligned by the `.frame(minHeight:)` floor on
-        // the content above (not a `.defaultScrollAnchor(.top, for:
-        // .alignment)`): the alignment-role anchor made the layout bistable
-        // on `sign(contentHeight - containerHeight)` and flipped — jittering
-        // — whenever an active resize swept the container across the content
-        // height. The min-height floor is the continuous replacement.
-        .defaultScrollAnchor(.bottom)
+        // There is deliberately NO `.defaultScrollAnchor(.bottom)` here.
+        // A standing bottom-anchor preference and the `scrollPosition`
+        // binding are two independent owners of the same offset: after any
+        // long-travel programmatic snap (send/stream-end from mid-content)
+        // they re-litigate the position against each other *forever* — the
+        // offset sloshed in ~1s cycles ~100–200pt short of the bottom,
+        // parking the response tail behind the composer, corrupting the
+        // drag gesture's at-bottom sampling, and never settling (verified
+        // live: removing the anchor alone took post-stream geometry ticks
+        // from ~80/s sustained indefinitely to zero). The anchor's one
+        // legitimate job — mount at the latest message — is done by the
+        // binding's own initial value (`ScrollPosition(edge: .bottom)`),
+        // which positions once and is then superseded, keeping the offset
+        // single-owner. Both anchor roles are now covered without the
+        // modifier: initial position by the binding, short-content
+        // top-alignment by the `.frame(minHeight:)` floor on the content
+        // (see that comment for why the `.top` alignment-anchor variant
+        // was also removed, in #238).
         // Bottom-pin on content grow (new message, lazy-mat'd row
         // becoming visible) and on streaming-content deltas.
         // Empirically `.defaultScrollAnchor(.bottom, for: .sizeChanges)`
@@ -496,14 +533,26 @@ public struct MessageList: View {
         // form the geometry/scroll feedback loop the prior
         // `.onScrollGeometryChange` implementation did.
         .onChange(of: items.count) { _, _ in
-            // A new item is the user's most-recent action (send,
-            // regenerate accept, stream-persist). Clear any
-            // in-flight verbosity scroll mode first so the
+            // Snap policy: the user's OWN action (send / regenerate — the
+            // new last row is their bubble) always brings them to the
+            // bottom, even from deep in history. Assistant-row appends
+            // (mid-turn tool-round saves, the final save of a turn) follow
+            // only when the user was already at the bottom — a reader
+            // scrolled up into history is never yanked by a turn they've
+            // scrolled away from; they catch up on their own time. This is
+            // also what removes most long-travel animated snaps, the
+            // precondition of the post-stream offset fight.
+            guard shouldSnapOnItemsChange(
+                lastItem: items.last,
+                wasAtBottom: wasAtBottom
+            ) else { return }
+            // Clear any in-flight verbosity scroll mode first so the
             // content-grow tick that follows doesn't re-apply the
             // preserve-distance intent and yank the user back from
             // the bottom we're about to scroll them to.
             verbosityScrollMode = nil
             verbosityStableTickCount = 0
+            verbosityTotalTicks = 0
             scrollPosition.scrollTo(edge: .bottom)
             // Arm a settle re-snap: the immediate snap above lands against
             // transient geometry at stream end (the streaming tail just
@@ -562,6 +611,7 @@ public struct MessageList: View {
                 return
             }
             verbosityStableTickCount = 0
+            verbosityTotalTicks = 0
         }
         // Bottom-pin on container shrink/grow (the chat surface's
         // height changes when the keyboard rises/dismisses — see
@@ -600,7 +650,13 @@ public struct MessageList: View {
             // false (the bottom is suddenly further away) *before*
             // the gated `.onChange` observers run; we want them to
             // see the pre-grow status.
-            if oldValue.contentHeight == newValue.contentHeight {
+            if oldValue.contentHeight == newValue.contentHeight,
+               wasAtBottom != newValue.isAtBottom {
+                // Changed-only write: content-stable ticks arrive on every
+                // scroll frame, and a same-value `@State` write per frame is
+                // gratuitous invalidation pressure on exactly the regimes
+                // (bistable layout, programmatic seeks) where extra
+                // re-renders feed oscillation.
                 wasAtBottom = newValue.isAtBottom
             }
             // Apply the verbosity scroll mode on every content-height
@@ -612,22 +668,65 @@ public struct MessageList: View {
             // after ``verbosityStableTicksToClear`` consecutive
             // content-height-stable ticks.
             if let mode = verbosityScrollMode {
+                verbosityTotalTicks += 1
                 if oldValue.contentHeight != newValue.contentHeight {
                     verbosityStableTickCount = 0
                     switch mode {
                     case .scrollToBottom:
-                        scrollPosition.scrollTo(edge: .bottom)
+                        // Same no-op-snap suppression as the stream-end
+                        // settle: re-snapping while already pinned at the
+                        // bottom only re-materializes `LazyVStack` rows and
+                        // feeds the bistable content-height oscillation.
+                        if shouldReSnapPendingBottom(
+                            contentHeightChanged: true,
+                            alreadyAtBottom: newValue.isAtBottom
+                        ) {
+                            scrollPosition.scrollTo(edge: .bottom)
+                        }
                     case .preserveDistance(let savedDistance):
                         let targetY = max(0, newValue.contentHeight - newValue.height - savedDistance)
                         scrollPosition.scrollTo(y: targetY)
                     }
                 } else {
                     verbosityStableTickCount += 1
-                    if verbosityStableTickCount >= Self.verbosityStableTicksToClear {
-                        verbosityScrollMode = nil
-                        verbosityStableTickCount = 0
-                    }
                 }
+                // Disarm on the normal settle or an exhausted tick budget —
+                // the budget (``verbosityMaxTicks``) is the backstop for a
+                // bistable content height that never holds steady, where the
+                // stable counter can't advance and the per-tick re-apply
+                // would otherwise run unbounded. Mirrors the stream-end
+                // settle's disarm shape.
+                let verbositySettled = verbosityStableTickCount >= Self.verbosityStableTicksToClear
+                let verbosityBudgetSpent = pendingBottomSnapBudgetExhausted(
+                    totalTicks: verbosityTotalTicks,
+                    maxTicks: Self.verbosityMaxTicks
+                )
+                if verbositySettled || verbosityBudgetSpent {
+                    verbosityScrollMode = nil
+                    verbosityStableTickCount = 0
+                    verbosityTotalTicks = 0
+                }
+            }
+            // Late-growth auto-follow — the follow role the removed
+            // `.defaultScrollAnchor(.bottom)` used to play, reimplemented as
+            // a latch-gated tick rule instead of a standing preference (the
+            // standing preference is what fought the `scrollPosition`
+            // binding into the perpetual post-stream slosh). When the user
+            // was at the bottom and content grows past it with no settle
+            // owning the scroll, follow it: post-settle materialization (a
+            // verbosity relayout's trailing ~72pt), equal-count item growth
+            // (a tool result filling into an expanded block), and any other
+            // unattributed growth all land here. Loop-safe: fires only on
+            // content-grow ticks (never offset-only), is suppressed while
+            // either settle owns the cadence, and `!isAtBottom` skips the
+            // no-op snaps that fed the #254 tiny-viewport oscillation
+            // (whose flip-flop ticks report `isAtBottom == true`).
+            if oldValue.contentHeight < newValue.contentHeight,
+               wasAtBottom,
+               !newValue.isAtBottom,
+               verbosityScrollMode == nil,
+               !pendingBottomSnap {
+                scrollPosition.scrollTo(edge: .bottom)
             }
             // Stream-end settle re-snap. The immediate `scrollTo(.bottom)`
             // in `.onChange(of: items.count)` runs against transient
@@ -810,6 +909,18 @@ func strandedPastEndOffset(
     let maxOffset = max(0, content - container)
     guard offset > maxOffset + epsilon else { return nil }
     return maxOffset
+}
+
+/// Whether an `items.count` change should bottom-snap the transcript.
+/// The user's own action (the new last row is their bubble — send,
+/// regenerate accept) always snaps; assistant/banner appends follow only
+/// when the user was already at the bottom, so a reader scrolled up into
+/// history is never yanked by a turn they've scrolled away from.
+///
+/// Pure so the policy is unit-testable without a live `ScrollPosition`.
+func shouldSnapOnItemsChange(lastItem: MessageList.Item?, wasAtBottom: Bool) -> Bool {
+    if case .userBubble = lastItem { return true }
+    return wasAtBottom
 }
 
 /// Whether the pending stream-end bottom-snap should re-issue

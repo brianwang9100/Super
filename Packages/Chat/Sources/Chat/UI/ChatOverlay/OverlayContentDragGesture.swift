@@ -46,9 +46,23 @@ struct OverlayDragArbiter {
         /// Tolerance (points) for treating an offset as "at the edge" — absorbs
         /// the sub-pixel rest offset a `ScrollView` settles at.
         static let edgeEpsilon: CGFloat = 0.5
+        /// How far *beyond* an edge the offset may sit and still count as "at"
+        /// that edge for arming. Rest-state jitter is sub-point; an offset
+        /// stranded or mid-overscroll tens of points past the end is not a
+        /// settled edge state — naively reading it as `atBottom` armed expand
+        /// and hijacked scroll-intent drags into overlay resizes (observed
+        /// live during the post-stream offset slosh). A drag begun that far
+        /// out stays a scroll: the rubber-band returns and nothing resizes.
+        static let strandTolerance: CGFloat = 12
 
-        var atTop: Bool { offsetY <= topOffsetY + Self.edgeEpsilon }
-        var atBottom: Bool { offsetY >= bottomOffsetY - Self.edgeEpsilon }
+        var atTop: Bool {
+            offsetY <= topOffsetY + Self.edgeEpsilon
+                && offsetY >= topOffsetY - Self.strandTolerance
+        }
+        var atBottom: Bool {
+            offsetY >= bottomOffsetY - Self.edgeEpsilon
+                && offsetY <= bottomOffsetY + Self.strandTolerance
+        }
     }
 
     /// The result of integrating one pan tick.
