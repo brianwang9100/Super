@@ -5,7 +5,7 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 ## What lives here (incremental — builds out per the plan)
 
 - **Applet** (`Applet/`): `BibleApplet` — `MiniApplet` conformance, applet id `"bible"`.
-- **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog`/`BibleBookOrder`/`BibleTranslation` (navigation), `BibleHighlightColor` (the five-colour palette), and the `BibleReadingPositionRecord` / `BibleHighlightRecord` GRDB records.
+- **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog`/`BibleBookOrder`/`BibleTranslation` (navigation), `BibleHighlightColor` (the five-colour palette), `BibleBookmarkColor` (the six fixed chapter-bookmark slots), and the `BibleReadingPositionRecord` / `BibleHighlightRecord` / `BibleBookmarkRecord` GRDB records.
 - **Database** (`Database/`): `BibleDatabase` — wraps the `bible.sqlite` `DatabaseQueue` and the schema migrator.
 - **Repositories** (`Repositories/`): protocol seam + `GRDB`-prefixed impl, one pair per record.
 - **Queries** (`Queries/`): GRDBQuery `ValueObservationQueryable` requests — `ChapterHighlightsRequest` is what the chapter renderer's `@Query` observes.
