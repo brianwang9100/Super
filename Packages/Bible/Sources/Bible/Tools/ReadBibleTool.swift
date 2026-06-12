@@ -78,10 +78,10 @@ public struct ReadBibleTool: ToolExecutor {
         array of one — e.g. \
         [{"book":"John","chapter":3,"startVerse":16},{"book":"Romans","chapter":8,"startVerse":28}].
 
-        Omit `translation` to use the user's currently selected translation (the \
-        usual case); it applies to every reference. Only pass it when the user \
-        explicitly names a different one. Each returned verse is prefixed with \
-        its number; quote from that, not from memory.
+        Do NOT pass `translation` unless the user explicitly names one — omit \
+        it so every reference is read from the user's currently selected \
+        translation. When passed, it applies to every reference. Each returned \
+        verse is prefixed with its number; quote from that, not from memory.
         """,
         category: .query,
         parameters: [
@@ -120,7 +120,7 @@ public struct ReadBibleTool: ToolExecutor {
             LLMToolParameter(
                 name: "translation",
                 type: .string,
-                description: "Optional translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Applies to every reference. Omit to use the user's currently selected translation, which is almost always what they want.",
+                description: "Translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Applies to every reference. Only pass this when the user explicitly names a translation; otherwise OMIT it so passages come from the user's currently selected translation.",
                 isRequired: false,
                 enumValues: BibleTranslation.allCases.map(\.rawValue)
             ),
@@ -132,9 +132,9 @@ public struct ReadBibleTool: ToolExecutor {
         Fetch the exact text of Bible passages from local storage. Call \
         before quoting or explaining any passage whose exact text you don't \
         already have — never quote scripture from memory. Pass `references` \
-        (array of {book, chapter, optional startVerse/endVerse}); omit \
-        `translation` to use the user's selected one. Don't re-fetch verses \
-        `bible.search` already returned.
+        (array of {book, chapter, optional startVerse/endVerse}). Omit \
+        `translation` (uses the user's selected one) unless the user names \
+        one. Don't re-fetch verses `bible.search` already returned.
         """
     )
 
