@@ -3,8 +3,10 @@ import Testing
 
 /// Tests for the bookmark surfaces' factored VoiceOver label builders — the
 /// chapter-title glyph (`BibleChapterReader.chapterBookmarkLabel`) and the
-/// sheet's slot cards (`BookmarkSlotButton.label`).
+/// sheet's slot cards (`BookmarkSlotButton.label`). `@MainActor` because the
+/// statics live on `View` types, whose members are MainActor-isolated.
 @Suite("Bookmark accessibility labels")
+@MainActor
 struct BookmarkAccessibilityTests {
     @Test("the chapter glyph offers to bookmark when the chapter has no ribbon")
     func chapterGlyphEmptyLabel() {
