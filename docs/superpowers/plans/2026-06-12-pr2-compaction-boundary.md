@@ -44,6 +44,31 @@ pair"). Invariants after the change:
   never runs, everything is summarized (trailing pairs ride inside the summary
   window intact — pair-complete prompt).
 
+## Post-review revision (review M1)
+
+The fable review of the first cut found that a `.tool`-only backward walk
+always stops **on the issuing assistant row** — so every split-pair compaction
+deterministically produced a kept window opening with an assistant message,
+and Anthropic's Messages API requires the first message to be `user`-role
+(every `.system` row is hoisted into the top-level `system` parameter). Two
+changes over the plan as originally written:
+
+1. **The walk condition is `role != .user`, not `role == .tool`.** The kept
+   window always opens on a user turn — "compaction keeps whole turns, and a
+   turn starts with a user message." One rule subsumes the tool-pair rule
+   (results and their issuer both sit between user turns) and the
+   first-message-must-be-user rule, for all providers. Tests updated
+   accordingly (the kept tail now also includes the user turn that prompted a
+   split pair; `autoCompactKeepsTrailingMessagesVerbatim` re-pins
+   `defaultKeepMostRecent` as a floor, not an exact width).
+2. **Legacy backstop in `AnthropicNativeLLMProvider.translate`:** checkpoints
+   persisted by older builds can already carry an assistant-first kept window
+   (the pre-PR-1 count-based cut), and an under-threshold conversation never
+   re-compacts to heal it — so the adapter prepends a minimal synthetic user
+   opener (`"(Conversation resumed after context compaction.)"`) when the
+   grouped messages would otherwise start with an assistant turn. Two adapter
+   tests pin the repair and its non-firing on healthy histories.
+
 **Not in scope:** `ContextAssembler.messagesAfterCheckpoint` (audit P0-3's
 "checkpoint index" clause). New checkpoints can no longer land mid-pair
 (`uptoMessageId` is the last row of a slice that ends at a clean boundary), and

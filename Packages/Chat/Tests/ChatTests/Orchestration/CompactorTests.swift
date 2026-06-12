@@ -380,38 +380,41 @@ struct CompactorTests {
     }
 
     /// The count-based cut must never split an assistant `tool_use` from
-    /// its role-`.tool` result rows. The cut snaps *backward* to just
-    /// before the assistant row that issued the calls, so the whole
-    /// round-trip stays verbatim in the kept tail. (Snapping forward —
-    /// PR-1's original rule — could consume the entire kept tail on a
-    /// wide parallel batch, leaving a follow-up request with no
-    /// non-system messages, which Anthropic rejects.)
-    @Test func summarizeCutSnapsBackBeforeSplitPair() {
-        // 6 rows; keepMostRecent = 3 puts the raw cut on the first result
+    /// its role-`.tool` result rows. The cut snaps *backward* to the
+    /// nearest user row, so the whole round-trip — issuer, results, and
+    /// the user turn that prompted them — stays verbatim in the kept
+    /// tail. (Snapping forward — PR-1's original rule — could consume the
+    /// entire kept tail on a wide parallel batch, leaving a follow-up
+    /// request with no non-system messages, which Anthropic rejects; and
+    /// any non-user kept-window opener trips Anthropic's
+    /// first-message-must-be-user rule.)
+    @Test func summarizeCutSnapsBackToUserTurnBeforeSplitPair() {
+        // 6 rows; keepMostRecent = 2 puts the raw cut on the first result
         // row of a two-call batch — splitting the pair.
         let rows = [
             makeRow(id: "m1", role: .user, offset: 0),
             makeRow(id: "m2", role: .assistant, offset: 1),
-            makeRow(id: "m3", role: .assistant, offset: 2),          // issues tc-1, tc-2
-            makeRow(id: "m4", role: .tool, offset: 3, toolCallId: "tc-1"),
-            makeRow(id: "m5", role: .tool, offset: 4, toolCallId: "tc-2"),
-            makeRow(id: "m6", role: .user, offset: 5),
+            makeRow(id: "m3", role: .user, offset: 2),
+            makeRow(id: "m4", role: .assistant, offset: 3),          // issues tc-1, tc-2
+            makeRow(id: "m5", role: .tool, offset: 4, toolCallId: "tc-1"),
+            makeRow(id: "m6", role: .tool, offset: 5, toolCallId: "tc-2"),
         ]
 
         let slice = Compactor.messagesToSummarize(
-            messages: rows, priorCheckpoint: nil, keepMostRecent: 3
+            messages: rows, priorCheckpoint: nil, keepMostRecent: 2
         )
 
-        // The cut walked back past m4 to land before the issuing assistant
-        // row m3 — the kept tail is [m3, m4, m5, m6], pair intact.
+        // The cut walked back past m5 and the issuing assistant row m4 to
+        // the user row m3 — the kept tail is [m3, m4, m5, m6], the whole
+        // turn intact and user-first.
         #expect(slice.map(\.id) == ["m1", "m2"])
     }
 
     /// A 4-parallel-call batch at the boundary must not empty the kept
-    /// tail: the backward snap lands before the issuing assistant row and
-    /// keeps the whole batch verbatim. (Forward extension would walk to
-    /// the end of history here — kept tail empty, follow-up request with
-    /// zero non-system messages.)
+    /// tail: the backward snap lands on the user turn that prompted the
+    /// batch and keeps the whole exchange verbatim. (Forward extension
+    /// would walk to the end of history here — kept tail empty, follow-up
+    /// request with zero non-system messages.)
     @Test func summarizeCutBacksOffWholeParallelBatch() {
         let rows = [
             makeRow(id: "m1", role: .user, offset: 0),
@@ -428,15 +431,19 @@ struct CompactorTests {
             messages: rows, priorCheckpoint: nil, keepMostRecent: 4
         )
 
-        #expect(slice.map(\.id) == ["m1", "m2", "m3"])
+        // Kept tail = [m3, m4, m5...m8]: the prompting user turn, the
+        // issuer, and all four results.
+        #expect(slice.map(\.id) == ["m1", "m2"])
     }
 
-    /// When the post-checkpoint window *opens* with a pair group and the
-    /// cut lands inside it, the backward walk reaches index 0 — there is
-    /// nothing that can be summarized without splitting the pair, so the
-    /// slice is empty and `wouldCompact` agrees (silent no-op, resolved
-    /// once later turns push the pair fully inside the cut).
-    @Test func summarizeCutInsideLeadingPairGroupIsANoOp() async throws {
+    /// When no user row exists at or before the cut (here: the
+    /// post-checkpoint window *opens* with a pair group the cut lands
+    /// inside), the backward walk reaches index 0 — nothing can be
+    /// summarized without splitting the pair or stranding an
+    /// assistant-first kept window, so the slice is empty and
+    /// `wouldCompact` agrees (silent no-op, resolved once later turns add
+    /// a user boundary inside the cut).
+    @Test func summarizeCutInsideLeadingPairGroupIsANoOp() throws {
         let rows = [
             makeRow(id: "m1", role: .assistant, offset: 0),          // issues tc-1...tc-3
             makeRow(id: "m2", role: .tool, offset: 1, toolCallId: "tc-1"),
@@ -452,8 +459,13 @@ struct CompactorTests {
 
         // `wouldCompact` shares the slicing, so `runCompactionPass`'s
         // pre-flight and `compact` can never disagree on this shape.
-        let setup = try await makeSetup()
-        #expect(!setup.compactor.wouldCompact(messages: rows, priorCheckpoint: nil, keepMostRecent: 2))
+        let compactor = Compactor(
+            llmProviderRegistry: LLMProviderRegistry(),
+            checkpointRepository: GRDBCompactionCheckpointRepository(
+                database: try ChatDatabase.makeInMemory()
+            )
+        )
+        #expect(!compactor.wouldCompact(messages: rows, priorCheckpoint: nil, keepMostRecent: 2))
     }
 
     /// A cut landing on a clean turn boundary stays count-based — the
@@ -477,8 +489,8 @@ struct CompactorTests {
     /// End-to-end: compacting a history whose raw cut splits a tool pair
     /// keeps the whole round-trip verbatim in the kept tail — the
     /// summarization request carries no tool blocks at all, and the
-    /// checkpoint lands on the last row *before* the pair so the
-    /// post-checkpoint window opens with the issuing assistant row.
+    /// checkpoint lands just before the user turn that prompted the pair
+    /// so the post-checkpoint window opens user-first.
     @Test func compactSplitPairStaysVerbatimInKeptTail() async throws {
         let setup = try await makeSetup(scripts: [
             [
@@ -493,37 +505,38 @@ struct CompactorTests {
         // `makeRow` hardcodes "conv-1", which is the fixture conversation's id.
         let rows = [
             makeRow(id: "m1", role: .user, offset: 0),
-            makeRow(id: "m2", role: .assistant, offset: 1),          // issues tc-1
-            makeRow(id: "m3", role: .tool, offset: 2, toolCallId: "tc-1"),
-            makeRow(id: "m4", role: .user, offset: 3),
-            makeRow(id: "m5", role: .assistant, offset: 4),
+            makeRow(id: "m2", role: .assistant, offset: 1),
+            makeRow(id: "m3", role: .user, offset: 2),
+            makeRow(id: "m4", role: .assistant, offset: 3),          // issues tc-1
+            makeRow(id: "m5", role: .tool, offset: 4, toolCallId: "tc-1"),
+            makeRow(id: "m6", role: .user, offset: 5),
         ]
         for row in rows {
             try await messageRepo.save(row)
         }
         let call = ToolCallRecord(
-            id: "tc-1", messageId: "m2", conversationId: setup.conversation.id,
+            id: "tc-1", messageId: "m4", conversationId: setup.conversation.id,
             toolName: "test.lookup", parameters: "{}",
             result: "{\"value\":42}", status: .success,
-            createdAt: rows[1].createdAt, completedAt: rows[2].createdAt, signature: nil
+            createdAt: rows[3].createdAt, completedAt: rows[4].createdAt, signature: nil
         )
         try await toolCallRepo.save(call)
 
-        // keepMostRecent = 3 → raw cut lands on m3 (the result row); the
-        // pair-aware cut walks back before m2.
+        // keepMostRecent = 2 → raw cut lands on m5 (the result row); the
+        // pair-aware cut walks back past the issuer m4 to the user row m3.
         let checkpoint = try await setup.compactor.compact(
             conversationId: setup.conversation.id,
             messages: rows,
             toolCalls: [call],
             priorCheckpoint: nil,
             model: setup.model,
-            keepMostRecent: 3
+            keepMostRecent: 2
         )
 
-        #expect(checkpoint?.uptoMessageId == "m1")
+        #expect(checkpoint?.uptoMessageId == "m2")
 
-        // The summarization request saw only m1 — no tool blocks, real or
-        // synthesized.
+        // The summarization request saw only m1 + m2 — no tool blocks,
+        // real or synthesized.
         let request = try #require(await setup.provider.capturedRequests().last)
         for message in request.messages {
             for block in message.content {
@@ -536,7 +549,9 @@ struct CompactorTests {
             return nil
         }
         #expect(projectedTexts.contains { $0.contains("content m1") })
-        #expect(!projectedTexts.contains { $0.contains("content m2") })
+        #expect(projectedTexts.contains { $0.contains("content m2") })
+        #expect(!projectedTexts.contains { $0.contains("content m3") })
+        #expect(!projectedTexts.contains { $0.contains("content m4") })
     }
 
     /// Manual `/compact` (`keepMostRecent: 0`) summarizes everything; a

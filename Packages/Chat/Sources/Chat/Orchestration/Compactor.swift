@@ -65,8 +65,8 @@ public actor Compactor {
     ///     the summary window. Default 4.
     /// - Returns: The persisted new checkpoint, or nil when there's
     ///   nothing to summarize (fewer than `keepMostRecent + 1` messages
-    ///   beyond the prior checkpoint, or the would-be slice would split
-    ///   a tool round-trip that opens the post-checkpoint window).
+    ///   beyond the prior checkpoint, or no user-turn boundary exists at
+    ///   or before the cut to snap to).
     /// Predicate: would `compact(...)` produce a checkpoint for the given
     /// inputs? Pure (no I/O — does not call the LLM or touch the database)
     /// so callers can cheaply decide whether to start a compaction pass
@@ -130,23 +130,31 @@ public actor Compactor {
     /// `messages`) falls back to the full message list — losing the tail
     /// is worse than ignoring a stale row.
     ///
-    /// The cut never splits a tool pair: role-`.tool` result rows directly
-    /// follow the assistant row that issued the calls, so a kept tail that
-    /// would *start* with result rows means the raw count-based cut landed
-    /// inside a pair group. The cut snaps **backward** to just before the
-    /// issuing assistant row, keeping the whole round-trip verbatim in the
-    /// kept tail (which is what `keepMostRecent`'s carve-out exists for —
-    /// auto-compaction runs at the top of every tool-loop iteration, so
-    /// the split pair is usually the round-trip the model is mid-way
-    /// through using). Snapping forward instead would summarize away those
-    /// freshest results and — on a parallel batch wider than the kept
-    /// count — empty the kept window entirely, leaving a follow-up request
-    /// with no non-system messages (Anthropic rejects those: its adapter
-    /// hoists every `.system` row, checkpoint summary included, into the
-    /// top-level `system` parameter). If the pair group opens the
-    /// post-checkpoint window the walk reaches index 0 and the slice comes
-    /// back empty — a deliberate no-op (`wouldCompact` returns false) that
-    /// resolves once later turns push the pair fully inside the cut.
+    /// The cut snaps **backward** from the raw count-based position to the
+    /// nearest user row, so the kept window always opens on a user turn.
+    /// That one rule holds two invariants at once:
+    ///
+    /// - **Tool pairs never split.** Role-`.tool` result rows directly
+    ///   follow the assistant row that issued the calls; a cut landing
+    ///   inside that group walks back past the results *and* the issuer
+    ///   to the user turn that prompted the round-trip, keeping the whole
+    ///   exchange verbatim (which is what `keepMostRecent`'s carve-out
+    ///   exists for — auto-compaction runs at the top of every tool-loop
+    ///   iteration, so the split pair is usually the round-trip the model
+    ///   is mid-way through using).
+    /// - **The post-checkpoint window starts user-first.** Anthropic's
+    ///   Messages API requires the first message to be `user`-role (every
+    ///   `.system` row, checkpoint summary included, is hoisted into the
+    ///   top-level `system` parameter), so a kept window opening on an
+    ///   assistant row would 400 on every later turn.
+    ///
+    /// Snapping forward instead (PR-1's original rule) would summarize
+    /// away the freshest tool results and — on a parallel batch wider
+    /// than the kept count — empty the kept window entirely. If no user
+    /// row exists at or before the cut, the walk reaches index 0 and the
+    /// slice comes back empty — a deliberate no-op (`wouldCompact`
+    /// returns false) that resolves once later turns add a user boundary
+    /// inside the cut.
     static func messagesToSummarize(
         messages: [MessageRecord],
         priorCheckpoint: CompactionCheckpointRecord?,
@@ -155,7 +163,7 @@ public actor Compactor {
         let postCheckpoint = messagesAfterCheckpoint(messages, checkpoint: priorCheckpoint)
         guard postCheckpoint.count > keepMostRecent else { return [] }
         var cut = postCheckpoint.count - max(0, keepMostRecent)
-        while cut > 0, cut < postCheckpoint.count, postCheckpoint[cut].role == .tool {
+        while cut > 0, cut < postCheckpoint.count, postCheckpoint[cut].role != .user {
             cut -= 1
         }
         return Array(postCheckpoint[..<cut])

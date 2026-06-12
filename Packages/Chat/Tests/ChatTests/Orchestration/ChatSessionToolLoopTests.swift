@@ -659,20 +659,26 @@ struct ChatSessionToolLoopTests {
         await session.waitUntilFinished()
 
         // Two compaction passes ran; the live checkpoint is iteration 2's,
-        // landed on the user row — the clean boundary just before the
-        // 4-call assistant turn (not the assistant row, not a result row).
+        // landed just before the user turn that prompted the 4-call batch
+        // (not the issuing assistant row, not a result row) so the kept
+        // window opens user-first.
         let live = try #require(await checkpointRepo.liveCheckpoint(for: conversation.id))
         #expect(live.summary.contains("Summary two"))
-        let storedRows = try await messageRepo.fetchAll(conversationId: conversation.id)
-        let uptoRow = try #require(storedRows.first { $0.id == live.uptoMessageId })
-        #expect(uptoRow.role == .user)
-        #expect(uptoRow.content == "look up four things")
+        #expect(live.uptoMessageId == "seed-a3")
 
-        // The follow-up request (the last captured) is pair-complete: the
-        // assistant turn with all four toolUse blocks survived the
-        // checkpoint verbatim, each with its real result — and no
-        // synthesized "interrupted" repair text anywhere.
+        // The follow-up request (the last captured) is pair-complete and
+        // user-first: the prompting user turn and the assistant turn with
+        // all four toolUse blocks survived the checkpoint verbatim, each
+        // call with its real result — and no synthesized "interrupted"
+        // repair text anywhere.
         let request = try #require(await provider.capturedRequests().last)
+        let firstNonSystem = try #require(request.messages.first { $0.role != .system })
+        #expect(firstNonSystem.role == .user)
+        let firstTexts = firstNonSystem.content.compactMap { block -> String? in
+            if case .text(let value) = block { return value }
+            return nil
+        }
+        #expect(firstTexts.contains { $0.contains("look up four things") })
         var toolUseIDs: [String] = []
         var resultsByID: [String: String] = [:]
         for message in request.messages {

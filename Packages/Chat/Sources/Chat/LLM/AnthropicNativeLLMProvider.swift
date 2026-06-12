@@ -372,6 +372,20 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             }
         }
 
+        // The Messages API requires the first message to be `user`-role.
+        // Because every `.system` row (compaction-checkpoint summary
+        // included) is hoisted into the top-level `system` parameter, a
+        // history whose post-checkpoint window opens on an assistant turn
+        // would otherwise 400 on every later turn. `Compactor` no longer
+        // produces that shape (its cut snaps to a user-turn boundary), but
+        // checkpoints persisted by older builds can still carry it — repair
+        // it at the wire instead of replaying it verbatim.
+        if grouped.first?.role == "assistant" {
+            grouped.insert(
+                ("user", [.text("(Conversation resumed after context compaction.)")]),
+                at: 0
+            )
+        }
         let system = systemParts.isEmpty ? nil : systemParts.joined(separator: "\n\n")
         return (system, grouped.map { AnthropicMessage(role: $0.role, content: $0.blocks) })
     }
