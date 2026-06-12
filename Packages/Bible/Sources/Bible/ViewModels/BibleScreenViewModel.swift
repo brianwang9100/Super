@@ -1258,17 +1258,25 @@ public final class BibleScreenViewModel {
 
     /// Present the bookmark sheet for the on-screen chapter — the tap target
     /// of the chapter-title bookmark glyph. Captures the position and its
-    /// citation so the sheet stays pinned to this chapter, and clears any
-    /// verse selection first: the scrim-less action sheet keeps the chapter
-    /// title tappable, so presenting the native bookmark sheet over it would
-    /// race the two presentations.
+    /// citation so the sheet stays pinned to this chapter. Clears any verse
+    /// selection as a defense for direct callers; with the action sheet up,
+    /// `BibleScreen` routes the tap through `handOffAfterSelectionDismiss`
+    /// so this runs only after that sheet has fully dismissed.
     public func presentBookmarkSheet() {
         clearSelection()
         presentedBookmarkSheet = BibleBookmarkPresentation(
             bookId: position.bookId,
             chapterNumber: position.chapterNumber,
-            citation: "\(bookName) \(position.chapterNumber)"
+            citation: chapterCitation(bookId: position.bookId, chapterNumber: position.chapterNumber)
         )
+    }
+
+    /// `"John 3"`-style citation for any chapter, resolved through the same
+    /// catalog every other citation surface uses. Falls back to the raw book
+    /// code for an id outside the catalog.
+    public func chapterCitation(bookId: String, chapterNumber: Int) -> String {
+        let name = catalog.book(id: bookId)?.name ?? bookId
+        return "\(name) \(chapterNumber)"
     }
 
     /// Close the bookmark sheet (drag-down or programmatic).

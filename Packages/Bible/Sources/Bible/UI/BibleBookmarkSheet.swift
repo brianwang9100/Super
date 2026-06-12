@@ -14,6 +14,9 @@ struct BibleBookmarkSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Query<AllBookmarksRequest> private var bookmarks: [BibleBookmarkRecord]
+    /// OS Dynamic Type base for the caption, composing with the app
+    /// font-scale slider — the dual-axis pattern from `BibleBookSheet`.
+    @ScaledMetric(relativeTo: .caption) private var captionSize: CGFloat = 12
 
     /// Declared once and shared by the nav bar and the presentation so the
     /// two can't drift; a short content-sized sheet.
@@ -24,9 +27,9 @@ struct BibleBookmarkSheet: View {
     private let citation: String
     private let currentBookId: String
     private let currentChapterNumber: Int
-    /// Extra bottom padding so the grid clears the shell's minimized chat
-    /// pill; `0` in standalone (snapshot) contexts.
-    private let bottomInset: CGFloat
+    /// Resolves a book id to its display name for assigned-slot citations —
+    /// the same catalog source the screen's other citation surfaces use.
+    private let catalog: BibleBookCatalog
     private let onSelect: (BibleBookmarkColor) -> Void
     private let onClose: () -> Void
 
@@ -34,7 +37,7 @@ struct BibleBookmarkSheet: View {
         citation: String,
         currentBookId: String,
         currentChapterNumber: Int,
-        bottomInset: CGFloat = 0,
+        catalog: BibleBookCatalog = .standard,
         onSelect: @escaping (BibleBookmarkColor) -> Void,
         onClose: @escaping () -> Void
     ) {
@@ -42,7 +45,7 @@ struct BibleBookmarkSheet: View {
         self.citation = citation
         self.currentBookId = currentBookId
         self.currentChapterNumber = currentChapterNumber
-        self.bottomInset = bottomInset
+        self.catalog = catalog
         self.onSelect = onSelect
         self.onClose = onClose
     }
@@ -57,16 +60,6 @@ struct BibleBookmarkSheet: View {
             caption
         }
         .sheetPresentation(sizing, estimatedHeight: 420)
-    }
-
-    /// Bookmark rows keyed by colour, decoded from the observed table.
-    private var bookmarksByColor: [BibleBookmarkColor: BibleBookmarkRecord] {
-        var map: [BibleBookmarkColor: BibleBookmarkRecord] = [:]
-        for record in bookmarks {
-            guard let color = record.color else { continue }
-            map[color] = record
-        }
-        return map
     }
 
     /// One shared glass sampling region for all six cards — per-card glass
@@ -95,7 +88,8 @@ struct BibleBookmarkSheet: View {
     }
 
     private func slotCard(_ color: BibleBookmarkColor) -> some View {
-        let record = bookmarksByColor[color]
+        // A linear scan beats a keyed map at ≤6 rows.
+        let record = bookmarks.first { $0.color == color }
         let isCurrentChapter = record?.bookId == currentBookId
             && record?.chapterNumber == currentChapterNumber
         return BookmarkSlotButton(
@@ -112,18 +106,18 @@ struct BibleBookmarkSheet: View {
     /// sheet itself wrote). Deliberately translation-free — a bookmark marks
     /// the chapter, not an edition.
     private func citation(for record: BibleBookmarkRecord) -> String {
-        let bookName = BibleBookIndex.entry(id: record.bookId)?.name ?? record.bookId
+        let bookName = catalog.book(id: record.bookId)?.name ?? record.bookId
         return "\(bookName) \(record.chapterNumber)"
     }
 
     private var caption: some View {
         Text("Each color marks one chapter. Reusing a color moves it here.")
-            .font(typography.font(size: 12))
+            .font(typography.font(size: captionSize))
             .foregroundStyle(theme.inkFaint)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .padding(.top, 14)
-            .padding(.bottom, 22 + bottomInset)
+            .padding(.bottom, 22)
     }
 }

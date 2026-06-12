@@ -654,7 +654,21 @@ public struct BibleScreen: View {
                 onNoteGlyphTap: { spec in
                     withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
                 },
-                onBookmarkTap: { viewModel.presentBookmarkSheet() },
+                // With the action sheet up (its readable background keeps the
+                // title tappable), presenting the bookmark sheet directly
+                // would race the action sheet's dismissal — the documented
+                // unreliable case — so it routes through the hand-off and
+                // presents from the action sheet's `onDismiss`. The narration
+                // transport needs no hand-off: it stays presented and the
+                // system restores it when the bookmark sheet closes, the same
+                // interleaving the note glyph relies on.
+                onBookmarkTap: {
+                    if viewModel.selectedVerses.isEmpty {
+                        viewModel.presentBookmarkSheet()
+                    } else {
+                        handOffAfterSelectionDismiss { viewModel.presentBookmarkSheet() }
+                    }
+                },
                 onScroll: { offsetY, userDriven in
                     viewModel.updateScroll(offsetY: offsetY, userDriven: userDriven)
                 },

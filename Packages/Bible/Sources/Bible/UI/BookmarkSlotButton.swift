@@ -5,13 +5,18 @@ import SwiftUI
 /// (filled in the colour's tint when assigned, outline when empty), the
 /// colour name, and the assigned chapter's citation (or a muted "Empty").
 ///
-/// The card is a plain content button; interactive glass is applied by the
-/// sheet (`superGlassButton` inside its shared `SuperGlassContainer`) so all
-/// six cards sample one glass region — per-card glass would cast the
+/// The card applies its own interactive glass (`superGlassButton`), but the
+/// sheet wraps all six cards in one shared `SuperGlassContainer` so they
+/// sample a single glass region — independent sampling would cast the
 /// fragmented per-cell shadows documented in `BibleBookSheet.chapterGrid`.
 struct BookmarkSlotButton: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    // OS Dynamic Type bases, composing with the app font-scale slider that
+    // `typography.font(size:)` folds in — the dual-axis pattern from
+    // `BibleBookSheet`.
+    @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .caption) private var citationSize: CGFloat = 12
 
     let color: BibleBookmarkColor
     /// Citation of the chapter this colour currently marks, `nil` when the
@@ -32,10 +37,10 @@ struct BookmarkSlotButton: View {
                     size: 26
                 )
                 Text(color.displayName)
-                    .font(typography.font(size: 14, weight: .medium))
+                    .font(typography.font(size: nameSize, weight: .medium))
                     .foregroundStyle(theme.ink)
                 Text(assignedCitation ?? "Empty")
-                    .font(typography.font(size: 12))
+                    .font(typography.font(size: citationSize))
                     .foregroundStyle(assignedCitation == nil ? theme.inkFaint : theme.inkSoft)
                     .lineLimit(1)
             }
