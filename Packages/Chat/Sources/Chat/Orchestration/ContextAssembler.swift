@@ -376,13 +376,31 @@ public struct ContextAssembler: Sendable {
         // checkpoint can drop an assistant row whose result row survives).
         // The projection therefore repairs both shapes instead of replaying
         // them verbatim:
-        //   - a projected `toolUse` with no result row anywhere in the window
-        //     gets a synthesized error `tool_result` right after its turn;
+        //   - a projected `toolUse` whose result row does not follow it in
+        //     the window gets a synthesized error `tool_result` right after
+        //     its turn;
         //   - a role-`.tool` row whose `toolUse` was never projected is
         //     dropped.
+        // Both predicates are *positional*, not presence-based: a result row
+        // that sorts anywhere except after its issuing assistant row cannot
+        // pair on the wire, so it must not suppress the in-place synthesis
+        // (and is itself dropped by the second rule). Presence-based
+        // suppression would let one out-of-position row re-wedge the
+        // history the synthesis exists to repair.
+        var messageIndexByID: [String: Int] = [:]
+        var resultRowIndicesByCallID: [String: [Int]] = [:]
+        for (index, record) in messages.enumerated() {
+            messageIndexByID[record.id] = index
+            if record.role == .tool, let callId = record.toolCallId {
+                resultRowIndicesByCallID[callId, default: []].append(index)
+            }
+        }
         var resolvedToolCallIDs = Set<String>()
-        for record in messages where record.role == .tool {
-            if let id = record.toolCallId { resolvedToolCallIDs.insert(id) }
+        for call in toolCalls {
+            guard let parentIndex = messageIndexByID[call.messageId] else { continue }
+            let followsParent = resultRowIndicesByCallID[call.id]?
+                .contains { $0 > parentIndex } ?? false
+            if followsParent { resolvedToolCallIDs.insert(call.id) }
         }
         var projectedToolUseIDs = Set<String>()
 

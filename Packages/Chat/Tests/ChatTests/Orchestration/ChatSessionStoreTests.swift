@@ -489,6 +489,72 @@ struct ChatSessionStoreTests {
         #expect(rowCounts["tc-rowed"] == 1)
         #expect(rowCounts["tc-done"] == nil)
     }
+
+    /// A wedged conversation keeps accumulating user rows after the
+    /// stranded call (every failed send still persisted its user message).
+    /// The sweep's synthesized result row must sort directly after the
+    /// issuing assistant row — not at end-of-history — or the pair is
+    /// non-adjacent on the wire and the history stays provider-invalid.
+    /// Regression for the launch-time-`createdAt` bug found in review.
+    @Test func recoverySweepKeepsToolPairAdjacentDespiteLaterMessages() async throws {
+        let setup = try await makeStore()
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        let toolCallRepo = GRDBToolCallRepository(database: setup.database)
+        let base = setup.clock.now()
+
+        try await messageRepo.save(MessageRecord(
+            id: "m-user-1", conversationId: "conv-A", role: .user,
+            content: "run the tool", toolCallId: nil, createdAt: base
+        ))
+        try await messageRepo.save(MessageRecord(
+            id: "m-assistant", conversationId: "conv-A", role: .assistant,
+            content: "running", toolCallId: nil, createdAt: base.addingTimeInterval(1)
+        ))
+        try await seedToolCall(
+            in: setup.database, id: "tc-stranded", messageId: "m-assistant",
+            conversationId: "conv-A", status: .executing,
+            clock: FixedClock(base.addingTimeInterval(1))
+        )
+        // Two later sends that failed against the wedged history still
+        // persisted their user rows.
+        try await messageRepo.save(MessageRecord(
+            id: "m-user-2", conversationId: "conv-A", role: .user,
+            content: "hello?", toolCallId: nil, createdAt: base.addingTimeInterval(60)
+        ))
+        try await messageRepo.save(MessageRecord(
+            id: "m-user-3", conversationId: "conv-A", role: .user,
+            content: "are you stuck?", toolCallId: nil, createdAt: base.addingTimeInterval(120)
+        ))
+
+        await setup.store.recoverInterruptedToolCalls()
+
+        // On-disk order: the synthesized row rides directly behind the
+        // assistant row that issued the call.
+        let stored = try await messageRepo.fetchAll(conversationId: "conv-A")
+        let assistantIndex = try #require(stored.firstIndex { $0.id == "m-assistant" })
+        let resultIndex = try #require(stored.firstIndex { $0.toolCallId == "tc-stranded" })
+        #expect(resultIndex == assistantIndex + 1)
+
+        // And the projection ships a pair-adjacent wire history.
+        let calls = try await toolCallRepo.fetchByConversation("conv-A")
+        let assembly = try ContextAssembler().assemble(
+            messages: stored, toolCalls: calls, checkpoint: nil,
+            model: OrchestrationFixtures.defaultModel()
+        )
+        let useIndex = try #require(assembly.messages.firstIndex { message in
+            message.content.contains { block in
+                if case .toolUse("tc-stranded", _, _, _) = block { return true }
+                return false
+            }
+        })
+        let wireResultIndex = try #require(assembly.messages.firstIndex { message in
+            message.content.contains { block in
+                if case .toolResult("tc-stranded", _, _) = block { return true }
+                return false
+            }
+        })
+        #expect(wireResultIndex == useIndex + 1)
+    }
 }
 
 /// A `ToolExecutor` that sleeps until either a long timeout elapses or the

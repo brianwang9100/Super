@@ -265,7 +265,18 @@ public actor ChatSessionStore {
                         role: .tool,
                         content: result.content,
                         toolCallId: record.id,
-                        createdAt: clock.now(),
+                        // Backdated to the call's creation time, NOT the
+                        // sweep time: `fetchAll` orders by (createdAt,
+                        // rowid), and rows may have landed after the
+                        // stranded call (a wedged conversation keeps
+                        // accumulating user rows). A launch-time stamp
+                        // would sort the result after them — out of
+                        // position next to its `tool_use` on the wire,
+                        // which strict providers reject. The call's own
+                        // timestamp is ≥ its parent assistant row's and
+                        // < everything later, so the pair stays adjacent
+                        // (rowid breaks the tie with the assistant row).
+                        createdAt: record.createdAt,
                         tokenCount: nil
                     ))
                 }

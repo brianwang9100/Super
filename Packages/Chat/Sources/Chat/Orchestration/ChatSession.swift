@@ -1238,6 +1238,13 @@ public actor ChatSession {
         broadcast(.assistantMessageSaved(assistantMessage))
 
         var savedCalls: [ToolCallRecord] = []
+        // A cancellation landing between sibling `save` calls below strands
+        // the already-saved calls at `.pending` (the throw unwinds before
+        // `executeToolCalls` can shield them): the assembler synthesis keeps
+        // the wire history valid and the launch sweep settles the status,
+        // but a still-attached UI may show the chip as pending until then.
+        // Accepted — closing it would need the same shield around a window
+        // that is just a handful of row inserts.
         for call in pendingCalls {
             let parametersJSON = encodeJSON(call.input)
             let record = ToolCallRecord(
@@ -1325,10 +1332,13 @@ public actor ChatSession {
 
     /// Run one tool call through `pending → executing → success/failed`,
     /// persisting the result row and broadcasting the lifecycle events.
-    /// Throws `CancellationError` (only) when the turn was cancelled —
-    /// either by the registry/tool observing cancellation or by GRDB
-    /// rejecting a write on the cancelled task; `executeToolCalls` then
-    /// resolves the batch tail as cancelled.
+    /// Throws `CancellationError` when the turn was cancelled — either by
+    /// the registry/tool observing cancellation or by GRDB rejecting a
+    /// write on the cancelled task — and `executeToolCalls` then resolves
+    /// the batch tail as cancelled. Non-cancellation persistence errors
+    /// propagate unshielded (the assembler's pairing-totality synthesis
+    /// backstops any row they fail to write); tool *execution* errors
+    /// don't throw at all — they persist as a `.failed` result.
     private func executeSingleToolCall(_ record: ToolCallRecord) async throws {
         try await toolCallRepository.updateStatus(
             id: record.id,
