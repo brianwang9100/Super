@@ -56,8 +56,9 @@ public struct SearchBibleTool: ToolExecutor {
 
         Search is keyword-based with stemming: pass a few content words in \
         `query` (e.g. "love" also matches "loved"/"loving"). Optionally scope to \
-        one `book`. Omit `translation` to search the user's currently selected \
-        translation (the usual case). Results are ordered best-match first.
+        one `book`. Do NOT pass `translation` unless the user explicitly names \
+        one — omit it so the search runs against the user's currently selected \
+        translation. Results are ordered best-match first.
 
         Each result already includes the verse's full, exact text from the \
         user's translation — quote and cite directly from these results. Do NOT \
@@ -89,7 +90,7 @@ public struct SearchBibleTool: ToolExecutor {
             LLMToolParameter(
                 name: "translation",
                 type: .string,
-                description: "Optional translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Omit to use the user's currently selected translation, which is almost always what they want.",
+                description: "Translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Only pass this when the user explicitly names a translation; otherwise OMIT it so the search uses the user's currently selected translation.",
                 isRequired: false,
                 enumValues: BibleTranslation.allCases.map(\.rawValue)
             ),
@@ -102,8 +103,8 @@ public struct SearchBibleTool: ToolExecutor {
         Returns ranked verses with full text and correct citations from the \
         user's translation — quote them directly instead of recalling from \
         memory. Cite as Book Chapter:Verse with the full book name. \
-        Keyword-based with stemming; optionally scope to `book`; omit \
-        `translation` to use the user's selected one.
+        Keyword-based with stemming; optionally scope to `book`. Omit \
+        `translation` (uses the user's selected one) unless the user names one.
         """
     )
 
