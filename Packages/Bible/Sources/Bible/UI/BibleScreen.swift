@@ -198,26 +198,21 @@ public struct BibleScreen: View {
             AnnotationSheetContainer(
                 spec: spec,
                 citation: viewModel.citationLabel(for: spec),
-                catalog: .standard,
+                verseText: viewModel.annotationVerseText(for: spec),
                 repository: annotationRepository,
                 onClose: { viewModel.dismissAnnotationSheet() },
                 onRegenerate: { viewModel.triggerAnnotationGeneration(for: spec) },
-                onAddAllToChat: { records in
-                    if let reference = viewModel.makeAnnotationGroupReference(records, for: spec) {
-                        publishReferenceToChat(reference, startNew: false)
-                    }
-                },
-                onCardAddToChat: { record in
+                onAddToChat: { record in
                     publishReferenceToChat(
-                        viewModel.makeAnnotationCardReference(record),
+                        viewModel.makeAnnotationReference(record),
                         startNew: false
                     )
                 },
-                onOpenReference: { parsed in
-                    viewModel.navigateToVerseReference(parsed)
+                onOpenLink: { link in
+                    viewModel.navigateToDeepLink(link)
                 },
                 onRetry: { viewModel.retryAnnotationGeneration(for: spec) },
-                onCardDeleteFailed: { _ in
+                onDeleteFailed: { _ in
                     viewModel.presentDeleteAnnotationFailedToast()
                 },
                 onRegenerateFailed: {

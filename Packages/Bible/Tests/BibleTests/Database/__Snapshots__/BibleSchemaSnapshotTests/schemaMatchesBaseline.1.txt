@@ -1,5 +1,5 @@
 sqlite_master
-CREATE TABLE "bibleAnnotation" ("id" TEXT PRIMARY KEY NOT NULL, "target" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER, "verseStart" INTEGER, "verseEnd" INTEGER, "category" INTEGER NOT NULL CHECK (("category" >= 1) AND ("category" <= 5)), "title" TEXT NOT NULL, "body" TEXT NOT NULL, "source" TEXT NOT NULL, "modelId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL);
+CREATE TABLE "bibleAnnotation" ("id" TEXT PRIMARY KEY NOT NULL, "target" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER, "verseStart" INTEGER, "verseEnd" INTEGER, "summary" TEXT NOT NULL, "source" TEXT NOT NULL, "modelId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL);
 CREATE INDEX "bibleAnnotation_on_bookId_chapterNumber_verseEnd" ON "bibleAnnotation"("bookId", "chapterNumber", "verseEnd");
 CREATE INDEX "bibleAnnotation_on_target_bookId" ON "bibleAnnotation"("target", "bookId");
 CREATE TABLE "bibleBookmark" ("id" TEXT PRIMARY KEY NOT NULL, "colorId" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "createdAt" DATETIME NOT NULL);

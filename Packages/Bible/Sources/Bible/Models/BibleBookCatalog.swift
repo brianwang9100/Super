@@ -27,9 +27,8 @@ public struct BibleBookCatalog: Sendable {
     /// rejects ambiguous shorthands (`"J"` matches eight books, so `nil`).
     /// Returns `nil` for an empty candidate or any ambiguous prefix.
     ///
-    /// Shared by `BibleCitationParser` (strict citations) and
-    /// `BibleSearchQueryParser` (the picker's progressive search) so the two
-    /// can't drift on how a book name resolves.
+    /// Used by `BibleSearchQueryParser` (the picker's progressive search) —
+    /// the single home for how a book name resolves.
     public func resolve(bookName candidate: String) -> BibleBookSummary? {
         let needle = candidate.lowercased().filter { !$0.isWhitespace }
         guard !needle.isEmpty else { return nil }

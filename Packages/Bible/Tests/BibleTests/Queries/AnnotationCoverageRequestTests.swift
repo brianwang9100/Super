@@ -28,7 +28,7 @@ struct AnnotationCoverageRequestTests {
         BibleAnnotationRecord(
             id: id, target: target, bookId: bookId, chapterNumber: chapterNumber,
             verseStart: verseStart, verseEnd: verseEnd,
-            category: .summary, title: "t", body: "b",
+            summary: "s",
             source: .userBulk, modelId: "m", createdAt: t0
         )
     }
