@@ -16,7 +16,8 @@ import SwiftUI
 /// supplies the tap (→ edit) and swipe-to-delete affordances around it.
 /// The note's content parameter is named `text` rather than `body` to
 /// avoid shadowing SwiftUI's `View.body` requirement on this type — the
-/// same rename rationale `AnnotationBlock.Content` follows.
+/// same rename rationale the old `AnnotationBlock.Content` followed
+/// (avoid shadowing SwiftUI's `View.body` on the same type).
 struct NoteCard: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

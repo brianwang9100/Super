@@ -1,11 +1,11 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that writes annotation cards into the `bibleAnnotation`
-/// table.
+/// `ToolExecutor` that writes one markdown study summary per target into
+/// the `bibleAnnotation` table.
 ///
 /// One tool, three callers — single-target taps in the UI, in-chat tool
-/// calls, and (future) the bulk runner — all dispatch through this same
+/// calls, and the bulk runner — all dispatch through this same
 /// executor. The provenance fields (`source`, `modelId`) come from an
 /// injected `BibleAnnotationStampProvider` so the bulk path can stamp
 /// `.userBulk` without a separate tool, and tests substitute fakes.
@@ -47,49 +47,42 @@ public struct AnnotateBibleTool: ToolExecutor {
         description: """
         Call this ONLY when the user explicitly asks to annotate a \
         passage — to "annotate" or "add study annotations to" a book, \
-        chapter, or verse range. It writes persistent, formatted \
-        study-annotation cards into the Bible reader. When the user just \
-        asks you to explain, give context on, or summarize a passage, \
-        answer in the conversation instead — do not call this tool (you \
-        may offer annotating as a next step). For a free-text personal \
-        note or reflection ("save a note", "note that…"), use the \
-        `bible.note` tool instead, NOT this one.
+        chapter, or verse range. It writes one persistent markdown study \
+        summary into the Bible reader. When the user just asks you to \
+        explain, give context on, or summarize a passage, answer in the \
+        conversation instead — do not call this tool (you may offer \
+        annotating as a next step). For a free-text personal note or \
+        reflection ("save a note", "note that…"), use the `bible.note` \
+        tool instead, NOT this one.
 
-        Produce one or more annotation cards for a book, chapter, or \
-        verse range. Each card is a short, focused note classified by \
-        `category`. Keep each body to ~240 characters / ≤2 sentences \
-        unless the user explicitly asks for more depth — readers see \
-        these in a tight popover.
-
-        Each entry's `category` is one of: `author`, `summary`, \
-        `historical`, `clarification`, `reference`. The category sets \
-        both the card's display order (author → summary → historical → \
-        clarification → reference) and its rendering:
-        - `reference`: the body MUST be a single bare scripture citation \
-        like `"Heb 4:15"` or `"Romans 8:28-30"` — nothing else — so it \
-        renders as a tappable navigation link. Use a `reference` card \
-        ONLY for a genuine cross-reference — a passage the target text \
-        directly quotes, alludes to, or cites (e.g. a New Testament verse \
-        quoting the Old Testament it draws on). Do NOT add a reference \
-        for a merely thematically or conceptually similar verse ("see \
-        this other verse about love"); omit the reference card entirely \
-        when there is no real intertextual link. If what you want to say \
-        is prose *about* a passage, use `clarification` and cite the \
-        passage inside the sentence instead.
-        - every other category: the body is markdown prose.
-        Use clear, plain-language titles (e.g. `"Author"`, \
-        `"Historical context"`, `"See also"`).
+        Produce ONE markdown study summary of the target passage in \
+        `summary`. Long-form: roughly 150–400 words scaled to scope (a \
+        verse range shorter, a whole book longer). Structure it with \
+        short `###` headings, bold key terms, and bullet lists or \
+        blockquotes where they genuinely help. Cover what the passage \
+        says in plain language, authorship and historical context, and \
+        notable cross-references — but cite a cross-reference ONLY when \
+        the target text genuinely quotes, alludes to, or is quoted by \
+        that passage; skip merely thematically similar verses. Cite \
+        scripture with the full book name in `Book Chapter:Verse` form \
+        (e.g. `Romans 8:28-30`, `Psalm 23`) — the reader auto-links \
+        exactly that format into tappable references. Do NOT repeat the \
+        target's own verse text verbatim; the reader displays it above \
+        the summary.
 
         The `target` discriminates which scripture unit the annotation \
         attaches to and decides which position fields are required:
-        - `"book"`: only `bookId` (e.g. `"ROM"`) — book prologue.
+        - `"book"`: only `bookId` (e.g. `"ROM"`) — book overview.
         - `"chapter"`: `bookId` and `chapterNumber` — chapter summary.
         - `"verse"`: `bookId`, `chapterNumber`, `verseStart`, `verseEnd` \
-        — verse-range note. For a single verse, set `verseEnd` equal \
+        — verse-range summary. For a single verse, set `verseEnd` equal \
         to `verseStart`.
 
-        Calling this tool replaces any existing annotation cards for \
-        the same target. Pass an empty `entries` array to clear them.
+        Calling this tool replaces any existing annotation for the same \
+        target. Call it at most once per target. There is no tool for \
+        REMOVING an annotation — if the user asks you to delete one, \
+        don't call this tool; tell them to open the annotation in the \
+        reader and use its Delete action.
         """,
         category: .mutation,
         parameters: [
@@ -125,49 +118,22 @@ public struct AnnotateBibleTool: ToolExecutor {
                 isRequired: false
             ),
             LLMToolParameter(
-                name: "entries",
-                type: .array,
+                name: "summary",
+                type: .string,
                 description: """
-                Array of annotation card objects. Each object has: \
-                `category` ('author', 'summary', 'historical', \
-                'clarification', or 'reference'), `title` (short \
-                heading), `body` (for 'reference': a citation string like \
-                'John 1:14' or 'Romans 8:28-30'; for every other \
-                category: markdown content). An empty array clears \
-                existing annotations for the target without inserting new \
-                ones.
+                Markdown study summary of the target passage, ~150–400 \
+                words scaled to scope. Use short `###` headings, bold key \
+                terms, and lists/blockquotes where helpful. Cite scripture \
+                as full-book-name `Book Chapter:Verse` (e.g. 'Romans \
+                8:28-30') so the reader auto-links it. Do not repeat the \
+                target's own verse text verbatim.
                 """,
-                isRequired: true,
-                // The array's element schema (JSON-Schema `items`). The native
-                // Gemini adapter rejects an array parameter declared without it
-                // (HTTP 400) — see `JSONToolSchema`. For an `.array` parameter
-                // the `valueSchema` describes each item directly.
-                valueSchema: .object([
-                    LLMToolParameter(
-                        name: "category",
-                        type: .string,
-                        description: "One of: 'author', 'summary', 'historical', 'clarification', 'reference'.",
-                        isRequired: true,
-                        enumValues: ["author", "summary", "historical", "clarification", "reference"]
-                    ),
-                    LLMToolParameter(
-                        name: "title",
-                        type: .string,
-                        description: "Short, plain-language card heading (e.g. 'Author', 'Historical context').",
-                        isRequired: true
-                    ),
-                    LLMToolParameter(
-                        name: "body",
-                        type: .string,
-                        description: "For 'reference': a bare scripture citation like 'Heb 4:15'. For every other category: markdown prose, ~240 chars / ≤2 sentences.",
-                        isRequired: true
-                    ),
-                ])
+                isRequired: true
             ),
         ],
         appletId: AnnotateBibleTool.appletID,
         displayName: "Bible annotations",
-        summary: "Adds study annotation cards to a passage."
+        summary: "Writes a markdown study summary for a passage."
     )
 
     /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
@@ -199,53 +165,39 @@ public struct AnnotateBibleTool: ToolExecutor {
         }
 
         let stamp = await stampProvider.stamp()
-        let now = clock.now()
-        // Stamp each entry 1 ms apart in emission order. `createdAt` is the
-        // secondary sort key after `category`, so same-category siblings
-        // (e.g. several `reference` cards) keep the order the LLM produced
-        // them in rather than tie-breaking on their random UUID `id` — which
-        // would re-shuffle on every regeneration.
-        let records = parsed.entries.enumerated().map { index, entry in
-            BibleAnnotationRecord(
-                id: ids.nextID(),
-                target: parsed.target,
-                bookId: parsed.bookId,
-                chapterNumber: parsed.chapterNumber,
-                verseStart: parsed.verseStart,
-                verseEnd: parsed.verseEnd,
-                category: entry.category,
-                title: entry.title,
-                body: entry.body,
-                source: stamp.source,
-                modelId: stamp.modelId,
-                createdAt: now.addingTimeInterval(Double(index) * 0.001)
-            )
-        }
+        let record = BibleAnnotationRecord(
+            id: ids.nextID(),
+            target: parsed.target,
+            bookId: parsed.bookId,
+            chapterNumber: parsed.chapterNumber,
+            verseStart: parsed.verseStart,
+            verseEnd: parsed.verseEnd,
+            summary: parsed.summary,
+            source: stamp.source,
+            modelId: stamp.modelId,
+            createdAt: clock.now()
+        )
 
         do {
+            // `replace` clears the target's prior rows first, so re-annotating
+            // converges on the intended one-row-per-target steady state.
             try await repository.replace(
                 target: parsed.target,
                 bookId: parsed.bookId,
                 chapterNumber: parsed.chapterNumber,
                 verseStart: parsed.verseStart,
                 verseEnd: parsed.verseEnd,
-                inserting: records
+                inserting: [record]
             )
         } catch {
-            return Self.errorResult("Failed to write annotations: \(error.localizedDescription)")
+            return Self.errorResult("Failed to write the annotation: \(error.localizedDescription)")
         }
 
-        let artifacts = records.map {
-            ToolResult.Artifact(type: "annotation", id: $0.id)
-        }
-        let content = records.isEmpty
-            ? "Cleared annotations for the target."
-            : "Wrote \(records.count) annotation\(records.count == 1 ? "" : "s") for the target."
         return ToolResult(
             toolID: AnnotateBibleTool.toolID,
-            content: content,
+            content: "Wrote an annotation for the target.",
             isError: false,
-            artifacts: artifacts
+            artifacts: [ToolResult.Artifact(type: "annotation", id: record.id)]
         )
     }
 
@@ -257,13 +209,7 @@ public struct AnnotateBibleTool: ToolExecutor {
         let chapterNumber: Int?
         let verseStart: Int?
         let verseEnd: Int?
-        let entries: [ValidatedEntry]
-    }
-
-    private struct ValidatedEntry {
-        let category: BibleAnnotationCategory
-        let title: String
-        let body: String
+        let summary: String
     }
 
     private struct ValidationError: Error {
@@ -313,10 +259,9 @@ public struct AnnotateBibleTool: ToolExecutor {
             }
         }
 
-        let entriesRaw = try requireArray(input, key: "entries")
-        var entries: [ValidatedEntry] = []
-        for (index, item) in entriesRaw.enumerated() {
-            entries.append(try validateEntry(item, at: index))
+        let summary = try requireString(input, key: "summary")
+        guard !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(message: "summary is empty. Pass the markdown study summary text.")
         }
 
         return ValidatedInput(
@@ -325,42 +270,16 @@ public struct AnnotateBibleTool: ToolExecutor {
             chapterNumber: chapterNumber,
             verseStart: verseStart,
             verseEnd: verseEnd,
-            entries: entries
+            summary: summary
         )
-    }
-
-    private static func validateEntry(_ value: JSONValue, at index: Int) throws -> ValidatedEntry {
-        guard case .object(let fields) = value else {
-            throw ValidationError(message: "entries[\(index)] is not an object.")
-        }
-        let categoryRaw = try requireString(fields, key: "category", context: "entries[\(index)]")
-        guard let category = BibleAnnotationCategory(toolToken: categoryRaw) else {
-            let valid = BibleAnnotationCategory.allCases.map { "'\($0.toolToken)'" }.joined(separator: ", ")
-            throw ValidationError(message: "entries[\(index)] has unknown category '\(categoryRaw)'. Use one of: \(valid).")
-        }
-        let title = try requireString(fields, key: "title", context: "entries[\(index)]")
-        let body = try requireString(fields, key: "body", context: "entries[\(index)]")
-        return ValidatedEntry(category: category, title: title, body: body)
     }
 
     private static func requireString(
         _ input: [String: JSONValue],
-        key: String,
-        context: String? = nil
+        key: String
     ) throws -> String {
         guard case .string(let value) = input[key] else {
-            let prefix = context.map { "\($0)." } ?? ""
-            throw ValidationError(message: "\(prefix)\(key) is required and must be a string.")
-        }
-        return value
-    }
-
-    private static func requireArray(
-        _ input: [String: JSONValue],
-        key: String
-    ) throws -> [JSONValue] {
-        guard case .array(let value) = input[key] else {
-            throw ValidationError(message: "\(key) is required and must be an array.")
+            throw ValidationError(message: "\(key) is required and must be a string.")
         }
         return value
     }

@@ -1,7 +1,8 @@
 import Foundation
 import GRDB
 
-/// One annotation card persisted in `bibleAnnotation`.
+/// One annotation persisted in `bibleAnnotation` — a long-form markdown
+/// study summary of its target passage.
 ///
 /// The table is polymorphic: a row's `target` discriminates between book,
 /// chapter, and verse-range scopes, and the optional position columns
@@ -12,23 +13,21 @@ import GRDB
 /// - `target == .verse` — `bookId`, `chapterNumber`, `verseStart`,
 ///   `verseEnd` all set (`verseEnd == verseStart` for a single verse).
 ///
-/// A book / chapter / verse range can have multiple rows — each renders as
-/// a separate card in the popover. Ordering is
-/// `(category ASC, createdAt ASC, id ASC)` — cards sort into their canonical
-/// semantic order (author → summary → historical → clarification → reference)
-/// regardless of the order the LLM emitted them.
+/// One row per target is the intended steady state — generation goes
+/// through `replace(...)`, which clears the target's prior rows before
+/// inserting. There is no UNIQUE constraint on the position tuple (the
+/// nullable columns would need COALESCE gymnastics), so readers stay
+/// array-shaped and render `first` defensively; ordering is
+/// `(createdAt ASC, id ASC)`.
 ///
-/// `body` interpretation depends on `category.rendering`:
-/// - `.prose` — markdown prose (every non-reference category)
-/// - `.citation` — a single citation string ("Heb 4:15", "Romans 8:28-30")
-///   parsed by `BibleCitationParser` at render time; a parse failure falls
-///   back to plain text. (`category == .reference`)
+/// `summary` is markdown — headings, bold, lists, blockquotes, and
+/// scripture citations that the shared renderer (`Core.MarkdownText`)
+/// auto-links into tappable `super://bible/...` references.
 ///
 /// `modelId` stamps which LLM (Large Language Model) produced the row — used
-/// for the per-card provenance footer and for future invalidation if a model
-/// proves problematic. Empty string is permitted; the integration milestone
-/// wires the active session's model id, and tests substitute whatever value
-/// they need.
+/// for the provenance footer and for future invalidation if a model
+/// proves problematic. Empty string is permitted; tests substitute whatever
+/// value they need.
 public struct BibleAnnotationRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleAnnotation"
 
@@ -38,9 +37,7 @@ public struct BibleAnnotationRecord: Codable, FetchableRecord, PersistableRecord
     public var chapterNumber: Int?
     public var verseStart: Int?
     public var verseEnd: Int?
-    public var category: BibleAnnotationCategory
-    public var title: String
-    public var body: String
+    public var summary: String
     public var source: BibleAnnotationSource
     public var modelId: String
     public var createdAt: Date
@@ -52,9 +49,7 @@ public struct BibleAnnotationRecord: Codable, FetchableRecord, PersistableRecord
         chapterNumber: Int? = nil,
         verseStart: Int? = nil,
         verseEnd: Int? = nil,
-        category: BibleAnnotationCategory,
-        title: String,
-        body: String,
+        summary: String,
         source: BibleAnnotationSource,
         modelId: String,
         createdAt: Date
@@ -65,9 +60,7 @@ public struct BibleAnnotationRecord: Codable, FetchableRecord, PersistableRecord
         self.chapterNumber = chapterNumber
         self.verseStart = verseStart
         self.verseEnd = verseEnd
-        self.category = category
-        self.title = title
-        self.body = body
+        self.summary = summary
         self.source = source
         self.modelId = modelId
         self.createdAt = createdAt

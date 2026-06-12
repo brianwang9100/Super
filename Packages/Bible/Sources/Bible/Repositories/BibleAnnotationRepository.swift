@@ -1,27 +1,25 @@
 import Foundation
 
-/// Writes and reads annotation cards.
+/// Writes and reads annotation summaries.
 ///
-/// Protocol-typed so the tool dispatcher and the popover view model depend
-/// on the seam rather than GRDB. Reads coexist with the reactive
-/// `ChapterAnnotationsRequest` / `BookAnnotationsExistenceRequest`
-/// `@Query`s: the queries drive bubble visibility in the chapter renderer
-/// and book picker; the imperative `list(...)` here is used by the
-/// chat-injection composer and the popover's per-card "Add to chat" path,
-/// where pulling a specific target group is simpler than maintaining a
-/// second observation.
+/// Protocol-typed so the tool executor depends on the seam rather than
+/// GRDB. Reads coexist with the reactive `ChapterAnnotationsRequest` /
+/// `BookAnnotationsExistenceRequest` `@Query`s: the queries drive the
+/// sheet's card and bubble visibility in the chapter renderer and book
+/// picker; the imperative `list(...)` here serves callers that need a
+/// one-shot pull of a target group without maintaining an observation.
 ///
 /// The write surface is intentionally narrow: `replace(...)` swaps a
-/// target group's rows atomically, `deleteOne(id:)` removes a single
-/// card, and `deleteAll()` clears every annotation (the hub's "Delete all
+/// target group's rows atomically (and with an empty `inserting:` is the
+/// sheet's atomic Delete), `deleteOne(id:)` removes a single row, and
+/// `deleteAll()` clears every annotation (the hub's "Delete all
 /// annotations" reset). No per-row update path — regenerate replaces the
-/// whole group, per-card "Delete this card" calls `deleteOne(id:)`, and a
-/// future manual-edit feature gets its own typed method when it lands.
+/// whole group, and a future manual-edit feature gets its own typed
+/// method when it lands.
 public protocol BibleAnnotationRepository: Sendable {
-    /// All annotation rows in a target group, in canonical display order
-    /// (`category ASC, createdAt ASC, id ASC`) — the same order the
-    /// reactive `@Query` paths use, so the chat-injection snapshot matches
-    /// what the user sees in the sheet.
+    /// All annotation rows in a target group, ordered
+    /// (`createdAt ASC, id ASC`) — the same order the reactive `@Query`
+    /// paths use. One row per target is the steady state.
     func list(
         target: BibleAnnotationTarget,
         bookId: String,

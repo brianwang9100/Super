@@ -94,7 +94,7 @@ struct DebugBibleProvidersTests {
 
     // MARK: - Provider stream: tool call
 
-    @Test func annotateProviderEmitsBibleAnnotateToolCallWithMultipleCategories() async throws {
+    @Test func annotateProviderEmitsBibleAnnotateToolCallWithMarkdownSummary() async throws {
         let provider = DebugAnnotateLLMProvider(id: "p")
         let model = try #require(provider.supportedModels.first)
         let events = try await Self.collect(
@@ -110,20 +110,16 @@ struct DebugBibleProvidersTests {
         #expect(input["verseStart"] == .int(28))
         #expect(input["verseEnd"] == .int(30))
 
-        guard case .array(let entries) = input["entries"] else {
-            Issue.record("expected entries array, got \(String(describing: input["entries"]))")
+        // The single long-form `summary` field replaces the old `entries`
+        // array: it's a non-empty markdown document with `###` headings,
+        // matching the dispatcher's single-summary contract.
+        guard case .string(let summary)? = input["summary"] else {
+            Issue.record("expected summary string, got \(String(describing: input["summary"]))")
             return
         }
-        // Multiple cards spanning distinct categories.
-        #expect(entries.count >= 2)
-        let categories = entries.compactMap { entry -> String? in
-            guard case .object(let dict) = entry, case .string(let c)? = dict["category"] else { return nil }
-            return c
-        }
-        #expect(Set(categories).count == entries.count)
-        // The verse target includes a `reference` card whose body is a bare
-        // citation (the tool renders it as a navigation link).
-        #expect(categories.contains("reference"))
+        #expect(!summary.isEmpty)
+        #expect(summary.contains("### "))
+        #expect(input["entries"] == nil)
     }
 
     @Test func noteProviderEmitsBibleNoteCreateToolCall() async throws {

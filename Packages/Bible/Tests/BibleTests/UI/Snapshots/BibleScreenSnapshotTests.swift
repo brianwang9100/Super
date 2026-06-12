@@ -271,8 +271,7 @@ struct BibleScreenSnapshotTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "chap", target: .chapter, bookId: "1PE", chapterNumber: 2,
-                    category: .summary, title: "Summary",
-                    body: "Peter calls scattered believers a chosen race and royal priesthood.",
+                    summary: "Summary — Peter calls scattered believers a chosen race and royal priesthood.",
                     source: .user, modelId: "afm-3.0", createdAt: now
                 )
             ]
@@ -284,8 +283,7 @@ struct BibleScreenSnapshotTests {
                 BibleAnnotationRecord(
                     id: "v4", target: .verse, bookId: "1PE",
                     chapterNumber: 2, verseStart: 4, verseEnd: 4,
-                    category: .summary, title: "Living stone",
-                    body: "Echo of Psalm 118:22 — rejected by men, chosen by God.",
+                    summary: "Living stone — Echo of Psalm 118:22 — rejected by men, chosen by God.",
                     source: .user, modelId: "afm-3.0", createdAt: now
                 )
             ]
@@ -297,8 +295,7 @@ struct BibleScreenSnapshotTests {
                 BibleAnnotationRecord(
                     id: "v9", target: .verse, bookId: "1PE",
                     chapterNumber: 2, verseStart: 9, verseEnd: 9,
-                    category: .summary, title: "Royal priesthood",
-                    body: "Drawn from Exodus 19:5-6 — Israel's identity language extended to the church.",
+                    summary: "Royal priesthood — Drawn from Exodus 19:5-6 — Israel's identity language extended to the church.",
                     source: .user, modelId: "afm-3.0", createdAt: now
                 )
             ]

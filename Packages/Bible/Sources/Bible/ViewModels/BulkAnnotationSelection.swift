@@ -74,9 +74,11 @@ public struct BulkRunEstimate: Sendable, Equatable {
     public let annotations: Int
     public let minutes: Int
 
-    /// Average annotations a chapter yields (one chapter summary + several
-    /// notable verses), used only for the footer estimate.
-    public static let annotationsPerChapter = 8
+    /// Annotations a chapter yields — exactly one since the
+    /// single-summary redesign (`bible.annotate` writes one markdown
+    /// summary per target). Kept as a named constant so the footer
+    /// estimate's derivation stays explicit.
+    public static let annotationsPerChapter = 1
     public static let secondsPerChapter = 3
 
     public init(selection: BulkSelection) {

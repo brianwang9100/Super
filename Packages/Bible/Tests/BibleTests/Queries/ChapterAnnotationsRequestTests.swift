@@ -36,7 +36,7 @@ struct ChapterAnnotationsRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "chap", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                    category: .summary, title: "Summary", body: "Life in the Spirit.",
+                    summary: "Life in the Spirit.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -48,7 +48,7 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "v28-30", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "Context", body: "Golden chain.",
+                    summary: "Golden chain.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -67,7 +67,7 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "other", target: .verse, bookId: "ROM",
                     chapterNumber: 7, verseStart: 1, verseEnd: 1,
-                    category: .summary, title: "Other", body: ".",
+                    summary: "Other chapter.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -76,9 +76,11 @@ struct ChapterAnnotationsRequestTests {
         #expect(rows.isEmpty)
     }
 
-    @Test("rows of equal category order by (createdAt ASC, id ASC)")
+    @Test("rows order by (createdAt ASC, id ASC)")
     func ordering() async throws {
         let (repository, database) = try makeFixture()
+        // "b" and "a" share t0 and tie-break on id; "c" is later and sorts
+        // last despite being inserted last in the batch.
         let later = t0.addingTimeInterval(60)
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
@@ -86,53 +88,24 @@ struct ChapterAnnotationsRequestTests {
                 BibleAnnotationRecord(
                     id: "b", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "B", body: ".",
+                    summary: "B.",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "a", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "A", body: ".",
+                    summary: "A.",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "c", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "C", body: ".",
+                    summary: "C.",
                     source: .user, modelId: "m", createdAt: later
                 ),
             ]
         )
         let rows = try fetch(database, book: "ROM", chapter: 8)
         #expect(rows.map(\.id) == ["a", "b", "c"])
-    }
-
-    @Test("rows sort by canonical category order, not by creation time")
-    func ordersByCategory() async throws {
-        let (repository, database) = try makeFixture()
-        // Insert with category reversed relative to createdAt; the category
-        // key must win so the live chapter renderer's @Query feed follows
-        // author → … → reference.
-        func card(_ id: String, _ category: BibleAnnotationCategory, _ createdAt: Date) -> BibleAnnotationRecord {
-            BibleAnnotationRecord(
-                id: id, target: .verse, bookId: "ROM",
-                chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                category: category, title: id, body: ".",
-                source: .user, modelId: "m", createdAt: createdAt
-            )
-        }
-        try await repository.replace(
-            target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,
-            inserting: [
-                card("ref", .reference, t0.addingTimeInterval(40)),
-                card("clar", .clarification, t0.addingTimeInterval(30)),
-                card("hist", .historical, t0.addingTimeInterval(20)),
-                card("sum", .summary, t0.addingTimeInterval(10)),
-                card("auth", .author, t0),
-            ]
-        )
-        let rows = try fetch(database, book: "ROM", chapter: 8)
-        #expect(rows.map(\.category) == [.author, .summary, .historical, .clarification, .reference])
-        #expect(rows.map(\.id) == ["auth", "sum", "hist", "clar", "ref"])
     }
 }

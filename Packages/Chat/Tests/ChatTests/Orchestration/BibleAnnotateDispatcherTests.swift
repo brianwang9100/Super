@@ -524,9 +524,9 @@ struct BibleAnnotateDispatcherTests {
 
     // `prompt(for:)` is a pure static function, so these exercise it
     // directly — no bus, session, or model needed. They're the
-    // regression guard for the per-scope steer: before the dispatcher
-    // carried `ANNOTATIONS.md` §1's sections, every scope got the same
-    // generic prompt and these section keywords were absent.
+    // regression guard for the per-scope steer: each scope names the
+    // `###` sections the one markdown summary should carry, per
+    // `ANNOTATIONS.md` §1.
 
     @Test("a book request's prompt names the book-level sections to cover")
     func bookPromptNamesBookSections() {
@@ -534,8 +534,9 @@ struct BibleAnnotateDispatcherTests {
             for: reference(kind: "book", sourceID: "book:ROM")
         )
         #expect(prompt.contains("this book"))
-        #expect(prompt.contains("historical context"))
-        #expect(prompt.contains("summary"))
+        #expect(prompt.contains("authorship"))
+        #expect(prompt.contains("major themes"))
+        #expect(prompt.contains("historical setting"))
     }
 
     @Test("a chapter request's prompt names the chapter-level sections to cover")
@@ -544,8 +545,9 @@ struct BibleAnnotateDispatcherTests {
             for: reference(kind: "chapter", sourceID: "chapter:ROM:8")
         )
         #expect(prompt.contains("this chapter"))
-        #expect(prompt.contains("summary"))
-        #expect(prompt.contains("outline"))
+        #expect(prompt.contains("argument or narrative"))
+        #expect(prompt.contains("outline of its movements"))
+        #expect(prompt.contains("context"))
     }
 
     @Test("a verse-range request's prompt names the verse-level sections to cover")
@@ -556,8 +558,8 @@ struct BibleAnnotateDispatcherTests {
             for: reference(kind: "verseRange", sourceID: "verse:ROM:8:28:30")
         )
         #expect(prompt.contains("this verse range"))
-        #expect(prompt.contains("historical context"))
-        #expect(prompt.contains("clarification"))
+        #expect(prompt.contains("plain language"))
+        #expect(prompt.contains("historical and literary"))
         #expect(prompt.contains("cross-reference"))
     }
 
@@ -584,7 +586,7 @@ struct BibleAnnotateDispatcherTests {
             for: reference(kind: "mystery", sourceID: "mystery:ROM")
         )
         // No per-scope steer leaked in...
-        #expect(!prompt.contains("aim to cover"))
+        #expect(!prompt.contains("structure the summary around"))
         #expect(BibleAnnotateDispatcher.sectionGuidance(forKind: "mystery") == nil)
         // ...the target-identification block still names the target so the
         // model can still produce valid arguments (guards against the
@@ -607,37 +609,57 @@ struct BibleAnnotateDispatcherTests {
         #expect(briefing.contains("do not call any other tool"))
     }
 
-    @Test("the dispatcher briefing teaches the category vocabulary")
-    func briefingCarriesCategoryVocabulary() {
-        // The briefing must steer the model to the `category` field and its
-        // five tokens — a revert to the old `kind`/`text`/`reference` wording
-        // would silently break generation (the tool would reject every entry)
-        // with no other test catching it.
+    @Test("the dispatcher briefing teaches the single-summary contract")
+    func briefingCarriesSingleSummaryContract() {
+        // The briefing must steer the model to the one `summary` field and
+        // its long-form markdown shape — a revert to the old multi-entry
+        // category wording would silently break generation (the tool would
+        // reject the arguments) with no other test catching it.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing
-        #expect(briefing.contains("category"))
-        for token in ["author", "summary", "historical", "clarification", "reference"] {
-            #expect(briefing.contains(token), "briefing should name the '\(token)' category")
-        }
+        #expect(briefing.contains("ONE markdown study summary in `summary`"))
+        #expect(briefing.contains("150–400 words"))
+        #expect(briefing.contains("`###` headings"))
+        #expect(!briefing.contains("category"))
     }
 
-    @Test("the dispatcher briefing restricts references to genuine cross-references")
-    func briefingRestrictsReferenceCards() {
-        // A `reference` card must be a real intertextual link — a passage
-        // the target quotes/alludes to/cites — never a merely thematically
-        // similar verse. Guards against the prior "genuinely illuminating"
-        // wording that produced junk "see this similar verse" references.
+    @Test("the dispatcher briefing pins the full-book-name citation format")
+    func briefingPinsCitationFormat() {
+        // Citations must use the full book name in `Book Chapter:Verse`
+        // form — that exact format is what the shared renderer linkifies
+        // into tappable `super://bible/...` references.
+        let briefing = BibleAnnotateDispatcher.dispatcherBriefing
+        #expect(briefing.contains("full book name"))
+        #expect(briefing.contains("Book Chapter:Verse"))
+    }
+
+    @Test("the dispatcher briefing forbids repeating the verse text verbatim")
+    func briefingForbidsVerbatimVerseText() {
+        // The reader displays the target's verse text above the summary, so
+        // the briefing must stop the model from duplicating it inside it.
+        let briefing = BibleAnnotateDispatcher.dispatcherBriefing
+        #expect(briefing.contains("Do NOT repeat the target's verse text verbatim"))
+    }
+
+    @Test("the dispatcher briefing restricts cross-references to genuine intertextual links")
+    func briefingRestrictsCrossReferences() {
+        // A cross-reference mention must be a real intertextual link — a
+        // passage the target quotes/alludes to/cites — never a merely
+        // thematically similar verse. Guards against the prior "genuinely
+        // illuminating" wording that produced junk "see this similar verse"
+        // references.
         let briefing = BibleAnnotateDispatcher.dispatcherBriefing.lowercased()
         #expect(briefing.contains("alludes to"))
         #expect(briefing.contains("thematically"))
         #expect(!briefing.contains("illuminating"))
     }
 
-    @Test("verse-range section guidance makes the reference card conditional")
-    func verseRangeReferenceGuidanceIsConditional() {
-        // The reference card is no longer one we always "aim to cover" for
-        // a verse range — it's added only on a genuine quotation/allusion.
+    @Test("verse-range section guidance makes the cross-references section conditional")
+    func verseRangeCrossReferenceGuidanceIsConditional() {
+        // Cross-references are not a section we always cover for a verse
+        // range — the section appears only on a genuine quotation/allusion
+        // and is omitted entirely when there are none.
         let guidance = BibleAnnotateDispatcher.sectionGuidance(forKind: "verseRange")?.lowercased()
-        #expect(guidance?.contains("only if") == true)
-        #expect(guidance?.contains("omit it") == true)
+        #expect(guidance?.contains("genuine cross-references") == true)
+        #expect(guidance?.contains("omit the section entirely") == true)
     }
 }

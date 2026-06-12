@@ -22,9 +22,7 @@ struct BibleAnnotationRepositoryTests {
         chapter: Int = 8,
         verseStart: Int = 28,
         verseEnd: Int = 30,
-        title: String = "Card",
-        body: String = "Body",
-        category: BibleAnnotationCategory = .summary,
+        summary: String = "Summary",
         createdAt: Date? = nil
     ) -> BibleAnnotationRecord {
         BibleAnnotationRecord(
@@ -34,9 +32,7 @@ struct BibleAnnotationRepositoryTests {
             chapterNumber: chapter,
             verseStart: verseStart,
             verseEnd: verseEnd,
-            category: category,
-            title: title,
-            body: body,
+            summary: summary,
             source: .user,
             modelId: "test",
             createdAt: createdAt ?? t0
@@ -49,8 +45,8 @@ struct BibleAnnotationRepositoryTests {
     func insertVerseGroup() async throws {
         let (repository, _) = try makeFixture()
         let rows = [
-            verseRecord(id: "a", title: "Author"),
-            verseRecord(id: "b", title: "Context"),
+            verseRecord(id: "a", summary: "Author"),
+            verseRecord(id: "b", summary: "Context"),
         ]
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8,
@@ -64,37 +60,12 @@ struct BibleAnnotationRepositoryTests {
         #expect(listed.map(\.id) == ["a", "b"])
     }
 
-    @Test("list returns rows in canonical category order, not creation order")
-    func listOrdersByCategory() async throws {
-        let (repository, _) = try makeFixture()
-        // Insert with category reversed relative to createdAt, so a
-        // creation-time sort would return them backwards. `list()` must
-        // match the sheet's `@Query` order: author → … → reference.
-        let rows = [
-            verseRecord(id: "ref", category: .reference, createdAt: t0.addingTimeInterval(40)),
-            verseRecord(id: "clar", category: .clarification, createdAt: t0.addingTimeInterval(30)),
-            verseRecord(id: "hist", category: .historical, createdAt: t0.addingTimeInterval(20)),
-            verseRecord(id: "sum", category: .summary, createdAt: t0.addingTimeInterval(10)),
-            verseRecord(id: "auth", category: .author, createdAt: t0),
-        ]
-        try await repository.replace(
-            target: .verse, bookId: "ROM", chapterNumber: 8,
-            verseStart: 28, verseEnd: 30, inserting: rows
-        )
-        let listed = try await repository.list(
-            target: .verse, bookId: "ROM", chapterNumber: 8,
-            verseStart: 28, verseEnd: 30
-        )
-        #expect(listed.map(\.category) == [.author, .summary, .historical, .clarification, .reference])
-        #expect(listed.map(\.id) == ["auth", "sum", "hist", "clar", "ref"])
-    }
-
     @Test("book-target rows have nil chapter and verse columns")
     func insertBookGroup() async throws {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "bp", target: .book, bookId: "ROM",
-            category: .author, title: "Prologue", body: "Long letter.",
+            summary: "Long letter.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(
@@ -117,7 +88,7 @@ struct BibleAnnotationRepositoryTests {
         let (repository, _) = try makeFixture()
         let row = BibleAnnotationRecord(
             id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
-            category: .summary, title: "Summary", body: "Life in the Spirit.",
+            summary: "Life in the Spirit.",
             source: .user, modelId: "test", createdAt: t0
         )
         try await repository.replace(
@@ -150,7 +121,7 @@ struct BibleAnnotationRepositoryTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                    category: .summary, title: "S", body: "B",
+                    summary: "S",
                     source: .user, modelId: "test", createdAt: t0
                 )
             ]
@@ -172,7 +143,7 @@ struct BibleAnnotationRepositoryTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                    category: .summary, title: "S", body: "B",
+                    summary: "S",
                     source: .user, modelId: "test", createdAt: t0
                 )
             ]
@@ -193,12 +164,12 @@ struct BibleAnnotationRepositoryTests {
 
     // MARK: - Ordering
 
-    @Test("rows of equal category sort by createdAt then id")
+    @Test("rows sort by createdAt then id")
     func listOrdering() async throws {
         let (repository, _) = try makeFixture()
-        // All rows share the default `.summary` category, so the category
-        // key is a no-op here and the secondary keys decide; cross-category
-        // ordering is covered by `listOrdersByCategory`.
+        // Insert out of order: the later row first, then two same-time rows
+        // out of id order. `list()` must return (createdAt ASC, id ASC) —
+        // the same contract as the sheet's `@Query`.
         let later = t0.addingTimeInterval(60)
         let rows = [
             verseRecord(id: "c", createdAt: later),
@@ -366,7 +337,7 @@ struct BibleAnnotationRepositoryTests {
             chapterNumber: nil, verseStart: nil, verseEnd: nil,
             inserting: [BibleAnnotationRecord(
                 id: "bk", target: .book, bookId: "ROM",
-                category: .author, title: "Prologue", body: "Letter.",
+                summary: "Letter.",
                 source: .userBulk, modelId: "test", createdAt: t0
             )]
         )
@@ -375,7 +346,7 @@ struct BibleAnnotationRepositoryTests {
             verseStart: nil, verseEnd: nil,
             inserting: [BibleAnnotationRecord(
                 id: "ch", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                category: .summary, title: "Summary", body: "Spirit.",
+                summary: "Spirit.",
                 source: .userBulk, modelId: "test", createdAt: t0
             )]
         )

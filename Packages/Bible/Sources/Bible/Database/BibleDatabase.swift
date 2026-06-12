@@ -363,4 +363,55 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             unique: true
         )
     }
+
+    migrator.registerMigration("v9_annotationSummary") { db in
+        // The annotation redesign: one long-form markdown `summary` per
+        // target replaces the multi-card `(category, title, body)` entries
+        // model — the category taxonomy (and its CHECK) goes away entirely.
+        //
+        // Destructive by design, like v5 before it: the entries model has
+        // no mapping onto the single-summary model (stitching five short
+        // cards together produces neither a coherent summary nor the new
+        // generation contract's structure). Annotations are cheap,
+        // local-only, and regenerated on demand, so we drop and rebuild
+        // rather than migrate content.
+        //
+        // The bulk ledger is cleared for the same reason: its `done`
+        // units assert "this chapter's annotations exist", which the
+        // table rebuild just falsified — a run resumed across this
+        // upgrade would otherwise complete while the hub's coverage
+        // shows those chapters bare, with no path to regenerate them
+        // short of a fresh run. Units are deleted explicitly (NOT via
+        // the v6 cascade: DatabaseMigrator runs with foreign keys off,
+        // so ON DELETE CASCADE doesn't fire inside a migration and
+        // orphaned units would fail the end-of-migration FK check).
+        // The hub simply shows no history post-upgrade.
+        try db.execute(sql: "DELETE FROM bulkAnnotationRunUnit")
+        try db.execute(sql: "DELETE FROM bulkAnnotationRun")
+        try db.execute(sql: "DROP TABLE bibleAnnotation")
+        try db.create(table: "bibleAnnotation") { t in
+            t.primaryKey("id", .text)
+            t.column("target", .text).notNull()
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer)
+            t.column("verseStart", .integer)
+            t.column("verseEnd", .integer)
+            t.column("summary", .text).notNull()
+            t.column("source", .text).notNull()
+            t.column("modelId", .text).notNull()
+            t.column("createdAt", .datetime).notNull()
+        }
+        // Recreate the two indexes dropped with the table — see v3 for the
+        // access patterns each one serves.
+        try db.create(
+            index: "bibleAnnotation_on_bookId_chapterNumber_verseEnd",
+            on: "bibleAnnotation",
+            columns: ["bookId", "chapterNumber", "verseEnd"]
+        )
+        try db.create(
+            index: "bibleAnnotation_on_target_bookId",
+            on: "bibleAnnotation",
+            columns: ["target", "bookId"]
+        )
+    }
 }

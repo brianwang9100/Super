@@ -54,9 +54,9 @@ public struct BibleSearchQuery: Sendable, Equatable {
 
 /// Parses the book picker's search field progressively as the user types —
 /// `"1 Peter"` → book-only, `"1 Peter 2"` → a chapter, `"1 Peter 2:5-6"` → a
-/// verse range. The lenient counterpart of `BibleCitationParser` (which is
-/// strict and colon-required for LLM citations): both share
-/// `BibleBookCatalog.resolve(bookName:)` so book resolution can't drift.
+/// verse range. Deliberately lenient (LLM-emitted citations are parsed by
+/// Core's `BibleReferenceLinkifier`/`BibleDeepLink` instead); book names
+/// resolve through `BibleBookCatalog.resolve(bookName:)`.
 ///
 /// A caseless namespace: parsing is a pure function with no state.
 public enum BibleSearchQueryParser {

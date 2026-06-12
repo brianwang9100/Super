@@ -10,4 +10,12 @@ enum BibleVerseTextFormatter {
     static func numbered(_ verses: [BibleVerse]) -> String {
         verses.map { "\($0.number). \($0.text)" }.joined(separator: "\n")
     }
+
+    /// The verses' text space-joined without numbers — quoted scripture
+    /// for reading surfaces (the annotation card), where verse numbers
+    /// are reader chrome rather than content. An empty input yields the
+    /// empty string.
+    static func plain(_ verses: [BibleVerse]) -> String {
+        verses.map(\.text).joined(separator: " ")
+    }
 }

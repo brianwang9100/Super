@@ -37,12 +37,10 @@ struct BulkChapterRow: View {
     private var rightCell: some View {
         switch chapter.state {
         case .done:
-            HStack(spacing: 5) {
-                AnnotationBubble(state: .filled, size: 12)
-                Text(chapter.producedCount.formatted())
-                    .font(typography.mono(11.5))
-                    .foregroundStyle(theme.inkFaint)
-            }
+            // One summary per chapter since the single-summary redesign —
+            // a count cell would always read "1", so the filled bubble
+            // alone marks the state.
+            AnnotationBubble(state: .filled, size: 12)
         case .generating:
             Text("generating")
                 .font(typography.mono(11.5))
@@ -62,7 +60,7 @@ struct BulkChapterRow: View {
 
     private var accessibilityStatus: String {
         switch chapter.state {
-        case .done: return "\(chapter.producedCount) annotations"
+        case .done: return "annotated"
         case .generating: return "generating"
         case .queued: return "queued"
         case .skipped: return "skipped, already annotated"

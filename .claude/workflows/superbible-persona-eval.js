@@ -263,7 +263,7 @@ function DEFAULT_TOOL_CATALOG() {
   return [
     '- bible.search(query, book?, limit?, translation?) — full-text search across bundled translations (KJV/WEB/ASV/BSB). Returns ranked verses WITH their full text and citations. Use for "what does the Bible say about X" / "where does it talk about Y".',
     '- bible.read(references: [{book, chapter, startVerse?, endVerse?}], translation?) — fetch exact, verbatim verse text by reference. Use before quoting a specific passage you do not already have.',
-    '- bible.annotate(target, bookId, chapterNumber?, verseStart?, verseEnd?, entries[]) — write persistent study-annotation cards into the reader. ONLY when the user explicitly asks to annotate.',
+    '- bible.annotate(target, bookId, chapterNumber?, verseStart?, verseEnd?, summary) — write ONE persistent markdown study summary into the reader. ONLY when the user explicitly asks to annotate.',
     '- bible.note(action, id?, target?, bookId?, chapterNumber?, verseStart?, verseEnd?, body?) — create/edit/delete a free-text personal note. ONLY when the user explicitly asks to save a note.',
   ].join('\n')
 }

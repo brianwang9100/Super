@@ -119,40 +119,61 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
         if let chapter = target.chapterNumber { fields["chapterNumber"] = .int(chapter) }
         if let verseStart = target.verseStart { fields["verseStart"] = .int(verseStart) }
         if let verseEnd = target.verseEnd { fields["verseEnd"] = .int(verseEnd) }
-        fields["entries"] = .array(entries(for: target).map { entry in
-            .object([
-                "category": .string(entry.category),
-                "title": .string(entry.title),
-                "body": .string(entry.body),
-            ])
-        })
+        fields["summary"] = .string(summary(for: target))
         return .object(fields)
     }
 
-    /// Canned multi-category entries shaped by target kind, mirroring
-    /// `BibleAnnotateDispatcher.sectionGuidance`. The `reference` body is a
-    /// bare citation string (the tool renders it as a navigation link).
-    private static func entries(
-        for target: DebugBibleTarget
-    ) -> [(category: String, title: String, body: String)] {
+    /// Canned markdown summary shaped by target kind, mirroring
+    /// `BibleAnnotateDispatcher.sectionGuidance`'s per-scope sections.
+    /// Deliberately exercises the renderer paths the real contract asks
+    /// for — `###` headings, bold, a bullet list, a blockquote, and a
+    /// canonical full-book-name citation that the shared renderer
+    /// linkifies into a tappable `super://bible/...` reference.
+    private static func summary(for target: DebugBibleTarget) -> String {
         switch target.target {
         case "book":
-            return [
-                ("author", "Author", "Debug annotation: traditionally attributed authorship and the audience it addressed."),
-                ("summary", "Overview", "Debug annotation: a one-paragraph summary of the book's arc and themes."),
-                ("historical", "Historical context", "Debug annotation: the historical setting in which this book was written."),
-            ]
+            return """
+            ### Authorship & date
+            Debug annotation: **traditionally attributed** authorship, the \
+            audience addressed, and the approximate date of composition.
+
+            ### Overview
+            Debug annotation: a short summary of the book's arc and major \
+            themes.
+
+            - First movement of the book
+            - Second movement of the book
+
+            ### Historical setting
+            Debug annotation: the situation in which this book was written. \
+            Compare Psalm 23 for a related image.
+            """
         case "chapter":
-            return [
-                ("summary", "Chapter summary", "Debug annotation: what this chapter covers at a glance."),
-                ("clarification", "Movements", "Debug annotation: a short outline of the chapter's sections."),
-            ]
+            return """
+            ### Summary
+            Debug annotation: what this chapter covers at a glance, with a \
+            **key term** marked for emphasis.
+
+            ### Movements
+            - Opening section
+            - Central argument
+            - Closing exhortation
+
+            > Debug blockquote: a short editorial aside about the chapter.
+            """
         default: // "verse"
-            return [
-                ("historical", "Historical context", "Debug annotation: the situation behind this passage."),
-                ("clarification", "Plain meaning", "Debug annotation: a plain-language paraphrase of these verses."),
-                ("reference", "See also", "Hebrews 4:15"),
-            ]
+            return """
+            ### Plain meaning
+            Debug annotation: a plain-language paraphrase of these verses, \
+            with the **pivotal phrase** in bold.
+
+            ### Context
+            Debug annotation: the situation behind this passage.
+
+            ### Cross-references
+            This passage echoes Hebrews 4:15 — tap the citation to jump \
+            there.
+            """
         }
     }
 }

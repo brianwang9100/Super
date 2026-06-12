@@ -149,7 +149,7 @@ struct SettingsSheetSnapshotTests {
     // LLM-facing tool prompt. Two enabled tools so `SettingsRootPane`'s
     // "N enabled" value stays "2 enabled".
     private static let sampleTools: [SettingsViewModel.ToolRow] = [
-        .init(id: "bible.annotate", name: "Bible annotations", summary: "Adds study annotation cards to a passage.", isEnabled: true),
+        .init(id: "bible.annotate", name: "Bible annotations", summary: "Writes a markdown study summary for a passage.", isEnabled: true),
         // Disabled so the *enabled* count stays at 2 (leaving SettingsRootPane's
         // "N enabled" Tools-row value and its baselines unchanged), and to show
         // the toggle's off state in the snapshot.

@@ -9,10 +9,10 @@
 /// equatable.
 public enum BibleAnnotateResult: Sendable, Equatable {
     /// The LLM called `bible.annotate` and the tool wrote the listed
-    /// number of rows. Zero is a valid success when the tool was called
-    /// but already-present rows blocked new inserts — the receiver
-    /// distinguishes "nothing changed" from "the dispatch failed" by
-    /// preferring the explicit `.failure` case for the latter.
+    /// number of rows — always 1 per call since the single-summary
+    /// redesign (the tool writes one markdown summary per target). The
+    /// count survives as API shape, not information; mirrors
+    /// `BibleAnnotateOutcome.success`.
     case success(annotationCount: Int)
 
     /// The dispatch did not produce annotations. `message` is a short

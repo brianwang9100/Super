@@ -10,8 +10,8 @@ import Testing
 /// - sheet presentation toggle
 /// - `currentChapterAnnotationSpec` / `selectedAnnotationRanges` derivation
 /// - `citationLabel(for:)` formatting
-/// - `navigateToVerseReference(_:)` routing
-/// - `makeAnnotation{Card,Group}Reference(_:)`
+/// - `navigateToDeepLink(_:)` routing
+/// - `makeAnnotationReference(_:)` / `annotationVerseText(for:)`
 ///
 /// The wider view model is covered by `BibleScreenViewModelTests`; this
 /// suite is annotation-scoped to keep both files readable.
@@ -32,10 +32,11 @@ struct BibleScreenViewModelAnnotationsTests {
 
     private func makeViewModel(
         disclaimerStore: AnnotationDisclaimerStore = FakeDisclaimerStore(),
-        at position: BiblePosition = BiblePosition(bookId: "ROM", chapterNumber: 8)
+        at position: BiblePosition = BiblePosition(bookId: "ROM", chapterNumber: 8),
+        textLoader: any BibleTextLoader = BundledBibleTextLoader()
     ) -> BibleScreenViewModel {
         BibleScreenViewModel(
-            textLoader: BundledBibleTextLoader(),
+            textLoader: textLoader,
             clock: FixedClock(now),
             idGenerator: DeterministicIDGenerator(),
             disclaimerStore: disclaimerStore,
@@ -251,53 +252,78 @@ struct BibleScreenViewModelAnnotationsTests {
 
     // MARK: - Navigation
 
-    @Test("navigateToVerseReference moves the reader to the parsed target and dismisses the sheet")
-    func navigationDismissesAndMoves() async {
+    @Test("navigateToDeepLink moves the reader to the linked range and dismisses the sheet")
+    func deepLinkDismissesAndMoves() async {
         let viewModel = makeViewModel(at: BiblePosition(bookId: "1PE", chapterNumber: 2))
         await viewModel.load()
         viewModel.presentAnnotationSheet(for: .chapter(bookId: "1PE", chapterNumber: 2))
-        viewModel.navigateToVerseReference(
-            BibleCitationParser.ParsedCitation(
-                position: BiblePosition(bookId: "JHN", chapterNumber: 1),
-                verseStart: 14, verseEnd: 14
-            )
+        viewModel.navigateToDeepLink(
+            BibleDeepLink(bookId: "JHN", chapter: 1, verseStart: 14, verseEnd: 16)
         )
         #expect(viewModel.presentedAnnotationTarget == nil)
+        #expect(viewModel.position == BiblePosition(bookId: "JHN", chapterNumber: 1))
+        #expect(viewModel.selectedVerses == [14, 15, 16])
+    }
+
+    @Test("a single-verse deep link (nil verseEnd) selects exactly that verse")
+    func deepLinkSingleVerseFallsBackToStart() async {
+        let viewModel = makeViewModel(at: BiblePosition(bookId: "1PE", chapterNumber: 2))
+        await viewModel.load()
+        // `verseEnd` is nil for a single-verse link (`John 1:14`); the
+        // router must fall back to `verseStart` rather than treat the
+        // link as chapter-only.
+        viewModel.navigateToDeepLink(
+            BibleDeepLink(bookId: "JHN", chapter: 1, verseStart: 14)
+        )
         #expect(viewModel.position == BiblePosition(bookId: "JHN", chapterNumber: 1))
         #expect(viewModel.selectedVerses == [14])
     }
 
+    @Test("a chapter-only deep link opens the chapter with nothing selected")
+    func deepLinkChapterOnlyClearsSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        // A leftover selection in the current chapter must not survive the hop.
+        viewModel.toggleVerse(28)
+        viewModel.navigateToDeepLink(BibleDeepLink(bookId: "PSA", chapter: 23))
+        #expect(viewModel.position == BiblePosition(bookId: "PSA", chapterNumber: 23))
+        #expect(viewModel.selectedVerses.isEmpty)
+    }
+
     // MARK: - References built for chat hand-off
 
-    @Test("makeAnnotationCardReference encodes the card target's citation")
-    func cardReferenceCarriesCitation() async {
+    @Test("makeAnnotationReference encodes the record target's citation and snapshot")
+    func annotationReferenceCarriesCitation() async {
         let viewModel = makeViewModel()
         await viewModel.load()
         let record = BibleAnnotationRecord(
             id: "rec-1", target: .verse, bookId: "ROM",
             chapterNumber: 8, verseStart: 28, verseEnd: 30,
-            category: .clarification, title: "In context",
-            body: "Suffering is the backdrop, not the contradiction.",
+            summary: "Suffering is the backdrop, not the contradiction.",
             source: .user, modelId: "afm-3.0", createdAt: now
         )
-        let reference = viewModel.makeAnnotationCardReference(record)
+        let reference = viewModel.makeAnnotationReference(record)
         #expect(reference.appletID == "bible")
         #expect(reference.kind == "annotation")
         #expect(reference.sourceID == "rec-1")
         #expect(reference.citation == "Romans 8:28-30")
         #expect(reference.displayLabel == "Romans 8:28-30 annotation")
+        // The snapshot is the composer's block: citation heading + summary.
+        #expect(reference.snapshot.hasPrefix("## Romans 8:28-30 — annotation"))
         #expect(reference.snapshot.contains("Suffering is the backdrop"))
     }
 
-    @Test("makeAnnotationGroupReference returns nil for an empty card list")
-    func groupReferenceNilOnEmpty() async {
+    @Test("makeAnnotationReference derives a chapter citation from a chapter-target record")
+    func annotationReferenceChapterCitation() async {
         let viewModel = makeViewModel()
         await viewModel.load()
-        let reference = viewModel.makeAnnotationGroupReference(
-            [],
-            for: .chapter(bookId: "ROM", chapterNumber: 8)
+        let record = BibleAnnotationRecord(
+            id: "rec-2", target: .chapter, bookId: "ROM", chapterNumber: 8,
+            summary: "Golden chain.", source: .user, modelId: "m", createdAt: now
         )
-        #expect(reference == nil)
+        let reference = viewModel.makeAnnotationReference(record)
+        #expect(reference.citation == "Romans 8")
+        #expect(reference.displayLabel == "Romans 8 annotation")
     }
 
     @Test("presentDeleteAnnotationFailedToast raises the documented copy")
@@ -308,29 +334,64 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(viewModel.toast == "Couldn't delete the annotation.")
     }
 
-    @Test("makeAnnotationGroupReference joins ids and stamps the count")
-    func groupReferenceCarriesCount() async {
-        let viewModel = makeViewModel()
+    // MARK: - Verse text quoted above the summary
+
+    @Test("annotationVerseText joins the range's verse texts plainly, without numbers")
+    func verseTextJoinsRange() async {
+        let viewModel = makeViewModel(textLoader: FixtureBibleTextLoader())
         await viewModel.load()
-        let records = [
-            BibleAnnotationRecord(
-                id: "a", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                category: .author, title: "Author", body: "Paul.",
-                source: .user, modelId: "m", createdAt: now
-            ),
-            BibleAnnotationRecord(
-                id: "b", target: .chapter, bookId: "ROM", chapterNumber: 8,
-                category: .summary, title: "Summary", body: "Golden chain.",
-                source: .user, modelId: "m", createdAt: now
-            ),
-        ]
-        let reference = viewModel.makeAnnotationGroupReference(
-            records,
-            for: .chapter(bookId: "ROM", chapterNumber: 8)
+        let text = viewModel.annotationVerseText(
+            for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
         )
-        #expect(reference?.kind == "annotationGroup")
-        #expect(reference?.sourceID == "a,b")
-        #expect(reference?.displayLabel == "Romans 8 annotations (2)")
-        #expect(reference?.citation == "Romans 8")
+        #expect(text == "All things work together. Whom he foreknew. Whom he justified.")
+    }
+
+    @Test("annotationVerseText is nil for chapter and book specs")
+    func verseTextNilForWiderScopes() async {
+        let viewModel = makeViewModel(textLoader: FixtureBibleTextLoader())
+        await viewModel.load()
+        #expect(viewModel.annotationVerseText(for: .chapter(bookId: "ROM", chapterNumber: 8)) == nil)
+        #expect(viewModel.annotationVerseText(for: .book(bookId: "ROM")) == nil)
+    }
+
+    @Test("annotationVerseText is nil when the text fails to load")
+    func verseTextNilOnLoadFailure() async {
+        let viewModel = makeViewModel(textLoader: ThrowingBibleTextLoader())
+        await viewModel.load()
+        let text = viewModel.annotationVerseText(
+            for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)
+        )
+        #expect(text == nil)
+    }
+
+    @Test("annotationVerseText is nil when the range matches no verses")
+    func verseTextNilOnEmptyRange() async {
+        let viewModel = makeViewModel(textLoader: FixtureBibleTextLoader())
+        await viewModel.load()
+        // Verses past the fixture chapter's end — the slice is empty, so the
+        // card degrades to summary-only rather than quoting an empty string.
+        let text = viewModel.annotationVerseText(
+            for: .verseRange(bookId: "ROM", chapterNumber: 8, verseStart: 40, verseEnd: 41)
+        )
+        #expect(text == nil)
+    }
+}
+
+/// A `BibleTextLoader` serving one fixed Romans 8 fragment with known verse
+/// texts, so `annotationVerseText` assertions are exact rather than coupled
+/// to the bundled WEB translation.
+private struct FixtureBibleTextLoader: BibleTextLoader {
+    func loadChapter(
+        bookId: String, chapterNumber: Int, translation: BibleTranslation
+    ) throws -> BibleChapter? {
+        guard bookId == "ROM", chapterNumber == 8 else { return nil }
+        return BibleChapter(number: 8, paragraphs: [
+            .heading("More than conquerors"),
+            .prose([
+                BibleVerse(number: 28, text: "All things work together."),
+                BibleVerse(number: 29, text: "Whom he foreknew."),
+                BibleVerse(number: 30, text: "Whom he justified."),
+            ]),
+        ])
     }
 }

@@ -22,9 +22,9 @@ struct AnnotationBubble: View {
     @Environment(\.superTheme) private var theme
 
     /// Named `BubbleState` rather than `State` to avoid shadowing
-    /// `SwiftUI.State` within this struct's scope — the same naming
-    /// rationale `AnnotationBlock.Content` follows to avoid clashing
-    /// with `View.body`.
+    /// `SwiftUI.State` within this struct's scope (the same naming
+    /// rationale that keeps nested view types from clashing with
+    /// `View.body`).
     enum BubbleState: Sendable, Equatable {
         case empty
         case generating

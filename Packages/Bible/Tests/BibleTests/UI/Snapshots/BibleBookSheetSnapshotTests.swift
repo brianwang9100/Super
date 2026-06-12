@@ -138,7 +138,7 @@ struct BibleBookSheetSnapshotTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "gen-1", target: .book, bookId: "GEN", chapterNumber: nil,
-                    category: .author, title: "Author", body: "Traditionally Moses.",
+                    summary: "Author — Traditionally Moses.",
                     source: .user, modelId: "afm-3.0", createdAt: now
                 )
             ]
@@ -149,7 +149,7 @@ struct BibleBookSheetSnapshotTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "psa-1", target: .book, bookId: "PSA", chapterNumber: nil,
-                    category: .summary, title: "Compilation", body: "150 songs across five books.",
+                    summary: "Compilation — 150 songs across five books.",
                     source: .user, modelId: "afm-3.0", createdAt: now
                 )
             ]

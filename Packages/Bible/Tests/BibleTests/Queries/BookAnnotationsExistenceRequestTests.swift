@@ -35,7 +35,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "g", target: .book, bookId: "GEN",
-                    category: .summary, title: "Prologue", body: "In the beginning.",
+                    summary: "In the beginning.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -52,7 +52,7 @@ struct BookAnnotationsExistenceRequestTests {
                 BibleAnnotationRecord(
                     id: "a", target: .verse, bookId: "ROM",
                     chapterNumber: 8, verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "T", body: ".",
+                    summary: "Verse note.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -62,7 +62,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "j", target: .chapter, bookId: "JHN", chapterNumber: 3,
-                    category: .summary, title: "Summary", body: "Nicodemus.",
+                    summary: "Nicodemus.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -78,7 +78,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "g", target: .book, bookId: "GEN",
-                    category: .summary, title: "Prologue", body: "In the beginning.",
+                    summary: "In the beginning.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -88,7 +88,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "j", target: .chapter, bookId: "JHN", chapterNumber: 3,
-                    category: .summary, title: "Summary", body: "Nicodemus.",
+                    summary: "Nicodemus.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -104,7 +104,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "g", target: .book, bookId: "GEN",
-                    category: .summary, title: "Prologue", body: "In the beginning.",
+                    summary: "In the beginning.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -114,7 +114,7 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "j", target: .book, bookId: "JHN",
-                    category: .summary, title: "Gospel", body: "The Word.",
+                    summary: "The Word.",
                     source: .user, modelId: "m", createdAt: t0
                 )
             ]
@@ -130,12 +130,12 @@ struct BookAnnotationsExistenceRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "a", target: .book, bookId: "GEN",
-                    category: .summary, title: "T", body: ".",
+                    summary: "First row.",
                     source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "b", target: .book, bookId: "GEN",
-                    category: .reference, title: "U", body: ".",
+                    summary: "Second row.",
                     source: .user, modelId: "m", createdAt: t0
                 ),
             ]

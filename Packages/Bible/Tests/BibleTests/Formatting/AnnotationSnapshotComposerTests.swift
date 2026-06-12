@@ -3,7 +3,7 @@ import Testing
 @testable import Bible
 
 /// Tests for `AnnotationSnapshotComposer` — the pure markdown formatter
-/// that fills `RecordReference.snapshot` when annotations are added to
+/// that fills `RecordReference.snapshot` when an annotation is added to
 /// chat.
 @Suite("AnnotationSnapshotComposer")
 struct AnnotationSnapshotComposerTests {
@@ -11,9 +11,7 @@ struct AnnotationSnapshotComposerTests {
 
     private func record(
         id: String = "anno-1",
-        category: BibleAnnotationCategory = .summary,
-        title: String,
-        body: String
+        summary: String
     ) -> BibleAnnotationRecord {
         BibleAnnotationRecord(
             id: id,
@@ -22,66 +20,37 @@ struct AnnotationSnapshotComposerTests {
             chapterNumber: 8,
             verseStart: 28,
             verseEnd: 30,
-            category: category,
-            title: title,
-            body: body,
+            summary: summary,
             source: .user,
             modelId: "test-model",
             createdAt: now
         )
     }
 
-    @Test("single text card renders as H2 + blank line + body + trailing newline")
-    func singleTextCard() {
+    @Test("renders as citation H2 + blank line + summary + trailing newline")
+    func citationHeadingThenSummary() {
         let snapshot = AnnotationSnapshotComposer.compose(
-            annotation: record(title: "Author", body: "Paul, writing from Rome.")
+            annotation: record(summary: "Paul, writing from Rome."),
+            citation: "Romans 8:28-30"
         )
-        #expect(snapshot == "## Author\n\nPaul, writing from Rome.\n")
+        #expect(snapshot == "## Romans 8:28-30 — annotation\n\nPaul, writing from Rome.\n")
     }
 
-    @Test("single reference card renders the citation as the body")
-    func singleReferenceCard() {
+    @Test("the stored summary's own markdown passes through verbatim")
+    func summaryMarkdownPreserved() {
+        let summary = "### The golden chain\n\n**Foreknew** → glorified.\n\n> Romans 8:28-30"
         let snapshot = AnnotationSnapshotComposer.compose(
-            annotation: record(category: .reference, title: "See also", body: "Heb 4:15")
+            annotation: record(summary: summary),
+            citation: "Romans 8:28-30"
         )
-        #expect(snapshot == "## See also\n\nHeb 4:15\n")
+        #expect(snapshot == "## Romans 8:28-30 — annotation\n\n\(summary)\n")
     }
 
-    @Test("multi-card snapshot separates cards with a blank line, preserves order")
-    func multiCardSnapshot() {
-        let cards = [
-            record(id: "a", title: "Author", body: "Paul, writing from Rome."),
-            record(id: "b", title: "Historical context", body: "Mixed Jew/Gentile church."),
-            record(id: "c", category: .reference, title: "See also", body: "Eph 1:11"),
-        ]
-        let snapshot = AnnotationSnapshotComposer.compose(annotations: cards)
-        let expected = """
-        ## Author
-
-        Paul, writing from Rome.
-
-        ## Historical context
-
-        Mixed Jew/Gentile church.
-
-        ## See also
-
-        Eph 1:11
-
-        """
-        #expect(snapshot == expected)
-    }
-
-    @Test("empty input renders the empty string (no stray newlines)")
-    func emptyInput() {
-        #expect(AnnotationSnapshotComposer.compose(annotations: []) == "")
-    }
-
-    @Test("snapshot is line-deterministic for the same input")
+    @Test("snapshot is deterministic for the same input")
     func deterministic() {
-        let card = record(title: "Author", body: "Paul.")
-        let first = AnnotationSnapshotComposer.compose(annotation: card)
-        let second = AnnotationSnapshotComposer.compose(annotation: card)
+        let card = record(summary: "Paul.")
+        let first = AnnotationSnapshotComposer.compose(annotation: card, citation: "Romans 8")
+        let second = AnnotationSnapshotComposer.compose(annotation: card, citation: "Romans 8")
         #expect(first == second)
     }
 }

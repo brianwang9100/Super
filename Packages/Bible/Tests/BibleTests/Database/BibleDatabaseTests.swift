@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Bible
 
@@ -56,90 +57,24 @@ struct BibleDatabaseTests {
         }
     }
 
-    @Test("the annotation table carries a category column (kind dropped by v5)")
-    func annotationSchemaHasCategory() throws {
+    @Test("the annotation table carries a summary column (category/title/body dropped by v9)")
+    func annotationSchemaHasSummary() throws {
         let database = try BibleDatabase.makeInMemory()
         let columns = try database.queue.read { db in
             try db.columns(in: "bibleAnnotation").map(\.name)
         }
         #expect(Set(columns) == [
             "id", "target", "bookId", "chapterNumber",
-            "verseStart", "verseEnd", "category", "title",
-            "body", "source", "modelId", "createdAt",
+            "verseStart", "verseEnd", "summary",
+            "source", "modelId", "createdAt",
         ])
-        #expect(!columns.contains("kind"), "v5 replaced the kind column with category")
+        #expect(!columns.contains("category"), "v9 replaced the multi-card columns with summary")
+        #expect(!columns.contains("title"))
+        #expect(!columns.contains("body"))
     }
 
-    @Test("v5 rebuilds the annotation table with category typed as INTEGER")
-    func v5CategoryIsInteger() throws {
-        let database = try BibleDatabase.makeInMemory()
-        let categoryColumn = try database.queue.read { db in
-            try db.columns(in: "bibleAnnotation").first { $0.name == "category" }
-        }
-        #expect(categoryColumn?.isNotNull == true)
-        // Int-backed enum persists as INTEGER so `ORDER BY category` is a
-        // plain integer sort.
-        #expect(categoryColumn?.type.uppercased() == "INTEGER")
-    }
-
-    @Test("v5 CHECK rejects a category outside the 1...5 range")
-    func v5CategoryCheckConstraint() throws {
-        let database = try BibleDatabase.makeInMemory()
-        // Raw inserts bypass the Swift enum, which is the only way an
-        // out-of-range value could reach the column. A valid category
-        // inserts; an out-of-range one is rejected at write time by the
-        // CHECK rather than corrupting the read path.
-        func insert(category: Int) throws {
-            try database.queue.write { db in
-                try db.execute(
-                    sql: """
-                    INSERT INTO bibleAnnotation
-                    (id, target, bookId, category, title, body, source, modelId, createdAt)
-                    VALUES (?, 'book', 'ROM', ?, 't', 'b', 'user', 'm', '2026-01-01 00:00:00.000')
-                    """,
-                    arguments: ["row-\(category)", category]
-                )
-            }
-        }
-        try insert(category: 5)                       // in range — succeeds
-        #expect(throws: (any Error).self) {
-            try insert(category: 6)                    // out of range — rejected
-        }
-        #expect(throws: (any Error).self) {
-            try insert(category: 0)
-        }
-    }
-
-    @Test("an out-of-range category that reaches a row fails the read closed, not corrupt")
-    func outOfRangeCategoryFailsClosedOnRead() throws {
-        let database = try BibleDatabase.makeInMemory()
-        // The v5 CHECK makes this unreachable from the app's own writes, so
-        // bypass it to simulate a value arriving another way (a future sync
-        // payload, a manual DB edit). The enum's synthesized decoder rejects
-        // the unknown raw value, so the whole fetch throws rather than
-        // surfacing a half-decoded row — in the live app this is what makes
-        // `@Query` fall back to `defaultValue: []` (cards blank closed) rather
-        // than crash or render corrupt data.
-        try database.queue.write { db in
-            try db.execute(sql: "PRAGMA ignore_check_constraints = ON")
-            defer { try? db.execute(sql: "PRAGMA ignore_check_constraints = OFF") }
-            try db.execute(
-                sql: """
-                INSERT INTO bibleAnnotation
-                (id, target, bookId, category, title, body, source, modelId, createdAt)
-                VALUES ('bad', 'book', 'ROM', 99, 't', 'b', 'user', 'm', '2026-01-01 00:00:00.000')
-                """
-            )
-        }
-        #expect(throws: (any Error).self) {
-            try database.queue.read { db in
-                try BibleAnnotationRecord.fetchAll(db)
-            }
-        }
-    }
-
-    @Test("v3 indexes the annotation table for chapter and book lookups")
-    func v3CreatesAnnotationIndexes() throws {
+    @Test("the annotation table indexes chapter and book lookups")
+    func annotationIndexesSurviveTheV9Rebuild() throws {
         let database = try BibleDatabase.makeInMemory()
         let indexes = try database.queue.read { db in
             try db.indexes(on: "bibleAnnotation")
@@ -147,9 +82,8 @@ struct BibleDatabaseTests {
         // The chapter-positioning index drives the reader's `@Query` and
         // groups bubbles by `verseEnd`. The target+book index drives the
         // book-picker's `BookAnnotationsExistenceRequest`. Neither is
-        // UNIQUE — the table allows multiple rows per target group, with
-        // ordering enforced by `(category, createdAt, id)` rather than the
-        // schema.
+        // UNIQUE — the table tolerates multiple rows per target group, with
+        // ordering enforced by `(createdAt, id)` rather than the schema.
         #expect(indexes.contains {
             $0.name == "bibleAnnotation_on_bookId_chapterNumber_verseEnd"
                 && $0.isUnique == false
@@ -158,5 +92,72 @@ struct BibleDatabaseTests {
             $0.name == "bibleAnnotation_on_target_bookId"
                 && $0.isUnique == false
         })
+    }
+
+    /// The legacy → v9 upgrade path: a database stopped at v8 carries the
+    /// multi-card `(category, title, body)` annotation shape; running the
+    /// full migrator must drop those rows wholesale (destructive by
+    /// design — there is no mapping onto the single-summary model),
+    /// rebuild the table with `summary`, and recreate both indexes.
+    @Test("v9 drops legacy multi-card rows and rebuilds the summary schema")
+    func v9MigratesLegacyAnnotationTable() throws {
+        let queue = try DatabaseQueue()
+        // A release-shaped migrator (no DEBUG erase-on-change) so the test
+        // exercises the real upgrade an existing install performs.
+        var migrator = DatabaseMigrator()
+        registerBibleMigrations(&migrator)
+
+        try migrator.migrate(queue, upTo: "v8_createBookmark")
+        // One legacy multi-card row, inserted raw against the v5 shape
+        // (category as its Int raw value), plus a finished bulk-ledger run
+        // whose `done` unit asserts that row exists — v9 must clear both,
+        // or a resumed run would report chapters annotated whose rows the
+        // rebuild just dropped.
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO bibleAnnotation
+                (id, target, bookId, category, title, body, source, modelId, createdAt)
+                VALUES ('legacy-1', 'book', 'ROM', 2, 'Author', 'Paul.', 'user', 'm', '2026-01-01 00:00:00.000')
+                """
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO bulkAnnotationRun
+                (id, status, modelId, haltReason, createdAt, updatedAt, completedAt, overwriteExisting)
+                VALUES ('run-1', 'completed', 'm', NULL, '2026-01-01 00:00:00.000', '2026-01-01 00:00:00.000', '2026-01-01 00:00:00.000', 0)
+                """
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO bulkAnnotationRunUnit
+                (id, runId, ordinal, kind, bookId, bookName, chapterNumber, state, attemptCount, producedCount, errorMessage, updatedAt)
+                VALUES ('unit-1', 'run-1', 0, 'chapter', 'ROM', 'Romans', 1, 'done', 1, 3, NULL, '2026-01-01 00:00:00.000')
+                """
+            )
+        }
+
+        try migrator.migrate(queue)
+
+        let (count, columns, indexes, runCount, unitCount) = try queue.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM bibleAnnotation") ?? -1,
+                try db.columns(in: "bibleAnnotation").map(\.name),
+                try db.indexes(on: "bibleAnnotation"),
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM bulkAnnotationRun") ?? -1,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM bulkAnnotationRunUnit") ?? -1
+            )
+        }
+        #expect(count == 0, "legacy rows are dropped, not migrated")
+        #expect(columns.contains("summary"))
+        #expect(!columns.contains("category"))
+        #expect(!columns.contains("title"))
+        #expect(!columns.contains("body"))
+        #expect(indexes.contains { $0.name == "bibleAnnotation_on_bookId_chapterNumber_verseEnd" })
+        #expect(indexes.contains { $0.name == "bibleAnnotation_on_target_bookId" })
+        #expect(runCount == 0, "ledger runs are cleared with the table they describe")
+        // Units are deleted explicitly — the v6 cascade doesn't fire inside
+        // migrations (DatabaseMigrator runs with foreign keys off).
+        #expect(unitCount == 0, "ledger units are cleared with their runs")
     }
 }
