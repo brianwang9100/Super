@@ -325,4 +325,42 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "overwriteExisting", .boolean).notNull().defaults(to: false)
         }
     }
+
+    migrator.registerMigration("v8_createBookmark") { db in
+        // Six fixed colour slots, each marking at most one chapter, each
+        // chapter holding at most one colour. Rows are hard-deleted — a
+        // deliberate divergence from `bibleHighlight`'s soft-delete: a
+        // bookmark slot is *state* (one of six ribbons), not history, and
+        // a tombstoned row would keep occupying its colour's UNIQUE slot,
+        // blocking the colour from ever being re-assigned. (A future sync
+        // engine therefore can't lean on row tombstones here and must
+        // carry deletes in its own change-set, keyed by colorId.)
+        // No `updatedAt`: every assignment — including moving a ribbon —
+        // is a fresh row, so rows are never updated in place.
+        // Translation-agnostic by design: no `translationId` — the
+        // (bookId, chapterNumber) pair addresses the chapter across all
+        // bundled translations.
+        try db.create(table: "bibleBookmark") { t in
+            t.primaryKey("id", .text)
+            t.column("colorId", .text).notNull()
+            t.column("bookId", .text).notNull()
+            t.column("chapterNumber", .integer).notNull()
+            t.column("createdAt", .datetime).notNull()
+        }
+        // The two UNIQUE indexes *are* the 1:1 invariant, enforced at the
+        // database so any writer that skips the repository's atomic toggle
+        // fails loudly instead of silently duplicating a slot.
+        try db.create(
+            index: "bibleBookmark_on_colorId",
+            on: "bibleBookmark",
+            columns: ["colorId"],
+            unique: true
+        )
+        try db.create(
+            index: "bibleBookmark_on_bookId_chapterNumber",
+            on: "bibleBookmark",
+            columns: ["bookId", "chapterNumber"],
+            unique: true
+        )
+    }
 }
