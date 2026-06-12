@@ -11,11 +11,17 @@ let package = Package(
         .library(name: "Core", targets: ["Core"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
+        .package(url: "https://github.com/johnsundell/splash.git", from: "0.16.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
     ],
     targets: [
         .target(
             name: "Core",
+            dependencies: [
+                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+                .product(name: "Splash", package: "splash"),
+            ],
             // Bundles the four EB Garamond faces (Regular / Italic /
             // SemiBold / SemiBold Italic) + JetBrains Mono Regular .ttf
             // files that `SplashView`, the Bible reader, assistant message
@@ -34,6 +40,8 @@ let package = Package(
             name: "CoreTests",
             dependencies: [
                 "Core",
+                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+                .product(name: "Splash", package: "splash"),
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
             ],
             // Snapshot PNG baselines live next to each snapshot test file

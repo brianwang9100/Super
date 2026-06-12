@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Divider strip rendered at the compaction boundary — a "COMPACTED" rule

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for ``MarkdownAutocloser``'s passes over a partial markdown
 /// string — closing dangling fenced code blocks, stripping incomplete
