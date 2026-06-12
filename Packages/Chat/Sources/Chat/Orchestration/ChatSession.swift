@@ -740,9 +740,11 @@ public actor ChatSession {
                 // turn is cancelled in the narrow window between the
                 // continuation resuming and the write committing, GRDB throws
                 // at its first async hop and the `tool_use` is left without a
-                // matching `tool_result`. The window is sub-millisecond and
-                // `executeToolCalls` carries the identical exposure, so this is
-                // a known, accepted trade-off rather than a regression.
+                // matching `tool_result` row. The window is sub-millisecond,
+                // and `ContextAssembler`'s pairing-totality synthesis repairs
+                // the shape on the next assembly, so this stays an accepted
+                // trade-off. (`executeToolCalls` used to share this exposure;
+                // it now resolves its batch tail as cancelled instead.)
                 if mockSearch {
                     if approved {
                         try await fulfillMockSearch(proposal)
@@ -1259,77 +1261,146 @@ public actor ChatSession {
     }
 
     private func executeToolCalls(_ records: [ToolCallRecord]) async throws {
-        for record in records {
-            try Task.checkCancellation()
+        for (index, record) in records.enumerated() {
+            do {
+                try Task.checkCancellation()
+                try await executeSingleToolCall(record)
+            } catch is CancellationError {
+                // Every call in this batch already has its `tool_use`
+                // persisted by `streamOneTurn`, so unwinding here would
+                // orphan the in-flight call *and* every not-yet-run call
+                // after it — a history strict providers reject on every
+                // later turn, wedging the conversation. Write a cancelled
+                // result for each before rethrowing. The writes must be
+                // shielded from the turn's cancellation: GRDB's async
+                // `write` throws `CancellationError` up front on an
+                // already-cancelled task, so an inline `await` would no-op.
+                // An unstructured `Task` does not inherit cancellation; we
+                // await its completion before rethrowing (same pattern as
+                // the parked-proposal path in `runTurnLoop`).
+                await Task { [self] in
+                    await cancelUnresolvedToolCalls(Array(records[index...]))
+                }.value
+                throw CancellationError()
+            }
+        }
+    }
 
+    /// Resolve a batch tail of tool calls as cancelled: status `.cancelled`
+    /// + `completedAt`, a role-`.tool` result row so the next turn's
+    /// history keeps every `tool_use` answered, and a `.toolCallCompleted`
+    /// broadcast so any still-attached UI settles its chips. Mirrors
+    /// `resolveProposal`'s persistence shape. Each step is best-effort
+    /// (`try?`): this runs during turn teardown, where a failing write has
+    /// no caller left to surface to — `ContextAssembler`'s pairing-totality
+    /// synthesis backstops any row this fails to write.
+    private func cancelUnresolvedToolCalls(_ records: [ToolCallRecord]) async {
+        for record in records {
+            let result = ToolResult(
+                toolID: record.toolName,
+                content: "Tool execution was cancelled by the user before completing. Do not retry automatically.",
+                isError: false
+            )
+            try? await toolCallRepository.updateStatus(
+                id: record.id,
+                status: .cancelled,
+                result: encodeJSON(result),
+                completedAt: clock.now()
+            )
+            let toolResultMessage = MessageRecord(
+                id: idGenerator.nextID(),
+                conversationId: conversationId,
+                role: .tool,
+                content: result.content,
+                toolCallId: record.id,
+                createdAt: clock.now(),
+                tokenCount: nil
+            )
+            try? await messageRepository.save(toolResultMessage)
+            if let updated = try? await refreshed(record) {
+                broadcast(.toolCallCompleted(updated, result))
+            }
+        }
+    }
+
+    /// Run one tool call through `pending → executing → success/failed`,
+    /// persisting the result row and broadcasting the lifecycle events.
+    /// Throws `CancellationError` (only) when the turn was cancelled —
+    /// either by the registry/tool observing cancellation or by GRDB
+    /// rejecting a write on the cancelled task; `executeToolCalls` then
+    /// resolves the batch tail as cancelled.
+    private func executeSingleToolCall(_ record: ToolCallRecord) async throws {
+        try await toolCallRepository.updateStatus(
+            id: record.id,
+            status: .executing,
+            result: nil,
+            completedAt: nil
+        )
+
+        let outcome: ToolOutcome
+        do {
+            let inputDict = try toolInputDict(from: record)
+            let result = try await toolRegistry.execute(
+                toolID: record.toolName,
+                input: inputDict
+            )
+            // A tool that returned normally *after* the turn was cancelled
+            // must not persist a success row mid-teardown — surface the
+            // cancellation instead so the batch resolves as cancelled.
+            try Task.checkCancellation()
+            outcome = .success(result)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            let failure = ToolResult(
+                toolID: record.toolName,
+                content: "Error: \(error.localizedDescription)",
+                isError: true
+            )
+            outcome = .failure(failure, message: error.localizedDescription)
+        }
+
+        let now = clock.now()
+        switch outcome {
+        case .success(let result):
             try await toolCallRepository.updateStatus(
                 id: record.id,
-                status: .executing,
-                result: nil,
-                completedAt: nil
+                status: .success,
+                result: encodeJSON(result),
+                completedAt: now
             )
+            let updated = try await refreshed(record)
+            let toolResultMessage = MessageRecord(
+                id: idGenerator.nextID(),
+                conversationId: conversationId,
+                role: .tool,
+                content: result.content,
+                toolCallId: record.id,
+                createdAt: clock.now(),
+                tokenCount: nil
+            )
+            try await messageRepository.save(toolResultMessage)
+            broadcast(.toolCallCompleted(updated, result))
 
-            let outcome: ToolOutcome
-            do {
-                let inputDict = try toolInputDict(from: record)
-                let result = try await toolRegistry.execute(
-                    toolID: record.toolName,
-                    input: inputDict
-                )
-                outcome = .success(result)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                let failure = ToolResult(
-                    toolID: record.toolName,
-                    content: "Error: \(error.localizedDescription)",
-                    isError: true
-                )
-                outcome = .failure(failure, message: error.localizedDescription)
-            }
-
-            let now = clock.now()
-            switch outcome {
-            case .success(let result):
-                try await toolCallRepository.updateStatus(
-                    id: record.id,
-                    status: .success,
-                    result: encodeJSON(result),
-                    completedAt: now
-                )
-                let updated = try await refreshed(record)
-                let toolResultMessage = MessageRecord(
-                    id: idGenerator.nextID(),
-                    conversationId: conversationId,
-                    role: .tool,
-                    content: result.content,
-                    toolCallId: record.id,
-                    createdAt: clock.now(),
-                    tokenCount: nil
-                )
-                try await messageRepository.save(toolResultMessage)
-                broadcast(.toolCallCompleted(updated, result))
-
-            case .failure(let failureResult, let message):
-                try await toolCallRepository.updateStatus(
-                    id: record.id,
-                    status: .failed,
-                    result: encodeJSON(failureResult),
-                    completedAt: now
-                )
-                let updated = try await refreshed(record)
-                let errorMessageRow = MessageRecord(
-                    id: idGenerator.nextID(),
-                    conversationId: conversationId,
-                    role: .tool,
-                    content: failureResult.content,
-                    toolCallId: record.id,
-                    createdAt: clock.now(),
-                    tokenCount: nil
-                )
-                try await messageRepository.save(errorMessageRow)
-                broadcast(.toolCallFailed(updated, message))
-            }
+        case .failure(let failureResult, let message):
+            try await toolCallRepository.updateStatus(
+                id: record.id,
+                status: .failed,
+                result: encodeJSON(failureResult),
+                completedAt: now
+            )
+            let updated = try await refreshed(record)
+            let errorMessageRow = MessageRecord(
+                id: idGenerator.nextID(),
+                conversationId: conversationId,
+                role: .tool,
+                content: failureResult.content,
+                toolCallId: record.id,
+                createdAt: clock.now(),
+                tokenCount: nil
+            )
+            try await messageRepository.save(errorMessageRow)
+            broadcast(.toolCallFailed(updated, message))
         }
     }
 
