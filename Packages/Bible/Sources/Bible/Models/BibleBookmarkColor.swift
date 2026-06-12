@@ -39,7 +39,10 @@ public enum BibleBookmarkColor: String, Codable, Sendable, CaseIterable, Identif
     /// - Parameter isDark: whether the active theme is a dark variant.
     public func tint(forDarkTheme isDark: Bool) -> OKLCH {
         guard isDark else { return lightTint }
-        return OKLCH(lightTint.l + 0.19, lightTint.c * 0.88, lightTint.h)
+        // Explicit alpha: the "solid object" contract, visible at the
+        // construction site. (The light table follows the sibling
+        // `BibleHighlightColor.swatch` style and leaves the default.)
+        return OKLCH(lightTint.l + 0.19, lightTint.c * 0.88, lightTint.h, alpha: 1)
     }
 
     private var lightTint: OKLCH {

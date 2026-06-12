@@ -78,6 +78,20 @@ struct BibleBookmarkRepositoryTests {
         #expect(after.count == 2)
     }
 
+    @Test("moving a colour onto a chapter that holds another colour frees both prior slots")
+    func toggleMovesAndReplacesAtOnce() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.toggle(color: .clay, bookId: "JHN", chapterNumber: 3, at: now)
+        try await repository.toggle(color: .gold, bookId: "ROM", chapterNumber: 8, at: now)
+        // Clay leaves JHN 3 *and* evicts gold from ROM 8 in one toggle.
+        try await repository.toggle(color: .clay, bookId: "ROM", chapterNumber: 8, at: later)
+        let rows = try await repository.allBookmarks()
+        #expect(rows.count == 1)
+        #expect(rows.first?.color == .clay)
+        #expect(rows.first?.bookId == "ROM")
+        #expect(rows.first?.chapterNumber == 8)
+    }
+
     @Test("an arbitrary toggle sequence never violates the 1:1 invariants")
     func toggleSequenceHoldsInvariants() async throws {
         let (repository, _) = try makeFixture()
