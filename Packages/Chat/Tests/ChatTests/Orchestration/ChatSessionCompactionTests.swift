@@ -674,11 +674,12 @@ struct ChatSessionCompactionTests {
         //
         // Layout at compaction time: the seeded 12 messages plus the
         // newly-saved user message under test = 13 rows. The auto path
-        // fires *before* the assistant reply persists, so the slice
-        // excludes the trailing 4 → checkpoint.uptoMessageId is index
-        // (13 - 4 - 1) = index 8 of the pre-turn message list (the user
-        // turn the test sends is index 12; the checkpoint cutoff is
-        // 5 messages back from the end of the in-prompt window).
+        // fires *before* the assistant reply persists, so the raw cut
+        // excludes the trailing 4, landing on h-a5 (index 9); the
+        // user-turn-boundary snap then walks back one row so the kept
+        // window opens at h-u5 → checkpoint.uptoMessageId is h-a4
+        // (index 7). The kept tail is one row wider than the raw count —
+        // `defaultKeepMostRecent` is a floor, not an exact width.
         let setup = try await makeSetup(
             scripts: [
                 [
@@ -708,10 +709,16 @@ struct ChatSessionCompactionTests {
         // Find the user turn that triggered compaction; the slice the
         // compactor saw extends from index 0 through that user message
         // (the assistant reply persists later, after compaction runs).
+        // The raw cut (count - defaultKeepMostRecent, counting the 13 rows
+        // the compactor saw) lands on the assistant row h-a5; the snap
+        // opens the kept window one row earlier, on the user row h-u5.
         let userTurnIndex = try #require(storedAfter.firstIndex(where: { $0.content == "next prompt" }))
-        let expectedCutoffIndex = userTurnIndex - Compactor.defaultKeepMostRecent
-        let expectedCutoffId = storedAfter[expectedCutoffIndex].id
-        #expect(checkpoint.uptoMessageId == expectedCutoffId)
+        let rawCutIndex = (userTurnIndex + 1) - Compactor.defaultKeepMostRecent
+        #expect(storedAfter[rawCutIndex].id == "h-a5")
+        #expect(checkpoint.uptoMessageId == "h-a4")
+        // The first kept row is the user turn just after the cutoff.
+        let cutoffIndex = try #require(storedAfter.firstIndex(where: { $0.id == checkpoint.uptoMessageId }))
+        #expect(storedAfter[cutoffIndex + 1].role == .user)
     }
 
     @Test func autoCompactDoesNotFireMidToolLoopWhenStillUnderThreshold() async throws {

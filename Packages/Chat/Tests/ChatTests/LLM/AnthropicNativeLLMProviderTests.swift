@@ -408,6 +408,58 @@ struct AnthropicNativeLLMProviderTests {
         #expect(mergedUser[1]["text"] as? String == "thanks")
     }
 
+    @Test func assistantFirstHistoryGetsASyntheticUserOpener() async throws {
+        // The Messages API requires the first message to be `user`-role,
+        // and `.system` rows (compaction-checkpoint summaries included)
+        // are hoisted into the top-level `system` parameter. A checkpoint
+        // persisted by an older build can open the post-checkpoint window
+        // on an assistant turn — the adapter must repair that shape
+        // rather than replay it verbatim.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .system, text: "Summary of earlier conversation (compacted): stuff happened."),
+            LLMMessage(role: .assistant, content: [
+                .text("Checking."),
+                .toolUse(id: "toolu_y", name: "get_weather", input: .object(["city": .string("Oslo")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "toolu_y", content: "3C snow", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        // Synthetic user opener, then assistant tool_use, then the
+        // tool_result riding a user message.
+        #expect(messages.map { $0["role"] as? String } == ["user", "assistant", "user"])
+        let opener = try #require(messages[0]["content"] as? [[String: Any]])
+        #expect(opener[0]["type"] as? String == "text")
+        #expect(opener[0]["text"] as? String == "(Conversation resumed after context compaction.)")
+        let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
+        #expect(assistantContent.contains { $0["type"] as? String == "tool_use" })
+        // The summary still rides the system param, untouched by the repair.
+        #expect((body["system"] as? String)?.contains("stuff happened") == true)
+    }
+
+    @Test func userFirstHistoryGetsNoSyntheticOpener() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [
+                LLMMessage(role: .user, text: "hi"),
+                LLMMessage(role: .assistant, text: "hello"),
+                LLMMessage(role: .user, text: "again"),
+            ],
+            model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        #expect(messages.count == 3)
+        let first = try #require(messages[0]["content"] as? [[String: Any]])
+        #expect(first[0]["text"] as? String == "hi")
+    }
+
     @Test func searchResultBlockReplaysAsWebSearchToolResultWithEncryptedContent() async throws {
         // A prior assistant turn's stored citations (with the Anthropic echo)
         // ride back as a `.searchResult` block, which must serialize into a

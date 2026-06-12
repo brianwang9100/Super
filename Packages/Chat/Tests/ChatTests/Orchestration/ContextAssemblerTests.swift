@@ -987,7 +987,7 @@ struct ContextAssemblerTests {
     /// must drop them rather than ship an orphan `tool_result`. (Stale
     /// pre-pair-aware checkpoints in existing databases can still carry
     /// this shape even though `Compactor.messagesToSummarize` no longer
-    /// produces it.)
+    /// produces it for adjacency-well-formed histories.)
     @Test func checkpointCutBetweenPairDropsOrphanResultRow() throws {
         let assembler = ContextAssembler()
         let messages = [
