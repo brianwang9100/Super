@@ -128,6 +128,16 @@ public actor Compactor {
     /// Stale `priorCheckpoint` (an `uptoMessageId` not present in
     /// `messages`) falls back to the full message list — losing the tail
     /// is worse than ignoring a stale row.
+    ///
+    /// The cut never splits a tool pair: role-`.tool` result rows directly
+    /// follow the assistant row that issued the calls, so a kept tail that
+    /// would *start* with result rows means the raw count-based cut landed
+    /// inside a pair group. The slice extends forward through those rows —
+    /// otherwise the summarization prompt ends with an unanswered
+    /// `tool_use` (which `ContextAssembler`'s pairing-totality synthesis
+    /// would "repair" with a false *interrupted/failed* claim, poisoning
+    /// the checkpoint summary), and the post-checkpoint window starts with
+    /// orphan results the projection then has to drop.
     static func messagesToSummarize(
         messages: [MessageRecord],
         priorCheckpoint: CompactionCheckpointRecord?,
@@ -135,7 +145,11 @@ public actor Compactor {
     ) -> [MessageRecord] {
         let postCheckpoint = messagesAfterCheckpoint(messages, checkpoint: priorCheckpoint)
         guard postCheckpoint.count > keepMostRecent else { return [] }
-        return Array(postCheckpoint.dropLast(max(0, keepMostRecent)))
+        var cut = postCheckpoint.count - max(0, keepMostRecent)
+        while cut < postCheckpoint.count, postCheckpoint[cut].role == .tool {
+            cut += 1
+        }
+        return Array(postCheckpoint[..<cut])
     }
 
     static func messagesAfterCheckpoint(

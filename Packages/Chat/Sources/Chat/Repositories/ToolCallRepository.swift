@@ -13,9 +13,10 @@ public protocol ToolCallRepository: Sendable {
     /// Every tool call triggered by a single assistant message, in the
     /// order they were issued (`createdAt` ascending, `rowid` tiebreaker).
     func fetchByMessage(_ messageId: String) async throws -> [ToolCallRecord]
-    /// Every tool call in a given lifecycle state across all conversations
-    /// (used by the recovery sweep on app launch and by the "stuck calls"
-    /// admin view).
+    /// Every tool call in a given lifecycle state across all conversations.
+    /// Used by `ChatSessionStore.recoverInterruptedToolCalls()` — the launch
+    /// sweep that resolves calls stranded at a non-terminal status by a
+    /// crash or force-quit.
     func fetchByStatus(_ status: ToolCallStatus) async throws -> [ToolCallRecord]
     /// Insert or update.
     func save(_ record: ToolCallRecord) async throws

@@ -208,6 +208,86 @@ public actor ChatSessionStore {
         }
     }
 
+    /// Resolve tool calls stranded at a non-terminal status by a crash or
+    /// force-quit: mark them `.failed` with an "interrupted" result and
+    /// synthesize the missing role-`.tool` result row, so every persisted
+    /// `tool_use` stays answered and the conversation's next turn projects
+    /// a provider-valid history. Call once at launch, **before** the first
+    /// `session(for:)` — no session exists yet, so the sweep cannot race a
+    /// live turn. A non-terminal status is the evidence of interruption;
+    /// rows are only inserted when genuinely missing (a crash can land
+    /// between the message write and the status update, in either order).
+    /// Per-record failures are skipped (best-effort): `ContextAssembler`'s
+    /// pairing-totality synthesis backstops any row this misses.
+    ///
+    /// - Returns: The ids of the recovered tool calls (for logging/tests).
+    @discardableResult
+    public func recoverInterruptedToolCalls() async -> [String] {
+        let interruptedStatuses: [ToolCallStatus] = [.pending, .executing, .awaitingConfirmation]
+        var stranded: [ToolCallRecord] = []
+        for status in interruptedStatuses {
+            if let records = try? await toolCallRepository.fetchByStatus(status) {
+                stranded.append(contentsOf: records)
+            }
+        }
+        guard !stranded.isEmpty else { return [] }
+
+        // One fetch per conversation to detect which calls already have a
+        // persisted result row.
+        var resolvedCallIDs = Set<String>()
+        for conversationId in Set(stranded.map(\.conversationId)) {
+            guard let messages = try? await messageRepository.fetchAll(conversationId: conversationId) else {
+                continue
+            }
+            for message in messages where message.role == .tool {
+                if let callId = message.toolCallId { resolvedCallIDs.insert(callId) }
+            }
+        }
+
+        var recovered: [String] = []
+        for record in stranded {
+            let result = ToolResult(
+                toolID: record.toolName,
+                content: "Tool execution was interrupted (the app quit before the tool finished). Treat this call as failed.",
+                isError: true
+            )
+            do {
+                try await toolCallRepository.updateStatus(
+                    id: record.id,
+                    status: .failed,
+                    result: encodeJSON(result),
+                    completedAt: clock.now()
+                )
+                if !resolvedCallIDs.contains(record.id) {
+                    try await messageRepository.save(MessageRecord(
+                        id: idGenerator.nextID(),
+                        conversationId: record.conversationId,
+                        role: .tool,
+                        content: result.content,
+                        toolCallId: record.id,
+                        // Backdated to the call's creation time, NOT the
+                        // sweep time: `fetchAll` orders by (createdAt,
+                        // rowid), and rows may have landed after the
+                        // stranded call (a wedged conversation keeps
+                        // accumulating user rows). A launch-time stamp
+                        // would sort the result after them — out of
+                        // position next to its `tool_use` on the wire,
+                        // which strict providers reject. The call's own
+                        // timestamp is ≥ its parent assistant row's and
+                        // < everything later, so the pair stays adjacent
+                        // (rowid breaks the tie with the assistant row).
+                        createdAt: record.createdAt,
+                        tokenCount: nil
+                    ))
+                }
+                recovered.append(record.id)
+            } catch {
+                continue
+            }
+        }
+        return recovered
+    }
+
     /// Cancel the session's current turn, if any. The session itself stays
     /// in the store so a subsequent `session(for:)` returns the same
     /// instance. Returns immediately; pass `wait: true` to await the

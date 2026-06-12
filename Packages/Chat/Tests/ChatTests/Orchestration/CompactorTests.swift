@@ -360,4 +360,130 @@ struct CompactorTests {
         }
         #expect(containsPrior)
     }
+
+    // MARK: - Tool-pair-aware cut
+
+    private func makeRow(
+        id: String,
+        role: MessageRole,
+        offset: TimeInterval,
+        toolCallId: String? = nil
+    ) -> MessageRecord {
+        MessageRecord(
+            id: id,
+            conversationId: "conv-1",
+            role: role,
+            content: "content \(id)",
+            toolCallId: toolCallId,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000 + offset)
+        )
+    }
+
+    /// The count-based cut must never split an assistant `tool_use` from
+    /// its role-`.tool` result rows: a summarize slice ending on the
+    /// assistant row would carry an unanswered `tool_use` (which the
+    /// assembler "repairs" with a false interrupted/failed claim that then
+    /// poisons the checkpoint summary), and the kept tail would start with
+    /// orphan results the projection drops. The slice extends forward
+    /// through leading result rows instead.
+    @Test func summarizeCutExtendsThroughToolResultRows() {
+        // 6 rows; keepMostRecent = 3 puts the raw cut right after the
+        // assistant row that issued two tool calls — splitting the pair.
+        let rows = [
+            makeRow(id: "m1", role: .user, offset: 0),
+            makeRow(id: "m2", role: .assistant, offset: 1),
+            makeRow(id: "m3", role: .assistant, offset: 2),          // issues tc-1, tc-2
+            makeRow(id: "m4", role: .tool, offset: 3, toolCallId: "tc-1"),
+            makeRow(id: "m5", role: .tool, offset: 4, toolCallId: "tc-2"),
+            makeRow(id: "m6", role: .user, offset: 5),
+        ]
+
+        let slice = Compactor.messagesToSummarize(
+            messages: rows, priorCheckpoint: nil, keepMostRecent: 3
+        )
+
+        // The slice swallowed both result rows; the kept tail starts at the
+        // user row, not mid-pair.
+        #expect(slice.map(\.id) == ["m1", "m2", "m3", "m4", "m5"])
+    }
+
+    /// A cut landing on a clean turn boundary stays count-based — the
+    /// extension only fires when the kept tail would start with result rows.
+    @Test func summarizeCutOnTurnBoundaryIsUnchanged() {
+        let rows = [
+            makeRow(id: "m1", role: .user, offset: 0),
+            makeRow(id: "m2", role: .assistant, offset: 1),
+            makeRow(id: "m3", role: .tool, offset: 2, toolCallId: "tc-1"),
+            makeRow(id: "m4", role: .user, offset: 3),
+            makeRow(id: "m5", role: .assistant, offset: 4),
+        ]
+
+        let slice = Compactor.messagesToSummarize(
+            messages: rows, priorCheckpoint: nil, keepMostRecent: 2
+        )
+
+        #expect(slice.map(\.id) == ["m1", "m2", "m3"])
+    }
+
+    /// End-to-end: compacting a history whose raw cut splits a tool pair
+    /// ships a pair-complete summarization request (both `toolUse` and its
+    /// real `toolResult` inside — no synthesized "interrupted" text) and
+    /// checkpoints at the result row so the post-checkpoint window starts
+    /// clean.
+    @Test func compactAcrossToolPairSummarizesThePairTogether() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "s1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Summary: the tool ran and returned the lookup value."),
+                .messageComplete(usage: TokenUsage(inputTokens: 50, outputTokens: 12)),
+            ],
+        ])
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        let toolCallRepo = GRDBToolCallRepository(database: setup.database)
+
+        // `makeRow` hardcodes "conv-1", which is the fixture conversation's id.
+        let rows = [
+            makeRow(id: "m1", role: .user, offset: 0),
+            makeRow(id: "m2", role: .assistant, offset: 1),          // issues tc-1
+            makeRow(id: "m3", role: .tool, offset: 2, toolCallId: "tc-1"),
+            makeRow(id: "m4", role: .user, offset: 3),
+            makeRow(id: "m5", role: .assistant, offset: 4),
+        ]
+        for row in rows {
+            try await messageRepo.save(row)
+        }
+        let call = ToolCallRecord(
+            id: "tc-1", messageId: "m2", conversationId: setup.conversation.id,
+            toolName: "test.lookup", parameters: "{}",
+            result: "{\"value\":42}", status: .success,
+            createdAt: rows[1].createdAt, completedAt: rows[2].createdAt, signature: nil
+        )
+        try await toolCallRepo.save(call)
+
+        // keepMostRecent = 3 → raw cut lands after m2, splitting the pair;
+        // the pair-aware cut extends through m3.
+        let checkpoint = try await setup.compactor.compact(
+            conversationId: setup.conversation.id,
+            messages: rows,
+            toolCalls: [call],
+            priorCheckpoint: nil,
+            model: setup.model,
+            keepMostRecent: 3
+        )
+
+        #expect(checkpoint?.uptoMessageId == "m3")
+
+        let request = try #require(await setup.provider.capturedRequests().last)
+        var sawToolUse = false
+        var resultContents: [String] = []
+        for message in request.messages {
+            for block in message.content {
+                if case .toolUse("tc-1", _, _, _) = block { sawToolUse = true }
+                if case .toolResult("tc-1", let content, _) = block { resultContents.append(content) }
+            }
+        }
+        #expect(sawToolUse)
+        // The *real* result rode along — no synthesized "interrupted" claim.
+        #expect(resultContents == ["content m3"])
+    }
 }

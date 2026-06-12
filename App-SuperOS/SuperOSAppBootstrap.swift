@@ -332,6 +332,11 @@ enum SuperOSAppBootstrap {
             webSearchFulfiller: webSearchFulfiller
         )
 
+        // Resolve tool calls stranded by a prior crash/force-quit before any
+        // session can stream — a stranded `tool_use` without its result row
+        // otherwise replays as provider-invalid history on the next turn.
+        await chatSessionStore.recoverInterruptedToolCalls()
+
         let registeredToolIDs = await toolRegistry.allRegistrations().map(\.tool.id)
 
         // Single shared event bus — created here (not inline in the
