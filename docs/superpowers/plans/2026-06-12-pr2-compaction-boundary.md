@@ -33,8 +33,9 @@ pair"). Invariants after the change:
 
 - Summarize window never ends on an assistant row whose results are at/after
   the cut (we cut *before* that assistant row).
-- Kept window never starts with a `.tool` row (the walk stops at the first
-  non-`.tool` row).
+- Kept window never starts with a `.tool` row. *(Superseded — the final rule
+  is stronger: the kept window opens on a `.user` row; see "Post-review
+  revision" below.)*
 - Kept window is never emptied by the snap (backward only grows it).
 - Degenerate case: the pair group starts at the post-checkpoint window's index
   0 → cut walks to 0 → empty slice → `wouldCompact` false → silent no-op. That

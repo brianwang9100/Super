@@ -379,7 +379,10 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         // would otherwise 400 on every later turn. `Compactor` no longer
         // produces that shape (its cut snaps to a user-turn boundary), but
         // checkpoints persisted by older builds can still carry it — repair
-        // it at the wire instead of replaying it verbatim.
+        // it at the wire instead of replaying it verbatim. (A legacy window
+        // that also *ends* on an assistant turn still 400s on modern models,
+        // which reject trailing-assistant prefill — that request was equally
+        // broken before the repair, and the next real user send heals it.)
         if grouped.first?.role == "assistant" {
             grouped.insert(
                 ("user", [.text("(Conversation resumed after context compaction.)")]),
