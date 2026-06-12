@@ -557,4 +557,138 @@ struct ChatSessionToolLoopTests {
         #expect(toolUseIDs.sorted() == ["tc-fast", "tc-slow"])
         #expect(toolResultIDs.sorted() == ["tc-fast", "tc-slow"])
     }
+
+    /// Auto-compaction fires at the top of *every* tool-loop iteration —
+    /// including the follow-up right after tool results persist. When the
+    /// cut would split the just-executed 4-call batch, the backward snap
+    /// keeps the whole round-trip verbatim: the follow-up request must
+    /// carry the assistant's four `toolUse` blocks with all four real
+    /// results (no synthesized "interrupted" text) plus the fresh
+    /// checkpoint summary, and the checkpoint must land on a clean
+    /// turn boundary.
+    @Test func midLoopAutoCompactionKeepsFollowUpPairComplete() async throws {
+        let toolID = "test.batch"
+        let database = try ChatDatabase.makeInMemory()
+        let messageRepo = GRDBMessageRepository(database: database)
+        let toolCallRepo = GRDBToolCallRepository(database: database)
+        let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
+        let clock = OrchestrationFixtures.defaultClock()
+        let idGen = DeterministicIDGenerator(prefix: "id-", start: 0)
+        let conversation = try await OrchestrationFixtures.seedConversation(in: database, clock: clock)
+
+        // Full-tier window so `maybeAutoCompact` uses the plain total-ratio
+        // gate (the fixture default of 8,192 is compact tier, which gates
+        // on the compressible ratio instead); near-zero threshold so the
+        // gate fires on every iteration.
+        let model = LLMModel(
+            id: "fake-model-1", displayName: "Fake Model",
+            supportsThinking: false, supportsTools: true,
+            maxContextTokens: 200_000
+        )
+        let provider = FakeLLMProvider(model: model)
+        let llmRegistry = LLMProviderRegistry()
+        await llmRegistry.register(provider)
+        let toolRegistry = ToolRegistry()
+        let compactor = OrchestrationFixtures.makeCompactor(
+            database: database, llmRegistry: llmRegistry, clock: clock, idGenerator: idGen
+        )
+        let session = ChatSession(
+            conversationId: conversation.id,
+            messageRepository: messageRepo,
+            toolCallRepository: toolCallRepo,
+            checkpointRepository: checkpointRepo,
+            llmProviderRegistry: llmRegistry,
+            toolRegistry: toolRegistry,
+            compactor: compactor,
+            clock: clock,
+            idGenerator: idGen,
+            autoCompactEnabled: true,
+            autoCompactThreshold: 0.000_001
+        )
+
+        // 6 seeded rows + the new user row = 7 at iteration 1, so the
+        // first compaction pass has history beyond the kept tail to
+        // summarize.
+        for index in 1...3 {
+            try await messageRepo.save(MessageRecord(
+                id: "seed-u\(index)", conversationId: conversation.id, role: .user,
+                content: "seeded user \(index)", createdAt: clock.now()
+            ))
+            try await messageRepo.save(MessageRecord(
+                id: "seed-a\(index)", conversationId: conversation.id, role: .assistant,
+                content: "seeded reply \(index)", createdAt: clock.now()
+            ))
+        }
+
+        // Script order is the loop's consumption order:
+        //   1. iteration-1 compaction summary
+        //   2. turn 1: a 4-parallel-call batch
+        //   3. iteration-2 compaction summary (the mid-loop pass under test)
+        //   4. the follow-up turn after tool results
+        await provider.enqueue([
+            .messageStart(id: "sum-1", model: "fake-model-1"),
+            .textDelta(index: 0, text: "Summary one: earlier seeded chatter."),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+        ])
+        await provider.enqueue([
+            .messageStart(id: "m1", model: "fake-model-1"),
+            .textDelta(index: 0, text: "running four lookups"),
+            .toolUse(index: 0, id: "tc-1", name: toolID, input: .object([:]), signature: nil),
+            .toolUse(index: 1, id: "tc-2", name: toolID, input: .object([:]), signature: nil),
+            .toolUse(index: 2, id: "tc-3", name: toolID, input: .object([:]), signature: nil),
+            .toolUse(index: 3, id: "tc-4", name: toolID, input: .object([:]), signature: nil),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+        ])
+        await provider.enqueue([
+            .messageStart(id: "sum-2", model: "fake-model-1"),
+            .textDelta(index: 0, text: "Summary two: the user asked for four lookups."),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+        ])
+        await provider.enqueue([
+            .messageStart(id: "m2", model: "fake-model-1"),
+            .textDelta(index: 0, text: "all four came back fine"),
+            .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+        ])
+
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setResult(ToolResult(toolID: toolID, content: "ok", isError: false))
+        await toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        let stream = await session.send(text: "look up four things", model: model)
+        _ = await collect(stream)
+        await session.waitUntilFinished()
+
+        // Two compaction passes ran; the live checkpoint is iteration 2's,
+        // landed on the user row — the clean boundary just before the
+        // 4-call assistant turn (not the assistant row, not a result row).
+        let live = try #require(await checkpointRepo.liveCheckpoint(for: conversation.id))
+        #expect(live.summary.contains("Summary two"))
+        let storedRows = try await messageRepo.fetchAll(conversationId: conversation.id)
+        let uptoRow = try #require(storedRows.first { $0.id == live.uptoMessageId })
+        #expect(uptoRow.role == .user)
+        #expect(uptoRow.content == "look up four things")
+
+        // The follow-up request (the last captured) is pair-complete: the
+        // assistant turn with all four toolUse blocks survived the
+        // checkpoint verbatim, each with its real result — and no
+        // synthesized "interrupted" repair text anywhere.
+        let request = try #require(await provider.capturedRequests().last)
+        var toolUseIDs: [String] = []
+        var resultsByID: [String: String] = [:]
+        for message in request.messages {
+            for block in message.content {
+                if case .toolUse(let id, _, _, _) = block { toolUseIDs.append(id) }
+                if case .toolResult(let id, let content, _) = block { resultsByID[id] = content }
+            }
+        }
+        #expect(toolUseIDs.sorted() == ["tc-1", "tc-2", "tc-3", "tc-4"])
+        #expect(resultsByID.keys.sorted() == ["tc-1", "tc-2", "tc-3", "tc-4"])
+        #expect(resultsByID.values.allSatisfy { $0 == "ok" })
+        let allText = request.messages.flatMap(\.content).compactMap { block -> String? in
+            if case .text(let value) = block { return value }
+            return nil
+        }.joined(separator: "\n")
+        #expect(!allText.contains("interrupted"))
+        #expect(allText.contains("Summary two"))
+    }
 }

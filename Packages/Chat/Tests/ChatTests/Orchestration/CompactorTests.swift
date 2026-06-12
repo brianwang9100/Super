@@ -380,15 +380,15 @@ struct CompactorTests {
     }
 
     /// The count-based cut must never split an assistant `tool_use` from
-    /// its role-`.tool` result rows: a summarize slice ending on the
-    /// assistant row would carry an unanswered `tool_use` (which the
-    /// assembler "repairs" with a false interrupted/failed claim that then
-    /// poisons the checkpoint summary), and the kept tail would start with
-    /// orphan results the projection drops. The slice extends forward
-    /// through leading result rows instead.
-    @Test func summarizeCutExtendsThroughToolResultRows() {
-        // 6 rows; keepMostRecent = 3 puts the raw cut right after the
-        // assistant row that issued two tool calls — splitting the pair.
+    /// its role-`.tool` result rows. The cut snaps *backward* to just
+    /// before the assistant row that issued the calls, so the whole
+    /// round-trip stays verbatim in the kept tail. (Snapping forward —
+    /// PR-1's original rule — could consume the entire kept tail on a
+    /// wide parallel batch, leaving a follow-up request with no
+    /// non-system messages, which Anthropic rejects.)
+    @Test func summarizeCutSnapsBackBeforeSplitPair() {
+        // 6 rows; keepMostRecent = 3 puts the raw cut on the first result
+        // row of a two-call batch — splitting the pair.
         let rows = [
             makeRow(id: "m1", role: .user, offset: 0),
             makeRow(id: "m2", role: .assistant, offset: 1),
@@ -402,9 +402,58 @@ struct CompactorTests {
             messages: rows, priorCheckpoint: nil, keepMostRecent: 3
         )
 
-        // The slice swallowed both result rows; the kept tail starts at the
-        // user row, not mid-pair.
-        #expect(slice.map(\.id) == ["m1", "m2", "m3", "m4", "m5"])
+        // The cut walked back past m4 to land before the issuing assistant
+        // row m3 — the kept tail is [m3, m4, m5, m6], pair intact.
+        #expect(slice.map(\.id) == ["m1", "m2"])
+    }
+
+    /// A 4-parallel-call batch at the boundary must not empty the kept
+    /// tail: the backward snap lands before the issuing assistant row and
+    /// keeps the whole batch verbatim. (Forward extension would walk to
+    /// the end of history here — kept tail empty, follow-up request with
+    /// zero non-system messages.)
+    @Test func summarizeCutBacksOffWholeParallelBatch() {
+        let rows = [
+            makeRow(id: "m1", role: .user, offset: 0),
+            makeRow(id: "m2", role: .assistant, offset: 1),
+            makeRow(id: "m3", role: .user, offset: 2),
+            makeRow(id: "m4", role: .assistant, offset: 3),          // issues tc-1...tc-4
+            makeRow(id: "m5", role: .tool, offset: 4, toolCallId: "tc-1"),
+            makeRow(id: "m6", role: .tool, offset: 5, toolCallId: "tc-2"),
+            makeRow(id: "m7", role: .tool, offset: 6, toolCallId: "tc-3"),
+            makeRow(id: "m8", role: .tool, offset: 7, toolCallId: "tc-4"),
+        ]
+
+        let slice = Compactor.messagesToSummarize(
+            messages: rows, priorCheckpoint: nil, keepMostRecent: 4
+        )
+
+        #expect(slice.map(\.id) == ["m1", "m2", "m3"])
+    }
+
+    /// When the post-checkpoint window *opens* with a pair group and the
+    /// cut lands inside it, the backward walk reaches index 0 — there is
+    /// nothing that can be summarized without splitting the pair, so the
+    /// slice is empty and `wouldCompact` agrees (silent no-op, resolved
+    /// once later turns push the pair fully inside the cut).
+    @Test func summarizeCutInsideLeadingPairGroupIsANoOp() async throws {
+        let rows = [
+            makeRow(id: "m1", role: .assistant, offset: 0),          // issues tc-1...tc-3
+            makeRow(id: "m2", role: .tool, offset: 1, toolCallId: "tc-1"),
+            makeRow(id: "m3", role: .tool, offset: 2, toolCallId: "tc-2"),
+            makeRow(id: "m4", role: .tool, offset: 3, toolCallId: "tc-3"),
+            makeRow(id: "m5", role: .user, offset: 4),
+        ]
+
+        let slice = Compactor.messagesToSummarize(
+            messages: rows, priorCheckpoint: nil, keepMostRecent: 2
+        )
+        #expect(slice.isEmpty)
+
+        // `wouldCompact` shares the slicing, so `runCompactionPass`'s
+        // pre-flight and `compact` can never disagree on this shape.
+        let setup = try await makeSetup()
+        #expect(!setup.compactor.wouldCompact(messages: rows, priorCheckpoint: nil, keepMostRecent: 2))
     }
 
     /// A cut landing on a clean turn boundary stays count-based — the
@@ -426,15 +475,15 @@ struct CompactorTests {
     }
 
     /// End-to-end: compacting a history whose raw cut splits a tool pair
-    /// ships a pair-complete summarization request (both `toolUse` and its
-    /// real `toolResult` inside — no synthesized "interrupted" text) and
-    /// checkpoints at the result row so the post-checkpoint window starts
-    /// clean.
-    @Test func compactAcrossToolPairSummarizesThePairTogether() async throws {
+    /// keeps the whole round-trip verbatim in the kept tail — the
+    /// summarization request carries no tool blocks at all, and the
+    /// checkpoint lands on the last row *before* the pair so the
+    /// post-checkpoint window opens with the issuing assistant row.
+    @Test func compactSplitPairStaysVerbatimInKeptTail() async throws {
         let setup = try await makeSetup(scripts: [
             [
                 .messageStart(id: "s1", model: "fake-model-1"),
-                .textDelta(index: 0, text: "Summary: the tool ran and returned the lookup value."),
+                .textDelta(index: 0, text: "Summary: the user asked for a lookup."),
                 .messageComplete(usage: TokenUsage(inputTokens: 50, outputTokens: 12)),
             ],
         ])
@@ -460,8 +509,8 @@ struct CompactorTests {
         )
         try await toolCallRepo.save(call)
 
-        // keepMostRecent = 3 → raw cut lands after m2, splitting the pair;
-        // the pair-aware cut extends through m3.
+        // keepMostRecent = 3 → raw cut lands on m3 (the result row); the
+        // pair-aware cut walks back before m2.
         let checkpoint = try await setup.compactor.compact(
             conversationId: setup.conversation.id,
             messages: rows,
@@ -469,6 +518,65 @@ struct CompactorTests {
             priorCheckpoint: nil,
             model: setup.model,
             keepMostRecent: 3
+        )
+
+        #expect(checkpoint?.uptoMessageId == "m1")
+
+        // The summarization request saw only m1 — no tool blocks, real or
+        // synthesized.
+        let request = try #require(await setup.provider.capturedRequests().last)
+        for message in request.messages {
+            for block in message.content {
+                if case .toolUse = block { Issue.record("unexpected toolUse in summarization prompt") }
+                if case .toolResult = block { Issue.record("unexpected toolResult in summarization prompt") }
+            }
+        }
+        let projectedTexts = request.messages.flatMap(\.content).compactMap { block -> String? in
+            if case .text(let value) = block { return value }
+            return nil
+        }
+        #expect(projectedTexts.contains { $0.contains("content m1") })
+        #expect(!projectedTexts.contains { $0.contains("content m2") })
+    }
+
+    /// Manual `/compact` (`keepMostRecent: 0`) summarizes everything; a
+    /// trailing tool pair rides *inside* the summary window intact — the
+    /// prompt is pair-complete with the real result (no synthesized
+    /// "interrupted" claim) and the checkpoint lands on the final row.
+    @Test func keepZeroSummarizesTrailingPairComplete() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "s1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Summary: the tool ran and returned 42."),
+                .messageComplete(usage: TokenUsage(inputTokens: 50, outputTokens: 12)),
+            ],
+        ])
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        let toolCallRepo = GRDBToolCallRepository(database: setup.database)
+
+        let rows = [
+            makeRow(id: "m1", role: .user, offset: 0),
+            makeRow(id: "m2", role: .assistant, offset: 1),          // issues tc-1
+            makeRow(id: "m3", role: .tool, offset: 2, toolCallId: "tc-1"),
+        ]
+        for row in rows {
+            try await messageRepo.save(row)
+        }
+        let call = ToolCallRecord(
+            id: "tc-1", messageId: "m2", conversationId: setup.conversation.id,
+            toolName: "test.lookup", parameters: "{}",
+            result: "{\"value\":42}", status: .success,
+            createdAt: rows[1].createdAt, completedAt: rows[2].createdAt, signature: nil
+        )
+        try await toolCallRepo.save(call)
+
+        let checkpoint = try await setup.compactor.compact(
+            conversationId: setup.conversation.id,
+            messages: rows,
+            toolCalls: [call],
+            priorCheckpoint: nil,
+            model: setup.model,
+            keepMostRecent: 0
         )
 
         #expect(checkpoint?.uptoMessageId == "m3")

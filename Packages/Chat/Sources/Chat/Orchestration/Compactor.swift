@@ -65,7 +65,8 @@ public actor Compactor {
     ///     the summary window. Default 4.
     /// - Returns: The persisted new checkpoint, or nil when there's
     ///   nothing to summarize (fewer than `keepMostRecent + 1` messages
-    ///   beyond the prior checkpoint).
+    ///   beyond the prior checkpoint, or the would-be slice would split
+    ///   a tool round-trip that opens the post-checkpoint window).
     /// Predicate: would `compact(...)` produce a checkpoint for the given
     /// inputs? Pure (no I/O — does not call the LLM or touch the database)
     /// so callers can cheaply decide whether to start a compaction pass
@@ -132,12 +133,20 @@ public actor Compactor {
     /// The cut never splits a tool pair: role-`.tool` result rows directly
     /// follow the assistant row that issued the calls, so a kept tail that
     /// would *start* with result rows means the raw count-based cut landed
-    /// inside a pair group. The slice extends forward through those rows —
-    /// otherwise the summarization prompt ends with an unanswered
-    /// `tool_use` (which `ContextAssembler`'s pairing-totality synthesis
-    /// would "repair" with a false *interrupted/failed* claim, poisoning
-    /// the checkpoint summary), and the post-checkpoint window starts with
-    /// orphan results the projection then has to drop.
+    /// inside a pair group. The cut snaps **backward** to just before the
+    /// issuing assistant row, keeping the whole round-trip verbatim in the
+    /// kept tail (which is what `keepMostRecent`'s carve-out exists for —
+    /// auto-compaction runs at the top of every tool-loop iteration, so
+    /// the split pair is usually the round-trip the model is mid-way
+    /// through using). Snapping forward instead would summarize away those
+    /// freshest results and — on a parallel batch wider than the kept
+    /// count — empty the kept window entirely, leaving a follow-up request
+    /// with no non-system messages (Anthropic rejects those: its adapter
+    /// hoists every `.system` row, checkpoint summary included, into the
+    /// top-level `system` parameter). If the pair group opens the
+    /// post-checkpoint window the walk reaches index 0 and the slice comes
+    /// back empty — a deliberate no-op (`wouldCompact` returns false) that
+    /// resolves once later turns push the pair fully inside the cut.
     static func messagesToSummarize(
         messages: [MessageRecord],
         priorCheckpoint: CompactionCheckpointRecord?,
@@ -146,8 +155,8 @@ public actor Compactor {
         let postCheckpoint = messagesAfterCheckpoint(messages, checkpoint: priorCheckpoint)
         guard postCheckpoint.count > keepMostRecent else { return [] }
         var cut = postCheckpoint.count - max(0, keepMostRecent)
-        while cut < postCheckpoint.count, postCheckpoint[cut].role == .tool {
-            cut += 1
+        while cut > 0, cut < postCheckpoint.count, postCheckpoint[cut].role == .tool {
+            cut -= 1
         }
         return Array(postCheckpoint[..<cut])
     }
