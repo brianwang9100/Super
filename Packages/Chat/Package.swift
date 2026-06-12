@@ -14,8 +14,6 @@ let package = Package(
         .package(path: "../Core"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/groue/GRDBQuery.git", from: "0.10.0"),
-        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
-        .package(url: "https://github.com/johnsundell/splash.git", from: "0.16.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
         .package(url: "https://github.com/groue/GRDBSnapshotTesting.git", from: "0.3.0"),
     ],
@@ -26,8 +24,6 @@ let package = Package(
                 "Core",
                 .product(name: "GRDB", package: "GRDB.swift"),
                 .product(name: "GRDBQuery", package: "GRDBQuery"),
-                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
-                .product(name: "Splash", package: "splash"),
             ],
             // `.process` flattens the directory into the bundle root —
             // `Resources/DefaultSystemPrompt.md` ends up at

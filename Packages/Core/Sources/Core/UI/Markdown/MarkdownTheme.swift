@@ -1,4 +1,3 @@
-import Core
 import MarkdownUI
 import SwiftUI
 
@@ -22,17 +21,22 @@ extension SuperTheme {
     /// `markdownTextStyle(\.text)`) keeps every text attribute resolved
     /// in one place through MarkdownUI's text composition.
     ///
-    /// Body size scales by `appearance.fontScale`; headings (`.em(...)`)
+    /// Body size scales by `metrics.fontScale`; headings (`.em(...)`)
     /// auto-scale because em resolves against the body. Paragraph
-    /// line-spacing comes from `appearance.paragraphLineSpacingEm` and
-    /// inter-paragraph margin from `appearance.paragraphSpacing` —
-    /// both derived from `fontScale` inside `ChatAppearance`. Per-row
-    /// vertical padding lives outside this theme on the message views
+    /// line-spacing comes from `metrics.paragraphLineSpacingEm` and
+    /// inter-paragraph margin from `metrics.paragraphSpacing` — both
+    /// derived from the scale inside `MarkdownBodyMetrics`. Per-row
+    /// vertical padding lives outside this theme on the hosting views
     /// themselves.
+    /// Internal on purpose: ``MarkdownText`` is the sanctioned cross-module
+    /// entry point (it owns caching, autoclose, and linkify). The return
+    /// type is `MarkdownUI.Theme`, which consumers outside Core couldn't
+    /// even name without re-adding the swift-markdown-ui dependency this
+    /// move centralizes.
     @MainActor
     func markdownTheme(
         bodyStyle: MarkdownText.BodyStyle? = nil,
-        appearance: ChatAppearance = .default,
+        metrics: MarkdownBodyMetrics = .default,
         readingFamily: String? = nil
     ) -> MarkdownUI.Theme {
         let theme = self
@@ -56,13 +60,13 @@ extension SuperTheme {
                 return MarkdownUI.Theme().text {
                     bodyFamily
                     ForegroundColor(theme.inkSoft)
-                    FontSize(15 * appearance.fontScale)
+                    FontSize(15 * metrics.fontScale)
                 }
             case .none:
                 return MarkdownUI.Theme().text {
                     bodyFamily
                     ForegroundColor(theme.ink)
-                    FontSize(appearance.bodyFontSize)
+                    FontSize(metrics.bodyFontSize)
                 }
             }
         }()
@@ -111,8 +115,8 @@ extension SuperTheme {
             }
             .paragraph { configuration in
                 configuration.label
-                    .relativeLineSpacing(.em(appearance.paragraphLineSpacingEm))
-                    .markdownMargin(top: 0, bottom: appearance.paragraphSpacing)
+                    .relativeLineSpacing(.em(metrics.paragraphLineSpacingEm))
+                    .markdownMargin(top: 0, bottom: metrics.paragraphSpacing)
             }
             .blockquote { configuration in
                 configuration.label
@@ -134,7 +138,7 @@ extension SuperTheme {
                 // rhythm and scales with the slider — a fixed 2pt bunched the
                 // bullets together while their own wrapped lines breathed.
                 configuration.label
-                    .markdownMargin(top: appearance.paragraphLineSpacingPoints)
+                    .markdownMargin(top: metrics.paragraphLineSpacingPoints)
             }
             .table { configuration in
                 // Horizontal scroll keeps wide tables from clipping on a

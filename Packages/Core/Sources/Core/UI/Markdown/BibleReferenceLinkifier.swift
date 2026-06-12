@@ -1,4 +1,3 @@
-import Core
 import Foundation
 
 /// Pure helper that scans a markdown string for Bible verse citations
@@ -36,8 +35,8 @@ import Foundation
 /// citations like `Genesis 51:1` (Genesis has 50 chapters) are left as
 /// plain text rather than producing dead links. Verse numbers are
 /// sanity-bounded to `> 0` but not range-checked against per-chapter
-/// totals (that data lives in the bundled Bible JSON, which Chat can't
-/// import).
+/// totals (per-verse counts live in the Bible applet's bible-text.sqlite,
+/// which Core must not depend on — applet data flows down, not up).
 ///
 /// The function is `O(n)`-ish in input length; the per-position book
 /// match is filtered by a first-character bitmap so the spelling loop

@@ -5,10 +5,9 @@ import Synchronization
 /// it, then resumes every awaiter (current and future). Used by tests
 /// that inject a sleep closure into a `Task`-managed timer so the body
 /// pauses on a deterministic signal rather than a real-clock duration —
-/// see `StreamingTextCoalescerTests` for the call site. (CoreTests
-/// carries its own copy for `CodeBlockCopyControllerTests`, which moved
-/// there with the markdown renderer; per-package test-helper copies are
-/// the repo convention.)
+/// see `CodeBlockCopyControllerTests` for the call site. (ChatTests
+/// carries its own copy for `StreamingTextCoalescerTests`; per-package
+/// test-helper copies are the repo convention.)
 ///
 /// Sleep is what most callers want; the gate also serves as a stop-the-
 /// world barrier for any closure-shaped suspension point.

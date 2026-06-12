@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for ``MarkdownText``'s opt-in partial-input path — when
 /// constructed with `treatAsPartial: true`, the text handed to the

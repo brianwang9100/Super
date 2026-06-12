@@ -1,4 +1,3 @@
-import Core
 import MarkdownUI
 import SwiftUI
 
@@ -6,19 +5,24 @@ import SwiftUI
 /// `SuperTheme` from `@Environment` and applies the matching
 /// MarkdownUI theme + Splash-driven code blocks.
 ///
-/// Used by ``AssistantMessage``, ``ThinkingBlock``, and
-/// ``CompactionBanner`` so all assistant prose is rendered against
-/// the same palette and block chrome.
+/// The shared long-form-prose renderer: Chat's assistant surfaces
+/// (`AssistantMessage`, `ThinkingBlock`, `CompactionBanner`) render
+/// through it today; it lives in Core (rather than Chat) so other
+/// applets — first up, Bible's annotation card — can adopt it without
+/// violating applet isolation, and LLM prose paints against the same
+/// palette, faces, and block chrome everywhere.
+/// Hosts with a text-scale knob inject `\.markdownBodyMetrics`;
+/// the environment default renders the 19pt reading body.
 ///
 /// The MarkdownUI `Theme` is built once per `(SuperTheme, BodyStyle)`
 /// and cached in `@State` so re-renders (e.g. after a transcript
 /// refresh) don't pay the rebuild cost on every body invocation.
 /// Re-keyed via `.task(id:)` whenever theme or body style changes.
-struct MarkdownText: View {
+public struct MarkdownText: View {
     let text: String
-    /// Optional override for the default text style — `ThinkingBlock`
-    /// uses this to shrink and re-color the body without forking the
-    /// whole theme builder.
+    /// Optional override for the default text style — Chat's
+    /// `ThinkingBlock` uses this to shrink and re-color the body
+    /// without forking the whole theme builder.
     let bodyStyleOverride: BodyStyle?
     /// When true, the input is routed through ``MarkdownAutocloser``
     /// before MarkdownUI parses it — closes dangling fences, strips
@@ -29,10 +33,10 @@ struct MarkdownText: View {
 
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
-    @Environment(\.chatAppearance) private var appearance
+    @Environment(\.markdownBodyMetrics) private var metrics
     @State private var cachedTheme: MarkdownUI.Theme?
 
-    init(_ text: String, bodyStyleOverride: BodyStyle? = nil, treatAsPartial: Bool = false) {
+    public init(_ text: String, bodyStyleOverride: BodyStyle? = nil, treatAsPartial: Bool = false) {
         self.text = text
         self.bodyStyleOverride = bodyStyleOverride
         self.treatAsPartial = treatAsPartial
@@ -62,9 +66,9 @@ struct MarkdownText: View {
     }
 
     /// Per-call-site overrides for the default `Theme.text` style.
-    /// Centralized into this enum so the three known consumers share a
+    /// Centralized into this enum so the known consumers share a
     /// single definition rather than each forking their own theme builder.
-    enum BodyStyle: Equatable {
+    public enum BodyStyle: Equatable, Sendable {
         /// Softer ink + smaller body for thinking traces.
         case thinking
         /// Smaller body for the compaction banner — sits under a row of
@@ -72,13 +76,13 @@ struct MarkdownText: View {
         case banner
     }
 
-    var body: some View {
+    public var body: some View {
         // First render before `.task` fires uses an inline build; the
         // task primes the cache so subsequent renders skip the rebuild.
         Markdown(_resolvedText)
             .markdownTheme(cachedTheme ?? theme.markdownTheme(
                 bodyStyle: bodyStyleOverride,
-                appearance: appearance,
+                metrics: metrics,
                 readingFamily: typography.readingFamily
             ))
             // Selection lets the user copy a partial run from a code
@@ -94,7 +98,7 @@ struct MarkdownText: View {
                 cachedTheme = nil
                 cachedTheme = theme.markdownTheme(
                     bodyStyle: bodyStyleOverride,
-                    appearance: appearance,
+                    metrics: metrics,
                     readingFamily: typography.readingFamily
                 )
             }
@@ -105,8 +109,8 @@ struct MarkdownText: View {
     /// (and vice versa), and so a font-scale change invalidates the
     /// cached MarkdownUI theme. Font scale is formatted to a fixed
     /// precision so two arithmetically-equal but binarily-different
-    /// `Double`s map to the same key. Spacing is derived from
-    /// `fontScale` inside `ChatAppearance`, so the scale alone is a
+    /// values map to the same key. Spacing is derived from `fontScale`
+    /// inside `MarkdownBodyMetrics`, so the scale alone is a
     /// sufficient invalidation signal.
     private var themeKey: String {
         let style: String = switch bodyStyleOverride {
@@ -114,7 +118,7 @@ struct MarkdownText: View {
         case .banner: "banner"
         case .none: "default"
         }
-        let scale = String(format: "%.3f", appearance.fontScale)
+        let scale = String(format: "%.3f", metrics.fontScale)
         // Include the reading family so a serif↔system typeface switch
         // invalidates the cached MarkdownUI theme (the body face changes).
         let face = typography.readingFamily ?? "system"

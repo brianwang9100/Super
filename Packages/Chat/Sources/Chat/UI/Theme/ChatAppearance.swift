@@ -33,50 +33,41 @@ public struct ChatAppearance: Sendable, Equatable {
 
     public static let `default` = ChatAppearance(fontScale: 1.0)
 
-    /// Absolute body font size in points. Headings and inline code that
-    /// use `.em(...)` scale automatically because MarkdownUI resolves
-    /// em values against this base. Not Dynamic-Type responsive — that's
-    /// a property of MarkdownUI's `FontSize(...)`, which doesn't read
-    /// SwiftUI's environment. Plain `Text` views that want Dynamic Type
-    /// on top of `fontScale` should declare a local `@ScaledMetric`
-    /// (see ``UserBubble`` for the pattern).
-    public var bodyFontSize: CGFloat { SuperTypography.readingBodySize * fontScale }
+    /// Projection of the slider onto the shared markdown renderer's
+    /// metrics (`Core.MarkdownBodyMetrics`). The renderer owns every
+    /// body-size/paragraph-rhythm derivation; the properties below
+    /// delegate to it so there is exactly one derivation chain and
+    /// `ChatAppearance.default.markdownMetrics == .default` holds by
+    /// construction — the invariant that keeps Chat's rendering
+    /// identical to a host that injects nothing.
+    public var markdownMetrics: MarkdownBodyMetrics {
+        MarkdownBodyMetrics(fontScale: fontScale)
+    }
 
-    /// Paragraph line-spacing as an em multiplier passed to MarkdownUI's
-    /// `relativeLineSpacing`. A constant `SuperTypography.readingLeadingEm`
-    /// (≈0.235 em) shared with the Bible reader so both EB Garamond reading
-    /// surfaces have identical line rhythm. Resolves against `bodyFontSize`,
-    /// so the gap still grows in absolute points as the slider enlarges the
-    /// body — but the *ratio* stays fixed rather than loosening with the slider.
+    /// Absolute body font size in points (`MarkdownBodyMetrics.bodyFontSize`).
+    /// Not Dynamic-Type responsive — that's a property of MarkdownUI's
+    /// `FontSize(...)`, which doesn't read SwiftUI's environment. Plain
+    /// `Text` views that want Dynamic Type on top of `fontScale` should
+    /// declare a local `@ScaledMetric` (see ``UserBubble`` for the pattern).
+    public var bodyFontSize: CGFloat { markdownMetrics.bodyFontSize }
+
+    /// Intra-paragraph leading em (`MarkdownBodyMetrics.paragraphLineSpacingEm`),
+    /// the constant ratio shared with the Bible reader.
     public var paragraphLineSpacingEm: CGFloat {
-        SuperTypography.readingLeadingEm
+        markdownMetrics.paragraphLineSpacingEm
     }
 
-    /// Intra-paragraph line spacing as *points* — ``paragraphLineSpacingEm``
-    /// resolved against ``bodyFontSize`` — for APIs that take an absolute
-    /// `CGFloat` rather than an em. Used for the gap *between* list items
-    /// (`markdownMargin(top:)` is point-valued, not em), so a bulleted or
-    /// numbered list's item-to-item spacing reads with the same rhythm as the
-    /// wrapped lines inside an item instead of bunching at a fixed 2pt. It
-    /// closely tracks — but isn't bit-identical to — the gap
-    /// `relativeLineSpacing(.em:)` actually paints, which MarkdownUI rounds
-    /// internally (≈`round(em · round(bodyFontSize))`); the sub-point
-    /// difference is below visual threshold.
+    /// Intra-paragraph leading in points
+    /// (`MarkdownBodyMetrics.paragraphLineSpacingPoints`).
     public var paragraphLineSpacingPoints: CGFloat {
-        paragraphLineSpacingEm * bodyFontSize
+        markdownMetrics.paragraphLineSpacingPoints
     }
 
-    /// Vertical margin below each markdown paragraph, in points. Drives
-    /// the *gap between paragraphs* (distinct from intra-paragraph line
-    /// spacing, which `paragraphLineSpacingEm` controls). A constant `16/17`
-    /// em (≈0.94) of ``bodyFontSize`` — like the leading, the *ratio* is fixed
-    /// and only the body it multiplies grows with the slider, so the gap holds
-    /// at ≈0.76 of a line at every slider position instead of swelling toward a
-    /// full empty line at the top end. Resolves to ≈14.3 / 17.9 / 21.5pt at the
-    /// 0.8× / 1.0× / 1.2× slider over the 19pt body. Reads as a comfortable
-    /// three-quarter-line gap, matching the rhythm of Claude's iOS chat.
+    /// Vertical margin below each markdown paragraph
+    /// (`MarkdownBodyMetrics.paragraphSpacing`) — ≈0.94 em of the body,
+    /// tuned to match the rhythm of Claude's iOS chat.
     public var paragraphSpacing: CGFloat {
-        (16.0 / 17.0) * bodyFontSize
+        markdownMetrics.paragraphSpacing
     }
 
     /// Vertical padding inside the user-bubble shape (between the bubble
@@ -132,7 +123,13 @@ struct ChatAppearanceKey: EnvironmentKey {
 }
 
 public extension EnvironmentValues {
-    var chatAppearance: ChatAppearance {
+    /// Read-only outside the module: writes must go through
+    /// `View.chatAppearance(_:)`, which also projects the appearance onto
+    /// `\.markdownBodyMetrics`. A public setter would offer a second,
+    /// natural-looking write path (`.environment(\.chatAppearance, ...)`)
+    /// that silently skips the metrics projection — bubbles and row
+    /// paddings would scale while markdown prose stayed at 1.0×.
+    internal(set) var chatAppearance: ChatAppearance {
         get { self[ChatAppearanceKey.self] }
         set { self[ChatAppearanceKey.self] = newValue }
     }
@@ -141,8 +138,12 @@ public extension EnvironmentValues {
 public extension View {
     /// Inject a `ChatAppearance` into the SwiftUI environment for this
     /// subtree. Pair with `.superTheme(_:)` at the same composition
-    /// boundary so theme and appearance refresh together.
+    /// boundary so theme and appearance refresh together. Also projects
+    /// the slider onto `\.markdownBodyMetrics` so the shared markdown
+    /// renderer (now in Core) scales with it — one edit point covers
+    /// every Chat injection site.
     func chatAppearance(_ appearance: ChatAppearance) -> some View {
         environment(\.chatAppearance, appearance)
+            .markdownBodyMetrics(appearance.markdownMetrics)
     }
 }

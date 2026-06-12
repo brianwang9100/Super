@@ -1,9 +1,8 @@
 #if canImport(UIKit)
-import Core
 import SnapshotTesting
 import SwiftUI
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Visual baselines for ``MarkdownText`` rendering Bible verse
 /// references the chat-side linkifier wraps into `super://bible/...`
@@ -24,17 +23,20 @@ import Testing
 /// inter-item spacing (now tracking the line spacing) and link styling
 /// inside list items.
 ///
-/// Snapshot matrix per root AGENTS.md §Testing.3 — light, dark, sepia
-/// at default Dynamic Type. The prose fixture adds one XXL variant on
-/// light to catch scaled-font regressions in the link runs; the list
-/// fixture adds a 1.2× font-slider variant on light, since `MarkdownText`
-/// scales off the app slider (`ChatAppearance.fontScale`), not Dynamic
-/// Type — that's the axis the inter-item spacing tracks.
+/// Snapshot matrix per root AGENTS.md §Testing.3 — vellumLight /
+/// vellumDark at default Dynamic Type. The prose fixture adds one XXL
+/// variant on light to catch scaled-font regressions in the link runs;
+/// the list fixture adds a 1.2× font-slider variant on light, since
+/// `MarkdownText` scales off the injected metrics
+/// (`MarkdownBodyMetrics.fontScale`), not Dynamic Type — that's the
+/// axis the inter-item spacing tracks.
 ///
-/// `.serialized` — baselines are PNG files; parallel execution would
-/// race on the on-disk cache. Matches every other snapshot suite in
-/// this folder.
-@Suite("MarkdownText snapshots", .serialized)
+/// Not `.serialized`: Core's snapshot suites don't serialize (root
+/// AGENTS.md §Testing.7 — serialization is per-module all-or-none, and
+/// order-independence comes from the font registration in `init`, not
+/// from serialization). The suite was serialized in its original ChatTests
+/// home, where the whole module serializes.
+@Suite("MarkdownText snapshots")
 @MainActor
 struct MarkdownTextSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
@@ -51,7 +53,7 @@ struct MarkdownTextSnapshotTests {
 
     /// A bulleted-list fixture (verse refs *inside* the items) — pins the
     /// inter-item spacing, which now tracks the intra-paragraph line spacing
-    /// (`ChatAppearance.paragraphLineSpacingPoints`) instead of a fixed 2pt,
+    /// (`MarkdownBodyMetrics.paragraphLineSpacingPoints`) instead of a fixed 2pt,
     /// so a list's item-to-item rhythm tracks the wrapped lines inside an
     /// item. Also exercises link styling within list items, which the prose
     /// fixture above doesn't reach.
@@ -92,12 +94,13 @@ struct MarkdownTextSnapshotTests {
 
     @Test("bulleted list with refs at the 1.2× font slider — light")
     func listSpacious() {
-        // The app font-scale slider (`ChatAppearance.fontScale`), not OS
-        // Dynamic Type, is what the user reported the cramped bullets on —
-        // `MarkdownText`'s body size reads the slider, not Dynamic Type. This
-        // pins the spacious end where the line-spacing/inter-item match is
-        // most visible.
-        verify(theme: .vellumLight, appearance: ChatAppearance(fontScale: 1.2), text: Self.listSample, wrap: true, name: "markdown_list_refs_light_scale120")
+        // The app font-scale slider (projected here as
+        // `MarkdownBodyMetrics.fontScale`), not OS Dynamic Type, is what the
+        // user reported the cramped bullets on — `MarkdownText`'s body size
+        // reads the injected metrics, not Dynamic Type. This pins the
+        // spacious end where the line-spacing/inter-item match is most
+        // visible.
+        verify(theme: .vellumLight, metrics: MarkdownBodyMetrics(fontScale: 1.2), text: Self.listSample, wrap: true, name: "markdown_list_refs_light_scale120")
     }
 
     /// - Parameter wrap: forces the markdown to wrap to the 402pt width
@@ -109,7 +112,7 @@ struct MarkdownTextSnapshotTests {
     private func verify(
         theme: SuperTheme.Identifier,
         dynamicType: DynamicTypeSize = .large,
-        appearance: ChatAppearance = .default,
+        metrics: MarkdownBodyMetrics = .default,
         text: String = Self.sample,
         wrap: Bool = false,
         name: String,
@@ -117,7 +120,7 @@ struct MarkdownTextSnapshotTests {
     ) {
         let markdown = MarkdownText(text)
             .superTheme(.make(theme))
-            .chatAppearance(appearance)
+            .markdownBodyMetrics(metrics)
             .dynamicTypeSize(dynamicType)
         let view = Group {
             if wrap {

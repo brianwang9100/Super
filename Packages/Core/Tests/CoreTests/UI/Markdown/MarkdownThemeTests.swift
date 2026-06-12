@@ -1,8 +1,7 @@
-import Core
 import MarkdownUI
 import SwiftUI
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for ``SuperTheme/markdownTheme()`` — verifies the bridge from
 /// Super's palette into MarkdownUI's `Theme` populates every block/text
