@@ -18,6 +18,9 @@ import Testing
 ///   bubble and a filled note glyph. This locks PR3's stable
 ///   annotation-then-note order in the live reader flow, the contract
 ///   `VerseTrailersSnapshotTests` exercises in isolation.
+/// - The **bookmarked title** — the chapter's bookmark slot holding a ribbon,
+///   so the title cluster leads with the filled (tinted) bookmark glyph.
+///   `BibleScreenSnapshotTests` covers the outline (unbookmarked) state.
 ///
 /// Rendered across light / dark / sepia because the outlined glyph strokes in
 /// `theme.inkFaint`.
@@ -48,6 +51,16 @@ struct BibleChapterReaderSnapshotTests {
     @Test("annotation and note glyphs co-trail a verse and the title, dark")
     func coTrailingDark() throws {
         try verifyCoTrailing(theme: .vellumDark, name: "co_trailing_dark")
+    }
+
+    @Test("the title's bookmark glyph fills with the chapter's ribbon, light")
+    func bookmarkedTitleLight() throws {
+        try verifyBookmarked(theme: .vellumLight, name: "bookmarked_title_light")
+    }
+
+    @Test("the title's bookmark glyph fills with the chapter's ribbon, dark")
+    func bookmarkedTitleDark() throws {
+        try verifyBookmarked(theme: .vellumDark, name: "bookmarked_title_dark")
     }
 
     /// Render 1 Peter 2 with an empty annotation database (so the chapter
@@ -153,6 +166,65 @@ struct BibleChapterReaderSnapshotTests {
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 onNoteGlyphTap: { _ in }
+            )
+        }
+        .frame(width: 402, height: 760)
+        .superTheme(theme)
+        .superTypography(.make(.serif))
+        .databaseContext(.readOnly { database.queue })
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(layout: .fixed(width: 402, height: 760)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure {
+            Issue.record("\(name): \(failure)")
+        }
+    }
+
+    /// Render 1 Peter 2 with its bookmark slot holding the clay ribbon and a
+    /// bookmark host wired, so the chapter title leads its glyph cluster with
+    /// the filled (tinted) bookmark glyph — the bookmark-then-annotation-
+    /// then-note cluster order in the live reader flow.
+    /// `BibleScreenSnapshotTests` covers the outline (unbookmarked) state on
+    /// every screen render.
+    private func verifyBookmarked(
+        theme themeID: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) throws {
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        let database = try BibleDatabase.makeInMemory()
+        try database.queue.write { db in
+            try BibleBookmarkRecord(
+                id: "bm-clay", colorId: "clay", bookId: "1PE", chapterNumber: 2,
+                createdAt: t0
+            ).insert(db)
+        }
+        let chapter = try #require(
+            try DatabaseBibleTextLoader().loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web)
+        )
+        let theme = SuperTheme.make(themeID)
+        let view = ZStack {
+            theme.background
+            BibleChapterReader(
+                chapter: chapter,
+                bookId: "1PE",
+                bookName: "1 Peter",
+                selectedVerses: [],
+                previousLabel: "1 Peter 1",
+                nextLabel: "1 Peter 3",
+                onTapVerse: { _ in },
+                onPrevious: {},
+                onNext: {},
+                onClearSelection: {},
+                onAnnotationBubbleTap: { _ in },
+                onRequestChapterAnnotation: { _ in },
+                onNoteGlyphTap: { _ in },
+                onBookmarkTap: {}
             )
         }
         .frame(width: 402, height: 760)
