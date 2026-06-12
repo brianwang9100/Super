@@ -11,7 +11,7 @@ The Chat applet: AI chatbot orchestration, persistence, UI. Pixel reference for 
 - **Orchestration** (`Orchestration/`): `ChatSession` actor (one per conversation), `ChatSessionStore` actor (holds concurrent sessions), `ContextAssembler`, `Compactor`, `TokenEstimator`, `TitleGenerator`, `SlashCommand`, `ChatEvent`. `ChatSessionDriver` protocol (view-model seam) + `LiveChatSessionDriver` adapter live alongside the consuming view model.
 - **Tools** (`Tools/`): `TimeNowTool` (built-in local).
 - **Voice** (`Voice/`): `VoiceInputService` protocol + `SpeechRecognizerVoiceInputService` (on-device `SFSpeechRecognizer`).
-- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).**
+- **UI** (`UI/`): SwiftUI views — `ChatScreen`, `ChatComposer`, `MessageList` (+ row views under `UI/Messages/`), `SidebarDrawer`, `Settings*Pane`, theme types. **Before naming a new SwiftUI view, read [`docs/NAMING_CONVENTIONS.md` Part 4](../../docs/NAMING_CONVENTIONS.md#part-4--swiftui-view-layer-chat-applet).** The markdown renderer (`MarkdownText`, `markdownTheme`, linkifier, autocloser, code blocks) lives in **Core** (`Core/UI/Markdown/`), shared with Bible; Chat projects its font-scale slider onto it via `ChatAppearance.markdownMetrics` inside the `.chatAppearance(_:)` modifier — keep that projection equal to Core's default at 1.0× (pinned by `ChatAppearanceTests`).
 - **View models** (`ViewModels/`): `@Observable @MainActor final class` view models for every screen.
 
 ## Chat-specific rules

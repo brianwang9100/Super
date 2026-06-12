@@ -1,5 +1,5 @@
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for `BibleReferenceLinkifier`'s anchor and continuation
 /// matching, skip-region handling, and resilience to false positives.

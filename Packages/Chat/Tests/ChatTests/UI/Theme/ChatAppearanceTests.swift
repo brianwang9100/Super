@@ -35,6 +35,31 @@ struct ChatAppearanceTests {
         #expect(ChatAppearance(fontScale: 1.20).bodyFontSize == 19 * 1.20)
     }
 
+    /// The invariant that keeps Chat's markdown rendering identical to a
+    /// host that injects nothing (Core's environment default): the default
+    /// appearance must project onto exactly `MarkdownBodyMetrics.default`,
+    /// and every derived metric must match the appearance's own values
+    /// bit-for-bit at every slider position — the projection hands the
+    /// *scale* across (not pre-derived sizes) precisely so the derivation
+    /// expressions stay the same on both sides.
+    @Test("markdownMetrics projection matches Core's metrics at every slider position")
+    func markdownMetricsProjectionParity() {
+        #expect(ChatAppearance.default.markdownMetrics == MarkdownBodyMetrics.default)
+        for scale: Double in [0.80, 0.90, 1.00, 1.05, 1.10, 1.20] {
+            let appearance = ChatAppearance(fontScale: scale)
+            let metrics = appearance.markdownMetrics
+            // Explicit CGFloat conversion: appearance.fontScale is Double,
+            // metrics.fontScale is CGFloat — the mixed-type `==` misbehaves
+            // inside the #expect macro expansion (evaluates false on equal
+            // values) even though it's fine in plain Swift.
+            #expect(metrics.fontScale == CGFloat(appearance.fontScale))
+            #expect(metrics.bodyFontSize == appearance.bodyFontSize)
+            #expect(metrics.paragraphLineSpacingEm == appearance.paragraphLineSpacingEm)
+            #expect(metrics.paragraphLineSpacingPoints == appearance.paragraphLineSpacingPoints)
+            #expect(metrics.paragraphSpacing == appearance.paragraphSpacing)
+        }
+    }
+
     @Test("intra-line leading em is the constant SSOT at every slider position")
     func leadingEmIsConstantSharedRatio() {
         // Leading no longer loosens with the slider — it's the shared

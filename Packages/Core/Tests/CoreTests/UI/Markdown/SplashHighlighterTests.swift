@@ -1,8 +1,7 @@
-import Core
 import Splash
 import SwiftUI
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for ``SplashHighlighter``'s palette wiring, grammar gating, and
 /// the tokenize → render split. The tokenization step returns a value-

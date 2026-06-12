@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import Chat
+@testable import Core
 
 /// Tests for ``CodeBlockCopyController``'s pasteboard write + revert
 /// timing + cancellation behavior. Drives the controller directly so

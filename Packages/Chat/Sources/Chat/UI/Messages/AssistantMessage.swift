@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Persisted assistant turn: optional thinking trace, any tool calls, and
