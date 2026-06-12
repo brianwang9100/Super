@@ -892,4 +892,119 @@ struct ContextAssemblerTests {
     private func makeMemoryEntry(id: String, text: String) -> MemoryEntry {
         MemoryEntry(id: id, text: text, createdAt: baseDate, updatedAt: baseDate)
     }
+
+    // MARK: - Tool-call pairing totality
+
+    private func makeToolCall(
+        id: String,
+        messageId: String,
+        toolName: String = "test.tool",
+        status: ToolCallStatus = .executing
+    ) -> ToolCallRecord {
+        ToolCallRecord(
+            id: id,
+            messageId: messageId,
+            conversationId: "conv-1",
+            toolName: toolName,
+            parameters: "{}",
+            result: nil,
+            status: status,
+            createdAt: baseDate,
+            completedAt: nil,
+            signature: nil
+        )
+    }
+
+    /// An assistant `toolUse` whose result row never landed (cancel/crash
+    /// mid-execution) must still project a `tool_result` — strict providers
+    /// reject a history with an unanswered `tool_use` on every later turn,
+    /// permanently wedging the conversation.
+    @Test func orphanedToolUseProjectsSynthesizedResult() throws {
+        let assembler = ContextAssembler()
+        let messages = [
+            makeMessage(id: "m1", role: .user, content: "run the tool", offset: 0),
+            makeMessage(id: "m2", role: .assistant, content: "on it", offset: 1),
+        ]
+        let calls = [makeToolCall(id: "tc-1", messageId: "m2")]
+
+        let assembly = try assembler.assemble(
+            messages: messages, toolCalls: calls, checkpoint: nil, model: makeModel()
+        )
+
+        let toolMessages = assembly.messages.filter { $0.role == .tool }
+        #expect(toolMessages.count == 1)
+        guard case .toolResult(let useID, _, let isError) = toolMessages.first?.content.first else {
+            Issue.record("expected a synthesized toolResult block")
+            return
+        }
+        #expect(useID == "tc-1")
+        #expect(isError == true)
+    }
+
+    /// In a multi-call batch where only some calls resolved, synthesis fills
+    /// exactly the gaps — the real result row is kept, not duplicated.
+    @Test func partiallyResolvedBatchSynthesizesOnlyMissingResults() throws {
+        let assembler = ContextAssembler()
+        let messages = [
+            makeMessage(id: "m1", role: .user, content: "run both tools", offset: 0),
+            makeMessage(id: "m2", role: .assistant, content: "running", offset: 1),
+            makeMessage(id: "m3", role: .tool, content: "first result", offset: 2, toolCallId: "tc-1"),
+        ]
+        let calls = [
+            makeToolCall(id: "tc-1", messageId: "m2", status: .success),
+            makeToolCall(id: "tc-2", messageId: "m2"),
+        ]
+
+        let assembly = try assembler.assemble(
+            messages: messages, toolCalls: calls, checkpoint: nil, model: makeModel()
+        )
+
+        var seenResultIDs: [String] = []
+        for message in assembly.messages where message.role == .tool {
+            for block in message.content {
+                if case .toolResult(let useID, _, _) = block {
+                    seenResultIDs.append(useID)
+                }
+            }
+        }
+        #expect(seenResultIDs.sorted() == ["tc-1", "tc-2"])
+        // The real row's content survives untouched.
+        var foundRealResult = false
+        for message in assembly.messages {
+            for block in message.content {
+                if case .toolResult("tc-1", let content, _) = block, content == "first result" {
+                    foundRealResult = true
+                }
+            }
+        }
+        #expect(foundRealResult)
+    }
+
+    /// A role-`.tool` row whose `tool_use` was never projected (e.g. the
+    /// assistant row fell on the far side of a compaction checkpoint) must
+    /// be dropped — an orphan `tool_result` is rejected by strict providers
+    /// just like an unanswered `tool_use`.
+    @Test func orphanedToolResultRowIsDropped() throws {
+        let assembler = ContextAssembler()
+        let messages = [
+            makeMessage(id: "m1", role: .tool, content: "stranded result", offset: 0, toolCallId: "tc-ghost"),
+            makeMessage(id: "m2", role: .user, content: "hello again", offset: 1),
+        ]
+        // The call record survives but points at an assistant row that is
+        // not part of the projected window.
+        let calls = [makeToolCall(id: "tc-ghost", messageId: "m-dropped", status: .success)]
+
+        let assembly = try assembler.assemble(
+            messages: messages, toolCalls: calls, checkpoint: nil, model: makeModel()
+        )
+
+        var sawToolMessage = false
+        var sawUserMessage = false
+        for message in assembly.messages {
+            if message.role == .tool { sawToolMessage = true }
+            if message.role == .user { sawUserMessage = true }
+        }
+        #expect(!sawToolMessage)
+        #expect(sawUserMessage)
+    }
 }

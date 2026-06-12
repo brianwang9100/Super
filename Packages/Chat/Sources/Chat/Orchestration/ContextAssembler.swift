@@ -367,6 +367,25 @@ public struct ContextAssembler: Sendable {
             toolCallsByID[record.id] = record
         }
 
+        // Pairing totality: strict providers (OpenAI, Anthropic) reject a
+        // history carrying a `tool_use` with no matching `tool_result`, or a
+        // `tool_result` whose `tool_use` is absent — and they reject it on
+        // *every* later turn, permanently wedging the conversation. A healthy
+        // turn never persists such a shape, but a cancel/crash between the
+        // assistant row landing and the result write can (and a compaction
+        // checkpoint can drop an assistant row whose result row survives).
+        // The projection therefore repairs both shapes instead of replaying
+        // them verbatim:
+        //   - a projected `toolUse` with no result row anywhere in the window
+        //     gets a synthesized error `tool_result` right after its turn;
+        //   - a role-`.tool` row whose `toolUse` was never projected is
+        //     dropped.
+        var resolvedToolCallIDs = Set<String>()
+        for record in messages where record.role == .tool {
+            if let id = record.toolCallId { resolvedToolCallIDs.insert(id) }
+        }
+        var projectedToolUseIDs = Set<String>()
+
         var llmMessages: [LLMMessage] = []
         for record in messages {
             switch record.role {
@@ -396,7 +415,8 @@ public struct ContextAssembler: Sendable {
                 if !record.content.isEmpty {
                     blocks.append(.text(record.content))
                 }
-                for call in toolCallsByMessageID[record.id] ?? [] {
+                let calls = toolCallsByMessageID[record.id] ?? []
+                for call in calls {
                     let input = try call.decodedParameters()
                     // Replay the provider continuation token (Gemini thought
                     // signature) so the next turn's functionCall carries it.
@@ -406,12 +426,30 @@ public struct ContextAssembler: Sendable {
                         input: input,
                         signature: call.signature
                     ))
+                    projectedToolUseIDs.insert(call.id)
                 }
                 if !blocks.isEmpty {
                     llmMessages.append(LLMMessage(role: .assistant, content: blocks))
                 }
+                // Synthesize results for calls whose result row never landed
+                // (see the pairing-totality note above). Placed directly
+                // after the issuing assistant turn — any real sibling result
+                // rows follow immediately in `messages`, so the pair group
+                // stays contiguous on the wire.
+                for call in calls where !resolvedToolCallIDs.contains(call.id) {
+                    llmMessages.append(LLMMessage(role: .tool, content: [
+                        .toolResult(
+                            toolUseID: call.id,
+                            content: "Tool execution was interrupted before producing a result. Treat this call as failed.",
+                            isError: true
+                        ),
+                    ]))
+                }
             case .tool:
                 guard let toolCallID = record.toolCallId else { continue }
+                // Drop a result row whose `tool_use` was never projected —
+                // see the pairing-totality note above.
+                guard projectedToolUseIDs.contains(toolCallID) else { continue }
                 let isError = toolCallsByID[toolCallID]?.status == .failed
                 llmMessages.append(LLMMessage(role: .tool, content: [
                     .toolResult(toolUseID: toolCallID, content: record.content, isError: isError),
