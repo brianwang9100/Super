@@ -413,6 +413,18 @@ public struct ContextAssembler: Sendable {
                 llmMessages.append(LLMMessage(role: .user, text: Self.expandedUserText(for: record)))
             case .assistant:
                 var blocks: [LLMContent] = []
+                // Replay the stored thinking trace FIRST — Anthropic requires
+                // the last assistant turn of a tool loop to *start* with its
+                // original thinking block (content + signature, verbatim).
+                // Projected whenever a trace exists; the adapter decides
+                // replayability (only a signed block ships on the wire) and
+                // every other adapter ignores `.thinking`.
+                if let thinking = record.thinkingContent, !thinking.isEmpty {
+                    blocks.append(.thinking(
+                        content: thinking,
+                        signature: record.thinkingSignature
+                    ))
+                }
                 // Replay stored web-search results (with their encrypted echoes)
                 // so providers that require it (Anthropic) keep prior-turn
                 // citations valid. Gated on a present `providerEcho` — only

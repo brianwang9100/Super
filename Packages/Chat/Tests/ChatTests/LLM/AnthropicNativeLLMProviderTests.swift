@@ -91,8 +91,10 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.0
         ))
 
-        // The `signature_delta` is dropped; thinking and text occupy distinct
-        // normalized block indices (0 then 1).
+        // The `signature_delta` accumulates on the thinking block and is
+        // emitted once at close-out (just before `.messageComplete`) so
+        // `ChatSession` can persist it for verbatim replay; thinking and
+        // text occupy distinct normalized block indices (0 then 1).
         #expect(events.map(Self.kind) == [
             "messageStart",
             "contentBlockStart(thinking)",
@@ -102,11 +104,111 @@ struct AnthropicNativeLLMProviderTests {
             "contentBlockStart(text)",
             "textDelta",
             "contentBlockStop",
+            "thinkingSignature",
             "messageComplete",
         ])
         #expect(events.contains(.thinkingDelta(index: 0, text: "Let me think")))
+        #expect(events.contains(.thinkingSignature(index: 0, signature: "abc123")))
         #expect(events.contains(.textDelta(index: 1, text: "42")))
         #expect(events.last == .messageComplete(usage: TokenUsage(inputTokens: 20, outputTokens: 10)))
+    }
+
+    @Test func redactedThinkingSuppressesTheSignature() async throws {
+        // A turn containing a `redacted_thinking` block is not replayable
+        // from our persistence model (the opaque payload can't round-trip),
+        // so no `.thinkingSignature` may be emitted — the request gate then
+        // falls back to thinking-off on the follow-up instead of shipping a
+        // partial (rejected) replay.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-thinking-redacted"))
+        let events = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.0
+        ))
+
+        #expect(!events.map(Self.kind).contains("thinkingSignature"))
+        // The visible thinking trace still streams.
+        #expect(events.contains(.thinkingDelta(index: 0, text: "partially visible")))
+    }
+
+    @Test func signedToolLoopHistoryReplaysThinkingBlockFirstAndKeepsThinkingEnabled() async throws {
+        // The Messages API requires the last assistant turn of a tool loop
+        // to START with its original signed thinking block, verbatim. With
+        // a replayable history, `thinking` stays enabled and the block
+        // leads the assistant content on the wire.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "weather?"),
+            LLMMessage(role: .assistant, content: [
+                .thinking(content: "I should check the weather tool.", signature: "sig-1"),
+                .text("Let me check."),
+                .toolUse(id: "toolu_x", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "toolu_x", content: "18C clear", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        #expect(body["thinking"] != nil)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
+        #expect(assistantContent[0]["type"] as? String == "thinking")
+        #expect(assistantContent[0]["thinking"] as? String == "I should check the weather tool.")
+        #expect(assistantContent[0]["signature"] as? String == "sig-1")
+        #expect(assistantContent[1]["type"] as? String == "text")
+        #expect(assistantContent[2]["type"] as? String == "tool_use")
+    }
+
+    @Test func unsignedToolLoopHistoryOmitsThinkingParameter() async throws {
+        // Legacy rows (pre-v8), redacted turns, and other providers' traces
+        // carry no signature — the block can't be replayed, and shipping
+        // the continuation with `thinking` enabled would 400. The request
+        // must omit the `thinking` parameter (the API tolerates thinking-off
+        // against a thinking-bearing history) and skip the unsigned block.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "weather?"),
+            LLMMessage(role: .assistant, content: [
+                .thinking(content: "unsigned trace", signature: nil),
+                .text("Let me check."),
+                .toolUse(id: "toolu_x", name: "get_weather", input: .object(["city": .string("Paris")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "toolu_x", content: "18C clear", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        #expect(body["thinking"] == nil)
+        // Temperature comes back (it is only omitted alongside thinking).
+        #expect(body["temperature"] != nil)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
+        #expect(assistantContent.allSatisfy { ($0["type"] as? String) != "thinking" })
+    }
+
+    @Test func toolFreeThinkingHistoryKeepsThinkingEnabled() async throws {
+        // The gate only bites on the tool-continuation shape: a plain
+        // history whose last assistant turn issued no tool calls keeps
+        // thinking enabled even when its trace is unsigned.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "hello"),
+            LLMMessage(role: .assistant, content: [
+                .thinking(content: "unsigned trace", signature: nil),
+                .text("hi there"),
+            ]),
+            LLMMessage(role: .user, text: "and again"),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        #expect(body["thinking"] != nil)
     }
 
     @Test func searchFixtureEmitsSearchStartedThenCitationsWithEncryptedEcho() async throws {
@@ -598,6 +700,7 @@ struct AnthropicNativeLLMProviderTests {
         case .contentBlockStart(_, let type): return "contentBlockStart(\(type.rawValue))"
         case .textDelta: return "textDelta"
         case .thinkingDelta: return "thinkingDelta"
+        case .thinkingSignature: return "thinkingSignature"
         case .toolUse: return "toolUse"
         case .contentBlockStop: return "contentBlockStop"
         case .searchStarted: return "searchStarted"

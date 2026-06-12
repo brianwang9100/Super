@@ -366,6 +366,57 @@ struct ChatSessionTests {
         #expect(stored?.thinkingDurationMs == 0)
     }
 
+    @Test func thinkingSignaturePersistsAlongsideTheTrace() async throws {
+        // The Anthropic reducer emits the thinking block's integrity
+        // signature once per turn; it must land on the same row as the
+        // trace so the adapter can replay the block verbatim on the next
+        // tool-loop request.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .thinkingDelta(index: 0, text: "reasoning"),
+                .thinkingSignature(index: 0, signature: "sig-xyz"),
+                .textDelta(index: 1, text: "the answer"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        guard case .assistantMessageSaved(let record) = events.last else {
+            Issue.record("expected trailing .assistantMessageSaved")
+            return
+        }
+        let stored = try await setup.messageRepo.fetch(id: record.id)
+        #expect(stored?.thinkingContent == "reasoning")
+        #expect(stored?.thinkingSignature == "sig-xyz")
+    }
+
+    @Test func thinkingOnlyTurnPersists() async throws {
+        // A turn that streams only a thinking trace (no text, no tool
+        // calls) is real model output the user watched — it must persist
+        // so the trace re-renders after the streaming tail clears.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .thinkingDelta(index: 0, text: "thought, then stopped"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 1)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        let events = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        guard case .assistantMessageSaved(let record) = events.last else {
+            Issue.record("expected trailing .assistantMessageSaved — thinking-only turns must persist")
+            return
+        }
+        let stored = try await setup.messageRepo.fetch(id: record.id)
+        #expect(stored?.thinkingContent == "thought, then stopped")
+        #expect(stored?.content == "")
+    }
+
     @Test func nonThinkingTurnLeavesThinkingContentNil() async throws {
         let setup = try await makeSetup(scripts: [
             [

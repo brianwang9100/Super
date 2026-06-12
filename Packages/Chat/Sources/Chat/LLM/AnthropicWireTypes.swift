@@ -81,6 +81,10 @@ struct AnthropicMessage: Encodable {
 /// valid (see ``AnthropicNativeLLMProvider`` translate).
 enum AnthropicContentBlock: Encodable {
     case text(String)
+    /// A replayed extended-thinking block. The Messages API requires the
+    /// last assistant turn of a tool loop to start with its original
+    /// `thinking` block, verbatim, including the streamed signature.
+    case thinking(thinking: String, signature: String)
     case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseID: String, content: String, isError: Bool)
     case webSearchToolResult(toolUseID: String, results: [WebSearchResultEcho])
@@ -110,7 +114,7 @@ enum AnthropicContentBlock: Encodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, id, name, input, content
+        case type, text, id, name, input, content, thinking, signature
         case toolUseID = "tool_use_id"
         case isError = "is_error"
     }
@@ -121,6 +125,10 @@ enum AnthropicContentBlock: Encodable {
         case .text(let text):
             try container.encode("text", forKey: .type)
             try container.encode(text, forKey: .text)
+        case .thinking(let thinking, let signature):
+            try container.encode("thinking", forKey: .type)
+            try container.encode(thinking, forKey: .thinking)
+            try container.encode(signature, forKey: .signature)
         case .toolUse(let id, let name, let input):
             try container.encode("tool_use", forKey: .type)
             try container.encode(id, forKey: .id)
@@ -233,6 +241,9 @@ struct AnthropicStreamEvent: Decodable {
         let type: String?
         let text: String?
         let thinking: String?
+        /// `signature_delta` payload — the thinking block's integrity
+        /// signature, required verbatim on replay.
+        let signature: String?
         let partialJson: String?
         let citation: Citation?
         let stopReason: String?

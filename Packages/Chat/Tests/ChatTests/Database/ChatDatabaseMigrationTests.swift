@@ -131,6 +131,8 @@ struct ChatDatabaseMigrationTests {
         #expect(lookup["thinkingContent"]?.1 == 0)
         #expect(lookup["thinkingDurationMs"]?.0 == "INTEGER")
         #expect(lookup["thinkingDurationMs"]?.1 == 0)
+        #expect(lookup["thinkingSignature"]?.0 == "TEXT")
+        #expect(lookup["thinkingSignature"]?.1 == 0)
         #expect(lookup["toolCallId"]?.0 == "TEXT")
         #expect(lookup["toolCallId"]?.1 == 0)
         #expect(lookup["createdAt"]?.0 == "DATETIME")
@@ -188,7 +190,7 @@ struct ChatDatabaseMigrationTests {
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v6_searchBackend`) via
+    /// (currently through `v8_messageThinkingSignature`) via
     /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
     /// DEFAULT expressions that the targeted PRAGMA assertions don't
     /// cover. Snapshot files land under
@@ -379,5 +381,75 @@ struct ChatDatabaseMigrationTests {
         }
         // Ordered by id ascending: "native" sorts before "none".
         #expect(fetched.map(\.searchBackend) == ["native", nil])
+    }
+
+    /// `v8_messageThinkingSignature` adds a nullable `thinkingSignature`
+    /// column to `message` without a table rebuild.
+    @Test func v8AddsNullableThinkingSignatureColumn() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(message)")
+                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
+        #expect(lookup["thinkingSignature"]?.0 == "TEXT")
+        #expect(lookup["thinkingSignature"]?.1 == 0)   // nullable
+    }
+
+    /// Rows that existed before v8 migrate to `thinkingSignature = NULL`
+    /// (no replayable thinking block — the Anthropic request gate falls
+    /// back to thinking-off for those histories). Stop at v7, seed a row
+    /// whose schema lacks the column, apply v8, assert the migrated value.
+    @Test func v8BackfillsExistingRowsAsNullThinkingSignature() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+        try migrator.migrate(queue, upTo: "v7_toolCallSignature")
+
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO conversation (id, title, createdAt, updatedAt)
+                VALUES ('c1', 't', '2026-01-01 00:00:00', '2026-01-01 00:00:00')
+            """)
+            try db.execute(sql: """
+                INSERT INTO message (id, conversationId, role, content, createdAt)
+                VALUES ('m1', 'c1', 'assistant', 'pre-v8 row', '2026-01-01 00:00:00')
+            """)
+        }
+        try migrator.migrate(queue)
+
+        let fetched = try await queue.read { db in
+            try MessageRecord.fetchOne(db, key: "m1")
+        }
+        #expect(fetched?.thinkingSignature == nil)
+        #expect(fetched?.content == "pre-v8 row")
+    }
+
+    @Test func thinkingSignatureRoundTripsThroughRecord() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        try await db.queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO conversation (id, title, createdAt, updatedAt)
+                VALUES ('c1', 't', '2026-01-01 00:00:00', '2026-01-01 00:00:00')
+            """)
+            try MessageRecord(
+                id: "signed", conversationId: "c1", role: .assistant,
+                content: "answer", thinkingContent: "trace",
+                thinkingDurationMs: 12, thinkingSignature: "sig-1",
+                createdAt: now
+            ).insert(db)
+            try MessageRecord(
+                id: "unsigned", conversationId: "c1", role: .assistant,
+                content: "answer", createdAt: now
+            ).insert(db)
+        }
+
+        let fetched = try await db.queue.read { db in
+            try MessageRecord.order(Column("id")).fetchAll(db)
+        }
+        // Ordered by id ascending: "signed" sorts before "unsigned".
+        #expect(fetched.map(\.thinkingSignature) == ["sig-1", nil])
     }
 }

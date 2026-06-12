@@ -24,6 +24,13 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// thinking delta of this turn. Drives the "Thought for Xs" label;
     /// nil when `thinkingContent` is nil.
     public var thinkingDurationMs: Int?
+    /// Provider integrity signature for this turn's thinking block
+    /// (Anthropic `signature_delta`). Required to replay the block verbatim
+    /// on the next tool-loop request — the Messages API 400s a rebuilt
+    /// last-assistant turn without it. Nil for non-thinking turns, for
+    /// providers that don't sign, for rows persisted before v8, and for
+    /// turns containing `redacted_thinking` (not replayable).
+    public var thinkingSignature: String?
     public var toolCallId: String?
     public var createdAt: Date
     public var tokenCount: Int?
@@ -40,6 +47,7 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         content: String,
         thinkingContent: String? = nil,
         thinkingDurationMs: Int? = nil,
+        thinkingSignature: String? = nil,
         toolCallId: String? = nil,
         createdAt: Date,
         tokenCount: Int? = nil,
@@ -51,6 +59,7 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.content = content
         self.thinkingContent = thinkingContent
         self.thinkingDurationMs = thinkingDurationMs
+        self.thinkingSignature = thinkingSignature
         self.toolCallId = toolCallId
         self.createdAt = createdAt
         self.tokenCount = tokenCount

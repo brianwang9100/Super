@@ -915,6 +915,45 @@ struct ContextAssemblerTests {
         )
     }
 
+    /// A persisted thinking trace projects as the assistant turn's FIRST
+    /// block (before text and toolUse), carrying the stored signature —
+    /// Anthropic requires the last assistant turn of a tool loop to start
+    /// with its original signed thinking block on replay.
+    @Test func assistantThinkingProjectsFirstWithSignature() throws {
+        let assembler = ContextAssembler()
+        var assistant = makeMessage(id: "m2", role: .assistant, content: "checking", offset: 1)
+        assistant.thinkingContent = "I should call the tool."
+        assistant.thinkingSignature = "sig-9"
+        let messages = [
+            makeMessage(id: "m1", role: .user, content: "run the tool", offset: 0),
+            assistant,
+            makeMessage(id: "m3", role: .tool, content: "done", offset: 2, toolCallId: "tc-1"),
+        ]
+        let calls = [makeToolCall(id: "tc-1", messageId: "m2", status: .success)]
+
+        let assembly = try assembler.assemble(
+            messages: messages, toolCalls: calls, checkpoint: nil, model: makeModel()
+        )
+
+        let assistantMessage = try #require(assembly.messages.first { $0.role == .assistant })
+        guard case .thinking(let content, let signature) = assistantMessage.content.first else {
+            Issue.record("expected .thinking as the first block, got \(String(describing: assistantMessage.content.first))")
+            return
+        }
+        #expect(content == "I should call the tool.")
+        #expect(signature == "sig-9")
+        // Text and toolUse follow the thinking block.
+        guard case .text("checking") = assistantMessage.content.dropFirst().first else {
+            Issue.record("expected .text after the thinking block")
+            return
+        }
+        let hasToolUse = assistantMessage.content.contains { block in
+            if case .toolUse("tc-1", _, _, _) = block { return true }
+            return false
+        }
+        #expect(hasToolUse)
+    }
+
     /// An assistant `toolUse` whose result row never landed (cancel/crash
     /// mid-execution) must still project a `tool_result` — strict providers
     /// reject a history with an unanswered `tool_use` on every later turn,

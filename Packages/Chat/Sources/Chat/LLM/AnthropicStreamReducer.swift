@@ -10,7 +10,9 @@ import Foundation
 /// index mapping, partial tool-call buffers, captured usage, stashed search
 /// results) and is driven purely by `consume(_:)` + `finish()`. Neither method
 /// throws — a malformed tool-call argument string surfaces as an `.error(...)`
-/// event in the returned array so the caller persists whatever did arrive.
+/// event in the returned array. (`ChatSession` treats a surfaced `.error` as a
+/// failed turn and discards the partial buffers rather than persisting them —
+/// the events exist so the UI can render what streamed before the failure.)
 ///
 /// Anthropic assigns its own monotonic block indices; this reducer maps each to
 /// its own normalized index space, because `server_tool_use` and
@@ -45,6 +47,20 @@ struct AnthropicStreamReducer {
     /// later deduped on URL by `ChatSession`).
     private var citationOrdinal = 0
 
+    /// Set when a `redacted_thinking` block opens. A turn containing one is
+    /// not replayable from our persistence model (we cannot round-trip the
+    /// opaque payload), so the signature emission is suppressed for the
+    /// whole turn and the request gate falls back to thinking-off on the
+    /// follow-up.
+    private var sawRedactedThinking = false
+
+    /// Signature accumulated by the turn's thinking block, stashed at its
+    /// clean `content_block_stop` and emitted once at close-out (so a
+    /// `redacted_thinking` block arriving in either order still suppresses
+    /// it). A stream cut off before the stop never stashes — a partial
+    /// signature is unusable.
+    private var pendingThinkingSignature: (index: Int, signature: String)?
+
     /// `web_search_result.encrypted_content` stashed by result URL when the
     /// `web_search_tool_result` block arrives, then attached to each citation's
     /// `providerEcho` when the matching `citations_delta` references that URL.
@@ -55,7 +71,7 @@ struct AnthropicStreamReducer {
     /// In-flight block state keyed by Anthropic's wire index.
     private enum OpenBlock {
         case text(normalizedIndex: Int)
-        case thinking(normalizedIndex: Int)
+        case thinking(normalizedIndex: Int, signature: String)
         case toolUse(normalizedIndex: Int, callID: String, name: String, arguments: String)
         /// The `web_search` server call; accumulates its query JSON until stop.
         case serverToolUse(arguments: String)
@@ -170,8 +186,12 @@ struct AnthropicStreamReducer {
         case "thinking":
             ensureMessageStart(into: &events)
             let normalized = allocateBlockIndex()
-            blocks[index] = .thinking(normalizedIndex: normalized)
+            blocks[index] = .thinking(normalizedIndex: normalized, signature: "")
             events.append(.contentBlockStart(index: normalized, type: .thinking))
+        case "redacted_thinking":
+            // Carries no displayable content (no normalized block), but
+            // poisons replayability for the turn — see `sawRedactedThinking`.
+            sawRedactedThinking = true
         case "tool_use":
             ensureMessageStart(into: &events)
             let normalized = allocateBlockIndex()
@@ -210,7 +230,7 @@ struct AnthropicStreamReducer {
                 events.append(.textDelta(index: normalized, text: text))
             }
         case "thinking_delta":
-            if case .thinking(let normalized) = blocks[index],
+            if case .thinking(let normalized, _) = blocks[index],
                let thinking = delta.thinking, !thinking.isEmpty {
                 events.append(.thinkingDelta(index: normalized, text: thinking))
             }
@@ -233,16 +253,28 @@ struct AnthropicStreamReducer {
             if let citation = delta.citation {
                 appendCitation(citation, into: &events)
             }
+        case "signature_delta":
+            if case .thinking(let normalized, let signature) = blocks[index],
+               let fragment = delta.signature, !fragment.isEmpty {
+                blocks[index] = .thinking(
+                    normalizedIndex: normalized,
+                    signature: signature + fragment
+                )
+            }
         default:
-            // `signature_delta` (thinking signatures) and any other delta types
-            // carry no normalized signal.
+            // Other delta types carry no normalized signal.
             break
         }
     }
 
     private mutating func closeBlock(index: Int, into events: inout [LLMStreamEvent]) {
         switch blocks[index] {
-        case .text(let normalized), .thinking(let normalized):
+        case .text(let normalized):
+            events.append(.contentBlockStop(index: normalized))
+        case .thinking(let normalized, let signature):
+            if !signature.isEmpty {
+                pendingThinkingSignature = (index: normalized, signature: signature)
+            }
             events.append(.contentBlockStop(index: normalized))
         case .toolUse(let normalized, let callID, let name, let arguments):
             events.append(contentsOf: flushToolCall(
@@ -369,7 +401,7 @@ struct AnthropicStreamReducer {
         var stops: [Int] = []
         for block in blocks.values {
             switch block {
-            case .text(let normalized), .thinking(let normalized):
+            case .text(let normalized), .thinking(let normalized, _):
                 stops.append(normalized)
             case .toolUse(let normalized, _, _, _):
                 stops.append(normalized)
@@ -389,6 +421,9 @@ struct AnthropicStreamReducer {
         var events: [LLMStreamEvent] = []
         ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenBlocks())
+        if let pending = pendingThinkingSignature, !sawRedactedThinking, !hadError {
+            events.append(.thinkingSignature(index: pending.index, signature: pending.signature))
+        }
         events.append(.messageComplete(usage: TokenUsage(inputTokens: inputTokens, outputTokens: outputTokens)))
         emittedComplete = true
         return events

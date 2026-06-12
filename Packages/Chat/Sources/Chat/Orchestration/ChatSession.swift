@@ -1117,6 +1117,7 @@ public actor ChatSession {
         var accumulatedSources: [SourceCitation] = []
         var searchSuggestionsHTML: String?
         var searchStartedQuery: String?
+        var capturedThinkingSignature: String?
 
         for try await event in stream {
             try Task.checkCancellation()
@@ -1132,6 +1133,11 @@ public actor ChatSession {
                 }
                 thinkingEndedAt = now
                 broadcast(.thinkingDelta(text))
+            case .thinkingSignature(_, let signature):
+                // Persisted alongside the thinking text so the Anthropic
+                // adapter can replay the block verbatim on the next
+                // tool-loop request. Not rendered, so no broadcast.
+                capturedThinkingSignature = signature
             case .toolUse(_, let id, let name, let input, let signature):
                 pendingCalls.append((id, name, input, signature))
             case .searchStarted(let query):
@@ -1193,8 +1199,11 @@ public actor ChatSession {
         // suggestions HTML also count as output: a native provider can emit
         // `.citations` + `.messageComplete` with no text, and dropping the
         // turn here would lose those sources for good (they persist only on
-        // this `.messageComplete` path).
+        // this `.messageComplete` path). Thinking counts too: a
+        // thinking-only turn is real model output the user watched stream
+        // (and its trace re-renders from this row).
         if accumulatedText.isEmpty,
+           accumulatedThinking.isEmpty,
            pendingCalls.isEmpty,
            accumulatedSources.isEmpty,
            searchSuggestionsHTML == nil {
@@ -1229,6 +1238,7 @@ public actor ChatSession {
             content: accumulatedText,
             thinkingContent: accumulatedThinking.isEmpty ? nil : accumulatedThinking,
             thinkingDurationMs: thinkingDurationMs,
+            thinkingSignature: accumulatedThinking.isEmpty ? nil : capturedThinkingSignature,
             toolCallId: nil,
             createdAt: clock.now(),
             tokenCount: capturedUsage?.outputTokens,

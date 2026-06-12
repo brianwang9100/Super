@@ -375,6 +375,8 @@ public struct DebugLLMProvider: LLMProvider {
             switch block {
             case .text(let s):
                 return acc + s.count / 4
+            case .thinking(let content, _):
+                return acc + content.count / 4
             case .toolUse, .toolResult, .searchResult:
                 return acc + 8
             }
