@@ -12,15 +12,14 @@ import GRDBQuery
 /// GRDBQuery request observing every annotation row for one specific
 /// target (a book, a chapter, or a single verse range).
 ///
-/// Drives the `AnnotationSheet`'s `@Query` so the popover re-renders
+/// Drives the `AnnotationSheet`'s `@Query` so the sheet re-renders
 /// whenever a row in this exact group is inserted, replaced, or deleted —
 /// including writes from elsewhere (the chapter reader's regenerate path,
-/// an in-chat tool call, the future bulk runner).
+/// an in-chat tool call, the bulk runner).
 ///
-/// Returns rows ordered by `(category ASC, createdAt ASC, id ASC)`,
-/// matching `ChapterAnnotationsRequest` so the card stack inside the sheet
-/// follows the canonical semantic order (author → summary → historical →
-/// clarification → reference) regardless of the order the LLM produced them.
+/// Returns rows ordered by `(createdAt ASC, id ASC)` — insertion order,
+/// matching `ChapterAnnotationsRequest`. One row per target is the steady
+/// state (replace semantics); the container renders the newest row.
 public struct BibleAnnotationsByTargetRequest: ValueObservationQueryable {
     public static var defaultValue: [BibleAnnotationRecord] { [] }
 
@@ -48,7 +47,7 @@ public struct BibleAnnotationsByTargetRequest: ValueObservationQueryable {
         }
 
         return try query
-            .order(Column("category").asc, Column("createdAt").asc, Column("id").asc)
+            .order(Column("createdAt").asc, Column("id").asc)
             .fetchAll(db)
     }
 }

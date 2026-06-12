@@ -115,12 +115,11 @@ struct BibleChapterReaderSnapshotTests {
         try database.queue.write { db in
             try BibleAnnotationRecord(
                 id: "ann-v1", target: .verse, bookId: "1PE", chapterNumber: 2,
-                verseStart: 1, verseEnd: 1, category: .summary, title: "Putting away",
-                body: "A turn from malice.", source: .user, modelId: "AFM", createdAt: t0
+                verseStart: 1, verseEnd: 1, summary: "Putting away — A turn from malice.", source: .user, modelId: "AFM", createdAt: t0
             ).insert(db)
             try BibleAnnotationRecord(
                 id: "ann-chap", target: .chapter, bookId: "1PE", chapterNumber: 2,
-                category: .summary, title: "Living stones", body: "The chapter's arc.",
+                summary: "Living stones — The chapter's arc.",
                 source: .user, modelId: "AFM", createdAt: t0
             ).insert(db)
             try BibleNoteRecord(

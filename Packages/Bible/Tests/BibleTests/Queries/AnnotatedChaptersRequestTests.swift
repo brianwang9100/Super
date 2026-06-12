@@ -36,7 +36,7 @@ struct AnnotatedChaptersRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "c", target: .chapter, bookId: "JHN", chapterNumber: 3,
-                    category: .summary, title: "S", body: ".", source: .user, modelId: "m", createdAt: t0
+                    summary: "S.", source: .user, modelId: "m", createdAt: t0
                 )
             ]
         )
@@ -46,7 +46,7 @@ struct AnnotatedChaptersRequestTests {
                 BibleAnnotationRecord(
                     id: "v", target: .verse, bookId: "ROM", chapterNumber: 8,
                     verseStart: 28, verseEnd: 30,
-                    category: .summary, title: "T", body: ".", source: .user, modelId: "m", createdAt: t0
+                    summary: "T.", source: .user, modelId: "m", createdAt: t0
                 )
             ]
         )
@@ -55,7 +55,7 @@ struct AnnotatedChaptersRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "b", target: .book, bookId: "GEN",
-                    category: .summary, title: "P", body: ".", source: .user, modelId: "m", createdAt: t0
+                    summary: "P.", source: .user, modelId: "m", createdAt: t0
                 )
             ]
         )
@@ -73,11 +73,11 @@ struct AnnotatedChaptersRequestTests {
             inserting: [
                 BibleAnnotationRecord(
                     id: "a", target: .chapter, bookId: "ROM", chapterNumber: 1,
-                    category: .summary, title: "A", body: ".", source: .user, modelId: "m", createdAt: t0
+                    summary: "A.", source: .user, modelId: "m", createdAt: t0
                 ),
                 BibleAnnotationRecord(
                     id: "b", target: .chapter, bookId: "ROM", chapterNumber: 1,
-                    category: .reference, title: "B", body: ".", source: .user, modelId: "m", createdAt: t0
+                    summary: "B.", source: .user, modelId: "m", createdAt: t0
                 ),
             ]
         )

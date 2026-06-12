@@ -55,8 +55,8 @@ import Testing
             BibleAnnotationRecord(
                 id: "seed-ROM-\(chapter.map(String.init) ?? "book")",
                 target: target, bookId: "ROM", chapterNumber: chapter,
-                verseStart: nil, verseEnd: nil, category: .summary,
-                title: "Seed", body: "Seed", source: .user, modelId: "seed",
+                verseStart: nil, verseEnd: nil, summary: "Seed",
+                source: .user, modelId: "seed",
                 createdAt: Date(timeIntervalSince1970: 0)
             )
         }

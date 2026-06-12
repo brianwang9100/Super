@@ -8,8 +8,9 @@
 /// whole run. Flatten back to `BibleAnnotateResult` with `asResult` for the bus.
 public enum BibleAnnotateOutcome: Sendable, Equatable {
     /// The model called `bible.annotate` and the tool wrote the listed number
-    /// of rows. Zero is a valid success (the tool ran but every entry collided
-    /// with an existing row) — mirrors `BibleAnnotateResult.success`.
+    /// of rows — always 1 per call since the single-summary redesign (the
+    /// tool writes one markdown summary per target). The count survives as
+    /// API shape, not information; mirrors `BibleAnnotateResult.success`.
     case success(annotationCount: Int)
 
     /// The dispatch produced no annotations. `message` is the same short,

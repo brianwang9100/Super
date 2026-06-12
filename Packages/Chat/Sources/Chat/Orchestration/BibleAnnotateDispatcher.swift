@@ -222,16 +222,15 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         }
 
         // A successful `bible.annotate` call wins over a trailing error.
-        // Once the tool ran cleanly the annotations are already written to
-        // the DB — the user sees the cards — so a later stream `.error` or a
+        // Once the tool ran cleanly the summary is already written to the
+        // DB — the user sees the card — so a later stream `.error` or a
         // malformed *second* tool call must not flip the turn to `.failure`.
         // Doing so would surface a spurious "couldn't regenerate" toast over
-        // freshly-written cards and, via the bulk generator seam, record a
+        // a freshly-written card and, via the bulk generator seam, record a
         // succeeded unit as a retryable failure. Only when no successful call
         // happened do we report the captured failure (or the no-tool case).
-        // Zero new rows is still a valid success — the tool's `replace` may
-        // have cleared an existing set without inserting, or every entry
-        // collided; the sheet's reactive `@Query` decides whether cards show.
+        // (The count is always 1 per call under the single-summary contract;
+        // the artifact-count reduce survives as shape, not information.)
         if toolWasCalled {
             return .success(annotationCount: annotationCount)
         }
@@ -340,31 +339,33 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     Super app's headless tool pipeline.
 
     Your only job this turn is to call the `bible.annotate` tool exactly \
-    once for the target the user describes. Do not respond \
-    conversationally, do not call any other tool, do not ask follow-up \
-    questions. After the tool call completes, end your turn.
+    once for the target the user describes, passing ONE markdown study \
+    summary in `summary`. Do not respond conversationally, do not call \
+    any other tool, do not ask follow-up questions. After the tool call \
+    completes, end your turn.
 
-    When the target's exact verse text is provided, base every annotation on \
-    that text — quote and reason from it, and never reference words it does \
-    not contain.
+    When the target's exact verse text is provided, base the summary on \
+    that text — reason from it, and never reference words it does not \
+    contain. Do NOT repeat the target's verse text verbatim in the \
+    summary; the reader displays the text above it.
 
-    Default to 2–4 short annotation cards per target. Classify each card \
-    with a `category`: `author`, `summary`, `historical`, \
-    `clarification` (concise prose), or `reference` (a single scripture \
-    citation, used ONLY when the target text directly quotes, alludes to, \
-    or cites another passage — e.g. a New Testament verse drawing on the \
-    Old Testament; never for a merely thematically similar verse, and \
-    omitted entirely when there is no genuine cross-reference). Keep \
-    each body to ~240 characters / ≤2 sentences and give each a \
-    plain-language title. When the user message lists sections to cover, \
-    aim for one focused card per section. Card display order is fixed by \
-    category — emit them in any order.
+    Write long-form: roughly 150–400 words scaled to scope (a verse \
+    range shorter, a whole book longer). Structure the summary with \
+    short `###` headings, bold key terms, and bullet lists or \
+    blockquotes where they genuinely help. When the user message lists \
+    sections to cover, use one heading per section. Cite scripture with \
+    the full book name in `Book Chapter:Verse` form (e.g. `Romans \
+    8:28-30`, `Psalm 23`) — the reader turns exactly that format into \
+    tappable links. Mention a cross-reference ONLY when the target text \
+    directly quotes, alludes to, or cites that passage — e.g. a New \
+    Testament verse drawing on the Old Testament; never a merely \
+    thematically similar verse.
     """
 
     /// `send(text:)` payload — names the target structurally so even
     /// weaker models can produce the right `bible.annotate` arguments,
-    /// and names the per-scope sections to cover so generated cards stay
-    /// consistent across calls.
+    /// and names the per-scope sections to cover so generated summaries
+    /// stay consistent across calls.
     static func prompt(for reference: RecordReference) -> String {
         // Assemble as blank-line-separated paragraphs so the optional
         // per-scope steer reads as its own block — and so dropping it
@@ -390,7 +391,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         // the block is omitted and the prompt falls back to citation-only.
         if !reference.snapshot.isEmpty {
             paragraphs.append("""
-                Exact text of the target — base every annotation on this, and \
+                Exact text of the target — base the summary on this, and \
                 do not reference words that aren't present here:
 
                 \(reference.snapshot)
@@ -403,35 +404,36 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return paragraphs.joined(separator: "\n\n")
     }
 
-    /// One-line "sections to cover" steer for an annotation `kind`,
-    /// mirroring the per-scope sections in `docs/SuperBible/ANNOTATIONS.md`
-    /// §1 (keep the two in sync). `reference.kind` is the structural
-    /// discriminator the Bible UI stamps onto the request — `"book"`,
-    /// `"chapter"`, or `"verseRange"` (note: *not* `"verse"`). Returns
-    /// `nil` for an unrecognised kind so the prompt falls back to the
-    /// generic briefing rather than asserting a wrong structure.
+    /// "Sections to cover" steer for an annotation `kind` — the `###`
+    /// headings the one summary should carry per scope, mirroring
+    /// `docs/SuperBible/ANNOTATIONS.md` §1 (keep the two in sync).
+    /// `reference.kind` is the structural discriminator the Bible UI
+    /// stamps onto the request — `"book"`, `"chapter"`, or
+    /// `"verseRange"` (note: *not* `"verse"`). Returns `nil` for an
+    /// unrecognised kind so the prompt falls back to the generic
+    /// briefing rather than asserting a wrong structure.
     static func sectionGuidance(forKind kind: String) -> String? {
         switch kind {
         case "book":
             """
-            For this book, aim to cover its author (category `author`), a \
-            short summary (`summary`), and historical context \
-            (`historical`) — one focused card each.
+            For this book, structure the summary around its authorship \
+            and date, an overview of its argument and major themes, and \
+            its historical setting — one short `###` section each.
             """
         case "chapter":
             """
-            For this chapter, aim to cover a summary (category `summary`), \
-            plus an optional outline of its movements (category \
-            `clarification`) — one focused card each.
+            For this chapter, structure the summary around what the \
+            chapter says (its argument or narrative), an outline of its \
+            movements, and the key context a reader needs — one short \
+            `###` section each.
             """
         case "verseRange":
             """
-            For this verse range, aim to cover historical context \
-            (category `historical`) and a plain-language clarification \
-            (`clarification`) — one focused card each. Add a \
-            cross-reference card (`reference`) ONLY if this passage \
-            directly quotes, alludes to, or cites another scripture; omit \
-            it when there is no genuine quotation or allusion.
+            For this verse range, structure the summary around its \
+            meaning in plain language, the historical and literary \
+            context, and any genuine cross-references (passages this \
+            text directly quotes, alludes to, or cites — omit the \
+            section entirely when there are none).
             """
         default:
             nil
