@@ -1449,8 +1449,10 @@ private func encodeJSON(_ value: JSONValue) -> String {
 /// Encode a `ToolResult` to its JSON string. `ToolResult` is fully
 /// `Codable` over `String`, `Bool`, and `[Artifact]`, so encoding is
 /// total — a `try!` here is a programmer-error catcher rather than a
-/// silent fallback.
-private func encodeJSON(_ value: ToolResult) -> String {
+/// silent fallback. Internal (not file-private) because
+/// `ChatSessionStore.recoverInterruptedToolCalls()` persists the same
+/// result shape.
+func encodeJSON(_ value: ToolResult) -> String {
     // swiftlint:disable:next force_try
     let data = try! JSONEncoder().encode(value)
     return String(decoding: data, as: UTF8.self)

@@ -385,6 +385,110 @@ struct ChatSessionStoreTests {
             Issue.record("expected leading .system row carrying personalization, got \(String(describing: request?.messages.first?.content))")
         }
     }
+
+    // MARK: - Launch recovery sweep
+
+    private func seedToolCall(
+        in database: ChatDatabase,
+        id: String,
+        messageId: String,
+        conversationId: String,
+        status: ToolCallStatus,
+        clock: any Clock
+    ) async throws {
+        let record = ToolCallRecord(
+            id: id,
+            messageId: messageId,
+            conversationId: conversationId,
+            toolName: "test.tool",
+            parameters: "{}",
+            result: nil,
+            status: status,
+            createdAt: clock.now(),
+            completedAt: nil,
+            signature: nil
+        )
+        try await GRDBToolCallRepository(database: database).save(record)
+    }
+
+    /// A force-quit/crash mid-turn strands tool calls at non-terminal
+    /// statuses with no result rows — `recoverInterruptedToolCalls()` must
+    /// resolve exactly those on launch: status → `.failed` + `completedAt`,
+    /// and a role-`.tool` result row when (and only when) none exists.
+    /// Regression for audit P0-2's missing "recovery sweep".
+    @Test func recoverySweepResolvesStrandedToolCalls() async throws {
+        let setup = try await makeStore()
+        let messageRepo = GRDBMessageRepository(database: setup.database)
+        let toolCallRepo = GRDBToolCallRepository(database: setup.database)
+
+        // Parent assistant rows so the tool-call FKs resolve.
+        let assistantA = MessageRecord(
+            id: "m-A", conversationId: "conv-A", role: .assistant,
+            content: "running tools", toolCallId: nil, createdAt: setup.clock.now()
+        )
+        let assistantB = MessageRecord(
+            id: "m-B", conversationId: "conv-B", role: .assistant,
+            content: "running tools", toolCallId: nil, createdAt: setup.clock.now()
+        )
+        try await messageRepo.save(assistantA)
+        try await messageRepo.save(assistantB)
+
+        // Three stranded shapes (no result row): pending / executing /
+        // awaitingConfirmation — the second one in a different conversation.
+        for (id, status) in [("tc-pending", ToolCallStatus.pending), ("tc-confirm", .awaitingConfirmation)] {
+            try await seedToolCall(
+                in: setup.database, id: id, messageId: "m-A",
+                conversationId: "conv-A", status: status, clock: setup.clock
+            )
+        }
+        try await seedToolCall(
+            in: setup.database, id: "tc-executing", messageId: "m-B",
+            conversationId: "conv-B", status: .executing, clock: setup.clock
+        )
+        // Terminal row — must be untouched.
+        try await seedToolCall(
+            in: setup.database, id: "tc-done", messageId: "m-A",
+            conversationId: "conv-A", status: .success, clock: setup.clock
+        )
+        // Non-terminal but its result row already landed (crash between the
+        // message write and the status update) — status fixed, no duplicate row.
+        try await seedToolCall(
+            in: setup.database, id: "tc-rowed", messageId: "m-A",
+            conversationId: "conv-A", status: .executing, clock: setup.clock
+        )
+        try await messageRepo.save(MessageRecord(
+            id: "m-rowed-result", conversationId: "conv-A", role: .tool,
+            content: "already written", toolCallId: "tc-rowed", createdAt: setup.clock.now()
+        ))
+
+        let recovered = await setup.store.recoverInterruptedToolCalls()
+        #expect(recovered.sorted() == ["tc-confirm", "tc-executing", "tc-pending", "tc-rowed"])
+
+        // Stranded calls landed .failed with completedAt.
+        for id in ["tc-pending", "tc-confirm", "tc-executing", "tc-rowed"] {
+            let record = try #require(await toolCallRepo.fetch(id: id))
+            #expect(record.status == .failed, "expected \(id) to be .failed")
+            #expect(record.completedAt != nil)
+        }
+        // Terminal row untouched.
+        let done = try #require(await toolCallRepo.fetch(id: "tc-done"))
+        #expect(done.status == .success)
+        #expect(done.completedAt == nil)
+
+        // Exactly one role-.tool row per call — synthesized for the three
+        // stranded ones, the pre-existing one not duplicated.
+        let messagesA = try await messageRepo.fetchAll(conversationId: "conv-A")
+        let messagesB = try await messageRepo.fetchAll(conversationId: "conv-B")
+        var rowCounts: [String: Int] = [:]
+        for row in messagesA + messagesB where row.role == .tool {
+            if let callId = row.toolCallId { rowCounts[callId, default: 0] += 1 }
+        }
+        #expect(rowCounts["tc-pending"] == 1)
+        #expect(rowCounts["tc-confirm"] == 1)
+        #expect(rowCounts["tc-executing"] == 1)
+        #expect(rowCounts["tc-rowed"] == 1)
+        #expect(rowCounts["tc-done"] == nil)
+    }
 }
 
 /// A `ToolExecutor` that sleeps until either a long timeout elapses or the
