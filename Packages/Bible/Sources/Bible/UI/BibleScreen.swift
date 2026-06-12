@@ -277,6 +277,15 @@ public struct BibleScreen: View {
             // Detents / drag indicator / themed background now ride with the
             // sheet view via `.sheetPresentation(.expandable)`.
         }
+        .sheet(item: $viewModel.presentedBookmarkSheet) { presentation in
+            BibleBookmarkSheet(
+                citation: presentation.citation,
+                currentBookId: presentation.bookId,
+                currentChapterNumber: presentation.chapterNumber,
+                onSelect: { color in viewModel.toggleBookmark(color: color) },
+                onClose: { viewModel.dismissBookmarkSheet() }
+            )
+        }
         // The verse-selection action sheet and the narration transport share a
         // single `.sheet(item:)` so a `.selection` → `.narration` swap is one
         // sheet re-presenting (rather than two `.sheet` modifiers racing). Each
@@ -644,6 +653,21 @@ public struct BibleScreen: View {
                 ),
                 onNoteGlyphTap: { spec in
                     withAnimation(motion.animation) { viewModel.presentNoteList(for: spec) }
+                },
+                // With the action sheet up (its readable background keeps the
+                // title tappable), presenting the bookmark sheet directly
+                // would race the action sheet's dismissal — the documented
+                // unreliable case — so it routes through the hand-off and
+                // presents from the action sheet's `onDismiss`. The narration
+                // transport needs no hand-off: it stays presented and the
+                // system restores it when the bookmark sheet closes, the same
+                // interleaving the note glyph relies on.
+                onBookmarkTap: {
+                    if viewModel.selectedVerses.isEmpty {
+                        viewModel.presentBookmarkSheet()
+                    } else {
+                        handOffAfterSelectionDismiss { viewModel.presentBookmarkSheet() }
+                    }
                 },
                 onScroll: { offsetY, userDriven in
                     viewModel.updateScroll(offsetY: offsetY, userDriven: userDriven)

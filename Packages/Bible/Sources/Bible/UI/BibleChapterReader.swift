@@ -36,6 +36,12 @@ struct BibleChapterReader: View {
     /// `@Query` and repaint without re-rendering the chapter's text — the
     /// same reactive contract the annotation feed above follows.
     @Query<ChapterNotesRequest> private var notes: [BibleNoteRecord]
+    /// The chapter's bookmark slot, if any. Drives the chapter-title
+    /// bookmark glyph's fill. Writes from anywhere — the bookmark sheet
+    /// (including a *move* from another chapter), or the Bookmarks applet —
+    /// flow back through this `@Query` and repaint without re-rendering the
+    /// chapter's text.
+    @Query<ChapterBookmarkRequest> private var chapterBookmark: BibleBookmarkRecord?
 
     private let chapter: BibleChapter
     private let bookId: String
@@ -56,6 +62,7 @@ struct BibleChapterReader: View {
     private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
     private let chapterDispatchStatus: BibleAnnotationDispatchStatus?
     private let onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)?
+    private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
 
@@ -107,6 +114,10 @@ struct BibleChapterReader: View {
     ///     target. The user composes from the list's `+`; an empty range opens
     ///     to the list's empty state rather than auto-opening the editor.
     ///     `nil` suppresses note glyphs (preview / driver host).
+    ///   - onBookmarkTap: tap on the chapter-title bookmark glyph, outline or
+    ///     filled — presents the bookmark sheet. The screen knows the current
+    ///     chapter, so no spec travels. `nil` suppresses the glyph
+    ///     (preview / driver host).
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -127,6 +138,7 @@ struct BibleChapterReader: View {
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         chapterDispatchStatus: BibleAnnotationDispatchStatus? = nil,
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
+        onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
         onFooterVisible: @escaping (Bool) -> Void = { _ in }
     ) {
@@ -139,6 +151,10 @@ struct BibleChapterReader: View {
             chapterNumber: chapter.number
         ))
         _notes = Query(constant: ChapterNotesRequest(
+            bookId: bookId,
+            chapterNumber: chapter.number
+        ))
+        _chapterBookmark = Query(constant: ChapterBookmarkRequest(
             bookId: bookId,
             chapterNumber: chapter.number
         ))
@@ -161,6 +177,7 @@ struct BibleChapterReader: View {
         self.onRequestChapterAnnotation = onRequestChapterAnnotation
         self.chapterDispatchStatus = chapterDispatchStatus
         self.onNoteGlyphTap = onNoteGlyphTap
+        self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
     }
@@ -408,20 +425,48 @@ struct BibleChapterReader: View {
         let title = Text("\(bookName) \(chapter.number)")
             .font(typography.display(34, relativeTo: .largeTitle))
             .foregroundStyle(theme.ink)
-        // The trailing glyph cluster appears when either glyph system has a
-        // host wired. Stable order — annotation bubble first, note glyph
-        // second — mirroring `VerseTrailers` and the verse-end stacks below.
-        if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil {
+        // The trailing glyph cluster appears when any glyph system has a
+        // host wired. Stable order — bookmark glyph first (it marks the
+        // chapter itself, where the other two open content *about* it),
+        // then annotation bubble, then note glyph, mirroring `VerseTrailers`
+        // and the verse-end stacks below for the trailing pair.
+        if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil || onBookmarkTap != nil {
             HStack(alignment: .center, spacing: 14) {
                 title
                 // .center, not .firstTextBaseline: Canvas icons have no text baseline.
                 HStack(alignment: .center, spacing: 7) {
+                    chapterBookmarkGlyph
                     chapterAnnotationBubble
                     chapterNoteGlyph
                 }
             }
         } else {
             title
+        }
+    }
+
+    /// The chapter-title bookmark glyph — tapping always opens the bookmark
+    /// sheet for the chapter. Renders filled in the assigned ribbon's tint
+    /// when the chapter is bookmarked, outline when not. `EmptyView` when no
+    /// bookmark host is wired.
+    @ViewBuilder
+    private var chapterBookmarkGlyph: some View {
+        if let onBookmarkTap {
+            // An unknown colorId (retired by a future build) renders as
+            // outline — the fail-safe `record.color == nil` path.
+            let color = chapterBookmark?.color
+            let glyphState: BookmarkGlyph.GlyphState =
+                color.map { .filled($0) } ?? .outline
+            Button {
+                onBookmarkTap()
+            } label: {
+                BookmarkGlyph(state: glyphState, size: 24)
+                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Self.chapterBookmarkLabel(for: color))
         }
     }
 
@@ -499,6 +544,13 @@ struct BibleChapterReader: View {
     /// chapter already carries notes.
     static func chapterNoteGlyphLabel(hasNote: Bool) -> String {
         hasNote ? "View chapter notes" : "Open chapter notes"
+    }
+
+    /// VoiceOver label for the chapter-title bookmark glyph, keyed to the
+    /// chapter's assigned ribbon colour (`nil` when unbookmarked).
+    static func chapterBookmarkLabel(for color: BibleBookmarkColor?) -> String {
+        guard let color else { return "Bookmark this chapter" }
+        return "Chapter bookmarked \(color.displayName) — edit bookmark"
     }
 
     /// Height of the shell's minimized chat-pill clearance the reader
