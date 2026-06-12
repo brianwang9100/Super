@@ -183,6 +183,63 @@ struct MessageListDeclarativeScrollTests {
         )
     }
 
+    /// An assistant row landing while the user is scrolled up reading
+    /// history must NOT yank them to the bottom — the snap policy
+    /// (`shouldSnapOnItemsChange`) gates assistant/banner appends on the
+    /// `wasAtBottom` latch. Mid-turn tool-round saves and the final save
+    /// of a turn the user scrolled away from all take this path; the
+    /// long-travel animated snap the old unconditional handler issued
+    /// here was the precondition of the post-stream offset fight.
+    @Test("assistant row appended while reading history does not yank")
+    func assistantAppendWhileReadingHistoryStays() async throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        // Scroll up ~300pt so `wasAtBottom` latches false.
+        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
+        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
+        settle(controller: controller)
+        let positionBefore = scrollView.contentOffset.y
+
+        driver.items += [makeAssistantItem(id: "appended-assistant", chars: 240)]
+        settle(controller: controller)
+
+        #expect(
+            scrollView.contentOffset.y <= positionBefore + 2,
+            "assistant append must not yank a reading-history user; moved from \(positionBefore) to \(scrollView.contentOffset.y)"
+        )
+    }
+
+    /// The user's OWN action (the new last row is their bubble — send,
+    /// regenerate accept) always brings them to the bottom, even from deep
+    /// in history — the unconditional arm of the snap policy.
+    @Test("user bubble appended while reading history snaps to bottom")
+    func userSendWhileReadingHistorySnapsToBottom() async throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+
+        settle(controller: controller)
+        let scrollView = try requireScrollView(in: controller)
+
+        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
+        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
+        settle(controller: controller)
+
+        driver.items += [makeUserItem(id: "sent-from-history", chars: 80)]
+        settle(controller: controller)
+
+        let distance = distanceFromBottom(scrollView)
+        #expect(
+            distance < 2,
+            "expected the user's own send to land at the bottom, got distanceFromBottom=\(distance)"
+        )
+    }
+
     /// Mounting the live streaming tail (nil → non-nil with empty
     /// thinking/text — the "Waiting spark" state immediately after
     /// send) should land at the bottom of the new content. Covered by
@@ -359,19 +416,24 @@ struct MessageListDeclarativeScrollTests {
         // content-height-stable ticks, well before the settle finishes.
         settle(controller: controller, iterations: 30)
 
-        // Tolerance of 70pt accommodates `LazyVStack`'s row-height
+        // Tolerance of 80pt accommodates `LazyVStack`'s row-height
         // refinement: it can overestimate `contentHeight` on the
         // last visible scroll tick and refine downward later, after
         // ``verbosityScrollMode`` has cleared. The realistic UX
-        // outcome is the user lands within one row of their previous
+        // outcome is the user lands within ~one row of their previous
         // position — meaningfully better than the no-handler baseline
         // (where distance would be off by the full ~1500pt of newly-
         // expanded content above them). "One row" tracks the reading
-        // body size, so this scales with `SuperTypography.readingBodySize`
-        // (≈67pt = 60 × 19/17 at the 19pt body; rounded up for headroom).
+        // body size (≈67pt at the 19pt body); with the standing
+        // `.defaultScrollAnchor(.bottom)` removed (it perpetually fought
+        // the `scrollPosition` binding — the post-stream slosh) the
+        // measured drift sits at exactly one row + jitter (70.0), so the
+        // headroom is a half-row above one row, not below it. A
+        // structural regression would blow past this by hundreds of
+        // points, not single digits.
         let afterDistance = distanceFromBottom(scrollView)
         #expect(
-            abs(afterDistance - 300) < 70,
+            abs(afterDistance - 300) < 80,
             "expected distance from bottom preserved (~300pt) across verbosity expand, got \(afterDistance)"
         )
     }

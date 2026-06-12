@@ -279,3 +279,59 @@ struct OverlayDragArbiterTests {
         #expect(abs(projected) < ChatPresentationState.skipVelocity)
     }
 }
+
+/// Tests for `ScrollState.atTop` / `.atBottom` strand tolerance — the arm
+/// sampling the coordinator latches at `.began`.
+///
+/// The regression these pin: an offset stranded *past* the content's end (a
+/// content collapse under a stale pin, or a programmatic seek that never
+/// settled) naively read as `atBottom == true`, so a scroll-intent up-drag
+/// armed expand and hijacked the gesture into an overlay resize — observed
+/// live during the post-stream offset slosh. An edge read is only an edge
+/// when the offset actually sits at it (within `strandTolerance` beyond);
+/// further out, the drag stays a scroll and the rubber-band recovers.
+@Suite("OverlayDragArbiter scroll-state strand tolerance")
+struct OverlayDragScrollStateStrandTests {
+    private func state(offsetY: CGFloat) -> OverlayDragArbiter.ScrollState {
+        .init(offsetY: offsetY, topOffsetY: 0, bottomOffsetY: 1000, isScrollable: true)
+    }
+
+    @Test("Resting at the bottom reads atBottom")
+    func restAtBottom() {
+        #expect(state(offsetY: 1000).atBottom)
+    }
+
+    @Test("Sub-tolerance overshoot past the bottom still reads atBottom")
+    func smallOvershootAtBottom() {
+        #expect(state(offsetY: 1000 + OverlayDragArbiter.ScrollState.strandTolerance).atBottom)
+    }
+
+    @Test("A strand far past the bottom does NOT read atBottom")
+    func strandPastBottomNotAtBottom() {
+        // The live slosh parked the offset ~90–200pt past the settled end.
+        #expect(!state(offsetY: 1090).atBottom)
+        #expect(!state(offsetY: 1200).atBottom)
+    }
+
+    @Test("Resting at the top reads atTop")
+    func restAtTop() {
+        #expect(state(offsetY: 0).atTop)
+    }
+
+    @Test("Sub-tolerance overscroll above the top still reads atTop")
+    func smallOverscrollAtTop() {
+        #expect(state(offsetY: -OverlayDragArbiter.ScrollState.strandTolerance).atTop)
+    }
+
+    @Test("A strand far above the top does NOT read atTop")
+    func strandAboveTopNotAtTop() {
+        #expect(!state(offsetY: -90).atTop)
+    }
+
+    @Test("Mid-content reads neither edge")
+    func midContentNeitherEdge() {
+        let mid = state(offsetY: 500)
+        #expect(!mid.atTop)
+        #expect(!mid.atBottom)
+    }
+}

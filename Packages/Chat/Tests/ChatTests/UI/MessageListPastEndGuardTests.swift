@@ -69,6 +69,55 @@ struct MessageListPastEndGuardTests {
     }
 }
 
+/// Tests for `shouldSnapOnItemsChange` — the pure snap policy behind
+/// `.onChange(of: items.count)`.
+///
+/// The behavior these pin: the user's own action (the new last row is their
+/// bubble — send, regenerate accept) always brings them to the bottom, even
+/// from deep in history; assistant-row appends (mid-turn tool-round saves,
+/// the final save of a turn) follow only when the user was already at the
+/// bottom. A reader scrolled up into history is never yanked by a turn they
+/// scrolled away from — and the long-travel animated snap that yank issued
+/// was the precondition of the post-stream offset fight.
+@Suite("MessageList items-change snap policy")
+struct MessageListSnapPolicyTests {
+    private let userBubble = MessageList.Item.userBubble(id: "u1", text: "hi", references: [])
+    private let assistantRow = MessageList.Item.assistantText(
+        id: "a1", thinking: nil, thinkingDurationMs: nil, text: "answer",
+        toolCalls: [], sources: [], searchSuggestionsHTML: nil,
+        searchSystem: nil, searchQuery: nil
+    )
+    private let banner = MessageList.Item.compactionBanner(id: "b1", summary: "s")
+
+    @Test("User bubble appended: snap regardless of position")
+    func userBubbleAlwaysSnaps() {
+        #expect(shouldSnapOnItemsChange(lastItem: userBubble, wasAtBottom: false))
+        #expect(shouldSnapOnItemsChange(lastItem: userBubble, wasAtBottom: true))
+    }
+
+    @Test("Assistant row appended while at the bottom: follow")
+    func assistantAtBottomFollows() {
+        #expect(shouldSnapOnItemsChange(lastItem: assistantRow, wasAtBottom: true))
+    }
+
+    @Test("Assistant row appended while reading history: never yank")
+    func assistantScrolledUpStays() {
+        #expect(!shouldSnapOnItemsChange(lastItem: assistantRow, wasAtBottom: false))
+    }
+
+    @Test("Compaction banner appended: gated like assistant rows")
+    func bannerGatedOnBottom() {
+        #expect(shouldSnapOnItemsChange(lastItem: banner, wasAtBottom: true))
+        #expect(!shouldSnapOnItemsChange(lastItem: banner, wasAtBottom: false))
+    }
+
+    @Test("Empty transcript (clear-all): gated on the latch")
+    func emptyGatedOnBottom() {
+        #expect(!shouldSnapOnItemsChange(lastItem: nil, wasAtBottom: false))
+        #expect(shouldSnapOnItemsChange(lastItem: nil, wasAtBottom: true))
+    }
+}
+
 /// Tests for `shouldReSnapPendingBottom` — the pure decision behind the
 /// stream-end settle's per-tick re-snap.
 ///
