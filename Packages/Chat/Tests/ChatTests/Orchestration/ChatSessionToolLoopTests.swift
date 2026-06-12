@@ -472,4 +472,89 @@ struct ChatSessionToolLoopTests {
         #expect(sources.count == 1)
         #expect(sources.first?.title == "First")
     }
+
+    /// Cancelling a turn while a tool executes must not orphan the persisted
+    /// `tool_use` rows: the in-flight call *and* every not-yet-run call in
+    /// the same batch get a cancelled status, a `completedAt`, and a
+    /// role-`.tool` result row — so the next turn's history is provider-valid.
+    /// Regression for audit P0-2 (cancel mid-tool permanently wedged the
+    /// conversation with recurring provider 400s).
+    @Test func cancelDuringToolExecutionWritesCancelledResultsForWholeBatch() async throws {
+        let slowToolID = "test.slow"
+        let fastToolID = "test.fast"
+        let slowExecutor = ResumableToolExecutor(toolID: slowToolID)
+        let fastExecutor = FakeToolExecutor(toolID: fastToolID)
+        await fastExecutor.setResult(ToolResult(toolID: fastToolID, content: "never runs", isError: false))
+
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .textDelta(index: 0, text: "running tools"),
+                .toolUse(index: 0, id: "tc-slow", name: slowToolID, input: .object([:]), signature: nil),
+                .toolUse(index: 1, id: "tc-fast", name: fastToolID, input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+        await setup.toolRegistry.register(
+            ToolRegistration(tool: makeTool(id: slowToolID), execution: .local(slowExecutor))
+        )
+        await setup.toolRegistry.register(
+            ToolRegistration(tool: makeTool(id: fastToolID), execution: .local(fastExecutor))
+        )
+
+        let stream = await setup.session.send(text: "run both", model: setup.model)
+        async let events: [ChatEvent] = self.collect(stream)
+
+        // Deterministic pause: the slow tool has started, so the session is
+        // suspended inside `executeToolCalls` with both `tool_use` rows
+        // already persisted and neither result written.
+        await slowExecutor.awaitFirstCall()
+        await setup.session.cancel()
+        // Unblock the executor — `ResumableToolExecutor.awaitResume()` is not
+        // cancellation-aware (it models a tool that returns normally after
+        // the turn was cancelled; the result must be discarded).
+        await slowExecutor.resume(with: ToolResult(toolID: slowToolID, content: "late", isError: false))
+        _ = await events
+        await setup.session.waitUntilFinished()
+
+        // Both calls resolved to .cancelled with a completion timestamp.
+        let slowCall = try #require(await setup.toolCallRepo.fetch(id: "tc-slow"))
+        let fastCall = try #require(await setup.toolCallRepo.fetch(id: "tc-fast"))
+        #expect(slowCall.status == .cancelled)
+        #expect(fastCall.status == .cancelled)
+        #expect(slowCall.completedAt != nil)
+        #expect(fastCall.completedAt != nil)
+
+        // Both have persisted role-.tool result rows linked back to the call.
+        let stored = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let toolRows = stored.filter { $0.role == .tool }
+        #expect(toolRows.map(\.toolCallId).sorted { ($0 ?? "") < ($1 ?? "") } == ["tc-fast", "tc-slow"])
+
+        // The fast tool never actually executed.
+        let fastCount = await fastExecutor.executionCount()
+        #expect(fastCount == 0)
+
+        // And the next turn ships a pair-complete history to the provider.
+        await setup.provider.enqueue([
+            .messageStart(id: "m2", model: "fake-model-1"),
+            .textDelta(index: 0, text: "fresh turn"),
+            .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+        ])
+        let secondStream = await setup.session.send(text: "continue", model: setup.model)
+        _ = await collect(secondStream)
+        await setup.session.waitUntilFinished()
+
+        let requests = await setup.provider.capturedRequests()
+        let lastRequest = try #require(requests.last)
+        var toolUseIDs: [String] = []
+        var toolResultIDs: [String] = []
+        for message in lastRequest.messages {
+            for block in message.content {
+                if case .toolUse(let id, _, _, _) = block { toolUseIDs.append(id) }
+                if case .toolResult(let id, _, _) = block { toolResultIDs.append(id) }
+            }
+        }
+        #expect(toolUseIDs.sorted() == ["tc-fast", "tc-slow"])
+        #expect(toolResultIDs.sorted() == ["tc-fast", "tc-slow"])
+    }
 }
