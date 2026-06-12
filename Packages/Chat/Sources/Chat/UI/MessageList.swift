@@ -264,10 +264,10 @@ public struct MessageList: View {
     //   2. `.onChange(of: streamingTail)` — gated on `wasAtBottom`
     //      so reading-history isn't yanked on every coalesced delta.
     //   3. `.onChange(of: verbosity)` — captures `verbosityScrollMode`
-    //      against `latestSnapshot`, re-applied on every content-grow
+    //      against `latestSnapshotBox`, re-applied on every content-grow
     //      tick during the relayout.
     //   4. `.onScrollGeometryChange` — latches `wasAtBottom` and
-    //      `latestSnapshot` from a `ContainerSnapshot` and consumes
+    //      `latestSnapshotBox` from a `ContainerSnapshot` and consumes
     //      the verbosity mode; the action **never** reads live
     //      `contentOffset` for scroll-direction logic, so a
     //      `scrollTo` write can't retrigger the action through itself
@@ -284,7 +284,28 @@ public struct MessageList: View {
     @State private var wasAtBottom = false
     /// Latest `ContainerSnapshot`; read by `.onChange(of: verbosity)`
     /// to capture pre-relayout distance-from-bottom.
-    @State private var latestSnapshot: ContainerSnapshot?
+    ///
+    /// Held in a reference box — NOT as a value-typed `@State` — because it
+    /// is written on (potentially) every geometry tick and read only inside
+    /// the `.onChange(of: verbosity)` event closure, never in `body`. As a
+    /// value-typed `@State`, each write invalidates the view; when the
+    /// `LazyVStack` reports a *bistable* `contentHeight` (two values
+    /// alternating per layout pass), the write → re-render → re-layout →
+    /// flipped-height → geometry-tick cycle becomes a self-sustaining
+    /// main-thread livelock (observed: ~1,200 ticks/s at 100% CPU, touches
+    /// undeliverable, the streaming turn starved — the post-#284
+    /// "content disappears" wedge). The #254 identical-snapshot guard can't
+    /// break that cycle because alternating snapshots are never equal.
+    /// Mutating a property of a reference held by `@State` does not
+    /// invalidate the view, which severs the loop's re-render edge while
+    /// keeping the latch every bit as fresh for the verbosity observer.
+    @State private var latestSnapshotBox = SnapshotBox()
+
+    /// Reference holder for ``latestSnapshotBox`` — see that property for
+    /// why this must be a class.
+    private final class SnapshotBox {
+        var value: ContainerSnapshot?
+    }
     /// Active verbosity-driven scroll-restoration mode, set on a
     /// verbosity flip and cleared after
     /// ``verbosityStableTicksToClear`` consecutive content-stable
@@ -527,12 +548,12 @@ public struct MessageList: View {
         // a visually arbitrary spot.
         .onChange(of: verbosity) { oldValue, newValue in
             if newValue.rank > oldValue.rank {
-                // Fall back to `.scrollToBottom` when `latestSnapshot`
+                // Fall back to `.scrollToBottom` when the snapshot latch
                 // hasn't been captured yet (verbosity toggled before
                 // the first geometry tick fired). A guaranteed
                 // bottom-snap is better than the silent positional
                 // jump that would result from setting no mode.
-                verbosityScrollMode = latestSnapshot
+                verbosityScrollMode = latestSnapshotBox.value
                     .map { .preserveDistance($0.distanceFromBottom) }
                     ?? .scrollToBottom
             } else if newValue.rank < oldValue.rank {
@@ -569,18 +590,11 @@ public struct MessageList: View {
                 isAtBottom: distance < Self.bottomFollowThreshold
             )
         } action: { oldValue, newValue in
-            // Skip the `@State` write when the snapshot is byte-identical
-            // to the last one. In a tiny viewport the `LazyVStack` reports a
-            // bistable `contentHeight` (two values alternating every layout
-            // pass); the geometry transform still fires on the *unchanged*
-            // ticks in between, and an unconditional write there is a pure
-            // read→write→re-render→read participant in the content-size
-            // oscillation (the "Observation tracking feedback loop detected!"
-            // the snapshot suite logged). `ContainerSnapshot` is `Equatable`,
-            // so the guard is exact and free of false negatives.
-            if latestSnapshot != newValue {
-                latestSnapshot = newValue
-            }
+            // A reference-box property write — cannot invalidate the view, so
+            // it is safe on every tick, including alternating bistable ones.
+            // See ``latestSnapshotBox`` for why this must not be a value-typed
+            // `@State` write.
+            latestSnapshotBox.value = newValue
             // Latch the bottom-status only when this tick wasn't a
             // content-grow event. Content-grow flips `isAtBottom`
             // false (the bottom is suddenly further away) *before*
