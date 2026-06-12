@@ -2,6 +2,9 @@ sqlite_master
 CREATE TABLE "bibleAnnotation" ("id" TEXT PRIMARY KEY NOT NULL, "target" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER, "verseStart" INTEGER, "verseEnd" INTEGER, "category" INTEGER NOT NULL CHECK (("category" >= 1) AND ("category" <= 5)), "title" TEXT NOT NULL, "body" TEXT NOT NULL, "source" TEXT NOT NULL, "modelId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL);
 CREATE INDEX "bibleAnnotation_on_bookId_chapterNumber_verseEnd" ON "bibleAnnotation"("bookId", "chapterNumber", "verseEnd");
 CREATE INDEX "bibleAnnotation_on_target_bookId" ON "bibleAnnotation"("target", "bookId");
+CREATE TABLE "bibleBookmark" ("id" TEXT PRIMARY KEY NOT NULL, "colorId" TEXT NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "createdAt" DATETIME NOT NULL);
+CREATE UNIQUE INDEX "bibleBookmark_on_bookId_chapterNumber" ON "bibleBookmark"("bookId", "chapterNumber");
+CREATE UNIQUE INDEX "bibleBookmark_on_colorId" ON "bibleBookmark"("colorId");
 CREATE TABLE "bibleHighlight" ("id" TEXT PRIMARY KEY NOT NULL, "bookId" TEXT NOT NULL, "chapterNumber" INTEGER NOT NULL, "verseNumber" INTEGER NOT NULL, "colorId" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "updatedAt" DATETIME NOT NULL, "deletedAt" DATETIME);
 CREATE UNIQUE INDEX "bibleHighlight_on_bookId_chapterNumber_verseNumber" ON "bibleHighlight"("bookId", "chapterNumber", "verseNumber");
 CREATE INDEX "bibleHighlight_on_deletedAt" ON "bibleHighlight"("deletedAt");
@@ -16,6 +19,8 @@ CREATE TABLE "bulkAnnotationRunUnit" ("id" TEXT PRIMARY KEY NOT NULL, "runId" TE
 CREATE INDEX "bulkAnnotationRunUnit_on_runId_ordinal" ON "bulkAnnotationRunUnit"("runId", "ordinal");
 
 bibleAnnotation
+
+bibleBookmark
 
 bibleHighlight
 
