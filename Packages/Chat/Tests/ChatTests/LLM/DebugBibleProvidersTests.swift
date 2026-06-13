@@ -210,6 +210,62 @@ struct DebugBibleProvidersTests {
         // The whole user turn becomes the query; no translation → current selection.
         #expect(input["query"] == .string("verses about anxiety"))
         #expect(input["translation"] == nil)
+        // No `match:` directive → the argument is omitted and the tool defaults.
+        #expect(input["match"] == nil)
+    }
+
+    @Test func searchProviderParsesMatchDirectiveAndStripsItFromQuery() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "love your enemies match:phrase")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["query"] == .string("love your enemies"))
+        #expect(input["match"] == .string("phrase"))
+    }
+
+    @Test func searchProviderReadsMatchDirectiveCaseInsensitivelyAnywhereInTheTurn() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "Match:ALL loved world")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["query"] == .string("loved world"))
+        #expect(input["match"] == .string("all"))
+    }
+
+    @Test func searchProviderStripsAMidStringDirectiveWithoutLeavingADoubleSpace() async throws {
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "love match:phrase your enemies")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["query"] == .string("love your enemies"))
+        #expect(input["match"] == .string("phrase"))
+    }
+
+    @Test func searchProviderIgnoresOrdinaryWordsThatLookLikeModes() async throws {
+        // "all" and "any" as bare words must NOT be read as a directive — only
+        // the explicit `match:` token counts.
+        let provider = DebugSearchLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "hope for all and any trouble")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["query"] == .string("hope for all and any trouble"))
+        #expect(input["match"] == nil)
     }
 
     @Test func searchProviderFallsBackToCannedQueryWhenUserTextIsEmpty() async throws {
