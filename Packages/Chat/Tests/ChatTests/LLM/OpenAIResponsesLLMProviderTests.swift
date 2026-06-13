@@ -347,7 +347,7 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(try Self.decodeBody(http)["prompt_cache_key"] as? String == "conv-123")
     }
 
-    @Test func promptCacheKeyAbsentForNonOpenAIHostOrNoneOptions() async throws {
+    @Test func promptCacheKeyAbsentForNonOpenAIHost() async throws {
         // Non-OpenAI host with a key: omitted (a Responses-compatible proxy).
         let proxy = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
         _ = try await collect(makeProvider(http: proxy, baseURL: URL(string: "https://proxy.example.com/v1")!).stream(
@@ -356,13 +356,15 @@ struct OpenAIResponsesLLMProviderTests {
             options: LLMRequestOptions(conversationCacheKey: "conv-123")
         ))
         #expect(try Self.decodeBody(proxy)["prompt_cache_key"] == nil)
+    }
 
-        // OpenAI host but `.none` options (the 4-arg path): also omitted.
-        let none = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
-        _ = try await collect(makeProvider(http: none).stream(
+    @Test func promptCacheKeyAbsentForOpenAIHostWithNoneOptions() async throws {
+        // OpenAI host but `.none` options (the 4-arg path): omitted.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
             messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
         ))
-        #expect(try Self.decodeBody(none)["prompt_cache_key"] == nil)
+        #expect(try Self.decodeBody(http)["prompt_cache_key"] == nil)
     }
 
     @Test func systemMessageBecomesInstructionsAndUserBecomesInput() async throws {

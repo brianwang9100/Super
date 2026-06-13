@@ -46,6 +46,12 @@ public protocol LLMProvider: Sendable {
     /// Responses adapters override it to attach their host-gated routing keys.
     /// (Providers are registry-shared singletons, so the key must travel
     /// per-request rather than via the initializer.)
+    ///
+    /// Delegation contract for an options-aware conformer: override **this**
+    /// 5-arg method as the real implementation and have its 4-arg method
+    /// forward *here* — not the other way around. Callers that want caching use
+    /// the 5-arg path (e.g. `ChatSession`), so a conformer whose 4-arg held the
+    /// real logic would silently drop `options`.
     func stream(
         messages: [LLMMessage],
         model: LLMModel,

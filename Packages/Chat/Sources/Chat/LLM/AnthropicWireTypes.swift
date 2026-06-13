@@ -165,7 +165,12 @@ enum AnthropicContentBlock: Encodable {
             // Encode the inner block's keys into this same keyed container,
             // then merge the marker. Two `container(keyedBy:)` calls on one
             // encoder write to the same underlying storage, so the result is
-            // the inner block's JSON with a `cache_control` field added.
+            // the inner block's JSON with a `cache_control` field added. This
+            // merge relies on Foundation's `JSONEncoder` (the only codec these
+            // wire types ever pass through, pinned by a contract unit test); a
+            // custom Encoder that allocates fresh storage per
+            // `container(keyedBy:)` would drop the inner keys — decode-and-
+            // re-encode instead if this type ever migrates to another codec.
             try inner.encode(to: encoder)
             try container.encode(AnthropicCacheControl(), forKey: .cacheControl)
         case .text(let text):
