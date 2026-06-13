@@ -23,10 +23,13 @@ import Foundation
 ///
 /// A whole-book selection enqueues one **book-level** (`.bookPrologue`) unit
 /// ahead of that book's chapters; the engine generates it like any other unit
-/// (a `kind == "book"` reference). `BulkChapterProgress` can only carry a chapter
-/// number, so book-level units are intentionally absent from the live progress
-/// grid — they still generate, persist, and count toward run completion, just
-/// without a dedicated progress row.
+/// (a `kind == "book"` reference). A run that opts into notable verses also
+/// enqueues a **`.chapterVerses`** unit after each chapter (a
+/// `kind == "chapterVerses"` reference whose dispatch turn fans out into one
+/// `bible.annotate` verse call per notable range). `BulkChapterProgress` can only
+/// carry a chapter number, so both book-level and chapterVerses units are
+/// intentionally absent from the live progress grid — they still generate,
+/// persist, and count toward run completion, just without a dedicated progress row.
 @MainActor
 public final class BulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
@@ -174,6 +177,26 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
                     )
                 )
                 ordinal += 1
+                // When the run opts into notable verses, each chapter also gets a
+                // `chapterVerses` unit right after its summary unit, so a chapter's
+                // verse annotations land just after — and finalize together with —
+                // its chapter card.
+                if plan.includesNotableVerses {
+                    newUnits.append(
+                        BulkAnnotationRunUnitRecord(
+                            id: idGenerator.nextID(),
+                            runId: runID,
+                            ordinal: ordinal,
+                            kind: .chapterVerses,
+                            bookId: book.bookID,
+                            bookName: book.name,
+                            chapterNumber: chapter,
+                            state: .queued,
+                            updatedAt: now
+                        )
+                    )
+                    ordinal += 1
+                }
             }
         }
         guard !newUnits.isEmpty else { return }
@@ -490,23 +513,17 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // saved on the prior iteration — so no generation is wasted.
             if backgroundStopRequested { return }
 
-            // Preserve mode (the default): skip a unit whose target slot is
-            // already annotated, with no LLM call. The slot is deterministic
-            // from `unit.kind` (a `.chapter` unit writes a `.chapter`-target
-            // card; a `.bookPrologue` writes a `.book`-target one), so the skip
-            // is decided here without knowing the model's output. `overwriteExisting`
-            // bypasses the check and regenerates as before.
+            // Preserve mode (the default): skip a unit whose work is already
+            // done, with no LLM call. For a `.chapter` / `.bookPrologue` unit the
+            // slot is deterministic (a `.chapter`/`.book` target card); a
+            // `.chapterVerses` unit picks its verse ranges at generate time, so
+            // "done" means the chapter already carries at least one verse
+            // annotation. `overwriteExisting` bypasses the check and regenerates
+            // as before.
             if runRecord?.overwriteExisting == false {
-                let slot = targetSlot(for: units[index])
                 let occupied: Bool
                 do {
-                    occupied = try await annotationRepository.hasAnnotation(
-                        target: slot.target,
-                        bookId: units[index].bookId,
-                        chapterNumber: slot.chapterNumber,
-                        verseStart: nil,
-                        verseEnd: nil
-                    )
+                    occupied = try await slotOccupied(for: units[index])
                 } catch {
                     // An indeterminate read must not silently overwrite (the
                     // whole point of preserve mode) nor silently skip. Surface it
@@ -720,16 +737,27 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
 
     // MARK: - Target slot
 
-    /// The annotation target slot a unit writes into — the key preserve mode's
-    /// skip check reads against. Mirrors `makeReference`'s `kind` switch: a
-    /// `.chapter` unit lands a `.chapter`-target card at `(bookId, chapterNumber)`;
-    /// a `.bookPrologue` lands a `.book`-target card at `(bookId)`.
-    private func targetSlot(
-        for unit: BulkAnnotationRunUnitRecord
-    ) -> (target: BibleAnnotationTarget, chapterNumber: Int?) {
+    /// Whether a unit's work is already done, for preserve mode's skip-before-
+    /// generate check. A `.bookPrologue` / `.chapter` unit writes a single
+    /// deterministic target slot, so the check is a `hasAnnotation` on that slot.
+    /// A `.chapterVerses` unit chooses its verse ranges at generate time, so it's
+    /// "done" once the chapter carries any verse annotation — `hasVerseAnnotations`.
+    private func slotOccupied(for unit: BulkAnnotationRunUnitRecord) async throws -> Bool {
         switch unit.kind {
-        case .bookPrologue: (.book, nil)
-        case .chapter: (.chapter, unit.chapterNumber)
+        case .bookPrologue:
+            try await annotationRepository.hasAnnotation(
+                target: .book, bookId: unit.bookId,
+                chapterNumber: nil, verseStart: nil, verseEnd: nil
+            )
+        case .chapter:
+            try await annotationRepository.hasAnnotation(
+                target: .chapter, bookId: unit.bookId,
+                chapterNumber: unit.chapterNumber, verseStart: nil, verseEnd: nil
+            )
+        case .chapterVerses:
+            try await annotationRepository.hasVerseAnnotations(
+                bookId: unit.bookId, chapterNumber: unit.chapterNumber ?? 0
+            )
         }
     }
 
@@ -742,8 +770,11 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     ///
     /// A `.chapter` unit carries the chapter's verbatim, verse-numbered text in
     /// `snapshot` so the generator annotates the actual translation rather than
-    /// its recollection. A `.bookPrologue` leaves `snapshot: ""` — the whole book
-    /// would be an enormous prompt, and book-level cards don't quote verses.
+    /// its recollection. A `.chapterVerses` unit carries the same numbered text —
+    /// the model picks verse ranges from it — under a distinct `"chapterVerses"`
+    /// kind the dispatcher recognises as the rank-and-generate mode. A
+    /// `.bookPrologue` leaves `snapshot: ""` — the whole book would be an enormous
+    /// prompt, and book-level cards don't quote verses.
     private func makeReference(for unit: BulkAnnotationRunUnitRecord) -> RecordReference {
         let kind: String
         let sourceID: String
@@ -758,6 +789,12 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             let chapterNumber = unit.chapterNumber ?? 0
             kind = "chapter"
             sourceID = "chapter:\(unit.bookId):\(chapterNumber)"
+            label = "\(unit.bookName) \(chapterNumber)"
+            snapshot = chapterSnapshot(bookId: unit.bookId, chapterNumber: chapterNumber)
+        case .chapterVerses:
+            let chapterNumber = unit.chapterNumber ?? 0
+            kind = "chapterVerses"
+            sourceID = "chapterVerses:\(unit.bookId):\(chapterNumber)"
             label = "\(unit.bookName) \(chapterNumber)"
             snapshot = chapterSnapshot(bookId: unit.bookId, chapterNumber: chapterNumber)
         }

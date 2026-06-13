@@ -91,6 +91,16 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
         }
     }
 
+    public func hasVerseAnnotations(bookId: String, chapterNumber: Int) async throws -> Bool {
+        try await queue.read { db in
+            try BibleAnnotationRecord
+                .filter(Column("target") == BibleAnnotationTarget.verse.rawValue)
+                .filter(Column("bookId") == bookId)
+                .filter(Column("chapterNumber") == chapterNumber)
+                .isEmpty(db) == false
+        }
+    }
+
     public func deleteOne(id: String) async throws {
         _ = try await queue.write { db in
             try BibleAnnotationRecord.deleteOne(db, key: id)

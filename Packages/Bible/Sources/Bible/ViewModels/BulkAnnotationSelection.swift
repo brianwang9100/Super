@@ -74,17 +74,27 @@ public struct BulkRunEstimate: Sendable, Equatable {
     public let annotations: Int
     public let minutes: Int
 
-    /// Annotations a chapter yields — exactly one since the
+    /// Annotations a chapter's summary yields — exactly one since the
     /// single-summary redesign (`bible.annotate` writes one markdown
     /// summary per target). Kept as a named constant so the footer
     /// estimate's derivation stays explicit.
     public static let annotationsPerChapter = 1
+    /// Upper bound on notable-verse annotations a chapter yields when the
+    /// run opts into notable verses — the soft cap the dispatcher prompts the
+    /// model with. Used only for the footer estimate; the real count varies.
+    public static let notableVersesPerChapter = 5
     public static let secondsPerChapter = 3
 
-    public init(selection: BulkSelection) {
+    public init(selection: BulkSelection, includesNotableVerses: Bool = false) {
         let chapters = selection.selectedChapterCount
         books = selection.selectedBookCount
-        annotations = chapters * Self.annotationsPerChapter
-        minutes = max(1, Int((Double(chapters * Self.secondsPerChapter) / 60).rounded(.up)))
+        let perChapter = Self.annotationsPerChapter
+            + (includesNotableVerses ? Self.notableVersesPerChapter : 0)
+        annotations = chapters * perChapter
+        // Rough proxy: scale the time with the total annotation count (the
+        // notable-verse turn writes several rows in one dispatch, but it also
+        // takes proportionally longer, so per-annotation seconds stays a fair
+        // upper-ish estimate).
+        minutes = max(1, Int((Double(chapters * perChapter * Self.secondsPerChapter) / 60).rounded(.up)))
     }
 }
