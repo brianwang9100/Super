@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01B1CFF120C42043C95FF5B2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7B724427428290DDDA5A1BF9 /* PrivacyInfo.xcprivacy */; };
 		01E6DC4035B6C4C339D35376 /* FixedHamburgerButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1761E221D447F350C1EE399D /* FixedHamburgerButton.swift */; };
 		03032B8C91E1D86FBE3BA911 /* AppShellDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A75787E187E51C1B84E489 /* AppShellDependencies.swift */; };
 		0884657F15758B3B5B1C0BEF /* Core in Frameworks */ = {isa = PBXBuildFile; productRef = 8683B0FE0037B0D33755A7F4 /* Core */; };
@@ -37,6 +38,7 @@
 		AFC08660B3369D19A6DBBCFA /* Todo in Frameworks */ = {isa = PBXBuildFile; productRef = D584F1599CFA7090D136AA8A /* Todo */; };
 		B4AC4F80F660258ED2F77E4D /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055714F28FA1FB5C814D20D /* AppShell.swift */; };
 		B4E4824311251D4E1E3DD916 /* SuperBibleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09217CF93342E4164B070DCA /* SuperBibleApp.swift */; };
+		B8B42BFD00E36465830A767C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 813899A6D0BD17A599B2F20C /* PrivacyInfo.xcprivacy */; };
 		BCCFAE1C7C00E680FACF8D46 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4055714F28FA1FB5C814D20D /* AppShell.swift */; };
 		CAD214D44286133A8F71D0A5 /* AppBootstrapSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAADB8DDBF3F6C4777CDD65 /* AppBootstrapSupport.swift */; };
 		CE2A0E838B9E14B0E9B0FE83 /* LazyConversationDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE3DEDCBAB42261E64C45E4A /* LazyConversationDriver.swift */; };
@@ -63,6 +65,8 @@
 		6ACCB56381CD03268352D91F /* SuperOSContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperOSContentView.swift; sourceTree = "<group>"; };
 		77418FFA7CE4CCEBA18C49CA /* Todo */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Todo; path = Packages/Todo; sourceTree = SOURCE_ROOT; };
 		7B2859A07716F10C47D130C7 /* SuperBibleAppBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperBibleAppBootstrap.swift; sourceTree = "<group>"; };
+		7B724427428290DDDA5A1BF9 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		813899A6D0BD17A599B2F20C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9CC7BF855207A5FF7A4A848B /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		A2E7E965D0CD4FCFA8716B82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A9E5647B0A3E4B0A1BFC087D /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Packages/Core; sourceTree = SOURCE_ROOT; };
@@ -137,6 +141,7 @@
 				BA63ACC5C50B5FF338886BBB /* Resources */,
 				A2E7E965D0CD4FCFA8716B82 /* Assets.xcassets */,
 				C41DDF00F0BF6124C2468042 /* Info.plist */,
+				813899A6D0BD17A599B2F20C /* PrivacyInfo.xcprivacy */,
 				09217CF93342E4164B070DCA /* SuperBibleApp.swift */,
 				7B2859A07716F10C47D130C7 /* SuperBibleAppBootstrap.swift */,
 				05285BC0D4A64A80798827AE /* SuperBibleContentView.swift */,
@@ -180,6 +185,7 @@
 				67A6CA8E2788D7A6A53597A3 /* Placeholders */,
 				54B4290F5FC04123B09959C4 /* Assets.xcassets */,
 				4FFB0B41D3EF34BDB022BFA3 /* Info.plist */,
+				7B724427428290DDDA5A1BF9 /* PrivacyInfo.xcprivacy */,
 				1CE9C908DC401CF2A0DFC71E /* SuperOSApp.swift */,
 				3725B1501B6113A1C65923A3 /* SuperOSAppBootstrap.swift */,
 				6ACCB56381CD03268352D91F /* SuperOSContentView.swift */,
@@ -304,6 +310,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EFC82467B26032D548C84CEC /* Assets.xcassets in Resources */,
+				01B1CFF120C42043C95FF5B2 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,6 +319,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD50833E303252DED6DDD093 /* Assets.xcassets in Resources */,
+				B8B42BFD00E36465830A767C /* PrivacyInfo.xcprivacy in Resources */,
 				3823D084286850930FDBE60B /* SuperBibleSystemPrompt.compact.md in Resources */,
 				A4F219F443B47D41DA7B2944 /* SuperBibleSystemPrompt.md in Resources */,
 			);
@@ -437,6 +445,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "App-SuperBible/Info.plist";
@@ -445,6 +454,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.brianwang.SuperBible;
 				PRODUCT_NAME = SuperBible;
 				SDKROOT = iphoneos;
@@ -523,6 +533,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "App-SuperOS/Info.plist";
@@ -531,6 +542,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.brianwang.Super;
 				PRODUCT_NAME = Super;
 				SDKROOT = iphoneos;
@@ -546,6 +558,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "App-SuperBible/Info.plist";
@@ -554,6 +567,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.brianwang.SuperBible;
 				PRODUCT_NAME = SuperBible;
 				SDKROOT = iphoneos;
@@ -569,6 +583,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "App-SuperOS/Info.plist";
@@ -577,6 +592,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.brianwang.Super;
 				PRODUCT_NAME = Super;
 				SDKROOT = iphoneos;
