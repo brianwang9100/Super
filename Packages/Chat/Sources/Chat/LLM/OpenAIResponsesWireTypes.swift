@@ -24,9 +24,14 @@ struct OpenAIResponsesRequest: Encodable {
     let stream: Bool
     let temperature: Double
     let tools: [OpenAIResponsesTool]?
+    /// Optional `prompt_cache_key` cache-routing affinity key. Host-gated to
+    /// OpenAI by the provider — `nil` (so omitted via `encodeIfPresent`) for
+    /// any other host. See ``CacheRoutingKey``.
+    let promptCacheKey: String?
 
     enum CodingKeys: String, CodingKey {
         case model, input, instructions, stream, temperature, tools
+        case promptCacheKey = "prompt_cache_key"
     }
 }
 

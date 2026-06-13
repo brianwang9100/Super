@@ -102,6 +102,20 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    /// Options-carrying overload — attaches OpenAI's `prompt_cache_key` when
+    /// host-gating allows (see `buildRequest`). With `.none` (the 4-arg path)
+    /// the request is unchanged. xAI has no Responses endpoint, so unlike the
+    /// Chat adapter there's no `x-grok-conv-id` branch here.
+    public func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var reducer = OpenAIResponsesStreamReducer()
@@ -118,7 +132,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                         model: model,
                         tools: tools,
                         temperature: temperature,
-                        nameMap: nameMap
+                        nameMap: nameMap,
+                        options: options
                     )
                     var parser = SSEParser()
                     let decoder = JSONDecoder()
@@ -194,7 +209,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         model: LLMModel,
         tools: [LLMTool],
         temperature: Double,
-        nameMap: ToolWireNameMap
+        nameMap: ToolWireNameMap,
+        options: LLMRequestOptions
     ) throws -> URLRequest {
         let url = responsesURL()
         var request = URLRequest(url: url)
@@ -205,6 +221,16 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         // never let a misconfigured `http://` endpoint carry the key.
         if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        // `prompt_cache_key`, host-gated to OpenAI only (see `CacheRoutingKey`);
+        // any other host gets a byte-identical body. The Responses API has no
+        // xAI counterpart, so only the body placement is honored here.
+        var promptCacheKey: String?
+        if case .promptCacheKeyBody(let key) = CacheRoutingKey.placement(
+            for: url, conversationCacheKey: options.conversationCacheKey
+        ) {
+            promptCacheKey = key
         }
 
         let clampedTemperature = min(
@@ -218,7 +244,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
             instructions: instructions,
             stream: true,
             temperature: clampedTemperature,
-            tools: translate(tools, nameMap: nameMap)
+            tools: translate(tools, nameMap: nameMap),
+            promptCacheKey: promptCacheKey
         )
 
         let encoder = JSONEncoder()

@@ -683,6 +683,90 @@ struct OpenAICompatibleLLMProviderTests {
         ))
     }
 
+    // MARK: - Cache-routing keys (host-gated)
+
+    private static func decodeBody(_ http: FakeHTTPClient) throws -> [String: Any] {
+        let request = try #require(http.observed.all.first)
+        let body = try #require(request.httpBody)
+        return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+
+    @Test func promptCacheKeyAttachedForOpenAIHost() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http, baseURL: URL(string: "https://api.openai.com/v1")!)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5,
+            options: LLMRequestOptions(conversationCacheKey: "conv-123")
+        ))
+        let body = try Self.decodeBody(http)
+        #expect(body["prompt_cache_key"] as? String == "conv-123")
+        // OpenAI takes the body field, never the xAI header.
+        #expect(try #require(http.observed.all.first).value(forHTTPHeaderField: CacheRoutingKey.xaiHeaderField) == nil)
+    }
+
+    @Test func xaiHostGetsGrokConvIdHeaderNotBodyKey() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http, baseURL: URL(string: "https://api.x.ai/v1")!)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5,
+            options: LLMRequestOptions(conversationCacheKey: "conv-456")
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(request.value(forHTTPHeaderField: CacheRoutingKey.xaiHeaderField) == "conv-456")
+        // xAI carries it as a header only — never the body field.
+        #expect(try Self.decodeBody(http)["prompt_cache_key"] == nil)
+    }
+
+    @Test func noRoutingKeyForOtherHostsEvenWithOptions() async throws {
+        // The default test host is a generic compatible endpoint (DeepSeek /
+        // Groq / Ollama / Custom stand-in): neither form is attached.
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+        let provider = makeProvider(http: http)
+        _ = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5,
+            options: LLMRequestOptions(conversationCacheKey: "conv-789")
+        ))
+        let request = try #require(http.observed.all.first)
+        #expect(try Self.decodeBody(http)["prompt_cache_key"] == nil)
+        #expect(request.value(forHTTPHeaderField: CacheRoutingKey.xaiHeaderField) == nil)
+    }
+
+    @Test func noPromptCacheKeyForOpenAIHostWithEmptyOrNoneOptions() async throws {
+        // `.none` (the 4-arg path) and an empty key both omit the field.
+        for options in [LLMRequestOptions.none, LLMRequestOptions(conversationCacheKey: "")] {
+            let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+            let provider = makeProvider(http: http, baseURL: URL(string: "https://api.openai.com/v1")!)
+            _ = try await collect(provider.stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model, tools: [], temperature: 0.5, options: options
+            ))
+            #expect(try Self.decodeBody(http)["prompt_cache_key"] == nil)
+        }
+    }
+
+    /// Stability: a non-gated host's request body is unchanged with vs. without
+    /// options, so DeepSeek/Ollama/Groq/Custom see no difference at all.
+    /// Compared as parsed JSON (NSDictionary) — Foundation's JSONEncoder doesn't
+    /// guarantee keyed-container byte order, so a raw-Data compare is unreliable.
+    @Test func nonGatedHostRequestBodyUnchangedWithAndWithoutOptions() async throws {
+        func body(options: LLMRequestOptions) async throws -> NSDictionary {
+            let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-plain"))
+            _ = try await collect(makeProvider(http: http).stream(
+                messages: [LLMMessage(role: .user, text: "hi")],
+                model: model, tools: [], temperature: 0.5, options: options
+            ))
+            let request = try #require(http.observed.all.first)
+            let data = try #require(request.httpBody)
+            return try #require(try JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        let withoutOptions = try await body(options: .none)
+        let withOptions = try await body(options: LLMRequestOptions(conversationCacheKey: "conv-xyz"))
+        #expect(withoutOptions == withOptions)
+    }
+
     /// Compact one-token-per-event label so an expected-vs-actual mismatch
     /// is human-readable.
     private func eventKind(_ event: LLMStreamEvent) -> String {

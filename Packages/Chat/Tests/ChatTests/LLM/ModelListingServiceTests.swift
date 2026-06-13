@@ -63,6 +63,27 @@ struct ModelListingServiceTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
+    @Test("Anthropic: an .anthropicNative row lists via the native /v1/models with x-api-key")
+    func anthropicNativeKindUsesNativeModelsEndpoint() async throws {
+        // Regression for the PR2 native flip: the default Anthropic preset is
+        // now `.anthropicNative`. Listing must still hit the native endpoint
+        // (kind alone is enough — no host check needed), not throw
+        // `.unsupportedKind` and silently fall back to the static catalog.
+        let http = body(#"{"data":[{"id":"claude-opus-4-7"}]}"#)
+        let ids = try await service(http).listModelIDs(
+            kind: .anthropicNative,
+            baseURL: URL(string: "https://api.anthropic.com/v1")!,
+            apiKey: "sk-ant"
+        )
+        #expect(ids == ["claude-opus-4-7"])
+
+        let request = try #require(http.observed.all.first)
+        #expect(request.url?.absoluteString == "https://api.anthropic.com/v1/models?limit=1000")
+        #expect(request.value(forHTTPHeaderField: "x-api-key") == "sk-ant")
+        #expect(request.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
     @Test("Anthropic: a bare /v1 base also yields /v1/models (no /openai segment to strip)")
     func anthropicBareV1BaseYieldsNativeModelsEndpoint() async throws {
         let http = body(#"{"data":[{"id":"claude-haiku-4-5-20251001"}]}"#)

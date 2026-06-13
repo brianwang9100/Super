@@ -46,21 +46,39 @@ public enum LLMContent: Sendable, Equatable {
     case searchResult([SourceCitation])
 }
 
+/// How an adapter may treat a message for prompt caching. `.stablePrefix`
+/// marks a message in the contiguous, rarely-changing leading run (the chat /
+/// applet briefings and native-search guidance) that an explicit-cache
+/// provider can place a cache breakpoint *after*; `.volatile` (the default) is
+/// everything that changes turn-to-turn — memories, the checkpoint summary, and
+/// the user/assistant/tool history. Non-persisted and adapter-only: only the
+/// Anthropic native adapter reads it (to split the `system` blocks and mark the
+/// stable one `cache_control`); every other provider ignores it.
+public enum LLMCacheHint: Sendable, Equatable {
+    case stablePrefix
+    case volatile
+}
+
 /// One message in a chat with an LLM (Large Language Model). Always carries
 /// at least one content block; the convenience text initializer wraps a
 /// single string in a `.text` block.
 public struct LLMMessage: Sendable, Equatable {
     public let role: LLMRole
     public let content: [LLMContent]
+    /// Prompt-cache treatment hint (see ``LLMCacheHint``). Defaults to
+    /// `.volatile`; `ContextAssembler` tags the leading stable blocks
+    /// `.stablePrefix`.
+    public let cacheHint: LLMCacheHint
 
-    public init(role: LLMRole, content: [LLMContent]) {
+    public init(role: LLMRole, content: [LLMContent], cacheHint: LLMCacheHint = .volatile) {
         self.role = role
         self.content = content
+        self.cacheHint = cacheHint
     }
 
     /// Convenience initializer for the common single-text-block case.
-    public init(role: LLMRole, text: String) {
-        self.init(role: role, content: [.text(text)])
+    public init(role: LLMRole, text: String, cacheHint: LLMCacheHint = .volatile) {
+        self.init(role: role, content: [.text(text)], cacheHint: cacheHint)
     }
 }
 
