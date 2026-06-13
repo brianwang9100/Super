@@ -25,6 +25,12 @@ extension TokenEstimator {
                 switch block {
                 case .text(let text):
                     total += estimate(text)
+                case .thinking(let content, let signature):
+                    // Replayed thinking blocks ship verbatim on the wire
+                    // (Anthropic), so they consume budget like text; the
+                    // opaque signature rides along too.
+                    total += estimate(content)
+                    if let signature { total += estimate(signature) }
                 case .toolUse(_, let name, let input, _):
                     total += estimate(name)
                     total += estimate(JSONStringifier.string(for: input))

@@ -672,6 +672,7 @@ struct OpenAICompatibleLLMProviderTests {
         case .contentBlockStart(_, .toolUse): return "contentBlockStart(toolUse)"
         case .textDelta: return "textDelta"
         case .thinkingDelta: return "thinkingDelta"
+        case .thinkingSignature: return "thinkingSignature"
         case .toolUse: return "toolUse"
         case .contentBlockStop(let index): return "contentBlockStop(\(index))"
         case .searchStarted: return "searchStarted"
