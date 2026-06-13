@@ -72,6 +72,27 @@ struct AnthropicNativeLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
+    /// The `message_start` cache-token counts (`cache_creation_input_tokens` /
+    /// `cache_read_input_tokens`) surface on the terminal `.messageComplete`
+    /// usage. Anthropic reports them outside `inputTokens`, so all three coexist.
+    @Test func cachedFixtureSurfacesCacheTokensInUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-cached"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        #expect(events.last == .messageComplete(usage: TokenUsage(
+            inputTokens: 12,
+            outputTokens: 3,
+            cacheReadInputTokens: 200,
+            cacheCreationInputTokens: 100
+        )))
+    }
+
     /// Chunked delivery must produce the identical event stream — proves the SSE
     /// parser's partial-frame handling holds for the Messages framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {

@@ -248,5 +248,9 @@ struct GeminiStreamResponse: Decodable {
     struct UsageMetadata: Decodable {
         let promptTokenCount: Int?
         let candidatesTokenCount: Int?
+        /// Implicit-cache hit count (a *subset* already counted in
+        /// `promptTokenCount`). Present on Gemini 2.5+/3.x when a cache hit
+        /// occurs; absent otherwise.
+        let cachedContentTokenCount: Int?
     }
 }

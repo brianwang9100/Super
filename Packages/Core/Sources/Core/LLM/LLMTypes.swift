@@ -228,13 +228,37 @@ public struct ModelConfiguration: Sendable, Equatable, Identifiable {
 
 /// Token counts reported by the provider at end of stream. Drives both the
 /// context meter UI and any future accounting.
+///
+/// Cache-token accounting differs by provider, and the difference is
+/// load-bearing for any cost math built on these fields:
+/// - **Anthropic** reports cached tokens *outside* `inputTokens` — the full
+///   prompt size is `inputTokens + cacheReadInputTokens + cacheCreationInputTokens`.
+/// - **OpenAI / xAI / Gemini** report cached tokens as a *subset already counted
+///   in* `inputTokens` (`cacheReadInputTokens <= inputTokens`); they have no
+///   separate write count, so `cacheCreationInputTokens` stays `nil`.
+/// Both cache fields are `nil` when the provider reported nothing (no cache
+/// activity, or a provider/endpoint that doesn't surface cache usage).
 public struct TokenUsage: Sendable, Equatable, Codable {
     public let inputTokens: Int
     public let outputTokens: Int
+    /// Prompt tokens served from the provider's cache this request. Maps to
+    /// Anthropic `cache_read_input_tokens`, OpenAI/xAI
+    /// `prompt_tokens_details.cached_tokens`, and Gemini `cachedContentTokenCount`.
+    public let cacheReadInputTokens: Int?
+    /// Prompt tokens written to the cache this request. Anthropic
+    /// (`cache_creation_input_tokens`) only; `nil` on every other provider.
+    public let cacheCreationInputTokens: Int?
 
-    public init(inputTokens: Int, outputTokens: Int) {
+    public init(
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheReadInputTokens: Int? = nil,
+        cacheCreationInputTokens: Int? = nil
+    ) {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
+        self.cacheReadInputTokens = cacheReadInputTokens
+        self.cacheCreationInputTokens = cacheCreationInputTokens
     }
 
     public var total: Int { inputTokens + outputTokens }

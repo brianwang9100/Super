@@ -111,6 +111,27 @@ struct OpenAICompatibleLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
+    /// `prompt_tokens_details.cached_tokens` surfaces as `cacheReadInputTokens`.
+    /// OpenAI (and xAI, identical shape) report cached tokens as a subset of
+    /// `promptTokens`, and have no write count — `cacheCreationInputTokens` nil.
+    @Test func cachedFixtureSurfacesCachedTokensInUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-cached"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        #expect(events.last == .messageComplete(usage: TokenUsage(
+            inputTokens: 1024,
+            outputTokens: 3,
+            cacheReadInputTokens: 896,
+            cacheCreationInputTokens: nil
+        )))
+    }
+
     @Test func reasoningFixtureProducesThinkingThenTextThenUsage() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-reasoning"))
         let provider = makeProvider(http: http)
