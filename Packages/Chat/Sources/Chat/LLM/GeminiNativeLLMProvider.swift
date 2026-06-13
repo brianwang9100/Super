@@ -263,17 +263,27 @@ public struct GeminiNativeLLMProvider: LLMProvider {
     /// one — required so parallel same-tool calls match their results) plus the
     /// function *name* (a required field, recovered from the issuing `.toolUse`
     /// block), and its `response` wraps the tool's string output in an object.
-    /// Turns where the id equals the name (older id-less responses) send
-    /// name-only, byte-identical to before.
+    /// Synthetic ids — older id-less responses (id == name) and locally-minted
+    /// PKs the orchestrator created because the provider gave none — send
+    /// name-only, byte-identical to before; only Gemini-minted ids ride the
+    /// wire.
     private func translate(_ messages: [LLMMessage]) -> (systemInstruction: GeminiContent?, contents: [GeminiContent]) {
         var systemParts: [String] = []
         var grouped: [(role: String, parts: [GeminiPart])] = []
 
         // A `.toolResult` carries only the call id; recover the function name
         // (a required `functionResponse` field) by matching it back to the
-        // assistant `.toolUse` block that issued the call. When the id equals
-        // the name (older id-less Gemini turns) we send name-only — see the
-        // `wireID` guard below — so those requests stay byte-identical.
+        // assistant `.toolUse` block that issued the call. A call id is sent on
+        // the wire only when Gemini minted it: bare-name fallbacks (older
+        // id-less turns, `id == name`) and locally-minted ids (disambiguated
+        // PKs the orchestrator created because the provider gave none) are
+        // synthetic — Gemini round-trips the ids IT minted, so a fabricated id
+        // must not reach it; those send name-only (byte-identical to a native
+        // id-less turn). See `sendsNameOnly` and the `wireID` guards below.
+        func sendsNameOnly(id: String, name: String) -> Bool {
+            id == name || ToolCallRecord.isLocallyMintedID(id)
+        }
+
         var toolNameByID: [String: String] = [:]
         for message in messages where message.role == .assistant {
             for block in message.content {
@@ -305,7 +315,7 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                 for block in message.content {
                     if case .toolResult(let toolUseID, let content, _) = block {
                         let name = toolNameByID[toolUseID] ?? toolUseID
-                        let wireID = (toolUseID == name) ? nil : toolUseID
+                        let wireID = sendsNameOnly(id: toolUseID, name: name) ? nil : toolUseID
                         parts.append(.functionResponse(
                             id: wireID,
                             name: name,
@@ -331,11 +341,13 @@ public struct GeminiNativeLLMProvider: LLMProvider {
                     for block in message.content {
                         if case .toolUse(let id, let name, let input, let signature) = block {
                             // Echo Gemini's per-call id so the next turn's
-                            // functionResponse can match it (omit when id==name,
-                            // i.e. older id-less turns). Replay the thinking
-                            // model's `thoughtSignature` — Gemini rejects the
-                            // follow-up turn with HTTP 400 when it's dropped.
-                            let wireID = (id == name) ? nil : id
+                            // functionResponse can match it; omit for synthetic
+                            // ids (id-less `id == name`, or a locally-minted PK)
+                            // so we never send Gemini an id it didn't mint.
+                            // Replay the thinking model's `thoughtSignature` —
+                            // Gemini rejects the follow-up turn with HTTP 400
+                            // when it's dropped.
+                            let wireID = sendsNameOnly(id: id, name: name) ? nil : id
                             parts.append(.functionCall(
                                 id: wireID,
                                 name: name,
