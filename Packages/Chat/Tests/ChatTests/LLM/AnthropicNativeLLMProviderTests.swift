@@ -93,6 +93,30 @@ struct AnthropicNativeLLMProviderTests {
         )))
     }
 
+    /// The latch is first-non-nil-wins: when `message_delta` carries cache
+    /// counts that differ from `message_start`, the `message_start` values are
+    /// kept and the delta's are dropped. Guards the latch against a future
+    /// refactor that would otherwise leave every other test green.
+    @Test func messageDeltaCacheTokensDoNotClobberMessageStartCounts() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-cached-latch"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        // Fixture: message_start reports read=200/creation=100; message_delta
+        // reports read=888/creation=999. First-wins → 200/100 survive.
+        #expect(events.last == .messageComplete(usage: TokenUsage(
+            inputTokens: 12,
+            outputTokens: 3,
+            cacheReadInputTokens: 200,
+            cacheCreationInputTokens: 100
+        )))
+    }
+
     /// Chunked delivery must produce the identical event stream — proves the SSE
     /// parser's partial-frame handling holds for the Messages framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {

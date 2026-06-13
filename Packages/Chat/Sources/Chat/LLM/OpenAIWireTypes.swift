@@ -153,7 +153,7 @@ struct OpenAIToolCallDelta: Decodable {
 
     // Explicit memberwise init (the synthesized one would force every call
     // site to pass `extraContent`); `Decodable` synthesis is unaffected since
-    // it keys off `CodingKeys`, not this init.
+    // its `init(from:)` keys off the stored property names, not this init.
     init(
         index: Int? = nil,
         id: String? = nil,
@@ -198,9 +198,9 @@ struct OpenAIUsage: Decodable {
     }
 
     // Explicit memberwise init so existing call sites (test doubles) needn't
-    // pass `promptTokensDetails`; `Decodable` synthesis keys off `CodingKeys`,
-    // not this init, so wire decoding is unaffected. (Same pattern as
-    // `OpenAIToolCallDelta`.)
+    // pass `promptTokensDetails`; the synthesized `Decodable init(from:)` keys off
+    // the stored property names, not this init, so wire decoding is unaffected.
+    // (Same pattern as `OpenAIToolCallDelta`.)
     init(
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
