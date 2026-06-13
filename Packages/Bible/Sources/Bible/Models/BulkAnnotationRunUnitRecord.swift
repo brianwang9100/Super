@@ -5,10 +5,15 @@ import GRDB
 ///
 /// A selected chapter yields a `chapter` unit; a whole-book selection adds a
 /// single `bookPrologue` unit ahead of its chapters. `bookPrologue` rows carry
-/// no `chapterNumber`.
+/// no `chapterNumber`. When the run opts into notable verses, each chapter also
+/// gets a `chapterVerses` unit (right after its `chapter` unit) — one dispatch
+/// turn in which the model ranks the chapter's most significant verse ranges and
+/// annotates each as a `.verse` target. `chapterVerses` rows carry the same
+/// `chapterNumber` as the `chapter` they follow.
 public enum BulkRunUnitKind: String, Codable, Sendable, Equatable, CaseIterable {
     case chapter
     case bookPrologue
+    case chapterVerses
 }
 
 /// One unit of work inside a run, persisted in `bulkAnnotationRunUnit` (FK to

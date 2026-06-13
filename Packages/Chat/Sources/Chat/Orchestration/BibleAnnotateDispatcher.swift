@@ -183,7 +183,7 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             clock: clock,
             idGenerator: idGenerator,
             autoCompactEnabled: false,
-            chatBriefing: Self.dispatcherBriefing,
+            chatBriefing: Self.briefing(forKind: reference.kind),
             appletBriefings: [],
             userPersonalization: ""
         )
@@ -229,8 +229,10 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         // a freshly-written card and, via the bulk generator seam, record a
         // succeeded unit as a retryable failure. Only when no successful call
         // happened do we report the captured failure (or the no-tool case).
-        // (The count is always 1 per call under the single-summary contract;
-        // the artifact-count reduce survives as shape, not information.)
+        // (For the single-shot paths the count is always 1 per call under the
+        // single-summary contract; for the bulk `chapterVerses` mode the model
+        // calls the tool once per notable verse, so the reduce accumulates the
+        // real verse count into `producedCount` — there the count is information.)
         if toolWasCalled {
             return .success(annotationCount: annotationCount)
         }
@@ -362,6 +364,48 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     thematically similar verse.
     """
 
+    /// `chatBriefing` for the notable-verses bulk mode (`kind == "chapterVerses"`).
+    /// Unlike `dispatcherBriefing`, this one asks the model to call
+    /// `bible.annotate` *multiple* times in the turn — once per notable verse
+    /// range it picks from the chapter — rather than exactly once. The dispatcher
+    /// already counts artifacts across every call, so each verse annotation lands
+    /// and is tallied into the unit's `producedCount`.
+    static let notableVersesBriefing = """
+    You are running as a one-off Bible annotation dispatcher inside the \
+    Super app's headless tool pipeline.
+
+    Your job this turn is to identify the most significant verse ranges in the \
+    chapter the user provides — up to 5 of them — and call the `bible.annotate` \
+    tool once for EACH, with `target` set to "verse". Choose passages a reader \
+    would most want study notes on (key teachings, turning points, famous or \
+    pivotal verses); a contiguous range that belongs together (e.g. a single \
+    parable or argument) is one call. Do NOT annotate the whole chapter, do not \
+    write a chapter-level summary, do not respond conversationally, and do not \
+    call any other tool. Make at least one call. After the last call, end your turn.
+
+    For each verse call, pass the correct `bookId`, `chapterNumber`, `verseStart`, \
+    and `verseEnd` (read the verse numbers from the numbered text provided), and \
+    ONE markdown study summary in `summary`. Base every summary strictly on the \
+    provided verse text — never reference words it does not contain — and do NOT \
+    repeat the verse text verbatim; the reader displays it above the summary.
+
+    Keep each summary focused: roughly 120–250 words. Structure it with short \
+    `###` headings, bold key terms, and lists or blockquotes where they genuinely \
+    help. Cite scripture with the full book name in `Book Chapter:Verse` form \
+    (e.g. `Romans 8:28-30`, `Psalm 23`) — the reader turns exactly that format \
+    into tappable links. Mention a cross-reference ONLY when the verse directly \
+    quotes, alludes to, or cites that passage; never a merely thematically \
+    similar verse.
+    """
+
+    /// The `chatBriefing` to drive a dispatch turn for a given `reference.kind`.
+    /// The notable-verses bulk mode (`"chapterVerses"`) gets the multi-call
+    /// rank-and-generate briefing; every other kind (the single-shot book /
+    /// chapter / verse-range paths) gets the one-call `dispatcherBriefing`.
+    static func briefing(forKind kind: String) -> String {
+        kind == "chapterVerses" ? notableVersesBriefing : dispatcherBriefing
+    }
+
     /// `send(text:)` payload — names the target structurally so even
     /// weaker models can produce the right `bible.annotate` arguments,
     /// and names the per-scope sections to cover so generated summaries
@@ -397,10 +441,19 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
                 \(reference.snapshot)
                 """)
         }
-        paragraphs.append("""
-            Call `bible.annotate` once with arguments matching this target, \
-            then end the turn.
-            """)
+        if reference.kind == "chapterVerses" {
+            paragraphs.append("""
+                Pick up to 5 of this chapter's most notable verse ranges and call \
+                `bible.annotate` once for each — `target` "verse", with \
+                `verseStart`/`verseEnd` from the numbered text above — then end \
+                the turn.
+                """)
+        } else {
+            paragraphs.append("""
+                Call `bible.annotate` once with arguments matching this target, \
+                then end the turn.
+                """)
+        }
         return paragraphs.joined(separator: "\n\n")
     }
 
@@ -408,10 +461,12 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     /// headings the one summary should carry per scope, mirroring
     /// `docs/SuperBible/ANNOTATIONS.md` §1 (keep the two in sync).
     /// `reference.kind` is the structural discriminator the Bible UI
-    /// stamps onto the request — `"book"`, `"chapter"`, or
-    /// `"verseRange"` (note: *not* `"verse"`). Returns `nil` for an
-    /// unrecognised kind so the prompt falls back to the generic
-    /// briefing rather than asserting a wrong structure.
+    /// stamps onto the request — `"book"`, `"chapter"`, `"verseRange"`
+    /// (note: *not* `"verse"`), or the bulk-only `"chapterVerses"`
+    /// rank-and-generate mode (whose steer applies per verse range the
+    /// model picks). Returns `nil` for an unrecognised kind so the prompt
+    /// falls back to the generic briefing rather than asserting a wrong
+    /// structure.
     static func sectionGuidance(forKind kind: String) -> String? {
         switch kind {
         case "book":
@@ -434,6 +489,14 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
             context, and any genuine cross-references (passages this \
             text directly quotes, alludes to, or cites — omit the \
             section entirely when there are none).
+            """
+        case "chapterVerses":
+            """
+            For each verse range you choose, structure its summary around \
+            the passage's meaning in plain language, the historical and \
+            literary context, and any genuine cross-references (passages it \
+            directly quotes, alludes to, or cites — omit the section \
+            entirely when there are none).
             """
         default:
             nil

@@ -25,6 +25,11 @@ public final class BulkAnnotationViewModel {
     /// regenerates and replaces. Kept sticky across sheet opens (not reset by
     /// `generate()`), so a user who wants overwrite doesn't re-flip it each run.
     public var overwriteExisting = false
+    /// The Generate sheet's "Also annotate notable verses" toggle. `false` (the
+    /// default) keeps the run at book + chapter granularity; `true` also enqueues a
+    /// per-chapter `chapterVerses` unit that annotates the chapter's most notable
+    /// verse ranges. Sticky across sheet opens, like `overwriteExisting`.
+    public var annotateNotableVerses = false
 
     /// Chapters that already carry annotations — drives the "Done" badges.
     /// Injected from a query (or a fake in previews); empty by default.
@@ -56,7 +61,9 @@ public final class BulkAnnotationViewModel {
 
     public var books: [BibleBookSummary] { catalog.books }
     public var isRunning: Bool { run != nil }
-    public var estimate: BulkRunEstimate { BulkRunEstimate(selection: selection) }
+    public var estimate: BulkRunEstimate {
+        BulkRunEstimate(selection: selection, includesNotableVerses: annotateNotableVerses)
+    }
     public var canGenerate: Bool { !selection.isEmpty && !isRunning }
 
     /// The book the per-book progress screen drills into: the one with work in
@@ -131,7 +138,11 @@ public final class BulkAnnotationViewModel {
             )
         }
         guard !books.isEmpty else { return }
-        runner.start(BulkRunPlan(books: books, overwriteExisting: overwriteExisting))
+        runner.start(BulkRunPlan(
+            books: books,
+            overwriteExisting: overwriteExisting,
+            includesNotableVerses: annotateNotableVerses
+        ))
         selection = BulkSelection()
         expandedBookIDs = []
     }
