@@ -55,10 +55,14 @@ public struct SearchBibleTool: ToolExecutor {
         citations.
 
         Search is keyword-based with stemming: pass a few content words in \
-        `query` (e.g. "love" also matches "loved"/"loving"). Optionally scope to \
-        one `book`. Do NOT pass `translation` unless the user explicitly names \
-        one — omit it so the search runs against the user's currently selected \
-        translation. Results are ordered best-match first.
+        `query` (e.g. "love" also matches "loved"/"loving"). By default any of \
+        the words can match and the best verses rank first, so multi-word \
+        topical queries ("anxiety hope") still return results — use `match` to \
+        force every word (`all`) or an exact contiguous phrase (`phrase`). \
+        Optionally scope to one `book`. Do NOT pass `translation` unless the \
+        user explicitly names one — omit it so the search runs against the \
+        user's currently selected translation. Results are ordered best-match \
+        first.
 
         Each result already includes the verse's full, exact text from the \
         user's translation — quote and cite directly from these results. Do NOT \
@@ -72,8 +76,15 @@ public struct SearchBibleTool: ToolExecutor {
             LLMToolParameter(
                 name: "query",
                 type: .string,
-                description: "The words or phrase to search for, e.g. 'anxiety', 'love your enemies', 'shepherd'.",
+                description: "The words to search for, e.g. 'anxiety', 'love your enemies', 'shepherd'. By default any word can match; use `match` to require all words or an exact phrase.",
                 isRequired: true
+            ),
+            LLMToolParameter(
+                name: "match",
+                type: .string,
+                description: "How to combine multiple words. 'any' (default): verses containing ANY of the words, best matches first — use for topical searches like 'anxiety hope'. 'all': only verses containing EVERY word. 'phrase': only verses with the exact contiguous phrase, e.g. 'love your enemies'.",
+                isRequired: false,
+                enumValues: BibleSearchMatchMode.allCases.map(\.rawValue)
             ),
             LLMToolParameter(
                 name: "book",
@@ -158,17 +169,21 @@ public struct SearchBibleTool: ToolExecutor {
         // 4. Limit — clamp to a sane window.
         let limit = min(max(Self.optionalInt(input, key: "limit") ?? Self.defaultLimit, 1), Self.maxLimit)
 
-        // 5. Search.
+        // 5. Match mode — forgiving `any` by default; an unknown value is not an
+        // error, it just falls back to the default rather than failing the call.
+        let mode = BibleSearchMatchMode(rawValue: Self.optionalString(input, key: "match") ?? "") ?? .any
+
+        // 6. Search.
         let matches: [BibleVerseMatch]
         do {
             matches = try await searcher.search(
-                query: query, translation: translation, bookId: bookScope?.id, limit: limit
+                query: query, translation: translation, bookId: bookScope?.id, mode: mode, limit: limit
             )
         } catch {
             return Self.errorResult("Couldn't search scripture right now.")
         }
 
-        // 6. Zero hits is a valid answer, not a malformed call.
+        // 7. Zero hits is a valid answer, not a malformed call.
         guard !matches.isEmpty else {
             let scope = bookScope.map { " in \($0.name)" } ?? ""
             return ToolResult(
@@ -178,7 +193,7 @@ public struct SearchBibleTool: ToolExecutor {
             )
         }
 
-        // 7. Ranked, cited results.
+        // 8. Ranked, cited results.
         let header = Self.header(count: matches.count, query: query, scope: bookScope, translation: translation)
         let lines = matches.map { match in
             let bookName = catalog.book(id: match.bookId)?.name ?? match.bookId

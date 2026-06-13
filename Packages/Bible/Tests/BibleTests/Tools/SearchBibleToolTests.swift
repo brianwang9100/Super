@@ -177,6 +177,43 @@ struct SearchBibleToolTests {
         _ = try await tool.execute(input: ["query": .string("grace"), "limit": .int(0)])
         #expect(await searcher.lastLimit == 1)
     }
+
+    // MARK: - Match mode
+
+    @Test("an omitted match defaults to the forgiving `any`")
+    func matchDefaultsToAny() async throws {
+        let (tool, searcher) = makeTool(hits: Self.twoHits)
+        _ = try await tool.execute(input: ["query": .string("anxiety hope")])
+        #expect(await searcher.lastMode == .any)
+    }
+
+    @Test("match 'all' and 'phrase' are passed through to the searcher")
+    func matchExplicitModes() async throws {
+        let (allTool, allSearcher) = makeTool(hits: Self.twoHits)
+        _ = try await allTool.execute(input: ["query": .string("loved world"), "match": .string("all")])
+        #expect(await allSearcher.lastMode == .all)
+
+        let (phraseTool, phraseSearcher) = makeTool(hits: Self.twoHits)
+        _ = try await phraseTool.execute(input: ["query": .string("love your enemies"), "match": .string("phrase")])
+        #expect(await phraseSearcher.lastMode == .phrase)
+    }
+
+    @Test("an unknown match value falls back to `any`, not an error")
+    func matchUnknownFallsBack() async throws {
+        let (tool, searcher) = makeTool(hits: Self.twoHits)
+        let result = try await tool.execute(input: ["query": .string("grace"), "match": .string("fuzzy")])
+        #expect(result.isError == false)
+        #expect(await searcher.lastMode == .any)
+    }
+
+    // MARK: - Descriptor
+
+    @Test("the descriptor exposes match as an optional enum of every mode")
+    func descriptorMatchParameter() {
+        let match = SearchBibleTool.descriptor.parameters.first { $0.name == "match" }
+        #expect(match?.isRequired == false)
+        #expect(match?.enumValues == BibleSearchMatchMode.allCases.map(\.rawValue))
+    }
 }
 
 // MARK: - Test doubles
@@ -188,15 +225,18 @@ private actor RecordingSearcher: BibleTextSearching {
     let hits: [BibleVerseMatch]
     private(set) var lastTranslation: BibleTranslation?
     private(set) var lastBookId: String?
+    private(set) var lastMode: BibleSearchMatchMode?
     private(set) var lastLimit: Int?
 
     init(hits: [BibleVerseMatch]) { self.hits = hits }
 
     func search(
-        query: String, translation: BibleTranslation, bookId: String?, limit: Int
+        query: String, translation: BibleTranslation, bookId: String?,
+        mode: BibleSearchMatchMode, limit: Int
     ) async throws -> [BibleVerseMatch] {
         lastTranslation = translation
         lastBookId = bookId
+        lastMode = mode
         lastLimit = limit
         return hits
     }
