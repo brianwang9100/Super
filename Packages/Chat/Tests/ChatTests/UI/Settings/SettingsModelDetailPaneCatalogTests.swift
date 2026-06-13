@@ -95,7 +95,7 @@ struct SettingsModelDetailPaneCatalogTests {
         }
     }
 
-    @Test("Apple uses .appleFoundation, Google defaults to native Gemini, everyone else .openAICompatible")
+    @Test("Apple → .appleFoundation, Google + Anthropic default to native, everyone else .openAICompatible")
     func providerKindsMatchExpectations() {
         for entry in LLMProviderCatalog.all {
             switch entry.id {
@@ -105,6 +105,10 @@ struct SettingsModelDetailPaneCatalogTests {
                 // Google defaults to the native Gemini adapter so Gemini 3
                 // thinking models can round-trip tool-call thought signatures.
                 #expect(entry.kind == .geminiNative, "Google should default to native Gemini")
+            case "anthropic":
+                // Anthropic defaults to the native Messages API so every turn
+                // can carry explicit `cache_control` prompt-cache breakpoints.
+                #expect(entry.kind == .anthropicNative, "Anthropic should default to native Messages")
             default:
                 #expect(entry.kind == .openAICompatible, "provider \(entry.id) should route through openAI-compat")
             }
@@ -290,6 +294,24 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(google.catalogID == "gemini-3-pro")
     }
 
+    /// Regression for the PR2 native flip: a row carrying the *catalog's*
+    /// current Anthropic default (kind + base URL) must open to the Anthropic
+    /// provider — guards the catalog default and `resolveEditProvider` against
+    /// drifting apart after the `.openAICompatible`→`.anthropicNative` flip.
+    @Test("a flipped default Anthropic native row opens to the Anthropic provider")
+    func resolveEditProviderDefaultAnthropicNativeRow() {
+        let entry = LLMProviderCatalog.entry(forID: "anthropic")
+        #expect(entry?.kind == .anthropicNative)
+        #expect(entry?.defaultBaseURL == URL(string: "https://api.anthropic.com/v1"))
+        let resolved = SettingsModelDetailPane.resolveEditProvider(
+            kind: .anthropicNative,
+            modelId: "claude-opus-4-7",
+            baseURL: entry?.defaultBaseURL
+        )
+        #expect(resolved.providerID == "anthropic")
+        #expect(resolved.catalogID == "claude-opus-4-7")
+    }
+
     @Test("resolveEditProvider keeps the compat URL-match for an .openAICompatible row")
     func resolveEditProviderCompatStillMatchesByURL() {
         // The same wire id + the catalog base URL on an .openAICompatible
@@ -376,12 +398,12 @@ struct SettingsModelDetailPaneCatalogTests {
         #expect(seeds.supportsThinking == true)
     }
 
-    @Test("Anthropic seeds Opus 4.7 with the OpenAI-compat shim URL and thinking ON")
+    @Test("Anthropic seeds Opus 4.7 with the native Messages base URL and thinking ON")
     func anthropicSeeds() {
         let seeds = SettingsModelDetailPane.makeCreateSeeds(providerID: "anthropic")
         #expect(seeds.name == "claude-opus-4-7")
         #expect(seeds.modelId == "claude-opus-4-7")
-        #expect(seeds.baseURLText == "https://api.anthropic.com/v1/openai/")
+        #expect(seeds.baseURLText == "https://api.anthropic.com/v1")
         #expect(seeds.maxContextText == "1000000")
         #expect(seeds.supportsThinking == true)
     }

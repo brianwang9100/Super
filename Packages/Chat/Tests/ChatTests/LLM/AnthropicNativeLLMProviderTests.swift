@@ -471,13 +471,160 @@ struct AnthropicNativeLLMProviderTests {
             model: model, tools: [], temperature: 0.5
         ))
         let body = try Self.decodeBody(http)
-        #expect(body["system"] as? String == "You are terse.")
+        // An untagged (.volatile) system message becomes a single unmarked
+        // text block — no `cache_control`.
+        let system = try Self.systemBlocks(body)
+        #expect(system.count == 1)
+        #expect(system[0]["type"] as? String == "text")
+        #expect(system[0]["text"] as? String == "You are terse.")
+        #expect(system[0]["cache_control"] == nil)
         let messages = try #require(body["messages"] as? [[String: Any]])
         #expect(messages.count == 1)
         #expect(messages[0]["role"] as? String == "user")
         let content = try #require(messages[0]["content"] as? [[String: Any]])
         #expect(content[0]["type"] as? String == "text")
         #expect(content[0]["text"] as? String == "hi")
+    }
+
+    // MARK: - Prompt-cache breakpoints
+
+    @Test func stablePrefixSystemBlockGetsCacheControlAndVolatileDoesNot() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [
+                LLMMessage(role: .system, text: "Stable briefing.", cacheHint: .stablePrefix),
+                LLMMessage(role: .system, text: "Volatile memories.", cacheHint: .volatile),
+                LLMMessage(role: .user, text: "hi"),
+            ],
+            model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let system = try Self.systemBlocks(body)
+        // Stable bucket first (carrying the ephemeral marker), volatile second.
+        #expect(system.count == 2)
+        #expect(system[0]["text"] as? String == "Stable briefing.")
+        let marker = try #require(system[0]["cache_control"] as? [String: Any])
+        #expect(marker["type"] as? String == "ephemeral")
+        #expect(system[1]["text"] as? String == "Volatile memories.")
+        #expect(system[1]["cache_control"] == nil)
+    }
+
+    @Test func onlyStableSystemProducesASingleMarkedBlock() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [
+                LLMMessage(role: .system, text: "Stable only.", cacheHint: .stablePrefix),
+                LLMMessage(role: .user, text: "hi"),
+            ],
+            model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let system = try Self.systemBlocks(body)
+        #expect(system.count == 1)
+        #expect(system[0]["text"] as? String == "Stable only.")
+        #expect((system[0]["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
+    }
+
+    /// Defensive demotion: once a volatile system block appears, a later
+    /// stable-hinted one demotes into the volatile bucket (in order, unmarked),
+    /// so the stable bucket stays a contiguous leading run.
+    @Test func stableSystemAfterVolatileDemotesToVolatileBucket() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [
+                LLMMessage(role: .system, text: "Stable A.", cacheHint: .stablePrefix),
+                LLMMessage(role: .system, text: "Volatile B.", cacheHint: .volatile),
+                LLMMessage(role: .system, text: "Misplaced stable C.", cacheHint: .stablePrefix),
+                LLMMessage(role: .user, text: "hi"),
+            ],
+            model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let system = try Self.systemBlocks(body)
+        #expect(system.count == 2)
+        #expect(system[0]["text"] as? String == "Stable A.")
+        #expect((system[0]["cache_control"] as? [String: Any]) != nil)
+        // B and the misplaced C join the volatile bucket, in order, unmarked.
+        #expect(system[1]["text"] as? String == "Volatile B.\n\nMisplaced stable C.")
+        #expect(system[1]["cache_control"] == nil)
+    }
+
+    @Test func lastContentBlockOfLastMessageCarriesCacheControl() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let lastContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let lastBlock = try #require(lastContent.last)
+        // The marker is additive — the underlying text block is unchanged.
+        #expect(lastBlock["type"] as? String == "text")
+        #expect(lastBlock["text"] as? String == "hi")
+        #expect((lastBlock["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
+    }
+
+    @Test func movingBreakpointWrapsAToolResultFinalTurn() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+        let history: [LLMMessage] = [
+            LLMMessage(role: .user, text: "weather?"),
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: "tu1", name: "get_weather", input: .object(["city": .string("NYC")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: "tu1", content: "Sunny", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        // The trailing tool result rides a user message; its last block (the
+        // tool_result) carries the moving breakpoint.
+        let lastContent = try #require(messages.last?["content"] as? [[String: Any]])
+        let lastBlock = try #require(lastContent.last)
+        #expect(lastBlock["type"] as? String == "tool_result")
+        #expect((lastBlock["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
+    }
+
+    /// `.cached` encodes its inner block verbatim plus a merged
+    /// `cache_control` field — the encoder-merge contract the moving
+    /// breakpoint relies on.
+    @Test func cachedBlockEncodesInnerBlockPlusMergedCacheControl() throws {
+        let data = try JSONEncoder().encode(AnthropicContentBlock.cached(.text("hello")))
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(json["type"] as? String == "text")
+        #expect(json["text"] as? String == "hello")
+        #expect((json["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
+    }
+
+    /// The native adapter doesn't override the options overload — it uses
+    /// explicit `cache_control`, not a routing key — so the protocol default
+    /// forwards the 5-arg call to the 4-arg and `options` never touches the
+    /// wire (the conversation id must not leak into an Anthropic request).
+    @Test func optionsOverloadLeavesTheAnthropicRequestUnchanged() async throws {
+        // Compared as parsed JSON (NSDictionary deep-equality) rather than raw
+        // bytes: Foundation's JSONEncoder doesn't guarantee keyed-container
+        // order, so the byte stream can differ while the request is identical.
+        func body(passingOptions: Bool) async throws -> NSDictionary {
+            let http = FakeHTTPClient.fromFixture(FixtureLoader.load("anthropic-plain"))
+            let provider = makeProvider(http: http)
+            let messages = [LLMMessage(role: .user, text: "hi")]
+            let stream = passingOptions
+                ? provider.stream(
+                    messages: messages, model: model, tools: [], temperature: 0.5,
+                    options: LLMRequestOptions(conversationCacheKey: "conv-leak-canary"))
+                : provider.stream(messages: messages, model: model, tools: [], temperature: 0.5)
+            _ = try await collect(stream)
+            let request = try #require(http.observed.all.first)
+            let data = try #require(request.httpBody)
+            return try #require(try JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        let withOptions = try await body(passingOptions: true)
+        let withoutOptions = try await body(passingOptions: false)
+        #expect(withOptions == withoutOptions)
     }
 
     @Test func nativeSearchSentinelBecomesWebSearchToolAndIsStrippedFromTools() async throws {
@@ -587,7 +734,7 @@ struct AnthropicNativeLLMProviderTests {
         let assistantContent = try #require(messages[1]["content"] as? [[String: Any]])
         #expect(assistantContent.contains { $0["type"] as? String == "tool_use" })
         // The summary still rides the system param, untouched by the repair.
-        #expect((body["system"] as? String)?.contains("stuff happened") == true)
+        #expect(try Self.systemText(body).contains("stuff happened"))
     }
 
     @Test func userFirstHistoryGetsNoSyntheticOpener() async throws {
@@ -737,6 +884,17 @@ struct AnthropicNativeLLMProviderTests {
         let request = try #require(http.observed.all.first)
         let data = try #require(request.httpBody)
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// The request's `system` field as the typed block array it now always is
+    /// (`[{type:"text", text:…, cache_control?:…}]`).
+    private static func systemBlocks(_ body: [String: Any]) throws -> [[String: Any]] {
+        try #require(body["system"] as? [[String: Any]])
+    }
+
+    /// All `system` block text joined with "\n\n" — the bytes the model sees.
+    private static func systemText(_ body: [String: Any]) throws -> String {
+        try systemBlocks(body).compactMap { $0["text"] as? String }.joined(separator: "\n\n")
     }
 
     private static func kind(_ event: LLMStreamEvent) -> String {

@@ -202,8 +202,16 @@ public enum LLMProviderCatalog {
         LLMProviderCatalogEntry(
             id: "anthropic",
             displayName: "Anthropic",
-            kind: .openAICompatible,
-            defaultBaseURL: URL(string: "https://api.anthropic.com/v1/openai/"),
+            // Anthropic defaults to the **native** Messages API (not the
+            // `/v1/openai/` compat shim the OpenAI-family providers use): only
+            // the native path can carry explicit `cache_control` breakpoints,
+            // so every Anthropic turn benefits from prompt caching. Mirrors
+            // Google's default-native entry below; the compat shim still works
+            // for a Custom-provider Anthropic URL. New rows seed native; a
+            // ChatDatabase migration (`v10_anthropicNativeDefault`) flips
+            // pre-existing default-shim rows.
+            kind: .anthropicNative,
+            defaultBaseURL: anthropicNativeBaseURL,
             models: [
                 // Opus 4.7 (released 2026-04-16) ships a 1M-token
                 // context window at standard pricing — no long-context

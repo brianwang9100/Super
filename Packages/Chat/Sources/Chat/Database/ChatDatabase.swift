@@ -307,4 +307,27 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "thinkingModelId", .text)
         }
     }
+
+    // Flips pre-existing default Anthropic rows from the OpenAI-compat shim to
+    // the native Messages API, matching the catalog default (which now seeds
+    // `.anthropicNative`). Only the native path carries explicit `cache_control`
+    // breakpoints, so this is what turns prompt caching on for upgrading users.
+    //
+    // A pure value UPDATE — no table rebuild (v4 rebuilt only to add a NOT-NULL
+    // column). Keyed on the *exact* default shim baseURL so the target is
+    // cleanly isolated: native-search Anthropic rows are already
+    // `.anthropicNative` (skipped), other providers have different hosts
+    // (skipped), and a user's custom Anthropic proxy URL doesn't match
+    // (preserved). `modelId` already holds the Anthropic wire id (valid native),
+    // `apiKeyRef` is the same key, and `isSelected` is untouched so the partial
+    // unique index is unaffected.
+    migrator.registerMigration("v10_anthropicNativeDefault") { db in
+        try db.execute(
+            sql: """
+            UPDATE modelConfiguration
+            SET kind = 'anthropicNative', baseURL = 'https://api.anthropic.com/v1'
+            WHERE kind = 'openAICompatible' AND baseURL = 'https://api.anthropic.com/v1/openai/'
+            """
+        )
+    }
 }

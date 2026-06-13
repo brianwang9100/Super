@@ -2,16 +2,18 @@ import Core
 import Foundation
 
 /// `LLMProvider` conformer for Anthropic's **Messages API** (`POST
-/// /v1/messages`) — the native-web-search path for Claude models.
+/// /v1/messages`) — the default path for Claude models.
 ///
-/// The default (non-search) Anthropic path stays on
-/// `OpenAICompatibleLLMProvider` (via Anthropic's `/v1/openai/` compat shim);
-/// this adapter is hydrated only for a model whose `searchBackend == "native"`,
-/// because the shim can't carry the `web_search` server tool or its
-/// `encrypted_content`/`encrypted_index` citations. Like every native adapter
-/// it is a *complete* provider — text, extended thinking, regular client tool
-/// calls, and native search — since once a turn is on the Messages API there is
-/// no per-message fallback.
+/// This is now the **default** Anthropic adapter: the catalog seeds
+/// `kind: .anthropicNative` and a migration flips pre-existing default rows, so
+/// every Anthropic turn rides the Messages API. The native path is required for
+/// two reasons — explicit `cache_control` prompt-cache breakpoints (the
+/// `/v1/openai/` compat shim can't carry them) and the `web_search` server tool
+/// with its `encrypted_content`/`encrypted_index` citations. A Custom-provider
+/// Anthropic URL may still use the compat shim via `OpenAICompatibleLLMProvider`.
+/// Like every native adapter it is a *complete* provider — text, extended
+/// thinking, regular client tool calls, and native search — since once a turn is
+/// on the Messages API there is no per-message fallback.
 ///
 /// Native search is requested per-turn via the `__native_web_search__` sentinel
 /// tool (see ``NativeWebSearch``); when absent, no server tool is attached and
@@ -335,8 +337,14 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
     private func translate(
         _ messages: [LLMMessage],
         nameMap: ToolWireNameMap
-    ) throws -> (system: String?, messages: [AnthropicMessage]) {
-        var systemParts: [String] = []
+    ) throws -> (system: [AnthropicSystemBlock]?, messages: [AnthropicMessage]) {
+        // Stable-prefix system blocks (the leading briefings + native-search
+        // guidance, tagged `.stablePrefix` by `ContextAssembler`) bucket
+        // together and carry the `cache_control` marker; everything else stays
+        // volatile (memories, checkpoint summary, historical system rows).
+        var stableSystemParts: [String] = []
+        var volatileSystemParts: [String] = []
+        var sawVolatileSystem = false
         var grouped: [(role: String, blocks: [AnthropicContentBlock])] = []
 
         func append(role: String, blocks: [AnthropicContentBlock]) {
@@ -351,9 +359,20 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         for message in messages {
             switch message.role {
             case .system:
+                // Defensive demotion: once any volatile system block has
+                // appeared, a later stable-hinted one demotes to volatile too,
+                // preserving the on-the-wire byte order even if a hint is
+                // misplaced (the stable bucket must be a contiguous leading run
+                // for the breakpoint to cover the right prefix).
+                let isStable = message.cacheHint == .stablePrefix && !sawVolatileSystem
+                if !isStable { sawVolatileSystem = true }
                 for block in message.content {
                     if case .text(let value) = block, !value.isEmpty {
-                        systemParts.append(value)
+                        if isStable {
+                            stableSystemParts.append(value)
+                        } else {
+                            volatileSystemParts.append(value)
+                        }
                     }
                 }
             case .tool:
@@ -442,8 +461,46 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                 at: 0
             )
         }
-        let system = systemParts.isEmpty ? nil : systemParts.joined(separator: "\n\n")
-        return (system, grouped.map { AnthropicMessage(role: $0.role, content: $0.blocks) })
+
+        // Stable bucket first (with the marker), then the volatile bucket. The
+        // stable-system marker also caches everything rendered before it —
+        // `tools` (render order tools → system → messages) — so no separate
+        // tool breakpoint is needed. An empty bucket is omitted.
+        var systemBlocks: [AnthropicSystemBlock] = []
+        if !stableSystemParts.isEmpty {
+            systemBlocks.append(AnthropicSystemBlock(
+                text: stableSystemParts.joined(separator: "\n\n"),
+                cacheControl: AnthropicCacheControl()
+            ))
+        }
+        if !volatileSystemParts.isEmpty {
+            systemBlocks.append(AnthropicSystemBlock(
+                text: volatileSystemParts.joined(separator: "\n\n"),
+                cacheControl: nil
+            ))
+        }
+        let system = systemBlocks.isEmpty ? nil : systemBlocks
+
+        // Moving cache breakpoint: wrap the last content block of the last
+        // message, every request, unconditionally — this covers conversation
+        // growth and each tool-loop iteration (which re-issues the request with
+        // a few more blocks, well within the 20-block lookback). Below-minimum
+        // prefixes make the marker inert. Budget: 2 of Anthropic's 4 markers
+        // (this one + the stable-system one). A future history long enough to
+        // need a mid-history breakpoint every ~15 blocks would add a third here.
+        var anthropicMessages = grouped.map { AnthropicMessage(role: $0.role, content: $0.blocks) }
+        if let lastMessageIndex = anthropicMessages.indices.last {
+            let lastMessage = anthropicMessages[lastMessageIndex]
+            if let lastBlockIndex = lastMessage.content.indices.last {
+                var blocks = lastMessage.content
+                blocks[lastBlockIndex] = .cached(blocks[lastBlockIndex])
+                anthropicMessages[lastMessageIndex] = AnthropicMessage(
+                    role: lastMessage.role,
+                    content: blocks
+                )
+            }
+        }
+        return (system, anthropicMessages)
     }
 
     /// Reconstruct a `web_search_tool_result` block from stored citations,

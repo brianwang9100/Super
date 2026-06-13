@@ -1096,11 +1096,16 @@ public actor ChatSession {
         tools: [LLMTool],
         temperature: Double
     ) async throws -> [ToolCallRecord] {
+        // Pass the conversation row id as the cache-routing affinity key — an
+        // opaque, stable, PII-free local id. Only the OpenAI Chat / Responses
+        // adapters act on it (and only against their first-party host); every
+        // other provider's protocol-default overload ignores it.
         let stream = provider.stream(
             messages: messages,
             model: model,
             tools: tools,
-            temperature: temperature
+            temperature: temperature,
+            options: LLMRequestOptions(conversationCacheKey: conversationId)
         )
 
         // Reset turn-level accumulators so a late subscriber's snapshot

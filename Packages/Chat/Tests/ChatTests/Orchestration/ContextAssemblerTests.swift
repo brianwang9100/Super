@@ -764,6 +764,61 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[2].role == .user)
     }
 
+    /// The contiguous leading run — chat/applet briefing and native-search
+    /// guidance — is tagged `.stablePrefix` so the Anthropic adapter can place
+    /// its cache breakpoint after it; the volatile memories block and the
+    /// user/assistant history stay `.volatile` (the default).
+    @Test func leadingAndWebSearchBlocksAreTaggedStablePrefix() throws {
+        let assembler = ContextAssembler()
+        let native = LLMModel(
+            id: "native", displayName: "Native", maxContextTokens: 1_000, searchBackend: "native"
+        )
+        let assembly = try assembler.assemble(
+            messages: [makeMessage(id: "m1", role: .user, content: "Hi", offset: 0)],
+            toolCalls: [],
+            checkpoint: nil,
+            model: native,
+            chatBriefing: "Be concise.",
+            memories: [makeMemoryEntry(id: "mem-1", text: "Prefers metric units.")]
+        )
+        // [0] leading briefing, [1] web-search guidance, [2] memories, [3] user.
+        #expect(assembly.messages.count == 4)
+        #expect(assembly.messages[0].cacheHint == .stablePrefix)   // briefing
+        #expect(assembly.messages[1].cacheHint == .stablePrefix)   // web-search
+        #expect(assembly.messages[2].cacheHint == .volatile)       // memories
+        #expect(assembly.messages[3].cacheHint == .volatile)       // history
+    }
+
+    /// The re-emitted historical leading `.system` rows and the synthetic
+    /// checkpoint-summary row both stay `.volatile` — only the assembler's
+    /// freshly-built leading block earns `.stablePrefix`.
+    @Test func checkpointAndHistoricalSystemRowsStayVolatile() throws {
+        let assembler = ContextAssembler()
+        let messages: [MessageRecord] = [
+            makeMessage(id: "s1", role: .system, content: "Original system prompt.", offset: 0),
+            makeMessage(id: "m1", role: .user, content: "old", offset: 1),
+            makeMessage(id: "m2", role: .user, content: "new", offset: 2),
+        ]
+        let checkpoint = CompactionCheckpointRecord(
+            id: "ck1", conversationId: "c1", uptoMessageId: "m1",
+            summary: "Earlier discussion.", tokensBefore: 100, tokensAfter: 10,
+            createdAt: Date(timeIntervalSince1970: 1_700_000_100), isLive: true
+        )
+        let assembly = try assembler.assemble(
+            messages: messages,
+            toolCalls: [],
+            checkpoint: checkpoint,
+            model: makeModel(),
+            chatBriefing: "Be concise."
+        )
+        // [0] leading block (stable), then historical system row + checkpoint
+        // summary (both volatile), then the kept user turn.
+        #expect(assembly.messages[0].cacheHint == .stablePrefix)
+        for message in assembly.messages.dropFirst() {
+            #expect(message.cacheHint == .volatile)
+        }
+    }
+
     @Test func memoriesBlockSurfacesIdsAlongsideText() throws {
         // Regression for PR #72 round-4: the bullets must lead with
         // `[<id>]` so the LLM can call `memory(op:'update'|'forget',

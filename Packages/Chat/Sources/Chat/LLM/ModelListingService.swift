@@ -39,11 +39,13 @@ public protocol ModelListingService: Sendable {
 /// Three wire formats, dispatched by `kind` (plus a host check for Anthropic):
 /// - `.openAICompatible` (OpenAI, xAI): `Authorization: Bearer`, response
 ///   `{ data: [{ id }] }`.
-/// - Anthropic (an `.openAICompatible` row whose host is `api.anthropic.com`):
-///   the chat shim base (`…/v1/openai/`) has **no** `/models` endpoint, so the
-///   listing call rewrites to the native `GET /v1/models?limit=1000` with
-///   `x-api-key` + `anthropic-version` headers (Bearer 401s there — verified
-///   by curl 2026-06-11). The response envelope happens to match OpenAI's
+/// - Anthropic (any `.anthropicNative` row, or an `.openAICompatible` row whose
+///   host is `api.anthropic.com`): listing uses the native
+///   `GET /v1/models?limit=1000` with `x-api-key` + `anthropic-version` headers
+///   (Bearer 401s there — verified by curl 2026-06-11). The default Anthropic
+///   preset is `.anthropicNative`; the legacy `/v1/openai/` chat shim has **no**
+///   `/models` endpoint, so a custom compat row is rewritten to the native call
+///   by host. The response envelope happens to match OpenAI's
 ///   `{ data: [{ id }] }`, so decoding is shared.
 /// - `.geminiNative` (Google): `x-goog-api-key`, response
 ///   `{ models: [{ name: "models/…" }] }` — the `models/` prefix is stripped
@@ -69,15 +71,20 @@ public struct LiveModelListingService: ModelListingService {
     public func listModelIDs(kind: LLMProviderKind, baseURL: URL, apiKey: String?) async throws -> [String] {
         let format: WireFormat
         switch kind {
+        case .anthropicNative:
+            // The default Anthropic preset is now `.anthropicNative` (every
+            // turn rides the native Messages API for prompt caching). Listing
+            // always uses the native `GET /v1/models` with `x-api-key`.
+            format = .anthropic
         case .openAICompatible:
-            // The Anthropic preset is an `.openAICompatible` row (its chat
-            // path goes through the `/v1/openai/` shim), but the shim has no
-            // `/models` endpoint — listing must use the native API. Host
-            // check, not kind, is the only discriminator available here.
+            // A custom Anthropic row may still be `.openAICompatible` (e.g. the
+            // `/v1/openai/` chat shim, which has no `/models` endpoint, or a
+            // proxy). Host check rewrites those to the native listing too;
+            // everyone else (OpenAI, xAI, …) uses the OpenAI-compatible format.
             format = Self.isAnthropicHost(baseURL) ? .anthropic : .openAICompatible
         case .geminiNative:
             format = .gemini
-        case .appleFoundation, .anthropicNative, .openAIResponses:
+        case .appleFoundation, .openAIResponses:
             throw ModelListingError.unsupportedKind(kind)
         #if DEBUG
         case .debug:
