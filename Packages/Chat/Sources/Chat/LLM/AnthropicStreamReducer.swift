@@ -451,12 +451,12 @@ struct AnthropicStreamReducer {
         return events
     }
 
-    /// Latch any cache token counts the usage payload carries. Only overwrites a
-    /// stored value when the payload actually has one, so a later cache-free
-    /// `message_delta` can't clobber the counts seen at `message_start`.
+    /// Latch the first non-nil cache token counts the stream reports. Once a
+    /// count is stored it's never overwritten, so a later `message_delta` — cache-free
+    /// or carrying an explicit `0` — can't clobber the counts seen at `message_start`.
     private mutating func captureCacheTokens(from usage: AnthropicStreamEvent.Usage?) {
-        if let creation = usage?.cacheCreationInputTokens { cacheCreationInputTokens = creation }
-        if let read = usage?.cacheReadInputTokens { cacheReadInputTokens = read }
+        if cacheCreationInputTokens == nil, let creation = usage?.cacheCreationInputTokens { cacheCreationInputTokens = creation }
+        if cacheReadInputTokens == nil, let read = usage?.cacheReadInputTokens { cacheReadInputTokens = read }
     }
 
     private mutating func ensureMessageStart(into events: inout [LLMStreamEvent]) {
