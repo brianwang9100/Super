@@ -241,6 +241,39 @@ struct NoteBibleToolTests {
         #expect(note.verseEnd == nil)
     }
 
+    /// Regression: a coerced chapter note must remain addressable by a
+    /// chapter-target read (`verseStart IS NULL`) — i.e. it isn't orphaned by
+    /// the stray verse fields the caller sent. Driven against the real GRDB
+    /// repository so the `IS NULL` query is the production one. Mirrors the
+    /// `AnnotateBibleTool` regression.
+    @Test("coerced chapter note is found by a chapter-target read")
+    func coercedChapterNoteIsAddressable() async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleNoteRepository(database: database)
+        let tool = NoteBibleTool(
+            repository: repository,
+            clock: FixedClock(t0),
+            ids: DeterministicIDGenerator(prefix: "note-"),
+            stampProvider: FakeNoteStampProvider(
+                stamp: BibleNoteStamp(source: .assistant, modelId: "claude")
+            )
+        )
+        _ = try await tool.execute(input: [
+            "action": .string("create"),
+            "target": .string("chapter"),
+            "bookId": .string("JHN"),
+            "chapterNumber": .int(3),
+            "verseStart": .int(16),
+            "body": .string("Chapter note."),
+        ])
+
+        let notes = try await repository.list(
+            target: .chapter, bookId: "JHN", chapterNumber: 3, verseStart: nil, verseEnd: nil
+        )
+        #expect(notes.count == 1)
+        #expect(notes.first?.body == "Chapter note.")
+    }
+
     @Test("edit without id rejects")
     func editMissingIdRejects() async throws {
         let (tool, repo) = makeTool()
