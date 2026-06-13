@@ -72,8 +72,10 @@ public struct AnnotateBibleTool: ToolExecutor {
 
         The `target` discriminates which scripture unit the annotation \
         attaches to and decides which position fields are required:
-        - `"book"`: only `bookId` (e.g. `"ROM"`) — book overview.
-        - `"chapter"`: `bookId` and `chapterNumber` — chapter summary.
+        - `"book"`: `bookId` (e.g. `"ROM"`) — book overview. Any \
+        chapter/verse fields are ignored.
+        - `"chapter"`: `bookId` and `chapterNumber` — chapter summary. \
+        Any verse fields are ignored.
         - `"verse"`: `bookId`, `chapterNumber`, `verseStart`, `verseEnd` \
         — verse-range summary. For a single verse, set `verseEnd` equal \
         to `verseStart`.
@@ -102,19 +104,19 @@ public struct AnnotateBibleTool: ToolExecutor {
             LLMToolParameter(
                 name: "chapterNumber",
                 type: .integer,
-                description: "1-based chapter number. Required when target is 'chapter' or 'verse'; omit for 'book'.",
+                description: "1-based chapter number. Required when target is 'chapter' or 'verse'; ignored for 'book'.",
                 isRequired: false
             ),
             LLMToolParameter(
                 name: "verseStart",
                 type: .integer,
-                description: "1-based first verse in the range. Required when target is 'verse'; omit otherwise.",
+                description: "1-based first verse in the range. Required when target is 'verse'; ignored otherwise.",
                 isRequired: false
             ),
             LLMToolParameter(
                 name: "verseEnd",
                 type: .integer,
-                description: "1-based last verse in the range, ≥ verseStart. Required when target is 'verse'; set equal to verseStart for a single verse.",
+                description: "1-based last verse in the range, ≥ verseStart. Required when target is 'verse' (set equal to verseStart for a single verse); ignored otherwise.",
                 isRequired: false
             ),
             LLMToolParameter(
@@ -227,36 +229,44 @@ public struct AnnotateBibleTool: ToolExecutor {
             throw ValidationError(message: "bookId is empty. Pass a 3-letter UPPERCASE book code like 'ROM' or '1PE'.")
         }
 
-        let chapterNumber = optionalInt(input, key: "chapterNumber")
-        let verseStart = optionalInt(input, key: "verseStart")
-        let verseEnd = optionalInt(input, key: "verseEnd")
+        let rawChapterNumber = optionalInt(input, key: "chapterNumber")
+        let rawVerseStart = optionalInt(input, key: "verseStart")
+        let rawVerseEnd = optionalInt(input, key: "verseEnd")
 
-        // Required-by-target validation. The `guard let X, X >= 1`
-        // shorthand shadows the outer optional with its unwrapped value
-        // so the comparison reads naturally; the shadowed binding is
-        // intentionally not used past the guard.
+        // `target` is the authoritative discriminator. We enforce the fields
+        // the unit *requires*, then coerce away any position fields it doesn't
+        // use rather than rejecting the call — a model that stamps a stray
+        // `verseStart` on a chapter has still declared chapter intent. The
+        // coerced (nilled) fields are what get stored and queried back, so a
+        // chapter row stays addressable as `verseStart IS NULL`.
+        let chapterNumber: Int?
+        let verseStart: Int?
+        let verseEnd: Int?
         switch target {
         case .book:
-            if chapterNumber != nil || verseStart != nil || verseEnd != nil {
-                throw ValidationError(message: "target 'book' must not include chapterNumber, verseStart, or verseEnd.")
-            }
+            chapterNumber = nil
+            verseStart = nil
+            verseEnd = nil
         case .chapter:
-            guard let chapterNumber, chapterNumber >= 1 else {
+            guard let n = rawChapterNumber, n >= 1 else {
                 throw ValidationError(message: "target 'chapter' requires chapterNumber ≥ 1.")
             }
-            if verseStart != nil || verseEnd != nil {
-                throw ValidationError(message: "target 'chapter' must not include verseStart or verseEnd.")
-            }
+            chapterNumber = n
+            verseStart = nil
+            verseEnd = nil
         case .verse:
-            guard let chapterNumber, chapterNumber >= 1 else {
+            guard let n = rawChapterNumber, n >= 1 else {
                 throw ValidationError(message: "target 'verse' requires chapterNumber ≥ 1.")
             }
-            guard let verseStart, verseStart >= 1 else {
+            guard let start = rawVerseStart, start >= 1 else {
                 throw ValidationError(message: "target 'verse' requires verseStart ≥ 1.")
             }
-            guard let verseEnd, verseEnd >= verseStart else {
+            guard let end = rawVerseEnd, end >= start else {
                 throw ValidationError(message: "target 'verse' requires verseEnd ≥ verseStart.")
             }
+            chapterNumber = n
+            verseStart = start
+            verseEnd = end
         }
 
         let summary = try requireString(input, key: "summary")
