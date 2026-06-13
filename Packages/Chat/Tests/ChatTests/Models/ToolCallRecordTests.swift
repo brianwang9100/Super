@@ -50,4 +50,16 @@ struct ToolCallRecordTests {
             _ = try row.decodedParameters()
         }
     }
+
+    /// The locally-minted-id marker round-trips and is distinguishable from
+    /// every provider's wire-id shape — the property the Gemini adapter relies
+    /// on to keep a synthetic id off the wire (audit P1-6).
+    @Test func locallyMintedIDIsPrefixedAndRecognized() {
+        let minted = ToolCallRecord.locallyMintedID("id-7")
+        #expect(minted == "localtoolu_id-7")
+        #expect(ToolCallRecord.isLocallyMintedID(minted))
+        #expect(!ToolCallRecord.isLocallyMintedID("toolu_abc"))    // Anthropic
+        #expect(!ToolCallRecord.isLocallyMintedID("call_abc"))     // OpenAI
+        #expect(!ToolCallRecord.isLocallyMintedID("get_weather"))  // bare name
+    }
 }

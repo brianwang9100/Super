@@ -594,13 +594,47 @@ struct GeminiNativeLLMProviderTests {
         #expect(modelParts[0]["text"] as? String == "Let me check.")
         let functionCall = try #require(modelParts[1]["functionCall"] as? [String: Any])
         #expect(functionCall["name"] as? String == "get_weather")
+        #expect(functionCall["id"] == nil)   // id-less (id == name) sends name-only
 
         // The tool result rides the trailing user content as a functionResponse.
         let resultParts = try #require(contents[2]["parts"] as? [[String: Any]])
         let functionResponse = try #require(resultParts[0]["functionResponse"] as? [String: Any])
         #expect(functionResponse["name"] as? String == "get_weather")
+        #expect(functionResponse["id"] == nil)
         let response = try #require(functionResponse["response"] as? [String: Any])
         #expect(response["result"] as? String == "18C clear")
+    }
+
+    /// A locally-minted tool-call id (the disambiguated PK the orchestrator
+    /// creates for id-less calls — audit P1-6) is synthetic: it must NOT leak
+    /// onto the Gemini wire, since Gemini round-trips only the ids it minted.
+    /// Both the `functionCall` and its `functionResponse` send name-only.
+    @Test func locallyMintedToolCallIDStaysNameOnlyOnTheWire() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
+        let minted = ToolCallRecord.locallyMintedID("id-3")   // localtoolu_id-3
+        let history: [LLMMessage] = [
+            LLMMessage(role: .assistant, content: [
+                .toolUse(id: minted, name: "get_weather", input: .object(["c": .string("Paris")]), signature: nil),
+            ]),
+            LLMMessage(role: .tool, content: [
+                .toolResult(toolUseID: minted, content: "18C", isError: false),
+            ]),
+        ]
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: history, model: model, tools: [], temperature: 0.5
+        ))
+        let body = try Self.decodeBody(http)
+        let contents = try #require(body["contents"] as? [[String: Any]])
+
+        let modelParts = try #require(contents[0]["parts"] as? [[String: Any]])
+        let call = try #require(modelParts.first { $0["functionCall"] != nil }?["functionCall"] as? [String: Any])
+        #expect(call["name"] as? String == "get_weather")
+        #expect(call["id"] == nil)   // the synthetic PK must not reach Gemini
+
+        let resultParts = try #require(contents[1]["parts"] as? [[String: Any]])
+        let resp = try #require(resultParts.first { $0["functionResponse"] != nil }?["functionResponse"] as? [String: Any])
+        #expect(resp["name"] as? String == "get_weather")
+        #expect(resp["id"] == nil)
     }
 
     @Test func searchResultBlockIsIgnoredForGemini() async throws {

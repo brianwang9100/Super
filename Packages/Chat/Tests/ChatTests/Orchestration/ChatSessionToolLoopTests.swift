@@ -697,4 +697,102 @@ struct ChatSessionToolLoopTests {
         #expect(!allText.contains("interrupted"))
         #expect(allText.contains("Summary two"))
     }
+
+    /// Audit P1-6 regression: two sequential assistant turns calling the *same
+    /// id-less tool* (the provider supplied no id, so the reducer emits
+    /// `id == name`) must persist as two distinct `ToolCallRecord` rows. Before
+    /// the fix the GRDB upsert re-parented the first row to the second turn's
+    /// message, so turn 1 lost its `toolUse` in projection while its
+    /// `tool_result` row survived — an orphaned result strict providers reject.
+    @Test func idlessToolCallsAcrossTurnsPersistAsDistinctRowsAndKeepEarlierToolUse() async throws {
+        let toolID = "get_weather"
+        let setup = try await makeSetup(scripts: [
+            // Turn 1: id-less call (id == name), as the Gemini reducer emits.
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: toolID, name: toolID, input: .object(["c": .string("Paris")]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+            // Turn 2: the SAME id-less call again — the cross-turn collision.
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .toolUse(index: 0, id: toolID, name: toolID, input: .object(["c": .string("London")]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+            // Turn 3: finish plainly.
+            [
+                .messageStart(id: "m3", model: "fake-model-1"),
+                .textDelta(index: 0, text: "done"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setResult(ToolResult(toolID: toolID, content: "ok", isError: false))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        _ = await collect(await setup.session.send(text: "weather twice", model: setup.model))
+        await setup.session.waitUntilFinished()
+
+        // Two distinct rows survive — no upsert re-parent. Both id-less, so both
+        // got a locally-minted, marked, unique PK. (fetchByConversation already
+        // orders createdAt ASC, rowid ASC; the assertions below don't depend on
+        // order anyway.)
+        let calls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
+        #expect(calls.count == 2)
+        #expect(Set(calls.map(\.id)).count == 2)
+        #expect(calls.allSatisfy { $0.toolName == toolID })
+        #expect(calls.allSatisfy { ToolCallRecord.isLocallyMintedID($0.id) })
+        #expect(calls[0].messageId != calls[1].messageId)
+
+        // The final assembling request (turn 3) carries BOTH assistant tool
+        // turns, each with its own toolUse: turn 1 did not lose its call, and
+        // the two wire ids are distinct (strict-provider duplicate-id safety).
+        let lastRequest = try #require(await setup.provider.capturedRequests().last)
+        var toolUseIDs: [String] = []
+        for message in lastRequest.messages {
+            for block in message.content {
+                if case .toolUse(let id, _, _, _) = block { toolUseIDs.append(id) }
+            }
+        }
+        #expect(toolUseIDs.count == 2)
+        #expect(Set(toolUseIDs).count == 2)
+    }
+
+    /// The persist seam also disambiguates the *empty-string* id-less shape (the
+    /// Anthropic reducer emits `block.id ?? ""`), not just Gemini's `id == name`
+    /// fallback — an empty PK would collide across turns and produce an empty
+    /// `tool_use` id on the wire. Defensive: Anthropic supplies real ids in
+    /// practice, but the guard closes the same bug class for every provider.
+    @Test func emptyIDlessToolCallGetsALocallyMintedPK() async throws {
+        let toolID = "lookup"
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "", name: toolID, input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "done"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setResult(ToolResult(toolID: toolID, content: "ok", isError: false))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        _ = await collect(await setup.session.send(text: "look it up", model: setup.model))
+        await setup.session.waitUntilFinished()
+
+        let calls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
+        #expect(calls.count == 1)
+        let call = try #require(calls.first)
+        #expect(!call.id.isEmpty)
+        #expect(ToolCallRecord.isLocallyMintedID(call.id))
+        #expect(call.toolName == toolID)
+        // The result row paired against the minted PK (not the empty original).
+        let rows = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let toolRow = try #require(rows.first { $0.role == .tool })
+        #expect(toolRow.toolCallId == call.id)
+    }
 }

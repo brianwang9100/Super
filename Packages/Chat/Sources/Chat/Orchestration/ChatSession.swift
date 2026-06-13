@@ -1269,8 +1269,21 @@ public actor ChatSession {
         // that is just a handful of row inserts.
         for call in pendingCalls {
             let parametersJSON = encodeJSON(call.input)
+            // A provider that supplies no tool-call id would collide this PK
+            // across turns: the GRDB upsert re-parents the earlier turn's row to
+            // the newer message, orphaning its tool_result on replay (audit
+            // P1-6). The id-less shapes are the Gemini reducer's tool-name
+            // fallback (`id == name`) and an empty string (the Anthropic
+            // reducer's `block.id ?? ""`). Mint a locally-unique, marked id for
+            // both instead. The marker keeps the Gemini wire name-only (no
+            // fabricated id), and strict providers get a unique, non-empty id
+            // (no duplicate/empty `tool_use` ids). `idGenerator` makes it unique
+            // even for same-turn parallel calls.
+            let persistedID = call.id.isEmpty || call.id == call.name
+                ? ToolCallRecord.locallyMintedID(idGenerator.nextID())
+                : call.id
             let record = ToolCallRecord(
-                id: call.id,
+                id: persistedID,
                 messageId: assistantMessage.id,
                 conversationId: conversationId,
                 toolName: call.name,
