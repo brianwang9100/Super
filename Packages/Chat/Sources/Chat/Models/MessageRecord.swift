@@ -31,6 +31,13 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
     /// providers that don't sign, for rows persisted before v8, and for
     /// turns containing `redacted_thinking` (not replayable).
     public var thinkingSignature: String?
+    /// The model id that produced this assistant turn. Carried so a
+    /// thinking signature is only replayed when the same model is the active
+    /// one — Anthropic thinking signatures are model-specific, and replaying
+    /// one minted by a model the user has since switched away from is a 400
+    /// on the latest assistant turn. Nil for non-assistant rows, rows with
+    /// no thinking trace, and rows persisted before v9.
+    public var thinkingModelId: String?
     public var toolCallId: String?
     public var createdAt: Date
     public var tokenCount: Int?
@@ -48,6 +55,7 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         thinkingContent: String? = nil,
         thinkingDurationMs: Int? = nil,
         thinkingSignature: String? = nil,
+        thinkingModelId: String? = nil,
         toolCallId: String? = nil,
         createdAt: Date,
         tokenCount: Int? = nil,
@@ -60,6 +68,7 @@ public struct MessageRecord: Codable, FetchableRecord, PersistableRecord, Sendab
         self.thinkingContent = thinkingContent
         self.thinkingDurationMs = thinkingDurationMs
         self.thinkingSignature = thinkingSignature
+        self.thinkingModelId = thinkingModelId
         self.toolCallId = toolCallId
         self.createdAt = createdAt
         self.tokenCount = tokenCount

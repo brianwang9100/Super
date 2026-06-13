@@ -924,6 +924,7 @@ struct ContextAssemblerTests {
         var assistant = makeMessage(id: "m2", role: .assistant, content: "checking", offset: 1)
         assistant.thinkingContent = "I should call the tool."
         assistant.thinkingSignature = "sig-9"
+        assistant.thinkingModelId = "test-model"   // matches makeModel().id
         let messages = [
             makeMessage(id: "m1", role: .user, content: "run the tool", offset: 0),
             assistant,
@@ -952,6 +953,35 @@ struct ContextAssemblerTests {
             return false
         }
         #expect(hasToolUse)
+    }
+
+    /// A thinking signature minted by a *different* model than the active one
+    /// must not be replayed — Anthropic signatures are model-specific and a
+    /// foreign one is a 400 on the latest assistant turn. The trace still
+    /// projects (for context), but the signature is dropped so the adapter
+    /// skips it on the wire and the request gate falls back to thinking-off.
+    @Test func thinkingSignatureFromAnotherModelIsNotReplayed() throws {
+        let assembler = ContextAssembler()
+        var assistant = makeMessage(id: "m2", role: .assistant, content: "checking", offset: 1)
+        assistant.thinkingContent = "reasoning from the old model"
+        assistant.thinkingSignature = "sig-from-model-A"
+        assistant.thinkingModelId = "model-A"   // differs from makeModel().id ("test-model")
+        let messages = [
+            makeMessage(id: "m1", role: .user, content: "hi", offset: 0),
+            assistant,
+        ]
+
+        let assembly = try assembler.assemble(
+            messages: messages, toolCalls: [], checkpoint: nil, model: makeModel()
+        )
+
+        let assistantMessage = try #require(assembly.messages.first { $0.role == .assistant })
+        guard case .thinking(let content, let signature) = assistantMessage.content.first else {
+            Issue.record("expected .thinking block, got \(String(describing: assistantMessage.content.first))")
+            return
+        }
+        #expect(content == "reasoning from the old model")
+        #expect(signature == nil)   // stripped — wrong model
     }
 
     /// An assistant `toolUse` whose result row never landed (cancel/crash

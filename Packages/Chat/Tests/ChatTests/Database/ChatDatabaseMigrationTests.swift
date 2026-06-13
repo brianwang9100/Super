@@ -133,6 +133,8 @@ struct ChatDatabaseMigrationTests {
         #expect(lookup["thinkingDurationMs"]?.1 == 0)
         #expect(lookup["thinkingSignature"]?.0 == "TEXT")
         #expect(lookup["thinkingSignature"]?.1 == 0)
+        #expect(lookup["thinkingModelId"]?.0 == "TEXT")
+        #expect(lookup["thinkingModelId"]?.1 == 0)
         #expect(lookup["toolCallId"]?.0 == "TEXT")
         #expect(lookup["toolCallId"]?.1 == 0)
         #expect(lookup["createdAt"]?.0 == "DATETIME")
@@ -190,7 +192,7 @@ struct ChatDatabaseMigrationTests {
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run
-    /// (currently through `v8_messageThinkingSignature`) via
+    /// (currently through `v9_messageThinkingModelId`) via
     /// `GRDBSnapshotTesting`. Catches column-type drift, FK clauses, and
     /// DEFAULT expressions that the targeted PRAGMA assertions don't
     /// cover. Snapshot files land under
@@ -438,6 +440,7 @@ struct ChatDatabaseMigrationTests {
                 id: "signed", conversationId: "c1", role: .assistant,
                 content: "answer", thinkingContent: "trace",
                 thinkingDurationMs: 12, thinkingSignature: "sig-1",
+                thinkingModelId: "claude-opus-4-7",
                 createdAt: now
             ).insert(db)
             try MessageRecord(
@@ -451,5 +454,45 @@ struct ChatDatabaseMigrationTests {
         }
         // Ordered by id ascending: "signed" sorts before "unsigned".
         #expect(fetched.map(\.thinkingSignature) == ["sig-1", nil])
+        #expect(fetched.map(\.thinkingModelId) == ["claude-opus-4-7", nil])
+    }
+
+    @Test func v9AddsNullableThinkingModelIdColumn() async throws {
+        let db = try ChatDatabase.makeInMemory()
+        let columns = try await db.queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(message)")
+                .map { ($0["name"] as String, $0["type"] as String, $0["notnull"] as Int) }
+        }
+        let lookup = Dictionary(uniqueKeysWithValues: columns.map { ($0.0, ($0.1, $0.2)) })
+        #expect(lookup["thinkingModelId"]?.0 == "TEXT")
+        #expect(lookup["thinkingModelId"]?.1 == 0)   // nullable
+    }
+
+    /// Rows that existed before v9 migrate to `thinkingModelId = NULL` — a
+    /// stored signature with no recorded model is treated as unreplayable
+    /// (thinking-off fallback). Stop at v8, seed a row, apply v9.
+    @Test func v9BackfillsExistingRowsAsNullThinkingModelId() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+        try migrator.migrate(queue, upTo: "v8_messageThinkingSignature")
+
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO conversation (id, title, createdAt, updatedAt)
+                VALUES ('c1', 't', '2026-01-01 00:00:00', '2026-01-01 00:00:00')
+            """)
+            try db.execute(sql: """
+                INSERT INTO message (id, conversationId, role, content, createdAt, thinkingSignature)
+                VALUES ('m1', 'c1', 'assistant', 'pre-v9 row', '2026-01-01 00:00:00', 'sig-orphan')
+            """)
+        }
+        try migrator.migrate(queue)
+
+        let fetched = try await queue.read { db in
+            try MessageRecord.fetchOne(db, key: "m1")
+        }
+        #expect(fetched?.thinkingModelId == nil)
+        #expect(fetched?.thinkingSignature == "sig-orphan")
     }
 }

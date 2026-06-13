@@ -1239,6 +1239,7 @@ public actor ChatSession {
             thinkingContent: accumulatedThinking.isEmpty ? nil : accumulatedThinking,
             thinkingDurationMs: thinkingDurationMs,
             thinkingSignature: accumulatedThinking.isEmpty ? nil : capturedThinkingSignature,
+            thinkingModelId: accumulatedThinking.isEmpty ? nil : model.id,
             toolCallId: nil,
             createdAt: clock.now(),
             tokenCount: capturedUsage?.outputTokens,

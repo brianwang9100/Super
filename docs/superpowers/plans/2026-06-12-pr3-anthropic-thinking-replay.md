@@ -65,5 +65,29 @@ Add `LLMContent.thinking(content: String, signature: String?)` and `LLMStreamEve
 - `AnthropicContentBlock.thinking(thinking:signature:)` encoding `{"type":"thinking","thinking":…,"signature":…}`; `translate` emits it first for signed `.thinking` blocks on assistant turns (unsigned → skipped). Wire-shape test via `decodeBody`.
 - Request gate: `thinkingEnabled` additionally requires the last assistant message in `messages` to be replayable (no `toolUse`, or signed `.thinking`). Tests: (a) history ending in unsigned toolUse assistant turn → `body["thinking"] == nil`; (b) same history with signed thinking → `thinking` present AND the wire assistant content starts with the thinking block; (c) tool-free history → unchanged (existing tests).
 
+## Post-review revision (review S1 + S2)
+
+The adversarial review found no MUST but two SHOULD items, both fixed because
+the audit series exists to prevent permanent conversation wedges:
+
+- **S1 — cross-model signature replay (real, reachable).** An Anthropic
+  thinking signature is model-specific; replaying one minted by model A after
+  the user switches to model B is the same "latest assistant thinking block was
+  modified" 400 this PR fixes. Reachable via an interrupted tool loop (PR-1
+  recovery leaves a persisted assistant `tool_use` turn as the last assistant
+  message) followed by a model switch. **Fix:** persist the producing model on
+  the row (`MessageRecord.thinkingModelId`, Chat migration v9) and replay the
+  signature only when it matches the active model; on a mismatch
+  `ContextAssembler` drops just the signature, so the adapter skips the
+  unreplayable block and the request gate disables thinking for that turn (the
+  API-tolerated fallback). Strictly safe — worst case is a thinking-off turn
+  that might have worked, never a 400.
+- **S2 — interleaved/multi-block thinking (defensive).** `pendingThinkingSignature`
+  is last-stash-wins and `ChatSession` persists a single content/signature
+  pair; if Anthropic ever emitted two thinking blocks per turn (interleaved
+  thinking beta) the text would pair with only the last signature → a replay
+  400. Not reachable today (we don't send the beta header). Documented at the
+  reducer stash site so a future beta-header addition doesn't silently regress.
+
 ### Task 5: Suites, review, PR
 `swift test -Xswiftc -warnings-as-errors` in Core, Chat, Bible, Todo. Fable review subagent → fix MUST/SHOULD → PR with Test Coverage section → claude-review loop → auto-merge. Live-API verification (BYOK key + thinking model + real tool round-trip) is required by the roadmap before full trust — if no key is available in-session, flag it on the PR and to the user at the pause point.

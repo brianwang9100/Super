@@ -391,6 +391,9 @@ struct ChatSessionTests {
         let stored = try await setup.messageRepo.fetch(id: record.id)
         #expect(stored?.thinkingContent == "reasoning")
         #expect(stored?.thinkingSignature == "sig-xyz")
+        // The producing model is recorded so the signature is only replayed
+        // back to the same model (a foreign signature would 400).
+        #expect(stored?.thinkingModelId == setup.model.id)
     }
 
     @Test func thinkingOnlyTurnPersists() async throws {

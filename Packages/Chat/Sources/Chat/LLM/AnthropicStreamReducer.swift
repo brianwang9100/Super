@@ -272,6 +272,13 @@ struct AnthropicStreamReducer {
         case .text(let normalized):
             events.append(.contentBlockStop(index: normalized))
         case .thinking(let normalized, let signature):
+            // Last-stash-wins. Safe because we never send the interleaved-
+            // thinking beta header, so Anthropic emits at most one thinking
+            // block per turn — `ChatSession` persists a single
+            // `thinkingContent`/`thinkingSignature` pair to match. If
+            // interleaved thinking is ever enabled, this single-pair model
+            // breaks (text from all blocks would pair with only the last
+            // signature → a replay 400) and must become per-block.
             if !signature.isEmpty {
                 pendingThinkingSignature = (index: normalized, signature: signature)
             }
