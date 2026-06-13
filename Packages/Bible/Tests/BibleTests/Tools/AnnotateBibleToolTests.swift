@@ -239,16 +239,82 @@ struct AnnotateBibleToolTests {
         #expect(result.isError == true)
     }
 
-    @Test("book target that includes a chapter rejects")
-    func bookWithChapterRejects() async throws {
-        let (tool, _) = makeTool()
+    // MARK: - Position-field coercion
+
+    /// `target` is the authoritative discriminator: a `book` payload that
+    /// carries stray chapter/verse fields is accepted, and those fields are
+    /// coerced to `nil` rather than rejected.
+    @Test("book target coerces stray chapter/verse fields to nil")
+    func bookCoercesStrayPositionFields() async throws {
+        let (tool, repo) = makeTool()
         let result = try await tool.execute(input: [
             "target": .string("book"),
             "bookId": .string("ROM"),
             "chapterNumber": .int(8),
+            "verseStart": .int(1),
+            "verseEnd": .int(5),
+            "summary": .string(sampleSummary),
         ])
-        #expect(result.isError == true)
-        #expect(result.content.contains("book"))
+        #expect(result.isError == false)
+        let inserts = await repo.lastCall?.inserts ?? []
+        #expect(inserts.count == 1)
+        #expect(inserts[0].target == .book)
+        #expect(inserts[0].chapterNumber == nil)
+        #expect(inserts[0].verseStart == nil)
+        #expect(inserts[0].verseEnd == nil)
+    }
+
+    /// The reported bug: a chapter payload with a stray `verseStart` no longer
+    /// errors — the verse fields are dropped, `chapterNumber` is preserved.
+    @Test("chapter target coerces stray verse fields to nil")
+    func chapterCoercesStrayVerseFields() async throws {
+        let (tool, repo) = makeTool()
+        let result = try await tool.execute(input: [
+            "target": .string("chapter"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(1),
+            "verseEnd": .int(39),
+            "summary": .string(sampleSummary),
+        ])
+        #expect(result.isError == false)
+        let inserts = await repo.lastCall?.inserts ?? []
+        #expect(inserts.count == 1)
+        #expect(inserts[0].target == .chapter)
+        #expect(inserts[0].chapterNumber == 8)
+        #expect(inserts[0].verseStart == nil)
+        #expect(inserts[0].verseEnd == nil)
+    }
+
+    /// Regression: a coerced chapter row must remain addressable by a
+    /// chapter-target read (`verseStart IS NULL`) — i.e. it isn't orphaned by
+    /// the stray verse fields the caller sent. Driven against the real GRDB
+    /// repository so the `IS NULL` query is the production one.
+    @Test("coerced chapter row is found by a chapter-target read")
+    func coercedChapterRowIsAddressable() async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleAnnotationRepository(database: database)
+        let tool = AnnotateBibleTool(
+            repository: repository,
+            stampProvider: FakeStampProvider(
+                stamp: BibleAnnotationStamp(source: .user, modelId: "afm-3.0")
+            ),
+            clock: FixedClock(t0),
+            ids: DeterministicIDGenerator(prefix: "anno-")
+        )
+        _ = try await tool.execute(input: [
+            "target": .string("chapter"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(1),
+            "summary": .string(sampleSummary),
+        ])
+
+        let rows = try await repository.list(
+            target: .chapter, bookId: "ROM", chapterNumber: 8, verseStart: nil, verseEnd: nil
+        )
+        #expect(rows.count == 1)
+        #expect(rows.first?.summary == sampleSummary)
     }
 
     @Test("missing summary rejects with the exact remediation message")

@@ -57,8 +57,8 @@ public struct NoteBibleTool: ToolExecutor {
 
         For `create`, `target` selects the scripture unit and decides the \
         position fields:
-        - `"book"`: only `bookId` (e.g. `"JHN"`).
-        - `"chapter"`: `bookId` and `chapterNumber`.
+        - `"book"`: `bookId` (e.g. `"JHN"`); chapter/verse fields ignored.
+        - `"chapter"`: `bookId` and `chapterNumber`; verse fields ignored.
         - `"verse"`: `bookId`, `chapterNumber`, `verseStart`, `verseEnd` \
         (set `verseEnd` equal to `verseStart` for a single verse).
 
@@ -240,35 +240,42 @@ public struct NoteBibleTool: ToolExecutor {
         }
 
         let bookId = try requireNonEmptyString(input, key: "bookId")
-        let chapterNumber = optionalInt(input, key: "chapterNumber")
-        let verseStart = optionalInt(input, key: "verseStart")
-        let verseEnd = optionalInt(input, key: "verseEnd")
+        let rawChapterNumber = optionalInt(input, key: "chapterNumber")
+        let rawVerseStart = optionalInt(input, key: "verseStart")
+        let rawVerseEnd = optionalInt(input, key: "verseEnd")
 
-        // Required-by-target validation. The `guard let X, X >= 1` shorthand
-        // shadows the outer optional with its unwrapped value so the
-        // comparison reads naturally.
+        // `target` is the authoritative discriminator. We enforce the fields
+        // the unit *requires*, then coerce away any position fields it doesn't
+        // use rather than rejecting the call (matches `bible.annotate`). The
+        // coerced (nilled) fields are what get stored and queried back.
+        let chapterNumber: Int?
+        let verseStart: Int?
+        let verseEnd: Int?
         switch target {
         case .book:
-            if chapterNumber != nil || verseStart != nil || verseEnd != nil {
-                throw ValidationError(message: "target 'book' must not include chapterNumber, verseStart, or verseEnd.")
-            }
+            chapterNumber = nil
+            verseStart = nil
+            verseEnd = nil
         case .chapter:
-            guard let chapterNumber, chapterNumber >= 1 else {
+            guard let n = rawChapterNumber, n >= 1 else {
                 throw ValidationError(message: "target 'chapter' requires chapterNumber ≥ 1.")
             }
-            if verseStart != nil || verseEnd != nil {
-                throw ValidationError(message: "target 'chapter' must not include verseStart or verseEnd.")
-            }
+            chapterNumber = n
+            verseStart = nil
+            verseEnd = nil
         case .verse:
-            guard let chapterNumber, chapterNumber >= 1 else {
+            guard let n = rawChapterNumber, n >= 1 else {
                 throw ValidationError(message: "target 'verse' requires chapterNumber ≥ 1.")
             }
-            guard let verseStart, verseStart >= 1 else {
+            guard let start = rawVerseStart, start >= 1 else {
                 throw ValidationError(message: "target 'verse' requires verseStart ≥ 1.")
             }
-            guard let verseEnd, verseEnd >= verseStart else {
+            guard let end = rawVerseEnd, end >= start else {
                 throw ValidationError(message: "target 'verse' requires verseEnd ≥ verseStart.")
             }
+            chapterNumber = n
+            verseStart = start
+            verseEnd = end
         }
 
         let body = try requireNonEmptyString(input, key: "body")
