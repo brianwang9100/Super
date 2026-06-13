@@ -19,6 +19,7 @@ Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all by Supe
 - **Your location.** Never requested, never accessed.
 - **Your contacts, photos, calendar, or any other personal data on your device.** Not requested, not accessed.
 - **What other apps you use, when, or how often.** Not accessed.
+- **Your voice.** When you dictate a chat message, SuperBible uses Apple's **on-device** speech recognition (`requiresOnDeviceRecognition = true`) — the audio and the transcript are processed entirely on your iPhone or iPad and are never uploaded to Apple or to us. The microphone is used only while you're actively dictating.
 
 ### About your chat messages — be aware of where they go
 

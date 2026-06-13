@@ -116,6 +116,18 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperOS uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperOS needs microphone access to capture your voice for dictation."
+        # Version keys reference the build settings (not literals) so the
+        # `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` overrides that
+        # `testflight.yml` passes at archive time actually land in the
+        # shipped Info.plist. With XcodeGen's literal `1` / `1.0` defaults
+        # the override was inert and every TestFlight build shipped as
+        # build "1" (App Store Connect rejects duplicate build numbers).
+        # Defaults for the settings live in `settings.base` below.
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        # No non-exempt encryption (only standard HTTPS + Keychain); declaring
+        # it skips the per-build export-compliance prompt in App Store Connect.
+        ITSAppUsesNonExemptEncryption: false
         # ATS exemptions: scoped to loopback only so local-LLM stacks
         # (Ollama, MLX, LM Studio, llama.cpp) can be reached over plain
         # HTTP. All other endpoints still go through ATS. The
@@ -141,6 +153,11 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App-SuperOS/Info.plist
         SUPPORTS_MACCATALYST: NO
+        # Defaults for the version Info.plist keys above. `testflight.yml`
+        # overrides CURRENT_PROJECT_VERSION (= GitHub run number) at archive
+        # time; local/dev builds fall back to these.
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
       configs:
         # Release-only signing config is target-scoped (not project- or
         # command-line-scoped) so it doesn't leak into SwiftPM resource
@@ -238,6 +255,16 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSSpeechRecognitionUsageDescription: "SuperBible uses speech recognition to dictate your chat messages on-device."
         NSMicrophoneUsageDescription: "SuperBible needs microphone access to capture your voice for dictation."
+        # Version keys reference the build settings (not literals) so archive-
+        # time `CURRENT_PROJECT_VERSION` / `MARKETING_VERSION` overrides land in
+        # the shipped Info.plist. See the SuperOS block above for the full
+        # rationale (XcodeGen's literal `1` default broke build numbering).
+        # Defaults live in `settings.base` below.
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        # No non-exempt encryption (only standard HTTPS + Keychain); declaring
+        # it skips the per-build export-compliance prompt in App Store Connect.
+        ITSAppUsesNonExemptEncryption: false
         # Background bulk-annotation generation: the `processing` mode plus the
         # permitted-identifier list let `BulkAnnotationBackgroundScheduler`
         # register + run its `BGProcessingTask`. The identifier must match
@@ -265,6 +292,10 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: App-SuperBible/Info.plist
         SUPPORTS_MACCATALYST: NO
+        # Defaults for the version Info.plist keys above; CI overrides
+        # CURRENT_PROJECT_VERSION at archive time.
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
       configs:
         Release:
           CODE_SIGN_STYLE: Manual
