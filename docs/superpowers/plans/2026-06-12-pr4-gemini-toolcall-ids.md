@@ -1,6 +1,6 @@
 # PR-4: Gemini id-less tool-call disambiguation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Close audit P1-6 — a second assistant turn calling the same *id-less* (legacy Gemini) tool in one conversation silently re-parents the earlier turn's `ToolCallRecord` (PK upsert collision), so the earlier assistant message loses its `toolUse` in projection while its `tool_result` row survives → orphaned result → strict-provider 400.
 
@@ -55,7 +55,7 @@
 
 ### Task 1: Marker convention on `ToolCallRecord`
 
-- [ ] **Step 1 — failing test.** In a new `Models/ToolCallRecordTests.swift` (or the nearest existing model-test suite), assert:
+- [x] **Step 1 — failing test.** In a new `Models/ToolCallRecordTests.swift` (or the nearest existing model-test suite), assert:
   ```swift
   @Test func locallyMintedIDIsPrefixedAndRecognized() {
       let minted = ToolCallRecord.locallyMintedID("id-7")
@@ -65,8 +65,8 @@
       #expect(!ToolCallRecord.isLocallyMintedID("get_weather")) // bare name
   }
   ```
-- [ ] **Step 2 — run, expect fail** (`locallyMintedID`/`isLocallyMintedID` undefined).
-- [ ] **Step 3 — implement.** Add to `ToolCallRecord`:
+- [x] **Step 2 — run, expect fail** (`locallyMintedID`/`isLocallyMintedID` undefined).
+- [x] **Step 3 — implement.** Add to `ToolCallRecord`:
   ```swift
   /// Prefix marking a tool-call id we minted locally because the provider
   /// supplied none (legacy id-less Gemini calls). Distinct from every
@@ -80,12 +80,12 @@
   public static func isLocallyMintedID(_ id: String) -> Bool { id.hasPrefix(locallyMintedIDPrefix) }
   ```
   Update the `id` field doc to note it is locally unique (not necessarily the provider's wire id) for id-less calls.
-- [ ] **Step 4 — run, expect pass.**
-- [ ] **Step 5 — commit** (`feat(chat): mark locally-minted tool-call ids`).
+- [x] **Step 4 — run, expect pass.**
+- [x] **Step 5 — commit** (`feat(chat): mark locally-minted tool-call ids`).
 
 ### Task 2: Disambiguate the persisted PK (the fix + required cross-turn test)
 
-- [ ] **Step 1 — failing test** in `ChatSessionToolLoopTests.swift`. Script one `send` that loops three turns: turn 1 emits an id-less tool call (`id == name`), turn 2 emits the *same* id-less tool call again, turn 3 finishes with text. (Two id-less assistant tool turns in one conversation — the audit's "second turn calling the same tool".)
+- [x] **Step 1 — failing test** in `ChatSessionToolLoopTests.swift`. Script one `send` that loops three turns: turn 1 emits an id-less tool call (`id == name`), turn 2 emits the *same* id-less tool call again, turn 3 finishes with text. (Two id-less assistant tool turns in one conversation — the audit's "second turn calling the same tool".)
   ```swift
   @Test func idlessToolCallsAcrossTurnsPersistAsDistinctRowsAndKeepEarlierToolUse() async throws {
       let toolID = "get_weather"
@@ -131,8 +131,8 @@
   }
   ```
   (Confirm `GRDBToolCallRepository` exposes `fetchAll(conversationId:)`; if the accessor differs, adapt — the existing suite fetches single rows by id, so check the repo API first and use the closest list accessor or fetch the two ids.)
-- [ ] **Step 2 — run, expect fail** (today: `calls.count == 1`, the second upserts over the first).
-- [ ] **Step 3 — implement** in `ChatSession.persistAssistantTurn`'s `for call in pendingCalls` loop:
+- [x] **Step 2 — run, expect fail** (today: `calls.count == 1`, the second upserts over the first).
+- [x] **Step 3 — implement** in `ChatSession.persistAssistantTurn`'s `for call in pendingCalls` loop:
   ```swift
   // A provider that supplies no tool-call id (legacy id-less Gemini — the
   // reducer falls back to the tool name, so id == name) would collide the PK
@@ -149,12 +149,12 @@
       …
   )
   ```
-- [ ] **Step 4 — run, expect pass.** Also run `loopExecutesToolThenContinuesUntilLLMFinishesWithoutToolCalls` — it scripts `id: "tc-1"` (a real id, `id != name`) so it must be unaffected; if it now fails, the detection is wrong.
-- [ ] **Step 5 — commit** (`fix(chat): disambiguate id-less tool-call PKs across turns (audit P1-6)`).
+- [x] **Step 4 — run, expect pass.** Also run `loopExecutesToolThenContinuesUntilLLMFinishesWithoutToolCalls` — it scripts `id: "tc-1"` (a real id, `id != name`) so it must be unaffected; if it now fails, the detection is wrong.
+- [x] **Step 5 — commit** (`fix(chat): disambiguate id-less tool-call PKs across turns (audit P1-6)`).
 
 ### Task 3: Keep the Gemini wire name-only for marked ids
 
-- [ ] **Step 1 — failing test** in `GeminiNativeLLMProviderTests.swift`: a history whose `toolUse.id` is a locally-minted marked id must still produce a name-only `functionCall` and `functionResponse` (no `id` key) on the wire.
+- [x] **Step 1 — failing test** in `GeminiNativeLLMProviderTests.swift`: a history whose `toolUse.id` is a locally-minted marked id must still produce a name-only `functionCall` and `functionResponse` (no `id` key) on the wire.
   ```swift
   @Test func locallyMintedToolCallIDStaysNameOnlyOnTheWire() async throws {
       let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-plain"))
@@ -181,8 +181,8 @@
   }
   ```
   Also strengthen `toolResultBecomesFunctionResponseOnAUserContent` with `#expect(functionCall["id"] == nil)` and `#expect(functionResponse["id"] == nil)` (locks the legacy `id == name` name-only path).
-- [ ] **Step 2 — run, expect fail** (today `minted != name` → the adapter emits `id: "localtoolu_id-3"`).
-- [ ] **Step 3 — implement** in `GeminiNativeLLMProvider.translate`. Add a small predicate and use it at both sites:
+- [x] **Step 2 — run, expect fail** (today `minted != name` → the adapter emits `id: "localtoolu_id-3"`).
+- [x] **Step 3 — implement** in `GeminiNativeLLMProvider.translate`. Add a small predicate and use it at both sites:
   ```swift
   // A tool-call id is sent on the Gemini wire only when the provider minted
   // it. Bare-name fallbacks (legacy id-less, id == name) and locally-minted
@@ -196,12 +196,12 @@
   functionResponse site (~307): `let wireID = sendsNameOnly(id: toolUseID, name: name) ? nil : toolUseID`.
   functionCall site (~338): `let wireID = sendsNameOnly(id: id, name: name) ? nil : id`.
   Update the `translate` doc note to mention locally-minted ids are also sent name-only.
-- [ ] **Step 4 — run, expect pass.** Run the existing parallel-id test (`call-paris`/`call-london`, `id != name`, unmarked) — must still send ids.
-- [ ] **Step 5 — commit** (`fix(chat): keep locally-minted tool-call ids off the Gemini wire`).
+- [x] **Step 4 — run, expect pass.** Run the existing parallel-id test (`call-paris`/`call-london`, `id != name`, unmarked) — must still send ids.
+- [x] **Step 5 — commit** (`fix(chat): keep locally-minted tool-call ids off the Gemini wire`).
 
 ### Task 4: Suites, review, PR
 
-- [ ] `swift test -Xswiftc -warnings-as-errors` in `Packages/Chat` (and `Packages/Core` if any Core file is touched — none planned). All green.
-- [ ] Review subagent (default model — `fable` is unavailable) → fix MUST/SHOULD.
-- [ ] PR with a Test Coverage section. Note the legacy-row limitation (old bare-name id-less rows are not migrated) and that no live-API key was available, but unlike PR-3 the change is provider-shape-deterministic and fully covered by wire-shape assertions, so the live-API risk is low (call out the one happy-path Gemini multi-tool-turn round-trip to spot-check when a key is available).
-- [ ] claude-review loop → APPROVE → squash auto-merge → STOP (pause per the per-PR workflow).
+- [x] `swift test -Xswiftc -warnings-as-errors` in `Packages/Chat` (and `Packages/Core` if any Core file is touched — none planned). All green.
+- [x] Review subagent (default model — `fable` is unavailable) → fix MUST/SHOULD.
+- [x] PR with a Test Coverage section. Note the legacy-row limitation (old bare-name id-less rows are not migrated) and that no live-API key was available, but unlike PR-3 the change is provider-shape-deterministic and fully covered by wire-shape assertions, so the live-API risk is low (call out the one happy-path Gemini multi-tool-turn round-trip to spot-check when a key is available).
+- [x] claude-review loop → APPROVE → squash auto-merge → STOP (pause per the per-PR workflow).

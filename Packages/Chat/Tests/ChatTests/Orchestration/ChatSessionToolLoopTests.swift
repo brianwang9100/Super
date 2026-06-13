@@ -734,9 +734,10 @@ struct ChatSessionToolLoopTests {
         await setup.session.waitUntilFinished()
 
         // Two distinct rows survive — no upsert re-parent. Both id-less, so both
-        // got a locally-minted, marked, unique PK.
+        // got a locally-minted, marked, unique PK. (fetchByConversation already
+        // orders createdAt ASC, rowid ASC; the assertions below don't depend on
+        // order anyway.)
         let calls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
-            .sorted { $0.createdAt < $1.createdAt }
         #expect(calls.count == 2)
         #expect(Set(calls.map(\.id)).count == 2)
         #expect(calls.allSatisfy { $0.toolName == toolID })
