@@ -280,4 +280,31 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
             t.add(column: "signature", .text)
         }
     }
+
+    // Adds the nullable `thinkingSignature` column to `message` — the
+    // integrity signature streamed via Anthropic's `signature_delta`
+    // alongside the thinking text. The native Anthropic adapter must replay
+    // the last assistant turn's thinking block verbatim (content +
+    // signature) on tool-loop follow-ups or the Messages API rejects the
+    // request with HTTP 400; rows without one (pre-v8 history, redacted
+    // turns, non-signing providers) fall back to thinking-off requests.
+    // Additive and nullable — a plain ALTER ADD; never queried, no index.
+    migrator.registerMigration("v8_messageThinkingSignature") { db in
+        try db.alter(table: "message") { t in
+            t.add(column: "thinkingSignature", .text)
+        }
+    }
+
+    // Adds the nullable `thinkingModelId` column to `message` — the model
+    // that produced an assistant turn. A thinking signature is replayed only
+    // when this matches the active model: Anthropic thinking signatures are
+    // model-specific, so replaying one minted by a model the user has since
+    // switched away from is a 400 on the latest assistant turn. Mismatched
+    // (or pre-v9 NULL) rows fall back to the thinking-off request path.
+    // Additive and nullable — a plain ALTER ADD; never queried, no index.
+    migrator.registerMigration("v9_messageThinkingModelId") { db in
+        try db.alter(table: "message") { t in
+            t.add(column: "thinkingModelId", .text)
+        }
+    }
 }

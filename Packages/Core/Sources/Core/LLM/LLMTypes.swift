@@ -13,6 +13,17 @@ public enum LLMRole: String, Sendable, Equatable, Codable, CaseIterable {
 /// blocks — e.g. an assistant response with both text and a tool-use call.
 public enum LLMContent: Sendable, Equatable {
     case text(String)
+    /// A replayed extended-thinking block from a prior assistant turn.
+    /// Anthropic's Messages API requires the *last* assistant message in a
+    /// tool-use loop to start with its original `thinking` block, complete
+    /// and unmodified including `signature` — omitting or rebuilding it is
+    /// a 400. `signature` is the provider's opaque integrity token streamed
+    /// via `signature_delta`; a block with a `nil` signature cannot be
+    /// replayed (the adapter skips it and disables thinking for that
+    /// request instead). Reconstructed by `ContextAssembler` from the
+    /// persisted `MessageRecord.thinkingContent`/`thinkingSignature`.
+    /// Adapters with no thinking-replay contract ignore the block.
+    case thinking(content: String, signature: String?)
     /// Tool invocation requested by the model. `input` is conventionally a
     /// `JSONValue.object` matching the tool's parameter schema; the type is
     /// a single `JSONValue` (rather than `[String: JSONValue]`) so the

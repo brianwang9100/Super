@@ -137,7 +137,7 @@ public struct ContextAssembler: Sendable {
         tools: [LLMTool] = []
     ) throws -> ContextAssembly {
         let kept = messagesAfterCheckpoint(messages, checkpoint: checkpoint)
-        var prompt = try project(messages: kept, toolCalls: toolCalls)
+        var prompt = try project(messages: kept, toolCalls: toolCalls, activeModelId: model.id)
         if let checkpoint {
             // Re-emit any `.system` rows that the checkpoint window
             // covered, so the conversation's original system prompt
@@ -145,7 +145,8 @@ public struct ContextAssembler: Sendable {
             // inserted right after them as a synthetic system row.
             let systemPrefix = try project(
                 messages: leadingSystemRowsCovered(by: checkpoint, in: messages),
-                toolCalls: toolCalls
+                toolCalls: toolCalls,
+                activeModelId: model.id
             )
             prompt.insert(checkpointMessage(for: checkpoint), at: 0)
             prompt.insert(contentsOf: systemPrefix, at: 0)
@@ -358,7 +359,8 @@ public struct ContextAssembler: Sendable {
 
     private func project(
         messages: [MessageRecord],
-        toolCalls: [ToolCallRecord]
+        toolCalls: [ToolCallRecord],
+        activeModelId: String
     ) throws -> [LLMMessage] {
         var toolCallsByMessageID: [String: [ToolCallRecord]] = [:]
         var toolCallsByID: [String: ToolCallRecord] = [:]
@@ -413,6 +415,29 @@ public struct ContextAssembler: Sendable {
                 llmMessages.append(LLMMessage(role: .user, text: Self.expandedUserText(for: record)))
             case .assistant:
                 var blocks: [LLMContent] = []
+                // Replay the stored thinking trace FIRST — Anthropic requires
+                // the last assistant turn of a tool loop to *start* with its
+                // original thinking block (content + signature, verbatim).
+                // Projected whenever a trace exists; the adapter decides
+                // replayability (only a signed block ships on the wire) and
+                // every other adapter ignores `.thinking`.
+                //
+                // The signature only rides along when the row was produced by
+                // the model we're about to call: an Anthropic thinking
+                // signature is model-specific, and replaying one minted by a
+                // *different* model (the user switched models mid-conversation)
+                // is the same "latest assistant thinking block was modified"
+                // 400 the verbatim-replay rule exists to avoid. On a mismatch
+                // we drop just the signature — the adapter then skips the
+                // unreplayable block and `buildRequest`'s gate disables
+                // thinking for that request (which the API tolerates),
+                // completing the turn instead of wedging it.
+                if let thinking = record.thinkingContent, !thinking.isEmpty {
+                    let signature = record.thinkingModelId == activeModelId
+                        ? record.thinkingSignature
+                        : nil
+                    blocks.append(.thinking(content: thinking, signature: signature))
+                }
                 // Replay stored web-search results (with their encrypted echoes)
                 // so providers that require it (Anthropic) keep prior-turn
                 // citations valid. Gated on a present `providerEcho` — only

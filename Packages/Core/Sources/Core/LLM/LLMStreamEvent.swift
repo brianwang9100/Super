@@ -23,6 +23,14 @@ public enum LLMStreamEvent: Sendable, Equatable {
     /// `functionCall` that omits it with HTTP 400). `nil` for providers that
     /// don't emit one.
     case toolUse(index: Int, id: String, name: String, input: JSONValue, signature: String?)
+    /// Integrity signature for this turn's thinking block (Anthropic
+    /// `signature_delta`). Emitted at most once per turn, after the thinking
+    /// content has streamed; consumers persist it alongside the thinking text
+    /// so the block can be replayed verbatim on the next tool-loop request
+    /// (the Messages API 400s a rebuilt last-assistant turn without it).
+    /// Never emitted for a turn containing `redacted_thinking` — those turns
+    /// are not replayable from our persistence model.
+    case thinkingSignature(index: Int, signature: String)
     case contentBlockStop(index: Int)
     /// A native server-side web search has started for the given query. Drives a
     /// "Searching the web…" affordance independently of whether citations arrive.

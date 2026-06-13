@@ -618,6 +618,7 @@ struct GeminiNativeLLMProviderTests {
         case .contentBlockStart(_, let type): return "contentBlockStart(\(type.rawValue))"
         case .textDelta: return "textDelta"
         case .thinkingDelta: return "thinkingDelta"
+        case .thinkingSignature: return "thinkingSignature"
         case .toolUse: return "toolUse"
         case .contentBlockStop: return "contentBlockStop"
         case .searchStarted: return "searchStarted"

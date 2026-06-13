@@ -279,7 +279,18 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                 }
                 let joined = texts.joined()
                 if joined.isEmpty && toolUses.isEmpty {
-                    assertionFailure("LLMMessage with role \(message.role) has no text or tool-use content; OpenAI would reject it")
+                    // A thinking-only assistant turn is a legal projection
+                    // (the trace persists for re-render and for Anthropic
+                    // replay) that this wire format simply can't express —
+                    // skip it silently. Anything else empty is a projection
+                    // invariant breach worth flagging.
+                    let hasThinking = message.content.contains { block in
+                        if case .thinking = block { return true }
+                        return false
+                    }
+                    if !hasThinking {
+                        assertionFailure("LLMMessage with role \(message.role) has no text or tool-use content; OpenAI would reject it")
+                    }
                     continue
                 }
                 out.append(OpenAIRequestMessage(

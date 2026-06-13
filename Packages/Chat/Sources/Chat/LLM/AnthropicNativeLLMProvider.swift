@@ -226,8 +226,20 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         // supports it and the budget fits) forces `temperature` to be omitted —
         // Anthropic rejects any value other than 1 alongside thinking — and the
         // thinking budget must be ≥ 1024 and strictly less than `max_tokens`.
+        //
+        // The history must also be *replayable*: with thinking enabled, the
+        // last assistant turn of a tool loop must start with its original
+        // thinking block (content + signature, verbatim) — a history whose
+        // last assistant turn issued tool calls but carries no signed
+        // thinking (pre-v8 rows, redacted-thinking turns, traces from other
+        // providers) would 400. For those, omit the `thinking` parameter for
+        // this request — the API explicitly tolerates thinking-off requests
+        // against thinking-bearing histories (it strips the stale blocks) —
+        // so the tool loop completes, just without fresh reasoning.
         let maxTokens = max(1, min(model.maxContextTokens / 4, Self.maxTokensCeiling))
-        let thinkingEnabled = model.supportsThinking && maxTokens >= 2048
+        let thinkingEnabled = model.supportsThinking
+            && maxTokens >= 2048
+            && Self.historySupportsThinkingContinuation(messages)
         let thinking = thinkingEnabled
             ? AnthropicMessagesRequest.Thinking(type: "enabled", budgetTokens: max(1024, maxTokens / 2))
             : nil
@@ -254,6 +266,30 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             throw LLMError.requestFailed("encoding body: \(error.localizedDescription)")
         }
         return request
+    }
+
+    /// Whether enabling `thinking` on this request is safe for the given
+    /// history. False only when the last `.assistant` message issued tool
+    /// calls but carries no signed `.thinking` block — the continuation shape
+    /// the Messages API rejects with thinking enabled (it requires that turn
+    /// to start with its original signed thinking block). Histories with no
+    /// tool continuation, or with a replayable signed block, return true.
+    static func historySupportsThinkingContinuation(_ messages: [LLMMessage]) -> Bool {
+        guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else {
+            return true
+        }
+        let issuedToolCalls = lastAssistant.content.contains { block in
+            if case .toolUse = block { return true }
+            return false
+        }
+        guard issuedToolCalls else { return true }
+        return lastAssistant.content.contains { block in
+            if case .thinking(_, let signature) = block,
+               let signature, !signature.isEmpty {
+                return true
+            }
+            return false
+        }
     }
 
     /// Resolve the request URL via `URLComponents` so trailing slashes and
@@ -331,6 +367,23 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             case .user, .assistant:
                 let role = message.role == .assistant ? "assistant" : "user"
                 var blocks: [AnthropicContentBlock] = []
+                // Replay the original thinking block FIRST — the Messages API
+                // requires the last assistant turn of a tool loop to start
+                // with it, complete and unmodified including the signature
+                // (omitting or rebuilding it is a 400). Unsigned blocks
+                // (pre-v8 rows, redacted turns, other providers' traces)
+                // cannot be replayed and are skipped — `buildRequest`'s gate
+                // disables thinking for those histories so the API tolerates
+                // the omission. Assistant-only, same posture as the guards
+                // below.
+                if message.role == .assistant {
+                    for block in message.content {
+                        if case .thinking(let content, let signature) = block,
+                           let signature, !signature.isEmpty {
+                            blocks.append(.thinking(thinking: content, signature: signature))
+                        }
+                    }
+                }
                 // Replayed web-search results are an assistant-only, server-emitted
                 // concept and must precede the text that cites them on the wire.
                 // Guard on the role so the invariant is structural rather than
