@@ -4,7 +4,7 @@ The Bible mini-applet: a chapter-reading surface with verse selection, highlight
 
 ## What lives here (incremental — builds out per the plan)
 
-- **Applet** (`Applet/`): `BibleApplet` — `MiniApplet` conformance, applet id `"bible"`.
+- **Applet** (`Applet/`): `BibleApplet` — `MiniApplet` conformance, applet id `"bible"`. `BibleBookmarksApplet` — a second `MiniApplet` (id `"bookmarks"`, SuperBible-only) listing the six chapter-bookmark slots; built via `BibleApplet.makeBookmarksApplet()`, which hands it the reader's read-only `DatabaseContext` so it shares `bible.sqlite` without leaking `BibleDatabase`.
 - **Models** (`Models/`): plain data — `BibleBook`/`BibleChapter`/`BibleParagraph`/`BibleVerse` (decoded text), `BiblePosition`/`BibleChapterDirection`/`BibleBookSummary`/`BibleBookCatalog`/`BibleBookOrder`/`BibleTranslation` (navigation), `BibleHighlightColor` (the five-colour palette), `BibleBookmarkColor` (the six fixed chapter-bookmark slots), and the `BibleReadingPositionRecord` / `BibleHighlightRecord` / `BibleBookmarkRecord` GRDB records.
 - **Database** (`Database/`): `BibleDatabase` — wraps the `bible.sqlite` `DatabaseQueue` and the schema migrator.
 - **Repositories** (`Repositories/`): protocol seam + `GRDB`-prefixed impl, one pair per record.

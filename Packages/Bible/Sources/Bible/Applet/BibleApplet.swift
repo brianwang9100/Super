@@ -347,6 +347,16 @@ public struct BibleApplet: MiniApplet {
         return BulkAnnotationWiring(settingsContribution: contribution, background: background)
     }
 
+    /// Build the companion Bookmarks mini-applet, handing over this applet's
+    /// read-only `DatabaseContext` so its screen's `@Query` observes the same
+    /// `bibleBookmark` rows the reader writes — without the Bible-internal
+    /// `BibleDatabase` leaking into the composition root (mirrors
+    /// `makeBulkAnnotationWiring`). SuperBible registers the result in its
+    /// applet array; SuperOS does not.
+    public func makeBookmarksApplet() -> BibleBookmarksApplet {
+        BibleBookmarksApplet(databaseContext: databaseContext)
+    }
+
     @MainActor
     public func iconView(size: CGFloat) -> AnyView {
         AnyView(BibleAppletIcon(size: size))

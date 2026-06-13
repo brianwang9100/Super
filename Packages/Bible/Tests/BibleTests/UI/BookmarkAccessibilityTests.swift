@@ -2,9 +2,11 @@ import Testing
 @testable import Bible
 
 /// Tests for the bookmark surfaces' factored VoiceOver label builders — the
-/// chapter-title glyph (`BibleChapterReader.chapterBookmarkLabel`) and the
-/// sheet's slot cards (`BookmarkSlotButton.label`). `@MainActor` because the
-/// statics live on `View` types, whose members are MainActor-isolated.
+/// chapter-title glyph (`BibleChapterReader.chapterBookmarkLabel`), the sheet's
+/// slot cards (`BookmarkSlotButton.label`), and the book picker's row cluster +
+/// chapter-cell labels (`BibleBookSheet.bookBookmarksLabel` /
+/// `chapterCellLabel`). `@MainActor` because the statics live on `View` types,
+/// whose members are MainActor-isolated.
 @Suite("Bookmark accessibility labels")
 @MainActor
 struct BookmarkAccessibilityTests {
@@ -43,5 +45,30 @@ struct BookmarkAccessibilityTests {
             color: .gold, assignedCitation: "John 3", isCurrentChapter: true, currentCitation: "John 3"
         )
         #expect(label == "Gold bookmark on John 3. Remove bookmark")
+    }
+
+    @Test("a book row's bookmark cluster reads as one combined element")
+    func bookRowClusterLabel() {
+        let label = BibleBookSheet.bookBookmarksLabel([
+            (color: .clay, chapterNumber: 3),
+            (color: .gold, chapterNumber: 8),
+        ])
+        #expect(label == "Bookmarks: Clay chapter 3, Gold chapter 8")
+    }
+
+    @Test("a chapter cell without a bookmark keeps its plain label")
+    func chapterCellPlainLabel() {
+        #expect(
+            BibleBookSheet.chapterCellLabel(bookName: "Genesis", number: 1, bookmark: nil)
+                == "Genesis chapter 1"
+        )
+    }
+
+    @Test("a bookmarked chapter cell appends its ribbon colour")
+    func chapterCellBookmarkedLabel() {
+        #expect(
+            BibleBookSheet.chapterCellLabel(bookName: "Genesis", number: 3, bookmark: .clay)
+                == "Genesis chapter 3, bookmarked Clay"
+        )
     }
 }

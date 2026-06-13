@@ -22,8 +22,9 @@ import Testing
 ///   so the title cluster leads with the filled (tinted) bookmark glyph.
 ///   `BibleScreenSnapshotTests` covers the outline (unbookmarked) state.
 ///
-/// Rendered across light / dark / sepia because the outlined glyph strokes in
-/// `theme.inkFaint`.
+/// Rendered across the Vellum light / dark pair because the outlined glyph
+/// strokes in `theme.inkFaint`; the other six theme variants are pixel-locked
+/// once in `ThemeGallerySnapshotTests`.
 @Suite("BibleChapterReader snapshots")
 @MainActor
 struct BibleChapterReaderSnapshotTests {
