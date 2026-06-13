@@ -69,4 +69,13 @@ struct BulkAnnotationSelectionTests {
         #expect(est.annotations == 0)
         #expect(est.minutes == 1)
     }
+
+    @Test("notable verses add the per-chapter verse budget to the estimate")
+    func estimateWithNotableVerses() {
+        var sel = BulkSelection()
+        sel.toggleBook("ROM", chapterCount: 16)
+        let est = BulkRunEstimate(selection: sel, includesNotableVerses: true)
+        let perChapter = BulkRunEstimate.annotationsPerChapter + BulkRunEstimate.notableVersesPerChapter
+        #expect(est.annotations == 16 * perChapter)
+    }
 }

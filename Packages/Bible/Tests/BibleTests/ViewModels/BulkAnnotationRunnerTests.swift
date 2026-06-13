@@ -19,13 +19,17 @@ import Testing
         maxAttempts: Int = 3,
         breaker: Int = 5,
         seedAnnotatedChapters: [Int] = [],
-        seedAnnotatedBook: Bool = false
+        seedAnnotatedBook: Bool = false,
+        seedVerseAnnotatedChapters: [Int] = []
     ) throws -> (BulkAnnotationRunner, GRDBBulkAnnotationLedger) {
         // One in-memory DB backs both the ledger and the annotation repository so
         // a seeded slot the runner reads is the one the ledger persists against.
         let database = try BibleDatabase.makeInMemory()
         let ledger = GRDBBulkAnnotationLedger(database: database)
-        try seedAnnotations(into: database, chapters: seedAnnotatedChapters, book: seedAnnotatedBook)
+        try seedAnnotations(
+            into: database, chapters: seedAnnotatedChapters,
+            book: seedAnnotatedBook, verseChapters: seedVerseAnnotatedChapters
+        )
         let runner = BulkAnnotationRunner(
             ledger: ledger,
             generator: generator,
@@ -50,7 +54,9 @@ import Testing
 
     /// Pre-seed Romans chapter- and/or book-level annotations directly so a
     /// preserve-mode run finds those slots occupied and skips them.
-    private func seedAnnotations(into database: BibleDatabase, chapters: [Int], book: Bool) throws {
+    private func seedAnnotations(
+        into database: BibleDatabase, chapters: [Int], book: Bool, verseChapters: [Int] = []
+    ) throws {
         func record(target: BibleAnnotationTarget, chapter: Int?) -> BibleAnnotationRecord {
             BibleAnnotationRecord(
                 id: "seed-ROM-\(chapter.map(String.init) ?? "book")",
@@ -60,9 +66,19 @@ import Testing
                 createdAt: Date(timeIntervalSince1970: 0)
             )
         }
+        // A single verse-range row in the chapter — enough for `hasVerseAnnotations`
+        // to read the chapter as already verse-annotated.
+        func verseRecord(chapter: Int) -> BibleAnnotationRecord {
+            BibleAnnotationRecord(
+                id: "seed-ROM-\(chapter)-v1", target: .verse, bookId: "ROM",
+                chapterNumber: chapter, verseStart: 1, verseEnd: 1, summary: "Seed verse",
+                source: .user, modelId: "seed", createdAt: Date(timeIntervalSince1970: 0)
+            )
+        }
         try database.queue.write { db in
             for chapter in chapters { try record(target: .chapter, chapter: chapter).insert(db) }
             if book { try record(target: .book, chapter: nil).insert(db) }
+            for chapter in verseChapters { try verseRecord(chapter: chapter).insert(db) }
         }
     }
 
@@ -71,7 +87,8 @@ import Testing
         _ name: String = "Romans",
         chapters: [Int],
         includesBookLevel: Bool = false,
-        overwriteExisting: Bool = false
+        overwriteExisting: Bool = false,
+        includesNotableVerses: Bool = false
     ) -> BulkRunPlan {
         BulkRunPlan(
             books: [
@@ -82,7 +99,8 @@ import Testing
                     includesBookLevel: includesBookLevel
                 )
             ],
-            overwriteExisting: overwriteExisting
+            overwriteExisting: overwriteExisting,
+            includesNotableVerses: includesNotableVerses
         )
     }
 
@@ -244,6 +262,86 @@ import Testing
         #expect(units[1].state == .done)
         #expect(generator.receivedReferences.count == 1)
         #expect(generator.receivedReferences.first?.kind == "chapter")
+    }
+
+    // MARK: - Notable verses (chapterVerses units)
+
+    /// With `includesNotableVerses`, each chapter enqueues a `chapterVerses` unit
+    /// right after its chapter-summary unit, carrying the chapterVerses kind /
+    /// sourceID the dispatcher recognises and the chapter's number.
+    @Test func notableVersesEnqueuesAChapterVersesUnitAfterEachChapter() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([
+            .success(annotationCount: 1),  // chapter 1 summary
+            .success(annotationCount: 5),  // chapter 1 notable verses
+            .success(annotationCount: 1),  // chapter 2 summary
+            .success(annotationCount: 4),  // chapter 2 notable verses
+        ])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1, 2], includesNotableVerses: true))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.count == 4)
+        #expect(units[0].kind == .chapter)
+        #expect(units[0].chapterNumber == 1)
+        #expect(units[1].kind == .chapterVerses)
+        #expect(units[1].chapterNumber == 1)
+        #expect(units[2].kind == .chapter)
+        #expect(units[2].chapterNumber == 2)
+        #expect(units[3].kind == .chapterVerses)
+        #expect(units[3].chapterNumber == 2)
+        for unit in units { #expect(unit.state == .done) }
+        // The verse turn's annotation count flows into producedCount.
+        #expect(units[1].producedCount == 5)
+        #expect(units[3].producedCount == 4)
+
+        // The chapterVerses unit dispatches under the distinct kind + sourceID and
+        // carries the chapter's verse-numbered snapshot for the model to pick from.
+        let versesRef = try #require(generator.receivedReferences.first { $0.kind == "chapterVerses" })
+        #expect(versesRef.sourceID == "chapterVerses:ROM:1")
+        #expect(versesRef.displayLabel == "Romans 1")
+        #expect(!versesRef.snapshot.isEmpty)
+    }
+
+    /// Without the toggle, no `chapterVerses` units are enqueued — the run stays at
+    /// book + chapter granularity.
+    @Test func noNotableVersesUnitsWhenToggleOff() async throws {
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
+        let (runner, ledger) = try makeRunner(generator: generator)
+
+        runner.start(oneBookPlan(chapters: [1], includesNotableVerses: false))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units.count == 1)
+        #expect(units.allSatisfy { $0.kind == .chapter })
+    }
+
+    /// Preserve mode skips a `chapterVerses` unit when the chapter already carries
+    /// any verse annotation — while the chapter summary (a different slot) still
+    /// generates.
+    @Test func preserveSkipsChapterVersesWhenChapterAlreadyVerseAnnotated() async throws {
+        // One success only — the chapter summary. A stray call on the skipped
+        // chapterVerses unit would trap the strict scripted double.
+        let generator = ScriptedBibleAnnotateGenerator([.success(annotationCount: 1)])
+        let (runner, ledger) = try makeRunner(generator: generator, seedVerseAnnotatedChapters: [1])
+
+        runner.start(oneBookPlan(chapters: [1], includesNotableVerses: true))
+        await runner._waitUntilIdle()
+
+        let units = try await loadUnits(ledger)
+        #expect(units[0].kind == .chapter)
+        #expect(units[0].state == .done)         // chapter slot wasn't seeded → generates
+        #expect(units[1].kind == .chapterVerses)
+        #expect(units[1].state == .skipped)      // chapter already has a verse annotation
+        #expect(units[1].producedCount == 0)
+
+        #expect(generator.receivedReferences.count == 1)
+        #expect(generator.receivedReferences.first?.kind == "chapter")
+
+        let run = try #require(try await ledger.run(id: "id-1"))
+        #expect(run.status == .completed)
     }
 
     /// An indeterminate existence read in preserve mode must fail the unit
@@ -942,6 +1040,7 @@ private struct ThrowingAnnotationRepository: BibleAnnotationRepository {
     func list(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?) async throws -> [BibleAnnotationRecord] { throw Boom() }
     func replace(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?, inserting records: [BibleAnnotationRecord]) async throws { throw Boom() }
     func hasAnnotation(target: BibleAnnotationTarget, bookId: String, chapterNumber: Int?, verseStart: Int?, verseEnd: Int?) async throws -> Bool { throw Boom() }
+    func hasVerseAnnotations(bookId: String, chapterNumber: Int) async throws -> Bool { throw Boom() }
     func deleteOne(id: String) async throws { throw Boom() }
     func deleteAll() async throws { throw Boom() }
 }

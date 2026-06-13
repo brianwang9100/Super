@@ -162,6 +162,19 @@ struct GenerateAnnotationsSheet: View {
             .tint(theme.accent)
             .accessibilityHint("When off, already-annotated chapters are skipped instead of regenerated")
 
+            Toggle(isOn: $viewModel.annotateNotableVerses) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Also annotate notable verses")
+                        .font(typography.font(.subheadline, weight: .medium))
+                        .foregroundStyle(theme.ink)
+                    Text("Up to 5 key passages per chapter — uses more API calls")
+                        .font(typography.mono(10.5))
+                        .foregroundStyle(theme.inkFaint)
+                }
+            }
+            .tint(theme.accent)
+            .accessibilityHint("When on, each chapter also annotates its most notable verse ranges")
+
             HStack(spacing: 8) {
                 Image(systemName: "clock").font(.system(size: 13))
                 Text("\(estimate.books) \(estimate.books == 1 ? "book" : "books") · ~\(estimate.annotations) annotations · est. \(estimate.minutes) min")

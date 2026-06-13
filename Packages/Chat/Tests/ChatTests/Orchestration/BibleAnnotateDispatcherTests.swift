@@ -662,4 +662,94 @@ struct BibleAnnotateDispatcherTests {
         #expect(guidance?.contains("genuine cross-references") == true)
         #expect(guidance?.contains("omit the section entirely") == true)
     }
+
+    // MARK: - Notable verses (bulk chapterVerses mode)
+
+    @Test("a chapterVerses dispatch counts every bible.annotate call in the turn")
+    func chapterVersesAccumulatesMultipleToolCalls() async throws {
+        // The bulk notable-verses mode asks the model to call bible.annotate
+        // once per notable verse range. Two tool-call turns (each writing the
+        // default 2 artifacts) must accumulate into the success count — the
+        // mechanism that lets a `chapterVerses` unit's producedCount reflect
+        // however many verses the model annotated.
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-1", name: "bible.annotate", input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .toolUse(index: 0, id: "tu-2", name: "bible.annotate", input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 10, outputTokens: 5)),
+            ],
+            [
+                .messageStart(id: "m3", model: "fake-model-1"),
+                .textDelta(index: 0, text: "Done."),
+                .messageComplete(usage: TokenUsage(inputTokens: 12, outputTokens: 1)),
+            ],
+        ])
+        // One artifact per call so the accumulation is unambiguous: 2 calls → 2.
+        await setup.toolExecutor.setResult(ToolResult(
+            toolID: "bible.annotate",
+            content: "Wrote an annotation for the target.",
+            isError: false,
+            artifacts: [ToolResult.Artifact(type: "annotation", id: "ann-x")]
+        ))
+
+        let outcome = await setup.dispatcher.generate(
+            reference: chapterVersesReference()
+        )
+        #expect(outcome == .success(annotationCount: 2))
+        #expect(await setup.toolExecutor.executionCount() == 2)
+    }
+
+    @Test("the chapterVerses kind selects the notable-verses briefing, others the default")
+    func chapterVersesSelectsNotableVersesBriefing() {
+        #expect(BibleAnnotateDispatcher.briefing(forKind: "chapterVerses")
+            == BibleAnnotateDispatcher.notableVersesBriefing)
+        for kind in ["book", "chapter", "verseRange", "mystery"] {
+            #expect(BibleAnnotateDispatcher.briefing(forKind: kind)
+                == BibleAnnotateDispatcher.dispatcherBriefing)
+        }
+    }
+
+    @Test("the notable-verses briefing asks for up to five per-verse tool calls")
+    func notableVersesBriefingAsksForMultipleVerseCalls() {
+        let briefing = BibleAnnotateDispatcher.notableVersesBriefing
+        #expect(briefing.contains("up to 5"))
+        #expect(briefing.contains("once for EACH"))
+        #expect(briefing.contains("\"verse\""))
+        #expect(briefing.contains("at least one call"))
+        // It must NOT inherit the single-shot "exactly once" mandate.
+        #expect(!briefing.contains("exactly once"))
+    }
+
+    @Test("a chapterVerses prompt asks for one tool call per notable verse range")
+    func chapterVersesPromptAsksForPerRangeCalls() {
+        let prompt = BibleAnnotateDispatcher.prompt(for: chapterVersesReference())
+        #expect(prompt.contains("once for each"))
+        #expect(prompt.contains("most notable verse ranges"))
+        // The single-shot "Call ... once" closing line must not be used here.
+        #expect(!prompt.contains("Call `bible.annotate` once"))
+    }
+
+    @Test("chapterVerses section guidance steers each chosen range")
+    func chapterVersesSectionGuidanceStreersEachRange() {
+        let guidance = BibleAnnotateDispatcher.sectionGuidance(forKind: "chapterVerses")?.lowercased()
+        #expect(guidance?.contains("each verse range you choose") == true)
+        #expect(guidance?.contains("cross-references") == true)
+    }
+
+    private func chapterVersesReference(id: String = "req-cv") -> RecordReference {
+        RecordReference(
+            appletID: "bible",
+            kind: "chapterVerses",
+            sourceID: "chapterVerses:ROM:8",
+            displayLabel: "Romans 8",
+            citation: "Romans 8 (WEB)",
+            snapshot: "1. There is therefore now no condemnation...\n28. And we know...",
+            id: id
+        )
+    }
 }

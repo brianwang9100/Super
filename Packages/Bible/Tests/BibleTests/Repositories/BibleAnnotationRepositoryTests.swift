@@ -162,6 +162,31 @@ struct BibleAnnotationRepositoryTests {
         #expect(bookSlot == false)
     }
 
+    @Test("hasVerseAnnotations is true once any verse range in the chapter is annotated")
+    func hasVerseAnnotationsReflectsAnyVerseRow() async throws {
+        let (repository, _) = try makeFixture()
+        // Empty to start, and a chapter-level row doesn't count as a verse one.
+        #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 8) == false)
+        try await repository.replace(
+            target: .chapter, bookId: "ROM", chapterNumber: 8,
+            verseStart: nil, verseEnd: nil,
+            inserting: [BibleAnnotationRecord(
+                id: "cs", target: .chapter, bookId: "ROM", chapterNumber: 8,
+                summary: "S", source: .user, modelId: "test", createdAt: t0
+            )]
+        )
+        #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 8) == false)
+
+        // A single verse range in the chapter flips it true; a different chapter
+        // stays false (chapter-specific).
+        try await repository.replace(
+            target: .verse, bookId: "ROM", chapterNumber: 8,
+            verseStart: 28, verseEnd: 30, inserting: [verseRecord(id: "v")]
+        )
+        #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 8) == true)
+        #expect(try await repository.hasVerseAnnotations(bookId: "ROM", chapterNumber: 9) == false)
+    }
+
     // MARK: - Ordering
 
     @Test("rows sort by createdAt then id")

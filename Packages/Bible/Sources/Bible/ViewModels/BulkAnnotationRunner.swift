@@ -28,9 +28,16 @@ public struct BulkRunPlan: Sendable, Equatable {
     /// `true`, every unit regenerates and replaces its slot (the prior behavior).
     public let overwriteExisting: Bool
 
-    public init(books: [Book], overwriteExisting: Bool = false) {
+    /// When `true`, each chapter in the run also enqueues a `chapterVerses` unit —
+    /// one dispatch turn that annotates the chapter's most notable verse ranges
+    /// (in addition to the chapter summary). `false` (the default) keeps the run
+    /// at book + chapter granularity.
+    public let includesNotableVerses: Bool
+
+    public init(books: [Book], overwriteExisting: Bool = false, includesNotableVerses: Bool = false) {
         self.books = books
         self.overwriteExisting = overwriteExisting
+        self.includesNotableVerses = includesNotableVerses
     }
 
     public var isEmpty: Bool { books.allSatisfy { $0.chapters.isEmpty } }

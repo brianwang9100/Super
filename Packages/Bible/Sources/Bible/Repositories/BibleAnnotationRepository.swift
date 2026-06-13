@@ -53,6 +53,12 @@ public protocol BibleAnnotationRepository: Sendable {
         verseEnd: Int?
     ) async throws -> Bool
 
+    /// `true` when the chapter carries at least one `.verse`-target annotation
+    /// (any range). The bulk runner's preserve mode reads this to skip a
+    /// `chapterVerses` unit — whose verse ranges aren't known until the model
+    /// picks them — when the chapter has already been verse-annotated.
+    func hasVerseAnnotations(bookId: String, chapterNumber: Int) async throws -> Bool
+
     /// Delete one annotation row by id. No-op if no such row exists.
     func deleteOne(id: String) async throws
 
