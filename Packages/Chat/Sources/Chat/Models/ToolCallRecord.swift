@@ -18,14 +18,37 @@ public enum ToolCallStatus: String, Codable, Sendable, CaseIterable {
 
 /// A single tool call requested by the assistant within a conversation.
 ///
-/// `id` is the LLM's (Large Language Model) tool-use identifier so it
-/// round-trips back into the next assistant turn unchanged. `parameters`
-/// and `result` are JSON (JavaScript Object Notation) strings rather than
+/// `id` is the locally-unique primary key. For providers that supply a
+/// tool-use id (Anthropic `toolu_…`, OpenAI `call_…`, modern Gemini) it *is*
+/// that wire id, so the call round-trips into the next assistant turn
+/// unchanged. For legacy id-less Gemini calls the orchestrator mints a
+/// locally-unique, marked id (see `locallyMintedID`) so two turns calling the
+/// same tool can't collide on this PK — the wire still carries name-only for
+/// those (the Gemini adapter recognizes the marker). `parameters` and
+/// `result` are JSON (JavaScript Object Notation) strings rather than
 /// `JSONValue` so the row codec stays trivial; callers serialize at the
 /// boundary. `conversationId` is denormalized off `messageId` so per-
 /// conversation queries don't need a join.
 public struct ToolCallRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "toolCall"
+
+    /// Prefix marking a tool-call id we minted locally because the provider
+    /// supplied none (legacy id-less Gemini calls, where the stream reducer
+    /// falls back to the tool name). Distinct from every provider's id shape
+    /// (`toolu_`, `call_`, Gemini's opaque tokens) so the Gemini adapter can
+    /// recognize a synthetic id and still emit name-only on the wire — a
+    /// fabricated id must never reach Gemini, which round-trips the ids it
+    /// minted. Strict providers (Anthropic/OpenAI) receive the marked id
+    /// verbatim: they require unique `tool_use` ids and the marker is just a
+    /// unique string to them.
+    public static let locallyMintedIDPrefix = "localtoolu_"
+
+    /// Compose a locally-minted tool-call id from a unique raw token (typically
+    /// an injected id generator's next value).
+    public static func locallyMintedID(_ raw: String) -> String { locallyMintedIDPrefix + raw }
+
+    /// Whether `id` was minted locally (provider supplied no tool-use id).
+    public static func isLocallyMintedID(_ id: String) -> Bool { id.hasPrefix(locallyMintedIDPrefix) }
 
     public var id: String
     public var messageId: String
