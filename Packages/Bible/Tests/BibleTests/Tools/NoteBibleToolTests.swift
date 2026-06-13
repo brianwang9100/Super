@@ -196,18 +196,82 @@ struct NoteBibleToolTests {
         #expect(result.isError == true)
     }
 
-    @Test("create book target including a chapter rejects")
-    func createBookWithChapterRejects() async throws {
-        let (tool, _) = makeTool()
+    /// `target` is the authoritative discriminator: a `book` create that
+    /// carries stray chapter/verse fields is accepted and those fields are
+    /// coerced to `nil` rather than rejected (matches `bible.annotate`).
+    @Test("create book target coerces stray chapter/verse fields to nil")
+    func createBookCoercesStrayPositionFields() async throws {
+        let (tool, repo) = makeTool()
         let result = try await tool.execute(input: [
             "action": .string("create"),
             "target": .string("book"),
             "bookId": .string("JHN"),
             "chapterNumber": .int(3),
+            "verseStart": .int(16),
+            "verseEnd": .int(18),
             "body": .string("note"),
         ])
-        #expect(result.isError == true)
-        #expect(result.content.contains("book"))
+        #expect(result.isError == false)
+        let note = try #require(await repo.inserted.first)
+        #expect(note.target == .book)
+        #expect(note.chapterNumber == nil)
+        #expect(note.verseStart == nil)
+        #expect(note.verseEnd == nil)
+    }
+
+    /// A chapter create with a stray `verseStart` no longer errors — the verse
+    /// fields are dropped, `chapterNumber` is preserved.
+    @Test("create chapter target coerces stray verse fields to nil")
+    func createChapterCoercesStrayVerseFields() async throws {
+        let (tool, repo) = makeTool()
+        let result = try await tool.execute(input: [
+            "action": .string("create"),
+            "target": .string("chapter"),
+            "bookId": .string("JHN"),
+            "chapterNumber": .int(3),
+            "verseStart": .int(16),
+            "verseEnd": .int(18),
+            "body": .string("note"),
+        ])
+        #expect(result.isError == false)
+        let note = try #require(await repo.inserted.first)
+        #expect(note.target == .chapter)
+        #expect(note.chapterNumber == 3)
+        #expect(note.verseStart == nil)
+        #expect(note.verseEnd == nil)
+    }
+
+    /// Regression: a coerced chapter note must remain addressable by a
+    /// chapter-target read (`verseStart IS NULL`) — i.e. it isn't orphaned by
+    /// the stray verse fields the caller sent. Driven against the real GRDB
+    /// repository so the `IS NULL` query is the production one. Mirrors the
+    /// `AnnotateBibleTool` regression.
+    @Test("coerced chapter note is found by a chapter-target read")
+    func coercedChapterNoteIsAddressable() async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleNoteRepository(database: database)
+        let tool = NoteBibleTool(
+            repository: repository,
+            clock: FixedClock(t0),
+            ids: DeterministicIDGenerator(prefix: "note-"),
+            stampProvider: FakeNoteStampProvider(
+                stamp: BibleNoteStamp(source: .assistant, modelId: "claude")
+            )
+        )
+        _ = try await tool.execute(input: [
+            "action": .string("create"),
+            "target": .string("chapter"),
+            "bookId": .string("JHN"),
+            "chapterNumber": .int(3),
+            "verseStart": .int(16),
+            "body": .string("Chapter note."),
+        ])
+
+        let notes = try await repository.list(
+            target: .chapter, bookId: "JHN", chapterNumber: 3, verseStart: nil, verseEnd: nil
+        )
+        #expect(notes.count == 1)
+        #expect(notes.first?.body == "Chapter note.")
     }
 
     @Test("edit without id rejects")
