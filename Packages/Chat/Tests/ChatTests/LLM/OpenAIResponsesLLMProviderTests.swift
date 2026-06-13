@@ -63,6 +63,27 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
+    /// The Responses API nests cached tokens under `input_tokens_details`
+    /// (vs. Chat Completions' `prompt_tokens_details`); both surface as
+    /// `cacheReadInputTokens`.
+    @Test func cachedFixtureSurfacesCachedTokensInUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-cached"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        #expect(events.last == .messageComplete(usage: TokenUsage(
+            inputTokens: 1024,
+            outputTokens: 3,
+            cacheReadInputTokens: 768,
+            cacheCreationInputTokens: nil
+        )))
+    }
+
     /// Chunked delivery must produce the identical event stream — proves the
     /// SSE parser's partial-frame handling holds for the Responses framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {
