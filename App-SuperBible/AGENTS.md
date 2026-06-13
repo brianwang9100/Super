@@ -7,7 +7,7 @@ The composition root and target-specific assets for the **SuperBible** App Store
 - **Bundle ID:** `com.brianwang.SuperBible`
 - **Display name:** `SuperBible`
 - **Composition root:** `SuperBibleApp.swift` → `SuperBibleAppBootstrap` → `SuperBibleAppDependencies.shellDependencies` → shared `AppShell` (from `App/Shell/`)
-- **Applet set (v1):** Chat (host) + Bible *(present)* + Plans *(SB-M2)*
+- **Applet set (v1):** Chat (host) + Bible + Bookmarks *(present)* + Plans *(SB-M2)*
 - **Applet set (post-v1, roadmap):** + Memorize, Quiz, Learn — each its own future spec
 - **Deployment target:** iOS 26.0 (matches the SuperOS target's post-raise target)
 

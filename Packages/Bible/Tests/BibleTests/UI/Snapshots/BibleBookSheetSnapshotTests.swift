@@ -208,6 +208,34 @@ struct BibleBookSheetSnapshotTests {
         verifyWithDatabase(sheet(), database: database, theme: themeID, name: name, function: function)
     }
 
+    @Test("the picker marks bookmarked chapters with row ribbons and cell badges")
+    func bookmarkedLight() async throws {
+        try await verifyBookmarked(theme: .vellumLight, name: "bookmarked_light")
+    }
+
+    @Test("the bookmarked row + cell indicators render in the dark theme")
+    func bookmarkedDark() async throws {
+        try await verifyBookmarked(theme: .vellumDark, name: "bookmarked_dark")
+    }
+
+    /// Seed two bookmarks on the always-expanded Genesis row (Clay → ch. 2,
+    /// Gold → ch. 3) so the row leads with two filled ribbons and the expanded
+    /// chapter grid carries a badge on each marked cell. Books with no
+    /// bookmarks render exactly as the existing baselines — the indicators are
+    /// additive, emitted only where a bookmark exists.
+    private func verifyBookmarked(
+        theme themeID: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) async throws {
+        let database = try BibleDatabase.makeInMemory()
+        let repository = GRDBBibleBookmarkRepository(database: database)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try await repository.toggle(color: .clay, bookId: "GEN", chapterNumber: 2, at: now)
+        try await repository.toggle(color: .gold, bookId: "GEN", chapterNumber: 3, at: now)
+        verifyWithDatabase(sheet(), database: database, theme: themeID, name: name, function: function)
+    }
+
     /// A `BibleBookSheet` opened on the given current position (defaulting
     /// to Genesis 1, which keeps the existing baselines stable), in the
     /// given order with the given query applied.
