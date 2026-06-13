@@ -211,17 +211,14 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         // takes it as the `prompt_cache_key` body field; xAI as the
         // `x-grok-conv-id` header. Every other compatible host gets neither, so
         // its request is byte-identical with or without `options`.
-        let host = url.host?.lowercased()
         var promptCacheKey: String?
-        if let cacheKey = options.conversationCacheKey, !cacheKey.isEmpty {
-            switch host {
-            case CacheRoutingKey.openAIHost:
-                promptCacheKey = cacheKey
-            case CacheRoutingKey.xaiHost:
-                request.setValue(cacheKey, forHTTPHeaderField: CacheRoutingKey.xaiHeaderField)
-            default:
-                break
-            }
+        switch CacheRoutingKey.placement(for: url, conversationCacheKey: options.conversationCacheKey) {
+        case .promptCacheKeyBody(let key):
+            promptCacheKey = key
+        case .header(let field, let value):
+            request.setValue(value, forHTTPHeaderField: field)
+        case .none:
+            break
         }
 
         let clampedTemperature = min(max(temperature, Self.temperatureRange.lowerBound), Self.temperatureRange.upperBound)

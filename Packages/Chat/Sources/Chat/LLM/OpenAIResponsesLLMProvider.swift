@@ -225,11 +225,12 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
 
         // `prompt_cache_key`, host-gated to OpenAI only (see `CacheRoutingKey`);
         // any other host gets a byte-identical body. The Responses API has no
-        // xAI counterpart, so there's no header branch.
+        // xAI counterpart, so only the body placement is honored here.
         var promptCacheKey: String?
-        if let cacheKey = options.conversationCacheKey, !cacheKey.isEmpty,
-           url.host?.lowercased() == CacheRoutingKey.openAIHost {
-            promptCacheKey = cacheKey
+        if case .promptCacheKeyBody(let key) = CacheRoutingKey.placement(
+            for: url, conversationCacheKey: options.conversationCacheKey
+        ) {
+            promptCacheKey = key
         }
 
         let clampedTemperature = min(

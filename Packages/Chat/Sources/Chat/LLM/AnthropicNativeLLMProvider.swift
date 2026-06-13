@@ -2,16 +2,18 @@ import Core
 import Foundation
 
 /// `LLMProvider` conformer for Anthropic's **Messages API** (`POST
-/// /v1/messages`) — the native-web-search path for Claude models.
+/// /v1/messages`) — the default path for Claude models.
 ///
-/// The default (non-search) Anthropic path stays on
-/// `OpenAICompatibleLLMProvider` (via Anthropic's `/v1/openai/` compat shim);
-/// this adapter is hydrated only for a model whose `searchBackend == "native"`,
-/// because the shim can't carry the `web_search` server tool or its
-/// `encrypted_content`/`encrypted_index` citations. Like every native adapter
-/// it is a *complete* provider — text, extended thinking, regular client tool
-/// calls, and native search — since once a turn is on the Messages API there is
-/// no per-message fallback.
+/// This is now the **default** Anthropic adapter: the catalog seeds
+/// `kind: .anthropicNative` and a migration flips pre-existing default rows, so
+/// every Anthropic turn rides the Messages API. The native path is required for
+/// two reasons — explicit `cache_control` prompt-cache breakpoints (the
+/// `/v1/openai/` compat shim can't carry them) and the `web_search` server tool
+/// with its `encrypted_content`/`encrypted_index` citations. A Custom-provider
+/// Anthropic URL may still use the compat shim via `OpenAICompatibleLLMProvider`.
+/// Like every native adapter it is a *complete* provider — text, extended
+/// thinking, regular client tool calls, and native search — since once a turn is
+/// on the Messages API there is no per-message fallback.
 ///
 /// Native search is requested per-turn via the `__native_web_search__` sentinel
 /// tool (see ``NativeWebSearch``); when absent, no server tool is attached and
