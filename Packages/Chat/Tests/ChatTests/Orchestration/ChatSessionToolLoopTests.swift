@@ -756,4 +756,42 @@ struct ChatSessionToolLoopTests {
         #expect(toolUseIDs.count == 2)
         #expect(Set(toolUseIDs).count == 2)
     }
+
+    /// The persist seam also disambiguates the *empty-string* id-less shape (the
+    /// Anthropic reducer emits `block.id ?? ""`), not just Gemini's `id == name`
+    /// fallback — an empty PK would collide across turns and produce an empty
+    /// `tool_use` id on the wire. Defensive: Anthropic supplies real ids in
+    /// practice, but the guard closes the same bug class for every provider.
+    @Test func emptyIDlessToolCallGetsALocallyMintedPK() async throws {
+        let toolID = "lookup"
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .toolUse(index: 0, id: "", name: toolID, input: .object([:]), signature: nil),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+            [
+                .messageStart(id: "m2", model: "fake-model-1"),
+                .textDelta(index: 0, text: "done"),
+                .messageComplete(usage: TokenUsage(inputTokens: 1, outputTokens: 1)),
+            ],
+        ])
+        let executor = FakeToolExecutor(toolID: toolID)
+        await executor.setResult(ToolResult(toolID: toolID, content: "ok", isError: false))
+        await setup.toolRegistry.register(ToolRegistration(tool: makeTool(id: toolID), execution: .local(executor)))
+
+        _ = await collect(await setup.session.send(text: "look it up", model: setup.model))
+        await setup.session.waitUntilFinished()
+
+        let calls = try await setup.toolCallRepo.fetchByConversation(setup.conversation.id)
+        #expect(calls.count == 1)
+        let call = try #require(calls.first)
+        #expect(!call.id.isEmpty)
+        #expect(ToolCallRecord.isLocallyMintedID(call.id))
+        #expect(call.toolName == toolID)
+        // The result row paired against the minted PK (not the empty original).
+        let rows = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id)
+        let toolRow = try #require(rows.first { $0.role == .tool })
+        #expect(toolRow.toolCallId == call.id)
+    }
 }
