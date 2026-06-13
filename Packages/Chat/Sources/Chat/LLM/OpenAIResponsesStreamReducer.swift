@@ -155,7 +155,11 @@ struct OpenAIResponsesStreamReducer {
             if let usage = event.response?.usage,
                let input = usage.inputTokens,
                let output = usage.outputTokens {
-                capturedUsage = TokenUsage(inputTokens: input, outputTokens: output)
+                capturedUsage = TokenUsage(
+                    inputTokens: input,
+                    outputTokens: output,
+                    cacheReadInputTokens: usage.inputTokensDetails?.cachedTokens
+                )
             }
             events.append(contentsOf: closeOut())
 

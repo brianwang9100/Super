@@ -153,7 +153,7 @@ struct OpenAIToolCallDelta: Decodable {
 
     // Explicit memberwise init (the synthesized one would force every call
     // site to pass `extraContent`); `Decodable` synthesis is unaffected since
-    // it keys off `CodingKeys`, not this init.
+    // its `init(from:)` keys off the stored property names, not this init.
     init(
         index: Int? = nil,
         id: String? = nil,
@@ -187,4 +187,27 @@ struct OpenAIExtraContent: Decodable {
 struct OpenAIUsage: Decodable {
     let promptTokens: Int?
     let completionTokens: Int?
+    /// Cache breakdown of `promptTokens`. OpenAI and xAI both report cached
+    /// prompt tokens here (a *subset* already counted in `promptTokens`);
+    /// `.convertFromSnakeCase` maps `prompt_tokens_details.cached_tokens`.
+    /// Absent on providers that don't surface caching (Ollama, MLX, etc.).
+    let promptTokensDetails: PromptTokensDetails?
+
+    struct PromptTokensDetails: Decodable {
+        let cachedTokens: Int?
+    }
+
+    // Explicit memberwise init so existing call sites (test doubles) needn't
+    // pass `promptTokensDetails`; the synthesized `Decodable init(from:)` keys off
+    // the stored property names, not this init, so wire decoding is unaffected.
+    // (Same pattern as `OpenAIToolCallDelta`.)
+    init(
+        promptTokens: Int? = nil,
+        completionTokens: Int? = nil,
+        promptTokensDetails: PromptTokensDetails? = nil
+    ) {
+        self.promptTokens = promptTokens
+        self.completionTokens = completionTokens
+        self.promptTokensDetails = promptTokensDetails
+    }
 }

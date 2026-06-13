@@ -1163,6 +1163,17 @@ public actor ChatSession {
 
         if let err = streamError { throw err }
 
+        // Cache-hit telemetry: counts only (no message content), so it stays
+        // within the OBSERVABILITY.md posture. `cacheRead`/`cacheWrite` are 0
+        // for providers/turns that report no cache activity. A healthy cached
+        // conversation shows cacheWrite>0 on turn 1 (Anthropic) and cacheRead>0
+        // from turn 2 onward.
+        if let usage = capturedUsage {
+            chatSessionLog.debug(
+                "turn usage: input=\(usage.inputTokens, privacy: .public) output=\(usage.outputTokens, privacy: .public) cacheRead=\(usage.cacheReadInputTokens ?? 0, privacy: .public) cacheWrite=\(usage.cacheCreationInputTokens ?? 0, privacy: .public)"
+            )
+        }
+
         // Snapshot the accumulated buffers BEFORE `.assistantMessageSaved`
         // — `broadcast` resets them on that event so the next round-trip
         // in a tool-call loop starts clean. `thinkingStartedAt` reads the

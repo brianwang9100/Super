@@ -1,0 +1,10 @@
+data: {"id":"chatcmpl-cached","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-cached","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-cached","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-cached","object":"chat.completion.chunk","created":1730000000,"model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":1024,"completion_tokens":3,"total_tokens":1027,"prompt_tokens_details":{"cached_tokens":896}}}
+
+data: [DONE]
+

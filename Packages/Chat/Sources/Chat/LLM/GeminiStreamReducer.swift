@@ -30,6 +30,9 @@ struct GeminiStreamReducer {
     private var capturedModel: String?
     private var inputTokens = 0
     private var outputTokens = 0
+    /// Implicit-cache hit count from `usageMetadata`. `nil` until a chunk
+    /// reports one, so a cache-free stream leaves the field `nil`.
+    private var cachedContentTokenCount: Int?
     private var emittedComplete = false
     private var hadError = false
 
@@ -90,6 +93,10 @@ struct GeminiStreamReducer {
         if let usage = chunk.usageMetadata {
             if let prompt = usage.promptTokenCount { inputTokens = prompt }
             if let candidates = usage.candidatesTokenCount { outputTokens = candidates }
+            // Last-wins is correct for Gemini (unlike Anthropic's latch):
+            // usageMetadata appears only on the final chunk, so there's no
+            // earlier value to protect.
+            if let cached = usage.cachedContentTokenCount { cachedContentTokenCount = cached }
         }
 
         // Every turn opens with `.messageStart` before any content.
@@ -299,7 +306,11 @@ struct GeminiStreamReducer {
         var events: [LLMStreamEvent] = []
         ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenBlocks())
-        events.append(.messageComplete(usage: TokenUsage(inputTokens: inputTokens, outputTokens: outputTokens)))
+        events.append(.messageComplete(usage: TokenUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadInputTokens: cachedContentTokenCount
+        )))
         emittedComplete = true
         return events
     }

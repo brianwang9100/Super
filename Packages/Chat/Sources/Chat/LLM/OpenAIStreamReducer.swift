@@ -66,7 +66,11 @@ struct OpenAIStreamReducer {
         if let usage = chunk.usage,
            let input = usage.promptTokens,
            let output = usage.completionTokens {
-            capturedUsage = TokenUsage(inputTokens: input, outputTokens: output)
+            capturedUsage = TokenUsage(
+                inputTokens: input,
+                outputTokens: output,
+                cacheReadInputTokens: usage.promptTokensDetails?.cachedTokens
+            )
         }
 
         guard let choice = chunk.choices?.first else {

@@ -73,6 +73,27 @@ struct GeminiNativeLLMProviderTests {
         #expect(iterator.next() == nil)
     }
 
+    /// `usageMetadata.cachedContentTokenCount` (implicit-cache hits on Gemini
+    /// 2.5+/3.x) surfaces as `cacheReadInputTokens` — a subset of
+    /// `promptTokenCount`, with no write count.
+    @Test func cachedFixtureSurfacesCachedContentTokensInUsage() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("gemini-cached"))
+        let provider = makeProvider(http: http)
+        let events = try await collect(provider.stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model,
+            tools: [],
+            temperature: 0.5
+        ))
+
+        #expect(events.last == .messageComplete(usage: TokenUsage(
+            inputTokens: 2048,
+            outputTokens: 3,
+            cacheReadInputTokens: 1536,
+            cacheCreationInputTokens: nil
+        )))
+    }
+
     /// Chunked delivery must produce the identical event stream — proves the SSE
     /// parser's partial-frame handling holds for Gemini's unnamed-`data:` framing.
     @Test func plainTextFixtureIsChunkingInvariant() async throws {

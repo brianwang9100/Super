@@ -26,6 +26,12 @@ struct AnthropicStreamReducer {
     private var capturedModel: String?
     private var inputTokens = 0
     private var outputTokens = 0
+    /// Cache token counts from the `message_start` usage (Anthropic reports them
+    /// there, outside `inputTokens`). `nil` until seen, so a stream that never
+    /// reports cache activity leaves the `TokenUsage` cache fields `nil` rather
+    /// than a misleading 0.
+    private var cacheCreationInputTokens: Int?
+    private var cacheReadInputTokens: Int?
     private var emittedComplete = false
 
     /// Set once any `.error` has surfaced (an SSE `error` event, or the
@@ -98,6 +104,7 @@ struct AnthropicStreamReducer {
                 if let id = message.id { capturedID = id }
                 if let model = message.model { capturedModel = model }
                 if let input = message.usage?.inputTokens { inputTokens = input }
+                captureCacheTokens(from: message.usage)
             }
             // We have id/model now, so emit the start immediately (unlike the
             // Responses reducer, which defers until it learns them).
@@ -117,6 +124,9 @@ struct AnthropicStreamReducer {
 
         case "message_delta":
             if let output = event.usage?.outputTokens { outputTokens = output }
+            // Anthropic carries cache counts on `message_start`, but read them
+            // here too in case a future build also reports them on the delta.
+            captureCacheTokens(from: event.usage)
 
         case "message_stop":
             events.append(contentsOf: closeOut())
@@ -431,9 +441,22 @@ struct AnthropicStreamReducer {
         if let pending = pendingThinkingSignature, !sawRedactedThinking, !hadError {
             events.append(.thinkingSignature(index: pending.index, signature: pending.signature))
         }
-        events.append(.messageComplete(usage: TokenUsage(inputTokens: inputTokens, outputTokens: outputTokens)))
+        events.append(.messageComplete(usage: TokenUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheReadInputTokens: cacheReadInputTokens,
+            cacheCreationInputTokens: cacheCreationInputTokens
+        )))
         emittedComplete = true
         return events
+    }
+
+    /// Latch the first non-nil cache token counts the stream reports. Once a
+    /// count is stored it's never overwritten, so a later `message_delta` — cache-free
+    /// or carrying an explicit `0` — can't clobber the counts seen at `message_start`.
+    private mutating func captureCacheTokens(from usage: AnthropicStreamEvent.Usage?) {
+        if cacheCreationInputTokens == nil, let creation = usage?.cacheCreationInputTokens { cacheCreationInputTokens = creation }
+        if cacheReadInputTokens == nil, let read = usage?.cacheReadInputTokens { cacheReadInputTokens = read }
     }
 
     private mutating func ensureMessageStart(into events: inout [LLMStreamEvent]) {

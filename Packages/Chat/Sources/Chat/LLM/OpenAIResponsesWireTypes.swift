@@ -169,6 +169,14 @@ struct OpenAIResponsesStreamEvent: Decodable {
         struct Usage: Decodable {
             let inputTokens: Int?
             let outputTokens: Int?
+            /// Cache breakdown of `inputTokens` (a *subset* already counted in
+            /// it). The Responses API nests it under `input_tokens_details`
+            /// (vs. Chat Completions' `prompt_tokens_details`).
+            let inputTokensDetails: InputTokensDetails?
+
+            struct InputTokensDetails: Decodable {
+                let cachedTokens: Int?
+            }
         }
     }
 }

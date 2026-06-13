@@ -211,6 +211,11 @@ struct AnthropicStreamEvent: Decodable {
     struct Usage: Decodable {
         let inputTokens: Int?
         let outputTokens: Int?
+        /// Prompt tokens written to / read from the 5-minute ephemeral cache.
+        /// Both land on the `message_start` usage; `.convertFromSnakeCase` maps
+        /// `cache_creation_input_tokens` / `cache_read_input_tokens`.
+        let cacheCreationInputTokens: Int?
+        let cacheReadInputTokens: Int?
     }
 
     /// A starting content block. `text`/`thinking` open prose; `tool_use` is a
