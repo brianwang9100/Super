@@ -208,7 +208,8 @@ enum SuperBibleAppBootstrap {
         let initialSettings = await ChatSettingsStore(repository: settingRepo).load()
 
         // SuperBible v1 applet set: Chats (searchable history list,
-        // distinct from the chat overlay) + Bible. Plans joins at SB-M2;
+        // distinct from the chat overlay) + Bible + Bookmarks (the Bible
+        // companion list of chapter bookmarks). Plans joins at SB-M2;
         // no Todo or productivity-style placeholders ever (per
         // `App-SuperBible/AGENTS.md` § Module identity). The array order
         // drives the sidebar rail order — Chats first so the rail leads
@@ -221,6 +222,11 @@ enum SuperBibleAppBootstrap {
         let applets: [any MiniApplet] = [
             ChatsApplet(chatDatabase: database),
             bibleApplet,
+            // Bookmarks shares Bible's `bible.sqlite` via a handed-over
+            // read-only `DatabaseContext` (the Bible-internal `BibleDatabase`
+            // never leaks to the root). SuperBible-only: SuperOS deliberately
+            // does not register it.
+            bibleApplet.makeBookmarksApplet(),
         ]
         // SuperBible diverges from SuperOS: the persisted active applet
         // in `UserDefaults` is *deliberately ignored* on cold launch.

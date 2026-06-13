@@ -77,6 +77,13 @@ struct BibleBookSheet: View {
     /// rather than misleading the user.
     @Query<BookNotesExistenceRequest> private var booksWithNotes: Set<String>
 
+    /// Every assigned bookmark slot, reactive like the annotation/note
+    /// existence sets above so a bookmark written from the reader's
+    /// assignment sheet (or moved away) repaints the picker's row icons and
+    /// chapter-cell badges without intervention. `[]` on failure → no
+    /// indicators, which fails safe to "no bookmarks" rather than misleading.
+    @Query<AllBookmarksRequest> private var bookmarks: [BibleBookmarkRecord]
+
     // Font sizes and the chapter cell height are carried as scaled metrics
     // so the picker tracks Dynamic Type — the design's fixed point sizes,
     // scaled relative to the nearest system text style.
@@ -91,6 +98,13 @@ struct BibleBookSheet: View {
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 20
+    /// Row bookmark ribbons sit slightly smaller than the annotation/note
+    /// glyphs (≈75% of `bubbleSize`) so they read as a quieter decoration
+    /// leading the cluster, not a third tappable control.
+    @ScaledMetric(relativeTo: .body) private var rowBookmarkSize: CGFloat = 15
+    /// The chapter-cell badge — a small ribbon tucked into the cell's
+    /// top-right corner.
+    @ScaledMetric(relativeTo: .body) private var cellBookmarkSize: CGFloat = 11
     /// Fixed search-field height so focus, the editing caret, or the
     /// appearing/disappearing clear button can't resize the bar.
     @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 44
@@ -126,6 +140,7 @@ struct BibleBookSheet: View {
         self.bottomInset = bottomInset
         self._booksWithAnnotations = Query(constant: BookAnnotationsExistenceRequest())
         self._booksWithNotes = Query(constant: BookNotesExistenceRequest())
+        self._bookmarks = Query(constant: AllBookmarksRequest())
     }
 
     var body: some View {
@@ -313,10 +328,14 @@ struct BibleBookSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                // The two glyphs cluster tightly together; their frames hug
+                // The glyphs cluster tightly together; their frames hug
                 // their ink (see AnnotationBubble / NoteGlyph), so this spacing
-                // is the real visible gap between them.
+                // is the real visible gap between them. The bookmark ribbons
+                // lead the cluster (left of the annotation bubble) and are
+                // emitted only when the book has bookmarks — an absent branch
+                // reserves no spacing, so unbookmarked rows stay pixel-identical.
                 HStack(spacing: 7) {
+                    bookmarkRibbons(for: book.id)
                     annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
                     noteGlyph(for: book.id, hasNotes: hasNotes)
                 }
@@ -334,6 +353,64 @@ struct BibleBookSheet: View {
             }
         }
         .id(Self.bookRowID(book.id))
+    }
+
+    /// The leading run of filled ribbon glyphs on a book row — one per
+    /// bookmark the book carries, in chapter order. Decorative: collapsed
+    /// into one combined VoiceOver element (the reader is where a bookmark
+    /// is edited), so the row's tap targets stay the name, the bubble, and
+    /// the note glyph. Emits nothing for a book with no bookmarks.
+    @ViewBuilder
+    private func bookmarkRibbons(for bookId: String) -> some View {
+        let marks = bookmarks(forBook: bookId)
+        if !marks.isEmpty {
+            HStack(spacing: 3) {
+                ForEach(marks, id: \.color) { mark in
+                    BookmarkGlyph(state: .filled(mark.color), size: rowBookmarkSize)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Self.bookBookmarksLabel(marks))
+        }
+    }
+
+    /// This book's bookmarks in chapter order, each paired with its colour;
+    /// rows whose persisted `colorId` is unknown (a forward-compat slot)
+    /// fail safe by dropping out rather than rendering a blank glyph.
+    private func bookmarks(forBook bookId: String) -> [(color: BibleBookmarkColor, chapterNumber: Int)] {
+        var marks: [(color: BibleBookmarkColor, chapterNumber: Int)] = []
+        for record in bookmarks where record.bookId == bookId {
+            if let color = record.color {
+                marks.append((color: color, chapterNumber: record.chapterNumber))
+            }
+        }
+        marks.sort { $0.chapterNumber < $1.chapterNumber }
+        return marks
+    }
+
+    /// The colour marking a specific chapter cell, or `nil` when unbookmarked.
+    private func bookmarkColor(forBook bookId: String, chapter: Int) -> BibleBookmarkColor? {
+        bookmarks.first { $0.bookId == bookId && $0.chapterNumber == chapter }?.color
+    }
+
+    /// Combined VoiceOver label for a book row's bookmark cluster, e.g.
+    /// `"Bookmarks: Clay chapter 3, Gold chapter 8"`. A `for`-loop, not
+    /// `map`, to stay clear of the `swift test`-on-macOS predicate-closure
+    /// trap this package documents.
+    static func bookBookmarksLabel(_ marks: [(color: BibleBookmarkColor, chapterNumber: Int)]) -> String {
+        var parts: [String] = []
+        for mark in marks {
+            parts.append("\(mark.color.displayName) chapter \(mark.chapterNumber)")
+        }
+        return "Bookmarks: " + parts.joined(separator: ", ")
+    }
+
+    /// VoiceOver label for a chapter cell, appending the ribbon colour when
+    /// the chapter is bookmarked so the badge isn't a silent visual-only cue.
+    static func chapterCellLabel(bookName: String, number: Int, bookmark: BibleBookmarkColor?) -> String {
+        let base = "\(bookName) chapter \(number)"
+        guard let bookmark else { return base }
+        return "\(base), bookmarked \(bookmark.displayName)"
     }
 
     private func annotationBubble(for bookId: String, hasAnnotations: Bool) -> some View {
@@ -431,22 +508,41 @@ struct BibleBookSheet: View {
     @ViewBuilder
     private func chapterCell(for book: BibleBookSummary, number: Int) -> some View {
         let isCurrent = book.id == currentBookId && number == currentChapterNumber
+        let bookmark = bookmarkColor(forBook: book.id, chapter: number)
         Button {
             onSelectChapter(book.id, number)
         } label: {
-            if isCurrent {
-                // The current chapter keeps a solid `ink` fill so it reads as
-                // selected against the interactive glass of the other cells.
-                chapterLabel(number, isCurrent: true)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(theme.ink))
-            } else {
-                chapterLabel(number, isCurrent: false)
-                    .superGlassButton(in: RoundedRectangle(cornerRadius: 10))
-            }
+            cellBody(number: number, isCurrent: isCurrent)
+                // A small ribbon tucked into the corner marks a bookmarked
+                // chapter; the `nil` branch adds nothing, so unbookmarked
+                // grids stay pixel-identical to the existing baselines.
+                .overlay(alignment: .topTrailing) {
+                    if let bookmark {
+                        BookmarkGlyph(state: .filled(bookmark), size: cellBookmarkSize)
+                            .padding(.top, 3)
+                            .padding(.trailing, 3)
+                    }
+                }
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
-        .accessibilityLabel("\(book.name) chapter \(number)")
+        .accessibilityLabel(Self.chapterCellLabel(bookName: book.name, number: number, bookmark: bookmark))
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
+    }
+
+    /// The cell's fill + number, split out so the bookmark badge overlay can
+    /// layer over either the selected (solid `ink`) or unselected (glass)
+    /// background uniformly.
+    @ViewBuilder
+    private func cellBody(number: Int, isCurrent: Bool) -> some View {
+        if isCurrent {
+            // The current chapter keeps a solid `ink` fill so it reads as
+            // selected against the interactive glass of the other cells.
+            chapterLabel(number, isCurrent: true)
+                .background(RoundedRectangle(cornerRadius: 10).fill(theme.ink))
+        } else {
+            chapterLabel(number, isCurrent: false)
+                .superGlassButton(in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 
     /// The chapter number sized to fill a grid cell; the caller layers the
