@@ -468,6 +468,82 @@ struct ChatDatabaseMigrationTests {
         #expect(lookup["thinkingModelId"]?.1 == 0)   // nullable
     }
 
+    /// `v10_anthropicNativeDefault` flips *only* the default Anthropic
+    /// OpenAI-compat shim row to native (`kind` + `baseURL`), leaving every
+    /// other row untouched: a native-search Anthropic row (already native), a
+    /// non-Anthropic provider, and a user's custom-URL Anthropic proxy. Stop at
+    /// v9, seed all four, apply v10, assert the selective flip.
+    @Test func v10FlipsOnlyDefaultAnthropicShimRow() async throws {
+        var migrator = DatabaseMigrator()
+        registerChatMigrations(&migrator)
+        let queue = try DatabaseQueue()
+        try migrator.migrate(queue, upTo: "v9_messageThinkingModelId")
+
+        try await queue.write { db in
+            // 1. Default Anthropic shim row — the migration's sole target.
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, kind, name, baseURL, apiKeyRef, modelId,
+                     supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('shim', 'openAICompatible', 'Anthropic',
+                     'https://api.anthropic.com/v1/openai/', 'k1',
+                     'claude-opus-4-7', 1, 1000000, 0, '2026-01-01 00:00:00')
+            """)
+            // 2. Native-search Anthropic row — already native, must be left as-is.
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, kind, name, baseURL, apiKeyRef, modelId,
+                     supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('native', 'anthropicNative', 'Anthropic (search)',
+                     'https://api.anthropic.com/v1', 'k2',
+                     'claude-opus-4-7', 1, 1000000, 0, '2026-01-01 00:00:00')
+            """)
+            // 3. A non-Anthropic provider — different host, untouched.
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, kind, name, baseURL, apiKeyRef, modelId,
+                     supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('openai', 'openAICompatible', 'OpenAI',
+                     'https://api.openai.com/v1', 'k3', 'gpt-5.5',
+                     1, 1000000, 0, '2026-01-01 00:00:00')
+            """)
+            // 4. A custom Anthropic proxy — not the exact default shim URL,
+            //    so deliberately preserved (a power user's own endpoint).
+            try db.execute(sql: """
+                INSERT INTO modelConfiguration
+                    (id, kind, name, baseURL, apiKeyRef, modelId,
+                     supportsThinking, maxContextTokens, isSelected, createdAt)
+                VALUES
+                    ('proxy', 'openAICompatible', 'Anthropic via proxy',
+                     'https://proxy.example.com/anthropic/v1/openai/', 'k4',
+                     'claude-opus-4-7', 1, 1000000, 0, '2026-01-01 00:00:00')
+            """)
+        }
+
+        try migrator.migrate(queue)
+
+        let rows = try await queue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, kind, baseURL FROM modelConfiguration ORDER BY id
+            """).map { ($0["id"] as String, $0["kind"] as String, $0["baseURL"] as String) }
+        }
+        let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.0, ($0.1, $0.2)) })
+
+        // Only the default shim row flipped — kind AND baseURL.
+        #expect(byID["shim"]?.0 == "anthropicNative")
+        #expect(byID["shim"]?.1 == "https://api.anthropic.com/v1")
+        // Everything else byte-identical to what was seeded.
+        #expect(byID["native"]?.0 == "anthropicNative")
+        #expect(byID["native"]?.1 == "https://api.anthropic.com/v1")
+        #expect(byID["openai"]?.0 == "openAICompatible")
+        #expect(byID["openai"]?.1 == "https://api.openai.com/v1")
+        #expect(byID["proxy"]?.0 == "openAICompatible")
+        #expect(byID["proxy"]?.1 == "https://proxy.example.com/anthropic/v1/openai/")
+    }
+
     /// Rows that existed before v9 migrate to `thinkingModelId = NULL` — a
     /// stored signature with no recorded model is treated as unreplayable
     /// (thinking-off fallback). Stop at v8, seed a row, apply v9.

@@ -34,14 +34,47 @@ enum AnthropicWebSearch {
 
 // MARK: - Request
 
+/// `cache_control: {"type": "ephemeral"}` — the 5-minute prompt-cache
+/// breakpoint marker. No `ttl`: the 1-hour tier costs 2× on writes, and reads
+/// refresh the 5-minute window anyway, so active conversations stay warm.
+/// Attached to a `system` block and to the last content block of the last
+/// message (the "moving" breakpoint) so the stable prefix + tools and the
+/// growing transcript are both cacheable.
+struct AnthropicCacheControl: Encodable {
+    let type = "ephemeral"
+}
+
+/// One block of the top-level `system` array. The Messages API accepts either
+/// a bare string or an array of typed text blocks; only the array form can
+/// carry a `cache_control` marker, which is why the request models `system` as
+/// `[AnthropicSystemBlock]?`.
+struct AnthropicSystemBlock: Encodable {
+    let text: String
+    let cacheControl: AnthropicCacheControl?
+
+    enum CodingKeys: String, CodingKey {
+        case type, text
+        case cacheControl = "cache_control"
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("text", forKey: .type)
+        try container.encode(text, forKey: .text)
+        try container.encodeIfPresent(cacheControl, forKey: .cacheControl)
+    }
+}
+
 /// Request body for `POST {baseURL}/messages`.
 struct AnthropicMessagesRequest: Encodable {
     let model: String
     /// Required by the API. Derived as `min(maxContextTokens/4, 4096)` (§0 #7).
     let maxTokens: Int
     let stream: Bool
-    /// System prompt. The Messages API carries it here, not as a message.
-    let system: String?
+    /// System prompt. The Messages API carries it here, not as a message; the
+    /// block-array form lets the stable prefix block carry a `cache_control`
+    /// marker. Omitted entirely (nil) when there's no system text.
+    let system: [AnthropicSystemBlock]?
     let messages: [AnthropicMessage]
     /// Omitted when extended thinking is enabled — Anthropic rejects any
     /// `temperature` other than 1 in that mode, so the adapter sends none.
@@ -88,6 +121,11 @@ enum AnthropicContentBlock: Encodable {
     case toolUse(id: String, name: String, input: JSONValue)
     case toolResult(toolUseID: String, content: String, isError: Bool)
     case webSearchToolResult(toolUseID: String, results: [WebSearchResultEcho])
+    /// Moving cache breakpoint: wraps another block, encoding it verbatim plus
+    /// a merged `cache_control` marker. Used on the last content block of the
+    /// last message so the whole transcript prefix is cacheable; `indirect`
+    /// because the case stores another `AnthropicContentBlock`.
+    indirect case cached(AnthropicContentBlock)
 
     /// A single replayed `web_search_result`, carrying the verbatim
     /// `encrypted_content` Anthropic requires to keep the citation valid.
@@ -117,11 +155,19 @@ enum AnthropicContentBlock: Encodable {
         case type, text, id, name, input, content, thinking, signature
         case toolUseID = "tool_use_id"
         case isError = "is_error"
+        case cacheControl = "cache_control"
     }
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
+        case .cached(let inner):
+            // Encode the inner block's keys into this same keyed container,
+            // then merge the marker. Two `container(keyedBy:)` calls on one
+            // encoder write to the same underlying storage, so the result is
+            // the inner block's JSON with a `cache_control` field added.
+            try inner.encode(to: encoder)
+            try container.encode(AnthropicCacheControl(), forKey: .cacheControl)
         case .text(let text):
             try container.encode("text", forKey: .type)
             try container.encode(text, forKey: .text)

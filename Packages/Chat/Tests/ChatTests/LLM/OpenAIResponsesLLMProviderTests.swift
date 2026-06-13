@@ -335,6 +335,36 @@ struct OpenAIResponsesLLMProviderTests {
         #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
+    // MARK: - Cache-routing key (host-gated, body field only)
+
+    @Test func promptCacheKeyAttachedForOpenAIHost() async throws {
+        let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        _ = try await collect(makeProvider(http: http).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5,
+            options: LLMRequestOptions(conversationCacheKey: "conv-123")
+        ))
+        #expect(try Self.decodeBody(http)["prompt_cache_key"] as? String == "conv-123")
+    }
+
+    @Test func promptCacheKeyAbsentForNonOpenAIHostOrNoneOptions() async throws {
+        // Non-OpenAI host with a key: omitted (a Responses-compatible proxy).
+        let proxy = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        _ = try await collect(makeProvider(http: proxy, baseURL: URL(string: "https://proxy.example.com/v1")!).stream(
+            messages: [LLMMessage(role: .user, text: "hi")],
+            model: model, tools: [], temperature: 0.5,
+            options: LLMRequestOptions(conversationCacheKey: "conv-123")
+        ))
+        #expect(try Self.decodeBody(proxy)["prompt_cache_key"] == nil)
+
+        // OpenAI host but `.none` options (the 4-arg path): also omitted.
+        let none = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
+        _ = try await collect(makeProvider(http: none).stream(
+            messages: [LLMMessage(role: .user, text: "hi")], model: model, tools: [], temperature: 0.5
+        ))
+        #expect(try Self.decodeBody(none)["prompt_cache_key"] == nil)
+    }
+
     @Test func systemMessageBecomesInstructionsAndUserBecomesInput() async throws {
         let http = FakeHTTPClient.fromFixture(FixtureLoader.load("openai-responses-plain"))
         _ = try await collect(makeProvider(http: http).stream(

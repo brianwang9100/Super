@@ -38,11 +38,25 @@ final class FakeLLMProvider: LLMProvider, Sendable {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    /// The options-carrying overload is the real one — `ChatSession` calls it,
+    /// so capturing `options` here is the only coverage of the per-request
+    /// cache-key threading (the protocol default would otherwise drop it).
+    func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         let captured = CapturedLLMRequest(
             modelID: model.id,
             messages: messages,
             tools: tools,
-            temperature: temperature
+            temperature: temperature,
+            options: options
         )
         let stateRef = state
         return AsyncThrowingStream { continuation in
@@ -65,6 +79,21 @@ struct CapturedLLMRequest: Sendable, Equatable {
     let messages: [LLMMessage]
     let tools: [LLMTool]
     let temperature: Double
+    let options: LLMRequestOptions
+
+    init(
+        modelID: String,
+        messages: [LLMMessage],
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions = .none
+    ) {
+        self.modelID = modelID
+        self.messages = messages
+        self.tools = tools
+        self.temperature = temperature
+        self.options = options
+    }
 }
 
 private actor FakeLLMProviderState {

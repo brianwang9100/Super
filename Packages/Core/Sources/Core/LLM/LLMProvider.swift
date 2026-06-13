@@ -36,4 +36,33 @@ public protocol LLMProvider: Sendable {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error>
+
+    /// Begin a streaming completion, carrying per-request `options` (cache
+    /// routing keys, etc.). Semantics are identical to the 4-arg `stream(...)`;
+    /// `options` only ever tunes provider-side optimizations, never the prompt.
+    ///
+    /// A protocol-extension default forwards to the 4-arg method and ignores
+    /// `options`, so the ~dozen conformers need no change. The OpenAI Chat and
+    /// Responses adapters override it to attach their host-gated routing keys.
+    /// (Providers are registry-shared singletons, so the key must travel
+    /// per-request rather than via the initializer.)
+    func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error>
+}
+
+public extension LLMProvider {
+    func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature)
+    }
 }

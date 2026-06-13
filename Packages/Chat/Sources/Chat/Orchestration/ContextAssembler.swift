@@ -176,8 +176,14 @@ public struct ContextAssembler: Sendable {
         // cache-friendly there) and behind the leading briefing. Absent for
         // non-search models, so the prompt is byte-identical to before for
         // them.
+        // The leading briefing and web-search guidance form a contiguous,
+        // rarely-changing run at the front of the prompt, so they're tagged
+        // `.stablePrefix`: the Anthropic native adapter places its first cache
+        // breakpoint right after them (covering tools + this stable system
+        // text), while the volatile memories block that follows busts only
+        // itself. Every other provider ignores the hint.
         if let webSearchBlock = Self.formatWebSearchBlock(model: model) {
-            prompt.insert(LLMMessage(role: .system, text: webSearchBlock), at: 0)
+            prompt.insert(LLMMessage(role: .system, text: webSearchBlock, cacheHint: .stablePrefix), at: 0)
             fixedBlockTokens += estimator.estimate(webSearchBlock)
         }
         if let leadingBlock = Self.formatLeadingSystemBlock(
@@ -185,7 +191,7 @@ public struct ContextAssembler: Sendable {
             appletBriefings: appletBriefings,
             userPersonalization: userPersonalization
         ) {
-            prompt.insert(LLMMessage(role: .system, text: leadingBlock), at: 0)
+            prompt.insert(LLMMessage(role: .system, text: leadingBlock, cacheHint: .stablePrefix), at: 0)
             fixedBlockTokens += estimator.estimate(leadingBlock)
         }
         // The projected prompt can carry several consecutive `.system`

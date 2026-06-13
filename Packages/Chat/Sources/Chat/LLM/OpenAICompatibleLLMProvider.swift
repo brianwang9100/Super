@@ -111,6 +111,19 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    /// Options-carrying overload — attaches OpenAI's `prompt_cache_key` (or
+    /// xAI's `x-grok-conv-id` header) when host-gating allows; see
+    /// `buildRequest`. With `.none` (the 4-arg path) the request is unchanged.
+    public func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var reducer = OpenAIStreamReducer()
@@ -127,7 +140,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                         model: model,
                         tools: tools,
                         temperature: temperature,
-                        nameMap: nameMap
+                        nameMap: nameMap,
+                        options: options
                     )
                     var parser = SSEParser()
                     let decoder = JSONDecoder()
@@ -176,7 +190,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
         model: LLMModel,
         tools: [LLMTool],
         temperature: Double,
-        nameMap: ToolWireNameMap
+        nameMap: ToolWireNameMap,
+        options: LLMRequestOptions
     ) throws -> URLRequest {
         let url = chatCompletionsURL()
         var request = URLRequest(url: url)
@@ -191,6 +206,24 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
+        // Cache-routing affinity key, host-gated so only the first-party host
+        // that documents each form receives it (see `CacheRoutingKey`). OpenAI
+        // takes it as the `prompt_cache_key` body field; xAI as the
+        // `x-grok-conv-id` header. Every other compatible host gets neither, so
+        // its request is byte-identical with or without `options`.
+        let host = url.host?.lowercased()
+        var promptCacheKey: String?
+        if let cacheKey = options.conversationCacheKey, !cacheKey.isEmpty {
+            switch host {
+            case CacheRoutingKey.openAIHost:
+                promptCacheKey = cacheKey
+            case CacheRoutingKey.xaiHost:
+                request.setValue(cacheKey, forHTTPHeaderField: CacheRoutingKey.xaiHeaderField)
+            default:
+                break
+            }
+        }
+
         let clampedTemperature = min(max(temperature, Self.temperatureRange.lowerBound), Self.temperatureRange.upperBound)
         let body = OpenAIChatRequest(
             model: model.id,
@@ -198,7 +231,8 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
             stream: true,
             temperature: clampedTemperature,
             tools: tools.isEmpty ? nil : tools.map { translate($0, nameMap: nameMap) },
-            streamOptions: .init(includeUsage: true)
+            streamOptions: .init(includeUsage: true),
+            promptCacheKey: promptCacheKey
         )
 
         let encoder = JSONEncoder()

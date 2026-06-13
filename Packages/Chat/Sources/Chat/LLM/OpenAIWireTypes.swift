@@ -15,6 +15,11 @@ struct OpenAIChatRequest: Encodable {
     let temperature: Double
     let tools: [OpenAITool]?
     let streamOptions: StreamOptions?
+    /// Optional cache-routing affinity key (`prompt_cache_key` via the
+    /// snake-case strategy). Host-gated to OpenAI by the provider — `nil`
+    /// (and so omitted) for every other compatible endpoint. See
+    /// ``CacheRoutingKey``.
+    let promptCacheKey: String?
 
     /// Mirror of OpenAI's `stream_options` object. Setting `includeUsage`
     /// asks the provider to attach a `usage` object to the final stream

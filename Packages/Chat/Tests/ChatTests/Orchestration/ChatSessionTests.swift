@@ -314,6 +314,25 @@ struct ChatSessionTests {
         #expect(captured.first?.temperature == 0.42)
     }
 
+    /// The turn loop threads the conversation row id as the cache-routing
+    /// affinity key. This is the only coverage of the threading — the protocol
+    /// default overload would silently drop `options` if the provider didn't
+    /// implement the 5-arg `stream(...)`.
+    @Test func conversationCacheKeyForwardsToProvider() async throws {
+        let setup = try await makeSetup(scripts: [
+            [
+                .messageStart(id: "m1", model: "fake-model-1"),
+                .messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)),
+            ],
+        ])
+        let stream = await setup.session.send(text: "Hi", model: setup.model)
+        _ = await collect(stream)
+        await setup.session.waitUntilFinished()
+
+        let captured = await setup.provider.capturedRequests()
+        #expect(captured.first?.options.conversationCacheKey == setup.conversation.id)
+    }
+
     @Test func thinkingDeltasSurfaceAsThinkingEvents() async throws {
         let setup = try await makeSetup(scripts: [
             [
