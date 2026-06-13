@@ -264,9 +264,8 @@ public struct TokenUsage: Sendable, Equatable, Codable {
     /// Sum of input and output tokens. For Anthropic, cached tokens sit *outside*
     /// `inputTokens`, so `total` undercounts the true prompt size once native caching
     /// is active.
-    /// - TODO(PR2): when caching is turned on, either add a provider-aware
-    ///   `billedTotal` or fold `cacheReadInputTokens + cacheCreationInputTokens` in
-    ///   here, and audit the context-meter / compaction callers that read `total`.
+    // TODO(PR2): add a provider-aware `billedTotal` or fold cacheRead + cacheCreation
+    // in here, and audit the context-meter / compaction callers that read `total`.
     public var total: Int { inputTokens + outputTokens }
 }
 

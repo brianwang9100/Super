@@ -93,6 +93,9 @@ struct GeminiStreamReducer {
         if let usage = chunk.usageMetadata {
             if let prompt = usage.promptTokenCount { inputTokens = prompt }
             if let candidates = usage.candidatesTokenCount { outputTokens = candidates }
+            // Last-wins is correct for Gemini (unlike Anthropic's latch):
+            // usageMetadata appears only on the final chunk, so there's no
+            // earlier value to protect.
             if let cached = usage.cachedContentTokenCount { cachedContentTokenCount = cached }
         }
 
