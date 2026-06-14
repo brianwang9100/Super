@@ -9,8 +9,8 @@ public struct TodoSectionHeader: View {
     public let count: Int
 
     @ScaledMetric(relativeTo: .footnote) private var fontSize: CGFloat = 13
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public init(title: String, count: Int) {
         self.title = title
@@ -20,11 +20,11 @@ public struct TodoSectionHeader: View {
     public var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: fontSize * fontScale, weight: .medium, design: .monospaced))
+                .font(typography.font(size: fontSize, weight: .medium, design: .monospaced))
                 .tracking(0.7)
                 .foregroundStyle(theme.inkFaint)
             Text("\(count)")
-                .font(.system(size: fontSize * fontScale, design: .monospaced))
+                .font(typography.font(size: fontSize, design: .monospaced))
                 .foregroundStyle(theme.inkMute)
         }
         .padding(.horizontal, 4)

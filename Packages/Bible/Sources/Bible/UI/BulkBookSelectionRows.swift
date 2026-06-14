@@ -44,7 +44,7 @@ struct BulkBookSelectionRow: View {
                         .foregroundStyle(theme.inkMute)
                         .fixedSize()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(typography.font(size: 12, weight: .semibold))
                         .foregroundStyle(theme.inkMute)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                 }

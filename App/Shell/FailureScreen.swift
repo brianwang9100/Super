@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Inline error pane shown when bootstrap fails or the chat view model
@@ -9,14 +10,17 @@ import SwiftUI
 struct FailureScreen: View {
     let message: String
 
+    @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Bootstrap failed")
-                .font(.headline)
-                .foregroundStyle(.red)
+                .font(typography.font(.headline, weight: .semibold))
+                .foregroundStyle(theme.errorAccent)
             Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+                .font(typography.font(.callout))
+                .foregroundStyle(theme.inkSoft)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

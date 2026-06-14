@@ -176,7 +176,7 @@ struct GenerateAnnotationsSheet: View {
             .accessibilityHint("When on, each chapter also annotates its most notable verse ranges")
 
             HStack(spacing: 8) {
-                Image(systemName: "clock").font(.system(size: 13))
+                Image(systemName: "clock").font(typography.font(size: 13))
                 Text("\(estimate.books) \(estimate.books == 1 ? "book" : "books") · ~\(estimate.annotations) annotations · est. \(estimate.minutes) min")
                     .font(typography.mono(11.5))
             }

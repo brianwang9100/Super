@@ -21,7 +21,7 @@ struct BulkJobCard: View {
                         BulkSpinner(size: 16, stroke: 3)
                     } else {
                         Image(systemName: "pause.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(typography.font(size: 12, weight: .bold))
                             .foregroundStyle(theme.inkMute)
                             .frame(width: 16, height: 16)
                     }
@@ -31,7 +31,7 @@ struct BulkJobCard: View {
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(typography.font(size: 13, weight: .semibold))
                         .foregroundStyle(theme.inkMute)
                 }
 
@@ -62,7 +62,7 @@ struct BulkJobCard: View {
     private var pauseButton: some View {
         Button(action: onTogglePause) {
             Image(systemName: snapshot.isRunning ? "pause.fill" : "play.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(typography.font(size: 13, weight: .semibold))
                 .foregroundStyle(theme.inkSoft)
                 .frame(width: 28, height: 28)
         }

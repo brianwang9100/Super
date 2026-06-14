@@ -5,7 +5,7 @@ import SwiftUI
 import Testing
 @testable import Todo
 
-/// Snapshots for `TodoSectionHeader` across the three themes plus a larger
+/// Snapshots for `TodoSectionHeader` across Vellum light and dark plus a larger
 /// Dynamic Type size.
 @Suite("TodoSectionHeader snapshots", .serialized)
 @MainActor

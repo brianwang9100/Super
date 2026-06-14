@@ -7,7 +7,6 @@ import SwiftUI
 public struct TodoEmptyState: View {
     @ScaledMetric(relativeTo: .title2) private var headlineSize: CGFloat = 22
     @ScaledMetric(relativeTo: .subheadline) private var captionSize: CGFloat = 15
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
@@ -22,7 +21,7 @@ public struct TodoEmptyState: View {
                 .font(typography.display(headlineSize, relativeTo: nil))
                 .foregroundStyle(theme.inkSoft)
             Text("Adjust your filter or tap ＋ to add a task.")
-                .font(.system(size: captionSize * fontScale))
+                .font(typography.font(size: captionSize))
                 .foregroundStyle(theme.inkFaint)
                 .multilineTextAlignment(.center)
         }

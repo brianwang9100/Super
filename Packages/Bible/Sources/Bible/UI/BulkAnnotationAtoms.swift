@@ -127,6 +127,7 @@ struct BulkSpinner: View {
 /// failed → alert glyph in the failure hue.
 struct BulkStatusLeaf: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     let state: BulkUnitState
     let size: CGFloat
@@ -146,13 +147,13 @@ struct BulkStatusLeaf: View {
             BulkSpinner(size: size)
         case .skipped:
             Image(systemName: "minus.circle")
-                .font(.system(size: size - 6, weight: .semibold))
+                .font(typography.font(size: size - 6, weight: .semibold))
                 .foregroundStyle(theme.inkFaint)
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         case .failed:
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: size - 6, weight: .semibold))
+                .font(typography.font(size: size - 6, weight: .semibold))
                 .foregroundStyle(theme.errorInk)
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
@@ -164,6 +165,7 @@ struct BulkStatusLeaf: View {
 /// renders the dash state for a book whose chapters are mixed-selected.
 struct BulkCheckBox: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     let checked: Bool
     let partial: Bool
@@ -186,7 +188,7 @@ struct BulkCheckBox: View {
                 .frame(width: 21, height: 21)
             if checked {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(typography.font(size: 12, weight: .bold))
                     .foregroundStyle(theme.accentInk)
             } else if partial {
                 Capsule().fill(theme.inkMute).frame(width: 9, height: 2.5)

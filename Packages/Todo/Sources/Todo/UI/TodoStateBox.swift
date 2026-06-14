@@ -14,6 +14,7 @@ public struct TodoStateBox: View {
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 19
     @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public init(state: TaskState, onToggle: @escaping () -> Void) {
         self.state = state
@@ -58,11 +59,11 @@ public struct TodoStateBox: View {
             EmptyView()
         case .done:
             Image(systemName: "checkmark")
-                .font(.system(size: scaledSize * 0.46, weight: .bold))
+                .font(typography.font(size: size * 0.46, weight: .bold))
                 .foregroundStyle(.white)
         case .cancelled:
             Image(systemName: "xmark")
-                .font(.system(size: scaledSize * 0.42, weight: .semibold))
+                .font(typography.font(size: size * 0.42, weight: .semibold))
                 .foregroundStyle(theme.inkFaint)
         }
     }

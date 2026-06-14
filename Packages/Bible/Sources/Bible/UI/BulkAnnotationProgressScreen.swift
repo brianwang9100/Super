@@ -71,7 +71,7 @@ struct BulkAnnotationProgressScreen: View {
     @ViewBuilder
     private func failureBanner(_ count: Int) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle").font(.system(size: 16))
+            Image(systemName: "exclamationmark.triangle").font(typography.font(size: 16))
             Text("\(count) \(count == 1 ? "chapter" : "chapters") couldn't be generated")
                 .font(typography.font(.footnote, weight: .medium))
                 .frame(maxWidth: .infinity, alignment: .leading)

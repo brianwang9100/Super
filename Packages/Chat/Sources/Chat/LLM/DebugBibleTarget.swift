@@ -161,11 +161,15 @@ struct DebugBibleTarget: Equatable {
     /// runtime to dodge regex-literal parsing ambiguity (`?/`); computed (not
     /// stored) because `Regex` isn't `Sendable`.
     private static var verseRangeRegex: Regex<AnyRegexOutput> {
+        // Compile-constant pattern: an invalid literal is a programmer error, caught on first run.
+        // swiftlint:disable:next force_try
         try! Regex(#"\s*(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+))?"#)
     }
     /// Leading whitespace then a bare chapter number — the chapter, when no
     /// `chapter:verse` follows (e.g. "Romans 8").
     private static var chapterRegex: Regex<AnyRegexOutput> {
+        // Compile-constant pattern: an invalid literal is a programmer error, caught on first run.
+        // swiftlint:disable:next force_try
         try! Regex(#"\s*(\d+)"#)
     }
 
