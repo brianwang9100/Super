@@ -33,7 +33,6 @@ struct TodoTaskEditorSheet: View {
     let calendar: Calendar
 
     @State private var showingDatePicker = false
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
@@ -108,7 +107,7 @@ struct TodoTaskEditorSheet: View {
                 .font(typography.display(22, relativeTo: nil))
                 .foregroundStyle(theme.ink)
             TextField("Notes (optional)", text: $notes, axis: .vertical)
-                .font(.system(size: 15 * fontScale))
+                .font(typography.font(size: 15))
                 .foregroundStyle(theme.inkSoft)
         }
         .padding(.horizontal, 18)
@@ -119,7 +118,7 @@ struct TodoTaskEditorSheet: View {
     private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label.uppercased())
-                .font(.system(size: 13 * fontScale, weight: .medium, design: .monospaced))
+                .font(typography.font(size: 13, weight: .medium, design: .monospaced))
                 .tracking(0.7)
                 .foregroundStyle(theme.inkFaint)
             content()
@@ -145,7 +144,7 @@ struct TodoTaskEditorSheet: View {
                                 .fill(OKLCH(0.62, 0.14, option.hue).color)
                                 .frame(width: 7, height: 7)
                             Text(option.displayName)
-                                .font(.system(size: 15 * fontScale, weight: .medium))
+                                .font(typography.font(size: 15, weight: .medium))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -195,7 +194,7 @@ struct TodoTaskEditorSheet: View {
     private func duePill(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 15 * fontScale, weight: .medium))
+                .font(typography.font(size: 15, weight: .medium))
                 .foregroundStyle(selected ? theme.accent : theme.inkSoft)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -224,7 +223,7 @@ struct TodoTaskEditorSheet: View {
                         state = option
                     } label: {
                         Text(option.displayName)
-                            .font(.system(size: 15 * fontScale, weight: .medium))
+                            .font(typography.font(size: 15, weight: .medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .foregroundStyle(selected ? theme.accent : theme.inkSoft)
@@ -246,7 +245,7 @@ struct TodoTaskEditorSheet: View {
             Task { await onDelete() }
         } label: {
             Text("Delete task")
-                .font(.system(size: 15 * fontScale, weight: .medium))
+                .font(typography.font(size: 15, weight: .medium))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 11)
                 .foregroundStyle(OKLCH(0.5, 0.16, 25).color)

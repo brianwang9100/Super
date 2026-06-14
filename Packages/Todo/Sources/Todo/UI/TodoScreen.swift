@@ -15,7 +15,6 @@ public struct TodoScreen: View {
     @State private var filterSheetOpen = false
     @State private var toastDismissTask: Task<Void, Never>?
 
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
@@ -114,7 +113,7 @@ public struct TodoScreen: View {
                     Text("\(counts.cancelled) cancelled").foregroundStyle(theme.inkMute)
                 }
             }
-            .font(.system(size: 14 * fontScale))
+            .font(typography.font(size: 14))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -124,7 +123,7 @@ public struct TodoScreen: View {
             viewModel.beginCreate()
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
+                .font(typography.font(size: 18, weight: .semibold))
                 .foregroundStyle(theme.accentInk)
                 // 36×36 mirrors the shell's hamburger button; the 4pt top
                 // offset puts it on the same baseline (safe-area top + 4).

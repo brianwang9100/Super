@@ -37,6 +37,7 @@ struct SidebarDrawerSnapshotTests {
         // Force-try is acceptable in a test fixture: the in-memory
         // database is a deterministic constructor that only fails on
         // out-of-memory, in which case the whole test process is gone.
+        // swiftlint:disable:next force_try
         let db = try! ChatDatabase.makeInMemory()
         return [ChatsApplet(chatDatabase: db)]
     }()

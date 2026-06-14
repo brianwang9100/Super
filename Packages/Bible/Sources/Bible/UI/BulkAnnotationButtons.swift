@@ -14,6 +14,7 @@ import SwiftUI
 /// A round, glass icon control (32pt) — back / close / pause / cancel.
 struct BulkRoundIconButton: View {
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     let systemName: String
     let size: CGFloat
@@ -35,7 +36,7 @@ struct BulkRoundIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: size * 0.46, weight: .semibold))
+                .font(typography.font(size: size * 0.46, weight: .semibold))
                 .foregroundStyle(theme.ink)
                 .frame(width: size, height: size)
         }
@@ -65,7 +66,7 @@ struct BulkPrimaryButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 16, weight: .semibold))
+                    Image(systemName: systemImage).font(typography.font(size: 16, weight: .semibold))
                 }
                 Text(title).font(typography.font(.callout, weight: .semibold))
             }
@@ -99,7 +100,7 @@ struct BulkDangerButton: View {
         Button(role: .destructive, action: action) {
             HStack(spacing: 8) {
                 if let systemImage {
-                    Image(systemName: systemImage).font(.system(size: 15, weight: .semibold))
+                    Image(systemName: systemImage).font(typography.font(size: 15, weight: .semibold))
                 }
                 Text(title).font(typography.font(.callout, weight: .semibold))
             }
@@ -131,7 +132,7 @@ struct BulkRetryButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .semibold))
+                Image(systemName: "arrow.clockwise").font(typography.font(size: 12, weight: .semibold))
                 Text(title).font(typography.font(.caption, weight: .semibold))
             }
             .foregroundStyle(theme.errorInk)

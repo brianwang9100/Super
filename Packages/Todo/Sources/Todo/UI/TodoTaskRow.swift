@@ -16,8 +16,8 @@ public struct TodoTaskRow: View {
 
     @ScaledMetric(relativeTo: .body) private var titleSize: CGFloat = 17
     @ScaledMetric(relativeTo: .footnote) private var dueSize: CGFloat = 13
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     public init(
         row: TaskWithLabels,
@@ -38,7 +38,7 @@ public struct TodoTaskRow: View {
             TodoStateBox(state: row.task.state) { onToggleState(row) }
             VStack(alignment: .leading, spacing: 7) {
                 Text(row.task.title)
-                    .font(.system(size: titleSize * fontScale))
+                    .font(typography.font(size: titleSize))
                     .strikethrough(row.task.state == .cancelled, color: theme.inkFaint)
                     .foregroundStyle(theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -49,7 +49,7 @@ public struct TodoTaskRow: View {
                     TruncatingRowLayout(spacing: 5) {
                         ForEach(row.labels) { TodoTagChip(label: $0) }
                         Text("…")
-                            .font(.system(size: dueSize * fontScale))
+                            .font(typography.font(size: dueSize))
                             .foregroundStyle(theme.inkFaint)
                         dueBadge
                     }
@@ -92,7 +92,7 @@ public struct TodoTaskRow: View {
     @ViewBuilder private var dueBadge: some View {
         if let due = row.task.dueAt {
             Text("· \(dueText(due))")
-                .font(.system(size: dueSize * fontScale, design: .monospaced))
+                .font(typography.font(size: dueSize, design: .monospaced))
                 .fontWeight(dueIsToday(due) && !isMuted ? .semibold : .regular)
                 .foregroundStyle(dueIsToday(due) && !isMuted ? Self.dueAccent : theme.inkFaint)
         } else {
@@ -142,18 +142,19 @@ public struct TodoTaskRow: View {
     }
 }
 
-/// Inline label chip — a small filled capsule. Used by `TodoTaskRow` and
-/// the tag picker. Colors derive from the label's stored hue via the
-/// design's `tagBg` / `tagFg` OKLCH formulas.
-struct TodoTagChip: View {
+/// Inline label chip — a small filled capsule shown in a task row's meta
+/// line. Used only by `TodoTaskRow` (the tag *picker* renders its own inline
+/// chips), so it's file-private. Colors derive from the label's stored hue
+/// via the design's `tagBg` / `tagFg` OKLCH formulas.
+private struct TodoTagChip: View {
     let label: LabelRecord
 
     @ScaledMetric(relativeTo: .footnote) private var fontSize: CGFloat = 13
-    @Environment(\.superFontScale) private var fontScale
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         Text(label.name)
-            .font(.system(size: fontSize * fontScale, weight: .medium))
+            .font(typography.font(size: fontSize, weight: .medium))
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(OKLCH(0.94, 0.035, label.hue).color)

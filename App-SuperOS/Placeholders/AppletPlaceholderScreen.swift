@@ -14,6 +14,7 @@ struct AppletPlaceholderScreen<Icon: View>: View {
     @ViewBuilder let icon: () -> Icon
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     var body: some View {
         ZStack {
@@ -30,11 +31,12 @@ struct AppletPlaceholderScreen<Icon: View>: View {
                         .foregroundStyle(accent)
                 }
                 Text(displayName)
-                    .font(.system(size: 36, weight: .regular, design: .serif))
-                    .italic()
+                    // `display(_:)` is the EB Garamond *italic* brand face, so
+                    // the italic reading is intrinsic — no `.italic()` modifier.
+                    .font(typography.display(36))
                     .foregroundStyle(theme.ink)
                 Text("Coming soon.")
-                    .font(.system(.callout))
+                    .font(typography.font(.callout))
                     .foregroundStyle(theme.inkSoft)
                 Spacer()
                 // Reserve bottom inset so the M3 chat overlay (minimized

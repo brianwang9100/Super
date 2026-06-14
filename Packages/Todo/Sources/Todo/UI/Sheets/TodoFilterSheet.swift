@@ -10,7 +10,6 @@ struct TodoFilterSheet: View {
     let labels: [LabelRecord]
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
 
@@ -43,7 +42,7 @@ struct TodoFilterSheet: View {
             section("Tags · any selected") {
                 if labels.isEmpty {
                     Text("No labels yet.")
-                        .font(.system(size: 14 * fontScale))
+                        .font(typography.font(size: 14))
                         .foregroundStyle(theme.inkFaint)
                 } else {
                     FlowLayout(spacing: 6) {
@@ -86,7 +85,7 @@ struct TodoFilterSheet: View {
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
-                .font(.system(size: 13 * fontScale, weight: .medium, design: .monospaced))
+                .font(typography.font(size: 13, weight: .medium, design: .monospaced))
                 .tracking(0.7)
                 .foregroundStyle(theme.inkFaint)
             content()
@@ -98,7 +97,7 @@ struct TodoFilterSheet: View {
     private func pill(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 15 * fontScale, weight: .medium))
+                .font(typography.font(size: 15, weight: .medium))
                 .foregroundStyle(selected ? theme.accentInk : theme.inkSoft)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -125,7 +124,7 @@ struct TodoFilterSheet: View {
                     .fill(OKLCH(0.4, 0.08, label.hue).color)
                     .frame(width: 6, height: 6)
                 Text(label.name)
-                    .font(.system(size: 14 * fontScale, weight: .medium))
+                    .font(typography.font(size: 14, weight: .medium))
             }
             .foregroundStyle(selected ? OKLCH(0.4, 0.08, label.hue).color : theme.inkSoft)
             .padding(.horizontal, 11)

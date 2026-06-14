@@ -16,8 +16,8 @@ struct TodoTagPicker: View {
 
     @State private var query: String
     @FocusState private var fieldFocused: Bool
-    @Environment(\.superFontScale) private var fontScale
     @Environment(\.superTheme) private var theme
+    @Environment(\.superTypography) private var typography
 
     /// - Parameter initialQuery: Snapshot-only test seam — seeds the search
     ///   field so a recorded baseline can render the "＋ Create" affordance and
@@ -77,7 +77,7 @@ struct TodoTagPicker: View {
                 }
             }
             TextField(selectedIds.isEmpty ? "Search or create…" : "", text: $query)
-                .font(.system(size: 15 * fontScale))
+                .font(typography.font(size: 15))
                 .foregroundStyle(theme.ink)
                 .focused($fieldFocused)
                 .submitLabel(.done)
@@ -103,12 +103,12 @@ struct TodoTagPicker: View {
     private func selectedChip(_ label: LabelRecord) -> some View {
         HStack(spacing: 4) {
             Text(label.name)
-                .font(.system(size: 14 * fontScale, weight: .medium))
+                .font(typography.font(size: 14, weight: .medium))
             Button {
                 selectedIds.removeAll { $0 == label.id }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10 * fontScale, weight: .bold))
+                    .font(typography.font(size: 10, weight: .bold))
             }
             .buttonStyle(GlassHapticButtonStyle(.deselection))
         }
@@ -124,14 +124,14 @@ struct TodoTagPicker: View {
         Button(action: create) {
             HStack(spacing: 9) {
                 Image(systemName: "plus")
-                    .font(.system(size: 12 * fontScale, weight: .bold))
+                    .font(typography.font(size: 12, weight: .bold))
                     .foregroundStyle(theme.accentInk)
                     .frame(width: 18, height: 18)
                     // Accent call-to-action glass, matching the project's other
                     // create-`+` buttons (new chat, add task, add model).
                     .superGlassCTAButton(in: Circle())
                 Text("Create \"\(trimmedQuery)\"")
-                    .font(.system(size: 15 * fontScale, weight: .medium))
+                    .font(typography.font(size: 15, weight: .medium))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(theme.accent)
@@ -155,7 +155,7 @@ struct TodoTagPicker: View {
                             .fill(OKLCH(0.4, 0.08, label.hue).color)
                             .frame(width: 7, height: 7)
                         Text(label.name)
-                            .font(.system(size: 14 * fontScale, weight: .medium))
+                            .font(typography.font(size: 14, weight: .medium))
                     }
                     .foregroundStyle(theme.inkSoft)
                     .padding(.horizontal, 11)
