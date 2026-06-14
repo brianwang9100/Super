@@ -1,8 +1,8 @@
 import Core
 import SwiftUI
 
-/// One row in the Bookmarks applet's list: a filled ribbon (or muted outline
-/// when empty), the colour name, and the chapter it marks — or a muted
+/// One row in the Bookmarks applet's list: a filled ribbon (or a pale wash of
+/// the colour when empty), the colour name, and the chapter it marks — or a muted
 /// "Empty slot" when unassigned. An assigned row is a tappable button that
 /// opens the chapter; an empty row is inert text with no tap target.
 struct BookmarksListRow: View {
@@ -38,7 +38,7 @@ struct BookmarksListRow: View {
     private func rowContent(citation: String?) -> some View {
         HStack(spacing: 12) {
             BookmarkGlyph(
-                state: citation == nil ? .outline : .filled(color),
+                state: citation == nil ? .unassigned(color) : .filled(color),
                 size: glyphSize
             )
             VStack(alignment: .leading, spacing: 3) {
