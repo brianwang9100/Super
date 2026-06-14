@@ -1,9 +1,15 @@
 included:
   - App
+  - App-SuperOS
+  - App-SuperBible
   - Packages/Core/Sources
   - Packages/Core/Tests
   - Packages/Chat/Sources
   - Packages/Chat/Tests
+  - Packages/Bible/Sources
+  - Packages/Bible/Tests
+  - Packages/Todo/Sources
+  - Packages/Todo/Tests
 
 excluded:
   - "**/.build"
@@ -87,8 +93,8 @@ custom_rules:
 analyzer_rules:
   - unused_import
 
-force_cast: warning
-force_try: warning
+force_cast: error
+force_try: error
 
 trailing_comma:
   mandatory_comma: true

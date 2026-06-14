@@ -29,7 +29,7 @@ struct TodoTagPickerSnapshotTests {
     }
 
     /// Typed query with no exact match: the accent "＋ Create" call-to-action
-    /// glass, across the three themes.
+    /// glass, across Vellum light and dark.
     @Test("create affordance, light") func createLight() {
         verify(theme: .vellumLight, query: "Groceries", name: "tag_picker_create_light")
     }
