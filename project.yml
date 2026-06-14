@@ -93,9 +93,9 @@ targets:
             CFBundleURLSchemes:
               - super
         # System launch screen rendered before SwiftUI mounts. Setting
-        # UIColorName to `SplashBackground` (an asset colorset matching
-        # `SuperTheme.light.background = #E8EDE4`) avoids a white flash
-        # between Springboard and `SplashView`'s first frame.
+        # UIColorName to `SplashBackground` (an asset colorset baked to
+        # Vellum Light `bg`, the same ground `SplashView` paints) avoids a
+        # white flash between Springboard and `SplashView`'s first frame.
         UILaunchScreen:
           UIColorName: SplashBackground
         # CFBundleDisplayName is the user-facing name on the home screen
@@ -231,16 +231,15 @@ targets:
             CFBundleURLSchemes:
               - super
         # SuperBible launch screen — Direction B (Star of Bethlehem).
-        # `UIColorName` is the field that backs the centered image; we
-        # repurposed the existing `SplashBackground` colorset to the
-        # design's `#3f774d` so any clipping on smaller iPhones (the
-        # 1320×2868 @3x image is bigger than every current iPhone)
-        # blends into the dark-green field instead of showing a seam.
-        # `UIImageRespectsSafeAreaInsets: false` lets the image extend
-        # behind the notch / Dynamic Island / home indicator so the
-        # green is truly edge-to-edge. The image is centered without
-        # scaling; star (50%, 46%) and wordmark stay on-screen on every
-        # iPhone from SE through Pro Max.
+        # `UIColorName` backs the field behind the centered `UIImageName`
+        # mark; `SplashBackground` is baked to Vellum Light `bg` (cream),
+        # the same ground `SplashView` paints, so there's no flash and any
+        # edge bleed blends into cream. `LaunchImage` is a small TRANSPARENT
+        # star (130pt box, 390px @3x) centered on that field — not a
+        # full-bleed image. `UIImageRespectsSafeAreaInsets: false` lets the
+        # cream field extend behind the notch / Dynamic Island / home
+        # indicator so the ground is edge-to-edge on every iPhone from SE
+        # through Pro Max.
         UILaunchScreen:
           UIColorName: SplashBackground
           UIImageName: LaunchImage
