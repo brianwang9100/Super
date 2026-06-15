@@ -56,7 +56,10 @@ public enum BibleBookmarkColor: String, Codable, Sendable, CaseIterable, Identif
     /// - Parameter isDark: whether the active theme is a dark variant.
     public func softTint(forDarkTheme isDark: Bool) -> OKLCH {
         let base = tint(forDarkTheme: isDark)
-        guard isDark else { return OKLCH(0.90, base.c * 0.5, base.h) }
+        // Lift relative to the filled tint (not a hard-coded lightness) so a
+        // future darker colour still washes *lighter* than its filled ribbon;
+        // clamp short of white so the pastel keeps a trace of its hue.
+        guard isDark else { return OKLCH(min(base.l + 0.38, 0.97), base.c * 0.5, base.h) }
         return OKLCH(base.l, base.c * 0.85, base.h, alpha: 0.32)
     }
 
