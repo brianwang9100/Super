@@ -38,6 +38,29 @@ struct BibleBookmarkColorTests {
         }
     }
 
+    @Test("the light soft tint is a paler, less saturated wash of the filled tint")
+    func lightSoftTintIsPaler() {
+        for color in BibleBookmarkColor.allCases {
+            let filled = color.tint(forDarkTheme: false)
+            let soft = color.softTint(forDarkTheme: false)
+            #expect(soft.l > filled.l, "the empty wash lifts lightness")
+            #expect(soft.c < filled.c, "the empty wash trims chroma")
+            #expect(soft.h == filled.h, "the hue is the colour's identity")
+            #expect(soft.alpha == 1, "the light-page wash is opaque over the page")
+        }
+    }
+
+    @Test("the dark soft tint is a translucent wash that keeps the hue")
+    func darkSoftTintIsTranslucent() {
+        for color in BibleBookmarkColor.allCases {
+            let filled = color.tint(forDarkTheme: true)
+            let soft = color.softTint(forDarkTheme: true)
+            #expect(soft.alpha < 1, "the dark-page wash is translucent so it reads as a tint")
+            #expect(soft.c <= filled.c, "the dark wash trims chroma")
+            #expect(soft.h == filled.h, "the hue is the colour's identity")
+        }
+    }
+
     @Test("an unknown persisted colorId decodes to a nil colour")
     func unknownColorIdIsNil() {
         let record = BibleBookmarkRecord(

@@ -10,12 +10,15 @@ import SwiftUI
 /// sit together cleanly in the chapter-title cluster, but read as distinct
 /// shapes.
 ///
-/// Two states drive the silhouette:
+/// Three states drive the silhouette:
 ///
 /// - `.filled(color)` — solid ribbon in the bookmark colour's theme-aware
 ///   tint; shown when the chapter holds that colour's bookmark.
+/// - `.unassigned(color)` — pale `softTint` fill with the opaque `tint` as the
+///   outline; the bookmark sheet's and Bookmarks applet's empty slot cards, so
+///   an empty slot still reads as its colour rather than a generic grey.
 /// - `.outline` — `inkFaint` stroke; the tap-to-assign affordance on an
-///   unbookmarked chapter, and the sheet's empty slot cards.
+///   unbookmarked chapter, where no colour is assigned to tint.
 ///
 /// The shape is a hand-drawn `Path` rather than an SF Symbol so the ribbon's
 /// proportions and notch depth match the sibling glyphs' design grid.
@@ -27,6 +30,7 @@ struct BookmarkGlyph: View {
     /// `NoteGlyph.GlyphState` follows.
     enum GlyphState: Sendable, Equatable {
         case filled(BibleBookmarkColor)
+        case unassigned(BibleBookmarkColor)
         case outline
     }
 
@@ -58,6 +62,14 @@ struct BookmarkGlyph: View {
                 // Stroke in the fill colour too so filled and outline states
                 // render the same overall size (a stroke straddles the path).
                 context.stroke(ribbon, with: .color(tint), style: stroke(scale: scale))
+            case .unassigned(let color):
+                // Pale fill + full-tint outline: the empty slot reads as its
+                // colour while staying clearly distinct from the solid filled
+                // ribbon (which differs only in the fill being opaque).
+                let fill = color.softTint(forDarkTheme: theme.isDark).color
+                let edge = color.tint(forDarkTheme: theme.isDark).color
+                context.fill(ribbon, with: .color(fill))
+                context.stroke(ribbon, with: .color(edge), style: stroke(scale: scale))
             case .outline:
                 context.stroke(ribbon, with: .color(theme.inkFaint), style: stroke(scale: scale))
             }

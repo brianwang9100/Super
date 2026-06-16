@@ -2,8 +2,9 @@ import Core
 import SwiftUI
 
 /// One colour slot in the bookmark sheet's 2×3 grid: a centred ribbon glyph
-/// (filled in the colour's tint when assigned, outline when empty), the
-/// colour name, and the assigned chapter's citation (or a muted "Empty").
+/// (filled in the colour's tint when assigned, a pale wash of that colour when
+/// empty), the colour name, and the assigned chapter's citation (or a muted
+/// "Empty").
 ///
 /// The card applies its own interactive glass (`superGlassButton`), but the
 /// sheet wraps all six cards in one shared `SuperGlassContainer` so they
@@ -33,7 +34,7 @@ struct BookmarkSlotButton: View {
         Button(action: onTap) {
             VStack(spacing: 6) {
                 BookmarkGlyph(
-                    state: assignedCitation == nil ? .outline : .filled(color),
+                    state: assignedCitation == nil ? .unassigned(color) : .filled(color),
                     size: 26
                 )
                 Text(color.displayName)
