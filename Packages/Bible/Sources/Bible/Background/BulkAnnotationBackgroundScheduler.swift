@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let bulkBackgroundLog = Logger(subsystem: "com.brianwang.Super", category: "bible-bulk-bg")
 
 /// Keeps an active bulk-annotation run making progress while the app isn't
 /// foregrounded, by riding a `BGProcessingTask`.
@@ -66,13 +69,12 @@ public final class BulkAnnotationBackgroundScheduler {
                     )
                 )
             } catch {
-                // Best-effort on release (the run still drains whenever the app is
-                // foregrounded), but surface it in DEBUG: `submit` throwing means
-                // a misconfigured plist / denied permission — and it always throws
-                // on the simulator, where there's no background runtime.
-                #if DEBUG
-                print("[BulkAnnotationBackgroundScheduler] submit failed: \(error)")
-                #endif
+                // Best-effort (the run still drains whenever the app is
+                // foregrounded). `submit` throwing means a misconfigured plist /
+                // denied permission — and it always throws on the simulator, where
+                // there's no background runtime — so log at `.debug` rather than
+                // surfacing simulator noise as an error.
+                bulkBackgroundLog.debug("submit failed: \(error.localizedDescription, privacy: .public)")
             }
         } else {
             system.cancel(identifier: Self.taskIdentifier)
@@ -86,25 +88,51 @@ public final class BulkAnnotationBackgroundScheduler {
         runner.resumeActiveRun()
     }
 
-    /// Drive the active run for as long as the system grants `task`. Installs an
-    /// expiration handler that asks the engine to wind down gracefully (finishing
-    /// the in-flight unit, then stopping before the next), awaits the loop,
-    /// marks the task complete, and reschedules if work still remains so iOS
-    /// wakes us again to continue.
+    /// Drive the active run for as long as the system grants `task`, then mark it
+    /// complete and reschedule if work remains. Completion is owned by a one-shot
+    /// signal raced between two outcomes:
+    ///
+    /// - **natural drain** — `runInBackground()` returns (the run completed,
+    ///   halted, or stopped before the next unit);
+    /// - **expiration** — the system fires the expiration handler. iOS gives only
+    ///   a few seconds afterward, far less than an in-flight LLM generation, so we
+    ///   do *not* wait it out: `requestExpirationStop()` returns the in-flight unit
+    ///   to the queue immediately, we flush that write so it's durable, then
+    ///   complete the task — leaving the abandoned `generate` to finish (and be
+    ///   discarded) on a loop that's no longer blocking us.
+    ///
+    /// Whichever fires first resolves the signal; the loser is a harmless no-op.
     public func handle(_ task: any BulkBackgroundTask) async {
         expirationRequested = false
-        task.expirationHandler = { [weak self] in
-            // The system invokes this on the queue the launch handler was
-            // registered on (`.main`); assert that isolation so the engine call
-            // is a synchronous main-actor hop with no await gap.
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.expirationRequested = true
-                self.runner.requestBackgroundStop()
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = OnceContinuation(continuation)
+
+            task.expirationHandler = { [weak self] in
+                // The system invokes this on the queue the launch handler was
+                // registered on (`.main`); assert that isolation so the engine
+                // call is a synchronous main-actor hop with no await gap.
+                MainActor.assumeIsolated {
+                    guard let self else { once.fire(); return }
+                    self.expirationRequested = true
+                    self.runner.requestExpirationStop()  // synchronous re-queue of the in-flight unit
+                    Task { @MainActor in
+                        await self.runner.flushPendingWrites()  // re-queue durable before we complete
+                        once.fire()
+                    }
+                }
+            }
+
+            Task { @MainActor in
+                await self.runner.runInBackground()
+                once.fire()
             }
         }
 
-        await runner.runInBackground()
+        // The race is resolved. Detach the expiration handler so a late expiration
+        // (firing in the gap before `setTaskCompleted`) can't flip a run that
+        // actually drained to `success: false`.
+        task.expirationHandler = nil
 
         let workRemains = await hasPendingWork()
         task.setTaskCompleted(success: !expirationRequested)
@@ -121,5 +149,19 @@ public final class BulkAnnotationBackgroundScheduler {
     /// run completes, halts, or is cancelled, `activeRun()` returns `nil`.
     private func hasPendingWork() async -> Bool {
         ((try? await ledger.activeRun()) ?? nil)?.status == .running
+    }
+}
+
+/// Resumes a `CheckedContinuation` at most once, ignoring later fires. Lets
+/// `handle` race two completion paths (natural drain vs. expiration) onto a
+/// single continuation. Main-actor-confined, so the at-most-once guard needs no
+/// lock.
+@MainActor
+private final class OnceContinuation {
+    private var continuation: CheckedContinuation<Void, Never>?
+    init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
+    func fire() {
+        continuation?.resume()
+        continuation = nil
     }
 }

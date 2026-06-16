@@ -1,5 +1,8 @@
 import Core
 import Foundation
+import os
+
+private let bulkRunnerLog = Logger(subsystem: "com.brianwang.Super", category: "bible-bulk-runner")
 
 /// The LLM-backed bulk-annotation engine — the production `BulkAnnotationRunning`
 /// the Settings → Annotations hub drives once a run is kicked off.
@@ -83,13 +86,21 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     /// every exit, so it's reliably `false` the instant no loop is running.
     private var isDriving = false
 
-    /// Set when a background task runs out of time (`requestBackgroundStop()`):
-    /// the live loop finishes the in-flight unit, saving its result, then stops
-    /// before the next one — leaving the run `.running` so a later foreground or
-    /// background resume continues it. Cleared at the top of every fresh loop,
-    /// and by `resumeActiveRun()` (which cancels a pending stop rather than
-    /// letting a just-arrived foreground race the loop into a wedged state).
+    /// Set when a background task runs out of time (`requestExpirationStop()`):
+    /// the live loop stops before the next unit — leaving the run `.running` so a
+    /// later foreground or background resume continues it. Cleared at the top of
+    /// every fresh loop, and by `resumeActiveRun()` (which cancels a pending stop
+    /// rather than letting a just-arrived foreground race the loop into a wedged
+    /// state).
     private var backgroundStopRequested = false
+
+    /// Set by `requestExpirationStop()` when an expiration lands while a unit is
+    /// still `.generating`: that unit was returned to the queue immediately
+    /// (without waiting out its LLM call), so the loop must **discard** the
+    /// abandoned call's eventual outcome — writing nothing further — when the
+    /// `generate` finally returns. Cleared the moment the loop acts on it (it then
+    /// re-evaluates from the top) and at the top of every fresh loop.
+    private var expirationAbandoned = false
 
     /// Serialized tail of all ledger writes. Each write chains on the previous so
     /// upserts apply in issue order (a pause's `saveRun` before a later resume's),
@@ -233,13 +244,13 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             run.status = .paused
             run.updatedAt = clock.now()
             runRecord = run
-            enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+            enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
             projectSnapshot()
         case .paused:
             run.status = .running
             run.updatedAt = clock.now()
             runRecord = run
-            enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+            enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
             projectSnapshot()
             startDriver()
         default:
@@ -266,7 +277,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             run.status = .cancelled
             run.completedAt = now
             run.updatedAt = now
-            enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+            enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
         }
         runRecord = nil
         units = []
@@ -292,7 +303,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // The active run is never in the finished list; guard so a stale id can't
         // tear down a freshly-started run sharing it.
         guard runRecord?.id != id else { return }
-        enqueueWrite { [ledger] in try? await ledger.deleteRun(id: id) }
+        enqueueWrite { [ledger] in try await ledger.deleteRun(id: id) }
     }
 
     /// Reload a terminal run, revive its failed (and crash-orphaned `.generating`)
@@ -341,9 +352,9 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // Persist the revival before taking ownership (awaited directly, as in
         // `restore()` — nothing else mutates state during adoption). The run row
         // dropping its `completedAt` removes it from the finished list.
-        try? await ledger.saveRun(revived)
+        await performLogged("saveRun(revived)") { try await ledger.saveRun(revived) }
         for unit in loaded where unit.state == .queued {
-            try? await ledger.saveUnit(unit)
+            await performLogged("saveUnit(revived)") { try await ledger.saveUnit(unit) }
         }
         guard runRecord == nil else { isDriving = false; return }
         runRecord = revived
@@ -360,7 +371,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     /// loop a prior expiration stopped (or, after a cold relaunch, the one
     /// `restore()` loads from the ledger), then await the loop to its next
     /// stopping point — the run draining, halting, or a fresh
-    /// `requestBackgroundStop()`. Safe to call with no active run (returns at
+    /// `requestExpirationStop()`. Safe to call with no active run (returns at
     /// once).
     public func runInBackground() async {
         await restore()        // cold relaunch: load + resume an active run; no-op when one's already in memory.
@@ -372,12 +383,32 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         await lastWrite?.value
     }
 
-    /// Ask the live work loop to stop after the current unit because a background
-    /// task ran out of time. The run stays active (its status is untouched), so
-    /// `resumeActiveRun()` — on the next foreground or background task — continues
-    /// it. No-op beyond setting the flag when no loop is running.
-    public func requestBackgroundStop() {
+    /// A background task ran out of time. Stop the loop before the next unit and —
+    /// crucially — return the unit currently `.generating` (if any) to the queue
+    /// **immediately**, without waiting out its in-flight LLM call: iOS gives only
+    /// a few seconds after expiration, far less than a 10–60 s generation, so
+    /// waiting would get the process watchdog-killed with the unit stranded
+    /// `.generating` and the task never marked complete. The run stays `.running`,
+    /// so `resumeActiveRun()` — on the next foreground or background task —
+    /// re-generates the re-queued unit. The abandoned call's eventual outcome is
+    /// discarded by the loop (`expirationAbandoned`) so nothing lands after the
+    /// task completes. Synchronous, so the re-queue is durable-in-memory the
+    /// instant the caller's expiration handler returns.
+    public func requestExpirationStop() {
         backgroundStopRequested = true
+        guard let index = units.firstIndex(where: { $0.state == .generating }) else { return }
+        units[index].state = .queued
+        units[index].updatedAt = clock.now()
+        saveUnit(at: index)
+        expirationAbandoned = true
+        projectSnapshot()
+    }
+
+    /// Await the serialized ledger-write tail so durable state reflects every
+    /// issued write — the background scheduler calls this before marking a task
+    /// complete, so the expiration re-queue has landed on disk.
+    public func flushPendingWrites() async {
+        await lastWrite?.value
     }
 
     /// Restart the work loop for an active `.running` run that has no live loop —
@@ -402,7 +433,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // window) — runs unconditionally, before the active-run guards, so it
         // happens whether or not there's a run to resume.
         let cutoff = clock.now().addingTimeInterval(-completedRunRetention)
-        try? await ledger.deleteRunsCompleted(before: cutoff)
+        await performLogged("deleteRunsCompleted") { try await ledger.deleteRunsCompleted(before: cutoff) }
 
         // `restore` runs as a fire-and-forget Task at launch, concurrently with a
         // live hub. A user-initiated `start`/`resume` claims the engine by setting
@@ -425,7 +456,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // Awaited directly (not via the `enqueueWrite` chain) — these all
             // settle before `startDriver()`, and nothing else mutates state
             // during restore, so ordering holds without the serialized tail.
-            try? await ledger.saveUnit(loaded[index])
+            await performLogged("saveUnit(restore)") { try await ledger.saveUnit(loaded[index]) }
         }
         // Final re-check before taking ownership: from here to `startDriver()`
         // (which claims `isDriving`) there is no suspension, so the claim is
@@ -464,6 +495,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         } catch {
             // Couldn't persist the run — treat it as never-started so the hub
             // returns to idle rather than showing a phantom job.
+            bulkRunnerLog.error("bulk-annotation createRun failed: \(error.localizedDescription, privacy: .public)")
             runRecord = nil
             units = []
             snapshot = nil
@@ -474,7 +506,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         // Or `cancel()` landed during `createRun` (it wrote nothing, since
         // `runPersisted` was still false) — undo the just-persisted run row.
         guard runRecord?.id == run.id else {
-            try? await ledger.deleteRun(id: run.id)
+            await performLogged("deleteRun(undo)") { try await ledger.deleteRun(id: run.id) }
             isDriving = false
             return
         }
@@ -493,9 +525,10 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     }
 
     private func runLoop() async {
-        // A fresh loop never starts pre-stopped: clear any background-stop left by
-        // a prior loop that has since exited.
+        // A fresh loop never starts pre-stopped: clear any background-stop /
+        // abandoned-outcome latch left by a prior loop that has since exited.
         backgroundStopRequested = false
+        expirationAbandoned = false
         // Cleared synchronously at every exit, so `isDriving` is reliably `false`
         // the instant the loop stops — which is what makes `startDriver()`'s
         // single-flight guard correct.
@@ -569,6 +602,19 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             // the Task cancelled, but that signal alone can't tell cancel from
             // pause); `togglePause()` only sets the status to `.paused`.
             if runRecord == nil { return }  // cancelled: run torn down, touch nothing.
+            if expirationAbandoned {
+                // An expiration already returned this unit to the queue (see
+                // `requestExpirationStop`) and the task has been marked complete.
+                // Discard this abandoned outcome with no further write so nothing
+                // lands after completion, clear the latch, and re-evaluate from the
+                // top: if a foreground resume that arrived while we were suspended
+                // here already cleared `backgroundStopRequested`, the loop picks the
+                // re-queued unit straight back up (no wedge waiting on a future
+                // lifecycle event); otherwise the top-of-loop background-stop guard
+                // stops cleanly and a later resume starts a fresh loop.
+                expirationAbandoned = false
+                continue
+            }
             if runRecord?.status != .running {
                 // Paused mid-flight: return the unit to the queue (discarding this
                 // outcome) so resume re-generates it instead of skipping it.
@@ -633,7 +679,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         run.haltReason = reason
         run.completedAt = now
         run.updatedAt = now
-        enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+        enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
         finishActiveRun()
     }
 
@@ -643,7 +689,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
         run.status = .completed
         run.completedAt = now
         run.updatedAt = now
-        enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+        enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
         finishActiveRun()
     }
 
@@ -681,7 +727,7 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
             run.completedAt = nil
             run.updatedAt = now
             runRecord = run
-            enqueueWrite { [ledger, run] in try? await ledger.saveRun(run) }
+            enqueueWrite { [ledger, run] in try await ledger.saveRun(run) }
         }
         projectSnapshot()
         startDriver()
@@ -690,17 +736,34 @@ public final class BulkAnnotationRunner: BulkAnnotationRunning {
     // MARK: - Persistence
 
     /// Append a write to the serialized chain so writes apply in issue order and
-    /// `waitUntilIdle()` can await them.
-    private func enqueueWrite(_ work: @escaping @Sendable () async -> Void) {
+    /// `waitUntilIdle()` can await them. A write that throws is logged (rather
+    /// than silently swallowed) so a failing disk leaves a breadcrumb explaining
+    /// why the in-memory mirror and the durable ledger have diverged.
+    private func enqueueWrite(_ work: @escaping @Sendable () async throws -> Void) {
         lastWrite = Task { [prev = lastWrite] in
             await prev?.value
-            await work()
+            do {
+                try await work()
+            } catch {
+                bulkRunnerLog.error("bulk-annotation ledger write failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// Await a one-off ledger write (outside the serialized chain — restore /
+    /// adopt time, where nothing else mutates state), logging a failure rather
+    /// than swallowing it with `try?`.
+    private func performLogged(_ label: String, _ work: () async throws -> Void) async {
+        do {
+            try await work()
+        } catch {
+            bulkRunnerLog.error("bulk-annotation \(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     private func saveUnit(at index: Int) {
         let unit = units[index]
-        enqueueWrite { [ledger] in try? await ledger.saveUnit(unit) }
+        enqueueWrite { [ledger] in try await ledger.saveUnit(unit) }
     }
 
     // MARK: - Projection

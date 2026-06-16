@@ -2,6 +2,7 @@ import Foundation
 
 #if canImport(UIKit)
 import BackgroundTasks
+import UIKit
 #endif
 
 /// The app-lifecycle glue around `BulkAnnotationBackgroundScheduler`: registers
@@ -54,10 +55,30 @@ public final class BulkAnnotationBackgroundController {
     }
 
     /// The app entered the background — schedule a processing task if a run is
-    /// still active.
+    /// still active. The `scheduleIfNeeded()` call is a `BGTaskScheduler.submit`,
+    /// which races app suspension; wrap it in a short `beginBackgroundTask` so iOS
+    /// grants enough time for the submit to land before suspending (otherwise the
+    /// run can't be woken to continue in the background).
     public func applicationDidEnterBackground() {
         guard let scheduler else { return }
+        #if canImport(UIKit)
+        Task { @MainActor in
+            // Hold a short background assertion so iOS grants time for the
+            // `BGTaskScheduler.submit` inside `scheduleIfNeeded()` to land before
+            // suspending — `scheduleIfNeeded` is a single fast submit, so the
+            // assertion is released well before it could expire.
+            let application = UIApplication.shared
+            let assertionID = application.beginBackgroundTask(
+                withName: "bulk-annotation-schedule", expirationHandler: nil
+            )
+            defer {
+                if assertionID != .invalid { application.endBackgroundTask(assertionID) }
+            }
+            await scheduler.scheduleIfNeeded()
+        }
+        #else
         Task { await scheduler.scheduleIfNeeded() }
+        #endif
     }
 
     /// The app returned to the foreground — resume a run a prior background task
