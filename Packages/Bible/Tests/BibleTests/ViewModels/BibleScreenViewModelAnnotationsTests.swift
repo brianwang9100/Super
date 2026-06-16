@@ -326,6 +326,31 @@ struct BibleScreenViewModelAnnotationsTests {
         #expect(reference.displayLabel == "Romans 8 annotation")
     }
 
+    @Test("addAnnotationToChat builds the reference and dismisses the sheet")
+    func addAnnotationToChatDismissesSheet() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        let record = BibleAnnotationRecord(
+            id: "rec-1", target: .verse, bookId: "ROM",
+            chapterNumber: 8, verseStart: 28, verseEnd: 30,
+            summary: "Suffering is the backdrop, not the contradiction.",
+            source: .user, modelId: "afm-3.0", createdAt: now
+        )
+        // The overflow-menu hand-off opens from the presented sheet.
+        viewModel.presentAnnotationSheet(for: .verseRange(
+            bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30
+        ))
+        #expect(viewModel.presentedAnnotationTarget != nil)
+
+        let reference = viewModel.addAnnotationToChat(record)
+
+        // Same reference the screen publishes on the event bus…
+        #expect(reference.sourceID == "rec-1")
+        #expect(reference.citation == "Romans 8:28-30")
+        // …and the sheet is now dismissed (the regression).
+        #expect(viewModel.presentedAnnotationTarget == nil)
+    }
+
     @Test("presentDeleteAnnotationFailedToast raises the documented copy")
     func deleteFailedToast() async {
         let viewModel = makeViewModel()

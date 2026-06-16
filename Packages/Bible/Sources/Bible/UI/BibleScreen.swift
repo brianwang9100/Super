@@ -204,7 +204,7 @@ public struct BibleScreen: View {
                 onRegenerate: { viewModel.triggerAnnotationGeneration(for: spec) },
                 onAddToChat: { record in
                     publishReferenceToChat(
-                        viewModel.makeAnnotationReference(record),
+                        viewModel.addAnnotationToChat(record),
                         startNew: false
                     )
                 },

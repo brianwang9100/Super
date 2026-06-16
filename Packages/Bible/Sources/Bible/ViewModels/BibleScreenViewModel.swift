@@ -1085,6 +1085,19 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Hand the annotation off to chat from the sheet's overflow menu:
+    /// build its `RecordReference` and dismiss the sheet so the transcript
+    /// is visible underneath (unlike the action sheet's verse hand-off,
+    /// which dismisses for free when the selection clears, this sheet is
+    /// driven by `presentedAnnotationTarget` and must be cleared
+    /// explicitly). Returns the reference for the screen to publish on the
+    /// event bus — publishing lives in the view layer, which owns the bus.
+    public func addAnnotationToChat(_ record: BibleAnnotationRecord) -> RecordReference {
+        let reference = makeAnnotationReference(record)
+        dismissAnnotationSheet()
+        return reference
+    }
+
     /// The plain verse text the annotation card quotes above its
     /// summary — the same `verses(for:)` slice the generation snapshot
     /// is grounded in, joined without verse numbers (the card quotes
