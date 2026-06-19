@@ -76,8 +76,8 @@ struct ChatScreenViewModelProjectionTests {
         // bible-"wrath" crash). Projection of stored data must never trap.
         let messages: [MessageRecord] = [
             MessageRecord(id: "a1", conversationId: "c", role: .assistant, content: "", createdAt: now),
-            MessageRecord(id: "t1", conversationId: "c", role: .tool, content: "James 1", toolCallId: "bible.read", createdAt: now.addingTimeInterval(1)),
-            MessageRecord(id: "t2", conversationId: "c", role: .tool, content: "Romans 2", toolCallId: "bible.read", createdAt: now.addingTimeInterval(2)),
+            MessageRecord(id: "t1", conversationId: "c", role: .tool, content: "James 1", toolCallId: "bible.lookup", createdAt: now.addingTimeInterval(1)),
+            MessageRecord(id: "t2", conversationId: "c", role: .tool, content: "Romans 2", toolCallId: "bible.lookup", createdAt: now.addingTimeInterval(2)),
         ]
         let items = ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil)
         // Returns without trapping; the assistant row projects (tool rows fold).

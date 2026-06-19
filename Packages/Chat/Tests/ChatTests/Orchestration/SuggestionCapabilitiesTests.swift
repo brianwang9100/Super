@@ -11,8 +11,8 @@ struct SuggestionCapabilitiesTests {
     func compactFormat() {
         let tools = [
             LLMTool(
-                id: "bible.search",
-                name: "bible_search",
+                id: "bible.lookup",
+                name: "bible_lookup",
                 description: "LLM_PROMPT_TEXT: huge instruction the model sees, never for the UI…",
                 category: .query,
                 parameters: [LLMToolParameter(name: "SCHEMA_QUERY_PARAM", type: .string, description: "…")],
