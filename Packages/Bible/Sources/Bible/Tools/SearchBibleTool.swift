@@ -14,8 +14,15 @@ import Foundation
 /// return a `ToolResult` with `isError: true` and a remediation message. A search
 /// that simply finds nothing is **not** an error — an empty result set is a valid
 /// answer the model can act on.
+///
+/// This is the *search* execution core fronted by `LookupBibleTool` (the public
+/// `bible.lookup` tool with an `action` discriminator) — it owns no descriptor
+/// or registration of its own; the lookup tool dispatches `action:'search'`
+/// here with the `query`/`match`/`book`/`limit`/`translation` input it advertises.
 public struct SearchBibleTool: ToolExecutor {
-    /// Dotted form namespaces the tool under its applet, matching `bible.read`.
+    /// Dotted form namespaces the result's tool id under its applet. The
+    /// advertised tool is now `bible.lookup`; `LookupBibleTool` re-stamps this
+    /// core's result with its own id.
     public static let toolID = "bible.search"
 
     public static let appletID = "bible"
@@ -41,100 +48,6 @@ public struct SearchBibleTool: ToolExecutor {
         self.searcher = searcher
         self.positionRepository = positionRepository
         self.catalog = catalog
-    }
-
-    public static let descriptor: LLMTool = LLMTool(
-        id: SearchBibleTool.toolID,
-        name: "bible.search",
-        description: """
-        Search the user's local scripture for verses matching a topic or phrase, \
-        returning real, ranked verses with correct citations. Call this when the \
-        user asks what the Bible says about a theme, or where something appears \
-        ("verses about anxiety", "where does Paul talk about grace") — instead of \
-        recalling verses from memory, which risks wrong text and invented \
-        citations.
-
-        Search is keyword-based with stemming: pass a few content words in \
-        `query` (e.g. "love" also matches "loved"/"loving"). By default any of \
-        the words can match and the best verses rank first, so multi-word \
-        topical queries ("anxiety hope") still return results — use `match` to \
-        force every word (`all`) or an exact contiguous phrase (`phrase`). \
-        Optionally scope to one `book`. Do NOT pass `translation` unless the \
-        user explicitly names one — omit it so the search runs against the \
-        user's currently selected translation. Results are ordered best-match \
-        first.
-
-        Each result already includes the verse's full, exact text from the \
-        user's translation — quote and cite directly from these results. Do NOT \
-        call `bible.read` to re-fetch a verse you already got back from search; \
-        that text is authoritative. Only call `bible.read` afterward when you \
-        need the *surrounding* verses a result doesn't include (e.g. to read \
-        the rest of the chapter for context).
-        """,
-        category: .query,
-        parameters: [
-            LLMToolParameter(
-                name: "query",
-                type: .string,
-                description: "The words to search for, e.g. 'anxiety', 'love your enemies', 'shepherd'. By default any word can match; use `match` to require all words or an exact phrase.",
-                isRequired: true
-            ),
-            LLMToolParameter(
-                name: "match",
-                type: .string,
-                description: "How to combine multiple words. 'any' (default): verses containing ANY of the words, best matches first — use for topical searches like 'anxiety hope'. 'all': only verses containing EVERY word. 'phrase': only verses with the exact contiguous phrase, e.g. 'love your enemies'.",
-                isRequired: false,
-                enumValues: BibleSearchMatchMode.allCases.map(\.rawValue)
-            ),
-            LLMToolParameter(
-                name: "book",
-                type: .string,
-                description: "Optional book to limit the search to: a full name like 'Romans' or its 3-letter code ('ROM'). Omit to search the whole Bible.",
-                isRequired: false
-            ),
-            LLMToolParameter(
-                name: "limit",
-                type: .integer,
-                description: "Optional maximum number of results (default \(SearchBibleTool.defaultLimit), max \(SearchBibleTool.maxLimit)).",
-                isRequired: false
-            ),
-            LLMToolParameter(
-                name: "translation",
-                type: .string,
-                description: "Translation code: 'KJV', 'WEB', 'ASV', or 'BSB'. Only pass this when the user explicitly names a translation; otherwise OMIT it so the search uses the user's currently selected translation.",
-                isRequired: false,
-                enumValues: BibleTranslation.allCases.map(\.rawValue)
-            ),
-        ],
-        appletId: SearchBibleTool.appletID,
-        displayName: "Search scripture",
-        summary: "Finds verses by content from local storage.",
-        compactDescription: """
-        Search local scripture by topic or phrase ("verses about anxiety"). \
-        Returns ranked verses with full text and correct citations from the \
-        user's translation — quote them directly instead of recalling from \
-        memory. Cite as Book Chapter:Verse with the full book name. \
-        Keyword-based with stemming; optionally scope to `book`. Omit \
-        `translation` (uses the user's selected one) unless the user names one.
-        """
-    )
-
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in each app's bootstrap.
-    public static func registration(
-        searcher: any BibleTextSearching,
-        positionRepository: (any BibleReadingPositionRepository)?,
-        catalog: BibleBookCatalog = .standard
-    ) -> ToolRegistration {
-        ToolRegistration(
-            tool: descriptor,
-            execution: .local(SearchBibleTool(
-                searcher: searcher,
-                positionRepository: positionRepository,
-                catalog: catalog
-            )),
-            isEnabled: true
-        )
     }
 
     public func execute(input: [String: JSONValue]) async throws -> ToolResult {

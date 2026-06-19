@@ -205,15 +205,6 @@ struct SearchBibleToolTests {
         #expect(result.isError == false)
         #expect(await searcher.lastMode == .any)
     }
-
-    // MARK: - Descriptor
-
-    @Test("the descriptor exposes match as an optional enum of every mode")
-    func descriptorMatchParameter() {
-        let match = SearchBibleTool.descriptor.parameters.first { $0.name == "match" }
-        #expect(match?.isRequired == false)
-        #expect(match?.enumValues == BibleSearchMatchMode.allCases.map(\.rawValue))
-    }
 }
 
 // MARK: - Test doubles

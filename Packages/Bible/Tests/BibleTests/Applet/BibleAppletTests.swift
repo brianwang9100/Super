@@ -93,8 +93,7 @@ struct BibleAppletTests {
         let compact = makeApplet().compactSystemPrompt
         #expect(!compact.contains("bible.annotate"))
         #expect(!compact.contains("bible.note"))
-        #expect(compact.contains("bible.read"))
-        #expect(compact.contains("bible.search"))
+        #expect(compact.contains("bible.lookup"))
     }
 
     @Test("suggestedChatActions contributes non-empty Bible chat starters")
@@ -162,46 +161,52 @@ struct BibleAppletTests {
         #expect(viewModel.position == original)
     }
 
-    @Test("registerReadTool registers bible.read and it dispatches a lookup")
-    func registerReadToolDispatches() async throws {
+    /// Build an applet with a real searcher over the bundled FTS index, so the
+    /// merged `bible.lookup` tool (which no-ops without a searcher) registers.
+    private func makeSearchableApplet() throws -> BibleApplet {
+        BibleApplet(
+            viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()),
+            textSearcher: try BundledBibleTextSearcher()
+        )
+    }
+
+    @Test("registerLookupTool registers bible.lookup and action:'read' dispatches a passage read")
+    func registerLookupToolReadDispatches() async throws {
         let registry = ToolRegistry()
-        await makeApplet().registerReadTool(in: registry)
+        await (try makeSearchableApplet()).registerLookupTool(in: registry)
 
         let registrations = await registry.allRegistrations()
-        let read = try #require(registrations.first { $0.tool.id == ReadBibleTool.toolID })
-        #expect(read.isEnabled)
-        #expect(read.tool.category == .query)
+        let lookup = try #require(registrations.first { $0.tool.id == LookupBibleTool.toolID })
+        #expect(lookup.isEnabled)
+        #expect(lookup.tool.category == .query)
 
-        // Dispatch through the registry against the real bundled KJV text.
+        // Dispatch the read action through the registry against the real bundled KJV text.
         let result = try await registry.execute(
-            toolID: ReadBibleTool.toolID,
-            input: ["references": .array([
-                .object(["book": .string("John"), "chapter": .int(3), "startVerse": .int(16)]),
-            ])]
+            toolID: LookupBibleTool.toolID,
+            input: [
+                "action": .string("read"),
+                "references": .array([
+                    .object(["book": .string("John"), "chapter": .int(3), "startVerse": .int(16)]),
+                ]),
+            ]
         )
         #expect(result.isError == false)
         #expect(result.content.hasPrefix("John 3:16 (KJV)"))
     }
 
-    @Test("registerSearchTool registers bible.search and it dispatches a search")
-    func registerSearchToolDispatches() async throws {
-        // Build the applet with a real searcher over the bundled FTS index.
-        let applet = BibleApplet(
-            viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()),
-            textSearcher: try BundledBibleTextSearcher()
-        )
+    @Test("action:'search' dispatches a content search through bible.lookup")
+    func registerLookupToolSearchDispatches() async throws {
         let registry = ToolRegistry()
-        await applet.registerSearchTool(in: registry)
+        await (try makeSearchableApplet()).registerLookupTool(in: registry)
 
-        let registrations = await registry.allRegistrations()
-        let search = try #require(registrations.first { $0.tool.id == SearchBibleTool.toolID })
-        #expect(search.isEnabled)
-        #expect(search.tool.category == .query)
-
-        // Dispatch through the registry against the real bundled KJV text.
+        // Dispatch the search action through the registry against the real bundled KJV text.
         let result = try await registry.execute(
-            toolID: SearchBibleTool.toolID,
-            input: ["query": .string("shepherd"), "book": .string("Psalms")]
+            toolID: LookupBibleTool.toolID,
+            input: [
+                "action": .string("search"),
+                "query": .string("shepherd"),
+                "book": .string("Psalms"),
+            ]
         )
         #expect(result.isError == false)
         #expect(result.content.contains("23:1"))
@@ -209,24 +214,34 @@ struct BibleAppletTests {
     }
 
     @Test("a book-scoped search resolves the catalog id against the real FTS rows")
-    func registerSearchToolBookScopeNarrows() async throws {
-        let applet = BibleApplet(
-            viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()),
-            textSearcher: try BundledBibleTextSearcher()
-        )
+    func registerLookupToolBookScopeNarrows() async throws {
         let registry = ToolRegistry()
-        await applet.registerSearchTool(in: registry)
+        await (try makeSearchableApplet()).registerLookupTool(in: registry)
 
         // "shepherd" appears in both Psalms (23:1) and John (10:11); scoping to
         // Psalms must include the Psalm 23 hit and exclude the John one — proof
         // the catalog-resolved book id ("PSA") actually filters the bundled rows.
         let result = try await registry.execute(
-            toolID: SearchBibleTool.toolID,
-            input: ["query": .string("shepherd"), "book": .string("Psalms")]
+            toolID: LookupBibleTool.toolID,
+            input: [
+                "action": .string("search"),
+                "query": .string("shepherd"),
+                "book": .string("Psalms"),
+            ]
         )
         #expect(result.isError == false)
         #expect(result.content.contains("Psalms 23:1"))
         #expect(!result.content.contains("John"))
+    }
+
+    @Test("registerLookupTool is a no-op when the bundled text DB is unavailable")
+    func registerLookupToolNoSearcherNoOp() async throws {
+        let registry = ToolRegistry()
+        // `makeApplet()` builds without a searcher (textSearcher nil), so both
+        // the read loader and the searcher would be non-functional — nothing to register.
+        await makeApplet().registerLookupTool(in: registry)
+        let registrations = await registry.allRegistrations()
+        #expect(!registrations.contains { $0.tool.id == LookupBibleTool.toolID })
     }
 
     @Test("attach is idempotent — second call does not add another subscriber")

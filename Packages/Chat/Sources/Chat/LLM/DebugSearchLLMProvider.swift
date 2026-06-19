@@ -2,10 +2,10 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.search` tool call
-/// using the user's turn as the query, so the content-search pipeline — tool
-/// execution, FTS lookup, result write-back — is exercisable end-to-end with no
-/// API key, network, or on-device model.
+/// Development-only `LLMProvider` that emits a canned `bible.lookup` tool call
+/// with `action:'search'` using the user's turn as the query, so the
+/// content-search pipeline — tool execution, FTS lookup, result write-back — is
+/// exercisable end-to-end with no API key, network, or on-device model.
 ///
 /// Unlike `DebugReadLLMProvider` there is no reference to parse: search is
 /// free-text, so the whole last user message becomes the `query` (a canned
@@ -34,8 +34,8 @@ public struct DebugSearchLLMProvider: LLMProvider {
     public static let modelDisplayName = "Debug search"
     public static let maxContextTokens = 8_192
 
-    /// Bible search tool id, held as a literal so Chat needn't import Bible.
-    static let toolName = "bible.search"
+    /// Bible lookup tool id, held as a literal so Chat needn't import Bible.
+    static let toolName = "bible.lookup"
 
     /// Query used when the user's turn has no usable text.
     static let fallbackQuery = "love"
@@ -79,7 +79,10 @@ public struct DebugSearchLLMProvider: LLMProvider {
                     // Brief pre-stream pause so the "Waiting" spark is visible.
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     let query = Self.query(from: messages)
-                    var input: [String: JSONValue] = ["query": .string(query)]
+                    var input: [String: JSONValue] = [
+                        "action": .string("search"),
+                        "query": .string(query),
+                    ]
                     if let mode = Self.matchMode(from: messages) {
                         input["match"] = .string(mode)
                     }

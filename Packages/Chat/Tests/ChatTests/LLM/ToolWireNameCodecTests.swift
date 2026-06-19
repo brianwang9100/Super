@@ -21,7 +21,7 @@ struct ToolWireNameCodecTests {
 
     @Test func sanitizedReplacesDisallowedCharactersWithUnderscores() {
         #expect(ToolWireNameCodec.sanitized("time.now") == "time_now")
-        #expect(ToolWireNameCodec.sanitized("bible.read") == "bible_read")
+        #expect(ToolWireNameCodec.sanitized("bible.lookup") == "bible_lookup")
         #expect(ToolWireNameCodec.sanitized("a.b.c") == "a_b_c")
         #expect(ToolWireNameCodec.sanitized("spaced name!") == "spaced_name_")
     }
@@ -33,11 +33,11 @@ struct ToolWireNameCodecTests {
     }
 
     @Test func mapRoundTripsAdvertisedDotNames() {
-        let map = ToolWireNameMap(tools: [makeTool(name: "time.now"), makeTool(name: "bible.read")])
+        let map = ToolWireNameMap(tools: [makeTool(name: "time.now"), makeTool(name: "bible.lookup")])
         #expect(map.wireName(forOriginal: "time.now") == "time_now")
-        #expect(map.wireName(forOriginal: "bible.read") == "bible_read")
+        #expect(map.wireName(forOriginal: "bible.lookup") == "bible_lookup")
         #expect(map.originalName(forWire: "time_now") == "time.now")
-        #expect(map.originalName(forWire: "bible_read") == "bible.read")
+        #expect(map.originalName(forWire: "bible_lookup") == "bible.lookup")
     }
 
     @Test func unknownWireNamePassesThroughUnchanged() {

@@ -231,9 +231,10 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
-        // Read provider — emits a canned `bible.read` tool call from the
-        // reference in the user's turn. Both targets register `bible.read`, so
-        // it seeds unconditionally (unlike "Debug (todo)"). Never auto-selected.
+        // Read provider — emits a canned `bible.lookup` (action:'read') tool
+        // call from the reference in the user's turn. Both targets register
+        // `bible.lookup`, so it seeds unconditionally (unlike "Debug (todo)").
+        // Never auto-selected.
         _ = try await repository.insertDebugRowIfMissing(
             id: "debug-read", selectable: false
         ) { _ in
@@ -250,9 +251,10 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
-        // Search provider — emits a canned `bible.search` tool call using the
-        // user's turn as the query. Both targets register `bible.search`, so it
-        // seeds unconditionally (like "Debug (read)"). Never auto-selected.
+        // Search provider — emits a canned `bible.lookup` (action:'search') tool
+        // call using the user's turn as the query. Both targets register
+        // `bible.lookup`, so it seeds unconditionally (like "Debug (read)").
+        // Never auto-selected.
         _ = try await repository.insertDebugRowIfMissing(
             id: "debug-search", selectable: false
         ) { _ in

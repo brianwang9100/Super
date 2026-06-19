@@ -3,7 +3,7 @@ import Testing
 @testable import Bible
 
 /// Tests for `BibleToolTranslationResolver` — the translation-argument resolution
-/// shared by `bible.read` and `bible.search`: explicit strict validation, the
+/// shared by the read and search paths of `bible.lookup`: explicit strict validation, the
 /// current-translation fallback, and the default when no position is available.
 @Suite("BibleToolTranslationResolver")
 struct BibleToolTranslationResolverTests {

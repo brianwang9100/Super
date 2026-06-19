@@ -222,8 +222,8 @@ struct ChatSessionCompactionTests {
         // both arms read identically under-threshold and the tool arm never
         // compacted → AFM then overflowed mid-turn.
         //
-        // The tool here is `bible.read` — a grounding tool AFM still ships on
-        // the compact tier (CompactToolPolicy keeps read/search/memory). A
+        // The tool here is `bible.lookup` — the grounding tool AFM still ships
+        // on the compact tier (CompactToolPolicy keeps lookup + memory). A
         // *dropped* tool like `bible.annotate` would no longer count toward a
         // small-window model's budget, so it can't be used to prove this.
         //
@@ -235,8 +235,8 @@ struct ChatSessionCompactionTests {
         // ×1.8 ≈ 2,795 → 830/1,301 ≈ 0.64 — the schema shrinks the available
         // window until the same history must compact.
         let verboseTool = LLMTool(
-            id: "bible.read",
-            name: "bible.read",
+            id: "bible.lookup",
+            name: "bible.lookup",
             description: String(repeating: "Look up the exact text of a Bible passage. ", count: 100),
             category: .query,
             parameters: [

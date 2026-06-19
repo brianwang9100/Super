@@ -153,8 +153,9 @@ struct DebugBibleProvidersTests {
         )
 
         let call = try #require(Self.firstToolUse(in: events))
-        #expect(call.name == "bible.read")
+        #expect(call.name == "bible.lookup")
         let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("read"))
         let reference = try #require(Self.firstReference(input))
         #expect(reference["book"] == .string("ROM"))
         #expect(reference["chapter"] == .int(8))
@@ -192,7 +193,7 @@ struct DebugBibleProvidersTests {
         let input = try #require(Self.object(call.input))
         let reference = try #require(Self.firstReference(input))
         #expect(reference["book"] == .string("ROM"))
-        // bible.read requires a chapter; a whole-book reference defaults to 1.
+        // bible.lookup's read action requires a chapter; a whole-book reference defaults to 1.
         #expect(reference["chapter"] == .int(1))
         #expect(reference["startVerse"] == nil)
     }
@@ -205,8 +206,9 @@ struct DebugBibleProvidersTests {
         )
 
         let call = try #require(Self.firstToolUse(in: events))
-        #expect(call.name == "bible.search")
+        #expect(call.name == "bible.lookup")
         let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("search"))
         // The whole user turn becomes the query; no translation → current selection.
         #expect(input["query"] == .string("verses about anxiety"))
         #expect(input["translation"] == nil)
@@ -391,10 +393,10 @@ struct DebugBibleProvidersTests {
     @Test func readProviderDrivesOneToolCallThroughSession() async throws {
         let provider = DebugReadLLMProvider(id: "debug-read-1")
         let setup = try await Self.makeSession(provider: provider)
-        let executor = FakeToolExecutor(toolID: "bible.read")
-        await executor.setResult(ToolResult(toolID: "bible.read", content: "John 3:16 (KJV)\n\n16. ..."))
+        let executor = FakeToolExecutor(toolID: "bible.lookup")
+        await executor.setResult(ToolResult(toolID: "bible.lookup", content: "John 3:16 (KJV)\n\n16. ..."))
         await setup.toolRegistry.register(ToolRegistration(
-            tool: Self.tool(id: "bible.read"), execution: .local(executor)
+            tool: Self.tool(id: "bible.lookup"), execution: .local(executor)
         ))
 
         let stream = await setup.session.send(text: "read John 3:16-17", model: setup.model)
@@ -403,6 +405,7 @@ struct DebugBibleProvidersTests {
 
         #expect(await executor.executionCount() == 1)
         let input = try #require(await executor.capturedInputs().first)
+        #expect(input["action"] == .string("read"))
         let reference = try #require(Self.firstReference(input))
         #expect(reference["book"] == .string("JHN"))
         #expect(reference["chapter"] == .int(3))
@@ -415,10 +418,10 @@ struct DebugBibleProvidersTests {
     @Test func searchProviderDrivesOneToolCallThroughSession() async throws {
         let provider = DebugSearchLLMProvider(id: "debug-search-1")
         let setup = try await Self.makeSession(provider: provider)
-        let executor = FakeToolExecutor(toolID: "bible.search")
-        await executor.setResult(ToolResult(toolID: "bible.search", content: "1 result for \"anxiety\" (KJV):\n\nPhilippians 4:6 — ..."))
+        let executor = FakeToolExecutor(toolID: "bible.lookup")
+        await executor.setResult(ToolResult(toolID: "bible.lookup", content: "1 result for \"anxiety\" (KJV):\n\nPhilippians 4:6 — ..."))
         await setup.toolRegistry.register(ToolRegistration(
-            tool: Self.tool(id: "bible.search"), execution: .local(executor)
+            tool: Self.tool(id: "bible.lookup"), execution: .local(executor)
         ))
 
         let stream = await setup.session.send(text: "anxiety", model: setup.model)
@@ -427,6 +430,7 @@ struct DebugBibleProvidersTests {
 
         #expect(await executor.executionCount() == 1)
         let input = try #require(await executor.capturedInputs().first)
+        #expect(input["action"] == .string("search"))
         #expect(input["query"] == .string("anxiety"))
         let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
         #expect(roles == [.user, .assistant, .tool, .assistant])
@@ -483,7 +487,7 @@ struct DebugBibleProvidersTests {
         return nil
     }
 
-    /// The first element of a `bible.read` input's `references` array, as an object.
+    /// The first element of a `bible.lookup` read input's `references` array, as an object.
     private static func firstReference(_ input: [String: JSONValue]) -> [String: JSONValue]? {
         guard case .array(let references)? = input["references"],
               case .object(let first)? = references.first else { return nil }

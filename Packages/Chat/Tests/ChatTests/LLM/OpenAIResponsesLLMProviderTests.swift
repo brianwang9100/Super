@@ -568,7 +568,7 @@ struct OpenAIResponsesLLMProviderTests {
 
 extension LLMTool {
     /// Convenience for tests: a dot-namespaced tool matching Super's real
-    /// tool-ID convention (`time.now`, `bible.read`, …).
+    /// tool-ID convention (`time.now`, `bible.lookup`, …).
     static var dotNamedTimeTool: LLMTool {
         LLMTool(
             id: "time.now",

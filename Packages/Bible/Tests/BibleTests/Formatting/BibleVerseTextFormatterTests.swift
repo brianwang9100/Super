@@ -2,7 +2,7 @@ import Testing
 @testable import Bible
 
 /// Tests for `BibleVerseTextFormatter` — the numbered plain-text rendering of a
-/// verse list shared by the `bible.read` tool and annotation grounding.
+/// verse list shared by the `bible.lookup` read path and annotation grounding.
 @Suite("BibleVerseTextFormatter")
 struct BibleVerseTextFormatterTests {
     @Test("a single verse renders as one numbered line")
