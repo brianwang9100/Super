@@ -168,6 +168,7 @@ enum SuperOSAppBootstrap {
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
+        await bibleApplet.registerHighlightTool(in: toolRegistry)
         await bibleApplet.registerLookupTool(in: toolRegistry)
 
         // Constructed here (rather than inline in the `applets` array below)

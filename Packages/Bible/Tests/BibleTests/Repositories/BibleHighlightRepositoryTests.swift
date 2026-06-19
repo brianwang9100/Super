@@ -120,6 +120,82 @@ struct BibleHighlightRepositoryTests {
         #expect(colors == [4: .yellow, 5: .green])
     }
 
+    @Test("activeHighlights(bookId:chapterNumber:) returns active rows verse-ordered, excluding cleared")
+    func activeHighlightsForChapter() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 4, color: .green, at: now
+        )
+        // Cleared verse must not surface.
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 6, color: .blue, at: now
+        )
+        try await repository.clearHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 6, at: later
+        )
+        // Different chapter must not leak in.
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 3, verseNumber: 1, color: .pink, at: now
+        )
+
+        let rows = try await repository.activeHighlights(bookId: "1PE", chapterNumber: 2)
+        #expect(rows.map(\.verseNumber) == [4, 9])
+        #expect(rows.map(\.color) == [.green, .yellow])
+    }
+
+    @Test("activeHighlights(color:bookId: nil) finds that colour across all books")
+    func activeHighlightsByColorWholeBible() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.setHighlight(
+            bookId: "ROM", chapterNumber: 8, verseNumber: 28, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, color: .yellow, at: now
+        )
+        // A different colour and a cleared yellow must both be excluded.
+        try await repository.setHighlight(
+            bookId: "JHN", chapterNumber: 3, verseNumber: 16, color: .green, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "GEN", chapterNumber: 1, verseNumber: 1, color: .yellow, at: now
+        )
+        try await repository.clearHighlight(
+            bookId: "GEN", chapterNumber: 1, verseNumber: 1, at: later
+        )
+
+        let rows = try await repository.activeHighlights(color: .yellow, bookId: nil)
+        // Ordered by bookId, chapter, verse: 1PE before ROM lexicographically.
+        #expect(rows.map(\.bookId) == ["1PE", "ROM"])
+        #expect(rows.allSatisfy { $0.color == .yellow })
+    }
+
+    @Test("activeHighlights(color:bookId:) scopes to one book")
+    func activeHighlightsByColorScopedToBook() async throws {
+        let (repository, _) = try makeFixture()
+        try await repository.setHighlight(
+            bookId: "ROM", chapterNumber: 8, verseNumber: 28, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "ROM", chapterNumber: 12, verseNumber: 2, color: .yellow, at: now
+        )
+        try await repository.setHighlight(
+            bookId: "1PE", chapterNumber: 2, verseNumber: 9, color: .yellow, at: now
+        )
+
+        let rows = try await repository.activeHighlights(color: .yellow, bookId: "ROM")
+        #expect(rows.map { "\($0.chapterNumber):\($0.verseNumber)" } == ["8:28", "12:2"])
+    }
+
+    @Test("activeHighlights queries return empty when nothing matches")
+    func activeHighlightsEmptyResults() async throws {
+        let (repository, _) = try makeFixture()
+        #expect(try await repository.activeHighlights(bookId: "1PE", chapterNumber: 2).isEmpty)
+        #expect(try await repository.activeHighlights(color: .pink, bookId: nil).isEmpty)
+    }
+
     @Test("clearing a verse that was never highlighted is a no-op")
     func clearUnhighlightedIsNoOp() async throws {
         let (repository, database) = try makeFixture()

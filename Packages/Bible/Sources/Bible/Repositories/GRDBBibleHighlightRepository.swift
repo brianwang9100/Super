@@ -83,6 +83,37 @@ public struct GRDBBibleHighlightRepository: BibleHighlightRepository {
         }
     }
 
+    public func activeHighlights(
+        bookId: String,
+        chapterNumber: Int
+    ) async throws -> [BibleHighlightRecord] {
+        try await queue.read { db in
+            try BibleHighlightRecord
+                .filter(Column("bookId") == bookId)
+                .filter(Column("chapterNumber") == chapterNumber)
+                .filter(Column("deletedAt") == nil)
+                .order(Column("verseNumber"))
+                .fetchAll(db)
+        }
+    }
+
+    public func activeHighlights(
+        color: BibleHighlightColor,
+        bookId: String?
+    ) async throws -> [BibleHighlightRecord] {
+        try await queue.read { db in
+            var request = BibleHighlightRecord
+                .filter(Column("colorId") == color.rawValue)
+                .filter(Column("deletedAt") == nil)
+            if let bookId {
+                request = request.filter(Column("bookId") == bookId)
+            }
+            return try request
+                .order(Column("bookId"), Column("chapterNumber"), Column("verseNumber"))
+                .fetchAll(db)
+        }
+    }
+
     /// The verse's highlight row regardless of soft-delete state — there is at
     /// most one, so both writes resolve it the same way.
     private static func verseRow(

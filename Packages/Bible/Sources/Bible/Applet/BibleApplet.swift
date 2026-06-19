@@ -79,6 +79,13 @@ public struct BibleApplet: MiniApplet {
     /// rest of the reader still loads.
     private let noteRepository: (any BibleNoteRepository)?
 
+    /// Read/write seam for the `bible.highlight` tool. `nil` when the database
+    /// failed to open at init; `registerHighlightTool(in:)` then becomes a
+    /// no-op so the rest of the reader still loads. Shared with the view model
+    /// so the tool and the reader's action sheet point at the same
+    /// `bible.sqlite` queue.
+    private let highlightRepository: (any BibleHighlightRepository)?
+
     /// Read seam for the `bible.lookup` read action's current-translation
     /// fallback. Shared with the view model so both see the same `bible.sqlite`
     /// row. `nil` when the database failed to open — the tool still registers
@@ -118,6 +125,11 @@ public struct BibleApplet: MiniApplet {
         // the view model — both point at the same `bible.sqlite` queue.
         let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
         self.readingPositionRepository = readingPositionRepository
+        // One highlight repository shared by the `bible.highlight` tool
+        // (`registerHighlightTool`) and the view model's action-sheet
+        // highlighting — both point at the same `bible.sqlite` queue.
+        let highlightRepository = database.map { GRDBBibleHighlightRepository(database: $0) }
+        self.highlightRepository = highlightRepository
         // The bundled `bible-text.sqlite` is independent of `bible.sqlite` and backs
         // both reading (`DatabaseBibleTextLoader`) and search
         // (`BundledBibleTextSearcher`). Open it once and share the handle; a
@@ -136,7 +148,7 @@ public struct BibleApplet: MiniApplet {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
-            highlightRepository: database.map { GRDBBibleHighlightRepository(database: $0) },
+            highlightRepository: highlightRepository,
             noteRepository: noteRepository,
             bookmarkRepository: database.map { GRDBBibleBookmarkRepository(database: $0) },
             hapticsEngine: hapticsEngine
@@ -154,6 +166,7 @@ public struct BibleApplet: MiniApplet {
         databaseContext: DatabaseContext? = nil,
         annotationRepository: (any BibleAnnotationRepository)? = nil,
         noteRepository: (any BibleNoteRepository)? = nil,
+        highlightRepository: (any BibleHighlightRepository)? = nil,
         readingPositionRepository: (any BibleReadingPositionRepository)? = nil,
         textSearcher: (any BibleTextSearching)? = nil
     ) {
@@ -163,6 +176,7 @@ public struct BibleApplet: MiniApplet {
         self.databaseContext = databaseContext
         self.annotationRepository = annotationRepository
         self.noteRepository = noteRepository
+        self.highlightRepository = highlightRepository
         self.readingPositionRepository = readingPositionRepository
         self.textSearcher = textSearcher
     }
@@ -218,6 +232,28 @@ public struct BibleApplet: MiniApplet {
                 clock: clock,
                 ids: ids,
                 stampProvider: stampProvider
+            )
+        )
+    }
+
+    /// Register the `bible.highlight` tool with the given registry, using this
+    /// applet's local database. No-op if the database failed to open at init.
+    ///
+    /// Called from each app's bootstrap alongside `registerNoteTool`, so the
+    /// assistant can read, search, set, and clear verse highlights during a
+    /// chat turn. Writes land in the same `bibleHighlight` table the reader's
+    /// `@Query` observes, so an on-screen chapter redraws automatically. Tool
+    /// ownership stays with the applet so the Bible-internal `BibleDatabase` +
+    /// repository never leak into the composition root.
+    public func registerHighlightTool(
+        in registry: ToolRegistry,
+        clock: any Clock = SystemClock()
+    ) async {
+        guard let highlightRepository else { return }
+        await registry.register(
+            HighlightBibleTool.registration(
+                repository: highlightRepository,
+                clock: clock
             )
         )
     }
