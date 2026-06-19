@@ -457,21 +457,26 @@ struct AppShell: View {
         }
         // Drain queued navigation requests written by the event-bus
         // task. This observer fires inside a body re-eval, so the
-        // `selectConversation` / `startNewChat` calls run on a fresh
-        // `self` whose `@Environment` reflects the live OS state
-        // (notably `reduceMotion` for `withAnimation`).
+        // dispatch runs on a fresh `self` whose `@Environment` reflects
+        // the live OS state (notably `reduceMotion` for `withAnimation`).
         .onChange(of: pendingNavigation) { _, newValue in
             guard let request = newValue else { return }
             pendingNavigation = nil
-            Task {
-                switch request {
-                case .openConversation(let id):
-                    await selectConversation(id: id)
-                case .newConversation:
-                    await startNewChat()
-                case .openApplet(let id):
-                    selectApplet(id: id)
-                }
+            switch request {
+            case .openConversation(let id):
+                Task { await selectConversation(id: id) }
+            case .newConversation:
+                Task { await startNewChat() }
+            case .openApplet(let id):
+                // Synchronous on purpose — `selectApplet`'s
+                // `withAnimation { chatState = .minimized }` must run
+                // inside *this* `onChange` transaction so SwiftUI
+                // animates the chat's collapse. Wrapping it in a `Task`
+                // (as the async cases require) defers the mutation to a
+                // later main-actor turn detached from this update, where
+                // the animation no longer applies — the chat then snapped
+                // to minimized instantly when following a deep link.
+                selectApplet(id: id)
             }
         }
         // One bus instance shared by every applet — the Bible backdrop
