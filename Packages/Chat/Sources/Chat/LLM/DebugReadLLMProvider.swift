@@ -2,13 +2,13 @@
 import Core
 import Foundation
 
-/// Development-only `LLMProvider` that emits a canned `bible.read` tool call
-/// from the scripture reference in the user's turn, so the lookup pipeline —
-/// tool execution, verse load, result write-back — is exercisable end-to-end
-/// with no API key, network, or on-device model.
+/// Development-only `LLMProvider` that emits a canned `bible.lookup` tool call
+/// with `action:'read'` from the scripture reference in the user's turn, so the
+/// lookup pipeline — tool execution, verse load, result write-back — is
+/// exercisable end-to-end with no API key, network, or on-device model.
 ///
 /// Parses standard notation ("John 3:16-17", "Psalm 23", "Romans") out of the
-/// turn via `DebugBibleTarget.parse`, then maps it onto `bible.read`'s
+/// turn via `DebugBibleTarget.parse`, then maps it onto `bible.lookup`'s read
 /// parameters: a verse reference reads that range, a chapter reference reads
 /// the whole chapter, and a bare book reads its first chapter (the tool
 /// requires a chapter). The `translation` argument is omitted, so the read uses
@@ -29,8 +29,8 @@ public struct DebugReadLLMProvider: LLMProvider {
     public static let modelDisplayName = "Debug read"
     public static let maxContextTokens = 8_192
 
-    /// Bible read tool id, held as a literal so Chat needn't import Bible.
-    static let toolName = "bible.read"
+    /// Bible lookup tool id, held as a literal so Chat needn't import Bible.
+    static let toolName = "bible.lookup"
 
     public var supportedModels: [LLMModel] {
         [LLMModel(
@@ -106,8 +106,8 @@ public struct DebugReadLLMProvider: LLMProvider {
 
     // MARK: - Canned payload
 
-    /// Build the `bible.read` `JSONValue` input for `target`, matching
-    /// `ReadBibleTool.descriptor`'s parameter schema: a single-element
+    /// Build the `bible.lookup` `JSONValue` input for `target`, matching the
+    /// tool's read-action schema: `action:'read'` plus a single-element
     /// `references` array. A `book` target carries no chapter, so it defaults to
     /// chapter 1 (the tool requires one); verse bounds are passed only when the
     /// reference named them. `translation` is omitted, so the read uses the
@@ -119,7 +119,10 @@ public struct DebugReadLLMProvider: LLMProvider {
         ]
         if let verseStart = target.verseStart { reference["startVerse"] = .int(verseStart) }
         if let verseEnd = target.verseEnd { reference["endVerse"] = .int(verseEnd) }
-        return .object(["references": .array([.object(reference)])])
+        return .object([
+            "action": .string("read"),
+            "references": .array([.object(reference)]),
+        ])
     }
 }
 #endif

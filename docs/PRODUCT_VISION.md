@@ -122,8 +122,7 @@ recipe.save(title, ingredients, steps, source?)
 recipe.search(query)
 recipe.scale(id, factor)
 
-bible.lookup(reference)           // e.g. "Rev 3:20" → passage
-bible.search(query, translation?)
+bible.lookup(action, references?, query?, translation?)  // action:"read" → passages (e.g. "Rev 3:20"); "search" → topical verses
 bible.highlight(reference, color)
 
 finance.listTransactions(range, filter?)

@@ -79,17 +79,16 @@ public struct BibleApplet: MiniApplet {
     /// rest of the reader still loads.
     private let noteRepository: (any BibleNoteRepository)?
 
-    /// Read seam for the `bible.read` tool's current-translation fallback.
-    /// Shared with the view model so both see the same `bible.sqlite` row.
-    /// `nil` when the database failed to open — `registerReadTool(in:)` still
-    /// registers the tool, which then defaults the translation when one isn't
-    /// passed explicitly.
+    /// Read seam for the `bible.lookup` read action's current-translation
+    /// fallback. Shared with the view model so both see the same `bible.sqlite`
+    /// row. `nil` when the database failed to open — the tool still registers
+    /// and defaults the translation when one isn't passed explicitly.
     private let readingPositionRepository: (any BibleReadingPositionRepository)?
 
-    /// Content-search seam for the `bible.search` tool, over the read-only bundled
-    /// `bible-text.sqlite` FTS index. `nil` only if that bundle resource is
-    /// missing/unreadable — `registerSearchTool(in:)` then becomes a no-op so the
-    /// rest of the reader still loads.
+    /// Content-search seam for the `bible.lookup` search action, over the
+    /// read-only bundled `bible-text.sqlite` FTS index. `nil` only if that
+    /// bundle resource is missing/unreadable — `registerLookupTool(in:)` then
+    /// becomes a no-op so the rest of the reader still loads.
     private let textSearcher: (any BibleTextSearching)?
 
     /// Production entry point — bundled text plus an on-disk store under
@@ -115,7 +114,7 @@ public struct BibleApplet: MiniApplet {
         // divergence if the repository ever gains instance-level state.
         let noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
         self.noteRepository = noteRepository
-        // One reading-position repository shared by the `bible.read` tool and
+        // One reading-position repository shared by the `bible.lookup` tool and
         // the view model — both point at the same `bible.sqlite` queue.
         let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
         self.readingPositionRepository = readingPositionRepository
@@ -223,36 +222,24 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Register the `bible.read` lookup tool with the given registry, so the
-    /// assistant can fetch verbatim verse text from local storage before
-    /// answering Bible questions.
+    /// Register the `bible.lookup` tool with the given registry, so the
+    /// assistant can both fetch verbatim verse text (`action:'read'`) and find
+    /// verses by topic (`action:'search'`) from local storage before answering
+    /// Bible questions. Replaces the former separate `bible.read` /
+    /// `bible.search` registrations — one descriptor halves the schema the model
+    /// pays for on every turn (it matters most on the compact tier).
     ///
-    /// Unlike `registerAnnotationTool`/`registerNoteTool` this registers
-    /// **unconditionally**: the `DatabaseBibleTextLoader` is always constructible
-    /// (it degrades to empty results if the bundled `bible-text.sqlite` can't be
-    /// opened), so the tool works even when `bible.sqlite` failed to open — it just
-    /// falls back to the default translation when `translation` is omitted. Called
-    /// from each app's bootstrap alongside `registerNoteTool`.
-    public func registerReadTool(in registry: ToolRegistry) async {
-        await registry.register(
-            ReadBibleTool.registration(
-                textLoader: DatabaseBibleTextLoader(),
-                positionRepository: readingPositionRepository
-            )
-        )
-    }
-
-    /// Register the `bible.search` content-search tool with the given registry,
-    /// so the assistant can find verses by topic from the bundled FTS index
-    /// before answering thematic Bible questions.
-    ///
-    /// No-op only if the bundled `bible-text.sqlite` resource couldn't be opened
-    /// (it ships with the app, so this is effectively always available). Called
-    /// from each app's bootstrap alongside `registerReadTool`.
-    public func registerSearchTool(in registry: ToolRegistry) async {
+    /// No-op only if the bundled `bible-text.sqlite` resource couldn't be opened.
+    /// Both the read loader (`DatabaseBibleTextLoader`) and the searcher
+    /// (`BundledBibleTextSearcher`) read from that same bundled DB, so a missing
+    /// resource breaks both paths — there's nothing to register. It ships with
+    /// the app, so this is effectively always available. Called from each app's
+    /// bootstrap alongside `registerNoteTool`.
+    public func registerLookupTool(in registry: ToolRegistry) async {
         guard let textSearcher else { return }
         await registry.register(
-            SearchBibleTool.registration(
+            LookupBibleTool.registration(
+                textLoader: DatabaseBibleTextLoader(),
                 searcher: textSearcher,
                 positionRepository: readingPositionRepository
             )

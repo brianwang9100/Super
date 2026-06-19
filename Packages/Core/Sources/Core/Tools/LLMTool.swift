@@ -75,6 +75,14 @@ public struct LLMToolParameter: Sendable, Equatable {
     /// without JSON-Schema `items` (HTTP 400 `INVALID_ARGUMENT`), so any
     /// `.array`/`.object` parameter should carry this. `nil` for scalars.
     public let valueSchema: ToolValueSchema?
+    /// Hand-authored short variant of `description` for small-context-window
+    /// models (`ModelContextTier.compact`). `CompactToolPolicy` swaps it in
+    /// alongside the tool-level `compactDescription`; parameter descriptions
+    /// are counted in the schema-token budget, so trimming the verbose ones
+    /// (enum prose, repeated translation guidance) is pure window savings.
+    /// Same contract as `description` (LLM-facing, never UI). `nil` means the
+    /// parameter ships `description` on every tier.
+    public let compactDescription: String?
 
     public init(
         name: String,
@@ -82,7 +90,8 @@ public struct LLMToolParameter: Sendable, Equatable {
         description: String,
         isRequired: Bool = false,
         enumValues: [String]? = nil,
-        valueSchema: ToolValueSchema? = nil
+        valueSchema: ToolValueSchema? = nil,
+        compactDescription: String? = nil
     ) {
         self.name = name
         self.type = type
@@ -90,6 +99,7 @@ public struct LLMToolParameter: Sendable, Equatable {
         self.isRequired = isRequired
         self.enumValues = enumValues
         self.valueSchema = valueSchema
+        self.compactDescription = compactDescription
     }
 }
 
