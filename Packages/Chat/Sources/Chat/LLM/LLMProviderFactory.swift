@@ -101,6 +101,8 @@ public func makeLLMProvider(
             return DebugReadLLMProvider(id: record.id)
         case DebugSearchLLMProvider.modelID:
             return DebugSearchLLMProvider(id: record.id)
+        case DebugHighlightLLMProvider.modelID:
+            return DebugHighlightLLMProvider(id: record.id)
         case DebugTodoLLMProvider.modelID:
             return DebugTodoLLMProvider(id: record.id)
         default:

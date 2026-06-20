@@ -162,6 +162,7 @@ enum SuperBibleAppBootstrap {
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
         )
         await bibleApplet.registerNoteTool(in: toolRegistry)
+        await bibleApplet.registerHighlightTool(in: toolRegistry)
         await bibleApplet.registerLookupTool(in: toolRegistry)
 
         // Bible's "Annotations" hub for the shared Settings screen is built

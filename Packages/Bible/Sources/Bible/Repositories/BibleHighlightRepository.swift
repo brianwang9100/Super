@@ -38,4 +38,22 @@ public protocol BibleHighlightRepository: Sendable {
         chapterNumber: Int,
         verseNumbers: [Int]
     ) async throws -> [Int: BibleHighlightColor]
+
+    /// Every active highlight in one chapter, verse-ordered. Backs the
+    /// `bible.highlight` tool's `read` action, which reports each highlighted
+    /// verse's colour (and, for a ranged read, which requested verses have
+    /// none). Cleared rows are excluded.
+    func activeHighlights(
+        bookId: String,
+        chapterNumber: Int
+    ) async throws -> [BibleHighlightRecord]
+
+    /// Every active highlight of `color`, optionally restricted to one book
+    /// (`nil` searches the whole bible). Ordered by book, chapter, then verse.
+    /// Backs the `bible.highlight` tool's `search` action (colour → verses).
+    /// Cleared rows are excluded.
+    func activeHighlights(
+        color: BibleHighlightColor,
+        bookId: String?
+    ) async throws -> [BibleHighlightRecord]
 }

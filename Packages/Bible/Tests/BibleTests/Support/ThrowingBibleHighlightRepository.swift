@@ -32,4 +32,18 @@ struct ThrowingBibleHighlightRepository: BibleHighlightRepository {
     ) async throws -> [Int: BibleHighlightColor] {
         throw WriteFailure()
     }
+
+    func activeHighlights(
+        bookId: String,
+        chapterNumber: Int
+    ) async throws -> [BibleHighlightRecord] {
+        throw WriteFailure()
+    }
+
+    func activeHighlights(
+        color: BibleHighlightColor,
+        bookId: String?
+    ) async throws -> [BibleHighlightRecord] {
+        throw WriteFailure()
+    }
 }

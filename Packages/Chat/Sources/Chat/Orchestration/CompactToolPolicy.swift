@@ -18,12 +18,14 @@ enum CompactToolPolicy {
     /// reads or searches through it) and `memory` (cross-conversation
     /// personalization, surfaced every turn anyway). Dropped: `time.now`
     /// (the date is already in the prompt context), and the `bible.annotate`
-    /// / `bible.note` write tools (heavy schemas; both reachable from the
-    /// reader UI, and bulk annotation runs through its own engine, not chat).
+    /// / `bible.note` / `bible.highlight` write tools (heavy multi-action
+    /// schemas; all reachable from the reader UI, and bulk annotation runs
+    /// through its own engine, not chat).
     static let droppedToolNames: Set<String> = [
         "time.now",
         "bible.annotate",
         "bible.note",
+        "bible.highlight",
     ]
 
     /// Filter `tools` for `tier`: on `.compact`, drops `droppedToolNames` and
