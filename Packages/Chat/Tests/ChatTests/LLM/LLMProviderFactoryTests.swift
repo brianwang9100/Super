@@ -102,6 +102,7 @@ struct LLMProviderFactoryTests {
         }
         #expect(make(debugRow(modelId: DebugAnnotateLLMProvider.modelID)) is DebugAnnotateLLMProvider)
         #expect(make(debugRow(modelId: DebugNoteLLMProvider.modelID)) is DebugNoteLLMProvider)
+        #expect(make(debugRow(modelId: DebugHighlightLLMProvider.modelID)) is DebugHighlightLLMProvider)
         // Any other (or the canned) modelId falls through to the stream provider.
         #expect(make(debugRow(modelId: DebugLLMProvider.modelID)) is DebugLLMProvider)
         #expect(make(debugRow(modelId: "anything-else")) is DebugLLMProvider)

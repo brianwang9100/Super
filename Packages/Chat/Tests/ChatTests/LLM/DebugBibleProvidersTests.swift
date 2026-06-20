@@ -436,6 +436,150 @@ struct DebugBibleProvidersTests {
         #expect(roles == [.user, .assistant, .tool, .assistant])
     }
 
+    // MARK: - Highlight provider
+
+    @Test func highlightProviderInfersSetFromColorAndReference() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "highlight John 3:16 green")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        #expect(call.name == "bible.highlight")
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("set"))
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["chapter"] == .int(3))
+        #expect(input["verseStart"] == .int(16))
+        #expect(input["color"] == .string("green"))
+    }
+
+    @Test func highlightProviderInfersReadWithoutColourOrKeyword() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "what did I highlight in John 3")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("read"))
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["chapter"] == .int(3))
+        // Chapter reference → whole-chapter read, no verse range.
+        #expect(input["verseStart"] == nil)
+    }
+
+    @Test func highlightProviderInfersSearchForColourPlusFind() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "find my yellow highlights")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("search"))
+        #expect(input["color"] == .string("yellow"))
+        // No book named → whole-bible search.
+        #expect(input["book"] == nil)
+    }
+
+    @Test func highlightProviderSearchScopesToNamedBook() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "find my blue highlights in Romans")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("search"))
+        #expect(input["color"] == .string("blue"))
+        #expect(input["book"] == .string("ROM"))
+    }
+
+    @Test func highlightProviderInfersClearFromVerb() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "clear the highlight on John 3:16")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("clear"))
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["chapter"] == .int(3))
+        #expect(input["verseStart"] == .int(16))
+        // Clear carries no colour.
+        #expect(input["color"] == nil)
+    }
+
+    @Test func highlightProviderExplicitActionDirectiveWinsOverInference() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        // A colour is present (would infer `set`), but the directive forces `read`.
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "action:read John 3:16 yellow")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("read"))
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["verseStart"] == .int(16))
+    }
+
+    @Test func highlightProviderRangeSetCarriesBothBounds() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: "highlight Romans 8:28-30 pink")], model: model
+        )
+
+        let call = try #require(Self.firstToolUse(in: events))
+        let input = try #require(Self.object(call.input))
+        #expect(input["action"] == .string("set"))
+        #expect(input["book"] == .string("ROM"))
+        #expect(input["verseStart"] == .int(28))
+        #expect(input["verseEnd"] == .int(30))
+        #expect(input["color"] == .string("pink"))
+    }
+
+    @Test func highlightProviderStopsAfterToolResultTurn() async throws {
+        let provider = DebugHighlightLLMProvider(id: "p")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(provider, messages: Self.afterToolRanMessages(), model: model)
+
+        #expect(Self.firstToolUse(in: events) == nil)
+        let hasText = events.contains { if case .textDelta = $0 { return true } else { return false } }
+        #expect(hasText)
+    }
+
+    @Test func highlightProviderDrivesOneToolCallThroughSession() async throws {
+        let provider = DebugHighlightLLMProvider(id: "debug-highlight-1")
+        let setup = try await Self.makeSession(provider: provider)
+        let executor = FakeToolExecutor(toolID: "bible.highlight")
+        await executor.setResult(ToolResult(toolID: "bible.highlight", content: "Highlighted green: John 3:16."))
+        await setup.toolRegistry.register(ToolRegistration(
+            tool: Self.tool(id: "bible.highlight"), execution: .local(executor)
+        ))
+
+        let stream = await setup.session.send(text: "highlight John 3:16 green", model: setup.model)
+        _ = await Self.drain(stream)
+        await setup.session.waitUntilFinished()
+
+        #expect(await executor.executionCount() == 1)
+        let input = try #require(await executor.capturedInputs().first)
+        #expect(input["action"] == .string("set"))
+        #expect(input["book"] == .string("JHN"))
+        #expect(input["color"] == .string("green"))
+        let roles = try await setup.messageRepo.fetchAll(conversationId: setup.conversation.id).map(\.role)
+        #expect(roles == [.user, .assistant, .tool, .assistant])
+    }
+
     // MARK: - Helpers
 
     /// A user turn shaped like `BibleAnnotateDispatcher.prompt` — the headless

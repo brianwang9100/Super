@@ -20,10 +20,10 @@ struct CompactToolPolicyTests {
 
     /// The full SuperBible-on-AFM tool set, in registry sort order.
     private var allTools: [LLMTool] {
-        ["bible.annotate", "bible.lookup", "bible.note", "memory", "time.now"].map(tool)
+        ["bible.annotate", "bible.highlight", "bible.lookup", "bible.note", "memory", "time.now"].map(tool)
     }
 
-    @Test("compact tier drops time.now + bible.annotate + bible.note, keeps grounding + memory")
+    @Test("compact tier drops time.now + bible write tools, keeps grounding + memory")
     func compactDropsHeavyTools() {
         let kept = CompactToolPolicy.filter(allTools, tier: .compact).map(\.name)
         #expect(kept == ["bible.lookup", "memory"])

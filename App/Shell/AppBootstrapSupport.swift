@@ -271,6 +271,26 @@ enum AppBootstrapSupport {
                 isSelected: false
             )
         }
+        // Highlight provider — emits a canned `bible.highlight` tool call
+        // (read/search/set/clear inferred from the turn). Both targets register
+        // `bible.highlight`, so it seeds unconditionally (like "Debug (read)").
+        // Never auto-selected.
+        _ = try await repository.insertDebugRowIfMissing(
+            id: "debug-highlight", selectable: false
+        ) { _ in
+            ModelConfigurationRecord(
+                id: "debug-highlight",
+                name: "Debug (highlight)",
+                baseURL: nil,
+                apiKeyRef: nil,
+                modelId: DebugHighlightLLMProvider.modelID,
+                createdAt: Date(),
+                kind: .debug,
+                supportsThinking: false,
+                maxContextTokens: DebugHighlightLLMProvider.maxContextTokens,
+                isSelected: false
+            )
+        }
         // Canned-stream provider wired to the client-mock search backend so
         // the full web-search flow (cost gate → confirm → sources pill →
         // Gemini suggestions on a "gemini" query) is exercisable in the
