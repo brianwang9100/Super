@@ -67,7 +67,7 @@ Free, BYOK, open-source, local-first AI Bible app; sibling target to SuperOS sha
 ## CI / CD
 
 ### Wired now
-- ✅ `swift-test.yml` · `ios-build.yml` · `swiftlint.yml` · `claude-pr-review.yml` · `secrets-scan.yml` (gitleaks) · `testflight.yml` · `.github/CODEOWNERS`.
+- ✅ `swift-test.yml` · `ios-build.yml` · `swiftlint.yml` · native Codex PR review · `secrets-scan.yml` (gitleaks) · `testflight.yml` · `.github/CODEOWNERS`.
 - ✅ Xcode/sim pinned to 26.4.1 (iOS 26.4 SDK) via `setup-xcode@v1`, both build legs.
 - ✅ `ios-test` is a required check on `main` (contexts: `test (Core)`, `test (Chat)`, `build`, `ios-test`, `lint`, `gitleaks`).
 
@@ -140,7 +140,7 @@ Per `docs/OBSERVABILITY.md`. Apple-built-in only, no third-party SDKs. No teleme
 
 ## AI tooling
 
-Per `docs/AI_TOOLS.md`. (AI PR reviewer is wired — `claude-pr-review.yml`.)
+Per `docs/AI_TOOLS.md`. (Native Codex PR review is configured in Codex cloud; criteria live in `AGENTS.md`.)
 
 - [ ] **P2** Standardize the agent-handoff protocol (branch naming, PR template, per-agent metadata) per `docs/CI_PIPELINE.md` §6.
 

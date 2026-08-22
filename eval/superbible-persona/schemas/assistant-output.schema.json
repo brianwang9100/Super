@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "toolCalls": {
+      "type": "array",
+      "description": "Tool calls the assistant would make, in order. Empty if none.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "args": {
+            "type": "string",
+            "description": "JSON-encoded arguments for the tool call."
+          }
+        },
+        "required": ["name", "args"]
+      }
+    },
+    "assistantText": {
+      "type": "string",
+      "description": "The exact words shown to the user."
+    }
+  },
+  "required": ["toolCalls", "assistantText"]
+}

@@ -433,7 +433,7 @@ public final class ChatScreenViewModel {
     /// can deterministically synchronize on "this view model has
     /// finished draining its subscription" without polling
     /// `isStreaming`. Same rationale as `_waitForPendingTitleTask()` —
-    /// see CLAUDE.md "Make async tests deterministic" for why polling
+    /// see AGENTS.md "Make async tests deterministic" for why polling
     /// loops are race amplifiers. Returns immediately when no stream
     /// task is in flight.
     func _waitForPendingStreamTask() async {

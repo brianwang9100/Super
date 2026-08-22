@@ -280,7 +280,7 @@ jobs:
           # Packages/*/Tests/.../__Snapshots__.
           #
           # Source of truth: the local PreToolUse guard
-          # (.claude/hooks/enforce-snapshot-sim.py) reads the pin straight from
+          # (.codex/hooks/enforce-snapshot-sim.py) reads the pin straight from
           # this file — the `RUNTIME_BUILD="..."` literal, the `--json "iOS
           # <ver>"` literal, the `name")=="iPhone <n>"` literal, and the
           # `xcode-version:` inputs. Keep those four shapes intact when editing,

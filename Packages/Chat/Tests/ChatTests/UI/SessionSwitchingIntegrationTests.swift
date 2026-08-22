@@ -128,7 +128,7 @@ struct SessionSwitchingIntegrationTests {
 
         // Deterministically wait for VM2's iteration task to drain.
         // `_waitForPendingStreamTask()` mirrors the `_waitForPending-
-        // TitleTask()` pattern (see CLAUDE.md "Make async tests
+        // TitleTask()` pattern (see AGENTS.md "Make async tests
         // deterministic") — no polling, no race amplifiers.
         await vm2._waitForPendingStreamTask()
         await session.waitUntilFinished()

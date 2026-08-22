@@ -929,7 +929,7 @@ struct SettingsSheetSnapshotTests {
     }
 
     // Dark + XXL cell to fill the `light/dark/sepia × default/Dynamic
-    // Type XXL` matrix called out in `Packages/Chat/CLAUDE.md`.
+    // Type XXL` matrix called out in `Packages/Chat/AGENTS.md`.
     @Test("dynamic type XXL on Apple Foundation model detail pane (dark)")
     func modelDetailAppleFoundationXXLDark() async {
         await verifyAppleFoundationXXL(theme: .vellumDark, name: "settings_model_detail_afm_dark_xxl")
@@ -1135,7 +1135,7 @@ struct SettingsSheetSnapshotTests {
     }
 
     // The merged Appearance pane owns the theme grid, so it carries the
-    // full light/dark/sepia × default/XXL matrix per `Packages/Chat/CLAUDE.md`.
+    // full light/dark/sepia × default/XXL matrix per `Packages/Chat/AGENTS.md`.
     // The dark/sepia variants seed a matching `themeId` so the selected-card
     // border + halo render on a non-Light card too.
 

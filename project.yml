@@ -52,8 +52,8 @@ targets:
       Release: Config/Base.xcconfig
     sources:
       - path: App-SuperOS
-        # Per-target AGENTS.md / CLAUDE.md live with the source for
-        # contributor convenience but must not ship as runtime resources.
+        # Canonical AGENTS.md and compatibility CLAUDE.md alias live with the
+        # source for contributor convenience but must not ship as runtime resources.
         # The SuperBible target has the mirror exclude on its own block.
         excludes:
           - "**/*.md"
@@ -190,8 +190,9 @@ targets:
       Release: Config/Base.xcconfig
     sources:
       - path: App-SuperBible
-        # Per-target AGENTS.md / CLAUDE.md / PRIVACY.md live alongside the
-        # source for contributor convenience but are not runtime resources.
+        # Canonical AGENTS.md, compatibility CLAUDE.md alias, and PRIVACY.md
+        # live alongside the source for contributor convenience but are not
+        # runtime resources.
         # PRIVACY.md will be re-included as a bundled resource at SB-M4
         # when Settings → About → Privacy lands.
         # `SuperBibleSystemPrompt.md` IS bundled — see the explicit

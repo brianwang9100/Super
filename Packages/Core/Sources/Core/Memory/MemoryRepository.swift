@@ -9,7 +9,7 @@ import Foundation
 /// view of "what I remember about you" without buying anything.
 ///
 /// Chat ships a GRDB-backed conformer (`GRDBMemoryRepository`); tests
-/// substitute an in-memory one. Core stays GRDB-free per its CLAUDE.md.
+/// substitute an in-memory one. Core stays GRDB-free per its AGENTS.md.
 public protocol MemoryRepository: Sendable {
     /// All memories, oldest first.
     func all() async throws -> [MemoryEntry]

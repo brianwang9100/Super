@@ -14,8 +14,8 @@ This document evaluates AI development tools that could accelerate Super's devel
 
 | Tool | Type | What It Does | License | Cost | Security Rating |
 |------|------|-------------|---------|------|-----------------|
-| **Axiom** | Claude Code plugin + MCP server | Apple platform development skills, agents, and reference docs | MIT | Free | Good |
-| **GSD (Get Shit Done)** | Workflow orchestration layer | Spec-driven planning/execution with fresh contexts per task | MIT | Free | Moderate (with caveats) |
+| **Axiom** | MCP server; legacy Claude Code plugin | Apple platform development skills, agents, and reference docs | MIT | Free | Good |
+| **GSD (Get Shit Done)** | Legacy Claude workflow layer | Spec-driven planning/execution with fresh contexts per task | MIT | Free | Moderate (with caveats) |
 | **Context7** | MCP server | Live library documentation injection into AI prompts | MIT (client) | Free tier / $10/mo Pro | Poor (recent vulnerability) |
 
 ---
@@ -33,11 +33,11 @@ Axiom is a collection of **102 discipline skills, 50 reference skills, 22 diagno
 
 ### 3.2 How It Works
 
-Two integration modes:
+Two integration modes are documented upstream:
 
-1. **Claude Code Plugin (primary):** Install via `/plugin marketplace add CharlesWiltgen/Axiom`. Skills are automatically suggested based on conversational context (e.g., asking about "memory leaks" triggers `axiom-memory-debugging`).
+1. **Claude Code Plugin (legacy):** Install via `/plugin marketplace add CharlesWiltgen/Axiom`. This is not part of Super's Codex project setup and must not create repository `.claude/` tooling.
 
-2. **MCP Server (secondary):** TypeScript/Node.js MCP server using stdio transport. Works with VS Code, Cursor, Claude Desktop, Gemini CLI, and Xcode 26.3+ (Apple's native agentic coding support). Exposes skills as MCP Resources, Prompts, and Tools.
+2. **MCP Server:** TypeScript/Node.js MCP server using stdio transport. It may be evaluated as an additional Codex MCP only after dependency and network review; it is not a replacement for the checked-in XcodeBuild and iOS Simulator MCP servers.
 
 Key capability: reads **Apple documentation directly from your local Xcode installation** at runtime — 20 official Apple guide topics and 32 Swift compiler diagnostics. Docs stay current with Xcode updates automatically.
 
@@ -63,13 +63,13 @@ Key capability: reads **Apple documentation directly from your local Xcode insta
 | **Network calls** | No external API calls, no telemetry detected in source code |
 | **Filesystem access** | Reads Apple docs from Xcode bundle path (read-only). Skills are curated markdown/YAML. |
 | **Dependencies** | Node.js MCP server — audit `package.json` before deploying |
-| **Permission model** | Runs within Claude Code's permission system (explicit approval for sensitive operations) |
+| **Permission model** | Review the approval and sandbox model of the consuming agent before installation. |
 | **Security policy** | None published — no formal "we don't send your data" declaration |
 | **Source auditable** | Yes, fully open source MIT. MCP server source at `mcp-server/src/` |
 
 **Verdict: Good.** Local-only, no network calls, open source, auditable. The only gap is the lack of a formal security policy, but the architecture itself is sound — it's fundamentally just curated reference material served locally.
 
-**Recommendation: Adopt.** This is the most directly relevant tool for Super. Install as a Claude Code plugin for all Apple platform development work.
+**Recommendation: Evaluate the MCP form only when needed.** Do not install the legacy Claude Code plugin into this repository; Super's checked-in Codex configuration is the active contributor setup.
 
 ---
 
@@ -90,7 +90,7 @@ GSD is a **meta-prompting and spec-driven development workflow** that sits on to
 npx get-shit-done-cc@latest
 ```
 
-Installs ~50 markdown files, a Node.js CLI helper, and event hooks into your `.claude/` directory. Adds 29 slash commands and 12 custom agent definitions.
+Its legacy installer writes markdown, a Node.js helper, and hooks into `.claude/`. Do not run it in this repository: Codex-native instructions, hooks, and task workflow are already checked in.
 
 **Workflow phases:**
 
@@ -129,15 +129,15 @@ Key architectural choices:
 | Aspect | Finding |
 |--------|---------|
 | **Data sent externally** | GSD itself makes no external API calls (beyond npm version checks). All processing is local and file-based. |
-| **Data sent via underlying LLM** | GSD runs on Claude Code, which sends your code to Anthropic's API. This is inherent to any AI coding assistant, not GSD-specific. |
-| **Filesystem access** | Reads your project directory, creates `.planning/` and `.claude/` files, makes git commits |
-| **`--dangerously-skip-permissions` recommendation** | **This is the primary concern.** GSD recommends disabling Claude Code's permission system for automated execution. See details below. |
+| **Data sent via underlying LLM** | The legacy runner uses Claude Code; this is not Super's active agent path. |
+| **Filesystem access** | Reads the project, creates `.planning/` and `.claude/` files, and makes Git commits. |
+| **`--dangerously-skip-permissions` recommendation** | **This is the primary concern.** The legacy workflow recommends disabling its agent's permission system. See details below. |
 | **Source auditable** | Yes, fully open source MIT |
 | **Security contact** | security@gsd.build |
 
 **The `--dangerously-skip-permissions` Issue:**
 
-GSD's documentation recommends running Claude Code with `--dangerously-skip-permissions` to avoid manually approving each file operation, git commit, or bash command. While GSD itself has safeguards (`allowed-tools` frontmatter, secret detection, sensitive file deny lists), the underlying concern is real:
+GSD's documentation recommends `--dangerously-skip-permissions` to avoid manually approving each file operation, Git commit, or shell command. While it has safeguards (`allowed-tools` frontmatter, secret detection, sensitive file deny lists), the underlying concern is real:
 
 - In January 2026, a developer lost ~11GB of files when Claude executed `rm -rf` with permissions skipped
 - PromptArmor demonstrated that hidden text in documents could manipulate Claude into exfiltrating files via allowlisted APIs
@@ -152,7 +152,7 @@ GSD's documentation recommends running Claude Code with `--dangerously-skip-perm
 
 **Verdict: Moderate.** GSD itself is safe and well-designed. The risk comes from the operational recommendation to disable permissions. If we enforce our own permission policy (no `--dangerously-skip-permissions`), GSD is a valuable workflow tool.
 
-**Recommendation: Adopt with guardrails.** Use for project planning and structured execution. Never disable permissions. Run execution in isolated environments. Complements our CI_PIPELINE.md agent workflow well.
+**Recommendation: Do not install in Super.** Its Claude-specific repository writes conflict with the active Codex tooling. Its planning ideas remain useful as general reference, but the checked-in Codex workflow and safeguards are authoritative.
 
 ---
 
@@ -238,12 +238,12 @@ These were not specifically requested but surfaced during research as relevant f
 - **Security:** Static documentation, no code execution
 - **Recommendation:** Useful as a reference source for AI agents working on Apple platform code.
 
-### 6.3 claude-code-ios-dev-guide
+### 6.3 claude-code-ios-dev-guide (legacy reference)
 
 - **What:** Community guide for using Claude Code specifically with Swift/SwiftUI projects
 - **Repository:** [github.com/keskinonur/claude-code-ios-dev-guide](https://github.com/keskinonur/claude-code-ios-dev-guide)
 - **Security:** Documentation only, no code execution
-- **Recommendation:** Reference for best practices when our AI agents work on Super's Swift code.
+- **Recommendation:** It may be read as a general Swift/SwiftUI reference, but it does not define Super's active Codex setup.
 
 ---
 
@@ -255,29 +255,18 @@ Based on the research above, here is the recommended AI toolchain for Super deve
 ┌─────────────────────────────────────────────────────────┐
 │                  AI Development Stack                    │
 │                                                         │
-│  ┌─────────────────┐   ┌─────────────────────────────┐ │
-│  │     GSD          │   │         Axiom                │ │
-│  │  (Orchestration) │   │  (Apple Platform Skills)     │ │
-│  │                  │   │                              │ │
-│  │  Plan → Execute  │   │  Swift 6, SwiftUI, GRDB,    │ │
-│  │  Fresh contexts  │   │  Xcode debugging, perf,     │ │
-│  │  Parallel waves  │   │  concurrency, accessibility │ │
-│  └────────┬─────────┘   └──────────────┬──────────────┘ │
-│           │                            │                 │
-│           └────────────┬───────────────┘                 │
-│                        ▼                                 │
-│              ┌──────────────────┐                        │
-│              │   Claude Code    │                        │
-│              │  (AI Agent Core) │                        │
-│              └────────┬─────────┘                        │
-│                       │                                  │
-│           ┌───────────┼───────────┐                      │
-│           ▼           ▼           ▼                      │
-│    ┌────────────┐ ┌────────┐ ┌──────────────────┐       │
-│    │apple-docs  │ │llm.codes│ │claude-code-ios   │       │
-│    │   -mcp     │ │        │ │  -dev-guide       │       │
-│    │(Apple docs)│ │(Ref)   │ │(Best practices)   │       │
-│    └────────────┘ └────────┘ └──────────────────┘       │
+│                 ┌──────────────────┐                    │
+│                 │      Codex       │                    │
+│                 │  (AI Agent Core) │                    │
+│                 └────────┬─────────┘                    │
+│                          │                              │
+│              ┌───────────┼───────────┐                  │
+│              ▼           ▼           ▼                  │
+│       ┌────────────┐ ┌──────────┐ ┌──────────────────┐  │
+│       │ AGENTS.md  │ │ .codex/  │ │ Apple-doc sources│  │
+│       │ (canonical │ │ MCP/hooks│ │ (review before   │  │
+│       │   rules)   │ │  /rules  │ │  adding an MCP)  │  │
+│       └────────────┘ └──────────┘ └──────────────────┘  │
 │                                                         │
 │  ╳ Context7 — NOT RECOMMENDED (security concerns)       │
 └─────────────────────────────────────────────────────────┘
@@ -285,12 +274,11 @@ Based on the research above, here is the recommended AI toolchain for Super deve
 
 ### Installation Checklist
 
-- [ ] Install Axiom: `/plugin marketplace add CharlesWiltgen/Axiom`
-- [ ] Install GSD: `npx get-shit-done-cc@latest` (in Super project root)
-- [ ] Configure GSD: never use `--dangerously-skip-permissions`; run execution phases in isolated environments
-- [ ] Evaluate apple-docs-mcp for additional Apple documentation coverage
-- [ ] Audit Axiom MCP server dependencies (`package.json`) before first use
-- [ ] Audit GSD Node.js helper (`gsd-tools.cjs`) before first use
+- [ ] Verify the checked-in MCP declarations with `codex mcp list --json`
+- [ ] Keep `.codex/hooks.json` and `.codex/rules/default.rules` enabled; do not recreate Claude settings or hooks
+- [ ] Keep `AGENTS.md` canonical and every `CLAUDE.md` as an untouched compatibility symlink
+- [ ] Evaluate apple-docs-mcp or Axiom MCP only after auditing dependencies and network behavior
+- [ ] Never run GSD's legacy installer in the Super project root
 
 ---
 
@@ -299,7 +287,7 @@ Based on the research above, here is the recommended AI toolchain for Super deve
 Regardless of which tools we adopt, these rules apply to all AI-assisted development on Super:
 
 1. **Never use `--dangerously-skip-permissions`** on the development machine
-2. **Never grant blanket filesystem access** — use Claude Code's granular permission system
+2. **Never grant blanket filesystem access** — use Codex's sandbox and approval system
 3. **Audit all MCP server dependencies** before installation (check `package.json`, verify no unexpected network calls)
 4. **No external data sources treated as trusted** — always review AI-generated code, especially when informed by external documentation
 5. **Secrets never in working directory** — use `.env` files excluded from git, Keychain for local secrets, CI secrets for pipelines

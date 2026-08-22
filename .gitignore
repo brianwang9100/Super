@@ -41,8 +41,6 @@ Carthage/Build/
 *.swp
 *~
 
-.claude/worktrees/
-
 # Superset workspace setup/teardown config — user-specific, not for the OSS repo
 .superset/
 
@@ -50,6 +48,9 @@ Carthage/Build/
 *.profraw
 *.profdata
 coverage/
+
+# Generated SuperBible persona-evaluation reports
+eval/superbible-persona/results/*.json
 
 # Secrets / credentials — defense-in-depth, none of these are tracked today
 .env
@@ -63,4 +64,3 @@ coverage/
 *.crt
 *.mobileprovision
 *.provisionprofile
-.claude/scheduled_tasks.lock
