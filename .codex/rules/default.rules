@@ -1,0 +1,102 @@
+# Build and test Swift packages. Package-management mutations remain subject to
+# the normal Codex approval flow.
+prefix_rule(
+    pattern = ["swift", ["build", "test"]],
+    decision = "allow",
+    justification = "Swift package builds and tests are routine repository verification",
+    match = [
+        "swift build",
+        "swift build --package-path Packages/Core",
+        "swift test",
+        "swift test --package-path Packages/Chat",
+    ],
+    not_match = [
+        "swift package reset",
+        "swift run",
+    ],
+)
+
+# Read-only Swift package inspection. Resolve, update, reset, and edit are not
+# auto-allowed because they can change the dependency graph or working tree.
+prefix_rule(
+    pattern = ["swift", "package", ["describe", "dump-package", "show-dependencies", "show-executables"]],
+    decision = "allow",
+    justification = "These Swift package subcommands only inspect package metadata",
+    match = [
+        "swift package describe",
+        "swift package dump-package",
+        "swift package show-dependencies --format json",
+        "swift package show-executables",
+    ],
+    not_match = [
+        "swift package reset",
+        "swift package resolve",
+        "swift package update",
+    ],
+)
+
+# Project builds and generated-project refreshes are standard verification and
+# development operations. Their exact executable prefix prevents shell wrappers
+# or unrelated commands from inheriting the allowance.
+prefix_rule(
+    pattern = ["xcodebuild"],
+    decision = "allow",
+    justification = "Xcode builds and tests are routine repository verification",
+    match = [
+        "xcodebuild -version",
+        "xcodebuild -scheme Super -destination platform=iOS Simulator,name=iPhone 17,OS=26.4 test",
+    ],
+    not_match = [
+        "sh -c xcodebuild -version",
+    ],
+)
+
+prefix_rule(
+    pattern = ["xcodegen"],
+    decision = "allow",
+    justification = "The checked-in project specification is the source for generated Xcode project files",
+    match = [
+        "xcodegen",
+        "xcodegen generate --spec project.yml",
+    ],
+    not_match = [
+        "npx xcodegen",
+    ],
+)
+
+# Simulator inspection is safe to run without a prompt. Lifecycle and data
+# mutation commands such as create, delete, erase, install, and uninstall are
+# intentionally omitted.
+prefix_rule(
+    pattern = ["xcrun", "simctl", ["bootstatus", "getenv", "list"]],
+    decision = "allow",
+    justification = "These simulator commands only wait for or inspect simulator state",
+    match = [
+        "xcrun simctl bootstatus booted",
+        "xcrun simctl getenv booted SIMULATOR_RUNTIME_VERSION",
+        "xcrun simctl list runtimes iOS",
+    ],
+    not_match = [
+        "xcrun simctl create SB-test iPhone 17 com.apple.CoreSimulator.SimRuntime.iOS-26-4",
+        "xcrun simctl delete booted",
+        "xcrun simctl erase all",
+    ],
+)
+
+# Git inspection is non-mutating. Staging, committing, resetting, cleaning, and
+# other writes continue through Codex's normal approval flow.
+prefix_rule(
+    pattern = ["git", ["diff", "log", "status"]],
+    decision = "allow",
+    justification = "These Git commands only inspect repository state and history",
+    match = [
+        "git diff --check",
+        "git log --oneline -10",
+        "git status --short",
+    ],
+    not_match = [
+        "git add AGENTS.md",
+        "git commit -m migrate",
+        "git reset --hard",
+    ],
+)

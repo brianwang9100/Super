@@ -1,0 +1,10 @@
+[features]
+hooks = true
+
+[mcp_servers.xcodebuild]
+command = "npx"
+args = ["-y", "xcodebuildmcp@2.7.0"]
+
+[mcp_servers.ios-simulator]
+command = "npx"
+args = ["-y", "ios-simulator-mcp@2.1.0"]
