@@ -239,4 +239,3 @@ The implementation lands as one coherent repository migration:
 5. Remove obsolete GitHub protection and the Claude reviewer secret after the native review is confirmed.
 
 If a Codex hook or evaluator regression appears, the Git history contains the former Claude files, while `AGENTS.md` and the compatibility symlinks remain stable. External Codex automatic review can be disabled independently without changing repository history.
-
