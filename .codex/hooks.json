@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/block-outside-worktree.sh\"",
+            "statusMessage": "Checking write path is inside the worktree"
+          }
+        ]
+      },
+      {
+        "matcher": "exec_command|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/enforce-snapshot-sim.sh\"",
+            "statusMessage": "Checking iOS sim destination matches the pinned CI trio"
+          }
+        ]
+      }
+    ]
+  }
+}

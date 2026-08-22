@@ -9,7 +9,7 @@ import SwiftUI
 /// clear everything. Memories are bound reactively via GRDBQuery `@Query`
 /// so a write from the `memory` tool (mid-conversation, in a sibling
 /// chat surface) repaints the pane without an explicit refresh — per
-/// CLAUDE.md's reactive-binding rule for tables mutated outside the
+/// AGENTS.md's reactive-binding rule for tables mutated outside the
 /// view.
 struct SettingsMemoryPane: View {
     @Bindable var viewModel: SettingsViewModel
