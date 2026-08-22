@@ -48,9 +48,13 @@ def allow():
 
 
 def deny(reason):
-    """Emit Codex's deny decision and fail the hook invocation."""
-    print(json.dumps({"decision": "deny", "reason": reason}))
-    sys.exit(1)
+    """Emit Codex's PreToolUse deny decision without failing the command hook."""
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }}))
+    sys.exit(0)
 
 
 try:

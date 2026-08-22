@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .codex/hooks/block-outside-worktree.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/block-outside-worktree.sh\"",
             "statusMessage": "Checking write path is inside the worktree"
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .codex/hooks/enforce-snapshot-sim.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/enforce-snapshot-sim.sh\"",
             "statusMessage": "Checking iOS sim destination matches the pinned CI trio"
           }
         ]

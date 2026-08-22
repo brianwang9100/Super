@@ -26,8 +26,12 @@ def deny(path, root):
         "in a worktree; rewrite the path under the worktree root before editing. "
         "See AGENTS.md \"Worktree discipline\". Blocked: " + path
     )
-    print(json.dumps({"decision": "deny", "reason": reason}))
-    sys.exit(1)
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }}))
+    sys.exit(0)
 
 
 try:

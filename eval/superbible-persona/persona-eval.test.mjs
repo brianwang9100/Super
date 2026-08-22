@@ -74,6 +74,24 @@ test('buildRunItems creates one item per model, case, and iteration', () => {
   assert.deepEqual(actual[7], { model: 'terra', caseId: 'b', iteration: 1 })
 })
 
+test('corpus rubrics use canonical bible.lookup actions', async () => {
+  const corpusPath = path.resolve('eval/superbible-persona/corpus.json')
+  const corpus = JSON.parse(await readFile(corpusPath, 'utf8'))
+  const criteria = corpus.cases.flatMap((testCase) => [
+    ...testCase.rubric.must,
+    ...testCase.rubric.mustNot,
+  ])
+
+  assert.equal(
+    criteria.some((criterion) => /\bbible\.(search|read)\b/.test(criterion)),
+    false,
+    'rubrics must not name retired bible.search or bible.read tools',
+  )
+  for (const criterion of criteria.filter((value) => value.includes('bible.lookup'))) {
+    assert.match(criterion, /bible\.lookup.*action:\s*(search|read)/)
+  }
+})
+
 test('judge process errors are excluded from the denominator', async () => {
   let failedJudgeAttempts = 0
   const report = await runEvaluation(fixtureOptions, async (request) => {

@@ -425,8 +425,8 @@ jobs:
 agent/<agent-name>/<task-id>-<short-description>
 
 Examples:
-  agent/claude/SB-042-add-calendar-recurring-events
-  agent/codex/SB-108-fix-todo-sort-order
+  agent/codex/SB-042-add-calendar-recurring-events
+  agent/automation/SB-108-fix-todo-sort-order
   human/brandon/SB-015-redesign-home-layout
 ```
 
@@ -485,8 +485,8 @@ All of the following must pass (green) before the PR appears in the human's revi
 main ─────────────────────────────────────────────────────────▶
   │                          ▲           ▲           ▲
   │                          │ merge     │ merge     │ merge
-  ├── agent/claude/SB-042 ───┘           │           │
-  ├── agent/codex/SB-108 ───────────────┘           │
+  ├── agent/codex/SB-042 ─────┘           │           │
+  ├── agent/automation/SB-108 ────────────┘           │
   ├── human/brandon/SB-015 ────────────────────────┘
   ...
 ```

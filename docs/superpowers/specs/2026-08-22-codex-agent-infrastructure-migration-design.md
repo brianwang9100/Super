@@ -87,9 +87,8 @@ Once the Codex equivalents pass verification, the tracked Claude settings, hooks
 - Swift package build and test commands
 - `xcodebuild`, `xcrun simctl`, and `xcodegen`
 - read-only Git inspection
-- narrowly scoped Git staging and commits
 
-Rules do not broadly allow arbitrary shells, interpreters, destructive Git commands, or recursive deletion. Commands outside the safe list continue through the Codex sandbox and approval system.
+Automatic Git allowances are deliberately read-only: staging and commits remain in Codex's normal approval flow. Rules do not broadly allow arbitrary shells, interpreters, destructive Git commands, or recursive deletion. Commands outside the safe list continue through the Codex sandbox and approval system.
 
 ## 5. Hook behavior
 
