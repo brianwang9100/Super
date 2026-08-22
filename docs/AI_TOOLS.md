@@ -255,19 +255,18 @@ Based on the research above, here is the recommended AI toolchain for Super deve
 ┌─────────────────────────────────────────────────────────┐
 │                  AI Development Stack                    │
 │                                                         │
-│  ┌─────────────────┐   ┌─────────────────────────────┐ │
-│              ┌──────────────────┐                        │
-│              │      Codex       │                        │
-│              │  (AI Agent Core) │                        │
-│              └────────┬─────────┘                        │
-│                       │                                  │
-│           ┌───────────┼───────────┐                      │
-│           ▼           ▼           ▼                      │
-│    ┌────────────┐ ┌────────┐ ┌──────────────────┐       │
-│    │ AGENTS.md  │ │.codex/ │ │ Apple-doc sources│       │
-│    │(canonical  │ │MCP/hooks│ │ (review before    │       │
-│    │  rules)    │ │/rules  │ │  adding an MCP)   │       │
-│    └────────────┘ └────────┘ └──────────────────┘       │
+│                 ┌──────────────────┐                    │
+│                 │      Codex       │                    │
+│                 │  (AI Agent Core) │                    │
+│                 └────────┬─────────┘                    │
+│                          │                              │
+│              ┌───────────┼───────────┐                  │
+│              ▼           ▼           ▼                  │
+│       ┌────────────┐ ┌──────────┐ ┌──────────────────┐  │
+│       │ AGENTS.md  │ │ .codex/  │ │ Apple-doc sources│  │
+│       │ (canonical │ │ MCP/hooks│ │ (review before   │  │
+│       │   rules)   │ │  /rules  │ │  adding an MCP)  │  │
+│       └────────────┘ └──────────┘ └──────────────────┘  │
 │                                                         │
 │  ╳ Context7 — NOT RECOMMENDED (security concerns)       │
 └─────────────────────────────────────────────────────────┘
