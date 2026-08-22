@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Codex PreToolUse guard that keeps edits inside the active git worktree.
+# Paths are lexically normalized (`..` collapsed) before comparison, without
+# touching the filesystem. Parse or detection failures deliberately fail open
+# so this guard remains a worktree-safety backstop rather than a hard wedge.
 
 input=$(cat)
 
@@ -53,6 +56,7 @@ if not root:
 if tool_name == "apply_patch":
     command = tool_input.get("command") or ""
     paths = re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", command, re.MULTILINE)
+    paths += re.findall(r"^\*\*\* Move to: (.+)$", command, re.MULTILINE)
 else:
     path = tool_input.get("file_path") or ""
     paths = [path] if path else []

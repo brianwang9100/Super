@@ -39,6 +39,12 @@ assert_denied "outside the active worktree"
 run_hook "$worktree_hook" '{"tool_name":"apply_patch","cwd":"'"$repo"'","tool_input":{"command":"*** Begin Patch\n*** Update File: ../escape.txt\n*** End Patch"}}'
 assert_denied "outside the active worktree"
 
+run_hook "$worktree_hook" '{"tool_name":"apply_patch","cwd":"'"$repo"'","tool_input":{"command":"*** Begin Patch\n*** Update File: AGENTS.md\n*** Move to: docs/AGENTS-moved.md\n*** End Patch"}}'
+assert_allowed
+
+run_hook "$worktree_hook" '{"tool_name":"apply_patch","cwd":"'"$repo"'","tool_input":{"command":"*** Begin Patch\n*** Update File: AGENTS.md\n*** Move to: /tmp/escape.txt\n*** End Patch"}}'
+assert_denied "outside the active worktree"
+
 run_hook "$worktree_hook" '{"tool_name":"apply_patch","cwd":"'"$repo"'","tool_input":{"command":"*** Begin Patch\n*** Add File: '"$repo"'/in-tree.txt\n*** Update File: AGENTS.md\n*** Delete File: docs/obsolete.md\n*** End Patch"}}'
 assert_allowed
 
