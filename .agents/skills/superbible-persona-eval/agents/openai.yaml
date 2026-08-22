@@ -1,0 +1,4 @@
+interface:
+  display_name: "SuperBible Persona Eval"
+  short_description: "Validate the SuperBible chat persona across Codex models"
+  default_prompt: "Use $superbible-persona-eval to run or interpret the SuperBible persona evaluation."
