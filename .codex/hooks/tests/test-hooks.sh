@@ -18,8 +18,8 @@ run_hook() {
 }
 
 assert_allowed() {
-  if [ "$status" -ne 0 ]; then
-    printf 'FAIL: expected allowed event (status %s): %s\n' "$status" "$output"
+  if [ "$status" -ne 0 ] || [ -n "$output" ]; then
+    printf 'FAIL: expected allowed event with no output (status %s): %s\n' "$status" "$output"
     failures=$((failures + 1))
   fi
 }
