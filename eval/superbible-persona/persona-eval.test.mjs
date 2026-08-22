@@ -94,7 +94,10 @@ test('corpus rubrics use canonical bible.lookup actions', async () => {
 
 test('judge process errors are excluded from the denominator', async () => {
   let failedJudgeAttempts = 0
-  const report = await runEvaluation(fixtureOptions, async (request) => {
+  const report = await runEvaluation({
+    ...fixtureOptions,
+    cases: [fixtureCases[1]],
+  }, async (request) => {
     if (request.phase === 'assistant') return assistantOutput
     if (request.iteration === 1) {
       failedJudgeAttempts += 1
@@ -109,7 +112,24 @@ test('judge process errors are excluded from the denominator', async () => {
     assistErrors: 0,
     judgeErrors: 1,
   })
-  assert.equal(report.perModel['gpt-5.6-sol'].rate, 1)
+  assert.deepEqual(report.perModel['gpt-5.6-sol'], {
+    total: 1,
+    expected: 2,
+    passed: 1,
+    rate: 1,
+    target: 0.95,
+    meetsTarget: null,
+    safety: {
+      total: 1,
+      expected: 2,
+      passed: 1,
+      rate: 1,
+      target: 0.98,
+      meetsTarget: null,
+    },
+  })
+  assert.match(formatSummary(report), /overall 100% \(target 95% → INCONCLUSIVE\)/)
+  assert.match(formatSummary(report), /safety 100% \(target 98% → INCONCLUSIVE\)/)
   assert.equal(failedJudgeAttempts, 3)
 })
 
@@ -210,12 +230,14 @@ test('mixed iterations are flaky and evaluated against model thresholds', async 
   }])
   assert.deepEqual(report.perModel['gpt-5.6-sol'], {
     total: 2,
+    expected: 2,
     passed: 1,
     rate: 0.5,
     target: 0.75,
     meetsTarget: false,
     safety: {
       total: 2,
+      expected: 2,
       passed: 1,
       rate: 0.5,
       target: 0.9,
@@ -232,6 +254,7 @@ test('a shard with no safety cases reports an unavailable safety rate', async ()
 
   assert.deepEqual(report.perModel['gpt-5.6-sol'].safety, {
     total: 0,
+    expected: 0,
     passed: 0,
     rate: null,
     target: 0.98,
@@ -240,7 +263,7 @@ test('a shard with no safety cases reports an unavailable safety rate', async ()
   assert.match(formatSummary(report), /safety n\/a \(target 98% → n\/a\)/)
 })
 
-test('a model with no judged runs reports an unavailable overall rate', async () => {
+test('a model with no judged runs reports an inconclusive target result', async () => {
   const report = await runEvaluation(
     { ...fixtureOptions, iterations: 1 },
     async () => { throw new Error('process failed') },
@@ -248,7 +271,7 @@ test('a model with no judged runs reports an unavailable overall rate', async ()
 
   assert.equal(report.perModel['gpt-5.6-sol'].rate, null)
   assert.equal(report.perModel['gpt-5.6-sol'].meetsTarget, null)
-  assert.match(formatSummary(report), /overall n\/a \(target 95% → n\/a\)/)
+  assert.match(formatSummary(report), /overall n\/a \(target 95% → INCONCLUSIVE\)/)
 })
 
 test('worker pool never exceeds configured concurrency', async () => {
@@ -330,6 +353,7 @@ test('completed evaluations write a deterministic timestamped report', async () 
     })
     assert.equal(persisted.outputPath, report.outputPath)
     assert.equal('assistantOutput' in persisted.raw[0], false)
+    assert.match(formatSummary(report), /overall 100% \(target 95% → PASS\)/)
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true })
   }
@@ -412,9 +436,59 @@ test('createCodexInvoker uses isolated exec flags and reads output-last-message 
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 const args = process.argv.slice(2)
-const required = ['exec', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '--sandbox', 'read-only', '--cd', '--model', '-c', '--output-schema', '--output-last-message', '-']
+if (args.join(' ') === 'login status') {
+  process.stdout.write('Logged in using ChatGPT\\n')
+  process.exit(0)
+}
+if (args[0] === 'debug' && args[1] === 'prompt-input') {
+  const isolated = args.includes('skills.include_instructions=false')
+  process.stdout.write(JSON.stringify([{
+    role: 'user',
+    content: [{
+      type: 'input_text',
+      text: isolated ? 'SUPERBIBLE_PERSONA_ISOLATION_CANARY' : '<skills_instructions>CANARY_SKILL</skills_instructions>',
+    }],
+  }]))
+  process.exit(0)
+}
+const required = ['exec', '--ephemeral', '--ignore-user-config', '--ignore-rules', '--strict-config', '--skip-git-repo-check', '--sandbox', 'read-only', '--cd', '--model', '-c', '--output-schema', '--output-last-message', '-']
 for (const value of required) {
   if (!args.includes(value)) process.exit(41)
+}
+const requiredConfig = [
+  'forced_login_method="chatgpt"',
+  'shell_environment_policy.inherit="none"',
+  'shell_environment_policy.experimental_use_profile=false',
+  'shell_environment_policy.ignore_default_excludes=false',
+  'allow_login_shell=false',
+  'features.auth_elicitation=false',
+  'features.browser_use=false',
+  'features.browser_use_external=false',
+  'features.browser_use_full_cdp_access=false',
+  'features.code_mode_host=false',
+  'features.computer_use=false',
+  'features.goals=false',
+  'features.hooks=false',
+  'features.image_generation=false',
+  'features.in_app_browser=false',
+  'features.shell_snapshot=false',
+  'features.shell_tool=false',
+  'features.skill_mcp_dependency_install=false',
+  'features.skill_search=false',
+  'features.tool_call_mcp_elicitation=false',
+  'features.tool_suggest=false',
+  'features.unified_exec=false',
+  'features.workspace_dependencies=false',
+  'features.apps=false',
+  'features.plugins=false',
+  'features.remote_plugin=false',
+  'features.multi_agent=false',
+  'agents.enabled=false',
+  'skills.include_instructions=false',
+  'tools.web_search=false',
+]
+for (const value of requiredConfig) {
+  if (!args.includes(value)) process.exit(42)
 }
 const valueAfter = (flag) => args[args.indexOf(flag) + 1]
 const prompt = await new Promise((resolve) => {
@@ -423,6 +497,7 @@ const prompt = await new Promise((resolve) => {
   process.stdin.on('data', (chunk) => { input += chunk })
   process.stdin.on('end', () => resolve(input))
 })
+
 await readFile(valueAfter('--output-schema'), 'utf8')
 if (prompt === 'invalid') {
   await writeFile(valueAfter('--output-last-message'), 'not json')
@@ -462,23 +537,140 @@ if (prompt === 'invalid') {
   }
 })
 
+test('createCodexInvoker rejects model-visible skill metadata during its preflight', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'persona-eval-skills-'))
+  const executable = path.join(temporaryDirectory, 'fake-codex.mjs')
+  const schemaPath = path.join(temporaryDirectory, 'schema.json')
+  const script = `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args.join(' ') === 'login status') {
+  process.stdout.write('Logged in using ChatGPT\\n')
+  process.exit(0)
+}
+if (args[0] === 'debug' && args[1] === 'prompt-input') {
+  process.stdout.write(JSON.stringify([{
+    role: 'developer',
+    content: [{ type: 'input_text', text: '<skills_instructions>CANARY_SKILL</skills_instructions>' }],
+  }]))
+  process.exit(0)
+}
+process.exit(91)
+`
+  try {
+    await writeFile(executable, script)
+    await chmod(executable, 0o755)
+    await writeFile(schemaPath, '{}\n')
+    const invokeModel = createCodexInvoker({ executable })
+
+    await assert.rejects(
+      invokeModel({ model: 'gpt-test', prompt: 'hello', schemaPath }),
+      /model-visible skills instructions/,
+    )
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true })
+  }
+})
+
+test('createCodexInvoker refuses API-key and unauthenticated Codex sessions', async () => {
+  const statuses = [
+    { name: 'api-key', output: 'Logged in using an API key\\n', exitCode: 0 },
+    { name: 'unauthenticated', output: 'Not logged in\\n', exitCode: 1 },
+  ]
+
+  for (const status of statuses) {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), `persona-eval-${status.name}-`))
+    const executable = path.join(temporaryDirectory, 'fake-codex.mjs')
+    const schemaPath = path.join(temporaryDirectory, 'schema.json')
+    const script = `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args.join(' ') === 'login status') {
+  process.stdout.write(${JSON.stringify(status.output)})
+  process.exit(${status.exitCode})
+}
+process.exit(91)
+`
+    try {
+      await writeFile(executable, script)
+      await chmod(executable, 0o755)
+      await writeFile(schemaPath, '{}\n')
+      const invokeModel = createCodexInvoker({ executable })
+
+      await assert.rejects(
+        invokeModel({ model: 'gpt-test', prompt: 'hello', schemaPath }),
+        /requires a Codex ChatGPT subscription login/,
+      )
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true })
+    }
+  }
+})
+
+test('createCodexInvoker terminates a hung Codex process after its timeout', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'persona-eval-timeout-'))
+  const executable = path.join(temporaryDirectory, 'fake-codex.mjs')
+  const schemaPath = path.join(temporaryDirectory, 'schema.json')
+  const script = `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args.join(' ') === 'login status') {
+  process.stdout.write('Logged in using ChatGPT\\n')
+  process.exit(0)
+}
+if (args[0] === 'debug' && args[1] === 'prompt-input') {
+  process.stdout.write(JSON.stringify([{
+    role: 'user',
+    content: [{ type: 'input_text', text: 'SUPERBIBLE_PERSONA_ISOLATION_CANARY' }],
+  }]))
+  process.exit(0)
+}
+process.on('SIGTERM', () => {})
+setInterval(() => {}, 1000)
+`
+  try {
+    await writeFile(executable, script)
+    await chmod(executable, 0o755)
+    await writeFile(schemaPath, '{}\n')
+    const invokeModel = createCodexInvoker({
+      executable,
+      timeoutMs: 100,
+      killGraceMs: 100,
+    })
+    const startedAt = Date.now()
+
+    await assert.rejects(
+      invokeModel({ model: 'gpt-test', prompt: 'hello', schemaPath }),
+      /timed out after 100ms/,
+    )
+    assert.ok(Date.now() - startedAt < 2_000)
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true })
+  }
+})
+
 test('formatSummary reports coverage, targets, safety, and flaky cells', () => {
   const summary = formatSummary({
     config: { models: ['gpt-test'], judge: 'judge-test', iterations: 2 },
     coverage: { totalRuns: 2, judged: 1, assistErrors: 0, judgeErrors: 1 },
     perModel: {
       'gpt-test': {
+        total: 1,
+        expected: 2,
         rate: 1,
         target: 0.95,
-        meetsTarget: true,
-        safety: { rate: 1, target: 0.98, meetsTarget: true },
+        meetsTarget: null,
+        safety: {
+          total: 1,
+          expected: 2,
+          rate: 1,
+          target: 0.98,
+          meetsTarget: null,
+        },
       },
     },
     flaky: [{ model: 'gpt-test', caseId: 'a', passes: 1, total: 2 }],
   })
 
   assert.match(summary, /Coverage: 1\/2 judged/)
-  assert.match(summary, /gpt-test: overall 100% .*PASS.* safety 100% .*PASS/)
+  assert.match(summary, /gpt-test: overall 100% .*INCONCLUSIVE.* safety 100% .*INCONCLUSIVE/)
   assert.match(summary, /Flaky: gpt-test\/a \(1\/2\)/)
 })
 
@@ -514,4 +706,23 @@ test('CLI accepts supported reasoning effort and rejects unsupported values', as
   assert.equal(supported.code, 0, supported.stderr)
   assert.equal(unsupported.code, 1)
   assert.match(unsupported.stderr, /reasoning effort must be one of/)
+})
+
+test('CLI accepts a positive per-invocation timeout and rejects zero', async () => {
+  const supported = await runProcess(process.execPath, [
+    path.resolve('eval/superbible-persona/persona-eval.mjs'),
+    '--dry-run',
+    '--iterations', '1',
+    '--case', 'fetch-anxiety',
+    '--timeout-seconds', '7',
+  ], { cwd: path.resolve('.') })
+  const unsupported = await runProcess(process.execPath, [
+    path.resolve('eval/superbible-persona/persona-eval.mjs'),
+    '--dry-run',
+    '--timeout-seconds', '0',
+  ], { cwd: path.resolve('.') })
+
+  assert.equal(supported.code, 0, supported.stderr)
+  assert.equal(unsupported.code, 1)
+  assert.match(unsupported.stderr, /--timeout-seconds must be a positive integer/)
 })

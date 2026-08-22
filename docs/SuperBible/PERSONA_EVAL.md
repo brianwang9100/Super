@@ -29,12 +29,13 @@ Every test input maps to exactly one expected category:
 
 ## Eval harness
 
-Real-LLM scoring cannot live in the Swift test suite (`Chat/AGENTS.md` requires fake providers for deterministic tests). The checked-in Codex evaluator instead launches isolated, read-only `codex exec` processes through the developer's existing Codex login; it does not use or request an API key.
+Real-LLM scoring cannot live in the Swift test suite (`Chat/AGENTS.md` requires fake providers for deterministic tests). The checked-in Codex evaluator instead launches isolated, read-only `codex exec` processes through the developer's existing Codex login. Before any real run, it verifies that `codex login status` reports a ChatGPT subscription login and refuses API-key or logged-out sessions; it does not use or request an API key.
 
 - **Corpus:** [`../../eval/superbible-persona/corpus.json`](../../eval/superbible-persona/corpus.json) — 30 cases across the 6 categories (≈5 each; the jailbroken verdict-demand case is grouped under `DEFER_CONTESTED` so a coerced verdict counts against the safety bar, making it 6 defer / 4 out-of-scope), each `input → expectedCategory + {must, mustNot}` rubric.
 - **Runner:** [`../../eval/superbible-persona/persona-eval.mjs`](../../eval/superbible-persona/persona-eval.mjs), surfaced through `$superbible-persona-eval`.
 - **Roles:** an assistant model declares its tool calls and drafts its reply; a fixed judge model grades it against the rubric. Defaults are `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` for assistants, with `gpt-5.6-sol` as judge.
 - **Harness limitation:** tools do not execute, so the assistant declares tool-call *intent* and drafts text. The judge grades the **decision + draft** (correct routing, correct boundary, required disclaimers/encouragements, no fabrication) — not the presence of real fetched verse text.
+- **Process isolation:** each invocation runs in a fresh temporary directory with user config and exec-policy rules ignored and an empty inherited shell environment. Login shells and every irrelevant tool surface are disabled, including shell/exec, web search, Apps/connectors, plugins, browser/computer use, skills, image generation, workspace dependencies, hooks, and subagents. Automatic skill instructions are also disabled. Before the first model call, a no-usage `codex debug prompt-input` preflight inspects the actual model-visible prompt and fails closed if skill, App, plugin, or multi-agent instruction blocks remain; strict config validation likewise rejects unsupported isolation settings.
 
 ### How to run
 
@@ -44,7 +45,7 @@ Use `$superbible-persona-eval` and choose the smallest requested scope. The runn
 node eval/superbible-persona/persona-eval.mjs --dry-run --model gpt-5.6-sol --iterations 1 --case fetch-anxiety
 ```
 
-Dry runs launch no Codex process and write no report. Before a real shard, state and pass the models, cases, iterations, concurrency, judge, and reasoning effort explicitly. Before a full default matrix, state its scope and obtain explicit confirmation; do not infer confirmation. A real run prints the timestamped report path under `eval/superbible-persona/results/`.
+Dry runs launch no Codex process and write no report. Before a real shard, state and pass the models, cases, iterations, concurrency, judge, and reasoning effort explicitly. Before a full default matrix, state its scope and obtain explicit confirmation; do not infer confirmation. A real run prints the timestamped report path under `eval/superbible-persona/results/`. Each assistant or judge invocation has a 600-second default timeout; override it with a positive `--timeout-seconds N`. A timed-out process receives `SIGTERM`, then `SIGKILL` after a five-second grace period, and follows the normal retry policy.
 
 ### Resilience & the throttling caveat
 
@@ -52,7 +53,7 @@ The judge is pinned to one selected model for grading consistency. If an assista
 
 - Each run record carries **`judged`** separately from **`pass`**. A dead judge is recorded as `judgeError`, **never** silently counted as a failure.
 - Two retry rounds re-run process failures after the main pool drains, reusing a successful assistant draft when only judgment failed.
-- Rates are computed **over judged runs only**, and the report's **`coverage`** block reports `{ totalRuns, judged, assistErrors, judgeErrors }`. **Always read `coverage` first** — incomplete coverage or an unavailable rate is inconclusive, not a pass or failure.
+- Rates are computed **over judged runs only**, and the report's **`coverage`** block reports `{ totalRuns, judged, assistErrors, judgeErrors }`. Per-model overall and safety blocks also report their judged **`total`** and planned **`expected`** counts. **Always read `coverage` first** — incomplete coverage is labeled `INCONCLUSIVE`, never `PASS` or `MISS`, even when the judged-only rate exceeds its target.
 
 If capacity is constrained, wait and retry later, or run an explicitly scoped shard with a selected assistant model and judge. Note any judge change with the resulting report.
 
