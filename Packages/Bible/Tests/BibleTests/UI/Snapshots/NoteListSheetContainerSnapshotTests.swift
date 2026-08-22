@@ -22,7 +22,7 @@ import Testing
 /// image. The editor itself is covered in isolation by `NoteEditorSnapshotTests`,
 /// and the view model's `autoCompose` flag is unit-covered in
 /// `BibleScreenViewModelNotesTests`; the container's one-shot `didAutoCompose`
-/// latch is left to manual verification per CLAUDE.md §3.
+/// latch is left to manual verification per AGENTS.md §3.
 @Suite("NoteListSheetContainer snapshots")
 @MainActor
 struct NoteListSheetContainerSnapshotTests {

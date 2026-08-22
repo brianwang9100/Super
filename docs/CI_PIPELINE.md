@@ -35,7 +35,7 @@ Rationale (full details in the fork spec §5):
 
 ## 1. Goals & Philosophy
 
-Super is built by AI agents. Multiple agents (Claude Code, Codex, etc.) pick up tasks, implement them on feature branches, write tests, and submit pull requests — all without human intervention. The CI pipeline is the **quality gate that makes this safe.**
+Super is built by AI agents. Codex and other approved agents pick up tasks, implement them on feature branches, write tests, and submit pull requests — all without human intervention. The CI pipeline is the **quality gate that makes this safe.**
 
 | Principle | What it means |
 |-----------|---------------|
@@ -276,7 +276,7 @@ jobs:
 GitHub-hosted macOS runners (`macos-26`) come with multiple Xcode versions and iOS simulator runtimes preinstalled. Key considerations:
 
 - **Pin the Xcode version literally** (`xcode-version: "26.4.1"` via `maxim-lobanov/setup-xcode@v1`), not `latest-stable`, to prevent SwiftUI snapshot drift between agent PRs and across runner image refreshes.
-- **Pin the exact runtime build, not just the minor.** The snapshot legs run on iOS **26.4.1 (build `23E254a`)** — the build `macos-26` bundles with the pinned Xcode 26.4.1. `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4" but render differently, and a `-destination` can only name the minor (`OS=26.4`), so the **"Pick iOS simulator"** step asserts `buildversion == 23E254a` and fails loud if a runner image ever swaps the bundled build (or installs both). No extra runtime download — the preinstalled build is verified in place, which is also enforced locally by `.claude/hooks/enforce-snapshot-sim.py`.
+- **Pin the exact runtime build, not just the minor.** The snapshot legs run on iOS **26.4.1 (build `23E254a`)** — the build `macos-26` bundles with the pinned Xcode 26.4.1. `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4" but render differently, and a `-destination` can only name the minor (`OS=26.4`), so the **"Pick iOS simulator"** step asserts `buildversion == 23E254a` and fails loud if a runner image ever swaps the bundled build (or installs both). No extra runtime download — the preinstalled build is verified in place, which is also enforced locally by `.codex/hooks/enforce-snapshot-sim.py`.
 - **Disable code signing** for CI builds (`CODE_SIGNING_ALLOWED=NO`). Signing only happens in the deployment pipeline.
 - **Use `xcbeautify`** for human-readable (and agent-readable) build output.
 
@@ -457,7 +457,7 @@ SB-042 — Implement recurring event support in the Calendar applet.
 - No cross-applet imports
 
 ## Agent
-Claude Code (claude-opus-4-6)
+Codex (record the model used when it is material to the change)
 EOF
 )"
 ```

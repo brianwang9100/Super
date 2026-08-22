@@ -41,8 +41,6 @@ Carthage/Build/
 *.swp
 *~
 
-.claude/worktrees/
-
 # Superset workspace setup/teardown config — user-specific, not for the OSS repo
 .superset/
 
@@ -66,4 +64,3 @@ eval/superbible-persona/results/*.json
 *.crt
 *.mobileprovision
 *.provisionprofile
-.claude/scheduled_tasks.lock

@@ -218,42 +218,38 @@ The `TEST_RUNNER_` prefix is required — `xcodebuild` only forwards env vars wi
 - **Core package changes:** All applets that depend on `Core/` will rebuild automatically.
 - **Adding a new applet:** See the plugin contract in [DESIGN.md](DESIGN.md) Section 6.
 
-## 8.5 MCP tooling (agent build/run)
+## 8.5 Codex tooling (agent build/run)
 
-Agent-driven builds, simulator runs, and UI smoke tests on this project rely on two MCP servers wired in `.mcp.json` at the repo root. Configuration is checked in so every contributor (and every agent session) picks them up automatically — no per-machine setup beyond `npx` (Node 22+).
+Codex project tooling is checked in under `.codex/`; Node 22+ supplies the `npx` runtime for its two pinned stdio MCP servers. The configuration does not pin a development model.
 
-| Server | Package | What it does |
-|--------|---------|--------------|
-| `xcodebuild` | `xcodebuildmcp` | Drives `xcodebuild` (build, test, run on simulator), boots and installs to simulators, tails `os_log`. The primary way agents validate that the app compiles and runs. |
-| `ios-simulator` | `ios-simulator-mcp` | Automates UI interaction on the iOS simulator (taps, gestures, screenshots, accessibility tree inspection). Used by agents to smoke-test UI changes and capture screenshots for PR descriptions. |
+| Surface | Purpose |
+|---------|---------|
+| `.codex/config.toml` | Enables project hooks and configures `xcodebuildmcp@2.7.0` plus `ios-simulator-mcp@2.1.0`. |
+| `.codex/hooks.json` and `.codex/hooks/` | Enforce in-worktree editing and the CI-pinned simulator/Xcode trio. |
+| `.codex/rules/default.rules` | Auto-allows only documented safe build/test, simulator-inspection, and read-only Git prefixes; all other commands use the normal Codex sandbox and approval flow. |
+| `AGENTS.md` | Canonical repository and module instructions. Every adjacent `CLAUDE.md` is a compatibility symlink to its `AGENTS.md`; never edit an alias directly. |
 
-`.mcp.json` (already at the repo root):
+Check that Codex loaded the project MCP declarations:
 
-```json
-{
-  "mcpServers": {
-    "xcodebuild":   { "command": "npx", "args": ["-y", "xcodebuildmcp@latest"] },
-    "ios-simulator":{ "command": "npx", "args": ["-y", "ios-simulator-mcp@latest"] }
-  }
-}
+```bash
+codex mcp list --json
 ```
 
-The plan originally referenced an "Axiom MCP" for iOS-simulator UI automation — `ios-simulator-mcp` (`joshuayoes/ios-simulator-mcp`) is the actual published package that fits that role and is what we wire here. Update this section if a better-fit server lands later.
+The output also includes user-level servers; verify the named `xcodebuild` and `ios-simulator` entries rather than expecting a two-server-only list. MCPs accelerate build, simulator, and UI smoke work, but ordinary `xcodebuild` and carefully scoped `xcrun simctl` commands remain valid fallbacks when an MCP is unavailable.
 
-### Smoke checks
+### Persona evaluation
 
-Once the agent harness picks up `.mcp.json`:
+Use the repository skill `$superbible-persona-eval` to run, shard, interpret, or refresh the SuperBible persona evaluation. It invokes `eval/superbible-persona/persona-eval.mjs` with the existing Codex login—never an API key. Begin with the usage-free smoke check:
 
-- `mcp__xcodebuild__list_schemes` (or equivalent in your harness) should return at least the `Super` scheme.
-- `mcp__ios-simulator__list_simulators` should return the iPhone simulator family.
+```bash
+node eval/superbible-persona/persona-eval.mjs --dry-run --model gpt-5.6-sol --iterations 1 --case fetch-anxiety
+```
 
-### Per-agent permission allowlist
+`--dry-run` launches no Codex process and writes no report. For real work, state the selected model, case, iteration, concurrency, judge, and reasoning-effort scope first; request explicit confirmation before accepting the default full matrix. Real runs print a timestamped JSON report under `eval/superbible-persona/results/`. Read coverage before rates: unjudged records and assistant/judge errors make a result inconclusive rather than a pass or failure.
 
-`.claude/settings.json` (also at the repo root, project-shared and checked in) grants Claude permission to call these MCP tools and a small set of safe Bash commands (`swift test`, `xcodebuild`, `xcrun simctl`, `git status/diff/log/add/commit`) without an interactive prompt. Per-developer overrides should go in `.claude/settings.local.json`, which is excluded from version control by convention.
+### Pull-request review
 
-### Fallback to plain Bash
-
-Every MCP action has a plain-`bash` equivalent — `xcodebuild -scheme Super -destination ...`, `xcrun simctl boot ...`, `xcrun simctl install ...`. The MCPs are an accelerator, not a blocker. If an MCP is unavailable, agents fall back to bash and the build/test loop continues.
+Codex cloud provides native pull-request review. Connect the repository, enable automatic review, and request an additional pass with `@codex review`; see [`CI_PIPELINE.md`](CI_PIPELINE.md#63-native-codex-pull-request-review). The root and nearest module `AGENTS.md` files define the review criteria.
 
 ## 9. Troubleshooting
 
