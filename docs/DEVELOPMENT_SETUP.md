@@ -226,7 +226,7 @@ Codex project tooling is checked in under `.codex/`; Node 22+ supplies the `npx`
 |---------|---------|
 | `.codex/config.toml` | Enables project hooks and configures `xcodebuildmcp@2.7.0` plus `ios-simulator-mcp@2.1.0`. |
 | `.codex/hooks.json` and `.codex/hooks/` | Enforce in-worktree editing and the CI-pinned simulator/Xcode trio. |
-| `.codex/rules/default.rules` | Auto-allows only documented safe build/test, simulator-inspection, and read-only Git prefixes; all other commands use the normal Codex sandbox and approval flow. |
+| `.codex/rules/default.rules` | Auto-allows only documented safe build/test, simulator-inspection, and Git-status prefixes; all other commands use the normal Codex sandbox and approval flow. |
 | `AGENTS.md` | Canonical repository and module instructions. Every adjacent `CLAUDE.md` is a compatibility symlink to its `AGENTS.md`; never edit an alias directly. |
 
 Check that Codex loaded the project MCP declarations:

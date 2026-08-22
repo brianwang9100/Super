@@ -35,7 +35,7 @@
 - Reference: `.claude/hooks/enforce-snapshot-sim.py`
 
 **Interfaces:**
-- Consumes: Codex `PreToolUse` JSON on standard input with `tool_name`, `tool_input.command`, and `cwd`.
+- Consumes: Codex `PreToolUse` JSON on standard input with `tool_name`, `tool_input.cmd`, and `cwd` (`tool_input.command` remains a compatibility fallback).
 - Produces: exit 0 for allowed operations; JSON `{ "decision": "deny", "reason": "..." }` and nonzero exit for denied operations.
 
 - [ ] **Step 1: Write failing behavior tests**

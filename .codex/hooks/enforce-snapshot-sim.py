@@ -59,7 +59,8 @@ def deny(reason):
 
 try:
     payload = json.load(sys.stdin)
-    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    tool_input = payload.get("tool_input") or {}
+    cmd = tool_input.get("cmd") or tool_input.get("command") or ""
 except Exception:
     allow()
 

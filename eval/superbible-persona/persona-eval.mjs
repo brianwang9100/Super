@@ -192,6 +192,9 @@ function assertJudgeVerdict(output) {
       || typeof output.notes !== 'string') {
     throw new TypeError('judge process returned invalid structured output')
   }
+  if (output.pass === (output.failedCriteria.length > 0)) {
+    throw new TypeError('judge process returned a semantically contradictory verdict')
+  }
   return output
 }
 
@@ -290,7 +293,7 @@ function recordKey(record) {
 function rate(records) {
   if (records.length === 0) return null
   const passed = records.filter((record) => record.pass).length
-  return Math.round((passed / records.length) * 1000) / 1000
+  return passed / records.length
 }
 
 function aggregate(options, records, runItems) {

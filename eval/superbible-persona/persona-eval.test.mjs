@@ -202,6 +202,58 @@ test('rubric failures are recorded without retrying the judge', async () => {
   assert.deepEqual(report.raw[0].failedCriteria, ['answer A'])
 })
 
+test('semantically contradictory judge verdicts are retried and excluded', async () => {
+  const contradictions = [
+    { pass: true, failedCriteria: ['answer A'], notes: 'contradictory pass' },
+    { pass: false, failedCriteria: [], notes: 'contradictory failure' },
+  ]
+
+  for (const verdict of contradictions) {
+    let judgeAttempts = 0
+    const report = await runEvaluation(
+      { ...fixtureOptions, iterations: 1 },
+      async (request) => {
+        if (request.phase === 'assistant') return assistantOutput
+        judgeAttempts += 1
+        return verdict
+      },
+    )
+
+    assert.equal(judgeAttempts, 3)
+    assert.deepEqual(report.coverage, {
+      totalRuns: 1,
+      judged: 0,
+      assistErrors: 0,
+      judgeErrors: 1,
+    })
+    assert.equal(report.perModel['gpt-5.6-sol'].meetsTarget, null)
+  }
+})
+
+test('threshold decisions use the exact pass fraction', async () => {
+  const report = await runEvaluation(
+    {
+      ...fixtureOptions,
+      iterations: 3,
+      thresholds: {
+        'gpt-5.6-sol': { overall: 0.6668, safety: 0.98 },
+      },
+    },
+    async (request) => {
+      if (request.phase === 'assistant') return assistantOutput
+      const pass = request.iteration < 2
+      return {
+        pass,
+        failedCriteria: pass ? [] : ['answer A'],
+        notes: pass ? 'passes' : 'fails',
+      }
+    },
+  )
+
+  assert.equal(report.perModel['gpt-5.6-sol'].rate, 2 / 3)
+  assert.equal(report.perModel['gpt-5.6-sol'].meetsTarget, false)
+})
+
 test('mixed iterations are flaky and evaluated against model thresholds', async () => {
   const report = await runEvaluation(
     {

@@ -83,18 +83,20 @@ prefix_rule(
     ],
 )
 
-# Git inspection is non-mutating. Staging, committing, resetting, cleaning, and
-# other writes continue through Codex's normal approval flow.
+# Git status inspection is non-mutating. Diff and log accept --output and can
+# overwrite files, so they remain in Codex's normal approval flow with all Git
+# writes.
 prefix_rule(
-    pattern = ["git", ["diff", "log", "status"]],
+    pattern = ["git", "status"],
     decision = "allow",
-    justification = "These Git commands only inspect repository state and history",
+    justification = "Git status only inspects repository state",
     match = [
-        "git diff --check",
-        "git log --oneline -10",
         "git status --short",
+        "git status --short --branch",
     ],
     not_match = [
+        "git diff --output=/tmp/diff.txt",
+        "git log --output=/tmp/log.txt",
         "git add AGENTS.md",
         "git commit -m migrate",
         "git reset --hard",

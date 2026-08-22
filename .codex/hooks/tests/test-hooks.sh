@@ -88,10 +88,10 @@ assert_allowed
 run_hook "$worktree_hook" '{"tool_name":"Edit","cwd":"'"$repo"'","tool_input":{"file_path":"/tmp/compatibility-escape.txt"}}'
 assert_denied "outside the active worktree"
 
-run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"command":"xcodebuild build -destination \"generic/platform=iOS Simulator\""}}'
+run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild build -destination \"generic/platform=iOS Simulator\""}}'
 assert_allowed
 
-run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"command":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
+run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
 assert_denied "pinned simulator"
 
 # Codex runs registered hooks from the session cwd. Exercise both configured
@@ -102,10 +102,10 @@ assert_allowed
 run_registered_hook "apply_patch|Edit|Write" '{"tool_name":"apply_patch","cwd":"'"$repo"'","tool_input":{"command":"*** Begin Patch\n*** Add File: /tmp/registered-escape.txt\n*** End Patch"}}'
 assert_denied "outside the active worktree"
 
-run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"command":"xcodebuild build -destination \"generic/platform=iOS Simulator\""}}'
+run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild build -destination \"generic/platform=iOS Simulator\""}}'
 assert_allowed
 
-run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"command":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
+run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
 assert_denied "pinned simulator"
 
 if [ "$failures" -gt 0 ]; then
