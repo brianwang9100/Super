@@ -51,6 +51,9 @@ Carthage/Build/
 *.profdata
 coverage/
 
+# Generated SuperBible persona-evaluation reports
+eval/superbible-persona/results/*.json
+
 # Secrets / credentials — defense-in-depth, none of these are tracked today
 .env
 .env.*

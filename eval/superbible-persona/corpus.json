@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "purpose": "Behavioral eval corpus for the SuperBible chat persona. Each case maps a user input to one expected response category and a must/mustNot rubric. Consumed by .claude/workflows/superbible-persona-eval.js.",
+    "purpose": "Behavioral eval corpus for the SuperBible chat persona. Each case maps a user input to one expected response category and a must/mustNot rubric. Consumed by eval/superbible-persona/persona-eval.mjs.",
     "categories": [
       "VERSE_FETCH",
       "CONTEXT_EXPLAIN",
