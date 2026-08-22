@@ -8,8 +8,9 @@
 > - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-26` runner pinned to Xcode 26.4.1, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
 > - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-26` runner pinned to Xcode 26.4.1, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`. The `ios-test` job runs Chat snapshot + unit tests on an iPhone simulator at iOS 26.4.
 > - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-26` runner pinned to Xcode 26.4.1 (iOS 26.4 SDK), archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
+> - Native Codex GitHub review — connect the repository in Codex cloud, enable automatic reviews, or request one on a PR with `@codex review`. Review criteria are defined in the root [`AGENTS.md`](../AGENTS.md).
 >
-> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
+> Everything else in this doc — server CI, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
 
 ### Two-target app build matrix (planned, SB-M0)
 
@@ -461,74 +462,20 @@ EOF
 )"
 ```
 
-### 6.3 AI Reviewer Agent
+### 6.3 Native Codex Pull-Request Review
 
-A separate GitHub Actions workflow triggers when a PR is opened or updated. It invokes an AI model to review the code.
+Connect this repository to Codex cloud and enable automatic reviews in the Codex GitHub integration. Codex then reviews eligible pull requests automatically; a contributor can also request a fresh review by commenting `@codex review` on the pull request. The root [`AGENTS.md`](../AGENTS.md) supplies the canonical review criteria, and nested module instructions add file-specific requirements.
 
-```yaml
-# .github/workflows/ai-review.yml
-name: AI Code Review
+Codex findings appear as normal GitHub pull-request review comments, inline when a precise location is available and otherwise as a review summary. They are review feedback, not a GitHub Actions workflow or required status check: respond to or resolve actionable findings through the usual GitHub review flow, and retain the required human approval before merge.
 
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-
-jobs:
-  ai-review:
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Get PR diff
-        id: diff
-        run: |
-          gh pr diff ${{ github.event.pull_request.number }} > /tmp/pr.diff
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: AI Review
-        run: |
-          # Call the AI reviewer (Claude, Codex, or custom agent)
-          # The reviewer receives:
-          #   1. The full PR diff
-          #   2. Relevant architecture docs (MOBILE_ARCHITECTURE.md, SERVER_ARCHITECTURE.md, DESIGN.md)
-          #   3. The PR description
-          #
-          # It posts review comments via the GitHub API.
-          python scripts/ai_review.py \
-            --diff /tmp/pr.diff \
-            --pr-number ${{ github.event.pull_request.number }} \
-            --repo ${{ github.repository }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### 6.4 What the AI Reviewer Checks
-
-| Category | What it looks for |
-|----------|-------------------|
-| **Architecture compliance** | No cross-applet imports. Applets depend only on Core. No violations of the dependency graph. |
-| **Code quality** | Naming conventions, code clarity, unnecessary complexity, duplicated logic. |
-| **Test coverage** | Are new code paths covered by tests? Are edge cases tested? |
-| **Security** | Hardcoded secrets, SQL injection vectors, unsafe deserialization, exposed API keys. |
-| **Performance** | Main-thread blocking, unbounded queries, missing pagination, N+1 patterns. |
-| **Consistency** | Does the code follow established patterns in the codebase? |
-
-The reviewer posts its findings as **GitHub PR review comments** (inline on specific lines where possible, general comment otherwise). It does not approve or request changes — only the human does that.
-
-### 6.5 Required Status Checks Before Human Review
+### 6.4 Required Status Checks Before Human Review
 
 All of the following must pass (green) before the PR appears in the human's review queue:
 
 1. Client CI (if client code changed)
 2. Server CI (if server code changed)
 3. SwiftLint (if Swift code changed)
-4. AI Code Review (must complete, not necessarily "approve")
-5. Code coverage thresholds (via Codecov)
+4. Code coverage thresholds (via Codecov)
 
 ---
 
@@ -562,7 +509,6 @@ Required:
       - client-ci (if applicable)
       - server-ci (if applicable)
       - swiftlint (if applicable)
-      - ai-review
   ✓ Require branches to be up to date before merging
   ✓ Require linear history (squash merge or rebase)
 
@@ -733,16 +679,22 @@ Wired today for the TestFlight workflow:
 | `APP_STORE_CONNECT_KEY_ID` | The 10-char key ID Apple assigns. |
 | `APP_STORE_CONNECT_ISSUER_ID` | App Store Connect organization issuer UUID. |
 | `KEYCHAIN_PASSWORD` | Password used to lock the ephemeral build keychain. Any random string; rotateable independently of Apple state. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Used by the Claude PR-review workflow (unrelated to TestFlight). |
 
 Future / planned:
 
 | Secret | Purpose |
 |--------|---------|
-| `ANTHROPIC_API_KEY` | AI reviewer agent API access |
 | `FLY_API_TOKEN` | Server deployment (or equivalent for chosen host) |
 | `REGISTRY_URL` | Docker registry URL |
 | `CODECOV_TOKEN` | Coverage reporting |
+
+### 10.1.1 Retiring the former Claude review workflow
+
+After native Codex automatic review is confirmed on a test pull request, perform this repository-admin checklist outside the codebase:
+
+1. Remove the former AI-review status check from `main` branch protection, so a deleted workflow cannot block merges.
+2. Delete the `CLAUDE_CODE_OAUTH_TOKEN` repository secret from GitHub.
+3. Confirm no other branch-protection rule or reusable workflow still requires the removed review job.
 
 ### 10.2 Apple Code Signing in CI
 
@@ -837,10 +789,9 @@ Assuming 100 PRs/month (aggressive agent activity), average 4 pushes per PR:
 |-----------|------|-------------|--------|------|
 | Client CI (build + test) | 200 | 15 | macOS | ~$240 |
 | Server CI | 200 | 5 | Linux | ~$8 |
-| AI Review | 400 | 2 | Linux | ~$6.40 |
 | Deploy (server) | 30 | 3 | Linux | ~$0.72 |
 | Deploy (client) | 15 | 20 | macOS | ~$24 |
-| **Total** | | | | **~$280/month** |
+| **Total** | | | | **~$273/month** |
 
 This can be cut significantly with a self-hosted macOS runner (reduces macOS costs to electricity).
 
@@ -850,11 +801,9 @@ This can be cut significantly with a self-hosted macOS runner (reduces macOS cos
 
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|
-| 1 | Which AI model/service for the PR reviewer agent? | Affects review quality and cost | Claude is a natural choice given the project's use of Anthropic. Codex is another option. Could use both with different roles. |
-| 2 | Should the AI reviewer be able to request changes (blocking), or only comment (non-blocking)? | Workflow | Starting non-blocking is safer — avoids agents getting stuck in review loops. |
-| 3 | Self-hosted macOS runner from day one, or start with GitHub-hosted? | Cost vs. setup time | GitHub-hosted is zero-setup. Self-hosted saves money but requires maintenance. Recommend starting hosted, switch when costs justify. |
-| 4 | Fastlane for the full deployment pipeline, or raw `xcodebuild`? | Complexity | Fastlane adds Ruby dependency but simplifies certificate management, versioning, and TestFlight upload into a single `Fastfile`. |
-| 5 | How to handle database migrations in the deployment pipeline? | Server reliability | Need a strategy for running migrations before deploying the new server version. Separate migration job? Init container? |
-| 6 | Should agents be able to merge their own PRs after human approval, or does the human click merge? | Autonomy level | Human clicking merge is safer initially. Can automate later with auto-merge after approval. |
-| 7 | Integration test strategy for cross-applet event bus behavior? | Test coverage gap | Unit tests per applet cannot catch event bus integration issues. Need a dedicated integration test suite in the Shell target. |
-| 8 | How to handle Xcode version updates across all agents? | Consistency | Pin Xcode version in a `.xcode-version` file at the repo root. Agents and CI both read from it. |
+| 1 | Self-hosted macOS runner from day one, or start with GitHub-hosted? | Cost vs. setup time | GitHub-hosted is zero-setup. Self-hosted saves money but requires maintenance. Recommend starting hosted, switch when costs justify. |
+| 2 | Fastlane for the full deployment pipeline, or raw `xcodebuild`? | Complexity | Fastlane adds Ruby dependency but simplifies certificate management, versioning, and TestFlight upload into a single `Fastfile`. |
+| 3 | How to handle database migrations in the deployment pipeline? | Server reliability | Need a strategy for running migrations before deploying the new server version. Separate migration job? Init container? |
+| 4 | Should agents be able to merge their own PRs after human approval, or does the human click merge? | Autonomy level | Human clicking merge is safer initially. Can automate later with auto-merge after approval. |
+| 5 | Integration test strategy for cross-applet event bus behavior? | Test coverage gap | Unit tests per applet cannot catch event bus integration issues. Need a dedicated integration test suite in the Shell target. |
+| 6 | How to handle Xcode version updates across all agents? | Consistency | Pin Xcode version in a `.xcode-version` file at the repo root. Agents and CI both read from it. |

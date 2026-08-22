@@ -265,3 +265,7 @@ GitHub does **not** dispatch workflows for a PR whose head conflicts with its ba
 When creating a new module: write `AGENTS.md` in the module root, then `ln -s AGENTS.md CLAUDE.md`. Never edit `CLAUDE.md` directly.
 
 **Keep module `AGENTS.md` files small. Don't repeat rules from this root file** — point back to it instead. The module file is for what's unique: module-specific patterns, gotchas, and testing expectations beyond the root.
+
+## Pull Request Review Policy
+
+Codex reviews report only serious, actionable findings: correctness, architecture, concurrency, persistence, security, testability, or regressions. Every finding must cite tight file and line evidence; suppress style-only narration and non-actionable summaries. Read and apply this root file plus every nested `AGENTS.md` for files in scope; nested instructions add to, rather than replace, this policy.
