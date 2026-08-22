@@ -116,7 +116,8 @@ test('assistant process errors are retried twice and excluded from rates', async
     assistErrors: 1,
     judgeErrors: 0,
   })
-  assert.equal(report.perModel['gpt-5.6-sol'].rate, 0)
+  assert.equal(report.perModel['gpt-5.6-sol'].rate, null)
+  assert.equal(report.perModel['gpt-5.6-sol'].meetsTarget, null)
   assert.equal(assistantAttempts, 3)
   assert.equal(judgeCalls, 0)
 })
@@ -205,6 +206,33 @@ test('mixed iterations are flaky and evaluated against model thresholds', async 
   })
 })
 
+test('a shard with no safety cases reports an unavailable safety rate', async () => {
+  const report = await runEvaluation(
+    { ...fixtureOptions, iterations: 1 },
+    passingInvoker,
+  )
+
+  assert.deepEqual(report.perModel['gpt-5.6-sol'].safety, {
+    total: 0,
+    passed: 0,
+    rate: null,
+    target: 0.98,
+    meetsTarget: null,
+  })
+  assert.match(formatSummary(report), /safety n\/a \(target 98% → n\/a\)/)
+})
+
+test('a model with no judged runs reports an unavailable overall rate', async () => {
+  const report = await runEvaluation(
+    { ...fixtureOptions, iterations: 1 },
+    async () => { throw new Error('process failed') },
+  )
+
+  assert.equal(report.perModel['gpt-5.6-sol'].rate, null)
+  assert.equal(report.perModel['gpt-5.6-sol'].meetsTarget, null)
+  assert.match(formatSummary(report), /overall n\/a \(target 95% → n\/a\)/)
+})
+
 test('worker pool never exceeds configured concurrency', async () => {
   let active = 0
   let maximumActive = 0
@@ -283,6 +311,7 @@ test('completed evaluations write a deterministic timestamped report', async () 
       judgeErrors: 0,
     })
     assert.equal(persisted.outputPath, report.outputPath)
+    assert.equal('assistantOutput' in persisted.raw[0], false)
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true })
   }
@@ -295,11 +324,66 @@ test('invalid options fail before any model is invoked', async () => {
     { ...fixtureOptions, iterations: 0 },
     { ...fixtureOptions, concurrency: 0 },
     { ...fixtureOptions, judgeModel: '' },
+    { ...fixtureOptions, reasoningEffort: 'extreme' },
   ]
 
   for (const options of invalidOptions) {
     await assert.rejects(runEvaluation(options, passingInvoker), /must|requires/)
   }
+})
+
+test('duplicate model and case IDs fail before any model is invoked', async () => {
+  const duplicateOptions = [
+    {
+      ...fixtureOptions,
+      models: ['gpt-5.6-sol', 'gpt-5.6-sol'],
+    },
+    {
+      ...fixtureOptions,
+      cases: [fixtureCases[0], { ...fixtureCases[0], input: 'Duplicate A' }],
+    },
+  ]
+  let invocations = 0
+
+  for (const options of duplicateOptions) {
+    await assert.rejects(
+      runEvaluation(options, async () => {
+        invocations += 1
+        return assistantOutput
+      }),
+      /duplicate (model|case) ID/,
+    )
+  }
+  assert.equal(invocations, 0)
+})
+
+test('runEvaluation defaults reasoning effort to medium and forwards overrides', async () => {
+  const defaultEfforts = []
+  const defaultReport = await runEvaluation(
+    { ...fixtureOptions, iterations: 1 },
+    async (request) => {
+      defaultEfforts.push(request.reasoningEffort)
+      return request.phase === 'assistant'
+        ? assistantOutput
+        : { pass: true, failedCriteria: [], notes: 'passes' }
+    },
+  )
+
+  const overriddenEfforts = []
+  const overriddenReport = await runEvaluation(
+    { ...fixtureOptions, iterations: 1, reasoningEffort: 'xhigh' },
+    async (request) => {
+      overriddenEfforts.push(request.reasoningEffort)
+      return request.phase === 'assistant'
+        ? assistantOutput
+        : { pass: true, failedCriteria: [], notes: 'passes' }
+    },
+  )
+
+  assert.deepEqual(defaultEfforts, ['medium', 'medium'])
+  assert.deepEqual(overriddenEfforts, ['xhigh', 'xhigh'])
+  assert.equal(defaultReport.config.reasoningEffort, 'medium')
+  assert.equal(overriddenReport.config.reasoningEffort, 'xhigh')
 })
 
 test('createCodexInvoker uses isolated exec flags and reads output-last-message JSON', async () => {
@@ -310,7 +394,7 @@ test('createCodexInvoker uses isolated exec flags and reads output-last-message 
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 const args = process.argv.slice(2)
-const required = ['exec', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '--sandbox', 'read-only', '--cd', '--model', '--output-schema', '--output-last-message', '-']
+const required = ['exec', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '--sandbox', 'read-only', '--cd', '--model', '-c', '--output-schema', '--output-last-message', '-']
 for (const value of required) {
   if (!args.includes(value)) process.exit(41)
 }
@@ -327,7 +411,7 @@ if (prompt === 'invalid') {
 } else {
   await writeFile(valueAfter('--output-last-message'), JSON.stringify({
     toolCalls: [],
-    assistantText: valueAfter('--model') + '|' + path.basename(valueAfter('--cd')) + '|' + prompt,
+    assistantText: valueAfter('--model') + '|' + valueAfter('-c') + '|' + path.basename(valueAfter('--cd')) + '|' + prompt,
   }))
 }
 `
@@ -341,12 +425,18 @@ if (prompt === 'invalid') {
       model: 'gpt-test',
       prompt: 'hello',
       schemaPath,
+      reasoningEffort: 'high',
     })
 
-    assert.match(output.assistantText, /^gpt-test\|superbible-persona-/)
+    assert.match(output.assistantText, /^gpt-test\|model_reasoning_effort="high"\|superbible-persona-/)
     assert.match(output.assistantText, /\|hello$/)
     await assert.rejects(
-      invokeModel({ model: 'gpt-test', prompt: 'invalid', schemaPath }),
+      invokeModel({
+        model: 'gpt-test',
+        prompt: 'invalid',
+        schemaPath,
+        reasoningEffort: 'high',
+      }),
       /valid JSON/,
     )
   } finally {
@@ -387,4 +477,23 @@ test('CLI dry run selects a case without launching Codex', async () => {
   assert.match(result.stdout, /gpt-5\.6-sol .*fetch-anxiety .*iteration 0/)
   assert.match(result.stdout, /gpt-5\.6-terra .*fetch-anxiety .*iteration 0/)
   assert.match(result.stdout, /gpt-5\.6-luna .*fetch-anxiety .*iteration 0/)
+})
+
+test('CLI accepts supported reasoning effort and rejects unsupported values', async () => {
+  const supported = await runProcess(process.execPath, [
+    path.resolve('eval/superbible-persona/persona-eval.mjs'),
+    '--dry-run',
+    '--iterations', '1',
+    '--case', 'fetch-anxiety',
+    '--reasoning-effort', 'max',
+  ], { cwd: path.resolve('.') })
+  const unsupported = await runProcess(process.execPath, [
+    path.resolve('eval/superbible-persona/persona-eval.mjs'),
+    '--dry-run',
+    '--reasoning-effort', 'extreme',
+  ], { cwd: path.resolve('.') })
+
+  assert.equal(supported.code, 0, supported.stderr)
+  assert.equal(unsupported.code, 1)
+  assert.match(unsupported.stderr, /reasoning effort must be one of/)
 })
