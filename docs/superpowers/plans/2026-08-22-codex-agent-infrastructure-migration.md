@@ -130,7 +130,7 @@ Run: `node --test eval/superbible-persona/persona-eval.test.mjs`
 
 Expected: all evaluator tests pass.
 
-Run: `node eval/superbible-persona/persona-eval.mjs --dry-run --iterations 1 --case verse-fetch-topic-love`
+Run: `node eval/superbible-persona/persona-eval.mjs --dry-run --iterations 1 --case fetch-anxiety`
 
 Expected: prints the selected model/case matrix without launching Codex.
 
@@ -161,7 +161,7 @@ Give a fresh agent this repository and ask it to explain how it would run a one-
 Run the official skill initializer with repository-local placement and deterministic UI metadata:
 
 ```bash
-python3 /Users/bwang/.codex/skills/.system/skill-creator/scripts/init_skill.py superbible-persona-eval --path .agents/skills --interface display_name="SuperBible Persona Eval" --interface short_description="Validate the SuperBible chat persona across Codex models" --interface default_prompt="Use $superbible-persona-eval to run or interpret the SuperBible persona evaluation."
+python3 /Users/bwang/.codex/skills/.system/skill-creator/scripts/init_skill.py superbible-persona-eval --path .agents/skills --interface 'display_name=SuperBible Persona Eval' --interface 'short_description=Validate the SuperBible chat persona across Codex models' --interface 'default_prompt=Use $superbible-persona-eval to run or interpret the SuperBible persona evaluation.'
 ```
 
 - [ ] **Step 3: Write the minimal skill**
@@ -300,7 +300,7 @@ bash .codex/hooks/tests/test-hooks.sh
 node --test eval/superbible-persona/persona-eval.test.mjs
 node eval/superbible-persona/persona-eval.mjs --dry-run --iterations 1
 python3 /Users/bwang/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/superbible-persona-eval
-find . -name CLAUDE.md -type l -exec test -e {} \;
+while IFS= read -r link; do test -e "$link" || exit 1; done < <(find . -name CLAUDE.md -type l)
 git diff --check
 git status --short
 ```
