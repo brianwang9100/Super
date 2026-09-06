@@ -11,14 +11,15 @@
 | [Swift Tests](../.github/workflows/swift-test.yml) | Discovers Swift packages, runs package suites with coverage, and reports the aggregate `swift-test` check. |
 | [iOS Build](../.github/workflows/ios-build.yml) | Builds both `Super` and `SuperBible`, discovers package test schemes for simulator suites, and reports aggregate `build`/`ios-test` checks. |
 | [SwiftLint](../.github/workflows/swiftlint.yml) and [secret scanning](../.github/workflows/secrets-scan.yml) | Report `lint` and `gitleaks`. |
-| [TestFlight](../.github/workflows/testflight.yml) | Archives and uploads the selected app target through the release workflow. |
+| [TestFlight](../.github/workflows/testflight.yml) | Archives and uploads SuperOS only (`Super` scheme). SuperBible release support is not implemented. |
 | Native Codex review | Runs through the GitHub integration, separately from Actions; see [§6.3](#63-native-codex-pull-request-review). |
 
 Build/test workflows keep their aggregate checks reporting on documentation-only
 PRs while skipping expensive jobs when their change filters permit. Exact
 Xcode/runtime pins and local verification live in [TESTING.md](TESTING.md).
 
-Server CI/deployment and Codecov gating below remain roadmap material. Inspect
+The legacy client pipeline example in §4.1, server CI/deployment, and Codecov
+gating below remain roadmap material. Inspect
 live branch protection for the current required checks; [§6.4](#64-ci-and-review-gates)
 records the delivery check, not a replacement for repository settings.
 
@@ -58,7 +59,11 @@ Xcode Cloud's 25 free compute hours per month are appealing, but its inability t
 
 ## 4. Client Pipeline (iOS/macOS)
 
-### 4.1 Workflow Overview
+### 4.1 Workflow Overview (Unimplemented Legacy Proposal)
+
+This example is historical roadmap material: `client-ci.yml`, its toolchain,
+platform matrix, and UI-test scheme are not implemented. Use the workflow links
+in [Implemented pipeline](#implemented-pipeline) for current behavior.
 
 The client pipeline runs on every PR that touches files under `Packages/`, `Super/`, or `Super.xcodeproj/`.
 
@@ -387,8 +392,10 @@ check. Do not bypass or weaken repository protections to complete a PR.
 ## 7. Branch Strategy
 
 `main` receives reviewed PRs through the [delivery workflow](../AGENTS.md#delivery-workflow).
-Use feature branches for implementation. Preserve merged local branches and
-worktrees; GitHub may delete the remote branch automatically. Inspect live
+Use feature branches for implementation. After verifying a PR is merged, its
+clean worktree may be removed; clean up its registered simulator using the
+[worktree lifecycle procedure](TESTING.md#worktree-simulator-lifecycle).
+GitHub may delete the remote branch automatically. Inspect live
 repository rules rather than relying on a copied branch-protection checklist.
 
 ## 8. Test Strategy in CI

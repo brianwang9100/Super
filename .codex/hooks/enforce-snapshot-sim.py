@@ -11,7 +11,7 @@ FALLBACK_DEVICE = "iPhone 17"
 FALLBACK_OS = "26.4"
 FALLBACK_BUILD = "23E254a"
 FALLBACK_XCODE = "26.4.1"
-DOC = 'AGENTS.md "iOS testing: match CI\'s Xcode + simulator runtime + iPhone"'
+DOC = 'docs/TESTING.md "Simulator environment"'
 
 
 def load_pin():
@@ -94,6 +94,11 @@ def resolve_udid(udid):
             ["xcrun", "simctl", "list", "devices", "--json"],
             capture_output=True, text=True, timeout=10, check=True).stdout
         data = json.loads(raw)
+        raw_types = subprocess.run(
+            ["xcrun", "simctl", "list", "devicetypes", "--json"],
+            capture_output=True, text=True, timeout=10, check=True).stdout
+        models = {item["identifier"]: item["name"]
+                  for item in json.loads(raw_types)["devicetypes"]}
     except Exception:
         return None, None
     for runtime_id, devices in (data.get("devices") or {}).items():
@@ -101,7 +106,8 @@ def resolve_udid(udid):
             if device.get("udid") == udid:
                 match = re.search(r"iOS-(\d+)-(\d+)", runtime_id)
                 osv = (match.group(1) + "." + match.group(2)) if match else None
-                return device.get("name"), osv
+                # Worktree-owned devices have custom display names; the type is the model.
+                return models.get(device.get("deviceTypeIdentifier")), osv
     return None, None
 
 

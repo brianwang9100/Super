@@ -14,6 +14,8 @@ Read this before adding tests, changing SwiftUI views, recording snapshots, or v
 
 Coverage floors remain Core ≥80%, applets ≥70%, and future server ≥80%; do not lower them. The workflows currently print Swift coverage summaries; Codecov gating remains planned.
 
+Network, database, filesystem, HomeKit, and Keychain side effects need injectable interfaces, including within applets; avoid static singletons and hidden globals. Tests must be able to substitute those dependencies.
+
 Before opening a PR, run `swift test` from **each affected package root**. This excludes UIKit snapshot suites on macOS, so changed views also require the simulator run below. Record tests and results in the [PR template](../.github/pull_request_template.md)'s **Test Coverage** section. Documentation-only changes need link/diff checks, not app test runs.
 
 ## Async fixture conventions
@@ -56,21 +58,35 @@ Use a dedicated **per-worktree** simulator for tests and manual verification, ne
 
 ```bash
 xcodegen generate
-SIM_ID=$(xcrun simctl create "SB-$(basename "$PWD")-$(basename "$(dirname "$PWD")")" \
-  "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4)
+SIM_ID=$(python3 Scripts/worktree_simulator.py ensure)
 xcrun simctl boot "$SIM_ID"
 xcrun simctl bootstatus "$SIM_ID" -b
 xcodebuild test -scheme Chat \
   -destination "platform=iOS Simulator,id=$SIM_ID"
 ```
 
-Reuse that simulator for this worktree's later runs; substitute Core/Bible/Todo for the package under test. Package test schemes live in `Scripts/xcodegen-extras/` and are copied by `project.yml`'s post-generation command.
+`ensure` creates once and returns the same UUID on later runs; it does not boot the device. Skip `boot` when it is already booted. Substitute Core/Bible/Todo for the package under test. Package test schemes live in `Scripts/xcodegen-extras/` and are copied by `project.yml`'s post-generation command.
 
 For intentional recording, prefix the test command with `TEST_RUNNER_SNAPSHOT_RECORD=1`. The `TEST_RUNNER_` prefix forwards the variable into the iOS test process.
 
 If the CI runtime is unavailable, document the exact mismatch and mitigation in the PR. Defer an affected variant with a stated reason, or use the sanctioned tolerance only for sub-pixel custom-font drift. Never bless structural differences as a new baseline.
 
-After verifying the PR is `MERGED`, shut down and delete **only this worktree's simulator**. Keep the worktree and local branch, per [AGENTS.md](../AGENTS.md#worktree-discipline).
+## Worktree simulator lifecycle
+
+Associate a worktree on first use with [worktree_simulator.py](../Scripts/worktree_simulator.py) `ensure`. It reads CI's Xcode/device/runtime pins and records the simulator UUID, owner path, and Git identity under the common Git directory's `worktree-simulators/registry.json`. This state survives individual worktree deletion. Managed names start with `SuperWT-`; ownership comes from the registry, never a name-prefix guess. Existing unregistered simulators are left alone.
+
+After `gh pr view <N> --json state` confirms `MERGED`, a clean worktree may be removed with `git worktree remove <path>` from a surviving checkout. Check for uncommitted/untracked work first; do not force removal. Retaining the worktree also retains its simulator. After removal, run from the surviving checkout:
+
+```bash
+python3 Scripts/worktree_simulator.py cleanup          # preview registered orphans
+python3 Scripts/worktree_simulator.py cleanup --apply  # shut down and delete them
+```
+
+Cleanup preserves moved worktrees through their Git identity, rechecks owner paths before deletion, and stops on ambiguous ownership or unreadable state. It never removes worktrees or unregistered simulators. The same commands support `--repo /path/to/surviving/Super` when invoked outside the checkout.
+
+Daily scheduled cleanup should run against the durable main checkout. Use the checked-in helper there after merge; until it is available, install a reviewed copy at the common Git directory's `worktree-simulators/worktree_simulator.py`. Both use the same registry. Run preview before apply, report failures or deletions, and stay quiet when nothing changes. The Codex app and Mac must be running for local scheduled tasks to execute.
+
+Helper/guard regression tests: `python3 -B -m unittest discover -s Scripts/tests -v` and `bash .codex/hooks/tests/test-hooks.sh`.
 
 ## App-target verification
 

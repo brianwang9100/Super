@@ -39,7 +39,9 @@ monitoring → auto-merge workflow.
 Create a `codex/` branch and a draft PR with both review results and QA evidence.
 Monitor checks and Codex review, fixing actionable failures. Request Codex review
 if it does not start automatically. Enable auto-merge only after approval covering
-the current revision; verify the eventual merge and retain the worktree/branch.
+the current revision; verify the eventual merge. The subsequent
+[simulator lifecycle plan](WORKTREE_SIMULATOR_PLAN.md) supersedes the original
+retention policy and adds a cleanup helper and simulator-guard regression fix.
 
 ## Plan review
 

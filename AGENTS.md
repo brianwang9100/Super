@@ -21,14 +21,15 @@ For substantive implementation tasks, unless the user directs otherwise:
 4. Have a separate review subagent review the changes; address findings and repeat affected validation.
 5. Create a draft PR using the repository template and include test results.
 6. Monitor CI and Codex review; fix failures and address review findings. Request a Codex pass if none starts.
-7. After explicit Codex approval of the **current revision** and passing applicable CI, mark the PR ready and enable auto-merge. Verify required checks remain enforced; never bypass them. Subsequent changes require renewed review/approval. Verify the eventual merge.
+7. After explicit Codex approval of the **current revision** and passing applicable CI, mark the PR ready and enable auto-merge. Verify required checks remain enforced; never bypass them. Disable auto-merge before pushing further changes, or immediately upon detecting another head revision; re-enable only after renewed approval and CI for that revision. Verify the eventual merge.
 
 Questions and trivial documentation edits do not require the full process unless requested.
 
 ## Worktree discipline
 
 - Edit only in the session's workspace root unless the user authorizes another location. Re-root paths copied from docs or agent output; give any delegated work the same root. Confirm edits with `git status` there.
-- After a PR is verified `MERGED`, **keep the worktree and local branch**. Delete only that worktree's dedicated simulator; worktree/branch cleanup requires an explicit user request.
+- On macOS, associate each worktree with its own simulator using `python3 Scripts/worktree_simulator.py ensure`; reuse the returned UUID for tests and manual verification. Setup and cleanup commands are in [TESTING.md](docs/TESTING.md#worktree-simulator-lifecycle).
+- After verifying the associated PR is `MERGED` and the worktree is clean, the worktree may be removed. Retained worktrees keep their simulators. After removing a worktree, run the helper's orphan cleanup from a surviving checkout; scheduled cleanup catches removals made elsewhere. Delete only explicitly registered orphan simulators.
 
 ## Architecture and persistence
 
