@@ -124,6 +124,7 @@ struct BibleNavBarSnapshotTests {
                 onNext: {},
                 onPill: {},
                 onTranslation: {},
+                onSelectionPill: {},
                 onClearSelection: {},
                 onSparkMenuAction: { _ in },
                 onTapNarrationPill: {}

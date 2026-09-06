@@ -67,6 +67,7 @@ struct BibleNavBar: View {
     let onNext: () -> Void
     let onPill: () -> Void
     let onTranslation: () -> Void
+    let onSelectionPill: () -> Void
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
     let onTapNarrationPill: () -> Void
@@ -187,15 +188,23 @@ struct BibleNavBar: View {
         .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
     }
 
-    /// The selection-mode centre group: the verse citation with a clear
-    /// control that drops the whole selection.
+    /// The citation reopens verse actions; its separate clear control drops
+    /// the whole selection.
     private func selectionPill(_ citation: String) -> some View {
-        HStack(spacing: 8) {
-            Text(citation)
-                .font(typography.font(size: 13, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+        HStack(spacing: 0) {
+            Button(action: onSelectionPill) {
+                Text(citation)
+                    .font(typography.font(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.leading, 14)
+                    .padding(.trailing, 8)
+                    .frame(height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassHapticButtonStyle(.selection))
+            .accessibilityLabel("\(citation), show verse actions")
 
             // A plain glyph rather than its own glass chip — nesting glass
             // inside the pill's glass reads muddy, so the clear control sits
@@ -210,7 +219,6 @@ struct BibleNavBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Clear selection")
         }
-        .padding(.leading, 14)
         .padding(.trailing, 6)
         .frame(height: 44)
         // Same centre id as the book/translation pill so the two morph into

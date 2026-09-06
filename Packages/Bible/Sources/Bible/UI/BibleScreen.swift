@@ -474,6 +474,7 @@ public struct BibleScreen: View {
             onNext: { viewModel.stepChapter(.next) },
             onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
             onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
+            onSelectionPill: { withAnimation(motion.animation) { viewModel.presentActionSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
             onSparkMenuAction: handleSparkAction,
             onTapNarrationPill: {

@@ -378,8 +378,8 @@ struct BibleScreenViewModelTests {
         #expect(!viewModel.isActionSheetPresented)
     }
 
-    @Test("selecting another verse reopens dismissed actions for the combined selection")
-    func selectingAnotherVerseReopensActionSheet() async {
+    @Test("adding and removing verses keeps dismissed actions out of the way")
+    func changingSelectionKeepsActionSheetDismissed() async {
         let viewModel = makeViewModel()
         await viewModel.load()
         viewModel.toggleVerse(4)
@@ -387,8 +387,85 @@ struct BibleScreenViewModelTests {
 
         viewModel.toggleVerse(9)
 
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [4, 9])
+
+        viewModel.toggleVerse(4)
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [9])
+
+        viewModel.toggleVerse(5)
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [5, 9])
+    }
+
+    @Test("the selection pill reopens actions for all retained verses")
+    func presentingActionSheetKeepsSelection() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.dismissActionSheet()
+        viewModel.toggleVerse(9)
+
+        viewModel.presentActionSheet()
+        viewModel.presentActionSheet()
+
         #expect(viewModel.isActionSheetPresented)
         #expect(viewModel.selectedVerses == [4, 9])
+        #expect(viewModel.selectionCitation == "1 Peter 2:4, 9")
+    }
+
+    @Test("actions cannot open without a selection")
+    func presentingActionSheetWithoutSelectionIsNoOp() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.presentNarrationSheet()
+
+        viewModel.presentActionSheet()
+
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.isNarrationSheetPresented)
+    }
+
+    @Test("starting a new selection presents actions again", arguments: [false, true])
+    func startingNewSelectionPresentsActionSheet(clearAll: Bool) async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.dismissActionSheet()
+        if clearAll {
+            viewModel.clearSelection()
+        } else {
+            viewModel.toggleVerse(4)
+        }
+        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(!viewModel.isActionSheetPresented)
+
+        viewModel.toggleVerse(9)
+
+        #expect(viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [9])
+    }
+
+    @Test("the selection pill replaces narration controls without stopping playback")
+    func presentingActionSheetKeepsNarrationPlaying() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.dismissActionSheet()
+        controller.start(utterances: [NarrationVerseUtterance(verseNumber: 4, text: "Verse four")])
+        controller._simulateEvent(.started(verseNumber: 4))
+        viewModel.presentNarrationSheet()
+
+        viewModel.presentActionSheet()
+
+        #expect(viewModel.isActionSheetPresented)
+        #expect(!viewModel.isNarrationSheetPresented)
+        #expect(viewModel.selectedVerses == [4])
+        #expect(controller.state == .speaking)
+        #expect(service.stopCallCount == 0)
     }
 
     @Test("deep links reopen dismissed actions and out-of-range references close them")
