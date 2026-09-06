@@ -1,102 +1,42 @@
 # Super: CI/CD Pipeline
 
-> Continuous integration and deployment architecture for an AI-agent-driven development workflow with human-in-the-loop approval.
+> Continuous integration and deployment architecture. The [root delivery workflow](../AGENTS.md#delivery-workflow) defines planning, reviews, PR monitoring, and merge authorization.
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the monorepo structure and Swift Package layout, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server stack.
 
-> **What's wired today (2026-05-13):**
-> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-26` runner pinned to Xcode 26.4.1, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
-> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-26` runner pinned to Xcode 26.4.1, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`. The `ios-test` job runs Chat snapshot + unit tests on an iPhone simulator at iOS 26.4.
-> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-26` runner pinned to Xcode 26.4.1 (iOS 26.4 SDK), archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
-> - Native Codex GitHub review — connect the repository in Codex cloud, enable automatic reviews, or request one on a PR with `@codex review`. Review criteria are defined in the root [`AGENTS.md`](../AGENTS.md).
->
-> Everything else in this doc — server CI, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
+## Implemented pipeline
 
-### Two-target app build matrix (planned, SB-M0)
+| Surface | Current behavior |
+|---|---|
+| [Swift Tests](../.github/workflows/swift-test.yml) | Discovers Swift packages, runs package suites with coverage, and reports the aggregate `swift-test` check. |
+| [iOS Build](../.github/workflows/ios-build.yml) | Builds both `Super` and `SuperBible`, discovers package test schemes for simulator suites, and reports aggregate `build`/`ios-test` checks. |
+| [SwiftLint](../.github/workflows/swiftlint.yml) and [secret scanning](../.github/workflows/secrets-scan.yml) | Report `lint` and `gitleaks`. |
+| [TestFlight](../.github/workflows/testflight.yml) | Archives and uploads SuperOS only (`Super` scheme). SuperBible release support is not implemented. |
+| Native Codex review | Runs through the GitHub integration, separately from Actions; see [§6.3](#63-native-codex-pull-request-review). |
 
-When the SuperBible app target lands (see [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) §13 and [`superpowers/specs/2026-05-23-superbible-fork-design.md`](./superpowers/specs/2026-05-23-superbible-fork-design.md)), `ios-build.yml` adds a second matrix entry so **both targets build on every PR, in parallel**:
+Build/test workflows keep their aggregate checks reporting on documentation-only
+PRs while skipping expensive jobs when their change filters permit. Exact
+Xcode/runtime pins and local verification live in [TESTING.md](TESTING.md).
 
-```yaml
-strategy:
-  matrix:
-    scheme: [Super, SuperBible]
-```
-
-Rationale (full details in the fork spec §5):
-
-- **No path-filter on app builds.** False negatives are worse than the duplicate-cached-build cost.
-- **Shared derived-data cache.** `actions/cache` keyed on `hashFiles('**/Package.resolved', 'project.yml')` over `~/Library/Developer/Xcode/DerivedData`. Both jobs share the cache, so the second build mostly hits cache for the shared Core / Chat / Bible packages.
-- **Tests stay in packages**, not in `ios-build`. The `swift-test.yml` matrix auto-discovers packages so Plans / Memorize / Quiz / Learn join the test suite automatically as they land.
-- **`testflight.yml` parameterized by scheme.** Tag conventions: `release/super-v*` ships SuperOS; `release/superbible-v*` ships SuperBible. Each tag triggers a single-target archive.
-- **Branch protection:** requires both `ios-build (Super)` and `ios-build (SuperBible)` as separate checks.
-- **Wall-clock target:** ~8 min cold, ~3–4 min cached — no meaningful regression vs today's single-target build, because parallel runners + shared cache absorb the duplicate target-specific work. Runner-minutes are free on public GitHub Actions for open-source repos.
+The legacy client pipeline example in §4.1, server CI/deployment, and Codecov
+gating below remain roadmap material. Inspect
+live branch protection for the current required checks; [§6.4](#64-ci-and-review-gates)
+records the delivery check, not a replacement for repository settings.
 
 ---
 
 ## 1. Goals & Philosophy
 
-Super is built by AI agents. Codex and other approved agents pick up tasks, implement them on feature branches, write tests, and submit pull requests — all without human intervention. The CI pipeline is the **quality gate that makes this safe.**
-
-| Principle | What it means |
-|-----------|---------------|
-| **Autonomous by default** | Agents work independently. No human is needed until final approval. |
-| **CI is the immune system** | Every PR must pass linting, type checking, builds, and tests before a human ever sees it. A red CI = automatic rejection. |
-| **Human-in-the-loop, not human-in-the-way** | The user reviews only PRs that have already passed every automated check. Review is a final sanity check, not the primary quality gate. |
-| **Fast feedback** | Agents iterate faster when CI results arrive quickly. Parallelism and caching are not optimizations — they are requirements. |
-| **Reproducible** | Every build runs in a clean environment. No "works on my machine" — especially important when the machines are AI agents. |
-
----
+The [root delivery workflow](../AGENTS.md#delivery-workflow) is the canonical
+agent process. CI supplies build, test, lint, and secret-scanning gates; explicit
+Codex approval of the current revision authorizes the agent to enable auto-merge
+once applicable CI passes. User instructions can narrow that authorization.
 
 ## 2. Pipeline Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          AI-DRIVEN DEVELOPMENT LOOP                        │
-│                                                                             │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────────────────┐  │
-│  │  Agent    │    │  Agent   │    │  Agent   │    │  Agent opens PR      │  │
-│  │  picks up │───▶│  creates │───▶│  writes  │───▶│  via `gh` CLI        │  │
-│  │  task     │    │  branch  │    │  code +  │    │  (structured desc)   │  │
-│  │          │    │          │    │  tests   │    │                      │  │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┬───────────┘  │
-│                                                              │              │
-│                                                              ▼              │
-│                                              ┌───────────────────────────┐  │
-│                                              │   CI Pipeline Triggered   │  │
-│                                              │   (GitHub Actions)        │  │
-│                                              └─────────────┬─────────────┘  │
-│                                                             │               │
-│                                    ┌────────────────────────┼─────────┐     │
-│                                    ▼                        ▼         ▼     │
-│                             ┌────────────┐          ┌──────────┐ ┌───────┐  │
-│                             │ Client CI  │          │Server CI │ │AI Code│  │
-│                             │ (Swift)    │          │(TS)      │ │Review │  │
-│                             └──────┬─────┘          └────┬─────┘ └───┬───┘  │
-│                                    │                     │           │       │
-│                                    └─────────┬───────────┘           │       │
-│                                              ▼                       │       │
-│                                    ┌──────────────────┐              │       │
-│                                    │  All checks pass │◀─────────────┘       │
-│                                    └────────┬─────────┘                      │
-│                                             ▼                                │
-│                                    ┌──────────────────┐                      │
-│                                    │  Human reviews   │                      │
-│                                    │  & approves      │                      │
-│                                    └────────┬─────────┘                      │
-│                                             ▼                                │
-│                                    ┌──────────────────┐                      │
-│                                    │  Merge to main   │                      │
-│                                    └────────┬─────────┘                      │
-│                                             ▼                                │
-│                               ┌──────────────────────────┐                   │
-│                               │  Deploy Pipeline         │                   │
-│                               │  Server → Staging (auto) │                   │
-│                               │  Client → TestFlight     │                   │
-│                               └──────────────────────────┘                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
+Implemented jobs live in [`.github/workflows/`](../.github/workflows/). Native
+Codex review is separate from GitHub Actions. Server CI and deployment examples
+below describe planned infrastructure, not additional delivery requirements.
 
 ## 3. CI Platform Choice
 
@@ -119,7 +59,11 @@ Xcode Cloud's 25 free compute hours per month are appealing, but its inability t
 
 ## 4. Client Pipeline (iOS/macOS)
 
-### 4.1 Workflow Overview
+### 4.1 Workflow Overview (Unimplemented Legacy Proposal)
+
+This example is historical roadmap material: `client-ci.yml`, its toolchain,
+platform matrix, and UI-test scheme are not implemented. Use the workflow links
+in [Implemented pipeline](#implemented-pipeline) for current behavior.
 
 The client pipeline runs on every PR that touches files under `Packages/`, `Super/`, or `Super.xcodeproj/`.
 
@@ -273,22 +217,16 @@ jobs:
 
 ### 4.2 Xcode/Simulator Setup on GitHub Actions
 
-GitHub-hosted macOS runners (`macos-26`) come with multiple Xcode versions and iOS simulator runtimes preinstalled. Key considerations:
-
-- **Pin the Xcode version literally** (`xcode-version: "26.4.1"` via `maxim-lobanov/setup-xcode@v1`), not `latest-stable`, to prevent SwiftUI snapshot drift between agent PRs and across runner image refreshes.
-- **Pin the exact runtime build, not just the minor.** The snapshot legs run on iOS **26.4.1 (build `23E254a`)** — the build `macos-26` bundles with the pinned Xcode 26.4.1. `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4" but render differently, and a `-destination` can only name the minor (`OS=26.4`), so the **"Pick iOS simulator"** step asserts `buildversion == 23E254a` and fails loud if a runner image ever swaps the bundled build (or installs both). No extra runtime download — the preinstalled build is verified in place, which is also enforced locally by `.codex/hooks/enforce-snapshot-sim.py`.
-- **Disable code signing** for CI builds (`CODE_SIGNING_ALLOWED=NO`). Signing only happens in the deployment pipeline.
-- **Use `xcbeautify`** for human-readable (and agent-readable) build output.
+The implemented pins and runtime assertions live in
+[ios-build.yml](../.github/workflows/ios-build.yml). Local setup, exact-build
+matching, recording, and simulator lifecycle are documented once in
+[TESTING.md](TESTING.md#simulator-environment).
 
 ### 4.3 Code Coverage Requirements
 
-| Package | Minimum Coverage |
-|---------|-----------------|
-| Core | 80% |
-| Each Applet | 70% |
-| UI Tests | No coverage target (measured by critical flow completion) |
-
-Coverage is enforced via Codecov status checks on the PR. A drop in coverage below the threshold blocks merge.
+[TESTING.md](TESTING.md#required-coverage) owns the coverage floors and required
+tests. The checked-in Swift workflow prints coverage summaries; Codecov status
+checks remain part of the planned pipeline below.
 
 ---
 
@@ -421,104 +359,44 @@ jobs:
 
 ### 6.1 Branch Naming Convention
 
-```
-agent/<agent-name>/<task-id>-<short-description>
-
-Examples:
-  agent/codex/SB-042-add-calendar-recurring-events
-  agent/automation/SB-108-fix-todo-sort-order
-  human/brandon/SB-015-redesign-home-layout
-```
+Use `codex/<short-description>` for Codex implementation branches unless the user
+requests a different name.
 
 ### 6.2 How Agents Open PRs
 
-Agents use the `gh` CLI to create pull requests with a structured description. Every agent PR must follow this template:
-
-```bash
-gh pr create \
-  --title "SB-042: Add recurring events to Calendar" \
-  --body "$(cat <<'EOF'
-## Task
-SB-042 — Implement recurring event support in the Calendar applet.
-
-## Changes
-- Added `RecurrenceRule` model to `Calendar/Models/`
-- Implemented RRFC 5545 recurrence expansion in `RecurrenceEngine`
-- Added unit tests for daily, weekly, monthly, yearly recurrence
-- Updated `CalendarEventStore` to persist recurrence rules
-
-## Test Coverage
-- 14 new unit tests, all passing
-- Coverage for Calendar: 74% (above 70% threshold)
-
-## Architecture Notes
-- `RecurrenceRule` conforms to `Codable` for persistence
-- No new dependencies added to Core
-- No cross-applet imports
-
-## Agent
-Codex (record the model used when it is material to the change)
-EOF
-)"
-```
+Follow the [root delivery workflow](../AGENTS.md#delivery-workflow) and use the
+[PR template](../.github/pull_request_template.md) as the single description
+format. Its **Test Coverage** section names the new/updated tests and local
+results required by [TESTING.md](TESTING.md). Include visual evidence for UI
+changes. With `gh pr create`, pass the prepared description using `--body-file`.
 
 ### 6.3 Native Codex Pull-Request Review
 
 Connect this repository to Codex cloud and enable automatic reviews in the Codex GitHub integration. Codex then reviews eligible pull requests automatically; a contributor can also request a fresh review by commenting `@codex review` on the pull request. The root [`AGENTS.md`](../AGENTS.md) supplies the canonical review criteria, and nested module instructions add file-specific requirements.
 
-Codex findings appear as normal GitHub pull-request review comments, inline when a precise location is available and otherwise as a review summary. They are review feedback, not a GitHub Actions workflow or required status check: respond to or resolve actionable findings through the usual GitHub review flow, and retain the required human approval before merge.
+Codex findings appear as normal GitHub pull-request review comments, inline when a precise location is available and otherwise as a review summary. They are separate from GitHub Actions checks. Address actionable findings and obtain explicit approval covering the current revision before following the [root auto-merge workflow](../AGENTS.md#delivery-workflow); silence or approval of an older revision is insufficient.
 
-### 6.4 Required Status Checks Before Human Review
+For that approval gate, require a clean Codex verdict naming the current commit,
+or a Codex 👍 tied to a review request for that commit. Record the requested head
+SHA; subsequent pushes invalidate that signal. A pending-review acknowledgment
+or an approval from another reviewer does not satisfy the Codex gate.
 
-All of the following must pass (green) before the PR appears in the human's review queue:
+### 6.4 CI and Review Gates
 
-1. Client CI (if client code changed)
-2. Server CI (if server code changed)
-3. SwiftLint (if Swift code changed)
-4. Code coverage thresholds (via Codecov)
-
----
+Check live branch protection/rules and PR checks when delivering. `main` currently
+requires `build`, `lint`, `gitleaks`, `ios-test`, and `swift-test`. Native Codex
+approval is a separate agent-enforced gate, not one of those Actions checks.
+Wait for applicable CI to pass even if protection does not enforce a particular
+check. Do not bypass or weaken repository protections to complete a PR.
 
 ## 7. Branch Strategy
 
-```
-main ─────────────────────────────────────────────────────────▶
-  │                          ▲           ▲           ▲
-  │                          │ merge     │ merge     │ merge
-  ├── agent/codex/SB-042 ─────┘           │           │
-  ├── agent/automation/SB-108 ────────────┘           │
-  ├── human/brandon/SB-015 ────────────────────────┘
-  ...
-```
-
-### 7.1 Branch Types
-
-| Branch | Owner | Purpose |
-|--------|-------|---------|
-| `main` | Protected | Stable, deployable. All CI passes. Every commit has been human-approved. |
-| `agent/<name>/<id>-<desc>` | AI agents | Feature branches created by AI agents. Short-lived. Deleted after merge. |
-| `human/<name>/<id>-<desc>` | Human developer | Feature branches for when the user works directly. Same CI rules apply. |
-
-### 7.2 Branch Protection Rules on `main`
-
-```
-Required:
-  ✓ Require pull request before merging
-  ✓ Require at least 1 approval (from the human)
-  ✓ Require status checks to pass:
-      - client-ci (if applicable)
-      - server-ci (if applicable)
-      - swiftlint (if applicable)
-  ✓ Require branches to be up to date before merging
-  ✓ Require linear history (squash merge or rebase)
-
-Recommended:
-  ✓ Restrict who can push (no direct pushes, even from the user)
-  ✓ Do not allow bypassing of the above settings
-  ✓ Automatically delete head branches after merge
-```
-
----
+`main` receives reviewed PRs through the [delivery workflow](../AGENTS.md#delivery-workflow).
+Use feature branches for implementation. After verifying a PR is merged, its
+clean worktree may be removed; clean up its registered simulator using the
+[worktree lifecycle procedure](TESTING.md#worktree-simulator-lifecycle).
+GitHub may delete the remote branch automatically. Inspect live
+repository rules rather than relying on a copied branch-protection checklist.
 
 ## 8. Test Strategy in CI
 
@@ -804,6 +682,5 @@ This can be cut significantly with a self-hosted macOS runner (reduces macOS cos
 | 1 | Self-hosted macOS runner from day one, or start with GitHub-hosted? | Cost vs. setup time | GitHub-hosted is zero-setup. Self-hosted saves money but requires maintenance. Recommend starting hosted, switch when costs justify. |
 | 2 | Fastlane for the full deployment pipeline, or raw `xcodebuild`? | Complexity | Fastlane adds Ruby dependency but simplifies certificate management, versioning, and TestFlight upload into a single `Fastfile`. |
 | 3 | How to handle database migrations in the deployment pipeline? | Server reliability | Need a strategy for running migrations before deploying the new server version. Separate migration job? Init container? |
-| 4 | Should agents be able to merge their own PRs after human approval, or does the human click merge? | Autonomy level | Human clicking merge is safer initially. Can automate later with auto-merge after approval. |
-| 5 | Integration test strategy for cross-applet event bus behavior? | Test coverage gap | Unit tests per applet cannot catch event bus integration issues. Need a dedicated integration test suite in the Shell target. |
-| 6 | How to handle Xcode version updates across all agents? | Consistency | Pin Xcode version in a `.xcode-version` file at the repo root. Agents and CI both read from it. |
+| 4 | Integration test strategy for cross-applet event bus behavior? | Test coverage gap | Unit tests per applet cannot catch event bus integration issues. Need a dedicated integration test suite in the Shell target. |
+| 5 | How to handle Xcode version updates across all agents? | Consistency | Pin Xcode version in a `.xcode-version` file at the repo root. Agents and CI both read from it. |

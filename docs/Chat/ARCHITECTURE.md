@@ -863,7 +863,7 @@ final class GRDBConversationRepositoryTests: XCTestCase {
 - `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionStoreTests.swift` — per-conversation isolation, `cancel(for:wait:)`, `runningConversations()`, `shutdown()`.
 - `Packages/Chat/Tests/ChatTests/Orchestration/ChatSessionCompactionTests.swift` — auto-compaction trigger and manual `/compact`.
 
-Per the root `AGENTS.md` §Testing.2 rule: tests must mock `LLMProvider`; **never** hit a real LLM endpoint (OpenAI, MLX, Ollama, etc.).
+Per [Chat's agent rules](../../Packages/Chat/AGENTS.md), tests must mock `LLMProvider`; **never** hit a real LLM endpoint (OpenAI, MLX, Ollama, etc.).
 
 ### Tool Routing Tests
 

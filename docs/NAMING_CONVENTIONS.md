@@ -33,13 +33,9 @@ they know what they're looking at, and AI (Artificial Intelligence)
 agents end up reverse-engineering conventions from existing types every
 time. Pinning the meanings here keeps both costs low.
 
-The cross-cutting policy this doc builds on lives in
-[`AGENTS.md` §Swift Concurrency & Type
-Policy](../AGENTS.md#swift-concurrency--type-policy): structs for data,
-actors for shared mutable state, `@Observable @MainActor final class`
-for view models, `final class` + `os_unfair_lock` for synchronous atomic
-access. The suffixes in Part 3 are how we *name* the things that follow
-that policy.
+Cross-cutting constraints live in
+[`AGENTS.md` §Architecture and persistence](../AGENTS.md#architecture-and-persistence).
+Part 3 defines the names for each architectural role.
 
 ## Table of contents
 
@@ -155,12 +151,6 @@ The rules below are the ones we hold the line on:
   `registry.register(provider)`.
 - All parameters must have unique parameter names; argument labels can
   repeat, but unique labels read better.
-
-The rest of [`AGENTS.md` §Swift function
-declarations](../AGENTS.md#swift-function-declarations) covers function
-*shape* (default values, variadic, `inout`, return values, throwing) —
-those are API design rules rather than naming rules and live in
-AGENTS.md.
 
 ---
 
@@ -500,7 +490,7 @@ and exposes both metadata (for the LLM) and an executor.
 
 See [Part 5 — Persistence schema](#part-5--persistence-schema) for
 column/index naming rules, and
-[`AGENTS.md` §Persistence](../AGENTS.md#persistence) for the wider
+[`AGENTS.md` §Architecture and persistence](../AGENTS.md#architecture-and-persistence) for the wider
 persistence policy.
 
 ---
@@ -546,7 +536,7 @@ persistence policy.
 ## `*Error`
 
 **Pattern.** Typed `Error` for one subsystem. Per
-[`AGENTS.md` §Throwing functions](../AGENTS.md#throwing-functions): every
+[`AGENTS.md` §Architecture and persistence](../AGENTS.md#architecture-and-persistence): every
 throwing API throws a typed error defined alongside it.
 
 - **Kind:** `enum: Error, Sendable, Equatable`.
@@ -787,7 +777,7 @@ automatically:
   are intentional — they denote the "on" pattern, not snake_case.
 
 See also: [`*Record`](#record) for how a row's Swift type is named, and
-[`AGENTS.md` §Persistence](../AGENTS.md#persistence) for the wider
+[`AGENTS.md` §Architecture and persistence](../AGENTS.md#architecture-and-persistence) for the wider
 persistence policy (GRDB over SwiftData, one `.sqlite` per applet,
 GRDBQuery for SwiftUI binding, GRDBSnapshotTesting for schema tests).
 
