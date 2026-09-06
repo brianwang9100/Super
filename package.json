@@ -1,0 +1,12 @@
+{
+  "name": "super-visual-tests",
+  "private": true,
+  "description": "Development-only Argos CLI for native iOS preview screenshots",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "python3 -m unittest discover -s Scripts/PreviewPilot -p 'test_*.py' && python3 Scripts/PreviewPilot/run.py --argos",
+    "test:visual:guards": "python3 -m unittest discover -s Scripts/PreviewPilot -p 'test_*.py'",
+    "visual:upload": "argos upload ./screenshots"
+  },
+  "devDependencies": { "@argos-ci/cli": "6.9.2" }
+}

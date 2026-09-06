@@ -1,0 +1,55 @@
+name: Argos
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: argos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-previews:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
+        with:
+          xcode-version: '26.4.1'
+      - uses: ./.github/actions/install-xcodegen
+      - run: npm ci --ignore-scripts
+      - name: Test and capture native previews
+        run: npm test
+      - name: Upload screenshots to Argos
+        run: npm exec -- argos upload ./screenshots
+        env:
+          # Argos verifies the in-progress GitHub run; no reusable upload secret enters PR code.
+          ARGOS_PROJECT: brianwang9100/Super
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Preserve capture evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-preview-evidence
+          path: |
+            screenshots/
+            .build/PreviewPilot/run-*/names.txt
+            .build/PreviewPilot/run-*/environment.json
+            .build/PreviewPilot/run-*/parity.json
+            .build/PreviewPilot/run-*/*.log
+            .build/PreviewPilot/run-*/*.xcresult
+          include-hidden-files: true
+          retention-days: 7
