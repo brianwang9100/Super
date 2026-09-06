@@ -1,8 +1,9 @@
 name: Swift Tests
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main, codex/xcode-27-pcc]
+    branches: [main]
   # No path filter on purpose: this workflow is a required status check,
   # and a path-filtered required check that doesn't fire on a PR shows
   # as "expected but not reported" and blocks merge forever. Cheap to

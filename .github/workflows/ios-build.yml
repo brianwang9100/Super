@@ -1,8 +1,9 @@
 name: iOS Build
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main, codex/xcode-27-pcc]
+    branches: [main]
   # No path filter on purpose: this workflow's `build` and `ios-test`
   # jobs are required status checks. A path-filtered required check
   # that doesn't fire on a PR shows as "expected but not reported"
