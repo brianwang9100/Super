@@ -111,32 +111,12 @@ public final class NarrationController {
 
     public func isAvailable() -> Bool { service.isAvailable() }
 
-    /// Highest-quality installed voice for `locale`, preferring Premium
-    /// over Enhanced over nothing. Returns `nil` when the user has only
-    /// Compact voices installed — the caller then proceeds with the
-    /// system default (which sounds robotic) and ideally prompts the
-    /// user to install Enhanced voices in iOS Settings.
-    ///
-    /// AVSpeech's default voice on a fresh iOS install is a Compact
-    /// voice; Enhanced and Premium voices are user-downloaded under
-    /// Settings → Accessibility → Spoken Content → Voices. We hide
-    /// Compact voices from the picker so the user can't accidentally
-    /// pick the robotic option, but if none of the better tiers are
-    /// installed we still let narration fall through to the system
-    /// default rather than refusing to speak.
-    /// Marked `nonisolated` so callers can dispatch it to a detached
-    /// background task — `AVSpeechSynthesisVoice.speechVoices()` is a
-    /// ~100-300 ms synchronous file scan, and the first-Narrate path
-    /// (`BibleScreenViewModel.startNarration`) hops off main to avoid
-    /// freezing the menu → card animation.
-    nonisolated public static func bestAvailableVoice(
+    /// Resolve the initial voice through the injected service. Kept nonisolated
+    /// so production's blocking discovery can run off the main actor.
+    nonisolated public func bestAvailableVoice(
         locale: Locale = .current
     ) -> AVSpeechSynthesisVoice? {
-        let prefix = locale.language.languageCode?.identifier ?? "en"
-        let candidates = AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.language.hasPrefix(prefix) }
-        return candidates.first { $0.quality == .premium }
-            ?? candidates.first { $0.quality == .enhanced }
+        service.bestAvailableVoice(locale: locale)
     }
 
     /// Begin a new session. Cancels any in-flight session first so the

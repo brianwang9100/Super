@@ -31,7 +31,7 @@ public struct ComposerAccessoryFlank: View {
                     accessibilityLabel: selection.accessibilityLabel,
                     onAction: selection.onExpand,
                     onClear: selection.onClear,
-                    disclosureSystemImage: selection.isExpanded ? nil : "chevron.up"
+                    disclosureSystemImage: "chevron.up"
                 )
             }
             Spacer(minLength: 8)

@@ -11,7 +11,6 @@ struct ComposerAccessoryTests {
         let selection = ComposerAccessorySelection(
             title: "Selected items",
             accessibilityLabel: "Show selection actions",
-            isExpanded: false,
             onExpand: {},
             onClear: {}
         )

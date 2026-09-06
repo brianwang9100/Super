@@ -10,7 +10,7 @@ import Testing
 /// hovering glass buttons rendered beside the chat composer pill (today the
 /// Bible reader's previous / next chapter chevrons). Covers both-enabled in the
 /// default light / dark themes plus the canon-end disabled states (leading
-/// dimmed at the start, trailing dimmed at the end), plus expanded/dismissed
+/// dimmed at the start, trailing dimmed at the end), plus persistent disclosure
 /// selection controls, long labels, and larger text. The host's fade-on-expand
 /// and vertical placement live in the shell layer, not this view, so they're
 /// verified manually in the sim.
@@ -110,11 +110,10 @@ struct ComposerAccessoryFlankSnapshotTests {
         )
     }
 
-    @Test("selection is centered between chapter controls",
-          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark], [false, true])
-    func selection(theme: SuperTheme.Identifier, expanded: Bool) {
-        verifySelection(theme: theme, expanded: expanded,
-                        name: "selection_\(theme.rawValue)_\(expanded ? "expanded" : "dismissed")")
+    @Test("selection always shows the upward disclosure between chapter controls",
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func selection(theme: SuperTheme.Identifier) {
+        verifySelection(theme: theme, name: "selection_\(theme.rawValue)")
     }
 
     @Test("selection keeps both chapter controls at XXL",
@@ -122,21 +121,20 @@ struct ComposerAccessoryFlankSnapshotTests {
     func selectionXXL(theme: SuperTheme.Identifier) {
         // These chrome fonts track the app slider, not Dynamic Type. XXL
         // guards layout stability; longSelection exercises the enlarged text.
-        verifySelection(theme: theme, expanded: false,
+        verifySelection(theme: theme,
                         name: "selection_\(theme.rawValue)_xxl", dynamicType: .xxLarge)
     }
 
     @Test("long selections leave room for the chapter arrows and clear control",
           arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func longSelection(theme: SuperTheme.Identifier) {
-        verifySelection(theme: theme, expanded: false,
+        verifySelection(theme: theme,
                         name: "selection_\(theme.rawValue)_long", fontScale: 1.2,
                         title: "2 Thessalonians 3:1-3, 5, 7, 9-12, 15, 17")
     }
 
     private func verifySelection(
         theme: SuperTheme.Identifier,
-        expanded: Bool,
         name: String,
         dynamicType: DynamicTypeSize = .large,
         fontScale: CGFloat = 1,
@@ -146,7 +144,6 @@ struct ComposerAccessoryFlankSnapshotTests {
         let selection = ComposerAccessorySelection(
             title: title,
             accessibilityLabel: "\(title), show verse actions",
-            isExpanded: expanded,
             onExpand: {},
             onClear: {}
         )

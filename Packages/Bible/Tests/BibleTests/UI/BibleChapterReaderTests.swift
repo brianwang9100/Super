@@ -63,22 +63,20 @@ struct BibleChapterSheetTransitionTests {
     }
 }
 
-/// Unit tests for the reader's bottom scroll reserve. With no sheet up the
-/// reader reserves only the chat-pill clearance; while the floating action or
-/// narration sheet is presented it reserves that sheet's height plus a margin,
-/// so the last verses + footer can scroll clear of the sheet instead of staying
-/// stuck behind it. Regression guard for the inset dropped in the native-sheet
-/// migration (#152). Covered without standing up the reader's SwiftUI host.
+/// Regression coverage for the reader's bottom scroll reserve: the chapter
+/// footer must clear the floating controls and any presented sheet.
 @Suite("BibleChapterReader.bottomClearHeight")
 @MainActor
 struct BibleChapterReaderBottomReserveTests {
     // CGFloat `==` evaluated directly inside `#expect` mis-reports on
     // swift-testing/macOS (the documented in-tree quirk), so each equality is
     // precomputed into a `Bool` and that is expected instead.
-    @Test("no sheet reserves only the chat-pill clearance")
-    func noSheetReservesChatPillOnly() {
-        let matches = BibleChapterReader.bottomClearHeight(for: nil) == BibleChapterReader.chatPillHeight
-        #expect(matches)
+    @Test("the chapter footer clears the floating selection row above the chat pill")
+    func noSheetClearsFloatingControls() {
+        // Shell placement: 60pt chat pill + 36pt inset + 44pt accessory row.
+        // Leave another 20pt between those controls and the chapter footer.
+        let clearsControls = BibleChapterReader.bottomClearHeight(for: nil) >= 60 + 36 + 44 + 20
+        #expect(clearsControls)
     }
 
     @Test("the action sheet reserves its height plus the overlay margin")
@@ -97,10 +95,10 @@ struct BibleChapterReaderBottomReserveTests {
         #expect(matches)
     }
 
-    @Test("any presented sheet reserves more room than the bare chat pill")
+    @Test("any presented sheet reserves more room than the floating controls")
     func presentedSheetReservesMoreThanBare() {
-        let selectionRoomier = BibleChapterReader.bottomClearHeight(for: .selection) > BibleChapterReader.chatPillHeight
-        let narrationRoomier = BibleChapterReader.bottomClearHeight(for: .narration) > BibleChapterReader.chatPillHeight
+        let selectionRoomier = BibleChapterReader.bottomClearHeight(for: .selection) > BibleChapterReader.bottomChromeClearance
+        let narrationRoomier = BibleChapterReader.bottomClearHeight(for: .narration) > BibleChapterReader.bottomChromeClearance
         #expect(selectionRoomier)
         #expect(narrationRoomier)
     }

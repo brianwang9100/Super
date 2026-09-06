@@ -1418,16 +1418,13 @@ public final class BibleScreenViewModel {
             narration.start(utterances: utterances)
             return
         }
-        // First Narrate of the launch: `bestAvailableVoice()` calls
-        // `AVSpeechSynthesisVoice.speechVoices()` — the same ~100-300 ms
-        // synchronous file scan the transport card's voice loader
-        // dispatches off main. Hop to a detached task so the menu →
-        // card animation doesn't freeze; `start(...)` waits for the
-        // voice to be set so the first verse plays with the user's
-        // best installed voice rather than the Compact default.
+        // Production voice discovery scans installed voices synchronously.
+        // Keep it off main and behind the injected service so tests never
+        // query the host's voice catalog. Set the voice before starting playback.
+        let narration = self.narration
         narrationStartTask = Task { [weak self] in
             let voice = await Task.detached(priority: .userInitiated) {
-                NarrationController.bestAvailableVoice()
+                narration.bestAvailableVoice()
             }.value
             guard let self else { return }
             self.narration.voice = voice

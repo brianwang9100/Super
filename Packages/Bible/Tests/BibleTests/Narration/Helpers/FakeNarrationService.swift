@@ -21,6 +21,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     /// `startSpeaking`) land atomically in a single `withLock`.
     private struct FakeState {
         var isAvailableValue: Bool = true
+        var voiceLookupLocales: [Locale] = []
         var startCallCount = 0
         var pauseCallCount = 0
         var resumeCallCount = 0
@@ -53,6 +54,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
 
     // MARK: Recorded calls
 
+    var voiceLookupLocales: [Locale] { lock.withLock { $0.voiceLookupLocales } }
     var startCallCount: Int { lock.withLock { $0.startCallCount } }
     var pauseCallCount: Int { lock.withLock { $0.pauseCallCount } }
     var resumeCallCount: Int { lock.withLock { $0.resumeCallCount } }
@@ -67,6 +69,11 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     // MARK: NarrationService
 
     func isAvailable() -> Bool { isAvailableValue }
+
+    func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice? {
+        lock.withLock { $0.voiceLookupLocales.append(locale) }
+        return nil
+    }
 
     func startSpeaking(
         _ utterances: [NarrationVerseUtterance],

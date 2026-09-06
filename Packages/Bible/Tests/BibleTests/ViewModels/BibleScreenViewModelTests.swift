@@ -845,6 +845,7 @@ struct BibleScreenViewModelTests {
         // we just need to drain the spawned task before asserting on
         // the queue the service received.
         await viewModel._waitForPendingNarrationStart()
+        #expect(service.voiceLookupLocales.count == 1)
         #expect(service.startCallCount == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == Array(1...25))
@@ -862,6 +863,7 @@ struct BibleScreenViewModelTests {
 
         viewModel.startNarration()
         await viewModel._waitForPendingNarrationStart()
+        #expect(service.voiceLookupLocales.count == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == [3, 5, 9])
         #expect(viewModel.isNarrationSheetPresented)

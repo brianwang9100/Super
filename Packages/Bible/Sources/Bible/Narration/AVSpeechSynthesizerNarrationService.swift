@@ -95,6 +95,16 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         !AVSpeechSynthesisVoice.speechVoices().isEmpty
     }
 
+    /// Prefer Premium over Enhanced voices in the locale's language. When
+    /// only Compact voices are installed, leave playback on the system default.
+    public func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice? {
+        let prefix = locale.language.languageCode?.identifier ?? "en"
+        let candidates = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix(prefix) }
+        return candidates.first { $0.quality == .premium }
+            ?? candidates.first { $0.quality == .enhanced }
+    }
+
     public func startSpeaking(
         _ utterances: [NarrationVerseUtterance],
         rate: Float,
