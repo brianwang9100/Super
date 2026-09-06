@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 
@@ -74,6 +75,14 @@ public final class BibleBookSheetViewModel: Identifiable {
     public let currentPosition: BiblePosition?
 
     private let catalog: BibleBookCatalog
+
+    // A fresh model owns one sheet presentation. Keep the initial request
+    // pending until both the scroll container and its actual target have
+    // completed layout; an onAppear callback alone cannot establish either.
+    private var initialScrollContentSize = CGSize.zero
+    private var initialScrollViewportSize = CGSize.zero
+    private var laidOutInitialScrollTarget: BibleBookSheetScrollAnchor?
+    private var didResolveInitialScroll = false
 
     /// Columns in the chapter grid; the view lays cells out at this width
     /// and the threshold below divides chapter numbers by it to compute
@@ -209,6 +218,53 @@ public final class BibleBookSheetViewModel: Identifiable {
             return .chapterCell(bookId: position.bookId, chapterNumber: position.chapterNumber)
         }
         return .bookRow(bookId: position.bookId)
+    }
+
+    /// Whether layout has made the one-time request safe to consume. A
+    /// filtered-out target is resolved without scrolling, so clearing search
+    /// later cannot unexpectedly pull the reader back to their opening book.
+    var canResolveInitialScroll: Bool {
+        guard !didResolveInitialScroll,
+              Self.hasUsableSize(initialScrollContentSize),
+              Self.hasUsableSize(initialScrollViewportSize) else { return false }
+        guard let anchor = renderedInitialScrollAnchor else { return true }
+        return laidOutInitialScrollTarget == anchor
+    }
+
+    /// Receives the scroll view's layout independently of its target's layout.
+    func updateInitialScrollLayout(contentSize: CGSize, viewportSize: CGSize) {
+        guard !didResolveInitialScroll else { return }
+        initialScrollContentSize = contentSize
+        initialScrollViewportSize = viewportSize
+    }
+
+    /// Called by geometry observation on the actual view carrying the target ID.
+    func updateInitialScrollTarget(_ anchor: BibleBookSheetScrollAnchor, size: CGSize) {
+        guard !didResolveInitialScroll, anchor == initialScrollAnchor else { return }
+        laidOutInitialScrollTarget = Self.hasUsableSize(size) ? anchor : nil
+    }
+
+    /// A premature attempt stays pending; a resolved attempt is never repeated
+    /// by later scrolling, expansion, search, or ordering layout changes.
+    func consumeInitialScrollAnchor() -> BibleBookSheetScrollAnchor? {
+        guard canResolveInitialScroll else { return nil }
+        didResolveInitialScroll = true
+        return renderedInitialScrollAnchor
+    }
+
+    private var renderedInitialScrollAnchor: BibleBookSheetScrollAnchor? {
+        guard deepLinkResult == nil, let position = currentPosition,
+              let book = groups.lazy.flatMap(\.books).first(where: { $0.id == position.bookId }),
+              let anchor = initialScrollAnchor else { return nil }
+        if case .chapterCell = anchor {
+            guard isBookExpanded(book.id), position.chapterNumber >= 1,
+                  position.chapterNumber <= book.chapterCount else { return nil }
+        }
+        return anchor
+    }
+
+    private static func hasUsableSize(_ size: CGSize) -> Bool {
+        size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
     }
 
     /// Open the given book's chapter grid, or close it if it is already shown
