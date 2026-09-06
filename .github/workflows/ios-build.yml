@@ -26,7 +26,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Third-party community action pinned to a commit SHA (not a mutable
       # tag) so a tag force-push can't swap the code under us.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -61,7 +61,7 @@ jobs:
       matrix:
         scheme: [Super, SuperBible]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
@@ -179,7 +179,7 @@ jobs:
     outputs:
       schemes: ${{ steps.find.outputs.schemes }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: Packages
       - id: find
@@ -216,7 +216,7 @@ jobs:
       matrix:
         scheme: ${{ fromJSON(needs.discover.outputs.schemes) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
