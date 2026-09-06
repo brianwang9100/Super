@@ -213,10 +213,16 @@ struct SettingsModelsPane: View {
             Task { await viewModel.setTitleModelId(model.id) }
         }) {
             HStack(spacing: 14) {
-                Text(model.name)
-                    .font(typography.font(.subheadline))
-                    .foregroundStyle(isAvailable ? theme.ink : theme.inkFaint)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.name)
+                        .font(typography.font(.subheadline))
+                    if let location = Self.appleModelLocation(kind: model.kind, modelID: model.modelId) {
+                        Text(location)
+                            .font(typography.font(.caption))
+                    }
+                }
+                .foregroundStyle(isAvailable ? theme.ink : theme.inkFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if isSelected {
                     CheckIcon(size: 16)
                         .foregroundStyle(isAvailable ? theme.accent : theme.inkFaint)
@@ -238,8 +244,26 @@ struct SettingsModelsPane: View {
         }
         .buttonStyle(.plain)
         .disabled(!isAvailable)
-        .accessibilityLabel(model.name)
+        .accessibilityLabel(Self.titleModelAccessibilityLabel(
+            name: model.name, kind: model.kind, modelID: model.modelId
+        ))
         .accessibilityValue(isSelected ? "Selected" : "")
+    }
+
+    /// Processing location remains visible even when a saved Apple model has a custom name.
+    nonisolated static func appleModelLocation(kind: LLMProviderKind, modelID: String) -> String? {
+        guard kind == .appleFoundation else { return nil }
+        switch AppleFoundationModel(rawValue: modelID) {
+        case .local: return "Local only · on-device"
+        case .privateCloudCompute: return "PCC · Apple cloud"
+        case .none: return "Unsupported Apple model"
+        }
+    }
+
+    /// VoiceOver gets the same local/cloud disclosure as the visible title-model row.
+    nonisolated static func titleModelAccessibilityLabel(name: String, kind: LLMProviderKind, modelID: String) -> String {
+        guard let location = appleModelLocation(kind: kind, modelID: modelID) else { return name }
+        return "\(name), \(location)"
     }
 
     private var titleDivider: some View {

@@ -600,6 +600,7 @@ struct SettingsViewModelTests {
         let ids = DeterministicIDGenerator(prefix: "apple-")
         let clock = FixedClock(Date(timeIntervalSince1970: 1_700_000_000))
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(vm.preferredAppleFoundationModel == .privateCloudCompute)
 
         for model in AppleFoundationModel.allCases {
@@ -631,6 +632,7 @@ struct SettingsViewModelTests {
         let ids = DeterministicIDGenerator(prefix: "duplicate-")
         let clock = FixedClock(Date(timeIntervalSince1970: 100))
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
 
         await vm.createAppleFoundationModel(
             name: model.displayName, supportsThinking: false, maxContextTokens: 1,
@@ -687,6 +689,7 @@ struct SettingsViewModelTests {
         )
         let ids = DeterministicIDGenerator(prefix: "unused-")
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(!vm.supportsPrivateCloudCompute)
         #expect(vm.preferredAppleFoundationModel == .local)
 
@@ -712,6 +715,7 @@ struct SettingsViewModelTests {
         )
         let ids = DeterministicIDGenerator(prefix: "cloud-")
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(!vm.appleFoundationStatus(for: .local).canGenerate)
         #expect(vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
         #expect(vm.appleFoundationRegistrationIssue(for: .local) != nil)
@@ -739,6 +743,7 @@ struct SettingsViewModelTests {
         let ids = DeterministicIDGenerator(prefix: "local-")
         let clock = FixedClock(Date(timeIntervalSince1970: 450))
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(vm.preferredAppleFoundationModel == .local)
 
         await vm.createAppleFoundationModel(
@@ -770,6 +775,7 @@ struct SettingsViewModelTests {
         )
         let ids = DeterministicIDGenerator(prefix: "quota-")
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(vm.appleFoundationRegistrationIssue(for: .privateCloudCompute) == nil)
         #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
         #expect(vm.appleFoundationStatus(for: .privateCloudCompute).quota?.resetDate == reset)
@@ -899,6 +905,7 @@ struct SettingsViewModelTests {
         let provider = ScriptedAppleFoundationStatusProvider(cloudStatus: unavailable)
         let vm = makeViewModel(appleFoundationStatusProvider: provider)
         await vm.load()
+        await vm.refreshAppleFoundationStatuses()
         #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == unavailable)
         #expect(vm.preferredAppleFoundationModel == .local)
         let refreshed = AppleFoundationModelStatus(
@@ -936,6 +943,74 @@ struct SettingsViewModelTests {
         #expect(vm.appleFoundationStatus(for: .local) == initialLocal)
         #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == initialCloud)
         #expect(await provider.requestedModels() == [.local])
+    }
+
+    @Test("Loading Settings never asks for Apple status and preserves the existing local configuration")
+    func settingsLoadDoesNotWaitForCloudMetadata() async throws {
+        let local = try #require(makeAppleModelRecords().first { $0.modelId == AppleFoundationModel.local.rawValue })
+        let repository = StubModelRepository(rows: [local])
+        let provider = StrictAppleStatusProvider(allowedModel: nil)
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: provider)
+
+        await vm.load()
+
+        #expect(vm.models.map(\.id) == [local.id])
+        #expect(vm.models.first?.name == local.name)
+        #expect(repository.rows == [local])
+        #expect(await provider.requestedModels().isEmpty)
+        #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
+    }
+
+    @Test("Saving Local only refreshes local readiness without consulting PCC")
+    func localRegistrationDoesNotWaitForCloudMetadata() async {
+        let repository = StubModelRepository(rows: [])
+        let provider = StrictAppleStatusProvider(allowedModel: .local)
+        let registry = LLMProviderRegistry()
+        let vm = makeViewModel(
+            modelRepository: repository, llmProviderRegistry: registry,
+            appleFoundationStatusProvider: provider
+        )
+        let ids = DeterministicIDGenerator(prefix: "local-only-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_100))
+        await vm.load()
+
+        await vm.createAppleFoundationModel(
+            name: "Offline study", supportsThinking: false, maxContextTokens: 1,
+            model: .local, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.map(\.id) == ["local-only-1"])
+        #expect(repository.rows.first?.modelId == AppleFoundationModel.local.rawValue)
+        #expect(repository.rows.first?.maxContextTokens == 8_192)
+        #expect(await provider.requestedModels() == [.local, .local])
+        #expect(await registry.provider(id: "local-only-1") != nil)
+    }
+
+    @Test("A local save does not invalidate the PCC portion of an overlapping lifecycle refresh")
+    func localSaveKeepsIndependentCloudRefresh() async {
+        let cloud = AppleFoundationModelStatus(
+            model: .privateCloudCompute, availability: .available, contextTokens: 24_000
+        )
+        let provider = ScriptedAppleFoundationStatusProvider(cloudStatus: cloud, gateFirstRequest: true)
+        let repository = StubModelRepository(rows: [])
+        let vm = makeViewModel(modelRepository: repository, appleFoundationStatusProvider: provider)
+        let ids = DeterministicIDGenerator(prefix: "overlap-local-")
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_200))
+        let refresh = Task { await vm.refreshAppleFoundationStatuses() }
+        await provider.waitUntilGateEntered()
+
+        await vm.createAppleFoundationModel(
+            name: "Local study", supportsThinking: false, maxContextTokens: 1,
+            model: .local, idGenerator: { ids.nextID() }, now: clock.now()
+        )
+        await provider.releaseGate()
+        await refresh.value
+
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows.map(\.id) == ["overlap-local-1"])
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == cloud)
+        #expect(await provider.requestedModels() == [.local, .local, .privateCloudCompute])
     }
 
     @Test("Overlapping Apple saves cannot both pass the per-view-model registration guard")
@@ -2027,6 +2102,25 @@ struct SettingsViewModelTests {
 }
 
 // MARK: - Test doubles
+
+/// Traps on unrelated status reads, proving local persistence cannot depend on PCC metadata.
+private actor StrictAppleStatusProvider: AppleFoundationModelStatusProvider {
+    nonisolated let supportsPrivateCloudCompute = true
+    private let allowedModel: AppleFoundationModel?
+    private var requests: [AppleFoundationModel] = []
+
+    init(allowedModel: AppleFoundationModel?) {
+        self.allowedModel = allowedModel
+    }
+
+    func requestedModels() -> [AppleFoundationModel] { requests }
+
+    func status(for model: AppleFoundationModel) async -> AppleFoundationModelStatus {
+        precondition(model == allowedModel, "Unexpected Apple status read")
+        requests.append(model)
+        return AppleFoundationModelStatus(model: model, availability: .available, contextTokens: 8_192)
+    }
+}
 
 /// Mutable Apple readiness with an awaitable first-request gate; never consults the OS.
 private actor ScriptedAppleFoundationStatusProvider: AppleFoundationModelStatusProvider {

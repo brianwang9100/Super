@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import Testing
 @testable import Chat
@@ -8,6 +9,26 @@ import Testing
 @Suite("SettingsModelsPane title resolution")
 @MainActor
 struct SettingsModelsPaneTests {
+    @Test("Custom Apple title-model names retain visible and spoken local/cloud identity")
+    func customAppleTitleModelIdentity() {
+        for (model, location) in [
+            (AppleFoundationModel.local, "Local only · on-device"),
+            (AppleFoundationModel.privateCloudCompute, "PCC · Apple cloud"),
+        ] {
+            #expect(SettingsModelsPane.appleModelLocation(kind: .appleFoundation, modelID: model.rawValue) == location)
+            #expect(SettingsModelsPane.titleModelAccessibilityLabel(
+                name: "Study assistant", kind: .appleFoundation, modelID: model.rawValue
+            ) == "Study assistant, \(location)")
+        }
+        #expect(SettingsModelsPane.appleModelLocation(kind: .openAICompatible, modelID: "gpt-5.5") == nil)
+        #expect(SettingsModelsPane.titleModelAccessibilityLabel(
+            name: "My endpoint", kind: .openAICompatible, modelID: "gpt-5.5"
+        ) == "My endpoint")
+        #expect(SettingsModelsPane.appleModelLocation(
+            kind: .appleFoundation, modelID: "future-apple-model"
+        ) == "Unsupported Apple model")
+    }
+
     private func row(id: String, modelId: String) -> SettingsViewModel.ModelRow {
         SettingsViewModel.ModelRow(
             id: id, name: id, monogram: "M", endpoint: "",
@@ -33,8 +54,10 @@ struct SettingsModelsPaneTests {
         // The original bug, on the resolution side: a shared modelId must not
         // identify two rows. A legacy value maps to the first deterministically;
         // each record id still resolves to exactly its own row.
-        let models = [row(id: "debug-canned", modelId: "debug-default"),
-                      row(id: "debug-mock-search", modelId: "debug-default")]
+        let models = [
+            row(id: "debug-canned", modelId: "debug-default"),
+            row(id: "debug-mock-search", modelId: "debug-default"),
+        ]
         #expect(SettingsModelsPane.resolvedTitleRecordID(titleModelId: "debug-default", in: models) == "debug-canned")
         #expect(SettingsModelsPane.resolvedTitleRecordID(titleModelId: "debug-canned", in: models) == "debug-canned")
         #expect(SettingsModelsPane.resolvedTitleRecordID(titleModelId: "debug-mock-search", in: models) == "debug-mock-search")

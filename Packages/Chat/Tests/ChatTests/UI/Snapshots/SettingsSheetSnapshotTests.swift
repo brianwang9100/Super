@@ -936,11 +936,16 @@ struct SettingsSheetSnapshotTests {
         // Editing exposes unavailable/quota state without selecting a disabled
         // create option. "local" verifies the remaining unregistered variant.
         let existing: [SettingsViewModel.ModelRow] = switch state {
-        case "both", "duplicate": Self.sampleModelsWithAppleFoundation + [pcc]
+        // Keep the custom-named PCC title row onscreen, including its explicit
+        // cloud-processing label, instead of hiding it below unrelated models.
+        case "both": Self.sampleModelsWithAppleFoundation.filter { $0.kind == .appleFoundation } + [pcc]
+        case "duplicate": Self.sampleModelsWithAppleFoundation + [pcc]
         case "local", "unavailable", "quota": [pcc]
         default: []
         }
-        viewModel._setSnapshotState(settings: .default, models: existing, tools: [], chatCount: 0)
+        var settings = ChatSettings.default
+        if state == "both" { settings.titleModelId = pcc.id }
+        viewModel._setSnapshotState(settings: settings, models: existing, tools: [], chatCount: 0)
         viewModel._setAppleFoundationSnapshotState(
             supportsPrivateCloudCompute: supportsPCC,
             statuses: [

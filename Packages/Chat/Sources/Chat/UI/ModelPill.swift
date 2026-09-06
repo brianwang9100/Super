@@ -61,8 +61,12 @@ public struct ModelPill: View {
                     HStack {
                         Text(option.displayName)
                         Spacer()
-                        Text("\(option.maxContextTokens / 1000)K")
-                            .font(typography.mono(11, relativeTo: .caption2))
+                        // Zero means unresolved Apple metadata, not a measured
+                        // zero-token window. Show a capacity only once known.
+                        if option.maxContextTokens > 0 {
+                            Text("\(option.maxContextTokens / 1000)K")
+                                .font(typography.mono(11, relativeTo: .caption2))
+                        }
                     }
                 }
             }

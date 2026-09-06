@@ -164,6 +164,58 @@ struct ChatScreenViewModelTests {
 
     // MARK: - Empty-state suggestions
 
+    @Test(arguments: [false, true])
+    func resolvedContextReachesComposerWithoutChangingSelection(lateSubscriber: Bool) async {
+        let placeholder = LLMModel(id: "private-cloud-compute", displayName: "PCC", maxContextTokens: 0)
+        let resolved = SelectableModel(recordId: "pcc", model: LLMModel(
+            id: placeholder.id, displayName: placeholder.displayName, maxContextTokens: 32_768
+        ))
+        let other = SelectableModel(recordId: "other", model: placeholder)
+        let driver = ScriptedDriver(
+            events: [],
+            pendingSnapshot: .init(
+                accumulatedText: "", accumulatedThinking: "",
+                resolvedModel: lateSubscriber ? resolved : nil
+            ),
+            pendingSubscribeEvents: lateSubscriber ? [] : [.modelResolved(resolved)]
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test", driver: driver,
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [.init(recordId: "pcc", model: placeholder), other], selectedModelId: "pcc"
+        )
+        await viewModel.load()
+        await viewModel._waitForPendingStreamTask()
+        #expect(viewModel.selectedModelId == "pcc")
+        #expect(viewModel.maxContextTokens == 32_768)
+        #expect(viewModel.modelOptions.first?.maxContextTokens == 32_768)
+        #expect(viewModel.availableModels.last == other)
+    }
+
+    @Test
+    func staleResolvedContextCannotReviveOrReplaceAModel() async {
+        let current = SelectableModel(recordId: "existing", model: model)
+        let changedBackend = SelectableModel(recordId: current.recordId, model: LLMModel(
+            id: "private-cloud-compute", displayName: "PCC", maxContextTokens: 32_768
+        ))
+        let deleted = SelectableModel(recordId: "deleted", model: model)
+        let driver = ScriptedDriver(
+            events: [], pendingSnapshot: .init(accumulatedText: "", accumulatedThinking: ""),
+            pendingSubscribeEvents: [.modelResolved(changedBackend), .modelResolved(deleted)]
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test", driver: driver,
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [current], selectedModelId: current.recordId
+        )
+        await viewModel.load()
+        await viewModel._waitForPendingStreamTask()
+        #expect(viewModel.availableModels == [current])
+        #expect(viewModel.selectedModelId == current.recordId)
+    }
+
     @Test("loadSuggestionsIfNeeded resolves the provider's suggestions into state")
     func loadsGeneratedSuggestions() async {
         let scripted = [SuggestedChatAction(label: "Read a psalm", message: "Read a psalm")]

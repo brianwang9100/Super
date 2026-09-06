@@ -253,7 +253,7 @@ public final class SettingsViewModel {
     public private(set) var isSavingAppleModel = false
     private let appleFoundationStatusProvider: (any AppleFoundationModelStatusProvider)?
     private var usesSnapshotState = false
-    private var appleStatusRefreshGeneration = 0
+    private var appleStatusRefreshGeneration: [AppleFoundationModel: Int] = [:]
 
     public init(
         appInfo: SuperAppInfo,
@@ -369,17 +369,24 @@ public final class SettingsViewModel {
 
     /// Refresh on settings entry/foreground; generation also checks status itself.
     public func refreshAppleFoundationStatuses() async {
-        guard !usesSnapshotState, let appleFoundationStatusProvider else { return }
-        appleStatusRefreshGeneration += 1
-        let generation = appleStatusRefreshGeneration
         for model in AppleFoundationModel.allCases {
-            let status = await appleFoundationStatusProvider.status(for: model)
-            guard !Task.isCancelled, !usesSnapshotState,
-                  generation == appleStatusRefreshGeneration else { return }
-            appleFoundationStatuses[model] = status.model == model ? status : AppleFoundationModelStatus(
-                model: model, availability: .unavailable(.unknown)
-            )
+            guard !Task.isCancelled else { return }
+            await refreshAppleFoundationStatus(for: model)
         }
+    }
+
+    /// A local save must not wait on unrelated PCC metadata. Per-model versions
+    /// prevent an overlapping lifecycle refresh from publishing stale readiness.
+    private func refreshAppleFoundationStatus(for model: AppleFoundationModel) async {
+        guard !Task.isCancelled, !usesSnapshotState, let appleFoundationStatusProvider else { return }
+        let generation = (appleStatusRefreshGeneration[model] ?? 0) + 1
+        appleStatusRefreshGeneration[model] = generation
+        let status = await appleFoundationStatusProvider.status(for: model)
+        guard !Task.isCancelled, !usesSnapshotState,
+              generation == appleStatusRefreshGeneration[model] else { return }
+        appleFoundationStatuses[model] = status.model == model ? status : AppleFoundationModelStatus(
+            model: model, availability: .unavailable(.unknown)
+        )
     }
 
     /// Current model-specific readiness; missing state never implies availability.
@@ -457,7 +464,6 @@ public final class SettingsViewModel {
     }
 
     private func loadModels() async {
-        await refreshAppleFoundationStatuses()
         let records = (try? await modelRepository.all()) ?? []
         var rows: [ModelRow] = []
         for record in records {
@@ -819,7 +825,7 @@ public final class SettingsViewModel {
         isSavingAppleModel = true
         defer { isSavingAppleModel = false }
         modelEditError = nil
-        await refreshAppleFoundationStatuses()
+        await refreshAppleFoundationStatus(for: model)
         if let issue = appleFoundationRegistrationIssue(for: model) {
             modelEditError = issue
             return

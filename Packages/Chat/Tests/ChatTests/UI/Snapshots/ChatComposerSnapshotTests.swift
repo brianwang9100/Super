@@ -5,9 +5,10 @@ import SwiftUI
 import Testing
 @testable import Chat
 
+// Serialize recording writes to shared baseline paths, as in the other Chat suites.
 /// Snapshot matrix for `ChatComposer`: empty (mic), typed (send),
-/// streaming (cancel), each across the three themes for a representative
-/// state. Pinned width 402pt mirrors the design's iPhone reference frame.
+/// streaming (cancel), and unresolved Private Cloud Compute (PCC) metadata
+/// across Vellum light/dark. Pinned width 402pt mirrors the iPhone reference.
 @Suite("ChatComposer snapshots", .serialized)
 @MainActor
 struct ChatComposerSnapshotTests {
@@ -25,6 +26,56 @@ struct ChatComposerSnapshotTests {
     @Test("empty composer in dark theme")
     func emptyDark() {
         verify(text: "", isStreaming: false, theme: .vellumDark, name: "composer_empty_dark")
+    }
+
+    @Test("PCC's full model name before the first cloud message — light")
+    func privateCloudComputeLight() {
+        verifyPrivateCloudCompute(theme: .vellumLight, name: "composer_pcc_unresolved_light")
+    }
+
+    @Test("PCC's full model name before the first cloud message — dark")
+    func privateCloudComputeDark() {
+        verifyPrivateCloudCompute(theme: .vellumDark, name: "composer_pcc_unresolved_dark")
+    }
+
+    @Test("PCC's full model name with unresolved context at XXL — light")
+    func privateCloudComputeLightXXL() {
+        verifyPrivateCloudCompute(
+            theme: .vellumLight, name: "composer_pcc_unresolved_light_xxl", dynamicType: .xxLarge
+        )
+    }
+
+    @Test("PCC's full model name with unresolved context at XXL — dark")
+    func privateCloudComputeDarkXXL() {
+        verifyPrivateCloudCompute(
+            theme: .vellumDark, name: "composer_pcc_unresolved_dark_xxl", dynamicType: .xxLarge
+        )
+    }
+
+    /// Zero is unresolved metadata, not a measured context limit. Use the
+    /// production display name so long-label/footer regressions cannot hide
+    /// behind the short GPT fixture used by the existing composer snapshots.
+    private func verifyPrivateCloudCompute(
+        theme: SuperTheme.Identifier,
+        name: String,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) {
+        let view = FocusHostingChatComposer(
+            text: "",
+            isStreaming: false,
+            modelOptions: [
+                .init(id: "pcc-record", displayName: AppleFoundationModel.privateCloudCompute.displayName,
+                      maxContextTokens: 0),
+            ],
+            selectedModelId: "pcc-record",
+            usedTokens: 0,
+            maxTokens: 0
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
+        .frame(width: 402)
+        recordOrCompare(view: view, name: name, function: function)
     }
 
     @Test("typed composer flips to send")

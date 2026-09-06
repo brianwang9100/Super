@@ -349,6 +349,7 @@ public final class ChatScreenViewModel {
         }
         let (snapshot, stream) = await driver.subscribe()
         guard let snapshot else { return }
+        if let model = snapshot.resolvedModel { applyResolvedModel(model) }
         // `thinkingStartedAt` rides on the snapshot so the elapsed-time
         // label survives detach + re-attach. Without this the "Thought
         // for Xs" counter would visibly reset whenever a user navigated
@@ -834,6 +835,20 @@ public final class ChatScreenViewModel {
         }
     }
 
+    /// A metadata refresh must never revive a deleted row, replace an edited
+    /// backend, or move the user's current selection.
+    private func applyResolvedModel(_ resolved: SelectableModel) {
+        guard resolved.model.maxContextTokens > 0,
+              let index = availableModels.firstIndex(where: {
+                  $0.recordId == resolved.recordId && $0.model.id == resolved.model.id
+              }) else { return }
+        availableModels[index] = resolved
+        modelOptions = availableModels.map {
+            ModelPill.Option(id: $0.recordId, displayName: $0.model.displayName,
+                             maxContextTokens: $0.model.maxContextTokens)
+        }
+    }
+
     /// Apply a new verbosity from an external source. `nil` is a no-op
     /// so an optional-binding observable (`ChatVerbosity?`) can pass
     /// straight through during the bootstrap window without an extra
@@ -943,6 +958,8 @@ public final class ChatScreenViewModel {
         // they've already navigated away from.
         if isDetached { return }
         switch event {
+        case .modelResolved(let model):
+            applyResolvedModel(model)
         case .userMessageSaved(let userMessage):
             await refreshTranscript()
             await applyFallbackTitleIfNeeded(userText: userMessage.content)

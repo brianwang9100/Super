@@ -12,6 +12,10 @@ import Foundation
 /// before the stream closes, so consumers always get a clean signal that
 /// the turn is done and can persist whatever did make it through.
 public enum ChatEvent: Sendable, Equatable {
+    /// Asynchronously resolved capabilities for the exact configured record.
+    /// Updates the composer's context display without selecting another model.
+    case modelResolved(SelectableModel)
+
     /// User's outgoing message has been written to the database. Fires once
     /// per `send(...)` call, before any LLM (Large Language Model) round
     /// trip. View models use this to confirm the user's bubble is now
