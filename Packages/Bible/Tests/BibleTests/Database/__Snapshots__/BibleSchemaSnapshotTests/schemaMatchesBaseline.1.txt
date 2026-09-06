@@ -17,6 +17,18 @@ CREATE INDEX "bulkAnnotationRun_on_completedAt" ON "bulkAnnotationRun"("complete
 CREATE INDEX "bulkAnnotationRun_on_status" ON "bulkAnnotationRun"("status");
 CREATE TABLE "bulkAnnotationRunUnit" ("id" TEXT PRIMARY KEY NOT NULL, "runId" TEXT NOT NULL REFERENCES "bulkAnnotationRun"("id") ON DELETE CASCADE, "ordinal" INTEGER NOT NULL, "kind" TEXT NOT NULL, "bookId" TEXT NOT NULL, "bookName" TEXT NOT NULL, "chapterNumber" INTEGER, "state" TEXT NOT NULL, "attemptCount" INTEGER NOT NULL DEFAULT 0, "producedCount" INTEGER NOT NULL DEFAULT 0, "errorMessage" TEXT, "updatedAt" DATETIME NOT NULL);
 CREATE INDEX "bulkAnnotationRunUnit_on_runId_ordinal" ON "bulkAnnotationRunUnit"("runId", "ordinal");
+CREATE TABLE narrationSettings (
+    id TEXT PRIMARY KEY NOT NULL,
+    scope TEXT NOT NULL UNIQUE CHECK (scope = 'narration'),
+    enabled BOOLEAN,
+    sourceId TEXT, sourceName TEXT, keyRef TEXT,
+    ownsKey BOOLEAN NOT NULL,
+    preferredVoiceId TEXT, lastAppleVoiceId TEXT,
+    rate DOUBLE NOT NULL,
+    revision INTEGER NOT NULL,
+    retiredKeyRefs TEXT NOT NULL,
+    updatedAt DATETIME NOT NULL
+);
 
 bibleAnnotation
 
@@ -31,3 +43,5 @@ bibleReadingPosition
 bulkAnnotationRun
 
 bulkAnnotationRunUnit
+
+narrationSettings

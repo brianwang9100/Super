@@ -839,13 +839,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()                          // 1 Peter 2 has 25 verses
 
         viewModel.startNarration()
-        // First-Narrate of the test: the voice-pick + start runs on
-        // a background task spawned by `startNarration`. The card
-        // already shows (`isNarrationSheetPresented` flips synchronously);
-        // we just need to drain the spawned task before asserting on
-        // the queue the service received.
-        await viewModel._waitForPendingNarrationStart()
-        #expect(service.voiceLookupLocales.count == 1)
+        // Starting is synchronous; only playback events arrive asynchronously.
         #expect(service.startCallCount == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == Array(1...25))
@@ -862,8 +856,6 @@ struct BibleScreenViewModelTests {
         if dismissActions { viewModel.dismissActionSheet() }
 
         viewModel.startNarration()
-        await viewModel._waitForPendingNarrationStart()
-        #expect(service.voiceLookupLocales.count == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == [3, 5, 9])
         #expect(viewModel.isNarrationSheetPresented)

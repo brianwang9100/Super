@@ -1250,6 +1250,46 @@ struct ChatScreenViewModelTests {
 
     // MARK: - Voice input wiring (M11)
 
+    @Test("switching chats releases narration's microphone gate")
+    func detachingChatStopsVoiceCapture() async {
+        let activity = AudioActivity()
+        let voice = VoiceInputController(service: FakeVoiceInputService(), audioActivity: activity)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        await viewModel.handleMicTap()
+        #expect(activity.isCapturing)
+
+        viewModel.detachFromLiveTurn()
+        #expect(voice.state == .idle)
+        #expect(!activity.isCapturing)
+
+        let next = VoiceInputController(service: FakeVoiceInputService(), audioActivity: activity)
+        await next.toggle()
+        viewModel.detachFromLiveTurn()
+        #expect(activity.isCapturing)
+        next.stop()
+    }
+
+    @Test("detaching during microphone permission cannot start a stale capture")
+    func detachingChatCancelsPendingVoiceCapture() async {
+        let activity = AudioActivity()
+        let service = FakeVoiceInputService()
+        let gate = service.gatePermissions()
+        let voice = VoiceInputController(service: service, audioActivity: activity)
+        let viewModel = makeVoiceViewModel(voice: voice)
+        async let pending: Void = viewModel.handleMicTap()
+        await gate.waitUntilEntered()
+        viewModel.detachFromLiveTurn()
+        let next = VoiceInputController(service: FakeVoiceInputService(), audioActivity: activity)
+        await next.toggle()
+        gate.release()
+        await pending
+        #expect(service.startCallCount == 0)
+        #expect(voice.state == .idle)
+        #expect(activity.isCapturing)
+        next.stop()
+        #expect(!activity.isCapturing)
+    }
+
     @Test("micTap freezes prefix into committedComposerText and forwards to the controller")
     func micTapFreezesPrefixAndForwardsToggle() async {
         let voiceService = FakeVoiceInputService()

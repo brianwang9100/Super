@@ -1,6 +1,9 @@
 /// Broadcast envelope for the cross-applet event bus. New cross-applet
 /// interactions append cases here rather than introducing parallel channels.
 public enum SuperEvent: Sendable, Equatable {
+    /// A credential owner saved, replaced, or removed its referenced secret.
+    case credentialChanged(id: String)
+
     /// An applet asks Chat to attach `reference` to its message composer.
     /// `startNewConversation` distinguishes "Add to chat" (`false`) from
     /// "New chat" (`true`) so the receiver can route accordingly.

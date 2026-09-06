@@ -54,6 +54,8 @@ struct SuperBibleAppDependencies {
     /// Shared app-wide haptics engine. One instance threaded into both the
     /// shell (via `shellDependencies`) and the applets registered here.
     let hapticsEngine: any HapticsEngine
+    let providerAudioSetup: ProviderAudioSetup?
+    let audioActivity: AudioActivity
 
     /// Slice handed to `AppShell`. Matches `SuperOSAppDependencies.shellDependencies`
     /// so the same shell renders both targets — the only difference visible
@@ -83,7 +85,9 @@ struct SuperBibleAppDependencies {
             launchBehavior: AppShellLaunchBehavior(initialChatState: .minimized),
             // SuperBible hovers the Bible reader's chapter chevrons above the
             // composer pill; the same store the Bible backdrop writes to.
-            composerAccessoryStore: composerAccessoryStore
+            composerAccessoryStore: composerAccessoryStore,
+            providerAudioSetup: providerAudioSetup,
+            audioActivity: audioActivity
         )
     }
 }
@@ -157,6 +161,23 @@ enum SuperBibleAppBootstrap {
         let hapticsEngine = SystemHapticsEngine()
 
         let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
+        let audioActivity = AudioActivity()
+        let audioCacheURL = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appending(path: "OpenAINarration")
+        let audioCache = try (try? NarrationAudioCache.open(in: audioCacheURL)) ?? NarrationAudioCache.makeInMemory()
+        let narration = bibleApplet.configureNarration(
+            keychain: keychain,
+            generator: OpenAISpeechGenerator(http: URLSessionHTTPClient(allowsRedirects: false)),
+            cache: audioCache, audioActivity: audioActivity,
+            listSources: {
+                let rows = (try? await modelConfigRepo.all()) ?? []
+                return rows.compactMap { row in
+                    guard ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL),
+                          let ref = row.apiKeyRef else { return nil }
+                    return ProviderAudioCredential(id: row.id, name: "\(row.name) · \(row.id.prefix(6))", keyRef: ref)
+                }
+            }
+        )
         await bibleApplet.registerAnnotationTool(
             in: toolRegistry,
             stampProvider: ActiveModelBibleAnnotationStampProvider(registry: llmProviderRegistry)
@@ -356,7 +377,7 @@ enum SuperBibleAppBootstrap {
             generator: bibleBulkAnnotateDispatcher,
             currentModelID: { await llmProviderRegistry.activeID() ?? "" }
         )
-        let bibleSettingsContributions = bulkWiring.map { [$0.settingsContribution] } ?? []
+        let bibleSettingsContributions = (bulkWiring.map { [$0.settingsContribution] } ?? []) + (narration.map { [$0.contribution] } ?? [])
 
         // Shared composer-flank holder: the Bible reader writes its prev / next
         // chapter chevrons here and the shell renders them above the composer
@@ -382,7 +403,9 @@ enum SuperBibleAppBootstrap {
             appletSettingsContributions: bibleSettingsContributions,
             bulkAnnotationBackground: bulkWiring?.background,
             composerAccessoryStore: composerAccessoryStore,
-            hapticsEngine: hapticsEngine
+            hapticsEngine: hapticsEngine,
+            providerAudioSetup: narration?.setup,
+            audioActivity: audioActivity
         )
     }
 }

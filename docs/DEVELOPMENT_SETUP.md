@@ -116,15 +116,17 @@ xcodebuild build \
   -project Super.xcodeproj \
   -scheme Super \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 
 # SuperBible (once the target is wired up at SB-M0)
 xcodebuild build \
   -project Super.xcodeproj \
   -scheme SuperBible \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 ```
+
+Interactive simulator builds need signing enabled so Xcode embeds the application-identifier entitlement used by Keychain. `CODE_SIGN_IDENTITY=-` signs locally; no distribution certificate is needed. Unsigned builds (`CODE_SIGNING_ALLOWED=NO`) are suitable for compile checks and mocked snapshots, but API-key saves fail with Keychain status `-34018`.
 
 Both apps share `Core`, `Chat`, and `Bible`. SPM resolves and shared-package compile happen once per `DerivedData`, so the second build after switching schemes is fast.
 
@@ -155,7 +157,7 @@ xcodebuild build \
   -project Super.xcodeproj \
   -scheme Super \
   -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 ```
 
 ### *Future:* server URL configuration

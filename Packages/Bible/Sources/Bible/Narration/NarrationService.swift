@@ -1,4 +1,4 @@
-import AVFoundation
+import Core
 import Foundation
 
 /// Abstraction over Bible verse-by-verse text-to-speech playback ("Narrate"
@@ -21,62 +21,63 @@ public protocol NarrationService: Sendable {
     /// Cheap synchronous check — used at controller construction so the
     /// caller can short-circuit a Narrate action when the synthesizer has
     /// no installed voices for the user's locale.
-    func isAvailable() -> Bool
+    @MainActor func isAvailable() -> Bool
 
     /// Preferred installed voice for the locale, or `nil` to use the system
     /// default. Discovery may block, so callers perform it off the main actor.
-    func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice?
+    func bestAvailableVoice(locale: Locale) -> NarrationVoice?
 
     /// Begin a new playback session over `utterances` in array order. The
     /// returned stream emits one `.started` + one `.finishedVerse` per
     /// utterance, then exactly one terminal event (`.completed`,
     /// `.cancelled`, or `.failed`).
-    func startSpeaking(
+    @MainActor func startSpeaking(
         _ utterances: [NarrationVerseUtterance],
         rate: Float,
-        voice: AVSpeechSynthesisVoice?
+        voice: NarrationVoice?,
+        startingAt: Int
     ) -> AsyncStream<NarrationEvent>
 
     /// Pause the active session at a word boundary. No-op if no session
     /// is running.
-    func pause()
+    @MainActor func pause()
 
     /// Resume a paused session. No-op when idle or already speaking.
-    func resume()
+    @MainActor func resume()
 
     /// Cancel the active session. Idempotent; safe to call from `.idle`.
     /// The service yields `.cancelled` exactly once per session before
     /// closing the stream.
-    func stop()
+    @MainActor func stop()
 
     /// Skip to the next utterance in the active queue. Calling at the
     /// last utterance ends the session via `.completed`.
-    func skipForward()
+    @MainActor func skipForward()
 
     /// Restart the currently-speaking utterance from its first word
     /// (typical media-player "back" semantics — *not* "go to previous
     /// verse"). No-op when idle.
-    func skipBackward()
+    @MainActor func skipBackward()
 
     /// Jump to the verse immediately before the one currently speaking.
     /// No-op when already at the first verse in the queue; the
     /// controller pairs this with a short double-tap window over
     /// `skipBackward()` to give the 2000s-music-player rewind feel
     /// (one tap restarts, a quick second tap jumps back).
-    func skipToPreviousVerse()
+    @MainActor func skipToPreviousVerse()
 
     /// Live-tune playback rate. `AVSpeechUtterance.rate` is baked in at
     /// queue time, so the production impl cancels and requeues remaining
     /// utterances from the current position with the new rate. The
     /// resulting ~80–150 ms gap is acceptable per the design spec.
-    func setRate(_ rate: Float)
+    @MainActor func setRate(_ rate: Float)
 
     /// Live-switch the synthesizer voice. Like `setRate(_:)`, the
     /// `AVSpeechUtterance.voice` is baked in at queue time, so the
     /// production impl cancels and requeues remaining utterances from
     /// the current verse with the new voice so the change is audible
     /// before the next verse boundary.
-    func setVoice(_ voice: AVSpeechSynthesisVoice?)
+    @MainActor func setVoice(_ voice: NarrationVoice?)
 }
 
 /// One verse worth of synthesized speech.
@@ -105,6 +106,8 @@ public struct NarrationVerseUtterance: Sendable, Equatable {
 
 /// One frame of synthesizer progress.
 public enum NarrationEvent: Sendable, Equatable {
+    /// Waiting for audio for this verse; cached handoffs do not emit this event.
+    case preparing(verseNumber: Int)
     /// The utterance for `verseNumber` has started speaking — drives the
     /// reader's underline and the auto-scroll proxy.
     case started(verseNumber: Int)
@@ -113,6 +116,7 @@ public enum NarrationEvent: Sendable, Equatable {
     /// follows.
     case finishedVerse(verseNumber: Int)
     case paused
+    /// Audible playback continues after a pause or buffering within a segmented verse.
     case resumed
     /// The last utterance in the queue finished cleanly.
     case completed
@@ -129,6 +133,7 @@ public enum NarrationError: Error, Sendable, Equatable {
     /// `AVSpeechSynthesisVoice.speechVoices()` returned empty or the
     /// synthesizer refused to speak the supplied text.
     case unavailable
+    case speech(SpeechGenerationError)
     /// `AVAudioSession.setCategory` or `setActive` threw — the boxed
     /// message comes from the system error and is surfaced verbatim in
     /// `lastError` for diagnostics.
@@ -136,4 +141,23 @@ public enum NarrationError: Error, Sendable, Equatable {
     /// A coordinator probe reported voice input is currently active. The
     /// service refuses to acquire the audio session so the mic keeps it.
     case preemptedByVoiceInput
+}
+
+public extension NarrationError {
+    /// A safe, actionable message for the transport sheet.
+    var message: String {
+        switch self {
+        case .unavailable: "No narration voice is available."
+        case .audioSessionFailed: "Audio playback could not start. Please try again."
+        case .preemptedByVoiceInput: "Finish dictating before starting narration."
+        case .speech(let error): error.message
+        }
+    }
+}
+
+public extension NarrationService {
+    /// Begin from the first verse unless an explicit starting position is supplied.
+    @MainActor func startSpeaking(_ utterances: [NarrationVerseUtterance], rate: Float, voice: NarrationVoice?) -> AsyncStream<NarrationEvent> {
+        startSpeaking(utterances, rate: rate, voice: voice, startingAt: 0)
+    }
 }

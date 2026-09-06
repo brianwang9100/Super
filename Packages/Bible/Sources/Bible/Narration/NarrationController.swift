@@ -1,4 +1,5 @@
 import AVFoundation
+import Core
 import Foundation
 import Observation
 
@@ -28,6 +29,7 @@ public final class NarrationController {
     /// `.speaking` / `.paused`; everything else lives in `.idle`.
     public enum State: Equatable, Sendable {
         case idle
+        case preparing
         case speaking
         case paused
     }
@@ -57,21 +59,27 @@ public final class NarrationController {
             // `stopSpeaking + requeue` mid-verse — audible click for
             // zero behavioural change.
             guard rate != oldValue else { return }
-            service.setRate(rate)
+            activeService.setRate(rate)
         }
     }
     /// Selected synthesizer voice, or `nil` for the system default. The
     /// transport sheet's picker writes here; the controller forwards the
     /// change to the service so the new voice is audible from the next
     /// verse boundary, without the user having to stop and re-start.
-    public var voice: AVSpeechSynthesisVoice? {
+    public var voice: NarrationVoice? {
         didSet {
             // Same idempotence as `rate`: re-selecting the active
             // voice in the picker writes the same identifier back and
             // must not requeue. `AVSpeechSynthesisVoice` isn't
             // `Equatable`, so compare by `identifier`.
-            guard voice?.identifier != oldValue?.identifier else { return }
-            service.setVoice(voice)
+            guard voice != oldValue else { return }
+            if state != .idle, oldValue?.company != voice?.company {
+                let wasPaused = state == .paused
+                playback(for: oldValue).stop()
+                let index = lastUtterances.firstIndex { $0.verseNumber == (currentVerseNumber ?? recoveryVerseNumber) } ?? 0
+                start(utterances: lastUtterances, startingAt: index)
+                if wasPaused { pause() }
+            } else { activeService.setVoice(voice) }
         }
     }
 
@@ -87,6 +95,20 @@ public final class NarrationController {
     public var onCompletion: (@MainActor () -> Void)?
 
     private let service: any NarrationService
+    private let cache: (any NarrationAudioCaching)?
+    private let cloudService: (any NarrationService)?
+    public let settings: NarrationSettingsController?
+    private let audioActivity: AudioActivity?
+    public var isCaptureActive: Bool { audioActivity?.isCapturing == true }
+    private var restorePreferredVoiceOnNextStart = false
+    private var recoveryVerseNumber: Int?
+    private var lastUtterances: [NarrationVerseUtterance] = []
+    private var appliedVoiceId: String?
+    private var configurationLoaded = false
+    private var activeService: any NarrationService { playback(for: voice) }
+    private func playback(for voice: NarrationVoice?) -> any NarrationService {
+        voice?.company == .openAI ? (cloudService ?? service) : service
+    }
     private var streamTask: Task<Void, Never>?
     private let now: @MainActor () -> Date
     /// Timestamp of the most recent `skipPrevious()` tap, used to detect
@@ -103,25 +125,95 @@ public final class NarrationController {
 
     public init(
         service: any NarrationService,
+        cloudService: (any NarrationService)? = nil,
+        settings: NarrationSettingsController? = nil,
+        cache: (any NarrationAudioCaching)? = nil,
+        audioActivity: AudioActivity? = nil,
         now: @MainActor @escaping () -> Date = { Date() }
     ) {
         self.service = service
+        self.cloudService = cloudService
+        self.cache = cache
+        self.settings = settings
+        self.audioActivity = audioActivity
         self.now = now
+        audioActivity?.stopPlayback = { [weak self] in self?.stop() }
+        settings?.onInvalidated = { [weak self] in self?.stop() }
+        settings?.onChange = { [weak self] in self?.applyConfiguration() }
     }
 
-    public func isAvailable() -> Bool { service.isAvailable() }
+    private func applyConfiguration() {
+        guard let settings else { return }
+        let requested = settings.record.preferredVoiceId.flatMap(NarrationVoice.init(id:))
+        let resolved: NarrationVoice?
+        if requested?.company == .openAI && !settings.openAIAvailable {
+            resolved = settings.record.lastAppleVoiceId.flatMap(NarrationVoice.init(id:)) ?? .appleDefault
+        } else { resolved = requested }
+        if !configurationLoaded || appliedVoiceId != resolved?.id {
+            appliedVoiceId = resolved?.id
+            voice = resolved
+        }
+        if !configurationLoaded { rate = Float(settings.record.rate) }
+        configurationLoaded = true
+    }
+
+    /// Resolves the initial Apple voice off the main actor without replacing a saved choice.
+    public func prepareDefaultVoice() async {
+        guard voice == nil else { return }
+        let best = await Task.detached { self.bestAvailableVoice() }.value
+        if voice == nil { voice = best }
+    }
+
+    public func selectVoice(_ choice: NarrationVoice) async {
+        restorePreferredVoiceOnNextStart = false
+        do {
+            try await settings?.setPreference(voice: choice, rate: rate)
+            voice = choice
+        } catch { settings?.errorMessage = "Voice preference could not be saved. Try again." }
+    }
+
+    public func selectRate(_ value: Float) async {
+        do {
+            try await settings?.setPreference(voice: voice, rate: value)
+            rate = value
+        } catch { settings?.errorMessage = "Playback speed could not be saved. Try again." }
+    }
+
+    /// Explicit recovery keeps the saved OpenAI preference for the next user-started session.
+    public func useAppleVoice() {
+        restorePreferredVoiceOnNextStart = false
+        let index = lastUtterances.firstIndex { $0.verseNumber == (currentVerseNumber ?? recoveryVerseNumber) } ?? 0
+        stop()
+        voice = settings?.record.lastAppleVoiceId.flatMap(NarrationVoice.init(id:)) ?? .appleDefault
+        start(utterances: lastUtterances, startingAt: index)
+        restorePreferredVoiceOnNextStart = true
+    }
+
+    public func clearCachedAudio() async throws {
+        stop()
+        try await cache?.clear()
+    }
+
+    public func isAvailable() -> Bool { activeService.isAvailable() }
 
     /// Resolve the initial voice through the injected service. Kept nonisolated
     /// so production's blocking discovery can run off the main actor.
     nonisolated public func bestAvailableVoice(
         locale: Locale = .current
-    ) -> AVSpeechSynthesisVoice? {
+    ) -> NarrationVoice? {
         service.bestAvailableVoice(locale: locale)
     }
 
     /// Begin a new session. Cancels any in-flight session first so the
     /// underlying service only ever has one queue in flight.
-    public func start(utterances: [NarrationVerseUtterance]) {
+    public func start(utterances: [NarrationVerseUtterance], startingAt: Int = 0) {
+        if restorePreferredVoiceOnNextStart {
+            restorePreferredVoiceOnNextStart = false
+            stop()
+            if let settings, settings.openAIAvailable {
+                voice = settings.record.preferredVoiceId.flatMap(NarrationVoice.init(id:)) ?? .appleDefault
+            }
+        }
         // Tear down any prior session synchronously. The prior stream
         // task is cancelled cooperatively (Swift Concurrency doesn't
         // preempt), and its for-await loop checks `Task.isCancelled`
@@ -135,7 +227,16 @@ public final class NarrationController {
         streamTask = nil
         lastError = nil
 
-        let stream = service.startSpeaking(utterances, rate: rate, voice: voice)
+        self.lastUtterances = utterances
+        guard !isCaptureActive else {
+            handle(.failed(.preemptedByVoiceInput))
+            return
+        }
+        guard !utterances.isEmpty else { activeService.stop(); state = .idle; currentVerseNumber = nil; return }
+        state = .preparing
+        recoveryVerseNumber = utterances[min(max(0, startingAt), utterances.count - 1)].verseNumber
+        currentVerseNumber = nil
+        let stream = activeService.startSpeaking(utterances, rate: rate, voice: voice, startingAt: startingAt)
         streamTask = Task { [weak self] in
             for await event in stream {
                 guard let self, !Task.isCancelled else { return }
@@ -145,25 +246,28 @@ public final class NarrationController {
     }
 
     public func pause() {
-        guard state == .speaking else { return }
-        service.pause()
+        guard state == .speaking || state == .preparing else { return }
+        activeService.pause()
     }
 
     public func resume() {
         guard state == .paused else { return }
-        service.resume()
+        activeService.resume()
     }
 
     /// Cancel the in-flight session. Idempotent — the controller stays
     /// in whatever state it's in until the service yields `.cancelled`.
     public func stop() {
         guard state != .idle else { return }
-        service.stop()
+        activeService.stop()
+        streamTask?.cancel()
+        streamTask = nil
+        handle(.cancelled)
     }
 
     public func skipNext() {
-        guard state == .speaking || state == .paused else { return }
-        service.skipForward()
+        guard state != .idle else { return }
+        activeService.skipForward()
     }
 
     /// 2000s-music-player rewind: a single tap restarts the current
@@ -171,7 +275,7 @@ public final class NarrationController {
     /// ``skipPreviousDoubleTapWindow`` jumps to the previous verse
     /// instead. The service handles the queue rewind for both paths.
     public func skipPrevious() {
-        guard state == .speaking || state == .paused else { return }
+        guard state != .idle else { return }
         let timestamp = now()
         if let last = lastSkipPreviousAt,
            timestamp.timeIntervalSince(last) < Self.skipPreviousDoubleTapWindow {
@@ -180,10 +284,10 @@ public final class NarrationController {
             // into yet another previous-verse jump (each step is a
             // discrete double-tap intent).
             lastSkipPreviousAt = nil
-            service.skipToPreviousVerse()
+            activeService.skipToPreviousVerse()
         } else {
             lastSkipPreviousAt = timestamp
-            service.skipBackward()
+            activeService.skipBackward()
         }
     }
 
@@ -221,6 +325,9 @@ public final class NarrationController {
 
     private func handle(_ event: NarrationEvent) {
         switch event {
+        case .preparing(let verseNumber):
+            recoveryVerseNumber = verseNumber
+            if state != .paused { state = .preparing }
         case .started(let verseNumber):
             currentVerseNumber = verseNumber
             state = .speaking
@@ -233,12 +340,13 @@ public final class NarrationController {
         case .resumed:
             state = .speaking
         case .completed, .cancelled:
+            guard state != .idle else { return }
             currentVerseNumber = nil
             state = .idle
             onCompletion?()
         case .failed(let error):
-            lastError = error
             currentVerseNumber = nil
+            lastError = error
             state = .idle
             onCompletion?()
         }

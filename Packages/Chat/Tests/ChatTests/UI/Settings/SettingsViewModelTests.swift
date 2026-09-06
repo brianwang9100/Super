@@ -1520,6 +1520,27 @@ struct SettingsViewModelTests {
         #expect(vm.modelListNote["openai"] == nil)
     }
 
+    @Test("saving OpenAI models commits narration only on the explicit second step")
+    func narrationSetupCommitsAfterModelSave() async throws {
+        var commits: [(ProviderAudioCredential, Bool, Bool, Int)] = []
+        let audio = ProviderAudioSetup(
+            snapshot: { ProviderAudioSnapshot(enabled: nil, source: nil, revision: 0) },
+            commit: { commits.append(($0, $1, $2, $3)) }
+        )
+        let vm = makeViewModel(audioSetup: audio)
+        let ids = DeterministicIDGenerator()
+        await vm.createModel(name: "OpenAI", baseURL: URL(string: "https://api.openai.com/v1")!, modelId: "gpt-test",
+                             apiKey: "test-key", supportsThinking: false, maxContextTokens: 8192,
+                             providerId: "openai", idGenerator: { ids.nextID() }, now: Date(timeIntervalSince1970: 0))
+        #expect(vm.modelEditError == nil)
+        #expect(commits.isEmpty)
+        #expect(vm.models.first?.providerId == "openai")
+        await vm.commitAudioSetup(enabled: true, useThisKey: true, revision: 0)
+        #expect(commits.count == 1)
+        #expect(commits.first?.0.id == vm.models.first?.id)
+        #expect(commits.first?.1 == true)
+    }
+
     private func makeViewModel(
         settingRepository: any SettingRepository = InMemorySettingRepository(),
         modelRepository: any ModelConfigurationRepository = StubModelRepository(rows: []),
@@ -1534,7 +1555,8 @@ struct SettingsViewModelTests {
         httpClient: (any HTTPClient)? = nil,
         modelListingService: (any ModelListingService)? = nil,
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
-        appleFoundationContextTokens: Int = 4_096
+        appleFoundationContextTokens: Int = 4_096,
+        audioSetup: ProviderAudioSetup? = nil
     ) -> SettingsViewModel {
         // The availability default is *deliberately* a fixed unavailable
         // case rather than the SDK's `SystemLanguageModel.default
@@ -1557,7 +1579,8 @@ struct SettingsViewModelTests {
             httpClient: httpClient,
             modelListingService: modelListingService,
             appleFoundationAvailability: appleFoundationAvailability,
-            appleFoundationContextTokens: appleFoundationContextTokens
+            appleFoundationContextTokens: appleFoundationContextTokens,
+            audioSetup: audioSetup
         )
     }
 }

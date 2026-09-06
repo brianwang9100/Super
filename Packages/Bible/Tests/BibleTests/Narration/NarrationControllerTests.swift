@@ -29,6 +29,18 @@ struct NarrationControllerTests {
         #expect(service.voiceLookupLocales == [locale])
     }
 
+    @Test("default voice preparation uses the injected service and preserves an explicit choice")
+    func preparesDefaultVoiceThroughService() async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        await controller.prepareDefaultVoice()
+        #expect(service.voiceLookupLocales.count == 1)
+        controller.voice = .marin
+        await controller.prepareDefaultVoice()
+        #expect(service.voiceLookupLocales.count == 1)
+        #expect(controller.voice == .marin)
+    }
+
     @Test("a fresh controller is idle with no current verse")
     func freshControllerIsIdle() {
         let service = FakeNarrationService()
@@ -341,7 +353,7 @@ struct NarrationControllerTests {
         let controller = NarrationController(service: service)
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
-        controller.voice = voice
+        controller.voice = voice.map(NarrationVoice.init)
         #expect(service.setVoiceCalls.count == 1)
         #expect(service.setVoiceCalls.first??.identifier == voice?.identifier)
 
@@ -365,9 +377,9 @@ struct NarrationControllerTests {
         let controller = NarrationController(service: service)
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
-        controller.voice = voice
+        controller.voice = voice.map(NarrationVoice.init)
         // Same identifier (re-fetched from the same locale init).
-        controller.voice = AVSpeechSynthesisVoice(language: "en-US")
+        controller.voice = AVSpeechSynthesisVoice(language: "en-US").map(NarrationVoice.init)
         #expect(service.setVoiceCalls.count == 1)
     }
 }

@@ -56,7 +56,7 @@ public final class BibleScreenViewModel {
     /// The narration session driver — held here so its playback survives
     /// `BibleScreen` rebuilds and so the nav bar, reader, and transport
     /// sheet all observe the same `currentVerseNumber`.
-    public let narration: NarrationController
+    public private(set) var narration: NarrationController
 
     /// Whether the ``NarrationTransportSheet`` is on screen. The sheet
     /// can be dismissed without stopping narration — the nav-bar
@@ -167,12 +167,6 @@ public final class BibleScreenViewModel {
     /// In-flight bookmark toggle, retained so tests can await it. Chained
     /// like `noteTask` so rapid card taps stay ordered.
     private var bookmarkTask: Task<Void, Never>?
-
-    /// In-flight first-Narrate voice pick + start, retained so tests
-    /// can await its completion. Production has no need to observe it
-    /// — the user sees the card slide in immediately and the first
-    /// verse plays once the off-main voice scan returns.
-    private var narrationStartTask: Task<Void, Never>?
 
     /// - Parameters:
     ///   - positionRepository: persists the reading position; `nil` disables
@@ -1401,35 +1395,19 @@ public final class BibleScreenViewModel {
     /// the whole chapter. Pops the transport sheet so the user lands on
     /// the controls; a no-op when the chapter text failed to load.
     ///
-    /// On the *first* Narrate of a session, picks the highest-quality
-    /// installed voice for the user's locale (Premium > Enhanced) so
-    /// new users don't land on the robotic Compact default. Subsequent
-    /// calls keep whatever voice the user picked. If the user has only
-    /// Compact voices installed, narration still proceeds with the
-    /// system default — the transport sheet's voice picker surfaces the
-    /// path to install better voices.
+    /// The default Apple voice is prepared when the applet attaches; subsequent
+    /// starts preserve the user’s selected company and voice.
     public func startNarration() {
         let utterances = narrationUtterances()
         guard !utterances.isEmpty else { return }
         isNarrationSheetPresented = true
-        // Fast path: voice already picked, start synchronously so the
-        // first verse begins as the card slides in.
-        if narration.voice != nil {
-            narration.start(utterances: utterances)
-            return
-        }
-        // Production voice discovery scans installed voices synchronously.
-        // Keep it off main and behind the injected service so tests never
-        // query the host's voice catalog. Set the voice before starting playback.
-        let narration = self.narration
-        narrationStartTask = Task { [weak self] in
-            let voice = await Task.detached(priority: .userInitiated) {
-                narration.bestAvailableVoice()
-            }.value
-            guard let self else { return }
-            self.narration.voice = voice
-            self.narration.start(utterances: utterances)
-        }
+        narration.start(utterances: utterances)
+    }
+
+    /// Installs the composition root's optional cloud narration before the reader is presented.
+    public func installNarration(_ controller: NarrationController) {
+        narration.stop()
+        narration = controller
     }
 
     /// Re-present the transport sheet — wired to the nav-bar pill the
@@ -1494,14 +1472,6 @@ public final class BibleScreenViewModel {
     /// the same chained-drain behaviour as `_waitForPendingPersist()`.
     public func _waitForPendingHighlightWrite() async {
         await highlightTask?.value
-    }
-
-    /// Awaits the in-flight first-Narrate voice-pick + start task spawned
-    /// when `startNarration()` finds `narration.voice == nil`. Production
-    /// never observes this — the user just sees the card slide in and the
-    /// first verse begins once the off-main scan returns.
-    public func _waitForPendingNarrationStart() async {
-        await narrationStartTask?.value
     }
 
     private func applyCurrentChapter() {
