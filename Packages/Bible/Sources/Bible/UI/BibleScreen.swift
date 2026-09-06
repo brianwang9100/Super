@@ -404,7 +404,7 @@ public struct BibleScreen: View {
             // The footer replaces redundant arrows, but must never take away
             // the selection's reopen / clear controls. Read inside the renderer
             // so scroll visibility stays reactive without republishing.
-            shouldHide: { viewModel.isChapterFooterVisible && viewModel.selectedVerses.isEmpty }
+            shouldHideButtons: { viewModel.isChapterFooterVisible }
         )
     }
 

@@ -11,7 +11,10 @@ import Testing
 /// Bible reader's previous / next chapter chevrons). Covers both-enabled in the
 /// default light / dark themes plus the canon-end disabled states (leading
 /// dimmed at the start, trailing dimmed at the end), plus persistent disclosure
-/// selection controls, long labels, and larger text. The host's fade-on-expand
+/// selection controls, independently hidden edges, long labels, and larger text.
+/// Reduce Motion changes only transitions, so settled pixels are identical;
+/// its read-only environment value is exercised manually in the simulator.
+/// The host's fade-on-expand
 /// and vertical placement live in the shell layer, not this view, so they're
 /// verified manually in the sim.
 @Suite("ComposerAccessoryFlank snapshots", .serialized)
@@ -25,7 +28,8 @@ struct ComposerAccessoryFlankSnapshotTests {
     private func chevrons(
         leadingEnabled: Bool = true,
         trailingEnabled: Bool = true,
-        selection: ComposerAccessorySelection? = nil
+        selection: ComposerAccessorySelection? = nil,
+        hideButtons: Bool = false
     ) -> ComposerAccessoryButtons {
         ComposerAccessoryButtons(
             leading: ComposerAccessoryButton(
@@ -40,7 +44,8 @@ struct ComposerAccessoryFlankSnapshotTests {
                 isEnabled: trailingEnabled,
                 action: {}
             ),
-            selection: selection
+            selection: selection,
+            shouldHideButtons: { hideButtons }
         )
     }
 
@@ -116,6 +121,16 @@ struct ComposerAccessoryFlankSnapshotTests {
         verifySelection(theme: theme, name: "selection_\(theme.rawValue)")
     }
 
+    @Test("footer hides the floating arrows independently of the selection",
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func selectionWithoutArrows(theme: SuperTheme.Identifier) {
+        verifySelection(
+            theme: theme,
+            name: "selection_hidden_edges_\(theme.rawValue)",
+            hideButtons: true
+        )
+    }
+
     @Test("selection keeps both chapter controls at XXL",
           arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
     func selectionXXL(theme: SuperTheme.Identifier) {
@@ -139,6 +154,7 @@ struct ComposerAccessoryFlankSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         fontScale: CGFloat = 1,
         title: String = "1 Peter 2:4-6, 9",
+        hideButtons: Bool = false,
         function: String = #function
     ) {
         let selection = ComposerAccessorySelection(
@@ -148,7 +164,7 @@ struct ComposerAccessoryFlankSnapshotTests {
             onClear: {}
         )
         recordOrCompare(
-            view: host(chevrons(selection: selection), theme: theme, fontScale: fontScale)
+            view: host(chevrons(selection: selection, hideButtons: hideButtons), theme: theme, fontScale: fontScale)
                 .dynamicTypeSize(dynamicType),
             name: name, function: function
         )
