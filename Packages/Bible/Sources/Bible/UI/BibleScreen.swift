@@ -59,14 +59,14 @@ public struct BibleScreen: View {
     /// selection-scroll gate.
     private var activeOverlayKind: BibleBottomOverlayKind? {
         if viewModel.isNarrationSheetPresented { return .narration }
-        if !viewModel.selectedVerses.isEmpty { return .selection }
+        if viewModel.isActionSheetPresented { return .selection }
         return nil
     }
 
     /// `.sheet(item:)` binding for the combined action / narration sheet. The
     /// item follows `activeOverlayKind`; a `nil` set (the user dragged the
-    /// sheet down) dismisses whichever card is up — narration first, else the
-    /// selection. A `.selection` → `.narration` swap changes the item's
+    /// sheet down) dismisses whichever card is up without clearing selection.
+    /// A `.selection` → `.narration` swap changes the item's
     /// identity, so the sheet re-presents with the other card, mirroring the
     /// old "narration steps over the action sheet" precedence.
     private var bottomSheetBinding: Binding<BibleBottomOverlayKind?> {
@@ -79,7 +79,7 @@ public struct BibleScreen: View {
                 if viewModel.isNarrationSheetPresented {
                     viewModel.dismissNarrationSheet()
                 } else {
-                    viewModel.clearSelection()
+                    viewModel.dismissActionSheet()
                 }
             }
         )
@@ -155,6 +155,12 @@ public struct BibleScreen: View {
             // Publish the prev / next chevrons so they hover above the chat
             // composer pill once the chapter (and its canon-end availability)
             // is loaded.
+            publishComposerAccessories()
+        }
+        .onChange(of: viewModel.selectionCitation) { _, _ in
+            publishComposerAccessories()
+        }
+        .onChange(of: activeOverlayKind) { _, _ in
             publishComposerAccessories()
         }
         // Immersive reading: when the scroll reducer flips `isImmersive`,
@@ -329,7 +335,7 @@ public struct BibleScreen: View {
                 onNewChat: { addSelectionToChat(startNew: true) },
                 onAnnotate: { handleAnnotateSelection() },
                 onAddNote: { handleAddNoteForSelection() },
-                onClose: { withAnimation(motion.animation) { viewModel.clearSelection() } }
+                onClose: { withAnimation(motion.animation) { viewModel.dismissActionSheet() } }
             )
         }
     }
@@ -373,13 +379,8 @@ public struct BibleScreen: View {
         Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }
     }
 
-    /// Publish the reader's previous / next chapter chevrons into the shared
-    /// composer-accessory store so they hover above the chat composer pill
-    /// (leading = previous, trailing = next). The `isEnabled` flags track the
-    /// canon ends and the actions step the chapter. A no-op without a store
-    /// (SuperOS, previews, isolated tests) — the chevrons then simply don't
-    /// appear, and the in-reader footer prev / next cards remain the only
-    /// stepping affordance.
+    /// Publish chapter arrows and selection controls above the chat composer.
+    /// Hosts without a store keep those controls in the reader's top bar.
     private func publishComposerAccessories() {
         guard let composerAccessoryStore else { return }
         composerAccessoryStore.buttons = ComposerAccessoryButtons(
@@ -395,11 +396,19 @@ public struct BibleScreen: View {
                 isEnabled: viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
-            // Hide the hovering chevrons once the chapter's own prev / next
-            // footer cards scroll into view — they'd be redundant. Read inside
-            // the renderer's body, so this stays reactive as the user scrolls
-            // without republishing.
-            shouldHide: { viewModel.isChapterFooterVisible }
+            selection: viewModel.selectionCitation.map { citation in
+                ComposerAccessorySelection(
+                    title: citation,
+                    accessibilityLabel: "\(citation), show verse actions",
+                    isExpanded: activeOverlayKind == .selection,
+                    onExpand: { viewModel.presentActionSheet() },
+                    onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
+                )
+            },
+            // The footer replaces redundant arrows, but must never take away
+            // the selection's reopen / clear controls. Read inside the renderer
+            // so scroll visibility stays reactive without republishing.
+            shouldHide: { viewModel.isChapterFooterVisible && viewModel.selectedVerses.isEmpty }
         )
     }
 
@@ -435,8 +444,8 @@ public struct BibleScreen: View {
                 // reader's "generate" bubble. First run shows the disclaimer.
                 viewModel.triggerAnnotationGeneration(for: viewModel.currentChapterAnnotationSpec)
             } else {
-                // The action sheet is up over the reader; reuse the tile path
-                // which dismisses it first, then fires one intent per range.
+                // Reuse the tile path, dismissing the action sheet first if
+                // it is still open, then firing one intent per range.
                 handleAnnotateSelection()
             }
         case .addToChat:
@@ -462,6 +471,7 @@ public struct BibleScreen: View {
             chapterNumber: viewModel.position.chapterNumber,
             translation: viewModel.translation,
             selectionCitation: viewModel.selectionCitation,
+            showsSelectionPill: composerAccessoryStore == nil,
             // SuperBible (a composer-accessory store is injected) hovers the
             // chevrons above the chat composer pill, so the bar hides them;
             // SuperOS (no store) keeps them in the bar.
@@ -474,6 +484,7 @@ public struct BibleScreen: View {
             onNext: { viewModel.stepChapter(.next) },
             onPill: { withAnimation(motion.animation) { viewModel.presentBookSheet() } },
             onTranslation: { withAnimation(motion.animation) { viewModel.presentTranslationSheet() } },
+            onSelectionPill: { withAnimation(motion.animation) { viewModel.presentActionSheet() } },
             onClearSelection: { withAnimation(motion.animation) { viewModel.clearSelection() } },
             onSparkMenuAction: handleSparkAction,
             onTapNarrationPill: {
@@ -590,9 +601,14 @@ public struct BibleScreen: View {
         viewModel.dismissBookSheet()
     }
 
-    /// Queue `work` and clear the selection (dismissing the action sheet);
-    /// `work` fires from the action sheet's `onDismiss` for the same reason.
+    /// Clear selection and wait for the action sheet's dismissal before
+    /// running `work`. If the sheet is already closed, run immediately and
+    /// let the action decide whether to clear the retained selection.
     private func handOffAfterSelectionDismiss(_ work: @escaping () -> Void) {
+        guard viewModel.isActionSheetPresented else {
+            work()
+            return
+        }
         pendingSheetHandoff = work
         viewModel.clearSelection()
     }
@@ -633,8 +649,8 @@ public struct BibleScreen: View {
                 },
                 onPrevious: { viewModel.stepChapter(.previous) },
                 onNext: { viewModel.stepChapter(.next) },
-                onClearSelection: {
-                    withAnimation(motion.animation) { viewModel.clearSelection() }
+                onBackgroundTap: {
+                    withAnimation(motion.animation) { viewModel.dismissActionSheet() }
                 },
                 onConsumeScroll: { _ = viewModel.consumePendingScrollVerse() },
                 onAnnotationBubbleTap: { spec in
@@ -658,7 +674,7 @@ public struct BibleScreen: View {
                 // system restores it when the bookmark sheet closes, the same
                 // interleaving the note glyph relies on.
                 onBookmarkTap: {
-                    if viewModel.selectedVerses.isEmpty {
+                    if !viewModel.isActionSheetPresented {
                         viewModel.presentBookmarkSheet()
                     } else {
                         handOffAfterSelectionDismiss { viewModel.presentBookmarkSheet() }

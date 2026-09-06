@@ -34,8 +34,8 @@ struct BibleActionSheet: View {
     /// Invoked when the "Add note" tile is tapped — composes a user note on
     /// the selection's bounding range through the view model.
     let onAddNote: () -> Void
-    /// Invoked by the nav-bar close button — clears the selection, which
-    /// dismisses the sheet.
+    /// Invoked by the sheet's close button — dismisses actions while keeping
+    /// the verses selected in the reader.
     let onClose: () -> Void
 
     var body: some View {

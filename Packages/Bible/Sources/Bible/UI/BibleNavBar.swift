@@ -8,9 +8,9 @@ import SwiftUI
 /// book and translation pickers. The arrows flank the pill as one centred glass
 /// cluster (a shared `glassEffectID` namespace), with the leading hamburger
 /// placeholder and the trailing action pushed to the edges so the cluster stays
-/// centred. When verses are selected (`selectionCitation` is non-`nil`) the
-/// arrows morph *into* the centre pill and the centre slot becomes a citation
-/// pill with a clear control. The trailing slot is a sparkles `Menu` while
+/// centred. With `showsSelectionPill`, selecting verses morphs the arrows into
+/// a citation pill with a clear control. Hosts with bottom selection controls
+/// retain the chapter picker here. The trailing slot is a sparkles `Menu` while
 /// narration is idle (Annotate / Add to chat / Start a new chat / Narrate);
 /// while narration is speaking or paused the same 44pt Liquid Glass circle
 /// stays, the sparkles glyph swaps for a speaker glyph, and tapping it toggles
@@ -46,9 +46,11 @@ struct BibleNavBar: View {
     let bookName: String
     let chapterNumber: Int
     let translation: BibleTranslation
-    /// The selection's citation, or `nil` when no verse is selected — its
-    /// presence switches the centre group into selection mode.
+    /// The current selection, used by the action menu and selection indicator.
+    /// It replaces the center picker only when `showsSelectionPill` is true.
     let selectionCitation: String?
+    /// Hosts with bottom selection controls keep the chapter picker in this bar.
+    let showsSelectionPill: Bool
     /// Whether the prev / next chapter chevrons render in this bar. SuperOS
     /// passes `true`; SuperBible passes `false` (the chevrons hover above the
     /// chat composer pill instead). When `false`, `canStep*` / `onPrevious` /
@@ -67,6 +69,7 @@ struct BibleNavBar: View {
     let onNext: () -> Void
     let onPill: () -> Void
     let onTranslation: () -> Void
+    let onSelectionPill: () -> Void
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
     let onTapNarrationPill: () -> Void
@@ -99,7 +102,7 @@ struct BibleNavBar: View {
                             .accessibilityLabel("Previous chapter")
                     }
 
-                    if let selectionCitation {
+                    if let selectionCitation, showsSelectionPill {
                         selectionPill(selectionCitation)
                     } else {
                         pill
@@ -187,35 +190,16 @@ struct BibleNavBar: View {
         .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
     }
 
-    /// The selection-mode centre group: the verse citation with a clear
-    /// control that drops the whole selection.
+    /// The citation reopens verse actions; its separate clear control drops
+    /// the whole selection.
     private func selectionPill(_ citation: String) -> some View {
-        HStack(spacing: 8) {
-            Text(citation)
-                .font(typography.font(size: 13, weight: .semibold))
-                .foregroundStyle(theme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            // A plain glyph rather than its own glass chip — nesting glass
-            // inside the pill's glass reads muddy, so the clear control sits
-            // directly on the pill surface with a roomy tap target.
-            Button(action: onClearSelection) {
-                Image(systemName: "xmark")
-                    .font(typography.font(size: 9, weight: .bold))
-                    .foregroundStyle(theme.inkSoft)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Clear selection")
-        }
-        .padding(.leading, 14)
-        .padding(.trailing, 6)
-        .frame(height: 44)
-        // Same centre id as the book/translation pill so the two morph into
-        // each other across the selection transition.
-        .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
+        SelectionPill(
+            title: citation,
+            accessibilityLabel: "\(citation), show verse actions",
+            onAction: onSelectionPill,
+            onClear: onClearSelection,
+            morph: GlassMorphID("nav.center", in: glassNamespace)
+        )
     }
 
     /// The trailing-edge control. Switches between the idle sparkles

@@ -33,9 +33,12 @@ public final class BibleScreenViewModel {
     /// flag is all the presentation state it needs.
     public private(set) var isTranslationSheetPresented = false
 
-    /// Verse numbers the reader has tapped to select. Non-empty drives the
-    /// nav bar into selection mode and presents the action sheet.
+    /// Verse numbers the reader has tapped to select. Selection remains in
+    /// the reader and nav bar after the action sheet closes.
     public private(set) var selectedVerses: Set<Int> = []
+
+    /// Whether the verse actions are open, independently of the selection.
+    public private(set) var isActionSheetPresented = false
 
     /// First verse to scroll into view the next time the chapter reader
     /// renders. Set by ``openReference(bookId:chapterNumber:verseStart:verseEnd:)``
@@ -364,6 +367,7 @@ public final class BibleScreenViewModel {
                 pendingScrollVerse = selectedVerses.min()
             }
         }
+        isActionSheetPresented = !selectedVerses.isEmpty
         persist()
         bookSheet = nil
     }
@@ -491,8 +495,9 @@ public final class BibleScreenViewModel {
 
     /// Toggle a verse's membership in the selection. The first tap enters
     /// selection mode (the nav-bar citation pill and the action sheet);
-    /// clearing the last verse leaves it.
+    /// later taps preserve the sheet's visibility until the selection empties.
     public func toggleVerse(_ number: Int) {
+        let startsSelection = selectedVerses.isEmpty
         if selectedVerses.contains(number) {
             selectedVerses.remove(number)
             // Distinct from selection so the user can feel the difference
@@ -502,15 +507,30 @@ public final class BibleScreenViewModel {
             selectedVerses.insert(number)
             hapticsEngine.play(.selection)
         }
+        if selectedVerses.isEmpty {
+            dismissActionSheet()
+        } else if startsSelection {
+            isActionSheetPresented = true
+        }
     }
 
-    /// Drop the whole selection, leaving selection mode. A no-op when empty.
-    /// Plays the ``HapticPattern/deselection`` "disconnect" tap when it
-    /// actually drops a selection — so dismissing the action sheet (its close
-    /// button or a swipe-down, both of which route here) feels like releasing
-    /// the verses. The non-empty guard also dedupes the double call the sheet's
-    /// dismiss binding makes (clear → binding goes nil → clear again).
+    /// Reopen actions from the selection pill without changing the verses.
+    /// Replaces narration controls, if open, while playback continues.
+    public func presentActionSheet() {
+        guard !selectedVerses.isEmpty else { return }
+        dismissNarrationSheet()
+        isActionSheetPresented = true
+    }
+
+    /// Close the action sheet while keeping the selected verses available.
+    public func dismissActionSheet() {
+        isActionSheetPresented = false
+    }
+
+    /// Drop the whole selection and close its action sheet. The nav bar's
+    /// clear button plays a deselection haptic only when verses were selected.
     public func clearSelection() {
+        dismissActionSheet()
         guard !selectedVerses.isEmpty else { return }
         selectedVerses.removeAll()
         hapticsEngine.play(.deselection)
@@ -952,7 +972,7 @@ public final class BibleScreenViewModel {
     /// pending annotation intent. Leaving it up is the safer trade-off; the
     /// user just invoked it and is unlikely to reach for the hamburger mid-gate.
     private func dismissPresentedSheets() {
-        clearSelection()
+        dismissActionSheet()
         dismissNarrationSheet()
         dismissBookSheet()
         dismissTranslationSheet()

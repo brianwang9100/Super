@@ -56,7 +56,7 @@ struct BibleChapterReader: View {
     private let onTapVerse: (Int) -> Void
     private let onPrevious: () -> Void
     private let onNext: () -> Void
-    private let onClearSelection: () -> Void
+    private let onBackgroundTap: () -> Void
     private let onConsumeScroll: () -> Void
     private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
     private let onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)?
@@ -92,7 +92,7 @@ struct BibleChapterReader: View {
     ///     still-interactive page without a scrim, so without the reserve the
     ///     last verses would stay hidden behind the sheet instead of scrolling
     ///     clear of it.
-    ///   - onClearSelection: invoked when a tap lands on the column but misses
+    ///   - onBackgroundTap: invoked when a tap lands on the column but misses
     ///     every verse word.
     ///   - pendingScrollVerse: verse number to scroll to on appear and on
     ///     subsequent changes. Set by `BibleScreenViewModel.openReference`
@@ -132,7 +132,7 @@ struct BibleChapterReader: View {
         onTapVerse: @escaping (Int) -> Void,
         onPrevious: @escaping () -> Void,
         onNext: @escaping () -> Void,
-        onClearSelection: @escaping () -> Void,
+        onBackgroundTap: @escaping () -> Void,
         onConsumeScroll: @escaping () -> Void = {},
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
         onRequestChapterAnnotation: ((BibleAnnotationTargetSpec) -> Void)? = nil,
@@ -171,7 +171,7 @@ struct BibleChapterReader: View {
         self.onTapVerse = onTapVerse
         self.onPrevious = onPrevious
         self.onNext = onNext
-        self.onClearSelection = onClearSelection
+        self.onBackgroundTap = onBackgroundTap
         self.onConsumeScroll = onConsumeScroll
         self.onAnnotationBubbleTap = onAnnotationBubbleTap
         self.onRequestChapterAnnotation = onRequestChapterAnnotation
@@ -306,9 +306,9 @@ struct BibleChapterReader: View {
                 // fades over the first lines as they scroll up beneath it.
                 .padding(.top, 68)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // A tap that misses every verse word clears the selection.
+                // A tap that misses every verse word dismisses the action sheet.
                 .contentShape(Rectangle())
-                .onTapGesture { onClearSelection() }
+                .onTapGesture { onBackgroundTap() }
             }
             // Immersive-chrome driver: report the live content offset plus
             // whether the *user* is driving the scroll. The phase gate keeps

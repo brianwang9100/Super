@@ -8,9 +8,9 @@ import SwiftUI
 /// owns the chrome and placement, the applet owns the glyphs and actions.
 ///
 /// Pure layout: the host (the shell's composer-accessory layer) supplies the
-/// vertical anchor, opacity, and edge padding; this view only lays the two
-/// buttons out leading / trailing with a flexible gap. Renders an inert
-/// placeholder on a missing edge so the present side stays pinned.
+/// vertical anchor, opacity, and edge padding; this view lays out the edge
+/// buttons around an optional selection pill. An inert placeholder on a
+/// missing edge keeps the selection centered and the other edge pinned.
 public struct ComposerAccessoryFlank: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -24,7 +24,17 @@ public struct ComposerAccessoryFlank: View {
     public var body: some View {
         HStack(spacing: 0) {
             button(buttons.leading)
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if let selection = buttons.selection {
+                SelectionPill(
+                    title: selection.title,
+                    accessibilityLabel: selection.accessibilityLabel,
+                    onAction: selection.onExpand,
+                    onClear: selection.onClear,
+                    disclosureSystemImage: selection.isExpanded ? nil : "chevron.up"
+                )
+            }
+            Spacer(minLength: 8)
             button(buttons.trailing)
         }
     }

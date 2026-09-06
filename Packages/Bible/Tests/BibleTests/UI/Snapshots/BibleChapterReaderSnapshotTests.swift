@@ -90,7 +90,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 chapterDispatchStatus: .running(requestId: "gen")
@@ -162,7 +162,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 onNoteGlyphTap: { _ in }
@@ -220,7 +220,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 onNoteGlyphTap: { _ in },
