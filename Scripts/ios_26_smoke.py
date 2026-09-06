@@ -19,6 +19,7 @@ XCODE_BUILD = "27A5252f"
 RUNTIME_BUILD = "23A343"
 RUNTIME_IDENTIFIER = "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
 BUNDLE_IDS = {"Super": "com.brianwang.Super", "SuperBible": "com.brianwang.SuperBible"}
+BOOT_TIMEOUT_SECONDS = 10 * 60
 
 
 class SmokeError(RuntimeError):
@@ -81,6 +82,20 @@ def build_command(root, scheme, configuration, simulator):
             "-derivedDataPath", str(root / "derived"), "-skipPackagePluginValidation",
             "-resultBundlePath", str(root / "evidence" / f"{scheme}-{configuration}.xcresult"),
             "CODE_SIGNING_ALLOWED=NO"]
+
+
+def boot_simulator(runner, configuration):
+    """Boot only a new dedicated device, allowing bounded first-boot migration."""
+    require(configuration in ("Debug", "Release"), "Unknown simulator configuration")
+    simulator = runner.run(f"create-{configuration}", ["xcrun", "simctl", "create",
+                           f"IOS26Smoke-{configuration}", "iPhone 17", RUNTIME_IDENTIFIER]).strip()
+    require(re.fullmatch(r"[0-9A-Fa-f-]{36}", simulator), "Unexpected simulator identifier")
+    runner.run(f"boot-{configuration}", ["xcrun", "simctl", "boot", simulator])
+    # The first hosted iOS 26 boot finished after 5m26s. Give each fresh device
+    # ten minutes; SmokeRunner still enforces the unchanged global deadline.
+    runner.run(f"boot-ready-{configuration}", ["xcrun", "simctl", "bootstatus", simulator, "-b"],
+               timeout=BOOT_TIMEOUT_SECONDS)
+    return simulator
 
 
 class SmokeRunner:
@@ -156,11 +171,7 @@ def smoke(workspace, runner):
     for configuration in ("Debug", "Release"):
         # Dedicated new devices preserve empty app containers for each config;
         # only devices created by this job are shut down, never shared devices.
-        simulator = runner.run(f"create-{configuration}", ["xcrun", "simctl", "create",
-                                f"IOS26Smoke-{configuration}", "iPhone 17", RUNTIME_IDENTIFIER]).strip()
-        require(re.fullmatch(r"[0-9A-Fa-f-]{36}", simulator), "Unexpected simulator identifier")
-        runner.run(f"boot-{configuration}", ["xcrun", "simctl", "boot", simulator])
-        runner.run(f"boot-ready-{configuration}", ["xcrun", "simctl", "bootstatus", simulator, "-b"], timeout=5 * 60)
+        simulator = boot_simulator(runner, configuration)
         for scheme, bundle_id in BUNDLE_IDS.items():
             name = f"{scheme}-{configuration}"
             runner.run(f"build-{name}", build_command(output, scheme, configuration, simulator), timeout=20 * 60)

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 
 SPEC = importlib.util.spec_from_file_location("ios_26_smoke", Path(__file__).parents[1] / "ios_26_smoke.py")
@@ -111,6 +111,28 @@ class IOS26SmokeTests(unittest.TestCase):
                 self.assertNotIn("test-without-building", command)
                 self.assertIn("platform=iOS Simulator,id=dedicated-udid", command)
                 self.assertIn("CODE_SIGNING_ALLOWED=NO", command)
+
+    def test_each_configuration_boots_dedicated_exact_runtime_with_ten_minute_bound(self):
+        simulator = "4B08B54B-F1D1-4A10-81D7-013961E880AD"
+        for configuration in ("Debug", "Release"):
+            with self.subTest(configuration=configuration):
+                runner = Mock()
+                runner.run.side_effect = [simulator + "\n", "", "Finished"]
+                self.assertEqual(smoke.boot_simulator(runner, configuration), simulator)
+                self.assertEqual(runner.run.call_args_list, [
+                    call(f"create-{configuration}", ["xcrun", "simctl", "create",
+                         f"IOS26Smoke-{configuration}", "iPhone 17", smoke.RUNTIME_IDENTIFIER]),
+                    call(f"boot-{configuration}", ["xcrun", "simctl", "boot", simulator]),
+                    call(f"boot-ready-{configuration}", ["xcrun", "simctl", "bootstatus", simulator, "-b"],
+                         timeout=600),
+                ])
+
+    def test_boot_never_uses_an_unexpected_device_identifier(self):
+        runner = Mock()
+        runner.run.return_value = "booted"
+        with self.assertRaises(smoke.SmokeError):
+            smoke.boot_simulator(runner, "Debug")
+        self.assertEqual(runner.run.call_count, 1)
 
     def test_runner_disables_every_recording_environment_seam(self):
         with patch.dict(os.environ, {"SNAPSHOT_RECORD": "1", "TEST_RUNNER_SNAPSHOT_RECORD": "1"}):
