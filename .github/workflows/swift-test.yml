@@ -29,6 +29,8 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v6
+      - name: Validate coverage reporting
+        run: python3 -m unittest discover -s Scripts/tests -p 'test_swift_coverage.py'
       # Third-party community action pinned to a commit SHA (not a mutable
       # tag) so a tag force-push can't swap the code under us.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -111,6 +113,7 @@ jobs:
             spm-${{ runner.os }}-${{ runner.arch }}-xc${{ env.XCODE_BUILD }}-${{ matrix.package }}-
 
       - name: Run tests
+        id: tests
         working-directory: Packages/${{ matrix.package }}
         # `-Xswiftc -warnings-as-errors` mirrors the Xcode targets'
         # SWIFT_TREAT_WARNINGS_AS_ERRORS (project.yml). The bare `swift test`
@@ -120,22 +123,11 @@ jobs:
         run: swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors
 
       - name: Coverage summary
-        if: always()
+        # Missing coverage after successful tests is a reporting failure;
+        # don't obscure a test/build failure with a second missing-file error.
+        if: always() && steps.tests.outcome == 'success'
         working-directory: Packages/${{ matrix.package }}
-        env:
-          PACKAGE: ${{ matrix.package }}
-        run: |
-          PROFDATA=$(find .build -name 'default.profdata' | head -1)
-          BINARY_DIR=$(find .build -name "${PACKAGE}PackageTests.xctest" -type d | head -1)
-          if [ -z "$PROFDATA" ] || [ -z "$BINARY_DIR" ]; then
-            echo "No coverage artifacts found — skipping summary."
-            exit 0
-          fi
-          BINARY="$BINARY_DIR/Contents/MacOS/${PACKAGE}PackageTests"
-          xcrun llvm-cov report "$BINARY" \
-            -instr-profile="$PROFDATA" \
-            -ignore-filename-regex='\.build/|/Tests/' \
-            | tail -40
+        run: python3 ../../Scripts/swift_coverage.py --package .
 
   swift-test:
     # Aggregation gate. The `test` job above publishes one check per

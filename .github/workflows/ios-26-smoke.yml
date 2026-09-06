@@ -1,0 +1,47 @@
+name: iOS 26 Back-deployment Smoke
+
+# Manual evidence only. Does not run snapshot tests or sign/distribute apps.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-26-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # One runner downloads the ~8 GB runtime once and reuses compiled products
+    # across both app targets; Debug and Release get separate fresh simulators.
+    runs-on: xcode-27
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "27.0-beta"
+
+      - name: Validate smoke safeguards
+        run: python3 -B -m unittest discover -s Scripts/tests -p test_ios_26_smoke.py -v
+
+      - name: Install pinned XcodeGen
+        uses: ./.github/actions/install-xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build and launch Debug and Release on iOS 26.0
+        # The script caps total execution at 65 minutes, leaving time to upload
+        # evidence even if a download, import, simulator, or compiler stalls.
+        run: python3 Scripts/ios_26_smoke.py
+
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-26-backdeployment-evidence
+          path: build/ios-26-smoke/evidence/
+          if-no-files-found: warn
+          retention-days: 14

@@ -6,12 +6,12 @@
 
 **Toolchain migration (2026-09-06):** Apple jobs now target the `xcode-27` hosted preview, selecting Xcode `27.0-beta` and asserting exact build `27A5252f`. Screenshot jobs pin iOS 27.0 runtime `24A5423a` / iPhone 17. These values were verified in [runner inventory](https://github.com/brianwang9100/Super/actions/runs/34042157889). The host image is macOS 26.5.2, not macOS 27. Both apps still deploy to iOS 26.0. [Execution plan/status](XCODE_27_PCC_PLAN.md) tracks snapshot and distribution validation. Historical workflow examples below describe the original architecture; checked-in workflows are authoritative.
 
-> **What's wired today (2026-05-13):**
-> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `xcode-27`, exact Xcode build assertion, auto-discovered Core/Chat/Bible/Todo matrix, `swift test --parallel --enable-code-coverage`, and llvm-cov summary.
+> **What's wired today (2026-09-06):**
+> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `xcode-27`, exact Xcode build assertion, auto-discovered Core/Chat/Bible/Todo matrix, `swift test --parallel --enable-code-coverage`, and a package-only line summary from SwiftPM's authoritative LLVM JSON export. Missing/unreadable coverage fails reporting after successful tests; percentage thresholds are not yet automated.
 > - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — both app targets build, package screenshot suites verify on the exact iOS 27 trio, and stable aggregation checks preserve required-check names.
 > - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — the same asserted Xcode build, manual signing, `Super` archive/export. Triggered by `workflow_dispatch` or a `release/v*` tag; beta acceptance must be proven by processing a signed upload.
 >
-> Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
+> Other architecture below — including server CI, AI reviewer agents, Codecov status checks, and server deployment — remains a target, not evidence of current enforcement. Checked-in workflows are authoritative; both app targets and all four package snapshot legs are already implemented. See [`TODO.md`](../TODO.md) for remaining work.
 
 ### Two-target app build matrix (planned, SB-M0)
 
@@ -290,7 +290,7 @@ GitHub's `xcode-27` preview supplies the selected beta compiler and iOS 27 runti
 | Each Applet | 70% |
 | UI Tests | No coverage target (measured by critical flow completion) |
 
-Coverage is enforced via Codecov status checks on the PR. A drop in coverage below the threshold blocks merge.
+These minimums remain policy. Codecov percentage gates are planned, not wired in the current workflows. The September 2026 migration also found that the old test-bundle-path heuristic silently skipped coverage summaries. `Scripts/swift_coverage.py` now reads the path supplied by `swift test --show-codecov-path`, reports only the current package's sources, and rejects missing reports. A green package test run alone does not prove these percentage minimums were met.
 
 ---
 
@@ -587,7 +587,7 @@ This inverts the usual relationship: tests are not written to satisfy a coverage
 
 ### 8.2 Coverage Requirements
 
-| Target | Minimum | Enforced By |
+| Target | Minimum | Planned Enforcement |
 |--------|---------|-------------|
 | Core package | 80% | Codecov status check |
 | Each applet package | 70% | Codecov status check |

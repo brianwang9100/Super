@@ -16,13 +16,15 @@ on:
         type: choice
         required: true
         default: all
-        options: [all, Chat]
+        options: [all, Core, Chat, Bible, Todo]
 
 permissions:
   contents: read
 
 concurrency:
-  group: snapshot-migration-${{ github.ref }}
+  # Mode-scoped groups also isolate new dispatches from retries of the original
+  # phase-1 workflow, whose old branch-only group enabled cancellation.
+  group: snapshot-migration-${{ github.ref }}-${{ inputs.mode || 'toolchain' }}
   # Never discard the pinned phase-1 run when publishing phase-2 tooling.
   cancel-in-progress: false
 
@@ -33,21 +35,17 @@ jobs:
       schemes: ${{ steps.selection.outputs.schemes }}
       mode: ${{ steps.selection.outputs.mode }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: Scripts
       - id: selection
         env:
           MODE: ${{ inputs.mode || 'toolchain' }}
           SCHEME: ${{ inputs.scheme || 'all' }}
         run: |
           set -euo pipefail
-          if [ "$MODE" = pcc-registration ] && [ "$SCHEME" != Chat ]; then
-            echo "::error::PCC registration mode must explicitly select the Chat scheme."
-            exit 1
-          fi
-          if [ "$SCHEME" = Chat ]; then
-            echo 'schemes=["Chat"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'schemes=["Core","Chat","Bible","Todo"]' >> "$GITHUB_OUTPUT"
-          fi
+          SCHEMES=$(python3 Scripts/migrate_snapshots.py --print-schemes --scheme "$SCHEME" --mode "$MODE")
+          echo "schemes=$SCHEMES" >> "$GITHUB_OUTPUT"
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
   migrate:

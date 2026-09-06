@@ -4,9 +4,6 @@ name: Xcode 27 Inventory
 # baseline writes; the reported simulator build must be reviewed before repinning.
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/xcode-27-pcc]
-    paths: [.github/workflows/xcode-27-inventory.yml]
 
 permissions:
   contents: read

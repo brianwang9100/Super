@@ -14,6 +14,9 @@ import sys
 import threading
 
 
+SUPPORTED_SCHEMES = ("Core", "Chat", "Bible", "Todo")
+
+
 class MigrationError(RuntimeError):
     """A pin, inventory, or execution invariant prevented a safe migration."""
 
@@ -88,6 +91,16 @@ def approved_additions(scheme, mode):
                 path = f"{directory}/{method}-state-theme.{name}.png"
                 additions[path] = {"method": method, "name": name}
     return additions
+
+
+def requested_schemes(selection, mode):
+    """Resolve a manual matrix without making the PCC whitelist general-purpose."""
+    require(mode in ("toolchain", "pcc-registration"), "Unknown migration mode")
+    require(mode != "pcc-registration" or selection == "Chat", "PCC registration mode requires exactly Chat")
+    if selection == "all":
+        return list(SUPPORTED_SCHEMES)
+    require(selection in SUPPORTED_SCHEMES, "Unknown snapshot scheme")
+    return [selection]
 
 
 def approved_missing_reference(message, identifier, additions):
@@ -201,6 +214,7 @@ def run_phase(root, evidence, derived, scheme, simulator, suites, phase, additio
 
 
 def migrate(args):
+    require(args.scheme in SUPPORTED_SCHEMES, "Each migration job must select one concrete scheme")
     root = Path.cwd().resolve()
     require(os.environ.get("GITHUB_ACTIONS") == "true"
             and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
@@ -291,12 +305,18 @@ def migrate(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scheme", required=True, choices=("Core", "Chat", "Bible", "Todo"))
+    parser.add_argument("--scheme", required=True, choices=("all", *SUPPORTED_SCHEMES))
     parser.add_argument("--mode", choices=("toolchain", "pcc-registration"), default="toolchain")
-    parser.add_argument("--xcode-build", required=True)
-    parser.add_argument("--runtime-build", required=True)
+    parser.add_argument("--print-schemes", action="store_true", help="Print the validated manual workflow matrix; never record")
+    parser.add_argument("--xcode-build")
+    parser.add_argument("--runtime-build")
     try:
-        migrate(parser.parse_args())
+        arguments = parser.parse_args()
+        if arguments.print_schemes:
+            print(json.dumps(requested_schemes(arguments.scheme, arguments.mode)))
+        else:
+            require(arguments.xcode_build and arguments.runtime_build, "Both exact toolchain and runtime builds are required")
+            migrate(arguments)
     except (MigrationError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         print(f"::error::{error}", file=sys.stderr)
         sys.exit(1)

@@ -128,6 +128,23 @@ class MigrationValidationTests(unittest.TestCase):
     def test_toolchain_mode_never_allows_additions(self):
         self.assertEqual(migration.approved_additions("Chat", "toolchain"), {})
 
+    def test_toolchain_matrix_supports_each_scheme_or_all(self):
+        for scheme in ("Core", "Chat", "Bible", "Todo"):
+            self.assertEqual(migration.requested_schemes(scheme, "toolchain"), [scheme])
+        self.assertEqual(migration.requested_schemes("all", "toolchain"), ["Core", "Chat", "Bible", "Todo"])
+
+    def test_pcc_matrix_cannot_select_all_or_another_package(self):
+        self.assertEqual(migration.requested_schemes("Chat", "pcc-registration"), ["Chat"])
+        for selection in ("all", "Core", "Bible", "Todo"):
+            with self.assertRaises(migration.MigrationError):
+                migration.requested_schemes(selection, "pcc-registration")
+
+    def test_matrix_rejects_unrecognized_mode_and_selection(self):
+        with self.assertRaises(migration.MigrationError):
+            migration.requested_schemes("Unknown", "toolchain")
+        with self.assertRaises(migration.MigrationError):
+            migration.requested_schemes("Chat", "unknown-mode")
+
     def test_pcc_mode_is_chat_only(self):
         with self.assertRaises(migration.MigrationError):
             migration.approved_additions("Core", "pcc-registration")

@@ -140,6 +140,19 @@ jobs:
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Build Release for iOS devices without signing
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Super.xcodeproj \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO
+
   build:
     # Aggregation gate. Branch protection requires a status check named
     # literally `build`; the `build-app` matrix above publishes per-scheme
@@ -351,6 +364,12 @@ jobs:
             exit 1
           fi
           echo "Snapshot suites for $SCHEME: ${ONLY_TESTING[*]}"
+          # These SDK-error constructors only execute on OS 27, whereas the
+          # hosted SwiftPM tests run on macOS 26. Exercise them here without
+          # making real PCC requests. Other logic suites stay in swift-test.
+          if [ "$SCHEME" = Core ]; then
+            ONLY_TESTING+=( "-only-testing:CoreTests/AppleFoundationPCCProviderTests" )
+          fi
           xcodebuild test \
             -project Super.xcodeproj \
             -scheme "$SCHEME" \
