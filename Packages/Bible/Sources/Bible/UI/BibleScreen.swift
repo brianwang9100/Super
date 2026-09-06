@@ -160,9 +160,6 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.selectionCitation) { _, _ in
             publishComposerAccessories()
         }
-        .onChange(of: activeOverlayKind) { _, _ in
-            publishComposerAccessories()
-        }
         // Immersive reading: when the scroll reducer flips `isImmersive`,
         // mirror it to the shell so its hamburger + chat pill hide/show in
         // sympathy with the local nav bar. Published only on real flips
@@ -400,7 +397,6 @@ public struct BibleScreen: View {
                 ComposerAccessorySelection(
                     title: citation,
                     accessibilityLabel: "\(citation), show verse actions",
-                    isExpanded: activeOverlayKind == .selection,
                     onExpand: { viewModel.presentActionSheet() },
                     onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
                 )
