@@ -275,8 +275,8 @@ jobs:
           # build). A -destination can only express the minor (OS=26.4), so the
           # build is asserted separately below: 23E244 (26.4.0) and 23E254a
           # (26.4.1) both report as "iOS 26.4" yet render differently. When
-          # repinning, update this script (incl. RUNTIME_BUILD), the AGENTS.md
-          # trio (§ "iOS testing"), and re-record every baseline under
+          # repinning, update this script (incl. RUNTIME_BUILD), the
+          # docs/TESTING.md simulator runbook, and re-record every baseline under
           # Packages/*/Tests/.../__Snapshots__.
           #
           # Source of truth: the local PreToolUse guard

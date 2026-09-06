@@ -1,271 +1,68 @@
 # Super — Agent Guidelines
 
-## Documentation
+SuperOS is the personal app; SuperBible is the public App Store target. An **applet** is a hosted app, a **module** is a Swift package, and the **shell** composes them.
 
-All design documents live in `docs/`. Read the relevant docs before working on any component:
+## Read for the task
 
-- `PRODUCT_VISION.md` — overall vision, applet breakdown, principles
-- `DESIGN.md` — app shell, applet manager, navigation layouts
-- `NAMING_CONVENTIONS.md` — files & folders, function parameters, Swift type taxonomy, SwiftUI views, GRDB schema (the single rulebook for *anything name-shaped*)
-- `MOBILE_ARCHITECTURE.md` — dependency graph, event bus, data layer, tool system, LLM adapter
-- `SERVER_ARCHITECTURE.md` — gateway, per-applet services, admin dashboard
-- `CLIENT_SERVER.md` — sync vs REST, API routing, Chat orchestration
-- `SYNC.md` — platform-agnostic sync engine
-- `AUTH.md` — username/password, JWT tokens, admin account setup
-- `CI_PIPELINE.md` — CI/CD, AI agent workflow, automated PR review
-- `OBSERVABILITY.md` — Apple-built-in posture for crashes, metrics, diagnostics, logs. No third-party SDKs anywhere in this project.
-- `SECURITY.md` — threat model, encryption, auth, home automation safety
-- `AI_TOOLS.md` — approved AI development tools and security rules
-- `CHAT_INTERACTIONS.md` — cross-applet interaction catalog
-- `DEVELOPMENT_SETUP.md` — clone, build, deploy, first-run wizard
-- `Chat/` — Chat (AI chatbot) applet-specific design and architecture
-- `SuperBible/` — SuperBible target docs: `OVERVIEW.md` and `OBSERVABILITY.md`. SuperBible is the public App Store target; SuperOS is the founder's personal app. Both share Core + Chat + Bible.
-- `superpowers/specs/2026-05-23-superbible-fork-design.md` — SuperBible fork design (architecture, milestones, monetization, cloud roadmap). Read before touching `App-SuperBible/`, the `SuperBible` target in `project.yml`, or future `Packages/{Plans,Memorize,Quiz,Learn}/`.
+- Naming anything: [NAMING_CONVENTIONS.md](docs/NAMING_CONVENTIONS.md).
+- Architecture or cross-applet work: [MOBILE_ARCHITECTURE.md](docs/MOBILE_ARCHITECTURE.md); shell/UI: [DESIGN.md](docs/DESIGN.md); Chat: [docs/Chat/](docs/Chat/).
+- SuperBible target, its `project.yml` entries, or future Plans/Memorize/Quiz/Learn packages: [fork design](docs/superpowers/specs/2026-05-23-superbible-fork-design.md) and [overview](docs/SuperBible/OVERVIEW.md).
+- Tests, snapshots, or simulator verification: [TESTING.md](docs/TESTING.md). Build setup: [DEVELOPMENT_SETUP.md](docs/DEVELOPMENT_SETUP.md). CI: [CI_PIPELINE.md](docs/CI_PIPELINE.md), with implemented behavior in [`.github/workflows/`](.github/workflows/).
+- Security or diagnostics: [SECURITY.md](docs/SECURITY.md), [OBSERVABILITY.md](docs/OBSERVABILITY.md).
+- Server/auth/sync work: [SERVER_ARCHITECTURE.md](docs/SERVER_ARCHITECTURE.md), [CLIENT_SERVER.md](docs/CLIENT_SERVER.md), [AUTH.md](docs/AUTH.md), [SYNC.md](docs/SYNC.md). These describe the SuperOS roadmap; `super-server/` is not implemented. SuperBible has a separate CloudKit roadmap.
 
-## Terminology
+## Delivery workflow
 
-- **Applet** = an individual app within Super (Chat, ToDo, Calendar, Home, etc.)
-- **Module** = a Swift Package Manager code module (not the same as an applet)
-- **Shell** = the Super app container that hosts applets
+For substantive implementation tasks, unless the user directs otherwise:
+
+1. Write a focused plan in a Markdown file: approach, risks, and validation.
+2. Have a review subagent critique the plan; address actionable findings before implementing.
+3. Implement the plan and complete relevant QA.
+4. Have a separate review subagent review the changes; address findings and repeat affected validation.
+5. Create a draft PR using the repository template and include test results.
+6. Monitor CI and Codex review; fix failures and address review findings. Request a Codex pass if none starts.
+7. After explicit Codex approval of the **current revision** and passing applicable CI, mark the PR ready and enable auto-merge. Verify required checks remain enforced; never bypass them. Subsequent changes require renewed review/approval. Verify the eventual merge.
+
+Questions and trivial documentation edits do not require the full process unless requested.
 
 ## Worktree discipline
 
-When invoked inside a Git worktree (for example `<repo>/.worktrees/<name>/` or a managed worktree), **do all file edits there**. The main repo checkout and the worktree share `.git` but have separate working trees; an edit to a file under the main repo path is invisible to the worktree (and vice versa), and the main repo may carry unrelated uncommitted work from another session that your changes would mix into.
+- Edit only in the session's workspace root unless the user authorizes another location. Re-root paths copied from docs or agent output; give any delegated work the same root. Confirm edits with `git status` there.
+- After a PR is verified `MERGED`, **keep the worktree and local branch**. Delete only that worktree's dedicated simulator; worktree/branch cleanup requires an explicit user request.
 
-- The session env hint (`Primary working directory: …`) is the authoritative workspace root. Treat it as the *only* place file writes are allowed unless the user explicitly says otherwise.
-- Prefer relative paths and the shell's current working directory over hardcoded absolute paths. Absolute paths copied from docs, memory, prior agent output, or `git log` typically point at the main repo and will silently land in the wrong tree.
-- Before writing the first file in a session, sanity-check: does the absolute path you're about to use start with the worktree root? If not, rewrite it.
-- **When dispatching subagents (Explore, Plan, general-purpose) from a worktree, give them the worktree root and require every path they return to be relative to it (or absolute *under* it).** Explore/Plan agents resolve and report absolute paths against the main repo by default, so their output is the single most common source of wrong-tree edits — never paste an agent's absolute path straight into Read/Edit without re-rooting it to the worktree first.
-- After a batch of edits, run `git status` from the worktree to confirm your changes appear there — not the main repo. A clean `git status` in the worktree when you expected changes is a red flag that you edited the wrong path.
-- If you discover edits landed in the main repo by mistake: `cp` each file from the main repo into the matching worktree path, then `git checkout HEAD -- <files>` and `rm` untracked files in the main repo to restore it. Do **not** stash, commit, or push from the main repo to recover — the main repo may have pre-existing uncommitted work you shouldn't touch.
-- A `PreToolUse` hook (`.codex/hooks/block-outside-worktree.sh`, wired in `.codex/hooks.json`) backstops all of the above: it denies any `apply_patch` target outside the active worktree, along with the Edit/Write compatibility aliases. It's a safety net, not a substitute — the relative-path habit and the first-write sanity-check above are still the first line of defense.
-- **After the PR merges, leave the worktree in place.** Do **not** `git worktree remove` or `git branch -D` once a PR merges — the user keeps merged worktrees around rather than cleaning them up per-PR. Verify the merge with `gh pr view <N> --json state` showing `MERGED`, then stop; no worktree/branch teardown. The remote branch is still usually auto-deleted by GitHub's "Automatically delete head branches" setting — that's fine and needs no action. (If the user later asks to reclaim space, the teardown sequence is: `cd` to the main repo root, `git worktree remove`, `git branch -D <branch>` — `-d` refuses because the local branch is ahead of `main` post-squash, but the branch's content lives in the squash commit so `-D` is safe — then `git worktree prune`. Only do this on explicit request.)
+## Architecture and persistence
 
-## Swift function declarations
+- Applets import Core, never another applet. Cross-applet communication uses `SuperEventBus` with generic events/`RecordReference` and local projections, never another applet's database. App targets are the composition roots.
+- Use GRDB, one `DatabaseQueue`/`.sqlite` per applet, with explicit SQL in `DatabaseMigrator`. Persisted records are structs conforming to `Codable, FetchableRecord, PersistableRecord, Sendable`.
+- If displayed database rows can change outside the view, bind through GRDBQuery `@Query`. Single-owner flows or state that merges records with streaming/drafts may use imperative repository reads in an `@Observable @MainActor` view model. Never hand-roll `ValueObservation` inside a view model.
+- No Combine for data flow; use `AsyncStream`/`AsyncSequence`. Use actors for shared state or `os_unfair_lock` for synchronous atomic mutation; no `DispatchQueue`/`NSLock` synchronization.
+- Use protocol-typed services at applet boundaries. Inject Core's `Clock`/`IDGenerator` into testable logic; reuse `FixedClock`/`DeterministicIDGenerator` in tests.
+- Throw domain `Sendable` error enums defined alongside the API. Public declarations and test suite types carry short `///` documentation directly above the declaration.
 
-Follow the Swift book — [Functions chapter](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/functions/) — for anything not stated here. Parameter naming (argument labels, prepositions, `_`) lives in [`docs/NAMING_CONVENTIONS.md` Part 2](./docs/NAMING_CONVENTIONS.md#part-2--function-parameters). The in-tree rules we hold the line on:
+## Typography and controls
 
-- **Defaults last.** Parameters without defaults come first. Use defaults to collapse small overload families into one function.
-- **Implicit return.** Single-expression bodies drop `return`: `func nextID() -> String { UUID().uuidString }`.
-- **No `-> Void`.** Leave it implicit.
-- **Tuples for 2–3 related returns** with named members; reach for a struct beyond that. Optional tuples (`(min: Int, max: Int)?`) when the whole tuple may be absent.
-- **Typed errors.** Throwing APIs throw a `Sendable` enum defined alongside the API (see `LLMProviderRegistryError`, `ToolRegistryError`) — not `NSError` or strings. Order keywords as `async throws`.
-- **Variadic (`T...`).** The parameter immediately after a variadic must carry an argument label — the compiler requires it to disambiguate calls.
-- **`inout` is rare** — prefer returning a new value. The book covers the constraints when you do need it.
+- All fonts resolve through `@Environment(\.superTypography)` and `SuperTypography` accessors. No raw `Font.system`/`Font.custom` or `.font(.system/.custom)` at call sites; [SwiftLint](.swiftlint.yml) enforces this. Use `typography.font(size:)` for arbitrary sizes. A necessary exception needs a local lint suppression with its rationale, not a weakened rule.
+- **All content and chrome track the app font-scale slider.** Only the Settings monogram (`SettingsAboutPane`) and model badge (`SettingsModelsPane`) use `tracksFontScale: false`. Accessors already apply the slider; don't multiply it again. For OS Dynamic Type, brand faces use `relativeTo:`; system faces use a `@ScaledMetric` base with `font(size:)`. `SidebarDrawer` demonstrates both axes.
+- Glass goes through `SuperGlass`: `superGlassButton(in:)` for tappable chrome, `superGlassSurface(in:)` for passive surfaces. No direct `.glassEffect(...)`. Remove old fill/border/shadow treatments when adopting glass; never use clear glass over text.
+- Present sheets with native `.sheet`; use `NavigationStack` for sub-panes. Follow `SettingsHeader`: leading circular glass close/back button, centered title, balancing trailing spacer. Panels use the theme's `background`/`backgroundRaised`. The Chat transcript stays in its existing overlay; this sheet rule does not change its presentation.
 
-## Source-file documentation
+## Testing
 
-Every public protocol, type, enum, struct, class, and free function ships with a short `///` doc comment **placed directly above the declaration** (so Xcode's Quick Help and Swift documentation tools pick it up). Keep it tight — the goal is orientation, not explanation of obvious code.
+Follow [TESTING.md](docs/TESTING.md) for required coverage, snapshot scaffolding, async seams, and the exact CI simulator environment. Run each affected package's suite before opening a PR; UIKit snapshots require simulator tests in addition to `swift test`. App-target verification has a documented exception there.
 
-- **Where**: `///` immediately above the declaration. No multi-paragraph file-header banners — if a file's primary purpose isn't obvious from its single primary type's doc, split it or rename it.
-- **Length**: 1–3 sentences. Skip trivial `init`s and property accessors when meaning is obvious from the signature.
-- **Functions**: document parameters and return only when non-obvious from the signature, using Swift's `/// - Parameters:` / `/// - Returns:` markup. `func setEnabled(toolID: String, enabled: Bool)` needs none; `func stream(messages:model:tools:temperature:)` with non-obvious `temperature` semantics does.
-- **Test files**: `///` on the test suite struct naming what surface is under test. Individual `@Test` cases only need docs when the case name leaves intent unclear.
-- **Expand domain acronyms on first use per file** (SSE, LLM, MCP, JWT, GRDB, BYOK, …) so a cold reader doesn't have to grep.
-- **Why over what.** Don't restate what the code says — explain non-obvious behavior (a workaround, a perf trick, a deliberate divergence from a doc).
+Use [the PR template](.github/pull_request_template.md); include the new/updated tests and local results in **Test Coverage**. If a PR has no checks, inspect `gh pr view <N> --json mergeable,mergeStateStatus` for conflicts before retriggering CI.
 
-## Naming
+## Integrations
 
-All naming — files, folders, function parameters, Swift type suffixes, SwiftUI view buckets, GRDB schema — lives in **[`docs/NAMING_CONVENTIONS.md`](./docs/NAMING_CONVENTIONS.md)**. Read it before coining a new name.
+- Bring Your Own Key (BYOK): users supply provider keys; store them in Keychain. Add external APIs only when essential to the applet's function.
+- Observability uses Apple built-ins only. No third-party analytics, crash, advertising, attribution, or telemetry SDKs; see [OBSERVABILITY.md](docs/OBSERVABILITY.md).
 
-## Typography
+## Maintaining these instructions
 
-All text resolves through `SuperTypography` (`Packages/Core/Sources/Core/Theme/SuperTypography.swift`), read from `@Environment(\.superTypography)`. **Route every `Text` through the `typography.*` accessors** (`display`, `mono`, `font(_:)`, `font(size:)`) — never raw `.font(.system(...))` or `Font.custom(...)`. That keeps the brand-face swap and scale centralized; a literal `.system`/`.custom` call silently opts out of both.
+`AGENTS.md` is canonical; `CLAUDE.md` is a sibling symlink to it. Nested files add only local constraints. Create a nested file only when the directory has non-obvious rules worth loading, and pair it with `ln -s AGENTS.md CLAUDE.md`.
 
-**This is lint-enforced, not just convention.** The `super_typography_only` SwiftLint `custom_rules` rule in [`.swiftlint.yml`](./.swiftlint.yml) fails the build (`error` severity) on any `.font(.system…)`, `.font(.custom…)`, or bare `Font.system` / `Font.custom` in the linted source — App, App-SuperOS, App-SuperBible, Core, Chat, Bible, and Todo (every Swift target). The required `SwiftLint` CI check (`.github/workflows/swiftlint.yml`) gates merge on it. The rule skips comments (so doc-comment mentions of the banned forms are fine), exempts `SuperTypography.swift` itself as the one sanctioned caller, and exempts the test targets (snapshot reference grids are fixtures, not product surfaces). For an SF Symbol or other size that doesn't map to a `Role`, use `typography.font(size:)` (pair it with a `@ScaledMetric` base when the surface should honor OS Dynamic Type); never reach back for `.font(.system(size:))`. Need a genuinely sanctioned raw call outside `SuperTypography.swift`? Add `// swiftlint:disable:next super_typography_only` with a one-line rationale rather than weakening the rule.
-
-Type scales along **two independent axes**, one knob each:
-
-- **App font-scale slider** (`fontScale`, set in Settings) — folded into every accessor's size. This is a **global size control**: it scales *all* app text, reading content and chrome alike. Opt a surface out with **`tracksFontScale: false`**, which renders at the unscaled base size regardless of the slider — now reserved for the handful of fixed brand marks (see below).
-- **OS Dynamic Type** (the system text-size / accessibility setting) — carried by `relativeTo:` on a brand face (pass `nil` to ignore it), or by a `@ScaledMetric` base fed to `font(size:)` on a system face (the system path strips `relativeTo`).
-
-Rule of thumb: **everything scales with the slider** (the default, `tracksFontScale: true`) — message content, the sidebar drawer (rows, nav, `CHATS` label, wordmark), and the Bible reader all track it. Chrome that should also honor OS Dynamic Type pairs the default slider tracking with a `@ScaledMetric` base fed to `font(size:)` (see `SidebarDrawer`'s `navLabelSize` / `rowTitleBase` for the canonical dual-axis pattern). The two axes compose.
-
-`tracksFontScale: false` is the **rare** exception, for a brand mark that must stay a fixed visual anchor regardless of the slider — today only the Settings monogram (`SettingsAboutPane`) and the model badge (`SettingsModelsPane`). A **page/sheet title that labels the content you're reading is content** and scales (e.g. `SettingsHeader`'s centered title keeps the default `font(.body)`). Don't reach for `tracksFontScale: false` on anything else — the sidebar's earlier slider-independence was intentionally removed.
-
-Snapshot implication: because almost every surface now tracks the slider, a view's `*_font_scale_max_*` baseline renders at the **scaled** size — re-record it when the view legitimately changes, but never re-record a `fontScale == 1.0` baseline to "make a test pass" (identity at 1.0× means it must stay byte-identical). For the rare `tracksFontScale: false` brand mark, the `*_font_scale_max_*` baseline must still be byte-identical to its `1.0×` render.
-
-## Theming & Controls
-
-Glass and chrome resolve through `SuperGlass` (`Packages/Core/Sources/Core/Theme/SuperGlass.swift`), the single owner of how Super adopts iOS 26 Liquid Glass — the companion to `SuperTypography` (faces) and `SuperTheme` (color). Route every glass surface through its helpers; never call `.glassEffect(...)` directly at a call site (that hard-codes the tint and skips the snapshot solid-fallback).
-
-- **Buttons and controls use interactive glass.** Apply **`superGlassButton(in:)`** to tappable chrome (nav buttons, toolbar controls). It renders `Glass.regular.tint(theme.glassTint).interactive()` so the control reacts to touch, and re-asserts the full `shape` as the `contentShape` (glass otherwise collapses the hit region to the glyph — the bug that broke the hamburger). Drop any pre-existing fill + border + drop-shadow first; glass supplies its own edge and elevation. `SettingsHeader`'s 44pt circular leading button is the canonical control.
-- **Passive inline glass surfaces use `superGlassSurface(in:)`** — the frosted `.regular`, non-interactive variant (nav pills, selection pills) so inner segment buttons keep their own taps. Never clear glass over text.
-
-### Sheets
-
-Sheets are **native `.sheet`** (system-presented), never a custom overlay — the system supplies the drag indicator, scrim, and detent behavior. (This is about *presentation*; turning the Chat transcript itself into a sheet was tried and rejected — that decision stands and isn't reopened by this rule.)
-
-- **Consistent nav bar + navigation button.** Every sheet opens with a top chrome bar carrying a leading circular `superGlassButton` (close `✕` at the root, back chevron on pushed sub-panes) and a centered title. `SettingsHeader` is the reference; match its structure (leading button, centered title, hidden trailing spacer to keep the title centered). Multi-pane sheets drive navigation with a `NavigationStack` (see `SettingsSheet`) so pushes get the native left-to-right transition.
-- **Background is Super theme color, not glass.** The sheet's content panel fills with the active theme's `background` (or `backgroundRaised`) — a full-bleed glass sheet is too distracting behind reading/editing content. Glass stays on the *controls* (the nav button), not the panel.
-
-## Swift Concurrency & Type Policy
-
-### Structs for data, classes for identity
-
-- **Structs** for anything that is pure data: models, events, tool definitions, DTOs, configuration, API payloads
-- **Classes** only for objects that own state, manage a resource, or where there should be exactly one instance:
-  - `actor` — shared mutable state (EventBus, ToolRegistry, AuthInterceptor)
-  - `@Observable @MainActor final class` — SwiftUI view models
-  - `final class` with `os_unfair_lock` — synchronous atomic access
-- If a type doesn't clearly own state or represent a singular resource, it's a struct
-
-### Strict concurrency
-
-- Swift 6 strict concurrency enabled on all targets
-- `async/await` everywhere — no completion handler callbacks
-- No Combine for data flow — use `AsyncStream`/`AsyncSequence`
-- All types crossing concurrency boundaries must be `Sendable`
-- `@MainActor` on all view models and UI-bound state
-
-### Synchronization
-
-- **Actors** by default for shared mutable state
-- **`os_unfair_lock`** when a multi-step mutation must be atomic (actor reentrancy risk)
-- Never use `DispatchQueue` or `NSLock` for synchronization
-
-## Persistence
-
-- **[GRDB](https://github.com/groue/GRDB.swift)** (not SwiftData/Core Data) for all persistence
-- All data models are `struct` conforming to `Codable, FetchableRecord, PersistableRecord, Sendable`
-- Each applet gets its own `.sqlite` file via `DatabaseQueue`
-- Use `DatabaseMigrator` with explicit SQL for schema migrations
-- **Reactive vs. imperative reads — pick by who mutates the rows.** The deciding question is *not* how a view is built but whether the data on screen can change without that view being the one that changed it:
-  - **A view whose on-screen state *is* a database query, and whose rows can be mutated outside that view** (another screen, another applet via the event bus, background work, sync) **must bind reactively** via **[GRDBQuery](https://github.com/groue/GRDBQuery)** — a `@Query` over a `ValueObservation`-backed request that re-renders automatically on any write, wherever it originated. For a pure list-of-records view the `@Query` request *is* the view model: domain filter logic becomes the request's parameters and the view binds straight to the result. Do **not** wrap such a view in an `@Observable` view model with its own `refresh()` — that pull-based projection silently goes stale on outside writes. (Example: ToDo tasks — edited from the list, from detail, from Chat cross-applet.)
-  - **A view whose state is owned solely by that view's own flow, or which merges DB rows with in-memory-only state** (in-flight streaming, actor state, unsaved drafts) **may use an `@Observable` view model with imperative repository reads**, refreshed through its domain's own event channel rather than a DB observation. This is correct, not a violation — `@Query` can only project the DB slice and would force a redundant second mechanism. (Example: Chat's transcript — written only by its own `ChatSession`, merged with a non-persisted streaming tail.)
-  - Either way, **never hand-roll a `ValueObservation` inside a view model.** Reactive binding goes through GRDBQuery `@Query`; imperative reads go through repositories. There is no third option.
-- Use **[GRDBSnapshotTesting](https://github.com/groue/GRDBSnapshotTesting)** for snapshot testing of database state
-
-### GRDB schema naming
-
-See [`docs/NAMING_CONVENTIONS.md` Part 5 — Persistence schema](./docs/NAMING_CONVENTIONS.md#part-5--persistence-schema) for table, column, foreign-key, timestamp, and index naming. Server-side Postgres (Drizzle) uses `snake_case` and is covered in the same section.
-
-## Architecture Rules
-
-- No applet may import another applet — all cross-applet communication via the event bus
-- Each applet depends only on `Core` (the shared Swift Package)
-- The Shell (app target) is the composition root — it imports all applets + Core
-- Event bus events are generic (`dataCreated(id, type, summary)`) — not typed to specific applet domain models
-- Cross-applet data access uses event-driven projections, not shared databases
-
-## Testing & Testability (enforced on every PR)
-
-Testability is a design requirement, not an afterthought. Every change large enough to warrant a PR must satisfy every rule below.
-
-### 1. Design for testability
-
-- Services and repositories are injected as **protocols**, never concrete types, at applet boundaries.
-- Dependencies flow through the composition root or SwiftUI `@Environment` — no static singletons, no hidden globals, no `Date.now` / `UUID()` called directly inside testable logic (inject clocks and ID generators).
-- View models are `@Observable @MainActor` and depend only on protocol-typed services.
-- Side effects (network, DB, filesystem, HomeKit, Keychain) live behind injectable interfaces so tests substitute fakes or in-memory doubles.
-- If a piece of logic cannot be tested without spinning up a real network, real device, or real clock — **redesign it** before merging.
-
-### 2. Make async tests deterministic
-
-Async tests establish ordering through `await`, not through hope. Most "flaky" tests aren't bugs in the code under test — they're races in the test fixture itself. The fixes are usually small once the race is named; the cost is the hours spent chasing a 1-in-N flake to find it.
-
-- **Synchronize on conditions, not time.** `Task.yield()` polling loops and `Task.sleep` waits are race amplifiers, not synchronization primitives. Await an observable signal: a continuation, an awaitable handle on the work itself, or the work's own result. If you can't express "the spawned work is done" as a single `await`, expose a test seam on the production type that returns a handle — see `ChatScreenViewModel._waitForPendingTitleTask()` for the in-tree pattern (underscore prefix marks it as test-only surface, not stable API).
-- **Drain spawned work *before* asserting, not after.** A fire-and-forget `Task { ... }` inside a method that returns synchronously is invisible to the caller — the test has to drain it explicitly via the test seam, and the drain must come *before* the assertions read observable state. Otherwise assertions snapshot a value the task may still mutate, and tests fall back to polling helpers (`yieldUntilHeaderUpdates`, `yieldUntilFiredCount`) that mask races without closing them.
-- **Sequence asymmetric parallel work explicitly.** When `async let` blocks share a fixture (a mock script queue, a counter, a registry) and the spawned work has *different shapes* (one path triggers a tool loop, the other doesn't), the order in which they consume the fixture matters. Establish the order with an `await` on an observable signal *between* the spawns — not after both have already fanned out. Use the side effect of the first work item (a tool's `awaitFirstCall()`, an actor's "I started" continuation) as the synchronization point.
-- **Prefer strict test doubles.** A mock that `fatalError`s on misuse — empty queue, unexpected method, wrong argument — attributes the bug to its caller, where the stack trace is useful. A lenient default lets test misconfigurations hide until a *different* test fails later for non-obvious reasons. The in-tree `FakeLLMProvider` is strict by design and that's load-bearing.
-- **`.serialized` is a smell, not a fix.** Reaching for `@Suite(.serialized)` (or its XCTest equivalent) means there's a race somewhere — between tests, or between a test's own spawned work and its assertions. Serialization narrows the race window without closing it, and lets the actual bug live longer. Find the race and fix the synchronization; the suite stays parallel.
-
-### 3. Ship tests with the change
-
-- **New code paths** → unit tests with mocked dependencies.
-- **New GRDB schema or query** → integration test against an in-memory `DatabaseQueue` + `GRDBSnapshotTesting` where schema shape matters.
-- **New cross-applet event or tool call** → test that publishes/subscribes through a real in-memory `SuperEventBus`.
-- **New or changed SwiftUI view** → **snapshot test required.** Use `pointfreeco/swift-snapshot-testing`. Cover the view's key states (empty, loading, populated, error) across the **Vellum light / dark × default Dynamic Type** matrix at minimum, plus Dynamic Type XXL for any view with text reflow, plus Reduce Motion where animation is involved. **Per-screen suites render only the default family's light + dark (`vellumLight` / `vellumDark`) — not all 8 theme variants.** The other six variants (Lapis / Scriptorium / Slate × light/dark) are pixel-locked once per package in `ThemeGallerySnapshotTests`; a per-screen suite that fans out over `SuperTheme.Identifier.allCases` (now 8) or adds a third family variant is wrong — it re-introduces the cost the gallery exists to avoid. Any applet-level layout (iPhone tab view, iPad/Mac split view) needs a snapshot per form factor. Only rerecord snapshots when the visual change is intentional — never rerecord to "make the test pass."
-- **Bug fix** → a regression test that **fails before the fix** and passes after. If you can't write one, explain why in the PR description.
-- **No reducing coverage thresholds.** Core ≥80%, applets ≥70%, server ≥80%. Add tests, not exceptions.
-
-### 4. Run the module's tests locally before opening a PR
-
-- **Swift package**: `swift test` from the package root (e.g., `Packages/Chat/`). All tests green before `gh pr create`.
-- **TypeScript server**: `pnpm test` (unit + integration) from `super-server/`. All tests green before `gh pr create`.
-- If a change crosses multiple packages, run tests in each touched package.
-
-### 5. iOS testing: match CI's Xcode + simulator runtime + iPhone
-
-Snapshot baselines are pixel-exact comparisons. A baseline recorded on one Xcode + iOS simulator runtime + iPhone model will fail on another, even between **point builds of the same iOS minor** (e.g. `26.4.0` vs `26.4.1`), because the system text renderer and SwiftUI layout passes change. **Always record against CI's runtime.** Today that is **Xcode 26.4.1 + iOS 26.4.1 (build `23E254a`) simulator on iPhone 17** running on the `macos-26` runner image; verify with `xcodebuild -version` and `xcrun simctl list runtimes iOS` (the 26.4 runtime must be build `23E254a`) before recording.
-
-- **Xcode**: pinned literally to `26.4.1` (not `latest-stable`) by `maxim-lobanov/setup-xcode@v1` in every workflow under `.github/workflows/`. Match the version locally — install via `xcodes install 26.4.1` and select with `xcode-select -s /Applications/Xcode.app` (or `DEVELOPER_DIR=...` per-command when multiple Xcodes are installed). The `xcodebuild -version` build number in the worktree and on a fresh CI log must agree. Do **not** repin to Xcode 26.5 until it ships GA on the runner image — it's currently beta on macos-26, and pinning to a beta means re-recording baselines again when GA arrives.
-- **iOS simulator runtime**: CI pins the **exact build `23E254a`** (iOS 26.4.1) — the build `macos-26` bundles with Xcode 26.4.1. The `Pick iOS simulator` step in `ios-build.yml` asserts `buildversion == 23E254a` (there must be exactly one iOS 26.4.x runtime, and it must be that build) and fails the leg loudly otherwise. **Local hazard:** `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4", and simctl conflates them under one identifier (`iOS-26-4`) with no per-device build field — so a `-destination` with `OS=26.4` can silently land on the wrong build. Keep **only** `23E254a` installed locally: list with `xcrun simctl runtime list`, delete a stale `23E244` with `xcrun simctl runtime delete <uuid>`. The `.codex/hooks/enforce-snapshot-sim.py` PreToolUse guard refuses concrete-sim `xcodebuild` runs while any other 26.4.x build is installed, so this can't be forgotten. If `23E254a` ever stops being installable, the same fallbacks apply:
-  1. Drop the affected per-test variant with a one-line rationale in the PR description. The default snapshot matrix (`vellumLight/vellumDark × default Dynamic Type`) usually survives cross-runtime drift; Dynamic Type XXL and other accessibility-large variants are the ones most likely to fail and are the candidates for deferral.
-  2. For sub-pixel drift only (anti-aliasing on a custom font, not structural layout shifts), use the `precision`/`perceptualPrecision` tolerance pattern from `verifyEmpty` in `ChatScreenSnapshotTests` — only acceptable when a real regression would still register at the chosen tolerance. A perceptual delta above ~5% is structural, not anti-aliasing, and tolerance is not the right tool.
-- **iPhone model**: CI's `Pick iOS simulator` step looks up `iPhone 17` on `iOS 26.4` by name + runtime. Pin it the same way locally for the recording command (`-destination "platform=iOS Simulator,name=iPhone 17,OS=26.4"`) — note `OS=26.4` names the minor only; the build is guaranteed by keeping just `23E254a` installed (see the runtime bullet above). Do **not** rely on simctl's default device-list order — it's not stable across machines, which is why we stopped using "first iPhone on highest runtime".
-
-Before recording new snapshot baselines, confirm the local Xcode + runtime + device match CI's resolved trio. If they can't match exactly, document the gap and the chosen mitigation (e.g., perceptual tolerance, deferred variant) in the PR description.
-
-**Test on a dedicated, per-worktree simulator — not the shared booted one.** Because work happens across many parallel worktrees on one machine (see *Worktree discipline*), the shared booted simulator is contended: another session's app install, launch, or snapshot run collides with yours and produces confusing "stale build" / wrong-state results. For interactive verification and app install/launch, create a fresh sim that still matches CI's pinned device + runtime — `xcrun simctl create "SB-<worktree-name>" "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4` — boot it, and install/launch there. **Delete that sim when the worktree's PR merges**, the same teardown trigger as the worktree itself (verify `MERGED`, then `xcrun simctl shutdown <id>` + `simctl delete <id>`); keep it alive while the branch is in flight.
-
-### 6. PR description must state what was tested
-
-Every PR description includes a **Test Coverage** section naming the new/updated tests and confirming the module's suite passes locally. Example format is in [CI_PIPELINE.md](./docs/CI_PIPELINE.md) §6.2.
-
-### 7. Converged conventions (the patterns the modules already share — follow them in new tests)
-
-These are concrete forms of the rules above. They exist because reviews kept finding the same drift; treat them as a checklist.
-
-**Snapshot suites — required scaffolding.** Every UIKit *view* snapshot suite carries all three:
-
-1. `init { SnapshotFontRegistration.ensureRegistered() }` — **mandatory and universal**, even for glyph/system-face-only views. Registration is process-global and idempotent; calling it in every suite's `init` is what makes the suite render the brand face **independent of suite execution order**. A suite that omits it passes only when some *other* suite happened to register fonts first, and bakes the system fallback when run first or in isolation (the recurring `#161` ghost/shift flake). This is the load-bearing rule — it protects the CI verify path, which reads baselines, so it is non-negotiable.
-2. `#if canImport(UIKit)` — snapshot suites compile out under `swift test` on macOS.
-3. `record: SnapshotEnvironment.isRecording ? .all : nil` — recording is opt-in via the environment seam, never hard-coded.
-
-DB schema-snapshot suites (`GRDBSnapshotTesting`) render no views and are exempt from rule 1.
-
-**`@Suite(..., .serialized)` on snapshot suites is optional but module-consistent.** It is the one sanctioned use of `.serialized` that is *not* the §2 smell: it guards the shared on-disk `__Snapshots__/` directory and process-global font registration against concurrent **recording** writes — not a logic race. But it is not what gives order-independence (rule 1 is; the CI verify path only reads), so a module may adopt it for all its snapshot suites or none — both are fine. **Chat and Todo serialize; Bible and Core do not.** What is *not* fine is intra-module inconsistency (some suites serialized, some not, with no stated reason) — that was Todo's bug. If a module serializes, state the recording-guard reason in a one-line comment; if a suite opts out within a serialized module, say why (e.g. it relies on font registration for order-independence, as a few Chat suites do).
-
-**Sub-pixel tolerance.** The `0.99 / 0.97` precision/perceptualPrecision pair is the *only* sanctioned snapshot tolerance, reserved for documented custom-font anti-aliasing drift (§5) — never to mask a structural regression. Keep it as one named constant, not a per-file magic number.
-
-**Async seams over polling.** §2 bans `Task.yield()`/`Task.sleep` as synchronization; these are the in-tree seams that replace them — drain the work on its own completion signal:
-
-- **Fire-and-forget task → drain seam.** Expose an underscore-prefixed `_waitFor…()` that awaits the task's `.value`, covering *every* observable the task mutates: `ChatScreenViewModel._waitForPendingTitleTask()` / `_waitForPendingStreamTask()`, `CodeBlockCopyController._waitForRevert()`, Bible's `runner._waitUntilIdle()`. Wait for the *stream/subscription* task before the task it spawns (e.g. `_waitForPendingStreamTask()` then `_waitForPendingTitleTask()`) — the spawned task may not exist until the outer one has drained.
-- **`AsyncStream` consumer → per-event signal.** A controller that consumes a stream on an internal `Task` exposes either a synchronous `_simulateEvent(_:)` seam that drives state directly (Bible's `NarrationController`), or a buffered processed-event signal the test drains one-per-event (`VoiceInputController._observeProcessedEvents()`). Never yield-poll the consumer.
-- **Staged concurrency → entry signal.** To sequence racing `async let` work deterministically, await an "I have started / reached the gate" signal between the spawns (`PermissionGate.waitUntilEntered()`, a tool's `awaitFirstCall()`), not a fixed yield count after both have fanned out.
-- **Synchronous `@MainActor` spy.** When a callback fires on the main actor, record it with a `@MainActor` recorder (`TitleSpy`, `TranscriptRecorder`) so the append is synchronous — never wrap it in `Task { await actorSpy.append() }`, which reintroduces fire-and-forget the test then has to poll for.
-
-**Inject the clock and ID generator** (§1) from Core's `FixedClock` / `DeterministicIDGenerator` (`Packages/Core/Sources/Core/Ambient/`) — no `Date.now`/`UUID()` in testable paths. Bible is the model; do not define local copies.
-
-**Per-test HTTP isolation.** HTTP-level tests stub through a per-test `URLProtocolStub` keyed by a unique `stubID` (+ `defer` unregister), never a global stub — keeps the suite parallel without cross-test contamination (Core's pattern).
-
-Module `AGENTS.md` files point back here and add only what's module-specific.
-
-### 8. No CI runs on a PR? Check for merge conflicts *first*.
-
-GitHub does **not** dispatch workflows for a PR whose head conflicts with its base. The PR sits with **zero** checks and `mergeStateStatus: DIRTY` / `mergeable: CONFLICTING` — which looks identical to an Actions outage or a dropped `pull_request` event, and tempts you into useless nudges (reopen, empty-commit push). None of those help while the conflict stands.
-
-- **Before** blaming GitHub or re-triggering, run `gh pr view <N> --json mergeable,mergeStateStatus`. `CONFLICTING` / `DIRTY` means *resolve the conflict*, full stop — dispatch resumes automatically once the head merges cleanly.
-- A common cause here: branching off another feature branch that later **squash-merges**. The squash gives your base a new SHA, so your branch still carries the pre-squash commits and conflicts with main even though the *content* already landed. Fix by re-homing only your own commits onto current main — `git reset --hard <your-first-commit>` then `git rebase --onto origin/main <your-first-commit>^ HEAD`, or reset to `origin/main` and re-apply just your changed files when they don't intersect what main moved (verify with `git diff <base> origin/main -- <files>`). Then re-record any baselines, since main's intervening merges may have changed the views/theme.
-
-## Sync
-
-- Custom platform-agnostic sync (not CloudKit)
-- GRDB/SQLite on client, Postgres on backend
-- Change-set protocol over HTTPS
-
-## Third-Party APIs
-
-- Avoid external API integrations unless essential to an applet's core function
-- **BYOK (Bring Your Own Key)** — Super is open source; never ship API keys. Users provide their own.
-- API key entry is part of applet onboarding — an applet that requires a key prompts for it during setup
-- Keys stored in Keychain (client) or encrypted columns (server), never in plaintext
-
-## Backend
-
-- TypeScript + Hono + Drizzle + PostgreSQL + Redis
-- Single backend with domain-separated code modules
-- Backend proxies all LLM API calls (API keys never on client) — **applies to SuperOS only.** SuperBible is serverless (local-only v1, CloudKit-private planned for v2) and issues BYOK calls directly from device to provider; see [`App-SuperBible/AGENTS.md`](./App-SuperBible/AGENTS.md) for the SuperBible rule.
-
-## AGENTS.md Policy
-
-`AGENTS.md` is the canonical agent-instruction file; `CLAUDE.md` is a symlink to it so Claude Code picks it up alongside tools that read `AGENTS.md` directly. Module rules load hierarchically — a module's `AGENTS.md` *adds to* the root, never replaces it.
-
-When creating a new module: write `AGENTS.md` in the module root, then `ln -s AGENTS.md CLAUDE.md`. Never edit `CLAUDE.md` directly.
-
-**Keep module `AGENTS.md` files small. Don't repeat rules from this root file** — point back to it instead. The module file is for what's unique: module-specific patterns, gotchas, and testing expectations beyond the root.
+Keep these files to project-specific decisions and gotchas. Omit language tutorials, generic engineering advice, source inventories, milestone history, and rules already stated in a parent. Put detailed procedures in one linked doc with a clear read trigger.
 
 ## Pull Request Review Policy
 
-Codex reviews report only serious, actionable findings: correctness, architecture, concurrency, persistence, security, testability, or regressions. Every finding must cite tight file and line evidence; suppress style-only narration and non-actionable summaries. Read and apply this root file plus every nested `AGENTS.md` for files in scope; nested instructions add to, rather than replace, this policy.
+Codex reviews report only serious, actionable findings: correctness, architecture, concurrency, persistence, security, testability, or regressions. Cite tight file/line evidence; suppress style-only narration and non-actionable summaries. Apply this root file and the nested `AGENTS.md` files for the changes in scope.

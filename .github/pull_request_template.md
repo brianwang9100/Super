@@ -2,9 +2,11 @@
 
 <!-- What changed and why. 1-3 bullets is plenty. -->
 
-## Test steps
+## Test Coverage
 
-<!-- Concrete commands or click-paths to verify the change. Example:
+<!-- Name new/updated tests and report local results for each affected package.
+     For documentation-only changes, report link/diff checks.
+     Concrete commands or click-paths to verify the change. Example:
      - `swift test --parallel` from `Packages/Chat/` → 265/265 green
      - In sim: open chat, send "hi", confirm header flips from truncation
        to LLM-generated title within ~1s
