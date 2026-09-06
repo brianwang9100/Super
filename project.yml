@@ -7,7 +7,7 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: true
   groupSortPosition: top
-  xcodeVersion: "26.4"
+  xcodeVersion: "27.0"
   # xcodegen 2.45.4 cannot model SPM-package test schemes via project.yml
   # (no `package/test-target` reference syntax). Per-package schemes are
   # hand-maintained in Scripts/xcodegen-extras/ and copied into place after

@@ -41,8 +41,8 @@ jobs:
         run: |
           set -euo pipefail
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          INTERFACE=$(rg --files "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework/Modules" -g '*.swiftinterface' | sort | head -1)
+          INTERFACE=$(find "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework/Modules" -name '*.swiftinterface' -print -quit)
           test -n "$INTERFACE"
           echo "Interface: $INTERFACE"
-          rg -n -A 160 '(class|struct) PrivateCloudComputeLanguageModel' "$INTERFACE"
-          rg -n 'init\(model:|init\(.*transcript:|contextSize|ReasoningLevel|supportsLocale|quotaLimitReached' "$INTERFACE"
+          grep -n -E -A 160 '(class|struct) PrivateCloudComputeLanguageModel' "$INTERFACE"
+          grep -n -E 'init\(model:|init\(.*transcript:|contextSize|ReasoningLevel|supportsLocale|quotaLimitReached' "$INTERFACE"

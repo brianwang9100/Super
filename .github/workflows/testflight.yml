@@ -18,9 +18,12 @@ concurrency:
   group: testflight
   cancel-in-progress: false
 
+env:
+  XCODE_BUILD: "27A5252f"
+
 jobs:
   upload:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     env:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -48,15 +51,21 @@ jobs:
           fetch-depth: 0
 
       - name: Select Xcode
-        # Apple rejects App Store uploads built with anything older than
-        # the iOS 26 SDK. macos-26's Xcode 26.4.1 ships the iOS 26.4 SDK,
-        # comfortably above that floor. Pinned literally (not
-        # `latest-stable`) so a runner image refresh can't surprise this
-        # release job with a beta Xcode (26.5 is still preview on the
-        # image as of writing).
+        # Match the compiler used by PR builds. Beta distribution acceptance
+        # must be validated separately; a successful compile is not an upload.
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.4.1"
+          xcode-version: "27.0-beta"
+
+      - name: Verify exact Xcode build
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          ACTUAL_BUILD=$(xcodebuild -version | awk '/Build version/ {print $3}')
+          if [ "$ACTUAL_BUILD" != "$XCODE_BUILD" ]; then
+            echo "::error::Expected Xcode build $XCODE_BUILD, got $ACTUAL_BUILD."
+            exit 1
+          fi
 
       - name: Set AUTH_KEY_PATH
         run: echo "AUTH_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8" >> "$GITHUB_ENV"
