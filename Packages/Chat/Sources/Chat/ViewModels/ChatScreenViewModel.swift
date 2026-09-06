@@ -723,6 +723,9 @@ public final class ChatScreenViewModel {
     /// than mutating observable state or firing background work.
     public func detachFromLiveTurn() {
         isDetached = true
+        // The outgoing composer must release microphone ownership, including
+        // a pending permission request, before the shell installs another one.
+        voice.stop()
         // Cancel the deferred flush so it doesn't wake into a torn-down
         // view model and re-emit characters into a tail that will never
         // be observed.

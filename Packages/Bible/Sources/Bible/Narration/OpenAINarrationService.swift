@@ -28,7 +28,7 @@ import Foundation
         self.key = key
     }
     public func isAvailable() -> Bool { true }
-    nonisolated public func bestAvailableVoice(locale: Locale) -> NarrationVoice? { .openAI(.marin) }
+    nonisolated public func bestAvailableVoice(locale: Locale) -> NarrationVoice? { .marin }
     public func startSpeaking(_ utterances: [NarrationVerseUtterance], rate: Float, voice: NarrationVoice?, startingAt: Int = 0) -> AsyncStream<NarrationEvent> {
         stop()
         self.utterances = utterances

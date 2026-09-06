@@ -157,6 +157,7 @@ public final class NarrationController {
         configurationLoaded = true
     }
 
+    /// Resolves the initial Apple voice off the main actor without replacing a saved choice.
     public func prepareDefaultVoice() async {
         guard voice == nil else { return }
         let best = await Task.detached { self.bestAvailableVoice() }.value
@@ -187,7 +188,6 @@ public final class NarrationController {
         start(utterances: lastUtterances, startingAt: index)
         restorePreferredVoiceOnNextStart = true
     }
-
 
     public func clearCachedAudio() async throws {
         stop()

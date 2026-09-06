@@ -38,6 +38,23 @@ struct OpenAINarrationSnapshotTests {
         verify(view, name: "openai_setup_\(state)_\(appearance)", height: 874)
     }
 
+    @Test(arguments: ["light", "dark", "xxl"])
+    func deletedBorrowedKey(appearance: String) async throws {
+        let keychain = InMemoryKeychainClient()
+        try await keychain.setString("snapshot-only", ref: "deleted-ref")
+        let settings = NarrationSettingsController(
+            repository: GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory()),
+            keychain: keychain, listSources: { [] }, clock: FixedClock(), ids: DeterministicIDGenerator(), appleVoicesInstalled: { false }
+        )
+        try await settings.configure(credential: .init(id: "deleted-model", name: "Deleted model", keyRef: "deleted-ref"), enabled: true, useThisKey: true, expecting: 0)
+        #expect(!settings.hasKey)
+        let controller = NarrationController(service: FakeNarrationService(), settings: settings)
+        let view = OpenAINarrationSetupSheet(settings: settings, controller: controller)
+            .superTheme(.make(appearance == "dark" ? .vellumDark : .vellumLight))
+            .dynamicTypeSize(appearance == "xxl" ? .xxLarge : .large)
+        verify(view, name: "deleted_borrowed_key_\(appearance)", height: 874)
+    }
+
     @Test(arguments: ["setup", "enabled"], ["light", "dark", "xxl"])
     func voicePicker(state: String, appearance: String) async throws {
         let fixture = try await makeFixture(state: state)

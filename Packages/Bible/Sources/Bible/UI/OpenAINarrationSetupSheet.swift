@@ -52,14 +52,21 @@ struct OpenAINarrationSetupSheet: View {
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(saving)
         .onDisappear { keyDraft.clear() }
-        .onChange(of: sourceId) { _, id in
+        .onChange(of: selectedSourceId) { _, id in
             keyDraft = NarrationKeyDraft(hasSavedKey: settings.hasKey && settings.record.ownsKey && id == settings.record.sourceId)
         }
     }
 
+    // A borrowed Chat credential can disappear while this sheet is open.
+    // Resolve it on every render so manual key entry always remains available.
+    private var selectedSourceId: String {
+        if settings.record.ownsKey && sourceId == settings.record.sourceId { return sourceId }
+        return settings.sources.contains { $0.id == sourceId } ? sourceId : ""
+    }
+
     private var saveDisabled: Bool {
-        let keepingSavedKey = settings.hasKey && sourceId == settings.source?.id
-        let selectingKey = settings.sources.contains { $0.id == sourceId }
+        let keepingSavedKey = settings.hasKey && selectedSourceId == settings.source?.id
+        let selectingKey = settings.sources.contains { $0.id == selectedSourceId }
         return saving || (keyDraft.replacement.isEmpty && !keepingSavedKey && !selectingKey)
     }
 
@@ -86,7 +93,7 @@ struct OpenAINarrationSetupSheet: View {
     private var credentialFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             if !settings.sources.isEmpty {
-                Picker("API key", selection: $sourceId) {
+                Picker("API key", selection: Binding(get: { selectedSourceId }, set: { sourceId = $0 })) {
                     Text("Enter a narration-only key").font(typography.font(.body)).tag("")
                     if settings.record.ownsKey, let source = settings.source {
                         Text(source.name).font(typography.font(.body)).tag(source.id)
@@ -98,11 +105,11 @@ struct OpenAINarrationSetupSheet: View {
                 .font(typography.font(.body))
                 .accessibilityLabel("OpenAI API key source")
             }
-            if sourceId.isEmpty || settings.record.ownsKey && sourceId == settings.source?.id {
+            if selectedSourceId.isEmpty || settings.record.ownsKey && selectedSourceId == settings.source?.id {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("API KEY").font(typography.font(.caption2, weight: .semibold)).foregroundStyle(theme.inkFaint)
                     SecureField("OpenAI API key", text: $keyDraft.value,
-                                prompt: Text(settings.record.ownsKey && sourceId == settings.source?.id ? "•••• (tap to change)" : "Paste your OpenAI API key")
+                                prompt: Text(settings.record.ownsKey && selectedSourceId == settings.source?.id ? "•••• (tap to change)" : "Paste your OpenAI API key")
                                     .font(typography.font(.body)).foregroundStyle(theme.inkSoft))
                         .font(typography.font(.body))
                         .textContentType(.password)
@@ -183,7 +190,7 @@ struct OpenAINarrationSetupSheet: View {
                 guard revision == settings.record.revision else { throw NarrationSettingsError.staleDraft }
                 if !keyDraft.replacement.isEmpty {
                     try await settings.saveDedicatedKey(keyDraft.replacement, enabled: true, expecting: revision)
-                } else if let source = settings.sources.first(where: { $0.id == sourceId }) {
+                } else if let source = settings.sources.first(where: { $0.id == selectedSourceId }) {
                     try await settings.configure(credential: source, enabled: true, useThisKey: true, expecting: revision)
                 } else {
                     try await settings.setEnabled(true)

@@ -101,7 +101,8 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         Self.installedVoice(locale: locale)
     }
 
-    static func installedVoice(locale: Locale = .current) -> NarrationVoice? {
+    /// Queries downloaded Apple voices without constructing a speech synthesizer.
+    public static func installedVoice(locale: Locale = .current) -> NarrationVoice? {
         let prefix = locale.language.languageCode?.identifier ?? "en"
         let candidates = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix(prefix) }

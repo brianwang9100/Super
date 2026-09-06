@@ -48,9 +48,9 @@ API keys are stored in the iOS Keychain (the same place iOS stores your Wi-Fi pa
 
 ### Optional OpenAI narration
 
-Apple narration uses voices installed on your device. OpenAI narration is optional and requires your own OpenAI API key plus an explicitly saved setup choice. New setup forms default the narration toggle on; canceling the form does not enable narration. Existing keys are not opted in automatically.
+Apple narration uses voices installed on your device. OpenAI narration is optional and requires your own OpenAI API key plus an explicitly saved setup choice. Saving a key in Settings → Narration connects it for narration. OpenAI model registration also offers a narration toggle, which defaults on in a new setup draft. Canceling either form does not enable narration. Existing keys are not opted in automatically.
 
-When you choose an OpenAI voice and press Play or Preview, passage text, voice choice, and speech instructions are sent directly to OpenAI's speech API over HTTPS. The app may generate one following verse while the current verse plays. No microphone audio, notes, chat history, or reading-activity log is included in those requests. OpenAI's API data policies apply. Audio is AI-generated, and API usage is billed to the account behind your chosen key; a ChatGPT subscription does not include these charges.
+When you choose an OpenAI voice and press Play, passage text, voice choice, and speech instructions are sent directly to OpenAI's speech API over HTTPS. The app may generate one following verse while the current verse plays. No microphone audio, notes, chat history, or reading-activity log is included in those requests. OpenAI's API data policies apply. Audio is AI-generated, and API usage is billed to the account behind your chosen key; a ChatGPT subscription does not include these charges.
 
 Downloaded speech is cached on this device in a bounded, backup-excluded Caches database. The cache can be cleared from Settings → Narration and may be removed by iOS. Keys stay in Keychain; the app stores only credential references alongside narration preferences. Turning narration off or removing its key stops playback and further generation; clearing downloaded narration removes its local cache. Requests already submitted to OpenAI may still be billed.
 

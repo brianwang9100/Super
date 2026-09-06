@@ -50,6 +50,6 @@ struct AppShellDependencies {
     /// active applet can publish controls) and reads it for the composer
     /// accessory layer.
     let composerAccessoryStore: ComposerAccessoryStore?
-    var providerAudioSetup: ProviderAudioSetup? = nil
-    var audioActivity: AudioActivity? = nil
+    var providerAudioSetup: ProviderAudioSetup?
+    var audioActivity: AudioActivity?
 }

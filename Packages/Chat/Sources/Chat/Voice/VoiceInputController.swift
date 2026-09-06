@@ -62,6 +62,7 @@ public final class VoiceInputController {
     /// so a second `toggle()` arriving in the same task tick (before
     /// `state` flips to `.listening`) doesn't double-start the service.
     private var isStarting = false
+    private var generation = 0
 
     public init(service: any VoiceInputService, audioActivity: AudioActivity? = nil) {
         self.service = service
@@ -101,9 +102,11 @@ public final class VoiceInputController {
 
         guard !isStarting else { return }
         isStarting = true
-        defer { isStarting = false }
+        let session = generation
+        defer { if generation == session { isStarting = false } }
 
         let permission = await service.requestPermissions()
+        guard generation == session, !Task.isCancelled else { return }
         guard permission == .granted else {
             state = .denied
             return
@@ -122,6 +125,8 @@ public final class VoiceInputController {
     /// tears down the audio engine; the controller resets to `.idle`
     /// here without waiting for a final event.
     public func stop() {
+        generation += 1
+        isStarting = false
         streamTask?.cancel()
         streamTask = nil
         if state == .listening {
@@ -137,18 +142,19 @@ public final class VoiceInputController {
     }
 
     private func startStream(locale: Locale) {
+        let session = generation
         let stream = service.startRecognition(locale: locale)
         streamTask = Task { [weak self] in
             do {
                 for try await event in stream {
-                    guard let self else { return }
+                    guard let self, !Task.isCancelled, self.generation == session else { return }
                     self.handle(event)
                     self.signalProcessedEvent()
                 }
                 // Stream ended cleanly without a `.final` event — treat
                 // as a normal stop so the controller doesn't strand in
                 // `.listening`.
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 if self.state == .listening {
                     let committed = self.partialTranscript
                     self.partialTranscript = ""
@@ -160,11 +166,11 @@ public final class VoiceInputController {
                 // `stop()` already wrote the terminal state.
                 return
             } catch let error as VoiceInputError {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 self.handle(error)
                 self.signalProcessedEvent()
             } catch {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 self.partialTranscript = ""
                 self.state = .failed(error.localizedDescription)
                 self.signalProcessedEvent()
