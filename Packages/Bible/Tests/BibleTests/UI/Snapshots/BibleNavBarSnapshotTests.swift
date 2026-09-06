@@ -65,6 +65,20 @@ struct BibleNavBarSnapshotTests {
                name: "no_chevrons_dark", showsChapterChevrons: false)
     }
 
+    @Test("bottom selection controls leave the top chapter picker and selection indicator (light)")
+    func bottomSelectionLight() {
+        verify(theme: .vellumLight, canStepBackward: true, canStepForward: true,
+               name: "bottom_selection_light", selectionCitation: "1 Peter 2:4-6, 9",
+               showsChapterChevrons: false)
+    }
+
+    @Test("bottom selection controls leave the top chapter picker and selection indicator (dark)")
+    func bottomSelectionDark() {
+        verify(theme: .vellumDark, canStepBackward: true, canStepForward: true,
+               name: "bottom_selection_dark", selectionCitation: "1 Peter 2:4-6, 9",
+               showsChapterChevrons: false)
+    }
+
     // MARK: - Narration trailing-control states
 
     @Test("the narration speaker button renders in the light theme while speaking")
@@ -115,6 +129,7 @@ struct BibleNavBarSnapshotTests {
                 chapterNumber: 2,
                 translation: .web,
                 selectionCitation: selectionCitation,
+                showsSelectionPill: showsChapterChevrons,
                 showsChapterChevrons: showsChapterChevrons,
                 canStepBackward: canStepBackward,
                 canStepForward: canStepForward,

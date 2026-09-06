@@ -157,6 +157,12 @@ public struct BibleScreen: View {
             // is loaded.
             publishComposerAccessories()
         }
+        .onChange(of: viewModel.selectionCitation) { _, _ in
+            publishComposerAccessories()
+        }
+        .onChange(of: activeOverlayKind) { _, _ in
+            publishComposerAccessories()
+        }
         // Immersive reading: when the scroll reducer flips `isImmersive`,
         // mirror it to the shell so its hamburger + chat pill hide/show in
         // sympathy with the local nav bar. Published only on real flips
@@ -373,13 +379,8 @@ public struct BibleScreen: View {
         Task { await eventBus.publish(.shellChromeVisibilityRequested(visible: visible)) }
     }
 
-    /// Publish the reader's previous / next chapter chevrons into the shared
-    /// composer-accessory store so they hover above the chat composer pill
-    /// (leading = previous, trailing = next). The `isEnabled` flags track the
-    /// canon ends and the actions step the chapter. A no-op without a store
-    /// (SuperOS, previews, isolated tests) — the chevrons then simply don't
-    /// appear, and the in-reader footer prev / next cards remain the only
-    /// stepping affordance.
+    /// Publish chapter arrows and selection controls above the chat composer.
+    /// Hosts without a store keep those controls in the reader's top bar.
     private func publishComposerAccessories() {
         guard let composerAccessoryStore else { return }
         composerAccessoryStore.buttons = ComposerAccessoryButtons(
@@ -395,11 +396,19 @@ public struct BibleScreen: View {
                 isEnabled: viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
-            // Hide the hovering chevrons once the chapter's own prev / next
-            // footer cards scroll into view — they'd be redundant. Read inside
-            // the renderer's body, so this stays reactive as the user scrolls
-            // without republishing.
-            shouldHide: { viewModel.isChapterFooterVisible }
+            selection: viewModel.selectionCitation.map { citation in
+                ComposerAccessorySelection(
+                    title: citation,
+                    accessibilityLabel: "\(citation), show verse actions",
+                    isExpanded: activeOverlayKind == .selection,
+                    onExpand: { viewModel.presentActionSheet() },
+                    onClear: { withAnimation(motion.animation) { viewModel.clearSelection() } }
+                )
+            },
+            // The footer replaces redundant arrows, but must never take away
+            // the selection's reopen / clear controls. Read inside the renderer
+            // so scroll visibility stays reactive without republishing.
+            shouldHide: { viewModel.isChapterFooterVisible && viewModel.selectedVerses.isEmpty }
         )
     }
 
@@ -462,6 +471,7 @@ public struct BibleScreen: View {
             chapterNumber: viewModel.position.chapterNumber,
             translation: viewModel.translation,
             selectionCitation: viewModel.selectionCitation,
+            showsSelectionPill: composerAccessoryStore == nil,
             // SuperBible (a composer-accessory store is injected) hovers the
             // chevrons above the chat composer pill, so the bar hides them;
             // SuperOS (no store) keeps them in the bar.
