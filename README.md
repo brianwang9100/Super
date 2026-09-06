@@ -90,12 +90,12 @@ I chose the Bible because I couldn't find a free AI Bible-study app that genuine
 
 | Area | What you get |
 |---|---|
-| **Chat** | Talk to most frontier providers (OpenAI, Anthropic, Google) and **any OpenAI-compatible endpoint** (Ollama, vLLM, LM Studio, …) — BYOK. Apple Foundation Models runs on-device by default: free, offline, no key. Markdown rendering and automatic conversation compaction. |
+| **Chat** | Apple Intelligence Local only or Private Cloud Compute (PCC), plus BYOK frontier providers and OpenAI-compatible endpoints. Fresh default: local on iOS 26, PCC on iOS 27+. Markdown rendering and automatic conversation compaction. |
 | **Web search** | Native web search for the three top frontier models — **OpenAI, Claude, and Gemini**. |
 | **Tools** | Local, on-device tool use — get the current time, annotate a Bible passage, and more. |
 | **Bible** | Four public-domain translations (**WEB, ASV, KJV, BSB**). Highlights, notes, AI study annotations, and voiceover narration. |
 | **Look & Feel** | Light and dark themes, adjustable font scaling, and haptic feedback. |
-| **Privacy** | Everything is persisted on-device — nothing reaches a server. BYOK API keys live in the iOS Keychain and never leave the phone. |
+| **Privacy** | History is persisted on-device; AI processing follows the selected local/PCC/BYOK model. Cloud models receive conversation context and enabled tool results. BYOK keys are stored in the iOS Keychain and sent only to the configured provider for authentication. |
 
 ## Set up & run
 
@@ -113,7 +113,7 @@ Two app schemes are generated:
 - **`SuperBible`** — the flagship study-Bible app (Chat + Bible).
 - **`Super`** — the SuperOS personal app (Chat + Bible + ToDo).
 
-Pick a scheme + an iPhone simulator and ⌘R. On first launch the app seeds **Apple Foundation Models** as the default chat model (free, on-device, no key). To use a stronger model, open **Settings → Models** and add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, Anthropic, etc.) plus an API key. **Keys live in the iOS Keychain — they never leave the device.**
+Pick a scheme + an iPhone simulator and ⌘R. An empty model store gets **Local only on iOS 26** or **PCC on iOS 27+**, without changing existing configured installs. Settings → Models offers both Apple variants and optional BYOK endpoints. PCC requires Apple's managed entitlement in the signing profile and an eligible, online device; simulator compilation does not prove cloud access. See [the rollout checklist](docs/XCODE_27_PCC_PLAN.md). BYOK keys are stored in the iOS Keychain and used to authenticate with the configured provider.
 
 To build from the command line instead:
 

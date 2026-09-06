@@ -18,7 +18,7 @@ See [`PRODUCT_VISION.md` §13](../PRODUCT_VISION.md#13-app-targets-superos-vs-su
 
 | Mini-app | Status | Role |
 |---|---|---|
-| **Chat** | Built (Super MVP M0–M12) | Host surface. Default LLM = Apple Foundation Models on-device (free, offline, no key). BYOK upgrade for stronger models. SuperBible-specific system prompt framed for biblical-study conversations. |
+| **Chat** | Built (Super MVP M0–M12) | Host surface. Fresh default: Apple Local only on iOS 26; Private Cloud Compute (PCC) on iOS 27+. Existing choices preserved. No Apple API key. Optional BYOK models. SuperBible-specific study persona. |
 | **Bible** | Built | Reading, search, highlights, notes, deep-linkable references. Bi-directional with Chat. |
 | **Plans** | New (SB-M2) | Bible reading plans (F260, M'Cheyne, Bible in a Year, Bible in 90 Days). Daily check-in, streaks, local notifications. |
 
@@ -32,7 +32,7 @@ SuperBible inherits everything from `PRODUCT_VISION.md` §2 (chat is the host, b
 
 - **Free, BYOK, no ads, no IAP, no paywalls.** Optional GitHub Sponsors link in Settings → About. No premium tier — ever.
 - **No third-party SDKs.** No Sentry, PostHog, Datadog, analytics SDKs, ad SDKs, attribution SDKs. Apple-built-in observability only — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
-- **Local-only v1.** No accounts. No server. No sync. The app works fully on first launch with zero configuration.
+- **Local persistence in v1.** No accounts, app server, or sync. AI processing follows the selected local/PCC/BYOK model and its readiness; PCC requires internet and Apple's managed entitlement. The local model's small context window still cannot fit the full SuperBible persona; PCC persona/tool validation is a release gate, not an assumed fix.
 - **CloudKit is the planned v2 cloud path** — Sign in with Apple + CloudKit private database — but only if cross-device sync demand materializes. No commitment to building a custom server for SuperBible.
 - **iOS-first.** macOS and other platforms are deliberately out of scope until v1 ships and signal warrants more.
 

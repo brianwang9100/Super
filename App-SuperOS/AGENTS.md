@@ -35,7 +35,7 @@ These complement the root [`../AGENTS.md`](../AGENTS.md). When the root rules an
 
 ### Server-backed LLM transport
 
-Per the root `AGENTS.md` § Backend: SuperOS proxies all LLM API calls through `super-server/`. API keys never live on device. SuperBible is the exception — it issues BYOK calls directly. Do not introduce direct-to-provider transport in SuperOS.
+Per the root `AGENTS.md` § Backend, SuperOS's general policy is backend-proxied provider HTTP calls; SuperBible permits BYOK-direct calls. Apple's Foundation Models framework is the narrow exception: Local only runs on-device and Private Cloud Compute (PCC) uses Apple-managed transport with no API key. This does not authorize another direct HTTP transport. Fresh empty stores select local on iOS 26 and PCC on iOS 27+; populated stores preserve choices. Unavailable models must retain identity without automatic substitution.
 
 ### No account UI
 

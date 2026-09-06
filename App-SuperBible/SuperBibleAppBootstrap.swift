@@ -28,6 +28,7 @@ struct SuperBibleAppDependencies {
     let eventBus: SuperEventBus
     let appletRegistry: AppletRegistry
     let appleFoundationAvailability: AppleFoundationAvailability
+    let appleFoundationStatusProvider: any AppleFoundationModelStatusProvider
     /// Headless `bible.annotate` dispatcher. Held here so it lives as
     /// long as the dependency graph does — its bus subscription is
     /// owned by the instance, so dropping the reference would silently
@@ -74,6 +75,7 @@ struct SuperBibleAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
+            appleFoundationStatusProvider: appleFoundationStatusProvider,
             hapticsEngine: hapticsEngine,
             // SuperBible diverges from SuperOS: every cold launch opens to
             // Bible with the chat overlay as a pill. The applet override
@@ -169,22 +171,16 @@ enum SuperBibleAppBootstrap {
         // further down, once the `.userBulk` annotate dispatcher it drives
         // exists (it needs `compactor` + the repos constructed below).
 
-        // Best-effort AFM seed, same shape as SuperOS — skipped on
-        // ineligible devices and pre-populated DBs.
+        // Match SuperOS: OS support chooses the persisted default, never
+        // a transient readiness/network result. Existing stores are untouched.
+        let appleStatusProvider = LiveAppleFoundationModelStatusProvider()
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
-        if bootAvailability.isAvailable {
-            do {
-                try await ModelConfigurationSeeding.seedDefaultIfEmpty(
-                    repository: modelConfigRepo
-                )
-            } catch {
-                #if DEBUG
-                assertionFailure("ModelConfigurationSeeding failed: \(error)")
-                #endif
-            }
-        }
+        try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: modelConfigRepo,
+            model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
+        )
 
         #if DEBUG
         do {
@@ -197,7 +193,8 @@ enum SuperBibleAppBootstrap {
             into: llmProviderRegistry,
             from: modelConfigRepo,
             toolRegistry: toolRegistry,
-            appleFoundationAvailability: bootAvailability
+            appleFoundationAvailability: bootAvailability,
+            appleFoundationStatusProvider: appleStatusProvider
         )
 
         let compactor = Compactor(
@@ -346,9 +343,9 @@ enum SuperBibleAppBootstrap {
         )
 
         // The Annotations hub + background scheduler, both backed by one shared
-        // runner. BYOK cost confirmation defaults on; the on-device default model
-        // makes this a no-op gate at run time once the active-model check is
-        // wired. The background scheduler is handed to the app's lifecycle
+        // runner. Cost confirmation stays enabled; PCC also consumes quota,
+        // so the OS-specific default must not bypass confirmation. The
+        // background scheduler is handed to the app's lifecycle
         // controller so a run keeps draining on a BGProcessingTask while the app
         // is suspended.
         let bulkWiring = bibleApplet.makeBulkAnnotationWiring(
@@ -378,6 +375,7 @@ enum SuperBibleAppBootstrap {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability,
+            appleFoundationStatusProvider: appleStatusProvider,
             bibleAnnotateDispatcher: bibleAnnotateDispatcher,
             appletSettingsContributions: bibleSettingsContributions,
             bulkAnnotationBackground: bulkWiring?.background,

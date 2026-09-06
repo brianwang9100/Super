@@ -297,10 +297,11 @@ public final class ChatScreenViewModel {
     /// legacy persisted *model id* (`LLMModel.id`, how this was stored before
     /// the record-id convergence), mapping it to that row's record id; the
     /// value re-persists as a record id on the next selection. Falls back to
-    /// the first available model, or nil when the list is empty.
+    /// the selected/seeded record, then the first model, or nil for an empty list.
     public static func resolveInitialModelId(
         persisted: String?,
-        available: [SelectableModel]
+        available: [SelectableModel],
+        preferredRecordId: String? = nil
     ) -> String? {
         if let match = available.first(where: { $0.recordId == persisted }) {
             return match.recordId
@@ -308,6 +309,9 @@ public final class ChatScreenViewModel {
         // Legacy fallback: an old persisted `LLMModel.id`.
         if let legacy = available.first(where: { $0.model.id == persisted }) {
             return legacy.recordId
+        }
+        if let preferred = available.first(where: { $0.recordId == preferredRecordId }) {
+            return preferred.recordId
         }
         return available.first?.recordId
     }

@@ -1,6 +1,16 @@
 # Xcode 27 and Private Cloud Compute Plan
 
-Status: proposed implementation plan, 2026-09-06. No tooling, application code, signing configuration, or snapshot baselines have been changed by this document.
+Status: implementation in progress, 2026-09-06, branch `codex/xcode-27-pcc`. The phase sections below remain the acceptance checklist; unchecked gates are not claims of completion.
+
+### Execution evidence
+
+- CI inventory [34042157889](https://github.com/brianwang9100/Super/actions/runs/34042157889) verified **Xcode 27 beta 6 / `27A5252f`**, **iOS 27.0 simulator / `24A5423a`**, iPhone 17, and the `xcode-27` ARM64 preview runner (host macOS 26.5.2). There is no `macos-27` runner dependency.
+- Toolchain consumers, build/runtime-aware caches, project metadata, local snapshot enforcement, and developer guidance have been updated. All deployment floors remain iOS/macOS 26; Swift tools 6.2 / Swift 6 mode remain unchanged. XcodeGen 2.45.4 successfully regenerated the **tracked** project and package schemes.
+- Snapshot enforcement has **48 passing deterministic tests**. Migration automation validates full inventories, keeps recoverable originals, and requires recording-off verification before publishing candidate baselines. The initial migration run is [34042419324](https://github.com/brianwang9100/Super/actions/runs/34042419324); no artifacts have yet been accepted into this worktree.
+- Initial compiler run [34042419299](https://github.com/brianwang9100/Super/actions/runs/34042419299) passed Core/Bible/Todo package suites. Chat failed on unhandled PNG resources under warnings-as-errors; commit `795efaf4` explicitly excludes the reference directory like the other packages, without disabling warnings. The initial SuperBible simulator app build passed. Full final-revision validation remains required.
+- Phase 2 code adds explicit local/PCC identity, per-model status, pre-budget metadata resolution, OS-based seeding, selection preservation, Settings UI/tests, and truthful privacy copy. Target entitlements request PCC; this is **not proof of Apple approval**. TestFlight rejects profiles lacking the entitlement.
+- Local host is macOS 26.3.1(a) with Xcode 26.4.1. Xcode 27 requires a newer host (26.4+), so SDK 27 compilation and snapshot recording use CI. No machine-wide upgrade, shared runtime deletion, or shared simulator takeover has been performed. Local source tests were attempted but cannot compile PCC symbols with the old SDK; syntax/lint checks do not substitute for tests.
+- **Release blockers still open:** entitlement eligibility/approval for both bundles; updated profiles; signed archive/export and eligible iOS 27 device validation (including the full SuperBible persona/tools); iOS 26 launch/back-deployment testing; accepted/reviewed snapshots and final green CI. No TestFlight upload has been dispatched.
 
 ## Outcome and scope
 
@@ -29,7 +39,7 @@ Default configuration is distinct from service readiness: choosing PCC by OS mus
 
 ## Current implementation and external constraints
 
-### Repository findings
+### Initial repository findings (before implementation)
 
 - The Apple jobs in [ios-build.yml](../.github/workflows/ios-build.yml), [swift-test.yml](../.github/workflows/swift-test.yml), and [testflight.yml](../.github/workflows/testflight.yml) use `macos-26` and Xcode `26.4.1`. Derived-data and compiled Swift package cache keys also contain that version.
 - Screenshot verification pins iPhone 17, iOS 26.4.1 runtime build `23E254a`. The local [.claude/hooks/enforce-snapshot-sim.py](../.claude/hooks/enforce-snapshot-sim.py) reads the workflow using format-sensitive regular expressions and has old-version fallbacks. Its numeric-only Xcode matching is insufficient for exact beta pinning.
@@ -44,7 +54,7 @@ Default configuration is distinct from service readiness: choosing PCC by OS mus
 ### Verified external baseline, September 6, 2026
 
 - GitHub currently exposes the **`xcode-27` public-preview runner**, not a `macos-27` label. Its ARM64 image lists macOS 26.5.2, image `20260901.0153.1`, Xcode 27 beta 6 build **`27A5252f`**, and iOS 27.0 / iPhone 17 simulators. Thus phase 1 upgrades the toolchain and simulator to 27, **not the host OS to 27**. [GitHub runner documentation](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [image inventory](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
-- The image inventory does not establish the exact iOS simulator runtime build. Discover that from a real runner before choosing the final pin. Do not substitute an iPhone OS beta build number for a simulator build.
+- The exact simulator build was subsequently verified from the real inventory job: **`24A5423a`**. The workflow asserts that build, not a device beta build inferred from release notes.
 - `setup-xcode` selects preinstalled Xcodes. A selector such as `27.0-beta` does not lock a specific beta build: an independent build-number assertion is required. [setup-xcode documentation](https://github.com/maxim-lobanov/setup-xcode)
 - Apple's `PrivateCloudComputeLanguageModel` is available on iOS 27 and later, with corresponding macOS 27 availability. PCC has its own availability and quota state; it is not the existing on-device `SystemLanguageModel`. Check the exact declarations in the selected SDK during implementation. [Apple integration guide](https://developer.apple.com/documentation/foundationmodels/adding-server-side-intelligence-with-private-cloud-compute?changes=latest_major)
 - Access requires App Store Small Business Program enrollment, Apple's download-count eligibility, and an assigned managed PCC entitlement. Apple describes App Store, TestFlight, and ad hoc distribution for eligible developers. Account and bundle eligibility have **not** been checked in this planning pass. [Apple PCC eligibility](https://developer.apple.com/private-cloud-compute/)
@@ -55,8 +65,8 @@ The intentional beta migration is acceptable for this plan. A subsequent beta/RC
 
 ### 1. Resolve and prove the new pin
 
-- [ ] Run a read-only inventory job on `xcode-27` and record: runner image/version, host OS/architecture, `xcodebuild -version`, `swift --version`, `xcodebuild -showsdks`, `xcrun simctl list runtimes --json`, `xcrun simctl runtime list`, and available iPhone 17 devices.
-- [ ] Start with Xcode build `27A5252f` if still provisioned. Resolve and record the **exact installed iOS 27 runtime build**; no placeholder build may remain when phase 1 merges.
+- [x] Run a read-only inventory job on `xcode-27` and record: runner image/version, host OS/architecture, `xcodebuild -version`, `swift --version`, `xcodebuild -showsdks`, `xcrun simctl list runtimes --json`, `xcrun simctl runtime list`, and available iPhone 17 devices.
+- [x] Start with Xcode build `27A5252f` if still provisioned. Resolve and record the **exact installed iOS 27 runtime build**; no placeholder build may remain when phase 1 merges.
 - [ ] Confirm that the same Xcode and simulator runtime can be installed locally. Record against a dedicated per-worktree iPhone 17 simulator addressed by UDID. Do not replace the shared booted simulator or delete runtimes used by another worktree.
 - [ ] Keep the existing 26 toolchain available for compatibility investigations. A machine-wide macOS 27 upgrade is not part of this plan.
 
@@ -203,4 +213,4 @@ Run `swift test` locally in every touched package, both app build schemes, and t
 2. Build phase 2 on that baseline. Keep adapter/status work, Settings/default wiring, and privacy/tests as reviewable commits within the feature PR. Entitlement proof is a release prerequisite, not a reason to mix feature behavior into phase 1.
 3. If PCC must be disabled after release, preserve its records and show a clear unavailable state. Do not rewrite them as local or erase user choices. Prefer a forward fix; rolling back to a binary that interprets every `.appleFoundation` row as local is not a safe PCC rollback.
 
-Unresolved implementation prerequisites are limited to the exact hosted iOS 27 simulator build, local parity, account/bundle entitlement access, and signed distribution/device validation. None requires raising the iOS deployment minimum to 27.
+The hosted simulator build is resolved. Remaining external prerequisites are local toolchain parity, account/bundle entitlement access, and signed distribution/device/back-deployment validation; snapshot and CI evidence must also be completed before merge. None requires raising the iOS deployment minimum to 27.

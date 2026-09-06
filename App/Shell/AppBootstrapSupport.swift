@@ -65,10 +65,9 @@ enum AppBootstrapSupport {
     /// depend on `LLMProviderRegistry`'s implementation detail of "first
     /// registered = active". An `.openAICompatible` row whose Keychain
     /// entry has been wiped registers anyway with a nil key — local
-    /// servers (MLX, Ollama) don't require auth. An `.appleFoundation`
-    /// row is only registered when the OS reports AFM as available; an
-    /// unavailable device leaves the registry empty and the orchestrator
-    /// falls back to its `noModelConfigured` banner.
+    /// servers (MLX, Ollama) don't require auth. Known Apple variants stay
+    /// registered even when unavailable, preserving the selected backend
+    /// and reporting its limitation instead of silently switching providers.
     ///
     /// Deliberately *not* `@MainActor`-isolated, matching the pre-extraction
     /// version. The body is a tight loop of actor `await`s with no UI work;
@@ -79,7 +78,8 @@ enum AppBootstrapSupport {
         into registry: LLMProviderRegistry,
         from repository: any ModelConfigurationRepository,
         toolRegistry: ToolRegistry,
-        appleFoundationAvailability: AppleFoundationAvailability
+        appleFoundationAvailability: AppleFoundationAvailability,
+        appleFoundationStatusProvider: any AppleFoundationModelStatusProvider
     ) async throws {
         let configurations = try await repository.all()
         guard !configurations.isEmpty else { return }
@@ -102,12 +102,13 @@ enum AppBootstrapSupport {
             // Single per-kind dispatch shared with `SettingsViewModel
             // .registerProvider` via `makeLLMProvider`, so the launch path and
             // the Settings path can't drift on which kinds are buildable.
-            if let provider = makeLLMProvider(
+            if let provider = await makeLLMProvider(
                 for: record,
                 apiKey: apiKey,
                 http: http,
                 toolRegistry: toolRegistry,
-                appleFoundationAvailability: appleFoundationAvailability
+                appleFoundationAvailability: appleFoundationAvailability,
+                appleFoundationStatusProvider: appleFoundationStatusProvider
             ) {
                 await registry.register(provider)
             } else if !record.kind.hasProviderAdapter {
@@ -124,33 +125,14 @@ enum AppBootstrapSupport {
                 // mute "no model configured".
                 bootstrapLog.warning("Skipping model row \(record.id, privacy: .public) with native search kind \(record.kind.rawValue, privacy: .public) — native adapter not yet implemented")
             } else {
-                // Buildable kind, but the factory still returned nil: either an
-                // `.appleFoundation` row on an AFM-ineligible device (the
-                // expected silent path) or a network kind with a nil `baseURL`
-                // (a corrupt/synced row). Debug-level keeps the common AFM case
-                // quiet while still making a bad row diagnosable in the field —
-                // restoring what the pre-factory per-arm code surfaced.
-                bootstrapLog.debug("Skipped buildable model row \(record.id, privacy: .public) kind \(record.kind.rawValue, privacy: .public) — provider construction returned nil (AFM unavailable or missing baseURL)")
+                bootstrapLog.debug("Skipped invalid model row \(record.id, privacy: .public) kind \(record.kind.rawValue, privacy: .public) — unknown model or missing endpoint")
             }
         }
 
         if let selectedId = try await repository.selected()?.id {
-            // `setActive` throws `unknownProvider` when the selected row was
-            // skipped above and never registered. The one path that reaches
-            // here is an `.appleFoundation` row on an AFM-ineligible device:
-            // AFM has a buildable adapter, so `selected()`'s
-            // `buildableKindRequest` still returns it even though the loop
-            // above skipped registration. The first-registered fallback (or
-            // the "no provider" empty state) is the right behavior, so the
-            // throw is swallowed.
-            //
-            // Native-kind rows do NOT reach here: `selected()` excludes them
-            // (native kinds lack `hasProviderAdapter`, so
-            // `buildableKindRequest` filters them out), so a native-only
-            // selection returns nil / the next buildable row rather than a
-            // native id. The hydration-loop skip is still logged above for
-            // field diagnosability.
-            try? await registry.setActive(id: selectedId)
+            // A corrupt/unknown selected row must fail hydration rather than
+            // silently letting the first registered cloud provider take over.
+            try await registry.setActive(id: selectedId)
         }
     }
 

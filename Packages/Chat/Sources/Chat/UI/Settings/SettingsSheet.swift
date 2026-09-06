@@ -79,6 +79,7 @@ public struct SettingsSheet: View {
     public let databaseContext: DatabaseContext?
 
     @Environment(\.superTheme) private var theme
+    @Environment(\.scenePhase) private var scenePhase
     /// Applet-contributed settings surfaces (e.g. Bible's Annotations pane),
     /// injected by the composition root. Empty in previews/tests.
     @Environment(\.appletSettingsContributions) private var appletContributions
@@ -136,10 +137,14 @@ public struct SettingsSheet: View {
     public var body: some View {
         sheetSurface
             .accessibilityAction(.escape) { close() }
-            // The native `.sheet` creates this view fresh on each presentation,
-            // so a plain `.task` loads exactly once per present (and cancels on
-            // dismiss when the view tears down) — no `id:` gate needed.
             .task { await viewModel.load() }
+            // Refresh model readiness/quota on each settings entry and return
+            // from the background, without polling or changing saved choices.
+            .task(id: scenePhase) {
+                if scenePhase == .active {
+                    await viewModel.refreshAppleFoundationStatuses()
+                }
+            }
             // Apply the read-only database context only when the host wired
             // one — snapshot tests and previews pass nil and fall through to
             // each `@Query` request's defaultValue. The `databaseContext`

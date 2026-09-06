@@ -903,6 +903,72 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
+    @Test("Apple registration and status across OS support, backend, and quota states",
+          arguments: ["ios26", "pcc", "local", "duplicate", "unavailable", "quota", "both"],
+          [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func appleModelRegistration(state: String, theme: SuperTheme.Identifier) async {
+        await verifyAppleModelState(state, theme: theme, dynamicType: .large)
+    }
+
+    @Test("Apple registration guidance reflows at XXL",
+          arguments: ["ios26", "pcc", "unavailable", "quota"],
+          [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func appleModelRegistrationXXL(state: String, theme: SuperTheme.Identifier) async {
+        await verifyAppleModelState(state, theme: theme, dynamicType: .xxLarge)
+    }
+
+    private func verifyAppleModelState(
+        _ state: String,
+        theme: SuperTheme.Identifier,
+        dynamicType: DynamicTypeSize,
+        function: String = #function
+    ) async {
+        let viewModel = makeViewModel(appleFoundationAvailability: .available)
+        let supportsPCC = state != "ios26"
+        let pccAvailability: AppleFoundationModelStatus.Availability = !supportsPCC
+            ? .unavailable(.requiresNewerOS)
+            : state == "unavailable" ? .unavailable(.systemNotReady) : .available
+        let pcc = SettingsViewModel.ModelRow(
+            id: "pcc", name: "Study assistant", monogram: "A", endpoint: "PCC · Apple cloud",
+            maxContextTokens: 32_768, isEnabled: true, kind: .appleFoundation,
+            modelId: AppleFoundationModel.privateCloudCompute.rawValue
+        )
+        // Editing exposes unavailable/quota state without selecting a disabled
+        // create option. "local" verifies the remaining unregistered variant.
+        let existing: [SettingsViewModel.ModelRow] = switch state {
+        case "both", "duplicate": Self.sampleModelsWithAppleFoundation + [pcc]
+        case "local", "unavailable", "quota": [pcc]
+        default: []
+        }
+        viewModel._setSnapshotState(settings: .default, models: existing, tools: [], chatCount: 0)
+        viewModel._setAppleFoundationSnapshotState(
+            supportsPrivateCloudCompute: supportsPCC,
+            statuses: [
+                .local: .init(model: .local, availability: .available, contextTokens: 4_096),
+                .privateCloudCompute: .init(
+                    model: .privateCloudCompute, availability: pccAvailability,
+                    contextTokens: 32_768,
+                    quota: .init(state: state == "quota" ? .limitReached : .belowLimit)
+                ),
+            ]
+        )
+        let pane: SettingsSheet.Pane = switch state {
+        case "both": .models
+        case "unavailable", "quota": .modelDetail(id: "pcc")
+        default: .modelDetail(id: nil)
+        }
+        let view = SettingsSheetSnapshotHarness(
+            viewModel: viewModel, initialPane: pane, initialModelDetailSelection: .apple
+        )
+        .superTheme(.make(theme))
+        .dynamicTypeSize(dynamicType)
+        .frame(width: Self.frame.width, height: Self.frame.height)
+        let size = dynamicType == .xxLarge ? "xxl" : "default"
+        recordOrCompare(
+            view: view, name: "apple_\(state)_\(theme.rawValue)_\(size)", function: function
+        )
+    }
+
     @Test("model detail seeded form (edit flow)")
     func modelDetailEdit() async {
         await verify(theme: .vellumLight, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")

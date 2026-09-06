@@ -394,7 +394,9 @@ Lists each configured LLM model as a card:
 
 Below the list, a dashed-border "Add model endpoint" button (1pt dashed `--border`, `--ink-soft`, plus icon) opens a model-editor (API-key + endpoint + model ID — future).
 
-MVP ships with four preconfigured models that users can enable/disable: **Opus 4.7** (200K), **GPT 5.5** (256K), **Qwen3.6** (128K), **Gemma 4** (64K).
+Fresh empty stores instead seed one Apple model: **Local only** on iOS 26, **Private Cloud Compute (PCC)** on iOS 27+. Existing stores and selections are preserved. Both variants can be configured simultaneously and keep their local/cloud identity visible even under custom names. Apple registration uses the existing Model menu; on iOS 26 PCC is disabled with “(only available for iOS 27)” and a persistent explanatory footer. Readiness, usage limits, and measured context are model-specific; an unavailable selected model remains visible and never silently routes elsewhere.
+
+Automatic titles remain local-only (`system-default`) with the first-message fallback; explicitly selecting PCC for titles uses cloud processing and quota. Empty-chat suggestions remain local/static. PCC sends conversation context and enabled tool results to Apple through Foundation Models, not a custom endpoint. See [the implementation/release checklist](../XCODE_27_PCC_PLAN.md).
 
 ### 7.4 Theme Pane
 
@@ -429,7 +431,7 @@ Selected option shows a trailing accent check. Picking a value changes the verbo
 
 ### 7.9 About Pane
 
-Centered EB Garamond italic "Super" at 56pt, mono version/build line below, and a short tagline: *"A personal chat app. Your chats stay on device."*
+Centered EB Garamond italic "Super" at 56pt, mono version/build line below, and a short tagline. Privacy copy must distinguish locally stored history from local versus cloud model processing; never claim all chats stay on-device when PCC/BYOK is selected.
 
 ---
 

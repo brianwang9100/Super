@@ -10,6 +10,12 @@
 
 ## 1. Threat Model
 
+### Apple model processing boundary (September 2026)
+
+Both apps distinguish `system-default` (Local only) from `private-cloud-compute` (Private Cloud Compute, PCC). Fresh empty stores select local on iOS 26 and PCC on iOS 27+; populated stores keep their choices. The deployment floor remains iOS 26. PCC is cloud inference, not sync: selected conversation context and enabled tool results can leave the device through Apple's Foundation Models framework. Local persistence is not a promise of local processing.
+
+Apple's framework-managed PCC transport is the narrow exception to SuperOS's general backend-proxy policy. It introduces no custom HTTP transport, provider key, account flow, or SuperBible backend. Unavailable models retain their identity; no automatic local-to-cloud or cloud-to-other-provider fallback is permitted. Diagnostics must not include prompts, responses, or tool payloads. PCC release requires approved account/bundle entitlement, signed distribution, and real-device validation; simulator tests do not establish authorization.
+
 ### 1.1 Adversaries
 
 | Adversary | Description | Capability |

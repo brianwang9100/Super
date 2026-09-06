@@ -166,6 +166,13 @@ jobs:
           # at the canonical path Xcode looks for ($UUID.mobileprovision) and
           # reference it by Name in the export options plist.
           PROFILE_PLIST=$(security cms -D -i "$PROFILE_TMP")
+          # A source entitlement is a request, not Apple's approval. Refuse
+          # distribution with the old profile; never silently drop PCC to sign.
+          PCC_ENTITLED=$(echo "$PROFILE_PLIST" | plutil -extract 'Entitlements.com\.apple\.developer\.private-cloud-compute' raw - 2>/dev/null || true)
+          if [ "$PCC_ENTITLED" != "true" ]; then
+            echo "::error::The distribution profile does not grant Private Cloud Compute. Obtain Apple's approval, enable the capability for this bundle, and regenerate the profile."
+            exit 1
+          fi
           PROFILE_UUID=$(echo "$PROFILE_PLIST" | plutil -extract UUID raw -)
           PROFILE_NAME=$(echo "$PROFILE_PLIST" | plutil -extract Name raw -)
 

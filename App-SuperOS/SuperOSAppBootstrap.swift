@@ -47,6 +47,7 @@ struct SuperOSAppDependencies {
     /// (e.g. user just toggled Apple Intelligence in Settings) and split
     /// the UI's "is AFM usable" answer across surfaces.
     let appleFoundationAvailability: AppleFoundationAvailability
+    let appleFoundationStatusProvider: any AppleFoundationModelStatusProvider
     /// Headless `bible.annotate` dispatcher. Held here so it lives as
     /// long as the dependency graph does — its bus subscription is
     /// owned by the instance, so dropping the reference would silently
@@ -79,6 +80,7 @@ struct SuperOSAppDependencies {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: appleFoundationAvailability,
+            appleFoundationStatusProvider: appleFoundationStatusProvider,
             hapticsEngine: hapticsEngine,
             // SuperOS keeps the standard launch policy: chat opens
             // expanded over the user's last-used applet (restored by
@@ -178,24 +180,16 @@ enum SuperOSAppBootstrap {
         let todoApplet = TodoApplet(dependencies: todoDependencies)
         await todoApplet.registerCreateTool(in: toolRegistry)
 
-        // Best-effort: seed an AFM row for fresh installs so Chat opens
-        // onto a usable provider. Skipped on ineligible devices and
-        // pre-populated DBs; errors swallowed so a transient SQLite
-        // failure can't take down the whole bootstrap.
+        // Persist the OS-appropriate default independently of temporary
+        // readiness. Populated stores (including OS upgrades) are untouched.
+        let appleStatusProvider = LiveAppleFoundationModelStatusProvider()
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
-        if bootAvailability.isAvailable {
-            do {
-                try await ModelConfigurationSeeding.seedDefaultIfEmpty(
-                    repository: modelConfigRepo
-                )
-            } catch {
-                #if DEBUG
-                assertionFailure("ModelConfigurationSeeding failed: \(error)")
-                #endif
-            }
-        }
+        try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: modelConfigRepo,
+            model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
+        )
 
         #if DEBUG
         // Swallow seed failures: a transient GRDB error here (WAL
@@ -222,7 +216,8 @@ enum SuperOSAppBootstrap {
             into: llmProviderRegistry,
             from: modelConfigRepo,
             toolRegistry: toolRegistry,
-            appleFoundationAvailability: bootAvailability
+            appleFoundationAvailability: bootAvailability,
+            appleFoundationStatusProvider: appleStatusProvider
         )
 
         let compactor = Compactor(
@@ -384,6 +379,7 @@ enum SuperOSAppBootstrap {
             eventBus: eventBus,
             appletRegistry: appletRegistry,
             appleFoundationAvailability: bootAvailability,
+            appleFoundationStatusProvider: appleStatusProvider,
             bibleAnnotateDispatcher: bibleAnnotateDispatcher,
             hapticsEngine: hapticsEngine
         )

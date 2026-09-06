@@ -29,7 +29,7 @@ If product later wants snap-back semantics on every foreground (`.active` sceneP
 - **Updating the persona later:** if a future revision changes what the assistant claims to be capable of (new tools, new applets, different scope), update `SuperBibleSystemPrompt.md` in the same PR — don't let the prose drift from the actual capabilities.
 - **Persona principles + guardrails + eval:** the doctrinal stance (historic-creedal, non-neutral), the *describe-don't-prescribe* contested-topic guardrail, the crisis-handling rule, the response taxonomy, and the model-tier eval harness all live in [`../docs/SuperBible/PERSONA_EVAL.md`](../docs/SuperBible/PERSONA_EVAL.md). When you change the persona's behavior, re-run the eval (`.claude/workflows/superbible-persona-eval.js` over `eval/superbible-persona/corpus.json`) and keep that doc honest. The tool-routing half of the guardrail also lives in the Bible applet briefing (`../Packages/Bible/Sources/Bible/Resources/SystemPrompt.md`) — keep the two consistent.
 
-> **Note:** Apple Intelligence (AFM) is currently non-functional for this persona — its ~4096-token window can't hold the full prompt + tool schemas. The persona is tuned and evaluated for the BYOK-Claude path; an AFM-specific disclaimer is separate, later work. See PERSONA_EVAL.md § "Out of scope — Apple Intelligence (AFM)".
+> **Note:** The Apple Local only model's ~4096-token window cannot hold this persona + tool schemas. Private Cloud Compute (PCC) must be validated end-to-end with the full persona and tools on an entitled iOS 27 device before claiming that limitation is resolved. The persona's existing evaluation covers the BYOK-Claude path. See PERSONA_EVAL.md § "Out of scope — Apple Intelligence (AFM)".
 
 ## SuperBible-specific rules
 
@@ -37,7 +37,7 @@ These complement the root [`../AGENTS.md`](../AGENTS.md). When the root rules an
 
 ### LLM transport: BYOK-direct, no backend proxy
 
-SuperBible has no server and will not get one for v1. Chat issues BYOK LLM calls **directly from device to provider** (Apple Foundation Models on-device by default; Anthropic / OpenAI / Ollama / etc. as opt-in BYOK upgrades). API keys live in the iOS Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+SuperBible has no server and will not get one for v1. Fresh empty stores select Apple Local only on iOS 26, PCC on iOS 27+, independently of readiness; existing records and choices remain intact. PCC is Apple-framework-managed cloud processing, not a backend or custom HTTP route. Both Apple variants remain explicitly selectable without API keys. BYOK calls go **directly from device to provider**, with keys in the iOS Keychain using `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Keep local/cloud identity and privacy disclosure visible; never silently fallback between backends.
 
 The root `AGENTS.md` § Backend rule "Backend proxies all LLM API calls (API keys never on client)" is a **SuperOS-only** rule. **Do NOT introduce a backend proxy for SuperBible.** If you find yourself wanting to, the right move is to refresh the fork spec §7 (Cloud roadmap) with the new evidence and discuss before writing code.
 

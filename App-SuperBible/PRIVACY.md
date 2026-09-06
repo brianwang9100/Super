@@ -1,6 +1,6 @@
 # SuperBible — Privacy
 
-**Last updated: 2026-05-23**
+**Last updated: 2026-09-06**
 
 SuperBible is a free, open-source AI Bible app. We — actually, **I**: SuperBible is built by a solo developer — try to operate on a simple principle: **your study is yours.** This page is the plain-English explanation of what that means.
 
@@ -12,23 +12,26 @@ If you'd rather read the source: every claim below is backed by the code in this
 
 Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all by SuperBible:
 
-- **The verses you read.** Reading position, scroll position, time spent on a chapter — none of it leaves your device.
-- **Your highlights, notes, and bookmarks.** Stored locally on your device only — including notes the AI assistant writes for you (when you ask it to), which are saved to the same on-device database and never leave your device.
+- **Your reading activity.** We do not collect reading-position, scrolling, or time-spent analytics. Verses supplied to a chat are processed by its selected model, as described below.
+- **Your highlights, notes, and bookmarks.** Saved in the on-device database, including AI-created notes. Content you include in a chat or expose through enabled AI tools can be processed by your selected model, including a cloud model.
 - **Your reading-plan progress.** Which plan you picked, which days you completed, your streak — all on-device only.
 - **Your identity.** No accounts. No email. No username. No sign-in. No "anonymous ID" tied to your device.
 - **Your location.** Never requested, never accessed.
 - **Your contacts, photos, calendar, or any other personal data on your device.** Not requested, not accessed.
 - **What other apps you use, when, or how often.** Not accessed.
-- **Your voice.** When you dictate a chat message, SuperBible uses Apple's **on-device** speech recognition (`requiresOnDeviceRecognition = true`) — the audio and the transcript are processed entirely on your iPhone or iPad and are never uploaded to Apple or to us. The microphone is used only while you're actively dictating.
+- **Your voice recordings.** Dictation uses Apple's **on-device** speech recognition (`requiresOnDeviceRecognition = true`). Audio is not uploaded; when you send the resulting text as a message, it follows the selected model's processing route below. The microphone is used only while you're actively dictating.
 
 ### About your chat messages — be aware of where they go
 
 Chat messages need separate treatment because **where they go depends on which AI model you're using**, and SuperBible cannot collect them but a third-party AI provider might:
 
-- **Apple Foundation Models (the default).** Runs entirely on-device. Your messages never leave your iPhone or iPad. SuperBible has no servers — even if we wanted to see your messages, there's no infrastructure for that.
+- **Apple Intelligence — Local only.** Model inference happens on your device. This is the fresh-setup default on iOS 26. Enabled tools may make separate network requests.
+- **Apple Intelligence — Private Cloud Compute (PCC).** The fresh-setup default on iOS 27 or later. Messages, conversation context, and enabled tool results are sent through Apple's Foundation Models framework for processing on Apple's cloud infrastructure. This requires an eligible device, Apple Intelligence, internet access, and available usage quota. Learn about [Apple's Private Cloud Compute protections](https://security.apple.com/private-cloud-compute/).
 - **Optional Bring Your Own Key (BYOK) — Anthropic, OpenAI, a local Ollama server, etc.** When you configure an API key in Settings → Models and then chat, your messages are sent **directly from your device to that provider over HTTPS**. SuperBible's code (we have no servers) is not in that loop. Whatever the provider does with your message — log it, train on it, keep it for 30 days, delete it — is governed by **their** privacy policy, not ours. We strongly recommend you read it before adding their key.
 
 This is why we say "BYOK" plainly throughout the app: the key (and the data flowing through it) is yours, and the relationship is between you and the provider you chose.
+
+Existing configured installs keep their model choices after an OS upgrade. You can add and select Local only in Settings → Models. PCC never silently substitutes for a local-only request, and an unavailable PCC model does not automatically send your request to another provider. Automatic chat titles and empty-chat suggestions do not inherit the PCC default; explicitly selecting PCC for titles does use cloud processing and quota.
 
 ---
 
@@ -36,11 +39,11 @@ This is why we say "BYOK" plainly throughout the app: the key (and the data flow
 
 ### On your device
 
-Everything. Your Bible highlights, notes, reading-plan progress, memorize cards (when that mini-app ships), and chat history all live in a local database on your device. They're backed up to iCloud only if you've enabled iCloud Backup for SuperBible in iOS Settings.
+Your Bible highlights, notes, reading-plan progress, memorize cards (when that mini-app ships), and chat history are persisted in a local database. Local storage does not mean every AI request is processed locally: the selected model's route above applies. Backups depend on your iOS backup settings.
 
 ### When you chat with the AI
 
-SuperBible's default AI model is **Apple Foundation Models**, which runs entirely on-device. When you use it, no data leaves your device.
+Fresh setup selects Local only on iOS 26 and PCC on iOS 27 or later. A configured model may be unavailable because of hardware, setup, connectivity, or usage limits. PCC uses Apple's framework-managed transport, not a SuperBible server or an API key.
 
 If you optionally configure a third-party AI provider (OpenAI, Anthropic, a local Ollama server, etc.) by adding their API key in Settings → Models, then your chat messages are sent **directly from your device to that provider** when you chat. SuperBible's servers (we don't have any) are not in that loop. The provider's privacy policy governs what they do with the data — that's between you and them, not us.
 
@@ -87,7 +90,7 @@ If you'd like to support development, there's a "Support development" link in Se
 
 SuperBible doesn't collect anything from anyone, so it doesn't knowingly collect anything from children either.
 
-The app's default AI model is **Apple Foundation Models**, which runs entirely on-device — no internet connection is required for chat to work out of the box. If a parent later configures a third-party AI provider via Settings → Models (BYOK), chat messages would then travel from the device to that provider, governed by *their* privacy policy. We have no control over what those providers do.
+Parents should review Settings → Models before use. Fresh setup uses Apple's cloud model on iOS 27 or later; choose Local only for on-device model inference. Optional BYOK models process chat content according to their provider's policy. Reading and locally saved study data remain usable without a cloud model.
 
 ---
 

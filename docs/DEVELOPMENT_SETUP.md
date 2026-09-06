@@ -140,13 +140,13 @@ cp Config/Local.xcconfig.example Config/Local.xcconfig
 # team ID (developer.apple.com → Account → Membership Details → Team ID).
 ```
 
-To also produce Release archives locally (App Store / TestFlight distribution — rare; usually only the maintainer), uncomment the `PROVISIONING_PROFILE_SPECIFIER` line in `Local.xcconfig` and supply the name of a profile from your team's Apple Developer portal. CI's `testflight.yml` workflow writes both values at runtime from GitHub Secrets, so you do *not* need to set `PROVISIONING_PROFILE_SPECIFIER` just to land changes.
+To also produce Release archives locally, uncomment `PROVISIONING_PROFILE_SPECIFIER` in `Local.xcconfig` and supply a profile from your team's Apple Developer portal. Both app targets request `com.apple.developer.private-cloud-compute`; Apple must approve the account/bundle capability and the profile must include it. A committed entitlements file does not grant access. CI refuses an old profile lacking PCC; regenerate the profile after approval. Do not remove the entitlement to make distribution pass. Signed archive/export and actual PCC generation still require validation before release.
 
 ### Build and run
 
-1. Select an iPhone simulator (iPhone 17 sim is the in-tree reference, UUID `472D292D-71F0-4D2B-ADFC-C5D5BAF14450`) and ⌘R.
-2. The app drops you into a fresh chat. Open Settings → Models to add a chat-completions endpoint (Ollama, vLLM, LM Studio, OpenAI, etc.) and an API key.
-3. API keys live in the iOS Keychain — they never leave the device.
+1. Select a dedicated per-worktree iPhone 17 simulator matching the canonical runtime below and ⌘R; do not reuse another worktree's UDID.
+2. An empty model store selects Apple Local only on iOS 26, or Private Cloud Compute (PCC) on iOS 27+. Existing records/choices survive OS upgrades. Settings → Models offers both variants plus BYOK endpoints. PCC needs an eligible, entitled real device for end-to-end validation; simulator compilation alone is insufficient.
+3. BYOK keys are stored in the iOS Keychain and used to authenticate with the configured provider. PCC needs no provider API key. Local persistence is separate from local/cloud inference.
 
 ### Command-line build
 

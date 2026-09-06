@@ -106,6 +106,35 @@ struct ChatScreenViewModelTests {
         #expect(resolved == nil)
     }
 
+    @Test("fresh selection respects the seeded PCC record before sorted debug alternatives")
+    func initialSelectionRespectsSeed() {
+        let debug = SelectableModel(recordId: "debug-canned", model: makeModel(id: "debug"))
+        let pcc = SelectableModel(recordId: "seed", model: makeModel(id: "private-cloud-compute"))
+        #expect(ChatScreenViewModel.resolveInitialModelId(
+            persisted: nil, available: [debug, pcc], preferredRecordId: "seed"
+        ) == "seed")
+    }
+
+    @Test("an existing explicit local selection wins over the new OS default")
+    func initialSelectionPreservesExistingChoice() {
+        let local = SelectableModel(recordId: "local", model: makeModel(id: "system-default"))
+        let pcc = SelectableModel(recordId: "pcc", model: makeModel(id: "private-cloud-compute"))
+        for persisted in ["local", "system-default"] {
+            #expect(ChatScreenViewModel.resolveInitialModelId(
+                persisted: persisted, available: [pcc, local], preferredRecordId: "pcc"
+            ) == "local")
+        }
+    }
+
+    @Test("a stale picker choice resolves to the selected unavailable PCC record, not another backend")
+    func staleChoiceRespectsSelectedRecord() {
+        let remote = SelectableModel(recordId: "remote", model: makeModel(id: "remote"))
+        let pcc = SelectableModel(recordId: "pcc", model: makeModel(id: "private-cloud-compute"))
+        #expect(ChatScreenViewModel.resolveInitialModelId(
+            persisted: "deleted", available: [remote, pcc], preferredRecordId: "pcc"
+        ) == "pcc")
+    }
+
     @Test("two rows sharing a modelId are independently selectable by record id")
     func sameModelIdRowsSelectableByRecordId() {
         // The convergence guarantee: two configured models with the SAME

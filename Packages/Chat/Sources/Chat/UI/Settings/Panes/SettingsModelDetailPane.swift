@@ -23,8 +23,8 @@ enum SettingsKeyboard {
 /// built-in provider auto-fills the row's name, base URL, model id,
 /// max-context, and thinking flag from the catalog and hides those
 /// fields. Custom exposes every field for hand entry (no live list).
-/// AFM (Apple Foundation Model) hides URL/key/model-id because the
-/// on-device kind has none of those.
+/// Apple's local and Private Cloud Compute (PCC) models use framework-managed
+/// inference and hide HTTP URL/key fields while retaining distinct model IDs.
 ///
 /// Edit mode locks the Provider (switching providers would silently
 /// rewrite the row's URL/key semantics) behind a provider-name header,
@@ -51,6 +51,7 @@ struct SettingsModelDetailPane: View {
     @State private var apiKey: String
     @State private var supportsThinking: Bool
     @State private var maxContextText: String
+    @State private var didChooseAppleModel = false
     /// Selected web-search backend value persisted to
     /// `ModelConfigurationRecord.searchBackend`: `"native"`, `"debug"`
     /// (DEBUG mock), or `nil` (off). The picker resolves the row's `kind`
@@ -94,10 +95,6 @@ struct SettingsModelDetailPane: View {
     struct InitialSelection: Equatable, Sendable {
         let providerID: String
 
-        init(providerID: String) {
-            self.providerID = providerID
-        }
-
         static let custom = InitialSelection(providerID: LLMProviderCatalog.customProviderID)
         static let apple = InitialSelection(providerID: LLMProviderCatalog.appleProviderID)
         static let openAI = InitialSelection(providerID: "openai")
@@ -120,10 +117,8 @@ struct SettingsModelDetailPane: View {
         // values for the toggle (the lifecycle hook hadn't fired yet).
         let row = editingId.flatMap { viewModel.model(id: $0) }
         if let row {
-            // Edit mode: derive the original provider. AFM rows resolve
-            // via kind and always use the canonical `system-default`
-            // catalog id (legacy AFM rows with a different modelId
-            // would otherwise skip the cap-check). OpenAI-compat rows
+            // Apple rows resolve by kind while preserving the stored model ID,
+            // including unsupported IDs from a newer app. OpenAI-compat rows
             // must match BOTH the catalog model id AND the catalog
             // base URL to count as built-in — a Custom row that
             // happens to use a catalog wire id (e.g. user pointed
@@ -168,7 +163,10 @@ struct SettingsModelDetailPane: View {
             // Create flow: seed @State from the initial selection's
             // first catalog model (or empty for Custom) so the first
             // render shows the prefilled shape for that provider.
-            let seeded = Self.makeCreateSeeds(providerID: initialSelection.providerID)
+            let seeded = Self.makeCreateSeeds(
+                providerID: initialSelection.providerID,
+                preferredAppleModelID: viewModel.preferredAppleFoundationModel?.rawValue ?? ""
+            )
             storedModelFallback = nil
             _providerID = State(initialValue: seeded.providerID)
             _modelCatalogID = State(initialValue: seeded.modelCatalogID)
@@ -189,12 +187,15 @@ struct SettingsModelDetailPane: View {
         // callers always pass nil and the error is set in `save()`
         // on an over-cap value.
         _contextWindowError = State(initialValue: initialContextWindowError)
-        // Apple Intelligence's context window is device-managed: override the
-        // catalog/seed/persisted value with the live on-device window so the
-        // (read-only) Max-context field shows the truth and Save persists it.
-        // Keeps `isValid`'s numeric parse of `maxContextText` satisfied.
+        // Apple context is read-only and model-specific. Keep an existing row's
+        // metadata when unavailable; a static fallback is only for a new row.
         if LLMProviderCatalog.entry(forID: _providerID.wrappedValue)?.kind == .appleFoundation {
-            _maxContextText = State(initialValue: String(viewModel.appleFoundationContextTokens))
+            if let model = AppleFoundationModel(rawValue: _modelId.wrappedValue) {
+                _maxContextText = State(initialValue: String(
+                    viewModel.appleFoundationStatus(for: model).contextTokens
+                        ?? row?.maxContextTokens ?? model.fallbackContextTokens
+                ))
+            }
         }
     }
 
@@ -257,14 +258,7 @@ struct SettingsModelDetailPane: View {
         providerID == LLMProviderCatalog.customProviderID
     }
 
-    /// `true` when the Apple Intelligence provider cannot be picked.
-    /// Two disjoint reasons: (a) the OS reports AFM as unavailable on
-    /// this device, (b) an `.appleFoundation` row already exists (one
-    /// is enough).
-    private var isAppleProviderDisabled: Bool {
-        !viewModel.appleFoundationAvailability.isAvailable
-            || viewModel.hasAppleFoundationModel
-    }
+    private var selectedAppleModel: AppleFoundationModel? { AppleFoundationModel(rawValue: modelId) }
 
     // MARK: - Field visibility
 
@@ -448,7 +442,10 @@ struct SettingsModelDetailPane: View {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         guard let maxCtx = Int(maxContextText), maxCtx > 0 else { return false }
         if isApple {
-            return true
+            guard !viewModel.isSavingAppleModel else { return false }
+            if isEditing { return !modelId.isEmpty }
+            guard let model = selectedAppleModel else { return false }
+            return viewModel.appleFoundationRegistrationIssue(for: model) == nil
         }
         // Built-in non-Apple providers: URL + modelId come from the
         // catalog (no field to validate), API key is the only
@@ -528,6 +525,12 @@ struct SettingsModelDetailPane: View {
             }
             .padding(.top, 16)
 
+            if isApple {
+                appleModelGuidance
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+            }
+
             saveButton
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
@@ -560,6 +563,13 @@ struct SettingsModelDetailPane: View {
             // Create mode fetches with the typed key (no-op until one is
             // entered); edit mode resolves the row's stored Keychain key.
             loadModelList(force: false)
+        }
+        .task {
+            await viewModel.refreshAppleFoundationStatuses()
+            reconcileAppleSelection()
+        }
+        .onChange(of: viewModel.preferredAppleFoundationModel) { _, _ in
+            reconcileAppleSelection()
         }
         .onChange(of: viewModel.fetchedModels[providerID]) { _, _ in
             // After any fetch-cache change — a fresh list OR a failed
@@ -607,8 +617,9 @@ struct SettingsModelDetailPane: View {
                 apiKey = ""
                 viewModel.beforePopCleanup = nil
                 Task {
-                    if let editingId { await viewModel.deleteModel(id: editingId) }
-                    viewModel.popPane()
+                    if let editingId, await viewModel.deleteModel(id: editingId) {
+                        viewModel.popPane()
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -620,7 +631,7 @@ struct SettingsModelDetailPane: View {
     // MARK: - Picker section (create mode)
 
     /// Create-mode dropdown section. Apple renders Provider + Model
-    /// stacked (its single on-device model needs no key); built-in
+    /// stacked (neither Apple model needs a key); built-in
     /// non-Apple providers render Provider alone here — their Model
     /// dropdown lives in the key-gated block of the main field group.
     /// Custom collapses the Model dropdown into a Model ID text field
@@ -639,15 +650,9 @@ struct SettingsModelDetailPane: View {
     private func providerPickerRow(borderBottom: Bool) -> some View {
         pickerRow(label: "Provider", value: currentProvider.displayName, borderBottom: borderBottom) {
             ForEach(LLMProviderCatalog.all) { entry in
-                let disabled = entry.id == LLMProviderCatalog.appleProviderID && isAppleProviderDisabled
                 Button(action: { applyProviderSelection(entry.id) }) {
-                    if disabled {
-                        Label(entry.displayName, systemImage: "lock.fill")
-                    } else {
-                        Text(entry.displayName)
-                    }
+                    Text(entry.displayName)
                 }
-                .disabled(disabled)
             }
         }
     }
@@ -665,8 +670,10 @@ struct SettingsModelDetailPane: View {
                 Menu {
                     ForEach(displayedModels) { model in
                         Button(action: { applyModelSelection(model.id) }) {
-                            Text(model.displayName)
+                            Text(appleModelOptionLabel(model))
+                                .font(typography.font(.callout))
                         }
+                        .disabled(isModelOptionDisabled(model))
                     }
                 } label: {
                     pickerLabelContent(label: "Model", value: label)
@@ -678,7 +685,7 @@ struct SettingsModelDetailPane: View {
                 .accessibilityValue(label)
 
                 // The refresh affordance lists models live for built-in
-                // providers. Apple's single on-device model has no endpoint
+                // providers. Apple's framework-managed models have no endpoint
                 // to refresh against, so it's omitted there.
                 if !isApple {
                     modelRefreshAffordance
@@ -856,11 +863,74 @@ struct SettingsModelDetailPane: View {
         }
     }
 
-    /// Read-only Max-context row for Apple Intelligence. The on-device
-    /// window is device-managed — the AFM provider reads it live at init and
-    /// ignores any stored value — so we surface it as a non-editable value
-    /// (sourced from `viewModel.appleFoundationContextTokens`) rather than an
-    /// editable input. It's the last field for AFM, so no bottom border.
+    private func appleModelOptionLabel(_ model: LLMCatalogModel) -> String {
+        guard isApple, let appleModel = AppleFoundationModel(rawValue: model.id) else { return model.displayName }
+        return Self.appleModelOptionLabel(
+            model: appleModel,
+            supportsPrivateCloudCompute: viewModel.supportsPrivateCloudCompute,
+            isAlreadyAdded: viewModel.hasAppleFoundationModel(appleModel),
+            isUnavailable: viewModel.appleFoundationRegistrationIssue(for: appleModel) != nil
+        )
+    }
+
+    /// Native menus are not captured by closed-menu screenshots; keep their
+    /// exact restriction labels testable independently from presentation.
+    nonisolated static func appleModelOptionLabel(
+        model appleModel: AppleFoundationModel,
+        supportsPrivateCloudCompute: Bool,
+        isAlreadyAdded: Bool,
+        isUnavailable: Bool
+    ) -> String {
+        let label = appleModel == .local ? "Local only" : "Private Cloud Compute (PCC)"
+        if appleModel == .privateCloudCompute, !supportsPrivateCloudCompute {
+            return label + " (only available for iOS 27)"
+        }
+        if isAlreadyAdded { return label + " (already added)" }
+        if isUnavailable { return label + " (currently unavailable)" }
+        return label
+    }
+
+    private func isModelOptionDisabled(_ model: LLMCatalogModel) -> Bool {
+        guard isApple else { return false }
+        guard let variant = AppleFoundationModel(rawValue: model.id) else { return true }
+        return viewModel.appleFoundationRegistrationIssue(for: variant) != nil
+    }
+
+    private var appleModelGuidance: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !viewModel.supportsPrivateCloudCompute {
+                Text("Private Cloud Compute requires iOS 27 or later. On iOS 26, Apple Intelligence uses the on-device model only.")
+                    .font(typography.font(.footnote))
+                    .accessibilityIdentifier("modelDetail.pccOSRequirement")
+            }
+            if selectedAppleModel == .privateCloudCompute {
+                Text("Messages and tool results are processed by Apple Private Cloud Compute. Requires internet access, a compatible device, and Apple Intelligence. Daily usage limits apply.")
+                    .font(typography.font(.footnote))
+            } else if selectedAppleModel == .local {
+                Text("Model inference runs on this device. Enabled tools may make their own network requests.")
+                    .font(typography.font(.footnote))
+            } else if isEditing {
+                Text("This saved Apple model is not supported by this app version. Its identity is preserved; add a supported model separately.")
+                    .font(typography.font(.footnote))
+            }
+            if let model = selectedAppleModel,
+               let message = viewModel.appleFoundationStatusMessage(for: model) {
+                Text(message)
+                    .font(typography.font(.footnote))
+                    .accessibilityIdentifier("modelDetail.appleAvailability")
+            }
+            if let model = selectedAppleModel,
+               let quota = viewModel.appleFoundationStatus(for: model).quota,
+               quota.isLimitReached, let reset = quota.resetDate {
+                Text("Usage resets \(reset.formatted(date: .abbreviated, time: .shortened)).")
+                    .font(typography.font(.footnote))
+            }
+        }
+        .foregroundStyle(theme.inkSoft)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Display resolved metadata only; an unavailable PCC placeholder is not a measured window.
     @ViewBuilder
     private func appleContextRow() -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -869,10 +939,13 @@ struct SettingsModelDetailPane: View {
                 .foregroundStyle(theme.inkFaint)
                 .textCase(.uppercase)
                 .tracking(0.5)
-            Text(viewModel.appleFoundationContextTokens.formatted(.number))
+            Text(selectedAppleModel.flatMap { viewModel.appleFoundationStatus(for: $0).contextTokens }?
+                .formatted(.number) ?? "Not available")
                 .font(typography.mono(16, relativeTo: .callout))
                 .foregroundStyle(theme.ink)
-            Text("Managed on-device by Apple Intelligence.")
+            Text(selectedAppleModel.map {
+                $0 == .local ? "Managed on-device by Apple Intelligence." : "Managed by Apple Private Cloud Compute."
+            } ?? "Managed by Apple Intelligence.")
                 .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
         }
@@ -1065,12 +1138,14 @@ struct SettingsModelDetailPane: View {
     /// Switch the active provider and reseed the form's @State to the
     /// new provider's first catalog model (or empty when Custom).
     /// Guarded against re-selecting the current provider so a stray
-    /// tap doesn't blow away user-typed values. Apple is also
-    /// short-circuited when disabled.
+    /// tap doesn't blow away user-typed values. Apple remains discoverable even
+    /// when neither variant is currently available.
     private func applyProviderSelection(_ id: String) {
-        if id == LLMProviderCatalog.appleProviderID, isAppleProviderDisabled { return }
         guard id != providerID else { return }
-        let seeded = Self.makeCreateSeeds(providerID: id)
+        didChooseAppleModel = false
+        let seeded = Self.makeCreateSeeds(
+            providerID: id, preferredAppleModelID: viewModel.preferredAppleFoundationModel?.rawValue ?? ""
+        )
         providerID = seeded.providerID
         modelCatalogID = seeded.modelCatalogID
         name = seeded.name
@@ -1078,11 +1153,9 @@ struct SettingsModelDetailPane: View {
         modelId = seeded.modelId
         maxContextText = seeded.maxContextText
         // AFM's window is device-managed and read-only: override the catalog's
-        // static seed with the live value (mirrors the edit/create `init`) so
-        // the read-only display, `isValid`'s parse, and Save all agree on one
-        // source of truth rather than relying on the catalog 4096 staying valid.
-        if seeded.providerID == LLMProviderCatalog.appleProviderID {
-            maxContextText = String(viewModel.appleFoundationContextTokens)
+        // static seed with model-specific metadata when available.
+        if seeded.providerID == LLMProviderCatalog.appleProviderID, let model = selectedAppleModel {
+            maxContextText = String(viewModel.appleFoundationStatus(for: model).contextTokens ?? model.fallbackContextTokens)
         }
         supportsThinking = seeded.supportsThinking
         // Reset to Off — native availability is provider-specific, so a
@@ -1129,14 +1202,56 @@ struct SettingsModelDetailPane: View {
     /// per-model). Custom never enters this path — its Model ID is a
     /// text field, not a picker.
     private func applyModelSelection(_ catalogID: String) {
+        if isApple {
+            guard !isEditing, let model = AppleFoundationModel(rawValue: catalogID),
+                  viewModel.appleFoundationRegistrationIssue(for: model) == nil else { return }
+        }
         guard let entry = displayedModels.first(where: { $0.id == catalogID }) else { return }
+        if isApple { didChooseAppleModel = true }
         guard catalogID != modelCatalogID else { return }
         modelCatalogID = catalogID
         name = entry.displayName
         modelId = entry.id
         maxContextText = String(entry.maxContextTokens)
+        if isApple, let model = selectedAppleModel {
+            maxContextText = String(viewModel.appleFoundationStatus(for: model).contextTokens ?? model.fallbackContextTokens)
+        }
         supportsThinking = entry.supportsThinking
         contextWindowError = nil
+    }
+
+    /// A status refresh may finish after form initialization. Reconcile only
+    /// automatic create defaults, never an edited row or an explicit user pick.
+    private func reconcileAppleSelection() {
+        guard isApple, let nextID = Self.refreshedAppleModelID(
+            currentID: modelId,
+            preferredID: viewModel.preferredAppleFoundationModel?.rawValue,
+            isEditing: isEditing,
+            userSelected: didChooseAppleModel
+        ) else { return }
+        let seed = Self.makeCreateSeeds(
+            providerID: LLMProviderCatalog.appleProviderID, preferredAppleModelID: nextID
+        )
+        modelCatalogID = seed.modelCatalogID
+        modelId = seed.modelId
+        name = seed.name
+        supportsThinking = seed.supportsThinking
+        maxContextText = selectedAppleModel.map {
+            String(viewModel.appleFoundationStatus(for: $0).contextTokens ?? $0.fallbackContextTokens)
+        } ?? seed.maxContextText
+    }
+
+    /// `nil` means leave the form untouched; an empty ID clears an automatic
+    /// selection when no supported, unregistered model remains.
+    nonisolated static func refreshedAppleModelID(
+        currentID: String,
+        preferredID: String?,
+        isEditing: Bool,
+        userSelected: Bool
+    ) -> String? {
+        guard !isEditing, !userSelected else { return nil }
+        let nextID = preferredID ?? ""
+        return nextID == currentID ? nil : nextID
     }
 
     /// Resolve which Add-Model "Provider" the edit form should open in for
@@ -1169,9 +1284,7 @@ struct SettingsModelDetailPane: View {
         baseURL: URL?
     ) -> (providerID: String, catalogID: String) {
         if kind == .appleFoundation {
-            let catalogID = LLMProviderCatalog.entry(forID: LLMProviderCatalog.appleProviderID)?
-                .models.first?.id ?? modelId
-            return (LLMProviderCatalog.appleProviderID, catalogID)
+            return (LLMProviderCatalog.appleProviderID, modelId)
         }
         switch kind {
         case .anthropicNative, .geminiNative, .openAIResponses:
@@ -1315,7 +1428,7 @@ struct SettingsModelDetailPane: View {
     /// given provider id in the create flow. Centralized so the init
     /// seam (for snapshot tests pinning an initial selection) and the
     /// runtime `applyProviderSelection` path share one source of truth.
-    nonisolated static func makeCreateSeeds(providerID: String) -> CreateSeeds {
+    nonisolated static func makeCreateSeeds(providerID: String, preferredAppleModelID: String? = nil) -> CreateSeeds {
         // Same three-level fallback as `currentProvider` — never
         // force-unwrap on a catalog lookup since the helper is called
         // from every `applyProviderSelection` tap.
@@ -1328,7 +1441,14 @@ struct SettingsModelDetailPane: View {
                 defaultBaseURL: nil,
                 models: []
             )
-        let firstModel = entry.models.first
+        let firstModel = entry.id == LLMProviderCatalog.appleProviderID && preferredAppleModelID != nil
+            ? entry.models.first { $0.id == preferredAppleModelID } : entry.models.first
+        if entry.id == LLMProviderCatalog.appleProviderID, firstModel == nil {
+            return CreateSeeds(
+                providerID: entry.id, modelCatalogID: "", name: "", baseURLText: "", modelId: "",
+                maxContextText: String(AppleFoundationModel.local.fallbackContextTokens), supportsThinking: false
+            )
+        }
         if entry.id == LLMProviderCatalog.customProviderID {
             return CreateSeeds(
                 providerID: entry.id,
@@ -1383,10 +1503,8 @@ struct SettingsModelDetailPane: View {
 
     private func save() {
         guard isValid else { return }
-        // `maxCtx` drives the non-Apple cap check + persisted value. For AFM
-        // it's effectively unused — the cap check is skipped below and Save
-        // persists `viewModel.appleFoundationContextTokens` — but the parse
-        // still succeeds because AFM seeds `maxContextText` to the live value.
+        // Apple uses resolved metadata, preserving the saved value while
+        // unavailable. Other providers use the validated editable context.
         guard let maxCtx = Int(maxContextText) else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         // Context-window cap is the one validation that surfaces as
@@ -1403,7 +1521,7 @@ struct SettingsModelDetailPane: View {
         } else {
             contextWindowError = nil
         }
-        // Apple Intelligence: no URL, key, or model id — the secure-field
+        // Apple Intelligence: no HTTP URL/key fields — the secure-field
         // bookkeeping below is a no-op for this branch because the field
         // isn't rendered.
         if isApple {
@@ -1427,18 +1545,22 @@ struct SettingsModelDetailPane: View {
                         supportsThinking: supportsThinking,
                         // Persist the live on-device window, not the (read-only,
                         // possibly stale) text field — keeps the row honest.
-                        maxContextTokens: viewModel.appleFoundationContextTokens
+                        maxContextTokens: selectedAppleModel.flatMap {
+                            viewModel.appleFoundationStatus(for: $0).contextTokens
+                        } ?? maxCtx
                     )
                     if viewModel.modelEditError == nil {
                         viewModel.popPane()
                     }
                 }
             } else {
+                guard let selectedAppleModel else { return }
                 Task {
                     await viewModel.createAppleFoundationModel(
                         name: trimmedName,
                         supportsThinking: supportsThinking,
-                        maxContextTokens: viewModel.appleFoundationContextTokens
+                        maxContextTokens: viewModel.appleFoundationStatus(for: selectedAppleModel).contextTokens ?? maxCtx,
+                        model: selectedAppleModel
                     )
                     if viewModel.modelEditError == nil {
                         viewModel.popPane()

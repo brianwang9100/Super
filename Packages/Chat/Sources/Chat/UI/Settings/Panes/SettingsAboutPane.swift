@@ -26,7 +26,7 @@ struct SettingsAboutPane: View {
                 .tracking(0.5)
                 .foregroundStyle(theme.inkFaint)
 
-            Text("A personal chat app. Your chats stay on device.")
+            Text("A personal chat app. Local history. Your choice of local or cloud AI.")
                 .font(typography.font(.subheadline))
                 .foregroundStyle(theme.inkSoft)
                 .multilineTextAlignment(.center)
