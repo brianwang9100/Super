@@ -25,7 +25,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Third-party community action pinned to a commit SHA (not a mutable
       # tag) so a tag force-push can't swap the code under us.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -46,7 +46,7 @@ jobs:
     outputs:
       packages: ${{ steps.find.outputs.packages }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: Packages
       - id: find
@@ -77,7 +77,7 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.discover.outputs.packages) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         # Repo runs Swift 6 strict concurrency; macos-26's Xcode 26.4.1

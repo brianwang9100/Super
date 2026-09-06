@@ -43,7 +43,7 @@ jobs:
       # between runs on a self-hosted runner.
       KEYCHAIN_PATH: ""
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
