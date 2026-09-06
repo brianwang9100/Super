@@ -870,7 +870,7 @@ struct SettingsViewModelTests {
         #expect(await registry.activeID() == existing.id)
         #expect(await registry.allProviders().count == 2)
         let replacement = try #require(await registry.provider(id: existing.id))
-        #expect(replacement.kind == .appleFoundation)
+        #expect(replacement is AppleFoundationLLMProvider)
         #expect(replacement.supportedModels.first?.id == existing.modelId)
         #expect(repository.rows.first { $0.id == existing.id }?.name == "Renamed Apple model")
     }
