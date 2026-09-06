@@ -1401,6 +1401,35 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .vellumLight, pane: .about, name: "settings_about_light")
     }
 
+    @Test("about pane — dark privacy copy")
+    func aboutPaneDark() async {
+        await verify(theme: .vellumDark, pane: .about, name: "settings_about_dark")
+    }
+
+    @Test("about pane — privacy copy at XXL")
+    func aboutPaneXXL() {
+        verifyAboutPaneXXL(theme: .vellumLight, name: "settings_about_light_xxl")
+    }
+
+    @Test("about pane — dark privacy copy at XXL")
+    func aboutPaneXXLDark() {
+        verifyAboutPaneXXL(theme: .vellumDark, name: "settings_about_dark_xxl")
+    }
+
+    private func verifyAboutPaneXXL(
+        theme: SuperTheme.Identifier,
+        name: String,
+        function: String = #function
+    ) {
+        let viewModel = makeViewModel()
+        viewModel._setSnapshotState(settings: .default, chatCount: 7)
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .about)
+            .superTheme(.make(theme))
+            .dynamicTypeSize(.xxLarge)
+            .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+    }
+
     @Test("dynamic type XXL on root pane")
     func dynamicTypeXXL() async {
         let function = #function

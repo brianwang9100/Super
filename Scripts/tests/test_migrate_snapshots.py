@@ -149,9 +149,9 @@ class MigrationValidationTests(unittest.TestCase):
         with self.assertRaises(migration.MigrationError):
             migration.approved_additions("Core", "pcc-registration")
 
-    def test_pcc_mode_approves_exact_26_paths(self):
+    def test_pcc_mode_approves_exact_29_paths(self):
         additions = migration.approved_additions("Chat", "pcc-registration")
-        self.assertEqual(len(additions), 26)
+        self.assertEqual(len(additions), 29)
         self.assertIn(
             "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
             "appleModelRegistration-state-theme.apple_ios26_vellumLight_default.png", additions
@@ -161,9 +161,18 @@ class MigrationValidationTests(unittest.TestCase):
             "appleModelRegistrationXXL-state-theme.apple_quota_vellumDark_xxl.png", additions
         )
         settings = {path for path, item in additions.items() if item["suite"] == "SettingsSheetSnapshotTests"}
-        self.assertEqual(len(settings), 22)
-        self.assertEqual(sum("_default.png" in path for path in settings), 14)
-        self.assertEqual(sum("_xxl.png" in path for path in settings), 8)
+        self.assertEqual(len(settings), 25)
+        registration = {path for path, item in additions.items()
+                        if item["method"] in ("appleModelRegistration", "appleModelRegistrationXXL")}
+        self.assertEqual(len(registration), 22)
+        self.assertEqual(sum("_default.png" in path for path in registration), 14)
+        self.assertEqual(sum("_xxl.png" in path for path in registration), 8)
+        settings_directory = "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
+        self.assertEqual(settings - registration, {
+            settings_directory + "aboutPaneDark.settings_about_dark.png",
+            settings_directory + "aboutPaneXXL.settings_about_light_xxl.png",
+            settings_directory + "aboutPaneXXLDark.settings_about_dark_xxl.png",
+        })
         composer_directory = "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/"
         self.assertEqual(set(additions) - settings, {
             composer_directory + "privateCloudComputeLight.composer_pcc_unresolved_light.png",
@@ -229,6 +238,47 @@ class MigrationValidationTests(unittest.TestCase):
                     issue["testCaseName"]["_value"] = incorrect
                     with self.assertRaises(migration.MigrationError):
                         migration.validate_report(*reports, 65, "original", [item["suite"]], additions)
+
+    def test_pcc_original_allows_exact_about_fixture_attribution(self):
+        additions = migration.approved_additions("Chat", "pcc-registration")
+        for method, name in (
+            ("aboutPaneDark", "settings_about_dark"),
+            ("aboutPaneXXL", "settings_about_light_xxl"),
+            ("aboutPaneXXLDark", "settings_about_dark_xxl"),
+        ):
+            with self.subTest(method=method):
+                message = (f"Issue recorded: {name}: No reference was found on disk. "
+                           "New snapshot was not recorded because recording is disabled")
+                reports = self.fixture(1, message)
+                identifier = f"SettingsSheetSnapshotTests/{method}()"
+                reports[1]["testNodes"][0]["nodeIdentifier"] = identifier
+                issue = reports[2]["issues"]["testFailureSummaries"]["_values"][0]
+                issue["testCaseName"] = {"_value": identifier.replace("/", ".")}
+                modern_issue = {"failureText": message, "testIdentifierString": identifier}
+                reports[0]["testFailures"] = [modern_issue]
+                migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"], additions)
+                for incorrect in (
+                    identifier.replace(method, "aboutPane"),
+                    identifier.replace(method, method + "Unreviewed"),
+                    identifier.replace("SettingsSheetSnapshotTests", "ChatComposerSnapshotTests"),
+                ):
+                    issue["testCaseName"]["_value"] = incorrect
+                    with self.assertRaises(migration.MigrationError):
+                        migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"], additions)
+                    issue["testCaseName"]["_value"] = identifier.replace("/", ".")
+                    modern_issue["testIdentifierString"] = incorrect
+                    with self.assertRaises(migration.MigrationError):
+                        migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"], additions)
+                    modern_issue["testIdentifierString"] = identifier
+
+    def test_pcc_about_additions_do_not_approve_arbitrary_missing_about_references(self):
+        additions = migration.approved_additions("Chat", "pcc-registration")
+        identifier = "SettingsSheetSnapshotTests/aboutPaneXXLDark()"
+        for name in ("settings_about_light", "settings_about_lapis_dark", "settings_about_dark_xxl_unreviewed"):
+            message = (f"Issue recorded: {name}: No reference was found on disk. "
+                       "New snapshot was not recorded because recording is disabled")
+            with self.subTest(name=name):
+                self.assertFalse(migration.approved_missing_reference(message, identifier, additions))
 
     def test_pcc_missing_reference_requires_attributed_test_method(self):
         reports = self.missing_reference_fixture()

@@ -75,7 +75,7 @@ def assert_png_inventory(root, directory, expected):
 
 
 def approved_additions(scheme, mode):
-    """Exact reviewed PCC fixtures; this is never a wildcard recording mode."""
+    """Exact reviewed PCC feature fixtures; never a wildcard recording mode."""
     if mode == "toolchain":
         return {}
     require(mode == "pcc-registration" and scheme == "Chat", "PCC additions require the Chat scheme")
@@ -90,6 +90,15 @@ def approved_additions(scheme, mode):
                 name = f"apple_{state}_{theme}_{size}"
                 path = f"{directory}/{method}-state-theme.{name}.png"
                 additions[path] = {"suite": "SettingsSheetSnapshotTests", "method": method, "name": name}
+    # PCC changes the About privacy copy; complete its light/dark + XXL matrix.
+    for method, name in (
+        ("aboutPaneDark", "settings_about_dark"),
+        ("aboutPaneXXL", "settings_about_light_xxl"),
+        ("aboutPaneXXLDark", "settings_about_dark_xxl"),
+    ):
+        additions[f"{directory}/{method}.{name}.png"] = {
+            "suite": "SettingsSheetSnapshotTests", "method": method, "name": name,
+        }
     directory = "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests"
     for method, name in (
         ("privateCloudComputeLight", "composer_pcc_unresolved_light"),
