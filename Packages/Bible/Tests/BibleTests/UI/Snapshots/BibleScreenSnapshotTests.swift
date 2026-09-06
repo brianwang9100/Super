@@ -108,24 +108,40 @@ struct BibleScreenSnapshotTests {
 
     @Test("selected verses show the citation pill and the selection underline")
     func selectionActiveLight() async {
-        verify(await selectionScreen(), theme: .vellumLight, name: "selection_active_light")
+        for dismissActions in [false, true] {
+            verify(await selectionScreen(dismissActions: dismissActions),
+                   theme: .vellumLight, name: "selection_active_light",
+                   context: "dismissActions: \(dismissActions)")
+        }
     }
 
     @Test("verse selection renders in the dark theme")
     func selectionActiveDark() async {
-        verify(await selectionScreen(), theme: .vellumDark, name: "selection_active_dark")
+        for dismissActions in [false, true] {
+            verify(await selectionScreen(dismissActions: dismissActions),
+                   theme: .vellumDark, name: "selection_active_dark",
+                   context: "dismissActions: \(dismissActions)")
+        }
     }
 
     @Test("verse selection renders in the light theme at Dynamic Type XXL")
     func selectionActiveLightXXL() async {
-        verify(await selectionScreen(), theme: .vellumLight, dynamicType: .xxLarge,
-               name: "selection_active_light_xxl")
+        for dismissActions in [false, true] {
+            verify(await selectionScreen(dismissActions: dismissActions),
+                   theme: .vellumLight, dynamicType: .xxLarge,
+                   name: "selection_active_light_xxl",
+                   context: "dismissActions: \(dismissActions)")
+        }
     }
 
     @Test("verse selection renders in the dark theme at Dynamic Type XXL")
     func selectionActiveDarkXXL() async {
-        verify(await selectionScreen(), theme: .vellumDark, dynamicType: .xxLarge,
-               name: "selection_active_dark_xxl")
+        for dismissActions in [false, true] {
+            verify(await selectionScreen(dismissActions: dismissActions),
+                   theme: .vellumDark, dynamicType: .xxLarge,
+                   name: "selection_active_dark_xxl",
+                   context: "dismissActions: \(dismissActions)")
+        }
     }
 
     /// Pins the scale-aware underline weight at its 1pt floor: at the 0.8× slider
@@ -381,14 +397,16 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A `BibleScreen` on 1 Peter 2 with verses 4-6 and 9 selected.
-    private func selectionScreen() async -> BibleScreen {
+    /// A selected reader with actions open or dismissed. Both states must
+    /// match the existing selection baselines: the citation and underline stay.
+    private func selectionScreen(dismissActions: Bool = false) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
             initialPosition: BiblePosition(bookId: "1PE", chapterNumber: 2)
         )
         await viewModel.load()
         for verse in [4, 5, 6, 9] { viewModel.toggleVerse(verse) }
+        if dismissActions { viewModel.dismissActionSheet() }
         return BibleScreen(viewModel: viewModel)
     }
 
@@ -444,7 +462,8 @@ struct BibleScreenSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         fontScale: CGFloat = 1,
         name: String,
-        function: String = #function
+        function: String = #function,
+        context: String = ""
     ) {
         let view = screen
             .superTheme(.make(theme))
@@ -460,7 +479,8 @@ struct BibleScreenSnapshotTests {
             testName: function
         )
         if let failure {
-            Issue.record("\(name): \(failure)")
+            let label = context.isEmpty ? name : "\(name) (\(context))"
+            Issue.record("\(label): \(failure)")
         }
     }
 }

@@ -202,6 +202,7 @@ finance.spendByCategory(range)
 **Long-press Actions (on a verse or selection):** Highlight (color picker), Add note, Copy, Share, **Add to current chat**, **Start new chat with this**.
 
 **Key UX Details:**
+- Dismissing verse actions keeps the verses selected and the sheet closed while the selection is edited. In SuperBible, the selection pill sits between the bottom chapter arrows and remains available while scrolling. Its upward chevron appears when actions are closed; tap the pill to reopen them, or its × button to clear the selection. Tapping empty reader space dismisses the actions without clearing the verses.
 - Chat messages that contain a canonical reference ("Revelation 3:20") render the reference as a tappable inline token; tapping deep-links into the Bible mini-app (state A → B) and scrolls to the verse
 - Highlighting in the Bible view fires an event so Chat can reference "the verse you highlighted earlier"
 

@@ -40,7 +40,7 @@ struct ThemeGallerySnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 chapterDispatchStatus: nil
