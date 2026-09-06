@@ -90,7 +90,7 @@ jobs:
         # target invalidates the SPM cache — a stale cache hiding a real
         # build issue is documented in the SB-M0 fork spec §5.4 as the
         # primary risk of this matrix layout.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
@@ -108,7 +108,7 @@ jobs:
         # change starts fresh while source-only edits warm-start. A stale
         # cache can never go green on broken code — xcodebuild still compiles
         # every changed input on every run.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData/Super-*/Build
           # Xcode version (literal 26.4.1, matching the setup-xcode pin) is in
@@ -241,7 +241,7 @@ jobs:
         run: xcodegen generate
 
       - name: Cache SwiftPM checkouts
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
@@ -256,7 +256,7 @@ jobs:
         # that Build/ tree to incrementally recompile across runs. Keyed per
         # scheme; the Build/ tree excludes Logs/ (xcresults) which are
         # uploaded separately on failure.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: build/derived/Build
           # Xcode version in the key (see build-app) so a toolchain bump
