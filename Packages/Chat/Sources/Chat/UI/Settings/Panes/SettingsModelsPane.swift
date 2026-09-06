@@ -72,7 +72,10 @@ struct SettingsModelsPane: View {
                         Text(subtitle(for: model))
                             .font(typography.mono(12, relativeTo: .caption))
                             .foregroundStyle(isAvailable ? theme.inkFaint : theme.errorInk)
-                            .lineLimit(1)
+                            // Apple rows include processing location and a
+                            // readiness reason; neither may disappear in an ellipsis.
+                            .lineLimit(model.kind == .appleFoundation ? nil : 1)
+                            .fixedSize(horizontal: false, vertical: model.kind == .appleFoundation)
                             .truncationMode(.middle)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -174,6 +177,7 @@ struct SettingsModelsPane: View {
             Text("Automatic titles use Local only when configured; otherwise they use the first message. Choosing PCC here uses cloud processing and its daily quota.")
                 .font(typography.font(.caption))
                 .foregroundStyle(theme.inkFaint)
+                .padding(.horizontal, 20)
         }
     }
 
