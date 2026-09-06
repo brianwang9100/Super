@@ -1,8 +1,9 @@
 import FoundationModels
 import Foundation
+import os
 
-/// `LLMProvider` conformer for the on-device Apple Foundation Model (AFM)
-/// exposed by the `FoundationModels` framework.
+/// Shared streaming adapter for Apple's on-device Foundation Model (AFM) and
+/// Private Cloud Compute (PCC), preserving explicit backend identity.
 ///
 /// **Tooling model:** AFM invokes registered tools in-band during
 /// `LanguageModelSession.streamResponse`, splicing the result back into
@@ -21,17 +22,17 @@ import Foundation
 /// first non-empty delta and `.contentBlockStop` pairs with it on
 /// every exit path.
 ///
-/// **Availability is snapshot at init.** A provider built when AFM is
-/// unavailable rejects every `stream(...)` call with the captured
-/// reason — toggling Apple Intelligence in Settings requires a
-/// relaunch. The Settings pane reads
-/// `SystemLanguageModel.default.availability` directly so the row
-/// subtitle stays live.
+/// The legacy local initializer preserves its captured availability. The
+/// model-specific `make` entry point refreshes readiness before every turn.
 public struct AppleFoundationLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String
 
     private let availability: AppleFoundationAvailability
+    private let appleModel: AppleFoundationModel
+    private let modelDisplayName: String
+    private let readStatus: (@Sendable () async -> AppleFoundationModelStatus)?
+    private let normalizeError: @Sendable (any Error) -> LLMError?
     private let sessionFactory: LanguageSessionFactory
     private let idGenerator: any IDGenerator
     /// Shared dispatcher AFM tool calls fan out through. `nil` means
@@ -65,7 +66,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     /// The context-window size advertised on this provider's `LLMModel`. The
     /// production init reads it once from `deviceContextTokens` (the live
     /// on-device window); tests inject a fixed value through the designated init.
-    private let maxContextTokens: Int
+    private let contextTokens: OSAllocatedUnfairLock<Int>
 
     /// The model surface exposed to the orchestrator. `supportsTools`
     /// reflects whether a `ToolRegistry` was wired into this provider
@@ -74,12 +75,13 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     /// the registry-less startup path is honest about its capabilities.
     public var supportedModels: [LLMModel] {
         [LLMModel(
-            id: Self.defaultModelID,
-            displayName: Self.defaultModelDisplayName,
+            id: appleModel.rawValue,
+            displayName: modelDisplayName,
             supportsThinking: false,
             supportsTools: toolRegistry != nil,
-            maxContextTokens: maxContextTokens
-        )]
+            maxContextTokens: contextTokens.withLock { $0 }
+        ),
+        ]
     }
 
     /// Designated initializer. Tests pass an explicit
@@ -98,10 +100,14 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         self.id = id
         self.displayName = displayName
         self.availability = availability
+        self.appleModel = .local
+        self.modelDisplayName = Self.defaultModelDisplayName
+        self.readStatus = nil
+        self.normalizeError = AppleFoundationModelErrors.map
         self.sessionFactory = sessionFactory
         self.idGenerator = idGenerator
         self.toolRegistry = toolRegistry
-        self.maxContextTokens = maxContextTokens
+        self.contextTokens = OSAllocatedUnfairLock(initialState: maxContextTokens)
     }
 
     /// Production convenience used by the composition root.
@@ -125,6 +131,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
             availability: availability,
             sessionFactory: { transcript, tools in
                 LiveLanguageSession(session: LanguageModelSession(
+                    model: SystemLanguageModel.default,
                     tools: tools,
                     transcript: transcript
                 ))
@@ -133,6 +140,86 @@ public struct AppleFoundationLLMProvider: LLMProvider {
             toolRegistry: toolRegistry,
             maxContextTokens: resolvedContextTokens
         )
+    }
+
+    /// Constructs the selected backend without substituting another model when
+    /// unavailable. The status source is refreshed before each generation.
+    public static func make(
+        id: String,
+        model: AppleFoundationModel,
+        statusProvider: any AppleFoundationModelStatusProvider,
+        toolRegistry: ToolRegistry? = nil
+    ) async -> AppleFoundationLLMProvider {
+        // The live facade owns the same PCC object for status and sessions. An
+        // injected status source changes readiness only, not the selected backend.
+        let live = (statusProvider as? LiveAppleFoundationModelStatusProvider)
+            ?? LiveAppleFoundationModelStatusProvider()
+        let factory = live.sessionFactory(for: model)
+        let readStatus: @Sendable () async -> AppleFoundationModelStatus = {
+            guard factory != nil else {
+                return AppleFoundationModelStatus(model: model, availability: .unavailable(.requiresNewerOS))
+            }
+            return await statusProvider.status(for: model)
+        }
+        let initial = await readStatus()
+        return AppleFoundationLLMProvider(
+            model: model,
+            initialStatus: initial,
+            status: readStatus,
+            sessionFactory: factory ?? { _, _ in
+                UnavailableLanguageSession(error: .providerError(
+                    code: "pcc_requires_os_27",
+                    message: "Private Cloud Compute requires iOS 27 or macOS 27 or later."
+                ))
+            },
+            id: id,
+            toolRegistry: toolRegistry
+        )
+    }
+
+    /// The shared adapter seam lets tests exercise either backend without
+    /// constructing a real model or depending on the host operating system.
+    init(
+        model: AppleFoundationModel,
+        initialStatus: AppleFoundationModelStatus,
+        status: @escaping @Sendable () async -> AppleFoundationModelStatus,
+        sessionFactory: @escaping LanguageSessionFactory,
+        id: String = "apple-foundation",
+        displayName: String = "Apple",
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        toolRegistry: ToolRegistry? = nil,
+        normalizeError: @escaping @Sendable (any Error) -> LLMError? = AppleFoundationModelErrors.map
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.availability = .available
+        self.appleModel = model
+        self.modelDisplayName = model.displayName
+        self.readStatus = status
+        self.normalizeError = normalizeError
+        self.sessionFactory = sessionFactory
+        self.idGenerator = idGenerator
+        self.toolRegistry = toolRegistry
+        self.contextTokens = OSAllocatedUnfairLock(
+            initialState: initialStatus.contextTokens ?? 0
+        )
+    }
+
+    /// Refreshes readiness and measured context before the caller chooses a budget.
+    public func resolveModel(_ model: LLMModel) async throws(LLMError) -> LLMModel {
+        guard model.id == appleModel.rawValue else { throw .unsupportedModel(model.id) }
+        if let readStatus {
+            let status = await readStatus()
+            if Task.isCancelled { throw .cancelled }
+            guard status.model == appleModel else { throw .unsupportedModel(model.id) }
+            if let error = status.blockingError { throw error }
+            if let tokens = status.contextTokens {
+                contextTokens.withLock { $0 = tokens }
+            }
+        } else if case .unavailable(let reason) = availability {
+            throw .providerError(code: reason.errorCode, message: reason.errorMessage)
+        }
+        return supportedModels[0]
     }
 
     public func stream(
@@ -158,15 +245,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
                     }
                 }
                 do {
-                    guard supportedModels.contains(where: { $0.id == model.id }) else {
-                        throw LLMError.unsupportedModel(model.id)
-                    }
-                    if case .unavailable(let reason) = availability {
-                        throw LLMError.providerError(
-                            code: reason.errorCode,
-                            message: reason.errorMessage
-                        )
-                    }
+                    _ = try await resolveModel(model)
 
                     let (transcript, prompt) = try translate(messages: messages)
                     let dynamicTools = buildDynamicTools(from: tools)
@@ -282,8 +361,12 @@ public struct AppleFoundationLLMProvider: LLMProvider {
 
     private func mapError(_ error: any Error) -> LLMError {
         if let llmError = error as? LLMError { return llmError }
+        if let mapped = normalizeError(error) { return mapped }
         if let generationError = error as? LanguageModelSession.GenerationError {
             return mapGenerationError(generationError)
+        }
+        if appleModel == .privateCloudCompute {
+            return .providerError(code: "pcc_request_failed", message: "Private Cloud Compute could not complete this request.")
         }
         return .requestFailed(error.localizedDescription)
     }
@@ -337,7 +420,7 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         @unknown default:
             return .providerError(
                 code: "unknown_generation_error",
-                message: error.localizedDescription
+                message: "The Apple model could not complete this request."
             )
         }
     }

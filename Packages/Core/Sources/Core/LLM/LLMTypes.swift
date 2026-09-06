@@ -130,7 +130,7 @@ public struct LLMModel: Sendable, Equatable, Hashable {
 /// format needs its own provider class (e.g. a native Anthropic Messages
 /// API provider, or a native Gemini provider).
 public enum LLMProviderKind: String, Sendable, Equatable, Codable, CaseIterable {
-    /// On-device model via Apple's `FoundationModels` framework. No
+    /// Local or Private Cloud Compute model via Apple's `FoundationModels` framework. No
     /// `baseURL` or `apiKeyRef`; the row's `modelID` selects which
     /// system model variant to use.
     case appleFoundation

@@ -636,6 +636,7 @@ public actor ChatSession {
         temperature: Double,
         provider: LLMProvider
     ) async throws {
+        var model = model
         let nativeSearch = NativeWebSearch.usesNativeSearch(model)
         let mockSearch = NativeWebSearch.usesMockSearch(model)
         // Search-gate state for this user message's loop:
@@ -660,6 +661,10 @@ public actor ChatSession {
         pendingMockSuggestionsHTML = nil
         pendingMockQuery = nil
         while true {
+            try Task.checkCancellation()
+            // PCC resolves its context asynchronously. Do this before any
+            // budget, briefing tier, or compaction decision uses the model.
+            model = try await provider.resolveModel(model)
             try Task.checkCancellation()
             try await maybeAutoCompact(model: model)
             let history = try await assembleHistory(model: model)
@@ -1011,6 +1016,9 @@ public actor ChatSession {
     /// no LLM call, no checkpoint write.
     private func runCompaction(model: LLMModel) async {
         await runGuardedTurn {
+            let provider = try await self.llmProviderRegistry.requireActive()
+            let model = try await provider.resolveModel(model)
+            try Task.checkCancellation()
             let assembly = try await self.assemble(model: model)
             // Same denominator split as `maybeAutoCompact`: on the compact
             // tier the fixed floor (briefings + tools + allowance) would

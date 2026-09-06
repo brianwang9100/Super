@@ -3,9 +3,8 @@ import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for `ModelConfigurationSeeding` — the first-launch seed that
-/// gives a fresh install a working `.appleFoundation` row so Chat opens
-/// onto a usable model instead of the `noModelConfigured` empty state.
+/// Tests deterministic Apple model defaults, independent of OS/service readiness,
+/// while preserving existing selections and the atomic empty-repository contract.
 @Suite
 struct ModelConfigurationSeedingTests {
 
@@ -33,7 +32,7 @@ struct ModelConfigurationSeedingTests {
         #expect(record.isSelected)
         #expect(record.modelId == AppleFoundationLLMProvider.defaultModelID)
         #expect(record.maxContextTokens == AppleFoundationLLMProvider.defaultMaxContextTokens)
-        #expect(record.name == AppleFoundationLLMProvider.defaultModelDisplayName)
+        #expect(record.name == AppleFoundationModel.local.displayName)
         #expect(record.createdAt == clock.now())
 
         // The row persists and becomes the registry's active model via
@@ -42,6 +41,94 @@ struct ModelConfigurationSeedingTests {
         #expect(all.count == 1)
         let selected = try await repository.selected()
         #expect(selected?.id == record.id)
+    }
+
+    @Test(arguments: AppleFoundationModel.allCases)
+    func seedsTheChosenVariantWithInjectedMetadata(model: AppleFoundationModel) async throws {
+        let database = try ChatDatabase.makeInMemory()
+        let repository = GRDBModelConfigurationRepository(
+            database: database, keychain: InMemoryKeychainClient()
+        )
+        let clock = FixedClock(Date(timeIntervalSinceReferenceDate: 123))
+        let contextTokens = model == .local ? 8_192 : 24_000
+
+        let seeded = try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            model: model,
+            maxContextTokens: contextTokens,
+            idGenerator: DeterministicIDGenerator(prefix: "chosen-"),
+            clock: clock
+        )
+
+        let record = try #require(seeded)
+        #expect(record.modelId == model.rawValue)
+        #expect(record.name == model.displayName)
+        #expect(record.maxContextTokens == contextTokens)
+        #expect(record.kind == .appleFoundation)
+        #expect(record.baseURL == nil)
+        #expect(record.apiKeyRef == nil)
+        #expect(!record.supportsThinking)
+        #expect(record.searchBackend == nil)
+        #expect(record.isSelected)
+        #expect(record.createdAt == clock.now())
+        #expect(try await repository.all() == [record])
+        #expect(try await repository.selected() == record)
+    }
+
+    @Test
+    func transientUnavailabilityDoesNotChangeTheChosenCloudDefault() async throws {
+        let database = try ChatDatabase.makeInMemory()
+        let repository = GRDBModelConfigurationRepository(
+            database: database, keychain: InMemoryKeychainClient()
+        )
+        let statusProvider = FixedAppleFoundationModelStatusProvider(
+            localAvailability: .available,
+            supportsPrivateCloudCompute: true,
+            privateCloudComputeStatus: AppleFoundationModelStatus(
+                model: .privateCloudCompute, availability: .unavailable(.systemNotReady)
+            )
+        )
+        let status = await statusProvider.status(for: .privateCloudCompute)
+        #expect(!status.availability.isAvailable)
+
+        let seeded = try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            model: .privateCloudCompute,
+            maxContextTokens: status.contextTokens,
+            idGenerator: DeterministicIDGenerator(prefix: "pcc-"),
+            clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
+        )
+
+        #expect(seeded?.modelId == AppleFoundationModel.privateCloudCompute.rawValue)
+        #expect(seeded?.maxContextTokens == AppleFoundationModel.privateCloudCompute.fallbackContextTokens)
+        #expect(seeded?.isSelected == true)
+    }
+
+    @Test(arguments: AppleFoundationModel.allCases)
+    func populatedAppleStorePreservesTheEntireRecord(model: AppleFoundationModel) async throws {
+        let database = try ChatDatabase.makeInMemory()
+        let repository = GRDBModelConfigurationRepository(
+            database: database, keychain: InMemoryKeychainClient()
+        )
+        let existing = ModelConfigurationRecord(
+            id: "existing-apple", name: "My chosen Apple model", baseURL: nil, apiKeyRef: nil,
+            modelId: model.rawValue, createdAt: Date(timeIntervalSinceReferenceDate: 456),
+            kind: .appleFoundation, maxContextTokens: 2_048, isSelected: true
+        )
+        try await repository.save(existing)
+        let ids = DeterministicIDGenerator(prefix: "unused-")
+
+        let seeded = try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+            repository: repository,
+            model: .privateCloudCompute,
+            idGenerator: ids,
+            clock: FixedClock(Date(timeIntervalSinceReferenceDate: 789))
+        )
+
+        #expect(seeded == nil)
+        #expect(try await repository.all() == [existing])
+        #expect(try await repository.selected() == existing)
+        #expect(ids.nextID() == "unused-1")
     }
 
     @Test
@@ -66,6 +153,7 @@ struct ModelConfigurationSeedingTests {
 
         let seeded = try await ModelConfigurationSeeding.seedDefaultIfEmpty(
             repository: repository,
+            model: .privateCloudCompute,
             idGenerator: DeterministicIDGenerator(prefix: "afm-"),
             clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
         )
@@ -112,8 +200,8 @@ struct ModelConfigurationSeedingTests {
         #expect(idGenerator.nextID() == "afm-1")
     }
 
-    @Test
-    func seedRunsAtomicallyInOneWriteTransaction() async throws {
+    @Test(arguments: AppleFoundationModel.allCases)
+    func seedRunsAtomicallyInOneWriteTransaction(model: AppleFoundationModel) async throws {
         // When two callers race on first launch, only one row lands.
         // The repository's `insertIfEmpty` runs the empty-check and the
         // insert in a single `queue.write`, so the empty-table
@@ -127,11 +215,13 @@ struct ModelConfigurationSeedingTests {
 
         async let firstSeed = ModelConfigurationSeeding.seedDefaultIfEmpty(
             repository: repository,
+            model: model,
             idGenerator: DeterministicIDGenerator(prefix: "a-"),
             clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
         )
         async let secondSeed = ModelConfigurationSeeding.seedDefaultIfEmpty(
             repository: repository,
+            model: model,
             idGenerator: DeterministicIDGenerator(prefix: "b-"),
             clock: FixedClock(Date(timeIntervalSinceReferenceDate: 0))
         )
@@ -144,6 +234,8 @@ struct ModelConfigurationSeedingTests {
         let all = try await repository.all()
         #expect(all.count == 1)
         #expect(all[0].id == landed[0].id)
+        #expect(all[0].modelId == model.rawValue)
+        #expect(all[0].isSelected)
     }
 
     @Test

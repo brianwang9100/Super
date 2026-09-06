@@ -1,22 +1,9 @@
 import Core
 import Foundation
 
-/// Single source of truth for "given a persisted model row, which live
-/// `LLMProvider` does this binary build for it?" Both composition paths —
-/// the launch-time `AppBootstrapSupport.hydrateProviders` loop and the
-/// Settings-time `SettingsViewModel.registerProvider` — call through here so
-/// the per-kind dispatch can't drift between them as adapters are added.
-///
-/// Returns `nil` when no provider can be built for the row in the current
-/// binary:
-/// - an `.appleFoundation` row on a device where AFM is unavailable, or
-/// - a native-search kind whose adapter hasn't shipped
-///   (`!record.kind.hasProviderAdapter`), or
-/// - an HTTP-backed kind when no `http` client was supplied (tests/previews
-///   that don't wire one).
-///
-/// Callers treat a `nil` for a non-buildable native kind as "skip + log";
-/// `nil` for an unavailable AFM device is the silent expected path.
+/// Constructs the persisted model's provider for both bootstrap and Settings.
+/// Known Apple models retain their identity while unavailable, never switching
+/// between local and Private Cloud Compute (PCC) or another backend implicitly.
 ///
 /// - Parameters:
 ///   - record: The persisted configuration row.
@@ -25,14 +12,19 @@ import Foundation
 ///   - http: Streaming HTTP client for the network-backed kinds. May be
 ///     `nil`; the network kinds then return `nil`.
 ///   - toolRegistry: Needed by `AppleFoundationLLMProvider`.
-///   - appleFoundationAvailability: Gates the `.appleFoundation` arm.
+///   - appleFoundationAvailability: Legacy local-only status injection for
+///     previews and tests. Ignored when a model-specific status provider is supplied.
+///   - appleFoundationStatusProvider: Refreshable local/PCC capability source.
+/// - Returns: A provider, or `nil` for unknown Apple IDs or HTTP configurations
+///   missing the required client or base URL.
 public func makeLLMProvider(
     for record: ModelConfigurationRecord,
     apiKey: String?,
     http: HTTPClient?,
     toolRegistry: ToolRegistry,
-    appleFoundationAvailability: AppleFoundationAvailability
-) -> (any LLMProvider)? {
+    appleFoundationAvailability: AppleFoundationAvailability? = nil,
+    appleFoundationStatusProvider: (any AppleFoundationModelStatusProvider)? = nil
+) async -> (any LLMProvider)? {
     switch record.kind {
     case .openAICompatible:
         // Skip (don't crash) a row missing the `baseURL` the provider's init
@@ -60,10 +52,21 @@ public func makeLLMProvider(
     case .appleFoundation:
         // `id` must match the record UUID so `setActive(id:)` can promote the
         // seeded `isSelected` row; a static fallback would silently fail.
-        guard appleFoundationAvailability.isAvailable else { return nil }
-        return AppleFoundationLLMProvider(
+        guard let model = AppleFoundationModel(rawValue: record.modelId) else { return nil }
+        let statusProvider: any AppleFoundationModelStatusProvider
+        if let appleFoundationStatusProvider {
+            statusProvider = appleFoundationStatusProvider
+        } else if let appleFoundationAvailability {
+            statusProvider = FixedAppleFoundationModelStatusProvider(
+                localAvailability: appleFoundationAvailability
+            )
+        } else {
+            statusProvider = LiveAppleFoundationModelStatusProvider()
+        }
+        return await AppleFoundationLLMProvider.make(
             id: record.id,
-            availability: appleFoundationAvailability,
+            model: model,
+            statusProvider: statusProvider,
             toolRegistry: toolRegistry
         )
     case .anthropicNative:
