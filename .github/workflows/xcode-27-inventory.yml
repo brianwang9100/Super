@@ -1,15 +1,21 @@
 name: Xcode 27 Inventory
 
-# Migration-only diagnostics. No signing secrets, application builds, or
-# baseline writes; the reported simulator build must be reviewed before repinning.
+# Migration-only diagnostics by default. The explicit smoke option delegates
+# unsigned application startup checks; neither path writes snapshot baselines.
 on:
   workflow_dispatch:
+    inputs:
+      ios26_smoke:
+        description: Build and launch both apps on iOS 26.0 (downloads ~8 GB)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   inventory:
+    if: ${{ !inputs.ios26_smoke }}
     runs-on: xcode-27
     timeout-minutes: 15
     steps:
@@ -43,3 +49,9 @@ jobs:
           echo "Interface: $INTERFACE"
           grep -n -E -A 160 '(class|struct) PrivateCloudComputeLanguageModel' "$INTERFACE"
           grep -n -E 'init\(model:|init\(.*transcript:|contextSize|ReasoningLevel|supportsLocale|quotaLimitReached' "$INTERFACE"
+
+  ios26-smoke:
+    if: ${{ inputs.ios26_smoke }}
+    # Local reusable workflows resolve at this dispatch's commit, allowing
+    # manual branch validation before the new workflow reaches main.
+    uses: ./.github/workflows/ios-26-smoke.yml

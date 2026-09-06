@@ -149,9 +149,9 @@ class MigrationValidationTests(unittest.TestCase):
         with self.assertRaises(migration.MigrationError):
             migration.approved_additions("Core", "pcc-registration")
 
-    def test_pcc_mode_approves_exact_22_paths(self):
+    def test_pcc_mode_approves_exact_26_paths(self):
         additions = migration.approved_additions("Chat", "pcc-registration")
-        self.assertEqual(len(additions), 22)
+        self.assertEqual(len(additions), 26)
         self.assertIn(
             "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
             "appleModelRegistration-state-theme.apple_ios26_vellumLight_default.png", additions
@@ -160,8 +160,17 @@ class MigrationValidationTests(unittest.TestCase):
             "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
             "appleModelRegistrationXXL-state-theme.apple_quota_vellumDark_xxl.png", additions
         )
-        self.assertEqual(sum("_default.png" in path for path in additions), 14)
-        self.assertEqual(sum("_xxl.png" in path for path in additions), 8)
+        settings = {path for path, item in additions.items() if item["suite"] == "SettingsSheetSnapshotTests"}
+        self.assertEqual(len(settings), 22)
+        self.assertEqual(sum("_default.png" in path for path in settings), 14)
+        self.assertEqual(sum("_xxl.png" in path for path in settings), 8)
+        composer_directory = "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/"
+        self.assertEqual(set(additions) - settings, {
+            composer_directory + "privateCloudComputeLight.composer_pcc_unresolved_light.png",
+            composer_directory + "privateCloudComputeDark.composer_pcc_unresolved_dark.png",
+            composer_directory + "privateCloudComputeLightXXL.composer_pcc_unresolved_light_xxl.png",
+            composer_directory + "privateCloudComputeDarkXXL.composer_pcc_unresolved_dark_xxl.png",
+        })
 
     def missing_reference_fixture(self):
         message = ("apple_ios26_vellumLight_default: No reference was found on disk. "
@@ -179,6 +188,47 @@ class MigrationValidationTests(unittest.TestCase):
         migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"], additions)
         with self.assertRaises(migration.MigrationError):
             migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"])
+
+    def test_pcc_original_normalizes_exact_swift_testing_issue_prefix(self):
+        reports = self.missing_reference_fixture()
+        issue = reports[2]["issues"]["testFailureSummaries"]["_values"][0]
+        issue["message"]["_value"] = "Issue recorded: " + issue["message"]["_value"]
+        reports[0]["testFailures"] = [{
+            "failureText": issue["message"]["_value"],
+            "testIdentifierString": "SettingsSheetSnapshotTests/appleModelRegistration(state:theme:)",
+        }]
+        migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"],
+                                  migration.approved_additions("Chat", "pcc-registration"))
+
+    def test_pcc_missing_reference_does_not_normalize_arbitrary_issue_prefix(self):
+        reports = self.missing_reference_fixture()
+        issue = reports[2]["issues"]["testFailureSummaries"]["_values"][0]
+        issue["message"]["_value"] = "Unexpected failure: " + issue["message"]["_value"]
+        with self.assertRaises(migration.MigrationError):
+            migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"],
+                                      migration.approved_additions("Chat", "pcc-registration"))
+
+    def test_pcc_original_allows_exact_composer_fixture_attribution(self):
+        additions = migration.approved_additions("Chat", "pcc-registration")
+        for item in additions.values():
+            if item["suite"] != "ChatComposerSnapshotTests":
+                continue
+            with self.subTest(method=item["method"]):
+                message = (f"Issue recorded: {item['name']}: No reference was found on disk. "
+                           "New snapshot was not recorded because recording is disabled")
+                reports = self.fixture(1, message)
+                identifier = f"{item['suite']}/{item['method']}()"
+                reports[1]["testNodes"][0]["nodeIdentifier"] = identifier
+                issue = reports[2]["issues"]["testFailureSummaries"]["_values"][0]
+                issue["testCaseName"] = {"_value": identifier.replace("/", ".")}
+                migration.validate_report(*reports, 65, "original", [item["suite"]], additions)
+                for incorrect in (
+                    identifier.replace(item["method"], "unreviewedComposerMethod"),
+                    identifier.replace(item["suite"], "SettingsSheetSnapshotTests"),
+                ):
+                    issue["testCaseName"]["_value"] = incorrect
+                    with self.assertRaises(migration.MigrationError):
+                        migration.validate_report(*reports, 65, "original", [item["suite"]], additions)
 
     def test_pcc_missing_reference_requires_attributed_test_method(self):
         reports = self.missing_reference_fixture()

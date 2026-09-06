@@ -89,7 +89,17 @@ def approved_additions(scheme, mode):
             for theme in ("vellumLight", "vellumDark"):
                 name = f"apple_{state}_{theme}_{size}"
                 path = f"{directory}/{method}-state-theme.{name}.png"
-                additions[path] = {"method": method, "name": name}
+                additions[path] = {"suite": "SettingsSheetSnapshotTests", "method": method, "name": name}
+    directory = "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests"
+    for method, name in (
+        ("privateCloudComputeLight", "composer_pcc_unresolved_light"),
+        ("privateCloudComputeDark", "composer_pcc_unresolved_dark"),
+        ("privateCloudComputeLightXXL", "composer_pcc_unresolved_light_xxl"),
+        ("privateCloudComputeDarkXXL", "composer_pcc_unresolved_dark_xxl"),
+    ):
+        additions[f"{directory}/{method}.{name}.png"] = {
+            "suite": "ChatComposerSnapshotTests", "method": method, "name": name,
+        }
     return additions
 
 
@@ -104,10 +114,13 @@ def requested_schemes(selection, mode):
 
 
 def approved_missing_reference(message, identifier, additions):
+    # Swift Testing's xcresult issue formatter adds this exact prefix. Keep the
+    # snapshot name anchored after normalization so unrelated failures fail shut.
+    message = message.removeprefix("Issue recorded: ")
     if "No reference was found on disk. New snapshot was not recorded because recording is disabled" not in message:
         return False
     return any(
-        re.search(r"\bSettingsSheetSnapshotTests\b", identifier)
+        re.search(r"\b" + re.escape(item["suite"]) + r"\b", identifier)
         and re.search(r"\b" + re.escape(item["method"]) + r"\b", identifier)
         and message.startswith(item["name"] + ": ")
         for item in additions.values()

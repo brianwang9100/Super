@@ -3,6 +3,7 @@ name: iOS 26 Back-deployment Smoke
 # Manual evidence only. Does not run snapshot tests or sign/distribute apps.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
