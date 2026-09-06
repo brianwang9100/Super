@@ -1,0 +1,48 @@
+name: Xcode 27 Inventory
+
+# Migration-only diagnostics. No signing secrets, application builds, or
+# baseline writes; the reported simulator build must be reviewed before repinning.
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/xcode-27-pcc]
+    paths: [.github/workflows/xcode-27-inventory.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - name: Select candidate Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "27.0-beta"
+
+      - name: Report toolchain and simulator inventory
+        env:
+          EXPECTED_XCODE_BUILD: "27A5252f"
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          echo "Runner image: ${ImageOS:-unknown} / ${ImageVersion:-unknown}"
+          xcodebuild -version
+          test "$(xcodebuild -version | awk '/Build version/ {print $3}')" = "$EXPECTED_XCODE_BUILD"
+          swift --version
+          xcodebuild -showsdks
+          xcrun simctl list runtimes --json | jq '[.runtimes[] | {name, identifier, version, buildversion, isAvailable}]'
+          xcrun simctl runtime list
+          xcrun simctl list devices --json | jq '.devices | with_entries(.value |= map(select(.name == "iPhone 17")))'
+
+      - name: Inspect Foundation Models API declarations
+        run: |
+          set -euo pipefail
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          INTERFACE=$(rg --files "$SDK_PATH/System/Library/Frameworks/FoundationModels.framework/Modules" -g '*.swiftinterface' | sort | head -1)
+          test -n "$INTERFACE"
+          echo "Interface: $INTERFACE"
+          rg -n -A 160 '(class|struct) PrivateCloudComputeLanguageModel' "$INTERFACE"
+          rg -n 'init\(model:|init\(.*transcript:|contextSize|ReasoningLevel|supportsLocale|quotaLimitReached' "$INTERFACE"
