@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local-only preview discovery, export and parity; no baseline writes or uploads."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,12 @@ HERE = Path(__file__).resolve().parent
 
 def output(*command):
     return subprocess.check_output(command, text=True, cwd=ROOT)
+
+
+def simulator_name(root):
+    canonical = root.resolve()
+    identity = hashlib.sha256(str(canonical).encode()).hexdigest()[:12]
+    return f'SB-{canonical.name}-{identity}-preview-pilot'
 
 
 def main():
@@ -44,7 +51,7 @@ def main():
     if len(minor_disks) != 1 or minor_disks[0].get('build') != '23E254a':
         sys.exit('Refusing capture: ambiguous or stale iOS 26.4 runtime disk images')
     devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
-    expected_name = f'SB-{ROOT.parent.name}-preview-pilot'
+    expected_name = simulator_name(ROOT)
     simulator = args.simulator or os.environ.get('ARGOS_SIMULATOR_UDID')
     if not simulator:
         candidates = [d for d in devices.get(matches[0]['identifier'], []) if d['name'] == expected_name]

@@ -14,7 +14,7 @@ struct PreviewChatComposer: View {
     var progress: Double = 1
     var fontScale: Double = 1
     var dynamicType: DynamicTypeSize = .large
-    var reduceMotion: Bool?
+    var reduceMotion = false
     var references: [VerseReferencePillModel] = []
     @FocusState private var isFocused: Bool
 

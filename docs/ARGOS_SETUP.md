@@ -13,7 +13,7 @@ npm test
 npx --no-install argos upload ./screenshots
 ```
 
-`npm test` runs the Python guard tests, finds or creates the worktree's dedicated iPhone 17 simulator, discovers and renders 23 previews, validates the full inventory and exact dimensions, and decodes all PNGs. It publishes only PNGs to the ignored `./screenshots` directory. To select an existing dedicated device, set `ARGOS_SIMULATOR_UDID`. The simulator name must match `SB-<parent-of-checkout>-preview-pilot`; it is never a shared default simulator.
+`npm test` runs the Python guard tests, finds or creates the worktree's dedicated iPhone 17 simulator, discovers and renders 23 previews, validates the full inventory and exact dimensions, and decodes all PNGs. It publishes only PNGs to the ignored `./screenshots` directory. To select an existing dedicated device, set `ARGOS_SIMULATOR_UDID`. The simulator name includes the checkout directory name and a SHA-256 prefix of its canonical absolute path (`SB-<directory>-<path-hash>-preview-pilot`). This keeps standard and managed sibling worktrees isolated, even when directory names repeat. Older pilot device names are not reused.
 
 The npm command is the native visual-test entry point. The existing Swift package, behavioral, database, and legacy snapshot suites still run through their existing commands and CI checks.
 
@@ -25,13 +25,13 @@ The `--argos` mode deliberately reports the reviewed Point-Free pixel difference
 
 [`.github/workflows/argos.yml`](../.github/workflows/argos.yml) runs on pull requests, pushes to `main`, and manual dispatch. It uses `macos-26`, pinned Xcode and XcodeGen, commit-pinned actions, and `npm ci` with the exact CLI dependency in `package-lock.json`. It runs `npm test`, then `npm exec -- argos upload ./screenshots`. Capture evidence is retained for seven days, including on failures.
 
-The workflow reads the repository's `ARGOS_TOKEN` Actions secret. The token is never committed. `GITHUB_TOKEN` provides PR metadata. Fork PRs do not receive repository secrets; Argos documents OIDC/tokenless alternatives, but the fork path must be validated with the connected project before relying on it. See [GitHub Actions authentication](https://argos-ci.com/docs/learn/integrations/github-actions-authentication.md).
+CI uploads use Argos tokenless GitHub authentication: Argos verifies the in-progress workflow for the linked repository. `ARGOS_PROJECT` selects the project and read-only `GITHUB_TOKEN` provides PR metadata. No reusable `ARGOS_TOKEN` is passed to PR-controlled code, and OIDC permissions are not requested. The previously configured repository secret is unused and retained pending verified tokenless CI and authorized cleanup. Local uploads still use the user's shell token. Validate fork PRs separately before relying on their review gate. See [GitHub Actions authentication](https://argos-ci.com/docs/learn/integrations/github-actions-authentication.md).
 
 No branch protection or existing required check is changed. Before making Argos required, test a changed screenshot, missing screenshot, failed capture, failed upload, review rejection, and approval. Keep current checks required during this trial.
 
 ## First build and baseline
 
-The initial capture and upload succeeded on 2026-09-06: [build #1](https://app.argos-ci.com/brianwang9100/Super/builds/1), with 23 added screenshots, 0 changed, and 0 removed. Argos reports `changes-detected`, as expected for the new image set, with no reference build yet. The repository's `ARGOS_TOKEN` Actions secret is configured. Local capture evidence is `.build/PreviewPilot/run-2rccaqq9/`; all eight guard tests and the 25-case capture/layout test run passed. A corrupt-image control was rejected before upload.
+The initial capture and upload succeeded on 2026-09-06: [build #1](https://app.argos-ci.com/brianwang9100/Super/builds/1), with 23 added screenshots, 0 changed, and 0 removed. Argos reports `changes-detected`, as expected for the new image set, with no reference build yet. The repository's `ARGOS_TOKEN` Actions secret is configured. Local capture evidence is `.build/PreviewPilot/run-2rccaqq9/`; all original eight guard tests and the 25-case capture/layout test run passed. Review hardening adds six renderer-integrity and simulator-identity guards (14 total), plus an iOS fixture test for explicit Reduce Motion overrides. A corrupt-image control was rejected before upload.
 
 A local upload uses the current Git branch and commit. Uncommitted fixture/tooling changes are included in the captured images but are not a committed baseline. The first upload from `codex/argos-visual-testing` is an onboarding build. The setup must land on `main` and run there to establish the main-branch reference; do not relabel this working-branch build as `main`. Until a suitable reference exists, Argos may report an orphan build. [Baseline behavior](https://argos-ci.com/docs/quickstart/any-test-framework.md).
 

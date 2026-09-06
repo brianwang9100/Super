@@ -34,7 +34,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/emptyDark.composer_empty_dark.png",
@@ -71,7 +72,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/emptyLight.composer_empty_light.png",
@@ -108,7 +110,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMax.composer_font_scale_max_light.png",
@@ -145,7 +148,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMaxDark.composer_font_scale_max_dark.png",
@@ -182,7 +186,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMaxXXL.composer_font_scale_max_light_xxl.png",
@@ -219,7 +224,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/micUnavailableLight.composer_mic_unavailable_light.png",
@@ -256,7 +262,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/midMorphLight.composer_mid_morph_light.png",
@@ -293,7 +300,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/multipleReferencePillsLight.composer_reference_pills_multiple_light.png",
@@ -339,7 +347,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/nearMaxContext.composer_near_max_light.png",
@@ -376,7 +385,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillDark.composer_reference_pill_dark.png",
@@ -418,7 +428,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillLight.composer_reference_pill_light.png",
@@ -460,7 +471,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillXXL.composer_reference_pill_light_xxl.png",
@@ -502,7 +514,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/pillModeDark.composer_pill_dark.png",
@@ -539,7 +552,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/pillModeLight.composer_pill_light.png",
@@ -576,7 +590,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingDark.composer_recording_dark.png",
@@ -625,7 +640,8 @@
       "suppressed": false,
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
-    }
+    },
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingLight.composer_recording_light.png",
@@ -674,7 +690,8 @@
       "suppressed": false,
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
-    }
+    },
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingReduceMotion.composer_recording_reduce_motion.png",
@@ -723,7 +740,8 @@
       "suppressed": true,
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
-    }
+    },
+    "previewReduceMotion": true
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingXXL.composer_recording_xxl.png",
@@ -772,7 +790,8 @@
       "suppressed": false,
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
-    }
+    },
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/streamingShowsStop.composer_streaming_light.png",
@@ -809,7 +828,8 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   },
   {
     "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/typedFlipsToSend.composer_typed_light.png",
@@ -846,6 +866,7 @@
         "maxContextTokens": 128000
       }
     ],
-    "selectedModelId": "gpt-4o"
+    "selectedModelId": "gpt-4o",
+    "previewReduceMotion": false
   }
 ]

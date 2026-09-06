@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  id-token: write
 
 concurrency:
   group: argos-${{ github.ref }}
@@ -37,7 +36,8 @@ jobs:
       - name: Upload screenshots to Argos
         run: npm exec -- argos upload ./screenshots
         env:
-          ARGOS_TOKEN: ${{ secrets.ARGOS_TOKEN }}
+          # Argos verifies the in-progress GitHub run; no reusable upload secret enters PR code.
+          ARGOS_PROJECT: brianwang9100/Super
           GITHUB_TOKEN: ${{ github.token }}
       - name: Preserve capture evidence
         if: always()

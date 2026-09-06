@@ -24,11 +24,17 @@ def prepare():
                          ('apply', '--check', str(HERE / 'renderer.patch')), ('apply', str(HERE / 'renderer.patch'))]:
                 subprocess.run(['git', '-C', str(checkout), *args], check=True)
             checkout.rename(destination)
+    validate_checkout(destination, REVISION, patch)
+    return destination, digest
+
+
+def validate_checkout(destination, revision, patch):
     head = subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip()
     diff = subprocess.check_output(['git', '-C', str(destination), 'diff', '--binary', 'HEAD'])
-    if head != REVISION or diff != patch:
+    # Deliberately include ignored files: an ignored Swift/resource input can still be compiled.
+    untracked = subprocess.check_output(['git', '-C', str(destination), 'ls-files', '--others', '-z'])
+    if head != revision or diff != patch or untracked:
         raise ValueError('Renderer checkout differs from the reviewed revision and patch')
-    return destination, digest
 
 
 if __name__ == '__main__':

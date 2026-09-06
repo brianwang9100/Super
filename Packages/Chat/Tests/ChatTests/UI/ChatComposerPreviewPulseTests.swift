@@ -5,6 +5,15 @@ import Testing
 /// The preview phase preserves ring appearance while preventing a repeating capture animation.
 @Suite("ChatComposer preview pulse")
 struct ChatComposerPreviewPulseTests {
+    #if canImport(UIKit)
+    @Test @MainActor func recordingPreviewsPinReduceMotion() {
+        let ordinary = PreviewChatComposer(text: "", theme: .vellumLight, isRecording: true)
+        let reduced = PreviewChatComposer(text: "", theme: .vellumLight, isRecording: true, reduceMotion: true)
+        #expect(!ordinary.reduceMotion)
+        #expect(reduced.reduceMotion)
+    }
+    #endif
+
     @Test func fixedEndpoints() {
         let initial = ChatComposerPreviewPulse(progress: 0)
         #expect(initial.scale == 1)
