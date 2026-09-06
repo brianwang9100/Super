@@ -95,7 +95,7 @@ jobs:
           swift --version
 
       - name: Cache SwiftPM build
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: Packages/${{ matrix.package }}/.build
           # Xcode version (literal 26.4.1, matching the setup-xcode pin) in the
