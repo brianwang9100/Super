@@ -33,6 +33,10 @@ Rationale (full details in the fork spec §5):
 
 ---
 
+## Argos native preview workflow
+
+`.github/workflows/argos.yml` adds a separate visual-testing job on PRs and main pushes: pinned iOS simulator capture through `npm test`, followed by an Argos CLI upload. It uses the `ARGOS_TOKEN` repository secret and preserves capture evidence. Existing required tests remain unchanged; see [ARGOS_SETUP.md](ARGOS_SETUP.md) for setup, baseline seeding, and local commands.
+
 ## 1. Goals & Philosophy
 
 Super is built by AI agents. Codex and other approved agents pick up tasks, implement them on feature branches, write tests, and submit pull requests — all without human intervention. The CI pipeline is the **quality gate that makes this safe.**
