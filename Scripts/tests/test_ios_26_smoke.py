@@ -1,6 +1,7 @@
 """Deterministic safety checks for the manual iOS 26 startup-only workflow."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -117,8 +118,10 @@ class IOS26SmokeTests(unittest.TestCase):
         for configuration in ("Debug", "Release"):
             with self.subTest(configuration=configuration):
                 runner = Mock()
+                runner.created_simulators = set()
                 runner.run.side_effect = [simulator + "\n", "", "Finished"]
                 self.assertEqual(smoke.boot_simulator(runner, configuration), simulator)
+                self.assertEqual(runner.created_simulators, {simulator})
                 self.assertEqual(runner.run.call_args_list, [
                     call(f"create-{configuration}", ["xcrun", "simctl", "create",
                          f"IOS26Smoke-{configuration}", "iPhone 17", smoke.RUNTIME_IDENTIFIER]),
@@ -133,6 +136,113 @@ class IOS26SmokeTests(unittest.TestCase):
         with self.assertRaises(smoke.SmokeError):
             smoke.boot_simulator(runner, "Debug")
         self.assertEqual(runner.run.call_count, 1)
+
+    def installation_runner(self, evidence):
+        runner = smoke.SmokeRunner(evidence, clock=lambda: 0)
+        simulator = "4B08B54B-F1D1-4A10-81D7-013961E880AD"
+        runner.created_simulators.add(simulator)
+        runner.run = Mock(return_value="")
+        return runner, simulator
+
+    def test_each_installation_has_one_ten_minute_attempt_and_no_success_diagnostics(self):
+        for scheme in smoke.BUNDLE_IDS:
+            for configuration in ("Debug", "Release"):
+                with self.subTest(scheme=scheme, configuration=configuration):
+                    runner, simulator = self.installation_runner(Path("unused"))
+                    app = Path(f"build/{configuration}/{scheme}.app")
+                    with patch.object(smoke, "install_diagnostics") as diagnostics:
+                        smoke.install_app(runner, simulator, app, scheme, configuration)
+                    runner.run.assert_called_once_with(
+                        f"install-{scheme}-{configuration}",
+                        ["xcrun", "simctl", "install", simulator, str(app)], timeout=600,
+                    )
+                    diagnostics.assert_not_called()
+                    self.assertEqual(runner.deadline, 65 * 60)
+
+    def test_installation_and_diagnostics_refuse_unowned_simulators(self):
+        runner, _ = self.installation_runner(Path("unused"))
+        for operation in (smoke.install_app, smoke.install_diagnostics):
+            with self.subTest(operation=operation.__name__):
+                with self.assertRaises(smoke.SmokeError):
+                    operation(runner, "booted", Path("Super.app"), "Super", "Debug")
+        runner.run.assert_not_called()
+
+    def test_install_diagnostics_are_bounded_and_exclude_unrelated_content(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            runner, simulator = self.installation_runner(evidence)
+            app = evidence / "Super.app"
+            smoke.install_diagnostics(runner, simulator, app, "Super", "Debug")
+            self.assertEqual(runner.run.call_args_list, [
+                call("diagnostic-Super-Debug-disk", ["df", "-k", str(evidence)], timeout=15),
+                call("diagnostic-Super-Debug-memory", ["vm_stat"], timeout=15),
+                call("diagnostic-Super-Debug-load", ["sysctl", "vm.loadavg"], timeout=15),
+                call("diagnostic-Super-Debug-app-size", ["du", "-sk", str(app)], timeout=15),
+                call("diagnostic-Super-Debug-app-container", [
+                    "xcrun", "simctl", "get_app_container", simulator, "com.brianwang.Super", "app",
+                ], timeout=15),
+                call("diagnostic-Super-Debug-installer", [
+                    "xcrun", "simctl", "spawn", simulator, "log", "show", "--last", "5m",
+                    "--style", "compact", "--predicate",
+                    'process == "installd" AND eventMessage CONTAINS "com.brianwang.Super"',
+                ], timeout=15),
+            ])
+            report = json.loads((evidence / "install-Super-Debug-diagnostics.json").read_text())
+            self.assertEqual(report["simulator"], simulator)
+            self.assertEqual(report["bundle_id"], "com.brianwang.Super")
+            self.assertEqual([probe["result"] for probe in report["probes"]], ["collected"] * 6)
+
+    def test_install_timeout_stays_failure_after_successful_diagnostics_without_retry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner, simulator = self.installation_runner(Path(temporary))
+            original = smoke.SmokeError("install-Super-Debug exceeded its deadline")
+            runner.run.side_effect = [original] + [""] * 6
+            with self.assertRaises(smoke.SmokeError) as caught:
+                smoke.install_app(runner, simulator, Path("Super.app"), "Super", "Debug")
+            self.assertIs(caught.exception, original)
+            self.assertEqual(runner.stage, "install-Super-Debug")
+            self.assertEqual(runner.run.call_count, 7)
+            install_calls = [item for item in runner.run.call_args_list if item.args[0].startswith("install-")]
+            self.assertEqual(len(install_calls), 1)
+
+    def test_unavailable_diagnostics_do_not_replace_install_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            runner, simulator = self.installation_runner(evidence)
+            original = smoke.SmokeError("install-SuperBible-Release failed with exit code 1")
+            runner.run.side_effect = [original] + [smoke.SmokeError("diagnostic deadline exceeded")] * 6
+            with self.assertRaises(smoke.SmokeError) as caught:
+                smoke.install_app(runner, simulator, Path("SuperBible.app"), "SuperBible", "Release")
+            self.assertIs(caught.exception, original)
+            self.assertEqual(runner.stage, "install-SuperBible-Release")
+            report = json.loads((evidence / "install-SuperBible-Release-diagnostics.json").read_text())
+            self.assertEqual([probe["result"] for probe in report["probes"]], ["unavailable"] * 6)
+            self.assertEqual(runner.run.call_count, 7)
+
+    def test_diagnostic_write_error_preserves_original_install_error(self):
+        runner, simulator = self.installation_runner(Path("unused"))
+        original = smoke.SmokeError("install-Super-Debug exceeded its deadline")
+        runner.run.side_effect = [original] + [""] * 6
+        with patch.object(smoke, "write_json", side_effect=OSError("No space left on device")):
+            with self.assertRaises(smoke.SmokeError) as caught:
+                smoke.install_app(runner, simulator, Path("Super.app"), "Super", "Debug")
+        self.assertIs(caught.exception, original)
+        self.assertEqual(runner.stage, "install-Super-Debug")
+
+    def test_install_and_diagnostic_timeouts_share_unchanged_global_deadline(self):
+        for timeout in (smoke.INSTALL_TIMEOUT_SECONDS, smoke.DIAGNOSTIC_TIMEOUT_SECONDS):
+            with self.subTest(timeout=timeout), tempfile.TemporaryDirectory() as temporary:
+                instant = iter((0, 65 * 60 - 8))
+                runner = smoke.SmokeRunner(Path(temporary), clock=lambda: next(instant))
+                process = Mock(stdout=[], pid=123)
+                process.wait.return_value = 0
+                with patch.object(smoke.subprocess, "Popen", return_value=process):
+                    with patch.object(smoke.threading, "Timer") as timer:
+                        runner.run("bounded-command", ["fixture"], timeout=timeout)
+                self.assertEqual(timer.call_args.args[0], 8)
+                timer.return_value.start.assert_called_once()
+                timer.return_value.cancel.assert_called_once()
+                self.assertEqual(runner.deadline, 65 * 60)
 
     def test_runner_disables_every_recording_environment_seam(self):
         with patch.dict(os.environ, {"SNAPSHOT_RECORD": "1", "TEST_RUNNER_SNAPSHOT_RECORD": "1"}):

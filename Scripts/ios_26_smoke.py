@@ -20,6 +20,8 @@ RUNTIME_BUILD = "23A343"
 RUNTIME_IDENTIFIER = "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
 BUNDLE_IDS = {"Super": "com.brianwang.Super", "SuperBible": "com.brianwang.SuperBible"}
 BOOT_TIMEOUT_SECONDS = 10 * 60
+INSTALL_TIMEOUT_SECONDS = 10 * 60
+DIAGNOSTIC_TIMEOUT_SECONDS = 15
 
 
 class SmokeError(RuntimeError):
@@ -90,12 +92,64 @@ def boot_simulator(runner, configuration):
     simulator = runner.run(f"create-{configuration}", ["xcrun", "simctl", "create",
                            f"IOS26Smoke-{configuration}", "iPhone 17", RUNTIME_IDENTIFIER]).strip()
     require(re.fullmatch(r"[0-9A-Fa-f-]{36}", simulator), "Unexpected simulator identifier")
+    runner.created_simulators.add(simulator)
     runner.run(f"boot-{configuration}", ["xcrun", "simctl", "boot", simulator])
     # The first hosted iOS 26 boot finished after 5m26s. Give each fresh device
     # ten minutes; SmokeRunner still enforces the unchanged global deadline.
     runner.run(f"boot-ready-{configuration}", ["xcrun", "simctl", "bootstatus", simulator, "-b"],
                timeout=BOOT_TIMEOUT_SECONDS)
     return simulator
+
+
+def install_diagnostics(runner, simulator, app, scheme, configuration):
+    """Collect only resource metrics and this job's app-installation evidence."""
+    require(simulator in runner.created_simulators, "Diagnostics require a simulator created by this job")
+    require(scheme in BUNDLE_IDS and configuration in ("Debug", "Release"), "Unknown diagnostic target")
+    name = f"{scheme}-{configuration}"
+    bundle_id = BUNDLE_IDS[scheme]
+    # No host process logs, simulator-wide log dumps, or unrelated app data.
+    # Six probes each have a 15-second cap and share the original global limit.
+    probes = (
+        ("disk", ["df", "-k", str(runner.evidence)]),
+        ("memory", ["vm_stat"]),
+        ("load", ["sysctl", "vm.loadavg"]),
+        ("app-size", ["du", "-sk", str(app)]),
+        ("app-container", ["xcrun", "simctl", "get_app_container", simulator, bundle_id, "app"]),
+        ("installer", ["xcrun", "simctl", "spawn", simulator, "log", "show", "--last", "5m",
+                       "--style", "compact", "--predicate",
+                       f'process == "installd" AND eventMessage CONTAINS "{bundle_id}"']),
+    )
+    results = []
+    for probe, arguments in probes:
+        stage = f"diagnostic-{name}-{probe}"
+        try:
+            runner.run(stage, arguments, timeout=DIAGNOSTIC_TIMEOUT_SECONDS)
+            results.append({"stage": stage, "result": "collected"})
+        except (SmokeError, subprocess.SubprocessError, OSError) as error:
+            results.append({"stage": stage, "result": "unavailable", "error": str(error)})
+    write_json(runner.evidence / f"install-{name}-diagnostics.json", {
+        "simulator": simulator, "bundle_id": bundle_id, "probes": results,
+        "scope": "Resource metrics and app-specific installation evidence only; not startup proof.",
+    })
+
+
+def install_app(runner, simulator, app, scheme, configuration):
+    """Bound one installation attempt; diagnostics never turn failure into success."""
+    require(simulator in runner.created_simulators, "Installation requires a simulator created by this job")
+    require(scheme in BUNDLE_IDS and configuration in ("Debug", "Release"), "Unknown installation target")
+    stage = f"install-{scheme}-{configuration}"
+    try:
+        runner.run(stage, ["xcrun", "simctl", "install", simulator, str(app)], timeout=INSTALL_TIMEOUT_SECONDS)
+    except (SmokeError, subprocess.SubprocessError, OSError):
+        try:
+            install_diagnostics(runner, simulator, app, scheme, configuration)
+        except Exception as error:
+            # Evidence collection (including a disk-write failure) must not
+            # replace the original install failure in main's failure.json.
+            print(f"Installation diagnostics unavailable: {error}", flush=True)
+        finally:
+            runner.stage = stage
+        raise
 
 
 class SmokeRunner:
@@ -106,6 +160,7 @@ class SmokeRunner:
         self.clock = clock
         self.deadline = clock() + 65 * 60
         self.stage = "initializing"
+        self.created_simulators = set()
         self.environment = os.environ.copy()
         self.environment["SUPER_IOS_COMPATIBILITY"] = "1"
         for prefix in ("", "TEST_RUNNER_", "SIMCTL_CHILD_"):
@@ -179,7 +234,7 @@ def smoke(workspace, runner):
             info = plistlib.loads((app / "Info.plist").read_bytes())
             load_commands = runner.run(f"binary-{name}", ["xcrun", "vtool", "-show-build", str(app / scheme)])
             validate_binary(info, load_commands, scheme)
-            runner.run(f"install-{name}", ["xcrun", "simctl", "install", simulator, str(app)])
+            install_app(runner, simulator, app, scheme, configuration)
             launch = runner.run(f"launch-{name}", ["xcrun", "simctl", "launch",
                                 f"--stdout={runner.evidence / (name + '-stdout.log')}",
                                 f"--stderr={runner.evidence / (name + '-stderr.log')}", simulator, bundle_id])
