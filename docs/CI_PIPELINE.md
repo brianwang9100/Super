@@ -4,10 +4,12 @@
 
 **Prerequisite reading:** [MOBILE_ARCHITECTURE.md](./MOBILE_ARCHITECTURE.md) for the monorepo structure and Swift Package layout, [SERVER_ARCHITECTURE.md](./SERVER_ARCHITECTURE.md) for the server stack.
 
+**Toolchain migration (2026-09-06):** Apple jobs now target the `xcode-27` hosted preview, selecting Xcode `27.0-beta` and asserting exact build `27A5252f`. Screenshot jobs pin iOS 27.0 runtime `24A5423a` / iPhone 17. These values were verified in [runner inventory](https://github.com/brianwang9100/Super/actions/runs/34042157889). The host image is macOS 26.5.2, not macOS 27. Both apps still deploy to iOS 26.0. [Execution plan/status](XCODE_27_PCC_PLAN.md) tracks snapshot and distribution validation. Historical workflow examples below describe the original architecture; checked-in workflows are authoritative.
+
 > **What's wired today (2026-05-13):**
-> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `macos-26` runner pinned to Xcode 26.4.1, matrix over Core + Chat packages, runs `swift test --parallel --enable-code-coverage`, prints an llvm-cov summary.
-> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — `macos-26` runner pinned to Xcode 26.4.1, installs `xcodegen`, regenerates the project, runs `xcodebuild build` against `generic/platform=iOS Simulator` with `CODE_SIGNING_ALLOWED=NO`. The `ios-test` job runs Chat snapshot + unit tests on an iPhone simulator at iOS 26.4.
-> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — `macos-26` runner pinned to Xcode 26.4.1 (iOS 26.4 SDK), archives + uploads to TestFlight via manual signing with imported `.p12` + provisioning profile. Triggered by `workflow_dispatch` or a `release/v*` tag. See §9.2 for the runbook.
+> - [`.github/workflows/swift-test.yml`](../.github/workflows/swift-test.yml) — `xcode-27`, exact Xcode build assertion, auto-discovered Core/Chat/Bible/Todo matrix, `swift test --parallel --enable-code-coverage`, and llvm-cov summary.
+> - [`.github/workflows/ios-build.yml`](../.github/workflows/ios-build.yml) — both app targets build, package screenshot suites verify on the exact iOS 27 trio, and stable aggregation checks preserve required-check names.
+> - [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml) — the same asserted Xcode build, manual signing, `Super` archive/export. Triggered by `workflow_dispatch` or a `release/v*` tag; beta acceptance must be proven by processing a signed upload.
 >
 > Everything else in this doc — server CI, AI reviewer agent, Codecov status checks, branch-protection rules, the `Chat` snapshot-test job, server deploy pipeline, the SuperBible second-target build matrix — is the target architecture. See [`TODO.md`](../TODO.md) § CI / CD and § SuperBible for the open items.
 
@@ -272,10 +274,11 @@ jobs:
 
 ### 4.2 Xcode/Simulator Setup on GitHub Actions
 
-GitHub-hosted macOS runners (`macos-26`) come with multiple Xcode versions and iOS simulator runtimes preinstalled. Key considerations:
+GitHub's `xcode-27` preview supplies the selected beta compiler and iOS 27 runtime on a macOS 26 host. Key considerations:
 
-- **Pin the Xcode version literally** (`xcode-version: "26.4.1"` via `maxim-lobanov/setup-xcode@v1`), not `latest-stable`, to prevent SwiftUI snapshot drift between agent PRs and across runner image refreshes.
-- **Pin the exact runtime build, not just the minor.** The snapshot legs run on iOS **26.4.1 (build `23E254a`)** — the build `macos-26` bundles with the pinned Xcode 26.4.1. `26.4.0` (`23E244`) and `26.4.1` (`23E254a`) both report as "iOS 26.4" but render differently, and a `-destination` can only name the minor (`OS=26.4`), so the **"Pick iOS simulator"** step asserts `buildversion == 23E254a` and fails loud if a runner image ever swaps the bundled build (or installs both). No extra runtime download — the preinstalled build is verified in place, which is also enforced locally by `.claude/hooks/enforce-snapshot-sim.py`.
+- **Assert the exact compiler build.** `xcode-version: "27.0-beta"` selects a preinstalled beta; `XCODE_BUILD: "27A5252f"` is checked before compiled cache restoration. A refreshed beta must fail until an intentional repin. Compiled caches include build and architecture; snapshot caches also include runtime build.
+- **Assert the exact runtime build.** The screenshot legs use iOS **27.0 (`24A5423a`)** / iPhone 17. A beta can reuse the same minor/runtime identifier, so the picker validates the build and resolves a matching available device. Local `.claude/hooks/enforce-snapshot-sim.py` enforces the same pins, including dedicated simulator hardware identity, and has no stale-pin fallback.
+- **Keep recording opt-in.** Normal CI never sets recording flags. The isolated migration workflow records candidate PNGs, verifies with recording off, and uploads evidence for visual review. Local guard tests reject malformed/conflicting pins and unsafe compatibility/recording combinations.
 - **Disable code signing** for CI builds (`CODE_SIGNING_ALLOWED=NO`). Signing only happens in the deployment pipeline.
 - **Use `xcbeautify`** for human-readable (and agent-readable) build output.
 
@@ -672,7 +675,7 @@ jobs:
 
 ### 9.2 Client Deployment (TestFlight)
 
-The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `macos-26`, pins Xcode `26.4.1` (iOS 26.4 SDK) via [`maxim-lobanov/setup-xcode@v1`](https://github.com/maxim-lobanov/setup-xcode), imports the Apple Distribution `.p12` and App Store provisioning profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually from the Actions tab (`workflow_dispatch`) or by pushing a `release/v*` tag.
+The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml). It runs on `xcode-27`, selects `27.0-beta` via [`setup-xcode`](https://github.com/maxim-lobanov/setup-xcode) and asserts build `27A5252f`, imports the Apple Distribution `.p12` and App Store profile into an ephemeral keychain, archives with manual signing, and uploads with `xcodebuild -exportArchive`. Triggered manually (`workflow_dispatch`) or by a `release/v*` tag. Confirm actual TestFlight processing before relying on a newly pinned beta for distribution.
 
 **Why this way (the four non-obvious choices):**
 
@@ -680,7 +683,7 @@ The workflow lives at [`.github/workflows/testflight.yml`](../.github/workflows/
 
 2. **Release signing settings live in `project.yml` on the `Super` target, not on the xcodebuild CLI.** Build settings passed on the `xcodebuild` command line (e.g. `PROVISIONING_PROFILE_SPECIFIER=...`) propagate to **every** target in the build, including Swift Package Manager (SPM) resource-bundle targets like `GRDB_GRDB`. Those targets reject provisioning profiles and the archive fails with *"GRDB_GRDB does not support provisioning profiles..."*. Setting the signing settings on the `Super` target's Release config in `project.yml` scopes them correctly — xcodegen bakes them into only that target.
 
-3. **Xcode must be pinned literally on the runner.** The `macos-26` image ships several Xcode versions side-by-side (currently 26.0.1 / 26.1.1 / 26.2 / 26.3 / 26.4.1 / 26.5) with 26.4.1 as the default. App Store Connect rejects uploads built with anything older than the iOS 26 SDK. We pin `xcode-version: "26.4.1"` literally (not `latest-stable`) so a runner image refresh can't surprise us with a beta toolchain — repinning to 26.5 only after Apple ships it stable.
+3. **Pin the compiler build, including between betas.** The approved Xcode 27 migration deliberately uses a preview. Selection by `27.0-beta` is followed by an exact build assertion; do not substitute `latest` or assume a previously accepted beta proves the next build's upload acceptance.
 
 4. **Cert + key partition list must be set, not just imported.** Without `security set-key-partition-list -S apple-tool:,apple:`, `codesign` hangs on an interactive macOS UI prompt asking permission to use the private key — fatal in CI.
 

@@ -1,0 +1,75 @@
+name: Snapshot Migration
+
+# Explicit migration only: never regenerate references on ordinary PRs or main.
+# The branch path filter permits the initial migration before workflow_dispatch
+# is available on the default branch. Remove that trigger after this migration.
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/xcode-27-pcc]
+    paths:
+      - .github/workflows/snapshot-migration.yml
+      - Scripts/migrate_snapshots.py
+      - Scripts/tests/test_migrate_snapshots.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migrate:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [Core, Chat, Bible, Todo]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "27.0-beta"
+
+      - name: Validate migration safeguards
+        run: python3 -B -m unittest discover -s Scripts/tests -p test_migrate_snapshots.py -v
+
+      - name: Install pinned XcodeGen
+        uses: ./.github/actions/install-xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Verify old references, record, then verify new references
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        # Exact trio observed on hosted inventory run 34041997280. No compiled
+        # caches are restored: this migration proves a clean build/test run.
+        run: >-
+          python3 Scripts/migrate_snapshots.py
+          --scheme "$SCHEME"
+          --xcode-build 27A5252f
+          --runtime-build 24A5423a
+
+      - name: Upload verified replacement PNGs
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-baselines-${{ matrix.scheme }}
+          # Directory root preserves Packages/... for deliberate import. No
+          # database text snapshots or unverified partial recordings are here.
+          path: build/snapshot-migration/${{ matrix.scheme }}/baselines/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload migration evidence and original references
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-migration-evidence-${{ matrix.scheme }}
+          path: build/snapshot-migration/${{ matrix.scheme }}/evidence/
+          if-no-files-found: warn
+          retention-days: 14

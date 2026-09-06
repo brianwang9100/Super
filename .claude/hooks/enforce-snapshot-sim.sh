@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # PreToolUse hook (Bash).
 #
-# Backstops the pinned iOS snapshot trio (iPhone 17 / iOS 26.4 / Xcode 26.4.1):
+# Backstops the exact iOS snapshot pins read from ios-build.yml:
 # denies any `xcodebuild` command whose concrete iOS-Simulator -destination
 # resolves to a different device or runtime, or whose effective Xcode is not the
-# pinned version. See enforce-snapshot-sim.py for the full logic and AGENTS.md
+# pinned version/build. SUPER_IOS_COMPATIBILITY=1 allows compilation only on a
+# different runtime, never snapshot recording or test execution.
+# See enforce-snapshot-sim.py for the full logic and AGENTS.md
 # "iOS testing: match CI's Xcode + simulator runtime + iPhone" for why.
 #
 # Thin wrapper: the deny decision is carried in the PreToolUse JSON the Python

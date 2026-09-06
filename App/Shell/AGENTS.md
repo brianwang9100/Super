@@ -32,7 +32,7 @@ Anything chat-overlay-specific (the three state shapes, the drag handle, the spr
 ## Testing
 
 - App-target Swift code does **not** currently have its own XCTest target. Closest existing coverage is `Packages/Chat/Tests/ChatTests/UI/Snapshots/ChatOverlaySnapshotTests.swift` (anchor-state heights + mid-drag intermediate × themes) — it snapshot-tests the chat-overlay surface directly, which is the load-bearing surface area.
-- **Manual sim verification is the bar for changes here** until an app-target test target exists (tracked in `TODO.md` § SB-M1 follow-ups). Snapshot anything verifiable from inside the Chat package; for shell-only layout decisions (chrome z-order, backdrop opacity timing, sidebar plumbing) verify on iPhone 17 / iOS 26.4 / Xcode 26.4.1 — CI's pinned trio.
+- **Manual sim verification is the bar for changes here** until an app-target test target exists (tracked in `TODO.md` § SB-M1 follow-ups). Snapshot anything verifiable from inside the Chat package; for shell-only layout decisions verify on the root's exact pinned iPhone 17 / iOS 27 / Xcode 27 trio, and separately check iOS 26 back-deployment.
 - **Verify both targets.** `xcodebuild build -scheme Super` and `xcodebuild build -scheme SuperBible` must both succeed locally before opening a PR that touches anything under `App/Shell/`.
 
 ## Dependencies

@@ -99,7 +99,7 @@ I chose the Bible because I couldn't find a free AI Bible-study app that genuine
 
 ## Set up & run
 
-**Prereqs:** macOS 15+, Xcode 26+, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+**Prereqs:** macOS 26.4+, Xcode 27 beta 6 (`27A5252f`), [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.45.4. See [development setup](docs/DEVELOPMENT_SETUP.md) for the exact simulator pin. The app still supports iOS 26.0+.
 
 ```bash
 git clone https://github.com/brianwang9100/Super.git

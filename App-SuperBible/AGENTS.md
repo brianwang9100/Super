@@ -66,5 +66,5 @@ v1 ships with no accounts, no server, no sync. **The planned v2 cloud path is Si
 
 Same as the root rules ([`../AGENTS.md`](../AGENTS.md) § Testing & Testability), with the SuperBible-specific note:
 
-- SuperBible's snapshot tests run against the **same CI trio** as SuperOS (Xcode 26.4.1 + iOS 26.4 sim + iPhone 17 on `macos-26`).
+- SuperBible's snapshot tests run against the **same exact CI trio** as SuperOS (root-pinned Xcode 27 + iOS 27 simulator + iPhone 17 on `xcode-27`). The deployment minimum remains iOS 26.0.
 - A SuperBible-specific snapshot suite isn't needed until the target has UI worth snapshotting (i.e., post-SB-M0). Until then, the shared package snapshot tests (Chat / Bible / Plans) cover the surface.

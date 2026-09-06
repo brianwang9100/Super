@@ -31,6 +31,8 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v6
+      - name: Validate toolchain and simulator policy
+        run: python3 -B -m unittest discover -s .claude/hooks/tests -p 'test_*.py' -v
       # Third-party community action pinned to a commit SHA (not a mutable
       # tag) so a tag force-push can't swap the code under us.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1

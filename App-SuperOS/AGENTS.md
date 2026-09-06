@@ -43,4 +43,4 @@ Settings has no account row or identity capsule — the single-user MVP doesn't 
 
 ## Testing expectations
 
-Same as the root rules ([`../AGENTS.md`](../AGENTS.md) § Testing & Testability). App-target Swift code does not currently have its own XCTest target — manual simulator verification on Xcode 26.4.1 + iOS 26.4 simulator + iPhone 17 is the bar for changes here. Shared shell snapshot coverage lives in `Packages/Chat/Tests/ChatTests/UI/Snapshots/`.
+Same as the root rules ([`../AGENTS.md`](../AGENTS.md) § Testing & Testability). App-target Swift code does not currently have its own XCTest target — manual verification uses the root's exact pinned Xcode 27 + iOS 27 simulator + iPhone 17 trio, plus iOS 26 compatibility checks. Shared shell snapshot coverage lives in `Packages/Chat/Tests/ChatTests/UI/Snapshots/`.

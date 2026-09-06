@@ -11,7 +11,7 @@ Self-host guide for developers who want to clone the repo, run the backend local
 | Tool | Version | Notes |
 |------|---------|-------|
 | macOS | 15+ | Required for Xcode and iOS development |
-| Xcode | 26.4.1 | Swift 6, SwiftUI. CI is pinned to this exact build; mismatches break SwiftUI snapshot baselines. |
+| Xcode | 27 beta 6 (`27A5252f`) | Requires macOS 26.4+. CI asserts the exact build, not only the beta version selector. Swift 6 language mode and iOS 26.0 deployment remain unchanged. |
 | XcodeGen | latest | `brew install xcodegen` — generates `Super.xcodeproj` from `project.yml` |
 | Docker Desktop | Latest | *Future:* runs Postgres, Redis, and the server |
 | Node.js | 22+ | *Future:* only needed if running the server outside Docker |
@@ -185,21 +185,26 @@ The client uses this response to populate its `AppletRegistry`. It re-fetches on
 
 ## 7. Running Tests
 
-**Swift package tests** (Core + Chat unit tests, in-memory GRDB) — preferred for fast iteration:
+**Swift package tests** (Core, Chat, Bible, Todo; in-memory GRDB where used) — preferred for fast iteration. Select the pinned Xcode with a literal `DEVELOPER_DIR` pointing at its installed `Contents/Developer` directory; verify `xcodebuild -version` reports `27A5252f` before running:
 
 ```bash
 cd Packages/Core && swift test --parallel
 cd Packages/Chat && swift test --parallel
 ```
 
-**iOS-runtime snapshot tests** (Chat SwiftUI views) — run on the simulator via the shared `Chat` scheme. The scheme XML is hand-maintained at `Scripts/xcodegen-extras/Chat.xcscheme` (xcodegen 2.45.4 can't model SPM-package test schemes via `project.yml`); `options.postGenCommand` in `project.yml` copies it into `Super.xcodeproj/xcshareddata/xcschemes/` after every regeneration.
+**iOS-runtime snapshot tests** — each package has a shared test scheme. Scheme XML is hand-maintained at `Scripts/xcodegen-extras/` (XcodeGen 2.45.4 cannot model these SPM-package test schemes); `project.yml`'s `postGenCommand` copies the schemes after `xcodegen generate`.
 
 ```bash
+xcodebuild -version
+xcrun simctl list runtimes --json
+xcrun simctl runtime list
+xcrun simctl create "SB-<worktree-name>" "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-27-0
+# Substitute the returned literal UDID, not a shared/remembered simulator ID.
 xcodebuild test -scheme Chat \
-  -destination 'platform=iOS Simulator,id=472D292D-71F0-4D2B-ADFC-C5D5BAF14450'
+  -destination 'platform=iOS Simulator,id=<your-worktree-simulator-UDID>'
 ```
 
-Record on iOS **26.4.1 (build `23E254a`)** — keep only that 26.4.x build installed locally (see [`AGENTS.md`](../AGENTS.md) §5 "iOS testing"); the `enforce-snapshot-sim.py` PreToolUse guard refuses these runs if a stale `23E244` is also installed.
+Record on **iOS 27.0 runtime build `24A5423a`, Xcode build `27A5252f`, iPhone 17**. The `xcode-27` hosted runner currently runs macOS 26.5.2; a host OS named macOS 27 is not required. The guard rejects conflicting same-minor runtime builds and invalid pins. Coordinate runtime changes with other worktrees instead of deleting their installations. A Mac older than 26.4 cannot run the pinned Xcode; update it with the user's approval or use the exact CI image and clearly report the local-validation gap.
 
 To re-record snapshot baselines after an intentional visual change:
 
@@ -208,6 +213,16 @@ TEST_RUNNER_SNAPSHOT_RECORD=1 xcodebuild test -scheme Chat ...
 ```
 
 The `TEST_RUNNER_` prefix is required — `xcodebuild` only forwards env vars with that prefix into the iOS test process.
+
+Review all changed screenshots, then rerun with recording unset. A recording pass is not a passing verification run. The explicit [snapshot migration workflow](../.github/workflows/snapshot-migration.yml) records in an isolated runner and verifies again before publishing candidate PNG artifacts; normal PR verification never records.
+
+The app minimum remains iOS 26.0. For older-runtime app compilation use `SUPER_IOS_COMPATIBILITY=1` with an explicit `xcodebuild build` or `build-for-testing` command and the pinned Xcode, then install/launch on a dedicated iOS 26 simulator/device. This mode refuses `test`, `test-without-building`, and recording; do not compare iOS 26 screenshots against iOS 27 references.
+
+Validate local pin enforcement without starting a simulator:
+
+```bash
+python3 -B -m unittest discover -s .claude/hooks/tests -p 'test_*.py' -v
+```
 
 **Server tests** *(future)* will use a Docker Compose test profile with an isolated Postgres instance.
 
