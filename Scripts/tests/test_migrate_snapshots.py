@@ -125,6 +125,66 @@ class MigrationValidationTests(unittest.TestCase):
             with self.assertRaises(migration.MigrationError):
                 migration.fingerprints(root, ["reference.png"])
 
+    def test_toolchain_mode_never_allows_additions(self):
+        self.assertEqual(migration.approved_additions("Chat", "toolchain"), {})
+
+    def test_pcc_mode_is_chat_only(self):
+        with self.assertRaises(migration.MigrationError):
+            migration.approved_additions("Core", "pcc-registration")
+
+    def test_pcc_mode_approves_exact_22_paths(self):
+        additions = migration.approved_additions("Chat", "pcc-registration")
+        self.assertEqual(len(additions), 22)
+        self.assertIn(
+            "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
+            "appleModelRegistration-state-theme.apple_ios26_vellumLight_default.png", additions
+        )
+        self.assertIn(
+            "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/"
+            "appleModelRegistrationXXL-state-theme.apple_quota_vellumDark_xxl.png", additions
+        )
+        self.assertEqual(sum("_default.png" in path for path in additions), 14)
+        self.assertEqual(sum("_xxl.png" in path for path in additions), 8)
+
+    def missing_reference_fixture(self):
+        message = ("apple_ios26_vellumLight_default: No reference was found on disk. "
+                   "New snapshot was not recorded because recording is disabled")
+        reports = self.fixture(1, message)
+        reports[1]["testNodes"][0]["nodeIdentifier"] = "SettingsSheetSnapshotTests/appleModelRegistration(state:theme:)"
+        reports[2]["issues"]["testFailureSummaries"]["_values"][0]["testCaseName"] = {
+            "_value": "SettingsSheetSnapshotTests.appleModelRegistration(state:theme:)"
+        }
+        return reports
+
+    def test_pcc_original_allows_only_approved_missing_reference(self):
+        reports = self.missing_reference_fixture()
+        additions = migration.approved_additions("Chat", "pcc-registration")
+        migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"], additions)
+        with self.assertRaises(migration.MigrationError):
+            migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"])
+
+    def test_pcc_missing_reference_requires_attributed_test_method(self):
+        reports = self.missing_reference_fixture()
+        reports[2]["issues"]["testFailureSummaries"]["_values"][0]["testCaseName"]["_value"] = "OtherSuite.otherMethod()"
+        with self.assertRaises(migration.MigrationError):
+            migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"],
+                                      migration.approved_additions("Chat", "pcc-registration"))
+
+    def test_pcc_additions_do_not_allow_missing_references_in_final_verify(self):
+        with self.assertRaises(migration.MigrationError):
+            migration.validate_report(*self.missing_reference_fixture(), 65, "verify", ["SettingsSheetSnapshotTests"],
+                                      migration.approved_additions("Chat", "pcc-registration"))
+
+    def test_pcc_does_not_approve_missing_unlisted_variant(self):
+        reports = self.missing_reference_fixture()
+        reports[2]["issues"]["testFailureSummaries"]["_values"][0]["message"]["_value"] = (
+            "apple_ios26_lapisLight_default: No reference was found on disk. "
+            "New snapshot was not recorded because recording is disabled"
+        )
+        with self.assertRaises(migration.MigrationError):
+            migration.validate_report(*reports, 65, "original", ["SettingsSheetSnapshotTests"],
+                                      migration.approved_additions("Chat", "pcc-registration"))
+
 
 if __name__ == "__main__":
     unittest.main()

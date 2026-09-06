@@ -1,32 +1,63 @@
 name: Snapshot Migration
 
-# Explicit migration only: never regenerate references on ordinary PRs or main.
-# The branch path filter permits the initial migration before workflow_dispatch
-# is available on the default branch. Remove that trigger after this migration.
+# Explicit migration only: never regenerate references on pushes or ordinary
+# PRs. Dispatch at a reviewed commit and inspect every generated artifact.
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/xcode-27-pcc]
-    paths:
-      - .github/workflows/snapshot-migration.yml
-      - Scripts/migrate_snapshots.py
-      - Scripts/tests/test_migrate_snapshots.py
+    inputs:
+      mode:
+        description: Exact baseline set, or the approved PCC registration additions
+        type: choice
+        required: true
+        default: toolchain
+        options: [toolchain, pcc-registration]
+      scheme:
+        description: PCC registration mode requires Chat
+        type: choice
+        required: true
+        default: all
+        options: [all, Chat]
 
 permissions:
   contents: read
 
 concurrency:
   group: snapshot-migration-${{ github.ref }}
-  cancel-in-progress: true
+  # Never discard the pinned phase-1 run when publishing phase-2 tooling.
+  cancel-in-progress: false
 
 jobs:
+  configure:
+    runs-on: ubuntu-latest
+    outputs:
+      schemes: ${{ steps.selection.outputs.schemes }}
+      mode: ${{ steps.selection.outputs.mode }}
+    steps:
+      - id: selection
+        env:
+          MODE: ${{ inputs.mode || 'toolchain' }}
+          SCHEME: ${{ inputs.scheme || 'all' }}
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = pcc-registration ] && [ "$SCHEME" != Chat ]; then
+            echo "::error::PCC registration mode must explicitly select the Chat scheme."
+            exit 1
+          fi
+          if [ "$SCHEME" = Chat ]; then
+            echo 'schemes=["Chat"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'schemes=["Core","Chat","Bible","Todo"]' >> "$GITHUB_OUTPUT"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
   migrate:
+    needs: configure
     runs-on: xcode-27
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        scheme: [Core, Chat, Bible, Todo]
+        scheme: ${{ fromJSON(needs.configure.outputs.schemes) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -46,11 +77,13 @@ jobs:
       - name: Verify old references, record, then verify new references
         env:
           SCHEME: ${{ matrix.scheme }}
+          MODE: ${{ needs.configure.outputs.mode }}
         # Exact trio observed on hosted inventory run 34041997280. No compiled
         # caches are restored: this migration proves a clean build/test run.
         run: >-
           python3 Scripts/migrate_snapshots.py
           --scheme "$SCHEME"
+          --mode "$MODE"
           --xcode-build 27A5252f
           --runtime-build 24A5423a
 
