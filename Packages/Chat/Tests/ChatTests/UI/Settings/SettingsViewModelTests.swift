@@ -836,6 +836,39 @@ struct SettingsViewModelTests {
         #expect(!vm.appleFoundationStatus(for: .privateCloudCompute).canGenerate)
     }
 
+    @Test("Editing either Apple variant preserves the active provider when both are registered",
+          arguments: AppleFoundationModel.allCases)
+    func editingAppleVariantDoesNotSelectItsSibling(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let existing = try #require(rows.first { $0.modelId == model.rawValue })
+        try await registry.setActive(id: existing.id)
+        let vm = makeViewModel(
+            modelRepository: repository, llmProviderRegistry: registry,
+            appleFoundationStatusProvider: makeAppleStatusProvider()
+        )
+
+        await vm.updateModel(
+            id: existing.id, name: "Renamed Apple model", baseURL: nil,
+            modelId: existing.modelId, apiKey: "", supportsThinking: false,
+            maxContextTokens: existing.maxContextTokens
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(await registry.activeID() == existing.id)
+        #expect(await registry.allProviders().count == 2)
+        let replacement = try #require(await registry.provider(id: existing.id))
+        #expect(replacement.kind == .appleFoundation)
+        #expect(replacement.supportedModels.first?.id == existing.modelId)
+        #expect(repository.rows.first { $0.id == existing.id }?.name == "Renamed Apple model")
+    }
+
     @Test("An Apple edit cannot escape its backend through the search-kind selection")
     func appleEditRejectsSearchKindConversion() async {
         let existing = ModelConfigurationRecord(
@@ -881,6 +914,28 @@ struct SettingsViewModelTests {
         #expect(vm.appleFoundationStatusMessage(for: .privateCloudCompute) == "Approaching the daily PCC usage limit.")
         #expect(vm.preferredAppleFoundationModel == .privateCloudCompute)
         #expect(await provider.requestedModels() == [.local, .privateCloudCompute, .local, .privateCloudCompute])
+    }
+
+    @Test("Canceled Apple status refresh cannot publish readiness after the pane exits")
+    func canceledAppleStatusRefreshDoesNotPublish() async {
+        let provider = ScriptedAppleFoundationStatusProvider(
+            cloudStatus: AppleFoundationModelStatus(
+                model: .privateCloudCompute, availability: .available, contextTokens: 24_000
+            ), gateFirstRequest: true
+        )
+        let vm = makeViewModel(appleFoundationStatusProvider: provider)
+        let initialLocal = vm.appleFoundationStatus(for: .local)
+        let initialCloud = vm.appleFoundationStatus(for: .privateCloudCompute)
+        let refresh = Task { await vm.refreshAppleFoundationStatuses() }
+        await provider.waitUntilGateEntered()
+
+        refresh.cancel()
+        await provider.releaseGate()
+        await refresh.value
+
+        #expect(vm.appleFoundationStatus(for: .local) == initialLocal)
+        #expect(vm.appleFoundationStatus(for: .privateCloudCompute) == initialCloud)
+        #expect(await provider.requestedModels() == [.local])
     }
 
     @Test("Overlapping Apple saves cannot both pass the per-view-model registration guard")
@@ -1470,6 +1525,59 @@ struct SettingsViewModelTests {
         #expect(modelRepo.rows.isEmpty)
     }
 
+    @Test("Deleting one Apple variant keeps its sibling registered and selectable",
+          arguments: AppleFoundationModel.allCases)
+    func deletingAppleVariantPreservesItsSibling(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let deleted = try #require(rows.first { $0.modelId == model.rawValue })
+        let retained = try #require(rows.first { $0.modelId != model.rawValue })
+        try await registry.setActive(id: deleted.id)
+        let vm = makeViewModel(modelRepository: repository, llmProviderRegistry: registry)
+
+        let succeeded = await vm.deleteModel(id: deleted.id)
+
+        #expect(succeeded)
+        #expect(vm.modelEditError == nil)
+        #expect(repository.rows == [retained])
+        #expect(vm.models.map(\.id) == [retained.id])
+        #expect(await registry.provider(id: deleted.id) == nil)
+        #expect(await registry.provider(id: retained.id) != nil)
+        #expect(await registry.activeID() == retained.id)
+    }
+
+    @Test("Failed Apple deletion retains the row and its active provider",
+          arguments: AppleFoundationModel.allCases)
+    func failedAppleDeletionKeepsConfigurationAndProvider(model: AppleFoundationModel) async throws {
+        let rows = makeAppleModelRecords()
+        let repository = StubModelRepository(rows: rows)
+        repository.deleteError = ModelConfigurationRepositoryError.unknownModel(id: "synthetic-failure")
+        let registry = LLMProviderRegistry()
+        for row in rows {
+            await registry.register(FakeLLMProvider(
+                id: row.id, model: LLMModel(id: row.modelId, displayName: row.name)
+            ))
+        }
+        let existing = try #require(rows.first { $0.modelId == model.rawValue })
+        try await registry.setActive(id: existing.id)
+        let vm = makeViewModel(modelRepository: repository, llmProviderRegistry: registry)
+
+        let succeeded = await vm.deleteModel(id: existing.id)
+
+        #expect(!succeeded)
+        #expect(vm.modelEditError?.contains("Could not delete model") == true)
+        #expect(repository.rows == rows)
+        #expect(Set(vm.models.map(\.id)) == Set(rows.map(\.id)))
+        #expect(await registry.allProviders().count == 2)
+        #expect(await registry.activeID() == existing.id)
+    }
+
     @Test("monogram splits on space, dash, and underscore")
     func monogramShape() {
         #expect(SettingsViewModel.monogram(for: "Opus 4.7") == "O4")
@@ -1890,6 +1998,16 @@ struct SettingsViewModelTests {
         )
     }
 
+    private func makeAppleModelRecords() -> [ModelConfigurationRecord] {
+        AppleFoundationModel.allCases.map { model in
+            ModelConfigurationRecord(
+                id: "apple-\(model.rawValue)", name: model.displayName, baseURL: nil, apiKeyRef: nil,
+                modelId: model.rawValue, createdAt: Date(timeIntervalSince1970: 700),
+                kind: .appleFoundation, maxContextTokens: model.fallbackContextTokens
+            )
+        }
+    }
+
     private func makeAppleStatusProvider(
         localAvailability: AppleFoundationAvailability = .available,
         cloudAvailability: AppleFoundationModelStatus.Availability = .available,
@@ -2056,6 +2174,8 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// path; AFM rows never call `storeAPIKey`, so the existing
     /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
+    /// Drives delete failures without changing persistence or registered-provider state.
+    var deleteError: Error?
 
     init(rows: [ModelConfigurationRecord]) {
         self.rows = rows
@@ -2100,6 +2220,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         return record
     }
     func delete(id: String) async throws {
+        if let error = deleteError { throw error }
         rows.removeAll { $0.id == id }
         storedKeys[id] = nil
     }
