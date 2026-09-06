@@ -12,6 +12,83 @@ struct AppleFoundationPCCProviderTests {
     )
 
     @Test
+    func hydratingDormantPCCDoesNotReadMetadataOrChangeLocalSelection() async throws {
+        let local = AppleFoundationLLMProvider(
+            availability: .available,
+            sessionFactory: { _, _ in preconditionFailure("Hydration must not create a local session") },
+            id: "saved-local"
+        )
+        let registry = LLMProviderRegistry()
+        await registry.register(local)
+        try await registry.setActive(id: local.id)
+        let status = DeferredAppleStatus()
+        let cloud = await AppleFoundationLLMProvider.make(
+            id: "saved-cloud", model: .privateCloudCompute, statusProvider: status,
+            sessionFactory: { _, _ in preconditionFailure("Hydration must not create a PCC session") }
+        )
+        await registry.register(cloud)
+        #expect(await status.requests.isEmpty)
+        #expect(cloud.id == "saved-cloud")
+        #expect(cloud.supportedModels[0].id == AppleFoundationModel.privateCloudCompute.rawValue)
+        #expect(cloud.supportedModels[0].maxContextTokens == 0)
+        #expect(await registry.active()?.id == "saved-local")
+    }
+
+    @Test
+    func deferredPCCMetadataIsReadOnExplicitResolution() async throws {
+        let status = DeferredAppleStatus()
+        let provider = await AppleFoundationLLMProvider.make(
+            id: "saved-cloud", model: .privateCloudCompute, statusProvider: status,
+            sessionFactory: { _, _ in preconditionFailure("Resolving metadata must not create a session") }
+        )
+        #expect(await status.requests.isEmpty)
+        await status.allow(Self.ready)
+        let resolved = try await provider.resolveModel(provider.supportedModels[0])
+        #expect(resolved.maxContextTokens == 32_768)
+        #expect(provider.supportedModels[0].maxContextTokens == 32_768)
+        #expect(await status.requests == [.privateCloudCompute])
+    }
+
+    @Test
+    func deferredPCCGenerationReadsStatusBeforeStartingItsSession() async throws {
+        let status = DeferredAppleStatus()
+        let provider = await AppleFoundationLLMProvider.make(
+            id: "saved-cloud", model: .privateCloudCompute, statusProvider: status,
+            sessionFactory: { _, _ in MockLanguageSession(outcome: .snapshots(["cloud response"])) }
+        )
+        await status.allow(Self.ready)
+        let events = try await run(provider)
+        #expect(text(in: events) == ["cloud response"])
+        #expect(provider.supportedModels[0].maxContextTokens == 32_768)
+        #expect(await status.requests == [.privateCloudCompute])
+    }
+
+    @Test
+    func localConstructionRetainsMeasuredInitialContext() async {
+        let status = DeferredAppleStatus()
+        await status.allow(.init(model: .local, availability: .available, contextTokens: 8_192))
+        let provider = await AppleFoundationLLMProvider.make(
+            id: "saved-local", model: .local, statusProvider: status,
+            sessionFactory: { _, _ in preconditionFailure("Hydration must not create a local session") }
+        )
+        #expect(provider.supportedModels[0].id == AppleFoundationModel.local.rawValue)
+        #expect(provider.supportedModels[0].maxContextTokens == 8_192)
+        #expect(await status.requests == [.local])
+    }
+
+    @Test
+    func unsupportedPCCFactoryNeverReadsStatusAndStillRejectsGeneration() async throws {
+        let status = DeferredAppleStatus()
+        let provider = await AppleFoundationLLMProvider.make(
+            id: "saved-cloud", model: .privateCloudCompute, statusProvider: status, sessionFactory: nil
+        )
+        #expect(provider.supportedModels[0].id == AppleFoundationModel.privateCloudCompute.rawValue)
+        #expect(provider.supportedModels[0].maxContextTokens == 0)
+        #expect(errorCode(in: try await run(provider)) == "pcc_requires_os_27")
+        #expect(await status.requests.isEmpty)
+    }
+
+    @Test
     func PCCKeepsItsOwnIdentityContextAndCumulativeStreaming() async throws {
         let provider = makeProvider(session: .snapshots(["Hello", "Hello cloud"]))
         #expect(provider.supportedModels[0].id == "private-cloud-compute")
@@ -239,6 +316,23 @@ private actor ScriptedAppleStatus {
     func next() -> AppleFoundationModelStatus {
         precondition(!states.isEmpty, "Unexpected status refresh")
         return states.removeFirst()
+    }
+}
+
+/// Status reads are forbidden until the test explicitly starts resolution.
+private actor DeferredAppleStatus: AppleFoundationModelStatusProvider {
+    nonisolated let supportsPrivateCloudCompute = true
+    private var states: [AppleFoundationModelStatus] = []
+    private(set) var requests: [AppleFoundationModel] = []
+
+    func allow(_ status: AppleFoundationModelStatus) { states.append(status) }
+
+    func status(for model: AppleFoundationModel) async -> AppleFoundationModelStatus {
+        precondition(!states.isEmpty, "Provider construction must not query PCC metadata")
+        let status = states.removeFirst()
+        precondition(status.model == model, "Unexpected backend status request")
+        requests.append(model)
+        return status
     }
 }
 

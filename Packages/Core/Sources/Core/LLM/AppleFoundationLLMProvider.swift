@@ -143,7 +143,8 @@ public struct AppleFoundationLLMProvider: LLMProvider {
     }
 
     /// Constructs the selected backend without substituting another model when
-    /// unavailable. The status source is refreshed before each generation.
+    /// unavailable. PCC metadata is deferred so hydrating a saved configuration
+    /// cannot delay app startup; explicit resolution/generation refreshes status.
     public static func make(
         id: String,
         model: AppleFoundationModel,
@@ -154,19 +155,44 @@ public struct AppleFoundationLLMProvider: LLMProvider {
         // injected status source changes readiness only, not the selected backend.
         let live = (statusProvider as? LiveAppleFoundationModelStatusProvider)
             ?? LiveAppleFoundationModelStatusProvider()
-        let factory = live.sessionFactory(for: model)
+        return await make(
+            id: id, model: model, statusProvider: statusProvider,
+            sessionFactory: live.sessionFactory(for: model), toolRegistry: toolRegistry
+        )
+    }
+
+    /// Injects runtime support without constructing framework models in tests.
+    /// A nil factory is unsupported, regardless of the injected logical status.
+    static func make(
+        id: String,
+        model: AppleFoundationModel,
+        statusProvider: any AppleFoundationModelStatusProvider,
+        sessionFactory: LanguageSessionFactory?,
+        toolRegistry: ToolRegistry? = nil
+    ) async -> AppleFoundationLLMProvider {
         let readStatus: @Sendable () async -> AppleFoundationModelStatus = {
-            guard factory != nil else {
+            guard sessionFactory != nil else {
                 return AppleFoundationModelStatus(model: model, availability: .unavailable(.requiresNewerOS))
             }
             return await statusProvider.status(for: model)
         }
-        let initial = await readStatus()
+        let initial: AppleFoundationModelStatus
+        switch model {
+        case .local:
+            initial = await readStatus()
+        case .privateCloudCompute:
+            // This is deliberately not a readiness claim. The provider exposes
+            // unknown context until an explicit request resolves live metadata.
+            initial = AppleFoundationModelStatus(
+                model: model,
+                availability: .unavailable(sessionFactory == nil ? .requiresNewerOS : .systemNotReady)
+            )
+        }
         return AppleFoundationLLMProvider(
             model: model,
             initialStatus: initial,
             status: readStatus,
-            sessionFactory: factory ?? { _, _ in
+            sessionFactory: sessionFactory ?? { _, _ in
                 UnavailableLanguageSession(error: .providerError(
                     code: "pcc_requires_os_27",
                     message: "Private Cloud Compute requires iOS 27 or macOS 27 or later."
