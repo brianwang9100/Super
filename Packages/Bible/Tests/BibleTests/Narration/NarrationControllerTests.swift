@@ -19,6 +19,16 @@ import Testing
 @Suite("NarrationController")
 @MainActor
 struct NarrationControllerTests {
+    @Test("initial voice discovery uses the injected service and requested locale")
+    func initialVoiceUsesInjectedService() {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let locale = Locale(identifier: "fr-FR")
+
+        #expect(controller.bestAvailableVoice(locale: locale) == nil)
+        #expect(service.voiceLookupLocales == [locale])
+    }
+
     @Test("a fresh controller is idle with no current verse")
     func freshControllerIsIdle() {
         let service = FakeNarrationService()
