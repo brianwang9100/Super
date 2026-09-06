@@ -51,6 +51,8 @@ let package = Package(
             ],
             exclude: [
                 "Database/__Snapshots__",
+                // Read from source paths by SnapshotTesting, not bundled resources.
+                "UI/Snapshots/__Snapshots__",
             ],
             resources: [
                 .copy("Fixtures"),
