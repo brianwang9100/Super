@@ -1,3 +1,4 @@
+import Core
 import Foundation
 
 /// `@Observable @MainActor` view-model collaborator owned by
@@ -35,7 +36,12 @@ public final class VoiceInputController {
         case failed(String)
     }
 
-    public private(set) var state: State = .idle
+    public private(set) var state: State = .idle {
+        didSet {
+            if state == .listening && oldValue != .listening { audioActivity?.beginCapture() }
+            if state != .listening && oldValue == .listening { audioActivity?.endCapture() }
+        }
+    }
     /// Most recent `.partial` transcript from the active session. The
     /// service accumulates utterances committed across natural pauses
     /// inside a single session, so this value grows as the user keeps
@@ -49,6 +55,7 @@ public final class VoiceInputController {
     /// init to write the transcript into the composer text buffer.
     public var onFinalTranscript: ((String) -> Void)?
 
+    private let audioActivity: AudioActivity?
     private let service: any VoiceInputService
     private var streamTask: Task<Void, Never>?
     /// Set true on every `toggle()` start path, cleared on completion,
@@ -56,8 +63,9 @@ public final class VoiceInputController {
     /// `state` flips to `.listening`) doesn't double-start the service.
     private var isStarting = false
 
-    public init(service: any VoiceInputService) {
+    public init(service: any VoiceInputService, audioActivity: AudioActivity? = nil) {
         self.service = service
+        self.audioActivity = audioActivity
         // Initial availability check — if no on-device model is
         // installed for the device locale, boot into `.unavailable` so
         // the composer dims the mic button before the user ever taps it.

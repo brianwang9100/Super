@@ -84,6 +84,13 @@ struct SettingsModelDetailPane: View {
     /// persisted identity doesn't change while the form is open.
     private let storedModelFallback: LLMCatalogModel?
 
+    @State private var audioEnabled: Bool
+    @State private var useThisKey: Bool
+    @State private var audioRevision: Int
+    @State private var committedModelId: String?
+    @State private var isSavingModel = false
+    private var showsAudioSetup: Bool { providerID == "openai" && viewModel.audioSetup != nil && (keyHasContent || isEditing) }
+
     private var isEditing: Bool { editingId != nil }
 
     /// Initial selection used by snapshot tests to pin a starting
@@ -115,6 +122,10 @@ struct SettingsModelDetailPane: View {
     ) {
         self.viewModel = viewModel
         self.editingId = editingId
+        let audio = viewModel.audioSetup?.snapshot()
+        _audioEnabled = State(initialValue: audio?.enabled ?? true)
+        _useThisKey = State(initialValue: audio?.source == nil || audio?.source?.id == editingId)
+        _audioRevision = State(initialValue: audio?.revision ?? 0)
         // Seed @State at init time so the first render shows live data.
         // Doing this in `.onAppear` made the snapshot capture pre-seed
         // values for the toggle (the lifecycle hook hadn't fired yet).
@@ -135,7 +146,7 @@ struct SettingsModelDetailPane: View {
                 modelId: row.modelId,
                 baseURL: row.baseURL
             )
-            let resolvedProviderID = resolved.providerID
+            let resolvedProviderID = row.providerId ?? resolved.providerID
             let resolvedCatalogID = resolved.catalogID
             _providerID = State(initialValue: resolvedProviderID)
             _modelCatalogID = State(initialValue: resolvedCatalogID)
@@ -498,6 +509,27 @@ struct SettingsModelDetailPane: View {
                 }
                 if showsAPIKeyField {
                     apiKeyFieldRow(borderBottom: showsGatedCreateFields)
+                }
+                if showsAudioSetup {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 14) {
+                            Text("Use OpenAI voices for narration")
+                                .font(typography.font(.callout)).foregroundStyle(theme.ink)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            SettingsToggle(isOn: $audioEnabled, accessibilityLabel: "Use OpenAI voices for narration")
+                        }
+                        if let current = viewModel.audioSetup?.snapshot().source, current.id != editingId {
+                            Text("Narration key: \(current.name)").font(typography.font(.footnote)).foregroundStyle(theme.inkSoft)
+                            HStack(spacing: 14) {
+                                Text("Use this key for narration")
+                                    .font(typography.font(.callout)).foregroundStyle(theme.ink)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                SettingsToggle(isOn: $useThisKey, accessibilityLabel: "Use this key for narration")
+                            }
+                        }
+                        Text("Optional AI-generated narration. Text is sent to OpenAI when you play audio; API charges apply. Save confirms this choice.")
+                            .font(typography.font(.footnote)).foregroundStyle(theme.inkSoft)
+                    }.padding(16)
                 }
                 if showsGatedCreateFields {
                     if showsModelDropdownInForm {
@@ -1382,7 +1414,7 @@ struct SettingsModelDetailPane: View {
     private var customNamePlaceholder: String { "GPT 5.5" }
 
     private func save() {
-        guard isValid else { return }
+        guard isValid, !isSavingModel else { return }
         // `maxCtx` drives the non-Apple cap check + persisted value. For AFM
         // it's effectively unused — the cap check is skipped below and Save
         // persists `viewModel.appleFoundationContextTokens` — but the parse
@@ -1483,8 +1515,10 @@ struct SettingsModelDetailPane: View {
         let resolved = resolvedSearchSelection(compatBaseURL: url)
         let updateSelection: (kind: LLMProviderKind, searchBackend: String?)? =
             showsSearchPicker ? (kind: resolved.kind, searchBackend: resolved.searchBackend) : nil
+        isSavingModel = true
         Task {
-            if let editingId {
+            defer { isSavingModel = false }
+            if let editingId = editingId ?? committedModelId {
                 await viewModel.updateModel(
                     id: editingId,
                     name: trimmedName,
@@ -1493,7 +1527,8 @@ struct SettingsModelDetailPane: View {
                     apiKey: keyForSave,
                     supportsThinking: supportsThinking,
                     maxContextTokens: maxCtx,
-                    searchSelection: updateSelection
+                    searchSelection: updateSelection,
+                    providerId: providerID
                 )
             } else {
                 await viewModel.createModel(
@@ -1504,8 +1539,16 @@ struct SettingsModelDetailPane: View {
                     supportsThinking: supportsThinking,
                     maxContextTokens: maxCtx,
                     kind: resolved.kind,
-                    searchBackend: resolved.searchBackend
+                    searchBackend: resolved.searchBackend,
+                    providerId: providerID
                 )
+            }
+            if viewModel.modelEditError == nil {
+                committedModelId = viewModel.lastSavedModel?.id
+                if showsAudioSetup {
+                    await viewModel.commitAudioSetup(enabled: audioEnabled, useThisKey: useThisKey, revision: audioRevision)
+                    audioRevision = viewModel.audioSetup?.snapshot().revision ?? audioRevision
+                }
             }
             // Only pop on success — a non-nil error keeps the pane up
             // so the user sees the message and can retry. Re-arm the

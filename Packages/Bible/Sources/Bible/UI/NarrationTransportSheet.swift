@@ -33,6 +33,7 @@ struct NarrationTransportSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Declared once and shared by the nav bar and the presentation so the two
     /// can't drift; a content-sized card kept over the readable reader.
@@ -59,14 +60,10 @@ struct NarrationTransportSheet: View {
     /// Distinct from `onStop`, which only halts playback and keeps the card.
     let onClose: () -> Void
 
-    /// Locale-filtered voice list backed by the process-wide
-    /// ``cachedVoices`` so the 100-300 ms
-    /// `AVSpeechSynthesisVoice.speechVoices()` scan runs at most once
-    /// per process. `@State` would survive a single presentation but
-    /// resets when the card is removed from the hierarchy; under the
-    /// Stop-keeps-the-card flow the user dismisses + re-presents the
-    /// card freely, and a per-presentation rescan would jank each
-    /// re-open.
+    @State private var showsVoicePicker = false
+    @State private var voicePickerWidth: CGFloat = 360
+    /// Seed immediately from the last scan, then refresh off the main actor so
+    /// voices downloaded in Settings appear without relaunching the app.
     @State private var voices: [VoiceOption] = NarrationTransportSheet.cachedVoices
 
     var body: some View {
@@ -78,6 +75,15 @@ struct NarrationTransportSheet: View {
                 transportRow
                 Divider().background(theme.borderFaint)
                 controlsRow
+                if let error = controller.lastError {
+                    Text(error.message).font(typography.font(.footnote)).foregroundStyle(theme.errorAccent)
+                    HStack {
+                        if controller.voice?.company == .openAI {
+                            Button("Use Apple voice") { controller.useAppleVoice() }
+                        }
+                        Button("Retry", action: onRestart)
+                    }.font(typography.font(.footnote))
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
@@ -93,22 +99,21 @@ struct NarrationTransportSheet: View {
             readableBackground: true,
             estimatedHeight: BibleBottomOverlayKind.narration.estimatedSheetHeight
         )
-        .task {
-            // First-open path only: `cachedVoices` was empty at view
-            // construction, so do the 100-300 ms
-            // `AVSpeechSynthesisVoice.speechVoices()` scan on a
-            // detached background task (running it on `@MainActor`
-            // here would freeze the main thread the instant the card
-            // slides in) and persist the result to the process-wide
-            // cache so subsequent presentations skip the scan.
-            if voices.isEmpty {
-                let loaded = await Task.detached(priority: .userInitiated) {
-                    Self.loadLocaleVoices()
-                }.value
-                Self.cachedVoices = loaded
-                voices = loaded
-            }
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
+            voicePickerWidth = min(360, max(280, width - 32))
         }
+        .task(id: scenePhase) {
+            if scenePhase == .active { await refreshVoices() }
+        }
+    }
+
+    private func refreshVoices() async {
+        let loaded = await Task.detached(priority: .userInitiated) {
+            Self.loadLocaleVoices()
+        }.value
+        guard !Task.isCancelled else { return }
+        Self.cachedVoices = loaded
+        voices = loaded
     }
 
     // MARK: Header
@@ -165,13 +170,13 @@ struct NarrationTransportSheet: View {
         let glyph: String = {
             switch controller.state {
             case .idle, .paused: return "play.fill"
-            case .speaking: return "pause.fill"
+            case .speaking, .preparing: return "pause.fill"
             }
         }()
         let label: String = {
             switch controller.state {
             case .idle: return "Restart narration"
-            case .speaking: return "Pause narration"
+            case .speaking, .preparing: return "Pause narration"
             case .paused: return "Resume narration"
             }
         }()
@@ -182,12 +187,20 @@ struct NarrationTransportSheet: View {
             // menu's `Narrate` entry triggers — no need to reopen the
             // menu just to retry.
             case .idle: onRestart()
-            case .speaking: controller.pause()
+            case .speaking, .preparing: controller.pause()
             case .paused: controller.resume()
             }
         } label: {
-            Image(systemName: glyph)
-                .font(typography.font(size: 22, weight: .bold))
+            Group {
+                if controller.state == .preparing {
+                    ProgressView()
+                        .tint(theme.accentInk)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: glyph)
+                        .font(typography.font(size: 22, weight: .bold))
+                }
+            }
                 // Glyph rides the accent glass on `accentInk` (white in
                 // light/sepia, dark in the dark theme) — the same on-accent
                 // foreground the composer's send/record buttons use.
@@ -201,6 +214,7 @@ struct NarrationTransportSheet: View {
         }
         .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel(label)
+        .accessibilityValue(controller.state == .preparing ? "Preparing audio" : "")
     }
 
     private func verseSkipButton(
@@ -234,37 +248,40 @@ struct NarrationTransportSheet: View {
 
     // MARK: Voice dropdown
 
-    @ViewBuilder
     private var voiceDropdown: some View {
-        if voices.isEmpty {
-            // No Enhanced or Premium voice installed — surface a tap
-            // target into iOS Settings rather than an empty menu. The
-            // chip stays the same shape so the row doesn't reflow.
-            Button {
-                openSpokenContentSettings()
-            } label: {
-                dropdownChip(label: "Voice", value: "Install →")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Voice. Open iOS Settings to install Enhanced voices.")
-        } else {
-            Menu {
-                ForEach(voices) { option in
-                    Button {
-                        controller.voice = AVSpeechSynthesisVoice(identifier: option.id)
-                    } label: {
-                        if option.id == controller.voice?.identifier {
-                            Label(option.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(option.displayName)
-                        }
-                    }
+        Button { showsVoicePicker = true } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(currentVoiceShortName).font(typography.font(size: chipSize, weight: .semibold))
+                        .lineLimit(1)
+                    Text(controller.voice?.companyName ?? "Apple")
+                        .font(typography.font(size: chipSize)).fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(theme.inkSoft)
                 }
-            } label: {
-                dropdownChip(label: "Voice", value: currentVoiceShortName)
+                Spacer(minLength: 2)
+                Image(systemName: "chevron.down").font(typography.font(size: 9))
             }
-            .menuStyle(.borderlessButton)
-            .accessibilityLabel("Voice, current \(currentVoiceShortName)")
+            .foregroundStyle(theme.ink).padding(.horizontal, 14).padding(.vertical, 8)
+            .frame(minHeight: 44)
+            .superGlassButton(in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(GlassHapticButtonStyle(.selection))
+        .accessibilityLabel("Voice, \(currentVoiceShortName), \(controller.voice?.companyName ?? "Apple")")
+        .popover(isPresented: $showsVoicePicker, arrowEdge: .bottom) {
+            NarrationVoicePicker(
+                controller: controller, appleVoices: voices,
+                onSelect: { choice in
+                    showsVoicePicker = false
+                    Task { await controller.selectVoice(choice) }
+                },
+                onInstallAppleVoices: {
+                    showsVoicePicker = false
+                    openSpokenContentSettings()
+                }
+            )
+            .frame(width: voicePickerWidth, height: 520)
+            .presentationCompactAdaptation(.popover)
+            .presentationBackground(theme.background)
         }
     }
 
@@ -274,7 +291,7 @@ struct NarrationTransportSheet: View {
         Menu {
             ForEach(Self.rateOptions, id: \.self) { rate in
                 Button {
-                    controller.rate = rate
+                    Task { await controller.selectRate(rate) }
                 } label: {
                     if abs(rate - controller.rate) < 0.001 {
                         Label(Self.format(rate: rate), systemImage: "checkmark")
@@ -324,6 +341,7 @@ struct NarrationTransportSheet: View {
     /// Strip the `— Enhanced` / `— Premium` suffix from the chip so the
     /// pill stays short; the full label still appears in the open menu.
     private var currentVoiceShortName: String {
+        if let voice = controller.voice?.openAI { return voice.name }
         guard let identifier = controller.voice?.identifier,
               let option = voices.first(where: { $0.id == identifier }) else {
             return "Default"
@@ -370,10 +388,9 @@ struct NarrationTransportSheet: View {
             // only. Users with no Enhanced/Premium installed get the
             // "Install →" chip that deep-links to iOS Settings.
             .filter { $0.quality == .enhanced || $0.quality == .premium }
-            .map { VoiceOption(
-                id: $0.identifier,
-                displayName: voiceDisplayName($0)
-            )}
+            .map {
+                VoiceOption(id: $0.identifier, displayName: voiceDisplayName($0))
+            }
             .sorted { $0.displayName < $1.displayName }
     }
 
@@ -389,13 +406,7 @@ struct NarrationTransportSheet: View {
             : "\(voice.name) — \(tier)"
     }
 
-    /// Process-wide cache of locale-filtered voices, populated the
-    /// first time the card opens. Subsequent presentations seed their
-    /// `@State` from this so the scan doesn't run on every card open.
-    /// `@MainActor` (implicit from the view) so the assignment in
-    /// `.task` is safe. The cache is per-process — voices installed
-    /// while the app is running won't appear until next launch, which
-    /// matches the OS's own voice-install behaviour anyway.
+    /// Seeds new presentations while an off-main scan checks for newly downloaded voices.
     @MainActor
     private static var cachedVoices: [VoiceOption] = []
 

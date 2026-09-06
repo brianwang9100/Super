@@ -862,12 +862,24 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
+    @Test("OpenAI setup offers explicit narration opt-in", arguments: ["light", "dark", "xxl"])
+    func openAINarrationSetup(appearance: String) async {
+        let audio = ProviderAudioSetup(snapshot: { ProviderAudioSnapshot(enabled: nil, source: nil, revision: 0) }, commit: { _, _, _, _ in })
+        await verifyCreateWithProvider(
+            theme: appearance == "dark" ? .vellumDark : .vellumLight, selection: .openAI,
+            availability: .available, existingAppleFoundation: false, name: "openai_narration_\(appearance)",
+            audioSetup: audio, apiKey: "sk-snapshot-only", dynamicType: appearance == "xxl" ? .xxLarge : .large,
+            function: "openAINarrationSetup_\(appearance)"
+        )
+    }
+
     private func verifyCreateWithProvider(
         theme: SuperTheme.Identifier,
         selection: SettingsModelDetailPane.InitialSelection,
         availability: AppleFoundationAvailability,
         existingAppleFoundation: Bool,
         name: String,
+        audioSetup: ProviderAudioSetup? = nil,
         contextWindowError: String? = nil,
         apiKey: String? = nil,
         fetchedModels: [String: [LLMCatalogModel]] = [:],
@@ -875,7 +887,7 @@ struct SettingsSheetSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) async {
-        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        let viewModel = makeViewModel(appleFoundationAvailability: availability, audioSetup: audioSetup)
         viewModel._setSnapshotState(
             settings: .default,
             models: existingAppleFoundation
@@ -1464,7 +1476,8 @@ struct SettingsSheetSnapshotTests {
     }
 
     private func makeViewModel(
-        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
+        audioSetup: ProviderAudioSetup? = nil
     ) -> SettingsViewModel {
         // Snapshots default to `.unavailable(.deviceNotEligible)` so the
         // host's real `SystemLanguageModel.default.availability` (which
@@ -1483,7 +1496,8 @@ struct SettingsSheetSnapshotTests {
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
             webSearchPolicyReceiver: FakeWebSearchPolicyReceiver(),
             appleFoundationAvailability: appleFoundationAvailability,
-            appleFoundationContextTokens: 4_096
+            appleFoundationContextTokens: 4_096,
+            audioSetup: audioSetup
         )
     }
 }

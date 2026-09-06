@@ -341,7 +341,7 @@ struct NarrationControllerTests {
         let controller = NarrationController(service: service)
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
-        controller.voice = voice
+        controller.voice = voice.map(NarrationVoice.init)
         #expect(service.setVoiceCalls.count == 1)
         #expect(service.setVoiceCalls.first??.identifier == voice?.identifier)
 
@@ -365,9 +365,9 @@ struct NarrationControllerTests {
         let controller = NarrationController(service: service)
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
-        controller.voice = voice
+        controller.voice = voice.map(NarrationVoice.init)
         // Same identifier (re-fetched from the same locale init).
-        controller.voice = AVSpeechSynthesisVoice(language: "en-US")
+        controller.voice = AVSpeechSynthesisVoice(language: "en-US").map(NarrationVoice.init)
         #expect(service.setVoiceCalls.count == 1)
     }
 }

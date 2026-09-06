@@ -6,9 +6,9 @@ import Testing
 @testable import Bible
 
 /// Snapshots of ``NarrationTransportSheet`` — the inline overlay card
-/// that hosts the full Narrate transport. Covers all three states the
-/// user encounters (speaking, paused, and idle-after-Stop) across all
-/// three themes, plus a Dynamic Type XXL variant in light that guards
+/// that hosts the full Narrate transport. Covers preparing, speaking,
+/// paused, and idle-after-Stop across Vellum light and dark,
+/// plus a Dynamic Type XXL variant in light that guards
 /// against squeezed labels in the header citation and dropdown chips.
 ///
 /// State-bearing snapshots are driven via the controller's
@@ -19,6 +19,17 @@ import Testing
 @MainActor
 struct NarrationTransportSheetSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
+
+    // Buffering uses the system ProgressView, with no custom motion or layout branch.
+    // SwiftUI's read-only Reduce Motion environment cannot be overridden by this harness.
+    @Test(arguments: ["light", "dark", "xxl"])
+    func preparing(appearance: String) {
+        verify(
+            theme: appearance == "dark" ? .vellumDark : .vellumLight,
+            state: .preparing, currentVerse: 9, name: "preparing_\(appearance)",
+            dynamicType: appearance == "xxl" ? .xxLarge : .large
+        )
+    }
 
     @Test("the transport card renders while speaking in the light theme")
     func speakingLight() {
@@ -80,7 +91,7 @@ struct NarrationTransportSheetSnapshotTests {
             controller.start(utterances: [
                 NarrationVerseUtterance(verseNumber: currentVerse, text: "scripture text"),
             ])
-            controller._simulateEvent(.started(verseNumber: currentVerse))
+            if state != .preparing { controller._simulateEvent(.started(verseNumber: currentVerse)) }
             if state == .paused {
                 controller._simulateEvent(.paused)
             }

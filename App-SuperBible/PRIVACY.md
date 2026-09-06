@@ -1,6 +1,6 @@
 # SuperBible — Privacy
 
-**Last updated: 2026-05-23**
+**Last updated: 2026-09-06**
 
 SuperBible is a free, open-source AI Bible app. We — actually, **I**: SuperBible is built by a solo developer — try to operate on a simple principle: **your study is yours.** This page is the plain-English explanation of what that means.
 
@@ -12,7 +12,7 @@ If you'd rather read the source: every claim below is backed by the code in this
 
 Ever. Not opt-in, not opt-out, not "anonymized" — not collected at all by SuperBible:
 
-- **The verses you read.** Reading position, scroll position, time spent on a chapter — none of it leaves your device.
+- **Your reading activity.** Reading position, scroll position, and time spent on a chapter stay on your device. If you enable OpenAI narration and press Play, the passage text is sent to OpenAI to generate speech, as described below.
 - **Your highlights, notes, and bookmarks.** Stored locally on your device only — including notes the AI assistant writes for you (when you ask it to), which are saved to the same on-device database and never leave your device.
 - **Your reading-plan progress.** Which plan you picked, which days you completed, your streak — all on-device only.
 - **Your identity.** No accounts. No email. No username. No sign-in. No "anonymous ID" tied to your device.
@@ -45,6 +45,14 @@ SuperBible's default AI model is **Apple Foundation Models**, which runs entirel
 If you optionally configure a third-party AI provider (OpenAI, Anthropic, a local Ollama server, etc.) by adding their API key in Settings → Models, then your chat messages are sent **directly from your device to that provider** when you chat. SuperBible's servers (we don't have any) are not in that loop. The provider's privacy policy governs what they do with the data — that's between you and them, not us.
 
 API keys are stored in the iOS Keychain (the same place iOS stores your Wi-Fi passwords), with the **`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`** accessibility attribute. That means: only readable while the device is unlocked, and **never** included in iCloud Keychain sync or device-to-device migration. They live on this device, this install, and nowhere else.
+
+### Optional OpenAI narration
+
+Apple narration uses voices installed on your device. OpenAI narration is optional and requires your own OpenAI API key plus an explicitly saved setup choice. New setup forms default the narration toggle on; canceling the form does not enable narration. Existing keys are not opted in automatically.
+
+When you choose an OpenAI voice and press Play or Preview, passage text, voice choice, and speech instructions are sent directly to OpenAI's speech API over HTTPS. The app may generate one following verse while the current verse plays. No microphone audio, notes, chat history, or reading-activity log is included in those requests. OpenAI's API data policies apply. Audio is AI-generated, and API usage is billed to the account behind your chosen key; a ChatGPT subscription does not include these charges.
+
+Downloaded speech is cached on this device in a bounded, backup-excluded Caches database. The cache can be cleared from Settings → Narration and may be removed by iOS. Keys stay in Keychain; the app stores only credential references alongside narration preferences. Turning narration off or removing its key stops playback and further generation; clearing downloaded narration removes its local cache. Requests already submitted to OpenAI may still be billed.
 
 ### Crash reports and diagnostics
 

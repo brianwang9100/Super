@@ -414,4 +414,21 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             columns: ["target", "bookId"]
         )
     }
+    migrator.registerMigration("v10_narrationSettings") { db in
+        try db.execute(sql: """
+            CREATE TABLE narrationSettings (
+                id TEXT PRIMARY KEY NOT NULL,
+                scope TEXT NOT NULL UNIQUE CHECK (scope = 'narration'),
+                enabled BOOLEAN,
+                sourceId TEXT, sourceName TEXT, keyRef TEXT,
+                ownsKey BOOLEAN NOT NULL,
+                preferredVoiceId TEXT, lastAppleVoiceId TEXT,
+                rate DOUBLE NOT NULL,
+                revision INTEGER NOT NULL,
+                retiredKeyRefs TEXT NOT NULL,
+                updatedAt DATETIME NOT NULL
+            )
+            """)
+    }
+
 }

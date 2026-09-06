@@ -55,6 +55,7 @@ public final class SettingsViewModel {
         /// instead of re-fetching the record — without this projection the
         /// field would silently read `nil` and the toggle would show "off"
         /// for a row that actually has search configured.
+        public let providerId: String?
         public let searchBackend: String?
 
         public init(
@@ -69,7 +70,8 @@ public final class SettingsViewModel {
             modelId: String = "",
             supportsThinking: Bool = false,
             hasAPIKey: Bool = false,
-            searchBackend: String? = nil
+            searchBackend: String? = nil,
+            providerId: String? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -83,6 +85,7 @@ public final class SettingsViewModel {
             self.supportsThinking = supportsThinking
             self.hasAPIKey = hasAPIKey
             self.searchBackend = searchBackend
+            self.providerId = providerId
         }
     }
 
@@ -183,6 +186,9 @@ public final class SettingsViewModel {
     /// bundle's actual version.
     public let appInfo: SuperAppInfo
 
+    public let audioSetup: ProviderAudioSetup?
+    private let eventBus: SuperEventBus?
+    public private(set) var lastSavedModel: ModelConfigurationRecord?
     private let store: ChatSettingsStore
     private let modelRepository: any ModelConfigurationRepository
     private let conversationRepository: any ConversationRepository
@@ -284,8 +290,12 @@ public final class SettingsViewModel {
         appleFoundationAvailability: AppleFoundationAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         ),
-        appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens
+        appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens,
+        audioSetup: ProviderAudioSetup? = nil,
+        eventBus: SuperEventBus? = nil
     ) {
+        self.audioSetup = audioSetup
+        self.eventBus = eventBus
         self.appInfo = appInfo
         self.store = ChatSettingsStore(repository: settingRepository)
         self.modelRepository = modelRepository
@@ -396,7 +406,8 @@ public final class SettingsViewModel {
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
                 hasAPIKey: keyExists,
-                searchBackend: record.searchBackend
+                searchBackend: record.searchBackend,
+                providerId: record.providerId
             ))
         }
         models = rows
@@ -788,10 +799,12 @@ public final class SettingsViewModel {
         maxContextTokens: Int,
         kind: LLMProviderKind = .openAICompatible,
         searchBackend: String? = nil,
+        providerId: String? = nil,
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date()
     ) async {
         modelEditError = nil
+        lastSavedModel = nil
         let ref = idGenerator()
         let recordId = idGenerator()
         do {
@@ -811,9 +824,12 @@ public final class SettingsViewModel {
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
                 isSelected: false,
-                searchBackend: searchBackend
+                searchBackend: searchBackend,
+                providerId: providerId
             )
             try await modelRepository.save(record)
+            lastSavedModel = record
+            await eventBus?.publish(.credentialChanged(id: record.id))
             await registerProvider(for: record, apiKey: apiKey)
             await loadModels()
             onModelsChanged?()
@@ -849,9 +865,11 @@ public final class SettingsViewModel {
         apiKey: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
-        searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil
+        searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil,
+        providerId: String? = nil
     ) async {
         modelEditError = nil
+        lastSavedModel = nil
         do {
             guard let existing = try await modelRepository.fetch(id: id) else {
                 modelEditError = "Could not save model: row no longer exists."
@@ -860,6 +878,7 @@ public final class SettingsViewModel {
             // `.appleFoundation` rows have no `apiKeyRef`; guard avoids nil crash.
             if !apiKey.isEmpty, let ref = existing.apiKeyRef {
                 try await modelRepository.storeAPIKey(apiKey, ref: ref)
+                await eventBus?.publish(.credentialChanged(id: id))
             }
             // Target kind/backend: the picker's resolved pair when supplied,
             // else preserve what's on disk (every non-search edit).
@@ -907,9 +926,12 @@ public final class SettingsViewModel {
                 isSelected: existing.isSelected,
                 // Resolved by the web-search picker (or preserved when the
                 // edit didn't touch search) — see `searchSelection`.
-                searchBackend: targetSearchBackend
+                searchBackend: targetSearchBackend,
+                providerId: providerId ?? existing.providerId
             )
             try await modelRepository.save(updated)
+            lastSavedModel = updated
+            await eventBus?.publish(.credentialChanged(id: id))
             let resolvedKey: String?
             if !apiKey.isEmpty {
                 resolvedKey = apiKey
@@ -959,10 +981,27 @@ public final class SettingsViewModel {
     /// rather than orphaning a secret. Also unregisters the provider so
     /// the deleted endpoint disappears from the picker right away.
     public func deleteModel(id: String) async {
-        try? await modelRepository.delete(id: id)
-        await llmProviderRegistry?.unregister(id: id)
+        do {
+            try await modelRepository.delete(id: id)
+            await llmProviderRegistry?.unregister(id: id)
+            onModelsChanged?()
+        } catch { modelEditError = "Could not remove the model. Try again." }
+        // A Keychain-first deletion can remove the key even if the following database write fails.
+        await eventBus?.publish(.credentialChanged(id: id))
         await loadModels()
-        onModelsChanged?()
+    }
+
+    /// Commits the visible audio draft after a model's credential has successfully saved.
+    public func commitAudioSetup(enabled: Bool, useThisKey: Bool, revision: Int) async {
+        guard let audioSetup, let row = lastSavedModel, let ref = row.apiKeyRef,
+              ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL) else { return }
+        do {
+            try await audioSetup.commit(
+                ProviderAudioCredential(id: row.id, name: row.name, keyRef: ref), enabled, useThisKey, revision
+            )
+        } catch {
+            modelEditError = "The model was saved, but narration settings were not. Review Narration settings and try again."
+        }
     }
 
     /// Build a fresh provider for `record` and register it with the live

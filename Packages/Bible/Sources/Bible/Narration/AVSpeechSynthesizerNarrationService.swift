@@ -91,24 +91,29 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
 
     // MARK: NarrationService
 
-    public func isAvailable() -> Bool {
+    nonisolated public func isAvailable() -> Bool {
         !AVSpeechSynthesisVoice.speechVoices().isEmpty
     }
 
     /// Prefer Premium over Enhanced voices in the locale's language. When
     /// only Compact voices are installed, leave playback on the system default.
-    public func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice? {
+    public func bestAvailableVoice(locale: Locale) -> NarrationVoice? {
+        Self.installedVoice(locale: locale)
+    }
+
+    static func installedVoice(locale: Locale = .current) -> NarrationVoice? {
         let prefix = locale.language.languageCode?.identifier ?? "en"
         let candidates = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix(prefix) }
-        return candidates.first { $0.quality == .premium }
-            ?? candidates.first { $0.quality == .enhanced }
+        return (candidates.first { $0.quality == .premium }
+            ?? candidates.first { $0.quality == .enhanced }).map(NarrationVoice.init)
     }
 
-    public func startSpeaking(
+    nonisolated public func startSpeaking(
         _ utterances: [NarrationVerseUtterance],
         rate: Float,
-        voice: AVSpeechSynthesisVoice?
+        voice: NarrationVoice?,
+        startingAt: Int = 0
     ) -> AsyncStream<NarrationEvent> {
         // Close any prior session's continuation so the caller's old
         // stream consumer drops; the synth is stopped synchronously.
@@ -144,9 +149,9 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             let version = lock.withLock { state -> Int in
                 state.continuation = continuation
                 state.pendingUtterances = utterances
-                state.currentIndex = 0
+                state.currentIndex = startingAt
                 state.currentRate = rate
-                state.currentVoice = voice
+                state.currentVoice = voice?.appleVoice
                 state.sessionVersion += 1
                 state.utteranceVerse.removeAll(keepingCapacity: true)
                 state.didEmitTerminal = false
@@ -155,24 +160,24 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             continuation.onTermination = { [weak self] _ in
                 self?.releaseAudioSession()
             }
-            speakVerse(at: 0, expectedVersion: version)
+            speakVerse(at: startingAt, expectedVersion: version)
         }
     }
 
-    public func pause() {
+    nonisolated public func pause() {
         synth.pauseSpeaking(at: .word)
     }
 
-    public func resume() {
+    nonisolated public func resume() {
         _ = synth.continueSpeaking()
     }
 
-    public func stop() {
+    nonisolated public func stop() {
         teardownActiveSession(emit: .cancelled)
         synth.stopSpeaking(at: .immediate)
     }
 
-    public func skipForward() {
+    nonisolated public func skipForward() {
         let nextIndex = lock.withLock { state -> Int? in
             let candidate = state.currentIndex + 1
             return candidate < state.pendingUtterances.count ? candidate : nil
@@ -188,12 +193,12 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         }
     }
 
-    public func skipBackward() {
+    nonisolated public func skipBackward() {
         let restartIndex = lock.withLock { state in state.currentIndex }
         requeue(from: restartIndex)
     }
 
-    public func skipToPreviousVerse() {
+    nonisolated public func skipToPreviousVerse() {
         // Decrement only when there's room; at the first verse this is
         // a no-op so the queue stays put. The controller's double-tap
         // window decides when to fire this vs `skipBackward`.
@@ -205,7 +210,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         requeue(from: targetIndex)
     }
 
-    public func setRate(_ rate: Float) {
+    nonisolated public func setRate(_ rate: Float) {
         // Read `currentIndex` and `continuation != nil` in the same
         // lock pass that writes the new rate. The prior two-pass form
         // had a narrow window where a concurrent `startSpeaking` or
@@ -220,14 +225,14 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         }
     }
 
-    public func setVoice(_ voice: AVSpeechSynthesisVoice?) {
+    nonisolated public func setVoice(_ voice: NarrationVoice?) {
         // Single lock pass — same atomicity rationale as `setRate`. The
         // current verse restarts under the new voice; without the
         // requeue, the change would only take effect at the *next*
         // verse boundary, which the user perceives as the picker doing
         // nothing.
         let (restartIndex, live): (Int, Bool) = lock.withLock { state in
-            state.currentVoice = voice
+            state.currentVoice = voice?.appleVoice
             return (state.currentIndex, state.continuation != nil)
         }
         if live {

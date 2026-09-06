@@ -181,6 +181,34 @@ public struct BibleApplet: MiniApplet {
         self.textSearcher = textSearcher
     }
 
+    /// Configures optional cloud narration without coupling Bible to the Chat applet.
+    @MainActor
+    public func configureNarration(
+        keychain: any KeychainClient,
+        generator: any SpeechGenerating,
+        cache: any NarrationAudioCaching,
+        audioActivity: AudioActivity,
+        listSources: @escaping @Sendable () async -> [ProviderAudioCredential]
+    ) -> (setup: ProviderAudioSetup, contribution: AppletSettingsContribution)? {
+        guard let database else { return nil }
+        let settings = NarrationSettingsController(
+            repository: GRDBNarrationSettingsRepository(database: database), keychain: keychain, listSources: listSources
+        )
+        let cloud = OpenAINarrationService(generator: generator, player: NarrationAudioPlayer(), cache: cache) {
+            try await settings.apiKey()
+        }
+        let controller = NarrationController(
+            service: AVSpeechSynthesizerNarrationService(), cloudService: cloud,
+            settings: settings, cache: cache, audioActivity: audioActivity
+        )
+        viewModel.installNarration(controller)
+        return (settings.providerSetup, AppletSettingsContribution(
+            id: "bible.narration", label: "Narration", icon: AnyView(Image(systemName: "speaker.wave.2")),
+            value: { settings.openAIAvailable ? "Apple + OpenAI" : "Apple" },
+            destination: { AnyView(NarrationSettingsPane(settings: settings, controller: controller)) }
+        ))
+    }
+
     /// Register the `bible.annotate` tool with the given registry, using
     /// this applet's local database. No-op if the database failed to open
     /// at init — the reader still loads, just without the tool.
@@ -300,6 +328,8 @@ public struct BibleApplet: MiniApplet {
     public func attach(to bus: SuperEventBus) async {
         await referenceInbox.attach(to: bus)
         await viewModel.attach(to: bus)
+        await viewModel.narration.settings?.attach(to: bus)
+        await viewModel.narration.prepareDefaultVoice()
     }
 
     /// Test seam exposing the inbox so a test can publish events through

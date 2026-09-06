@@ -170,7 +170,7 @@ struct AVSpeechSynthesizerNarrationServiceTests {
 
         let voice = try #require(AVSpeechSynthesisVoice(language: "en-US"))
         let stopsBeforeVoice = fake.stopCount
-        service.setVoice(voice)
+        service.setVoice(NarrationVoice(voice))
         #expect(fake.stopCount == stopsBeforeVoice + 1)
         // The current verse (1) restarts — not advanced — and carries the
         // new voice so the change is audible from this verse, not the next.

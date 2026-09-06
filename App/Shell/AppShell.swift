@@ -653,6 +653,7 @@ struct AppShell: View {
                     // shell has no part in the flow and explicitly
                     // skips both envelopes.
                     break
+                case .credentialChanged: break
                 case .sidebarOpened:
                     // The shell *publishes* this (see `openSidebar`) so
                     // applets dismiss their native sheets; it has nothing
@@ -716,7 +717,9 @@ struct AppShell: View {
             // whether AFM is usable. Re-querying `SystemLanguageModel
             // .default.availability` here would let a mid-session toggle
             // of Apple Intelligence split that answer across surfaces.
-            appleFoundationAvailability: dependencies.appleFoundationAvailability
+            appleFoundationAvailability: dependencies.appleFoundationAvailability,
+            audioSetup: dependencies.providerAudioSetup,
+            eventBus: dependencies.eventBus
         )
         await settings.load()
         settingsViewModel = settings
@@ -775,7 +778,7 @@ struct AppShell: View {
             llmProviderRegistry: dependencies.llmProviderRegistry,
             settingsStore: ChatSettingsStore(repository: dependencies.settingRepository)
         )
-        let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService())
+        let voice = VoiceInputController(service: SpeechRecognizerVoiceInputService(), audioActivity: dependencies.audioActivity)
         // Use the persisted model id so the picker survives relaunch; stale ids fall back to first available.
         let persistedModelId = settingsViewModel?.settings.lastSelectedModelId
         let initialModelId = ChatScreenViewModel.resolveInitialModelId(
