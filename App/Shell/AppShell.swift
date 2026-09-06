@@ -1361,13 +1361,6 @@ private struct ComposerAccessoryLayer: View {
     var body: some View {
         let buttons = store.buttons
         if !buttons.isEmpty {
-            // Evaluated here in the body so a closure over the publishing
-            // applet's `@Observable` state stays reactive (Observation records
-            // the read and re-renders this layer when it flips). The Bible
-            // reader uses it to hide the chevrons once its footer prev/next
-            // cards are on screen.
-            let suppressed = buttons.shouldHide?() ?? false
-            let opacity = suppressed ? 0 : accessoryOpacity
             // No `.ignoresSafeArea()`: the layer lives inside the safe area so
             // the bottom inset is measured from the home-indicator top (where
             // the composer content begins), matching the pill's own frame.
@@ -1377,19 +1370,16 @@ private struct ComposerAccessoryLayer: View {
                 .padding(.horizontal, Self.sidePadding)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, composerHidden ? Self.vacatedInset : Self.restingInset)
-                .opacity(opacity)
+                .opacity(accessoryOpacity)
                 // Gate hit-testing and VoiceOver on the same threshold so a
                 // faded chevron is never tappable-but-invisible to a screen
-                // reader during the expand / footer fade.
-                .allowsHitTesting(opacity > 0.5)
-                .accessibilityHidden(opacity < 0.5)
+                // reader during the chat expansion fade. Individual controls
+                // manage their own visibility inside ComposerAccessoryFlank.
+                .allowsHitTesting(accessoryOpacity > 0.5)
+                .accessibilityHidden(accessoryOpacity < 0.5)
                 .animation(
                     SuperMotion.chrome(hiding: composerHidden, reduceMotion: reduceMotion),
                     value: composerHidden
-                )
-                .animation(
-                    SuperMotion.chrome(hiding: suppressed, reduceMotion: reduceMotion),
-                    value: suppressed
                 )
         }
     }
