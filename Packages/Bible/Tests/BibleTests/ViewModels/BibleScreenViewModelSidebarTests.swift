@@ -55,16 +55,17 @@ struct BibleScreenViewModelSidebarTests {
         }
     }
 
-    @Test("opening the sidebar dismisses the verse-action selection")
-    func dismissesSelection() async {
+    @Test("opening the sidebar dismisses verse actions while preserving selection")
+    func dismissesActionSheetKeepingSelection() async {
         let bus = SuperEventBus()
         let viewModel = await makeViewModel(bus: bus)
         viewModel.toggleVerse(28)
-        #expect(!viewModel.selectedVerses.isEmpty)
+        #expect(viewModel.isActionSheetPresented)
 
         await openSidebarAndAwait(on: bus, through: viewModel)
 
-        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [28])
     }
 
     @Test("opening the sidebar dismisses the narration sheet")

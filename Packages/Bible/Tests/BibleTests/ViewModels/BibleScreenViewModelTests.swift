@@ -324,6 +324,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()
         #expect(viewModel.selectedVerses.isEmpty)
         #expect(viewModel.selectionCitation == nil)
+        #expect(!viewModel.isActionSheetPresented)
     }
 
     @Test("toggling a verse selects it, and toggling again clears it")
@@ -334,10 +335,76 @@ struct BibleScreenViewModelTests {
         viewModel.toggleVerse(9)
         #expect(viewModel.selectedVerses == [9])
         #expect(viewModel.selectionCitation == "1 Peter 2:9")
+        #expect(viewModel.isActionSheetPresented)
 
         viewModel.toggleVerse(9)
         #expect(viewModel.selectedVerses.isEmpty)
         #expect(viewModel.selectionCitation == nil)
+        #expect(!viewModel.isActionSheetPresented)
+    }
+
+    @Test("dismissing verse actions preserves single and multiple selections without deselection haptics",
+          arguments: [[9], [4, 5, 9]])
+    func dismissingActionSheetPreservesSelection(verses: [Int]) async {
+        let haptics = RecordingHapticsEngine()
+        let viewModel = makeViewModel(hapticsEngine: haptics)
+        await viewModel.load()
+        for verse in verses { viewModel.toggleVerse(verse) }
+        let citation = viewModel.selectionCitation
+        let shareText = viewModel.selectionShareText
+
+        viewModel.dismissActionSheet()
+        viewModel.dismissActionSheet()
+
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == Set(verses))
+        #expect(viewModel.selectionCitation == citation)
+        #expect(viewModel.selectionShareText == shareText)
+        #expect(haptics.played == verses.map { _ in HapticPattern.selection })
+    }
+
+    @Test("the nav bar clear action removes a retained selection", arguments: [false, true])
+    func clearSelectionClosesActionSheet(afterDismissal: Bool) async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.toggleVerse(9)
+        if afterDismissal { viewModel.dismissActionSheet() }
+
+        viewModel.clearSelection()
+
+        #expect(viewModel.selectedVerses.isEmpty)
+        #expect(viewModel.selectionCitation == nil)
+        #expect(!viewModel.isActionSheetPresented)
+    }
+
+    @Test("selecting another verse reopens dismissed actions for the combined selection")
+    func selectingAnotherVerseReopensActionSheet() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(4)
+        viewModel.dismissActionSheet()
+
+        viewModel.toggleVerse(9)
+
+        #expect(viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [4, 9])
+    }
+
+    @Test("deep links reopen dismissed actions and out-of-range references close them")
+    func openingReferenceUpdatesActionSheet() async {
+        let viewModel = makeViewModel()
+        await viewModel.load()
+        viewModel.toggleVerse(9)
+        viewModel.dismissActionSheet()
+
+        viewModel.openReference(bookId: "1PE", chapterNumber: 2, verseStart: 9, verseEnd: nil)
+        #expect(viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses == [9])
+
+        viewModel.openReference(bookId: "1PE", chapterNumber: 2, verseStart: 99, verseEnd: nil)
+        #expect(!viewModel.isActionSheetPresented)
+        #expect(viewModel.selectedVerses.isEmpty)
     }
 
     @Test("selecting a verse fires .selection and deselecting fires the distinct .deselection")
@@ -352,7 +419,7 @@ struct BibleScreenViewModelTests {
         #expect(haptics.played == [.selection, .deselection])
     }
 
-    @Test("clearing an active selection fires .deselection (the action-sheet dismiss disconnect), but clearing nothing is silent")
+    @Test("clearing an active selection fires .deselection, but clearing nothing is silent")
     func clearSelectionFiresDeselectionWhenNonEmpty() async {
         let haptics = RecordingHapticsEngine()
         let viewModel = makeViewModel(hapticsEngine: haptics)
@@ -363,8 +430,8 @@ struct BibleScreenViewModelTests {
         #expect(haptics.played.isEmpty)
 
         viewModel.toggleVerse(4)                        // .selection
-        viewModel.clearSelection()                      // .deselection (dismiss)
-        // A second clear is a no-op (mirrors the sheet's double dismiss call).
+        viewModel.clearSelection()                      // .deselection (nav bar ×)
+        // A second clear is a no-op.
         viewModel.clearSelection()
 
         #expect(haptics.played == [.selection, .deselection])
@@ -707,18 +774,26 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.isNarrationSheetPresented)
     }
 
-    @Test("startNarration with an unsorted selection queues only those verses in sorted order")
-    func startNarrationWithSelectionRestrictsToSortedVerses() async {
+    @Test("narration uses selected verses whether their action sheet is open or dismissed",
+          arguments: [false, true])
+    func startNarrationWithSelectionRestrictsToSortedVerses(dismissActions: Bool) async {
         let service = FakeNarrationService()
         let viewModel = makeViewModel(narration: NarrationController(service: service))
         await viewModel.load()
         for verse in [9, 3, 5] { viewModel.toggleVerse(verse) }
+        if dismissActions { viewModel.dismissActionSheet() }
 
         viewModel.startNarration()
         await viewModel._waitForPendingNarrationStart()
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == [3, 5, 9])
         #expect(viewModel.isNarrationSheetPresented)
+        #expect(viewModel.isActionSheetPresented == !dismissActions)
+
+        viewModel.dismissNarrationSheet()
+        #expect(!viewModel.isNarrationSheetPresented)
+        #expect(viewModel.selectedVerses == [3, 5, 9])
+        #expect(viewModel.isActionSheetPresented == !dismissActions)
     }
 
     @Test("startNarration is a no-op when the chapter text failed to load")
