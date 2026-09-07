@@ -162,9 +162,7 @@ enum SuperBibleAppBootstrap {
 
         let bibleApplet = BibleApplet(hapticsEngine: hapticsEngine)
         let audioActivity = AudioActivity()
-        let audioCacheURL = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appending(path: "OpenAINarration")
-        let audioCache = try (try? NarrationAudioCache.open(in: audioCacheURL)) ?? NarrationAudioCache.makeInMemory()
+        let audioCache = try NarrationAudioCache.openOrInMemory()
         let narration = bibleApplet.configureNarration(
             keychain: keychain,
             generator: OpenAISpeechGenerator(http: URLSessionHTTPClient(allowsRedirects: false)),

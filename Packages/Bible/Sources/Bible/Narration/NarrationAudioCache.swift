@@ -31,6 +31,17 @@ public actor NarrationAudioCache: NarrationAudioCaching {
 
     public static func makeInMemory() throws -> NarrationAudioCache { try NarrationAudioCache(queue: DatabaseQueue()) }
 
+    /// Optional disk caching must not prevent launch when directory lookup or opening fails.
+    public static func openOrInMemory(
+        directory: @Sendable () throws -> URL = {
+            try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appending(path: "OpenAINarration")
+        },
+        open: @Sendable (URL) throws -> NarrationAudioCache = NarrationAudioCache.open(in:)
+    ) throws -> NarrationAudioCache {
+        do { return try open(directory()) } catch { return try makeInMemory() }
+    }
+
     public static func open(in directory: URL) throws -> NarrationAudioCache {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var excluded = directory

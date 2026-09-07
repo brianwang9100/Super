@@ -10,6 +10,11 @@ import SwiftUI
 /// settings-side telemetry can join under one filter.
 private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
+/// A model edit failed after replacing a secret, and its previous Keychain state could not be restored.
+private enum ModelCredentialUpdateError: Error, Sendable {
+    case rollbackFailed
+}
+
 /// View model backing `SettingsSheet`. Owns the resolved `ChatSettings`
 /// snapshot, the configured-models list, the registered-tools list, and the
 /// account chrome data shown in the root pane. Mutations write through to
@@ -875,11 +880,6 @@ public final class SettingsViewModel {
                 modelEditError = "Could not save model: row no longer exists."
                 return
             }
-            // `.appleFoundation` rows have no `apiKeyRef`; guard avoids nil crash.
-            if !apiKey.isEmpty, let ref = existing.apiKeyRef {
-                try await modelRepository.storeAPIKey(apiKey, ref: ref)
-                await eventBus?.publish(.credentialChanged(id: id))
-            }
             // Target kind/backend: the picker's resolved pair when supplied,
             // else preserve what's on disk (every non-search edit).
             let targetKind = searchSelection?.kind ?? existing.kind
@@ -929,7 +929,7 @@ public final class SettingsViewModel {
                 searchBackend: targetSearchBackend,
                 providerId: providerId ?? existing.providerId
             )
-            try await modelRepository.save(updated)
+            try await saveModelUpdate(updated, apiKey: apiKey)
             lastSavedModel = updated
             await eventBus?.publish(.credentialChanged(id: id))
             let resolvedKey: String?
@@ -964,8 +964,41 @@ public final class SettingsViewModel {
             onModelsChanged?()
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            if error is ModelCredentialUpdateError {
+                modelEditError = "Could not save model or restore its previous API key. Re-enter the intended key and save again before using this model or narration."
+            } else {
+                modelEditError = "Could not save model: \(error.localizedDescription)"
+            }
             await loadModels()
+        }
+    }
+
+    private func saveModelUpdate(_ record: ModelConfigurationRecord, apiKey: String) async throws {
+        guard !apiKey.isEmpty, let ref = record.apiKeyRef else {
+            try await modelRepository.save(record)
+            return
+        }
+        // Borrowers bind the model id and key ref, so successful rotations must keep the ref.
+        // Capture the previous state before overwriting; a failed read must never destroy it.
+        let previousKey = try await modelRepository.loadAPIKey(ref: ref)
+        try await modelRepository.storeAPIKey(apiKey, ref: ref)
+        do {
+            try await modelRepository.save(record)
+        } catch {
+            do {
+                if let previousKey {
+                    try await modelRepository.storeAPIKey(previousKey, ref: ref)
+                } else {
+                    try await modelRepository.deleteAPIKey(ref: ref)
+                }
+            } catch {
+                // Invalidate consumers even when rollback fails: the secret may have changed.
+                await eventBus?.publish(.credentialChanged(id: record.id))
+                throw ModelCredentialUpdateError.rollbackFailed
+            }
+            // Stop any request that read the provisional key and refresh against restored state.
+            await eventBus?.publish(.credentialChanged(id: record.id))
+            throw error
         }
     }
 

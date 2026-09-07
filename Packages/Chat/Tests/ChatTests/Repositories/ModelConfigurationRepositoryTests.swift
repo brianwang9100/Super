@@ -78,6 +78,19 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await repo.all().map(\.id) == ["a", "b", "c"])
     }
 
+    @Test("Key rollback can remove a newly inserted secret without deleting its model")
+    func deleteAPIKeyPreservesModelRow() async throws {
+        let (repo, keychain) = try makeRepo()
+        let record = makeRecord(id: "model")
+        try await repo.save(record)
+        try await repo.storeAPIKey("test-secret", ref: "ref-1")
+
+        try await repo.deleteAPIKey(ref: "ref-1")
+
+        #expect(try await keychain.getString(ref: "ref-1") == nil)
+        #expect(try await repo.fetch(id: "model") == record)
+    }
+
     @Test func setSelectedClearsPriorSelection() async throws {
         let (repo, _) = try makeRepo()
         try await repo.save(makeRecord(id: "a", apiKeyRef: "ka", isSelected: true))

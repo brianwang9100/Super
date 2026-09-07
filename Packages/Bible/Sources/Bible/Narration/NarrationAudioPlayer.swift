@@ -3,7 +3,15 @@ import Core
 import Foundation
 
 /// Playback signals are separate from download completion and drive verse highlighting.
-public enum NarrationAudioEvent: Sendable { case started, finished, failed }
+public enum NarrationAudioEvent: Sendable {
+    case started, finished
+    /// The system took the audio session; cached bytes remain valid.
+    case interrupted
+    /// The audio session could not be acquired; this is not a decoding failure.
+    case unavailable
+    /// The player could not decode or play the audio data.
+    case failed
+}
 
 /// Injectable native audio playback with synchronous transport control on the main actor.
 @MainActor public protocol NarrationAudioPlaying: AnyObject {
@@ -29,27 +37,40 @@ public enum NarrationAudioEvent: Sendable { case started, finished, failed }
         stop()
         let (stream, continuation) = AsyncStream<NarrationAudioEvent>.makeStream()
         self.continuation = continuation
+        #if os(iOS)
         do {
-            #if os(iOS)
             let session = AVAudioSession.sharedInstance()
             previousSession = (session.category, session.mode, session.categoryOptions)
             try session.setCategory(.playback, mode: .spokenAudio)
             try session.setActive(true)
+            let interruptions = NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification)
+                .compactMap { $0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt }
             interruptionTask = Task { [weak self] in
-                for await _ in NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification) {
+                for await type in interruptions {
                     guard let self, !Task.isCancelled else { return }
-                    self.continuation?.yield(.failed)
+                    guard type == AVAudioSession.InterruptionType.began.rawValue else { continue }
+                    self.continuation?.yield(.interrupted)
                     self.stop()
                     return
                 }
             }
-            #endif
+        } catch {
+            continuation.yield(.unavailable)
+            stop()
+            return stream
+        }
+        #endif
+        do {
             let player = try AVAudioPlayer(data: audio)
             self.player = player
             player.delegate = self
             player.enableRate = true
             player.rate = min(2, max(0.75, rate))
-            guard player.prepareToPlay(), player.play() else { throw SpeechGenerationError.invalidAudio }
+            guard player.prepareToPlay(), player.play() else {
+                continuation.yield(.unavailable)
+                stop()
+                return stream
+            }
             continuation.yield(.started)
         } catch {
             continuation.yield(.failed)

@@ -330,6 +330,7 @@ public final class NarrationController {
             if state != .paused { state = .preparing }
         case .started(let verseNumber):
             currentVerseNumber = verseNumber
+            recoveryVerseNumber = verseNumber
             state = .speaking
         case .finishedVerse:
             // No transition — the next `.started` or a terminal event

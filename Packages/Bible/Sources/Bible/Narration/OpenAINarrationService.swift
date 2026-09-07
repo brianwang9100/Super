@@ -15,7 +15,7 @@ import Foundation
     private var isPlaying = false
     private var generation = 0
     private var task: Task<Void, Never>?
-    private var prefetch: Task<Void, Never>?
+    private var prefetch: Task<(key: String, audio: Data)?, Never>?
     private var pausedReadyWaiter: CheckedContinuation<Void, Never>?
     private var readyWhilePaused = false
     private var resumeWaiter: CheckedContinuation<Void, Never>?
@@ -101,16 +101,17 @@ import Foundation
                         try self.check(current)
                         let cacheKey = NarrationAudioCache.key(text: text, voice: self.voice)
                         var cached = try? await self.cache.audio(for: cacheKey)
+                        try self.check(current)
                         if cached == nil && !self.paused {
                             self.continuation?.yield(.preparing(verseNumber: utterance.verseNumber))
                         }
                         // Announce a real buffer wait before joining look-ahead; a cache hit
                         // goes straight to playback without flashing a loading state.
                         if segmentIndex == 0, let prefetch = self.prefetch {
-                            await prefetch.value
+                            let prefetched = await prefetch.value
                             try self.check(current)
                             self.prefetch = nil
-                            if cached == nil { cached = try? await self.cache.audio(for: cacheKey) }
+                            if cached == nil, prefetched?.key == cacheKey { cached = prefetched?.audio }
                         }
                         let bytes: Data
                         if let cached { bytes = cached } else {
@@ -143,6 +144,12 @@ import Foundation
                                     self.continuation?.yield(.resumed)
                                 }
                             case .finished: finished = true
+                            case .interrupted:
+                                self.finish(.cancelled)
+                                return
+                            case .unavailable:
+                                self.finish(.failed(.audioSessionFailed("Audio playback is unavailable.")))
+                                return
                             case .failed:
                                 try? await self.cache.remove(cacheKey)
                                 throw SpeechGenerationError.invalidAudio
@@ -169,17 +176,21 @@ import Foundation
         let next = Self.segments(utterances[index + 1].text).first ?? ""
         let voice = voice
         prefetch = Task { [weak self] in
-            guard let self else { return }
+            guard let self else { return nil }
             do {
                 let secret = try await self.key()
                 try self.check(current)
                 let cacheKey = NarrationAudioCache.key(text: next, voice: voice)
-                if (try? await self.cache.audio(for: cacheKey)) != nil { return }
+                if let cached = try? await self.cache.audio(for: cacheKey) { return (cacheKey, cached) }
                 try self.check(current)
                 let data = try await self.generator.generate(text: next, voice: voice, apiKey: secret)
                 try self.check(current)
-                try await self.cache.save(data, for: cacheKey)
-            } catch { /* Foreground playback presents recoverable errors. */ }
+                // Persistence is optional; keep paid audio available to the foreground
+                // even when the cache is full, unavailable, or rejects an oversized clip.
+                try? await self.cache.save(data, for: cacheKey)
+                try self.check(current)
+                return (cacheKey, data)
+            } catch { return nil } // Foreground playback presents recoverable errors.
         }
     }
     private func check(_ expected: Int) throws {
@@ -217,6 +228,7 @@ import Foundation
         return result
     }
     var _pendingTask: Task<Void, Never>? { task }
+    var _pendingPrefetch: Task<(key: String, audio: Data)?, Never>? { prefetch }
     func _waitUntilReadyWhilePaused() async {
         if !readyWhilePaused { await withCheckedContinuation { pausedReadyWaiter = $0 } }
     }

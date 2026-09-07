@@ -202,6 +202,7 @@ private struct NoopModelRepository: ModelConfigurationRepository {
     func setSelected(id: String) async throws {}
     func storeAPIKey(_ key: String, ref: String) async throws {}
     func loadAPIKey(ref: String) async throws -> String? { nil }
+    func deleteAPIKey(ref: String) async throws {}
 }
 
 private struct NoopConversationRepository: ConversationRepository {

@@ -59,6 +59,8 @@ public protocol ModelConfigurationRepository: Sendable {
     func storeAPIKey(_ key: String, ref: String) async throws
     /// Read the plaintext key back out, or nil if no entry exists.
     func loadAPIKey(ref: String) async throws -> String?
+    /// Remove only the referenced secret, preserving the model row during a failed edit rollback.
+    func deleteAPIKey(ref: String) async throws
 }
 
 /// GRDB-backed `ModelConfigurationRepository`. The selected-exclusive
@@ -274,6 +276,10 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func loadAPIKey(ref: String) async throws -> String? {
         try await keychain.getString(ref: ref)
+    }
+
+    public func deleteAPIKey(ref: String) async throws {
+        try await keychain.delete(ref: ref)
     }
 
     #if DEBUG
