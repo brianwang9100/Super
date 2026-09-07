@@ -55,6 +55,7 @@ struct ChatDatabaseMigrationTests {
             "memory",
             "message",
             "modelConfiguration",
+            "modelStagedKey",
             "setting",
             "toolCall",
             "toolEnablement",
@@ -188,7 +189,7 @@ struct ChatDatabaseMigrationTests {
                 WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'grdb_%'
             """) ?? -1
         }
-        #expect(count == 8)
+        #expect(count == 9)
     }
 
     /// End-to-end snapshot of the schema after *all* migrations have run

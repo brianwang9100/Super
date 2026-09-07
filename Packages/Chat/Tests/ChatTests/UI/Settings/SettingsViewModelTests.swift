@@ -884,6 +884,25 @@ struct SettingsViewModelTests {
         #expect(modelRepo.storedKeys == ["rotated-1": "sk-rotated"])
     }
 
+    @Test("A failed model creation removes the provisional key instead of orphaning it")
+    func failedCreationDoesNotLeaveAnUnownedKey() async {
+        let repo = StubModelRepository(rows: [])
+        repo.saveError = KeyRotationTestError.saveFailed
+        let vm = makeViewModel(modelRepository: repo)
+        let ids = DeterministicIDGenerator(prefix: "created-")
+
+        await vm.createModel(
+            name: "New", baseURL: URL(string: "https://api.openai.com/v1")!, modelId: "gpt",
+            apiKey: "candidate", supportsThinking: false, maxContextTokens: 8_000,
+            idGenerator: { ids.nextID() }, now: FixedClock().now()
+        )
+
+        #expect(repo.rows.isEmpty)
+        #expect(repo.storedKeys.isEmpty)
+        #expect(vm.lastSavedModel == nil)
+        #expect(vm.modelEditError != nil)
+    }
+
     @Test("Concurrent readers keep the committed key while a model save is suspended", arguments: [false, true])
     func updateModelHidesStagedKeyDuringSave(fails: Bool) async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
@@ -1057,7 +1076,8 @@ struct SettingsViewModelTests {
         #expect(repo.storedKeys == ["ref-1": "sk-original", "rotated-1": "sk-replacement"])
         #expect(repo.rows.first == Self.keyRotationRow)
         #expect(vm.lastSavedModel == nil)
-        #expect(vm.modelEditError == "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Try saving again.")
+        #expect(vm.modelEditError == "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Restart the app to retry cleanup.")
+        #expect(repo.stagedKeyRefs == ["rotated-1"])
         #expect(vm.modelEditError?.contains("sk-original") == false)
         #expect(vm.modelEditError?.contains("sk-replacement") == false)
         #expect(await credentialChanges(in: events, bus: bus).isEmpty)
@@ -2040,6 +2060,8 @@ private actor KeyRotationSaveGate {
 
 private final class StubModelRepository: ModelConfigurationRepository, @unchecked Sendable {
     var rows: [ModelConfigurationRecord]
+    var stagedKeyRefs: Set<String> = []
+    var registerStagedKeyError: Error?
     /// Plaintext keys keyed by ref so the createModel/updateModel tests
     /// can assert what landed in the Keychain layer.
     var storedKeys: [String: String] = [:]
@@ -2079,6 +2101,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }
         rows.append(record)
+        if let ref = record.apiKeyRef { stagedKeyRefs.remove(ref) }
     }
     func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {
         await saveGate?.suspend()
@@ -2088,6 +2111,8 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }
         rows.append(record)
+        if let previous = expectedAPIKeyRef, previous != record.apiKeyRef { stagedKeyRefs.insert(previous) }
+        if let ref = record.apiKeyRef { stagedKeyRefs.remove(ref) }
     }
     func insertIfEmpty(
         make: @Sendable () -> ModelConfigurationRecord
@@ -2149,6 +2174,14 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         await retiredKeyCleanupGate?.suspend()
         guard !rows.contains(where: { $0.apiKeyRef == ref }) else { return }
         try await deleteAPIKey(ref: ref)
+    }
+    func registerStagedAPIKey(ref: String) async throws {
+        if let error = registerStagedKeyError { throw error }
+        stagedKeyRefs.insert(ref)
+    }
+    func discardStagedAPIKey(ref: String) async throws {
+        try await deleteAPIKeyIfUnreferenced(ref: ref)
+        stagedKeyRefs.remove(ref)
     }
 }
 

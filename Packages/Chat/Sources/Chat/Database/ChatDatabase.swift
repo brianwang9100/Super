@@ -335,4 +335,11 @@ public func registerChatMigrations(_ migrator: inout DatabaseMigrator) {
         try db.execute(sql: "ALTER TABLE modelConfiguration ADD COLUMN providerId TEXT")
     }
 
+    migrator.registerMigration("v12_modelStagedKey") { db in
+        try db.execute(sql: """
+            CREATE TABLE modelStagedKey (
+                id TEXT PRIMARY KEY NOT NULL
+            )
+            """)
+    }
 }

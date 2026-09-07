@@ -11,7 +11,7 @@ import SwiftUI
 private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
 /// A model edit failed, and its unused staged secret could not be removed from Keychain.
-private enum ModelCredentialUpdateError: Error, Sendable {
+private enum ModelCredentialSaveError: Error, Sendable {
     case stagedKeyCleanupFailed
 }
 
@@ -813,7 +813,6 @@ public final class SettingsViewModel {
         let ref = idGenerator()
         let recordId = idGenerator()
         do {
-            try await modelRepository.storeAPIKey(apiKey, ref: ref)
             let record = ModelConfigurationRecord(
                 id: recordId,
                 name: name,
@@ -832,7 +831,7 @@ public final class SettingsViewModel {
                 searchBackend: searchBackend,
                 providerId: providerId
             )
-            try await modelRepository.save(record)
+            try await withStagedAPIKey(apiKey, ref: ref) { try await modelRepository.save(record) }
             lastSavedModel = record
             await eventBus?.publish(.credentialChanged(id: record.id))
             await registerProvider(for: record, apiKey: apiKey)
@@ -840,7 +839,9 @@ public final class SettingsViewModel {
             onModelsChanged?()
         } catch {
             chatSettingsLog.error("createModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            if error is ModelCredentialSaveError {
+                modelEditError = "Could not save model. An unused key could not be removed from secure storage. Restart the app to retry cleanup."
+            } else { modelEditError = "Could not save model: \(error.localizedDescription)" }
             // Keep models list in sync with what actually persisted; a
             // failed save just means the row never appears.
             await loadModels()
@@ -975,15 +976,15 @@ public final class SettingsViewModel {
             // Finish all committed-state publication before cleanup can suspend behind a newer edit.
             if let previousRef = existing.apiKeyRef, previousRef != committed.apiKeyRef {
                 do {
-                    try await modelRepository.deleteAPIKeyIfUnreferenced(ref: previousRef)
+                    try await modelRepository.discardStagedAPIKey(ref: previousRef)
                 } catch {
                     chatSettingsLog.warning("Model saved, but its previous unused API key could not be removed from secure storage.")
                 }
             }
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
-            if error is ModelCredentialUpdateError {
-                modelEditError = "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Try saving again."
+            if error is ModelCredentialSaveError {
+                modelEditError = "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Restart the app to retry cleanup."
             } else if case .staleModel = error as? ModelConfigurationRepositoryError {
                 modelEditError = "The model changed while saving. Reopen it and try again."
             } else {
@@ -1005,18 +1006,23 @@ public final class SettingsViewModel {
         let stagedRef = idGenerator.nextID()
         var staged = record
         staged.apiKeyRef = stagedRef
-        try await modelRepository.storeAPIKey(apiKey, ref: stagedRef)
-        do {
+        try await withStagedAPIKey(apiKey, ref: stagedRef) {
             try await modelRepository.update(staged, expectedAPIKeyRef: previousRef)
+        }
+        return staged
+    }
+
+    private func withStagedAPIKey(_ key: String, ref: String, commit: () async throws -> Void) async throws {
+        try await modelRepository.registerStagedAPIKey(ref: ref)
+        do {
+            try await modelRepository.storeAPIKey(key, ref: ref)
+            try await commit()
         } catch {
-            do {
-                try await modelRepository.deleteAPIKey(ref: stagedRef)
-            } catch {
-                throw ModelCredentialUpdateError.stagedKeyCleanupFailed
+            do { try await modelRepository.discardStagedAPIKey(ref: ref) } catch {
+                throw ModelCredentialSaveError.stagedKeyCleanupFailed
             }
             throw error
         }
-        return staged
     }
 
     /// Reset the model-edit error. Called by `SettingsModelDetailPane`

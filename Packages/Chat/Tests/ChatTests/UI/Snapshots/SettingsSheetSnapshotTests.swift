@@ -1584,6 +1584,8 @@ private struct NoopModelRepository: ModelConfigurationRepository {
     func loadAPIKey(ref: String) async throws -> String? { nil }
     func deleteAPIKey(ref: String) async throws {}
     func deleteAPIKeyIfUnreferenced(ref: String) async throws {}
+    func registerStagedAPIKey(ref: String) async throws {}
+    func discardStagedAPIKey(ref: String) async throws {}
 }
 
 private struct NoopConversationRepository: ConversationRepository {

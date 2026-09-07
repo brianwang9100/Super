@@ -360,7 +360,8 @@ public final class NarrationController {
             currentVerseNumber = nil
             state = .idle
             onCompletion?()
-        case .failed(let error):
+        case .failed(let error, let verseNumber):
+            if let verseNumber { recoveryVerseNumber = verseNumber }
             currentVerseNumber = nil
             lastError = error
             state = .idle

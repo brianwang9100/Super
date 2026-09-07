@@ -124,7 +124,8 @@ public enum NarrationEvent: Sendable, Equatable {
     /// new `startSpeaking(...)` replacing it. Yielded exactly once per
     /// session before the stream closes.
     case cancelled
-    case failed(NarrationError)
+    /// The attempted verse supports recovery when failure precedes buffering or playback.
+    case failed(NarrationError, verseNumber: Int? = nil)
 }
 
 /// Failure modes the synthesizer can surface. The controller maps each to

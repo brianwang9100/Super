@@ -420,9 +420,9 @@ struct OpenAINarrationTests {
             player.finishClip(event: unavailable ? .unavailable : .failed)
             let terminal = await events.next()
             if unavailable {
-                guard case .failed(.audioSessionFailed) = terminal else { Issue.record("Expected an audio-session failure."); return }
+                guard case .failed(.audioSessionFailed, _) = terminal else { Issue.record("Expected an audio-session failure."); return }
             } else {
-                #expect(terminal == .failed(.speech(.invalidAudio)))
+                #expect(terminal == .failed(.speech(.invalidAudio), verseNumber: 1))
             }
             #expect(await events.next() == nil)
             #expect(try await cache.audio(for: key) == (unavailable ? Data([1, 2, 3]) : nil))
@@ -441,7 +441,7 @@ struct OpenAINarrationTests {
         let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One")]
         var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
         // No audible start should be emitted for either preparation or play refusal.
-        #expect(await events.next() == .failed(.speech(.invalidAudio)))
+        #expect(await events.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
         #expect(await events.next() == nil)
         #expect(try await cache.audio(for: key) == nil)
         #expect(await generator.requests.isEmpty)
@@ -449,7 +449,7 @@ struct OpenAINarrationTests {
 
         var retry = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
         #expect(await retry.next() == .preparing(verseNumber: 1))
-        #expect(await retry.next() == .failed(.speech(.invalidAudio)))
+        #expect(await retry.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
         #expect(await retry.next() == nil)
         #expect(await generator.requests == ["One"])
     }
@@ -471,7 +471,7 @@ struct OpenAINarrationTests {
         // Avoid waiting forever on the broken adapter, which never terminates its stream.
         guard clip.stopCount == 1 else { service.stop(); await service._waitForPendingTask(); return }
         #expect(await events.next() == .resumed)
-        guard case .failed(.audioSessionFailed) = await events.next() else {
+        guard case .failed(.audioSessionFailed, _) = await events.next() else {
             Issue.record("Resume refusal must offer audio-session recovery.")
             service.stop()
             return
@@ -493,7 +493,7 @@ struct OpenAINarrationTests {
         _ = await service._pendingPrefetch?.value
         #expect(await generator.requests.isEmpty)
         await cache.finishRemoval()
-        #expect(await events.next() == .failed(.speech(.invalidAudio)))
+        #expect(await events.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
         #expect(await events.next() == nil)
     }
 
@@ -548,6 +548,41 @@ struct OpenAINarrationTests {
         controller.start(utterances: [.init(verseNumber: 1, text: "One")])
         #expect(controller.lastError == .preemptedByVoiceInput)
         #expect(fake.startCallCount == 1)
+    }
+
+    @Test func credentialFailureAdvancesRetryWithoutBufferingCachedHandoffs() async throws {
+        let cache = try NarrationAudioCache.makeInMemory()
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 4, text: "One"), .init(verseNumber: 7, text: "Two")]
+        for verse in verses {
+            try await cache.save(Data(verse.text.utf8), for: NarrationAudioCache.key(text: verse.text, voice: .marin))
+        }
+        let credential = NarrationCredentialProbe()
+        let player = ControlledAudioPlayer()
+        let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) {
+            guard credential.available else { throw SpeechGenerationError.missingKey }
+            return "test-key"
+        }
+        let retryService = FakeNarrationService()
+        let controller = NarrationController(service: retryService, cloudService: retryService)
+        controller.voice = .marin
+        controller.start(utterances: verses)
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        let started = try #require(await events.next())
+        #expect(started == .started(verseNumber: 4))
+        controller._simulateEvent(started)
+        // Complete the successful look-ahead before failing the next foreground lookup.
+        _ = await service._pendingPrefetch?.value
+        credential.available = false
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 4))
+        let failure = try #require(await events.next())
+        controller._simulateEvent(failure)
+        #expect(controller.lastError == .speech(.missingKey))
+        #expect(await events.next() == nil)
+        controller.retry()
+        #expect(retryService.lastStartArgs?.startingAt == 1)
+        #expect(retryService.lastStartArgs?.utterances == verses)
+        controller.stop()
     }
 
     @Test func retryAfterCaptureBlockedStartUsesNewRequestedPosition() {
@@ -723,6 +758,11 @@ private final class ControlledAudioPlayer: NarrationAudioPlaying {
     func resume() {}
     func stop() { continuation?.finish(); continuation = nil }
     func setRate(_ rate: Float) {}
+}
+
+@MainActor
+private final class NarrationCredentialProbe {
+    var available = true
 }
 
 private actor InstalledVoiceProbe {

@@ -10,6 +10,9 @@ CREATE INDEX "message_on_conversationId_createdAt" ON "message"("conversationId"
 CREATE TABLE "modelConfiguration" ("id" TEXT PRIMARY KEY NOT NULL, "kind" TEXT NOT NULL DEFAULT 'openAICompatible', "name" TEXT NOT NULL, "baseURL" TEXT, "apiKeyRef" TEXT, "modelId" TEXT NOT NULL, "supportsThinking" BOOLEAN NOT NULL DEFAULT 0, "maxContextTokens" INTEGER NOT NULL, "isSelected" BOOLEAN NOT NULL DEFAULT 0, "createdAt" DATETIME NOT NULL, "searchBackend" TEXT, providerId TEXT);
 CREATE UNIQUE INDEX modelConfiguration_unique_selected
     ON modelConfiguration(isSelected) WHERE isSelected = 1;
+CREATE TABLE modelStagedKey (
+    id TEXT PRIMARY KEY NOT NULL
+);
 CREATE TABLE "setting" ("key" TEXT PRIMARY KEY NOT NULL, "value" TEXT NOT NULL);
 CREATE TABLE "toolCall" ("id" TEXT PRIMARY KEY NOT NULL, "messageId" TEXT NOT NULL REFERENCES "message"("id") ON DELETE CASCADE, "conversationId" TEXT NOT NULL, "toolName" TEXT NOT NULL, "parameters" TEXT NOT NULL, "result" TEXT, "status" TEXT NOT NULL, "createdAt" DATETIME NOT NULL, "completedAt" DATETIME, "signature" TEXT);
 CREATE INDEX "toolCall_on_conversationId" ON "toolCall"("conversationId");
@@ -26,6 +29,8 @@ memory
 message
 
 modelConfiguration
+
+modelStagedKey
 
 setting
 

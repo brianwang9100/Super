@@ -131,6 +131,7 @@ enum SuperBibleAppBootstrap {
         let toolCallRepo = GRDBToolCallRepository(database: database)
         let checkpointRepo = GRDBCompactionCheckpointRepository(database: database)
         let modelConfigRepo = GRDBModelConfigurationRepository(database: database, keychain: keychain)
+        await AppBootstrapSupport.recoverModelAPIKeys(from: modelConfigRepo)
         let settingRepo = GRDBSettingRepository(database: database)
         let toolEnablementRepository = GRDBToolEnablementRepository(database: database)
         let memoryRepository = GRDBMemoryRepository(database: database)

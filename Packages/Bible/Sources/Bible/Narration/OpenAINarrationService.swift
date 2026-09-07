@@ -100,9 +100,11 @@ import Foundation
         let current = generation
         task = Task { [weak self] in
             guard let self else { return }
+            var attemptedVerseNumber: Int?
             do {
                 while self.index < self.utterances.count {
                     let utterance = self.utterances[self.index]
+                    attemptedVerseNumber = utterance.verseNumber
                     let segments = Self.segments(utterance.text)
                     var started = false
                     for (segmentIndex, text) in segments.enumerated() {
@@ -158,7 +160,10 @@ import Foundation
                                 self.finish(.cancelled)
                                 return
                             case .unavailable:
-                                self.finish(.failed(.audioSessionFailed("Audio playback is unavailable.")))
+                                self.finish(.failed(
+                                    .audioSessionFailed("Audio playback is unavailable."),
+                                    verseNumber: utterance.verseNumber
+                                ))
                                 return
                             case .failed:
                                 try? await self.cache.remove(cacheKey)
@@ -177,7 +182,10 @@ import Foundation
                 // Replacement/Stop owns the terminal event; stale work is discarded.
             } catch {
                 guard current == self.generation else { return }
-                self.finish(.failed(.speech(error as? SpeechGenerationError ?? .unavailable)))
+                self.finish(.failed(
+                    .speech(error as? SpeechGenerationError ?? .unavailable),
+                    verseNumber: attemptedVerseNumber
+                ))
             }
         }
     }

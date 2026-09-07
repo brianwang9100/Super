@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct SuperBibleApp: App {
     @State private var state: SuperBibleBootstrapState = .loading
+    @State private var isBootstrapping = false
     @Environment(\.scenePhase) private var scenePhase
 
     /// Owns the bulk-annotation `BGProcessingTask` registration + lifecycle.
@@ -59,6 +60,9 @@ struct SuperBibleApp: App {
     }
 
     private func load() async {
+        guard case .loading = state, !isBootstrapping else { return }
+        isBootstrapping = true
+        defer { isBootstrapping = false }
         do {
             let dependencies = try await SuperBibleAppBootstrap.bootstrap()
             backgroundController.attach(dependencies.bulkAnnotationBackground)
