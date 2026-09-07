@@ -176,7 +176,13 @@ public final class SettingsViewModel {
     /// produces the native push/pop slide animation. Public so external
     /// callers (e.g. a chat-side affordance) can deep-link into a pane:
     /// `viewModel.openPane(.modelDetail(id: nil))`.
-    public var navigationPath: [SettingsSheet.Pane] = []
+    public var navigationPath: [SettingsSheet.Pane] = [] {
+        didSet {
+            guard navigationPath != oldValue else { return }
+            navigationGeneration += 1
+            activeModelFormSession = nil
+        }
+    }
 
     /// The pane shown at the base of the navigation stack. `.root` for the
     /// normal Settings entry; a deep-linked pane (e.g. `.models` from the
@@ -194,6 +200,13 @@ public final class SettingsViewModel {
     public let audioSetup: ProviderAudioSetup?
     private let eventBus: SuperEventBus?
     public private(set) var lastSavedModel: ModelConfigurationRecord?
+    private var modelMutationIDs: Set<String> = []
+    private var modelFormGeneration = 0
+    private var activeModelFormSession: Int?
+    private var navigationGeneration = 0
+    private var pendingPanePop: Task<Void, Never>?
+    /// Test seam for holding the UIKit draft flush before a deferred navigation mutation.
+    var flushPaneCleanup: @MainActor () async -> Void = { await Task.yield() }
     private let store: ChatSettingsStore
     private let modelRepository: any ModelConfigurationRepository
     private let conversationRepository: any ConversationRepository
@@ -676,7 +689,7 @@ public final class SettingsViewModel {
     /// deep-links (e.g. opening Settings preconfigured to model detail).
     public func openPane(_ pane: SettingsSheet.Pane) {
         guard pane != .root else {
-            navigationPath.removeAll()
+            popToRoot()
             return
         }
         navigationPath.append(pane)
@@ -692,12 +705,15 @@ public final class SettingsViewModel {
     /// tick so SwiftUI flushes the @State change into UIKit before the
     /// view is torn down.
     public func popPane() {
+        activeModelFormSession = nil
+        navigationGeneration += 1
+        let generation = navigationGeneration
         if let cleanup = beforePopCleanup {
             beforePopCleanup = nil
             cleanup()
-            Task { @MainActor in
-                await Task.yield()
-                guard !navigationPath.isEmpty else { return }
+            pendingPanePop = Task { @MainActor in
+                await flushPaneCleanup()
+                guard navigationGeneration == generation, !navigationPath.isEmpty else { return }
                 navigationPath.removeLast()
             }
         } else {
@@ -710,12 +726,17 @@ public final class SettingsViewModel {
     /// dismiss so re-presenting always starts at root. Runs the active
     /// pane's cleanup first for the same reason as `popPane()`.
     public func popToRoot() {
+        activeModelFormSession = nil
+        navigationGeneration += 1
         if let cleanup = beforePopCleanup {
             beforePopCleanup = nil
             cleanup()
         }
         navigationPath.removeAll()
     }
+
+    /// Waits for the deferred draft flush in deterministic navigation tests.
+    func waitForPendingPanePop() async { await pendingPanePop?.value }
 
     /// Optional hook the active pane installs in `onAppear` and tears
     /// down in `onDisappear`. `popPane()` and `popToRoot()` invoke it
@@ -762,15 +783,19 @@ public final class SettingsViewModel {
     /// Error contract matches `createModel`: on failure sets
     /// ``modelEditError`` and refreshes the list so the pane can show
     /// the message and the row count agrees with what actually persisted.
+    @discardableResult
     public func createAppleFoundationModel(
         name: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date()
-    ) async {
-        modelEditError = nil
+    ) async -> ModelConfigurationRecord? {
         let recordId = idGenerator()
+        guard modelMutationIDs.insert(recordId).inserted else { return nil }
+        defer { modelMutationIDs.remove(recordId) }
+        modelEditError = nil
+        lastSavedModel = nil
         do {
             let record = ModelConfigurationRecord(
                 id: recordId,
@@ -785,16 +810,20 @@ public final class SettingsViewModel {
                 isSelected: false
             )
             try await modelRepository.save(record)
+            lastSavedModel = record
             await registerProvider(for: record, apiKey: nil)
             await loadModels()
             onModelsChanged?()
+            return record
         } catch {
             chatSettingsLog.error("createAppleFoundationModel failed: \(String(describing: error), privacy: .public)")
             modelEditError = "Could not save model: \(error.localizedDescription)"
             await loadModels()
+            return nil
         }
     }
 
+    @discardableResult
     public func createModel(
         name: String,
         baseURL: URL,
@@ -807,11 +836,13 @@ public final class SettingsViewModel {
         providerId: String? = nil,
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date()
-    ) async {
-        modelEditError = nil
-        lastSavedModel = nil
+    ) async -> ModelConfigurationRecord? {
         let ref = idGenerator()
         let recordId = idGenerator()
+        guard modelMutationIDs.insert(recordId).inserted else { return nil }
+        defer { modelMutationIDs.remove(recordId) }
+        modelEditError = nil
+        lastSavedModel = nil
         do {
             let record = ModelConfigurationRecord(
                 id: recordId,
@@ -837,6 +868,7 @@ public final class SettingsViewModel {
             await registerProvider(for: record, apiKey: apiKey)
             await loadModels()
             onModelsChanged?()
+            return record
         } catch {
             chatSettingsLog.error("createModel failed: \(String(describing: error), privacy: .public)")
             if error is ModelCredentialSaveError {
@@ -845,6 +877,7 @@ public final class SettingsViewModel {
             // Keep models list in sync with what actually persisted; a
             // failed save just means the row never appears.
             await loadModels()
+            return nil
         }
     }
 
@@ -863,6 +896,7 @@ public final class SettingsViewModel {
     ///   path unchanged. When non-nil, both are rewritten: flipping Off↔Native
     ///   swaps the persisted `kind` (and base URL, supplied via `baseURL`) so
     ///   `makeLLMProvider` rebuilds the row as the native adapter or back.
+    @discardableResult
     public func updateModel(
         id: String,
         name: String,
@@ -874,13 +908,15 @@ public final class SettingsViewModel {
         searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil,
         providerId: String? = nil,
         idGenerator: any IDGenerator = UUIDGenerator()
-    ) async {
+    ) async -> ModelConfigurationRecord? {
+        guard modelMutationIDs.insert(id).inserted else { return nil }
+        defer { modelMutationIDs.remove(id) }
         modelEditError = nil
         lastSavedModel = nil
         do {
             guard let existing = try await modelRepository.fetch(id: id) else {
                 modelEditError = "Could not save model: row no longer exists."
-                return
+                return nil
             }
             // Target kind/backend: the picker's resolved pair when supplied,
             // else preserve what's on disk (every non-search edit).
@@ -981,6 +1017,7 @@ public final class SettingsViewModel {
                     chatSettingsLog.warning("Model saved, but its previous unused API key could not be removed from secure storage.")
                 }
             }
+            return committed
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
             if error is ModelCredentialSaveError {
@@ -991,6 +1028,7 @@ public final class SettingsViewModel {
                 modelEditError = "Could not save model: \(error.localizedDescription)"
             }
             await loadModels()
+            return nil
         }
     }
 
@@ -1036,31 +1074,83 @@ public final class SettingsViewModel {
     /// Keychain-first ordering so a failed delete leaves the row in place
     /// rather than orphaning a secret. Also unregisters the provider so
     /// the deleted endpoint disappears from the picker right away.
-    public func deleteModel(id: String) async {
+    @discardableResult
+    public func deleteModel(id: String) async -> Bool {
+        guard modelMutationIDs.insert(id).inserted else { return false }
+        defer { modelMutationIDs.remove(id) }
         modelEditError = nil
+        if lastSavedModel?.id == id { lastSavedModel = nil }
         // An opaque deletion failure may follow successful Keychain removal. Discard the
         // live provider's cached secret before deletion, even if its row must remain for retry.
         await llmProviderRegistry?.unregister(id: id)
+        var succeeded = true
         do {
             try await modelRepository.delete(id: id)
-        } catch { modelEditError = "Could not remove the model. Try again." }
+        } catch {
+            modelEditError = "Could not remove the model. Try again."
+            succeeded = false
+        }
         onModelsChanged?()
         // A Keychain-first deletion can remove the key even if the following database write fails.
         await eventBus?.publish(.credentialChanged(id: id))
         await loadModels()
+        return succeeded
     }
 
-    /// Commits the visible audio draft after a model's credential has successfully saved.
-    public func commitAudioSetup(enabled: Bool, useThisKey: Bool, revision: Int) async {
-        guard let audioSetup, let row = lastSavedModel, let ref = row.apiKeyRef,
-              ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL) else { return }
+    /// Commits narration using this operation's returned row, independent of other model saves.
+    @discardableResult
+    public func commitAudioSetup(for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int) async -> Bool {
+        await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: nil)
+    }
+
+    private func commitAudioSetup(
+        for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int, session: Int?
+    ) async -> Bool {
+        if let session, !isModelFormSessionActive(session) { return false }
+        guard let audioSetup, let ref = row.apiKeyRef,
+              ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL) else { return true }
         do {
             try await audioSetup.commit(
                 ProviderAudioCredential(id: row.id, name: row.name, keyRef: ref), enabled, useThisKey, revision
             )
+            return session.map { isModelFormSessionActive($0) } ?? true
         } catch {
+            if let session, !isModelFormSessionActive(session) { return false }
             modelEditError = "The model was saved, but narration settings were not. Review Narration settings and try again."
+            return false
         }
+    }
+
+    /// Shared by reopened forms; mutation ownership lasts through publication and final key cleanup.
+    public func isModelMutationInFlight(id: String) -> Bool { modelMutationIDs.contains(id) }
+
+    /// Each appearance owns its completion actions independently of the model ID or navigation path.
+    func beginModelFormSession() -> Int {
+        navigationGeneration += 1
+        modelFormGeneration += 1
+        activeModelFormSession = modelFormGeneration
+        return modelFormGeneration
+    }
+
+    func isModelFormSessionActive(_ session: Int) -> Bool { activeModelFormSession == session }
+
+    func endModelFormSession(_ session: Int) {
+        if activeModelFormSession == session { activeModelFormSession = nil }
+    }
+
+    @discardableResult
+    func popModelForm(ifCurrent session: Int) -> Bool {
+        guard isModelFormSessionActive(session) else { return false }
+        endModelFormSession(session)
+        popPane()
+        return true
+    }
+
+    func commitModelFormAudioSetup(
+        for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int, session: Int
+    ) async -> Bool {
+        guard isModelFormSessionActive(session) else { return false }
+        return await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: session)
     }
 
     /// Build a fresh provider for `record` and register it with the live

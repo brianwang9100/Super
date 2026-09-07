@@ -89,6 +89,11 @@ struct SettingsModelDetailPane: View {
     @State private var audioRevision: Int
     @State private var committedModelId: String?
     @State private var isSavingModel = false
+    @State private var formSession: Int?
+    private var isModelBusy: Bool {
+        isSavingModel || ((editingId ?? committedModelId).map { viewModel.isModelMutationInFlight(id: $0) } == true)
+    }
+    private var canSave: Bool { isValid && !isModelBusy }
     private var showsAudioSetup: Bool { providerID == "openai" && viewModel.audioSetup != nil && (keyHasContent || isEditing) }
 
     private var isEditing: Bool { editingId != nil }
@@ -584,6 +589,7 @@ struct SettingsModelDetailPane: View {
         }
         .padding(.bottom, 24)
         .onAppear {
+            formSession = viewModel.beginModelFormSession()
             installPopScrub()
             // Clear any stale message from a previous attempt so it
             // doesn't flash on this open.
@@ -621,7 +627,12 @@ struct SettingsModelDetailPane: View {
             guard !Task.isCancelled else { return }
             await viewModel.loadAvailableModels(providerID: providerID, apiKey: apiKey, force: true)
         }
-        .onDisappear { viewModel.beforePopCleanup = nil }
+        .onDisappear {
+            if let formSession, viewModel.isModelFormSessionActive(formSession) {
+                viewModel.beforePopCleanup = nil
+                viewModel.endModelFormSession(formSession)
+            }
+        }
         .onChange(of: maxContextText) { _, _ in
             // Don't keep a stale "Max for this model is N" error
             // hanging while the user is mid-correction.
@@ -633,16 +644,19 @@ struct SettingsModelDetailPane: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                // Clear typed key + disarm cleanup so the dismissal is
-                // silent on the iOS side — the user just removed the
-                // record, no credential to remember.
-                apiKey = ""
-                viewModel.beforePopCleanup = nil
+                guard !isModelBusy, let editingId, let formSession,
+                      viewModel.isModelFormSessionActive(formSession) else { return }
+                isSavingModel = true
                 Task {
-                    if let editingId { await viewModel.deleteModel(id: editingId) }
-                    viewModel.popPane()
+                    defer { isSavingModel = false }
+                    let deleted = await viewModel.deleteModel(id: editingId)
+                    guard deleted, viewModel.isModelFormSessionActive(formSession) else { return }
+                    apiKey = ""
+                    viewModel.beforePopCleanup = nil
+                    viewModel.popModelForm(ifCurrent: formSession)
                 }
             }
+            .disabled(isModelBusy)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Removes the endpoint and the API key from this device. Existing chats keep their transcripts.")
@@ -1042,27 +1056,27 @@ struct SettingsModelDetailPane: View {
         Button(action: save) {
             Text(isEditing ? "Save" : "Add Model")
                 .font(typography.font(.body, weight: .semibold))
-                .foregroundStyle(isValid ? theme.background : theme.inkFaint)
+                .foregroundStyle(canSave ? theme.background : theme.inkFaint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(isValid ? theme.accent : theme.backgroundRaised)
+                        .fill(canSave ? theme.accent : theme.backgroundRaised)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(theme.borderFaint, lineWidth: isValid ? 0 : 1)
+                        .strokeBorder(theme.borderFaint, lineWidth: canSave ? 0 : 1)
                 )
         }
         .buttonStyle(.plain)
-        .disabled(!isValid)
+        .disabled(!canSave)
     }
 
     private var deleteButton: some View {
-        Button(action: { showingDeleteConfirm = true }) {
+        Button(action: { if !isModelBusy { showingDeleteConfirm = true } }) {
             Text("Delete model endpoint")
                 .font(typography.font(.callout, weight: .medium))
-                .foregroundStyle(theme.errorAccent)
+                .foregroundStyle(isModelBusy ? theme.inkFaint : theme.errorAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
@@ -1075,6 +1089,7 @@ struct SettingsModelDetailPane: View {
                 )
         }
         .buttonStyle(.plain)
+        .disabled(isModelBusy)
         .accessibilityHint("Removes this model endpoint and its stored API key.")
     }
 
@@ -1414,7 +1429,8 @@ struct SettingsModelDetailPane: View {
     private var customNamePlaceholder: String { "GPT 5.5" }
 
     private func save() {
-        guard isValid, !isSavingModel else { return }
+        guard isValid, !isModelBusy, let formSession,
+              viewModel.isModelFormSessionActive(formSession) else { return }
         // `maxCtx` drives the non-Apple cap check + persisted value. For AFM
         // it's effectively unused — the cap check is skipped below and Save
         // persists `viewModel.appleFoundationContextTokens` — but the parse
@@ -1440,6 +1456,7 @@ struct SettingsModelDetailPane: View {
         // isn't rendered.
         if isApple {
             viewModel.beforePopCleanup = nil
+            isSavingModel = true
             // AFM rows are write-once (id and shape are fixed). The
             // edit path for AFM is purely Name + Max Context; the
             // create path runs `createAppleFoundationModel`. We
@@ -1450,7 +1467,8 @@ struct SettingsModelDetailPane: View {
                 // preserves the existing (nil) value for the row's
                 // .appleFoundation kind.
                 Task {
-                    await viewModel.updateModel(
+                    defer { isSavingModel = false }
+                    let saved = await viewModel.updateModel(
                         id: editingId,
                         name: trimmedName,
                         baseURL: nil,
@@ -1461,19 +1479,20 @@ struct SettingsModelDetailPane: View {
                         // possibly stale) text field — keeps the row honest.
                         maxContextTokens: viewModel.appleFoundationContextTokens
                     )
-                    if viewModel.modelEditError == nil {
-                        viewModel.popPane()
+                    if saved != nil {
+                        viewModel.popModelForm(ifCurrent: formSession)
                     }
                 }
             } else {
                 Task {
-                    await viewModel.createAppleFoundationModel(
+                    defer { isSavingModel = false }
+                    let saved = await viewModel.createAppleFoundationModel(
                         name: trimmedName,
                         supportsThinking: supportsThinking,
                         maxContextTokens: viewModel.appleFoundationContextTokens
                     )
-                    if viewModel.modelEditError == nil {
-                        viewModel.popPane()
+                    if saved != nil {
+                        viewModel.popModelForm(ifCurrent: formSession)
                     }
                 }
             }
@@ -1518,8 +1537,9 @@ struct SettingsModelDetailPane: View {
         isSavingModel = true
         Task {
             defer { isSavingModel = false }
+            let saved: ModelConfigurationRecord?
             if let editingId = editingId ?? committedModelId {
-                await viewModel.updateModel(
+                saved = await viewModel.updateModel(
                     id: editingId,
                     name: trimmedName,
                     baseURL: resolved.baseURL,
@@ -1531,7 +1551,7 @@ struct SettingsModelDetailPane: View {
                     providerId: providerID
                 )
             } else {
-                await viewModel.createModel(
+                saved = await viewModel.createModel(
                     name: trimmedName,
                     baseURL: resolved.baseURL,
                     modelId: trimmedModelId,
@@ -1543,19 +1563,23 @@ struct SettingsModelDetailPane: View {
                     providerId: providerID
                 )
             }
-            if viewModel.modelEditError == nil {
-                committedModelId = viewModel.lastSavedModel?.id
-                if showsAudioSetup {
-                    await viewModel.commitAudioSetup(enabled: audioEnabled, useThisKey: useThisKey, revision: audioRevision)
-                    audioRevision = viewModel.audioSetup?.snapshot().revision ?? audioRevision
-                }
+            guard viewModel.isModelFormSessionActive(formSession) else { return }
+            guard let saved else { installPopScrub(); return }
+            committedModelId = saved.id
+            var audioSaved = true
+            if showsAudioSetup {
+                audioSaved = await viewModel.commitModelFormAudioSetup(
+                    for: saved, enabled: audioEnabled, useThisKey: useThisKey, revision: audioRevision, session: formSession
+                )
+                guard viewModel.isModelFormSessionActive(formSession) else { return }
+                audioRevision = viewModel.audioSetup?.snapshot().revision ?? audioRevision
             }
             // Only pop on success — a non-nil error keeps the pane up
             // so the user sees the message and can retry. Re-arm the
             // pop cleanup since we're staying so the SecureField gets
             // scrubbed on a subsequent Back tap.
-            if viewModel.modelEditError == nil {
-                viewModel.popPane()
+            if audioSaved {
+                viewModel.popModelForm(ifCurrent: formSession)
             } else {
                 installPopScrub()
             }

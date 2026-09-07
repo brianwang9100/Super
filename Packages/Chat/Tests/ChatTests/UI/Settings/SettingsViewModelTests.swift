@@ -954,7 +954,7 @@ struct SettingsViewModelTests {
 
         await rotateKey(in: rotationVM)
         await gate.release()
-        await staleEdit.value
+        _ = await staleEdit.value
 
         #expect(repo.rows.first?.apiKeyRef == "rotated-1")
         #expect(repo.rows.first?.name == "Renamed")
@@ -1037,7 +1037,7 @@ struct SettingsViewModelTests {
     }
 
     @Test("A committed key rotation publishes the new reference to narration setup")
-    func updateModelRotationPublishesCommittedReference() async {
+    func updateModelRotationPublishesCommittedReference() async throws {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
         let bus = SuperEventBus()
@@ -1050,7 +1050,7 @@ struct SettingsViewModelTests {
         let vm = makeViewModel(modelRepository: repo, audioSetup: audio, eventBus: bus)
 
         await rotateKey(in: vm)
-        await vm.commitAudioSetup(enabled: true, useThisKey: true, revision: 0)
+        await vm.commitAudioSetup(for: try #require(vm.lastSavedModel), enabled: true, useThisKey: true, revision: 0)
 
         #expect(repo.storedKeys == ["rotated-1": "sk-replacement"])
         #expect(repo.rows.first?.apiKeyRef == "rotated-1")
@@ -1449,6 +1449,263 @@ struct SettingsViewModelTests {
         await vm.load()
         #expect(vm.model(id: "withSearch")?.searchBackend == "native")
         #expect(vm.model(id: "noSearch")?.searchBackend == nil)
+    }
+
+    @Test("An update cannot race deletion after it captured the old key")
+    func updateCannotOverlapPendingDeletion() async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.deleteGate = gate
+        let registry = LLMProviderRegistry()
+        let vm = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let deletion = Task { await vm.deleteModel(id: "m1") }
+        await gate.waitUntilEntered()
+
+        #expect(vm.isModelMutationInFlight(id: "m1"))
+        let blocked = await vm.updateModel(
+            id: "m1", name: "Rejected", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+            apiKey: "sk-replacement", supportsThinking: false, maxContextTokens: 8_000
+        )
+
+        #expect(blocked == nil)
+        #expect(repo.rows.first == Self.keyRotationRow)
+        #expect(repo.storedKeys == ["ref-1": "sk-original"])
+        #expect(repo.stagedKeyRefs.isEmpty)
+        await gate.release()
+        #expect(await deletion.value)
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        #expect(repo.rows.isEmpty)
+        #expect(repo.storedKeys.isEmpty)
+        #expect(await registry.provider(id: "m1") == nil)
+    }
+
+    @Test("Deletion cannot interrupt a model save and a later explicit deletion uses the committed key", arguments: [false, true])
+    func deletionCannotOverlapPendingUpdate(fails: Bool) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.saveGate = gate
+        if fails { repo.saveError = KeyRotationTestError.saveFailed }
+        let registry = LLMProviderRegistry()
+        await registry.register(OpenAICompatibleLLMProvider(
+            configuration: Self.keyRotationRow.configuration, apiKey: "sk-original", http: StubHTTPClient()
+        ))
+        let vm = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        var changes = 0
+        vm.onModelsChanged = { changes += 1 }
+        let save = Task {
+            await vm.updateModel(
+                id: "m1", name: "Saved", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+                apiKey: "sk-replacement", supportsThinking: false, maxContextTokens: 8_000,
+                idGenerator: DeterministicIDGenerator(prefix: "rotated-")
+            )
+        }
+        await gate.waitUntilEntered()
+
+        #expect(vm.isModelMutationInFlight(id: "m1"))
+        #expect(await vm.deleteModel(id: "m1") == false)
+        #expect(repo.rows.first == Self.keyRotationRow)
+        #expect(repo.storedKeys["ref-1"] == "sk-original")
+        #expect(await registry.provider(id: "m1")?.displayName == Self.keyRotationRow.name)
+        #expect(changes == 0)
+        #expect(vm.modelEditError == nil)
+
+        await gate.release()
+        let saved = await save.value
+        #expect((saved == nil) == fails)
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        #expect(repo.stagedKeyRefs.isEmpty)
+        #expect(repo.storedKeys == (fails ? ["ref-1": "sk-original"] : ["rotated-1": "sk-replacement"]))
+        #expect(await vm.deleteModel(id: "m1"))
+        #expect(repo.rows.isEmpty)
+        #expect(repo.storedKeys.isEmpty)
+        #expect(vm.lastSavedModel == nil)
+        #expect(await registry.provider(id: "m1") == nil)
+    }
+
+    @Test("Mutation ownership includes postcommit key cleanup")
+    func deletionWaitsForRetiredKeyCleanup() async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.retiredKeyCleanupGate = gate
+        let registry = LLMProviderRegistry()
+        let vm = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let save = Task { await rotateKey(in: vm) }
+        await gate.waitUntilEntered()
+
+        #expect(vm.lastSavedModel?.apiKeyRef == "rotated-1")
+        #expect(vm.isModelMutationInFlight(id: "m1"))
+        #expect(await vm.deleteModel(id: "m1") == false)
+        #expect(await registry.provider(id: "m1")?.displayName == "Renamed")
+        await gate.release()
+        await save.value
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        #expect(await vm.deleteModel(id: "m1"))
+        #expect(repo.storedKeys.isEmpty)
+        #expect(repo.stagedKeyRefs.isEmpty)
+        #expect(await registry.provider(id: "m1") == nil)
+    }
+
+    @Test("Failed deletion releases mutation ownership for a fresh save", arguments: [false, true])
+    func failedDeletionAllowsNextUpdate(keyWasRemoved: Bool) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        if keyWasRemoved { repo.deleteRowError = KeyRotationTestError.saveFailed } else {
+            repo.deleteAPIKeyError = KeyRotationTestError.keychainFailed
+        }
+        let vm = makeViewModel(modelRepository: repo)
+
+        #expect(await vm.deleteModel(id: "m1") == false)
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        repo.deleteRowError = nil
+        repo.deleteAPIKeyError = nil
+        await rotateKey(in: vm)
+        #expect(vm.modelEditError == nil)
+        #expect(vm.lastSavedModel?.apiKeyRef == "rotated-1")
+        #expect(repo.storedKeys == ["rotated-1": "sk-replacement"])
+        #expect(repo.stagedKeyRefs.isEmpty)
+    }
+
+    @Test("Overlapping saves for distinct models return their own narration credential")
+    func concurrentModelsReturnIndependentCommittedRows() async throws {
+        var second = Self.keyRotationRow
+        second.id = "m2"
+        second.apiKeyRef = "ref-2"
+        let repo = StubModelRepository(rows: [Self.keyRotationRow, second])
+        repo.storedKeys = ["ref-1": "sk-original", "ref-2": "sk-second"]
+        let gate = KeyRotationSaveGate()
+        repo.retiredKeyCleanupGate = gate
+        var credentials: [ProviderAudioCredential] = []
+        let audio = ProviderAudioSetup(
+            snapshot: { ProviderAudioSnapshot(enabled: true, source: nil, revision: 0) },
+            commit: { credential, _, _, _ in credentials.append(credential) }
+        )
+        let vm = makeViewModel(modelRepository: repo, audioSetup: audio)
+        let firstSave = Task {
+            await vm.updateModel(
+                id: "m1", name: "First", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+                apiKey: "sk-first-new", supportsThinking: false, maxContextTokens: 8_000,
+                idGenerator: DeterministicIDGenerator(prefix: "first-")
+            )
+        }
+        await gate.waitUntilEntered()
+        repo.retiredKeyCleanupGate = nil
+        let secondSaved = await vm.updateModel(
+            id: "m2", name: "Second", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+            apiKey: "sk-second-new", supportsThinking: false, maxContextTokens: 8_000,
+            idGenerator: DeterministicIDGenerator(prefix: "second-")
+        )
+        #expect(secondSaved?.id == "m2")
+        #expect(vm.lastSavedModel == secondSaved)
+        await gate.release()
+        let firstSaved = try #require(await firstSave.value)
+        #expect(firstSaved.id == "m1")
+        #expect(firstSaved.apiKeyRef == "first-1")
+        #expect(vm.lastSavedModel == secondSaved)
+
+        #expect(await vm.commitAudioSetup(for: firstSaved, enabled: true, useThisKey: true, revision: 0))
+        #expect(credentials == [ProviderAudioCredential(id: "m1", name: "First", keyRef: "first-1")])
+        #expect(repo.storedKeys == ["first-1": "sk-first-new", "second-1": "sk-second-new"])
+        #expect(repo.stagedKeyRefs.isEmpty)
+    }
+
+    @Test("A departed form cannot submit narration or pop a newer form", arguments: ["m1", "m2"])
+    func staleModelFormCannotFollowUp(reopenedID: String) async {
+        var credentials: [ProviderAudioCredential] = []
+        let audio = ProviderAudioSetup(
+            snapshot: { ProviderAudioSnapshot(enabled: true, source: nil, revision: 0) },
+            commit: { credential, _, _, _ in credentials.append(credential) }
+        )
+        let vm = makeViewModel(audioSetup: audio)
+        vm.openPane(.modelDetail(id: "m1"))
+        let oldSession = vm.beginModelFormSession()
+        vm.popToRoot()
+        #expect(!vm.isModelFormSessionActive(oldSession))
+        vm.openPane(.modelDetail(id: reopenedID))
+        let currentSession = vm.beginModelFormSession()
+
+        #expect(await vm.commitModelFormAudioSetup(
+            for: Self.keyRotationRow, enabled: true, useThisKey: true, revision: 0, session: oldSession
+        ) == false)
+        #expect(vm.popModelForm(ifCurrent: oldSession) == false)
+        vm.endModelFormSession(oldSession)
+        #expect(vm.isModelFormSessionActive(currentSession))
+        #expect(vm.navigationPath == [.modelDetail(id: reopenedID)])
+        #expect(credentials.isEmpty)
+    }
+
+    @Test("An expired narration follow-up cannot publish an error into the current form")
+    func staleAudioCompletionCannotReplaceCurrentFormError() async {
+        let gate = KeyRotationSaveGate()
+        let audio = ProviderAudioSetup(
+            snapshot: { ProviderAudioSnapshot(enabled: true, source: nil, revision: 0) },
+            commit: { _, _, _, _ in
+                await gate.suspend()
+                throw KeyRotationTestError.saveFailed
+            }
+        )
+        let vm = makeViewModel(audioSetup: audio)
+        vm.openPane(.modelDetail(id: "m1"))
+        let oldSession = vm.beginModelFormSession()
+        let commit = Task {
+            await vm.commitModelFormAudioSetup(
+                for: Self.keyRotationRow, enabled: true, useThisKey: true, revision: 0, session: oldSession
+            )
+        }
+        await gate.waitUntilEntered()
+        vm.popToRoot()
+        vm.openPane(.modelDetail(id: "m2"))
+        let currentSession = vm.beginModelFormSession()
+        await gate.release()
+        #expect(await commit.value == false)
+        #expect(vm.modelEditError == nil)
+        #expect(vm.isModelFormSessionActive(currentSession))
+        #expect(vm.navigationPath == [.modelDetail(id: "m2")])
+    }
+
+    @Test("Deferred credential scrubbing cannot pop a subsequently opened form", arguments: [false, true])
+    func deferredPopPreservesNewForm(reopenSameModel: Bool) async {
+        let vm = makeViewModel()
+        let gate = KeyRotationSaveGate()
+        vm.flushPaneCleanup = { await gate.suspend() }
+        vm.openPane(.modelDetail(id: "m1"))
+        let oldSession = vm.beginModelFormSession()
+        var scrubbed = false
+        vm.beforePopCleanup = { scrubbed = true }
+        #expect(vm.popModelForm(ifCurrent: oldSession))
+        #expect(scrubbed)
+        #expect(!vm.isModelFormSessionActive(oldSession))
+        await gate.waitUntilEntered()
+        vm.popToRoot()
+        let nextID = reopenSameModel ? "m1" : "m2"
+        vm.openPane(.modelDetail(id: nextID))
+        let currentSession = vm.beginModelFormSession()
+        await gate.release()
+        await vm.waitForPendingPanePop()
+        #expect(vm.navigationPath == [.modelDetail(id: nextID)])
+        #expect(vm.isModelFormSessionActive(currentSession))
+    }
+
+    @Test("Back invalidates the form immediately while preserving its draft flush")
+    func backInvalidatesModelFormBeforeDeferredPop() async {
+        let vm = makeViewModel()
+        let gate = KeyRotationSaveGate()
+        vm.flushPaneCleanup = { await gate.suspend() }
+        vm.openPane(.models)
+        vm.openPane(.modelDetail(id: "m1"))
+        let session = vm.beginModelFormSession()
+        var scrubbed = false
+        vm.beforePopCleanup = { scrubbed = true }
+        vm.popPane()
+        #expect(scrubbed)
+        #expect(!vm.isModelFormSessionActive(session))
+        await gate.waitUntilEntered()
+        #expect(vm.navigationPath == [.models, .modelDetail(id: "m1")])
+        await gate.release()
+        await vm.waitForPendingPanePop()
+        #expect(vm.navigationPath == [.models])
     }
 
     @Test("deleteModel removes the row and refreshes the list")
@@ -1891,13 +2148,13 @@ struct SettingsViewModelTests {
         )
         let vm = makeViewModel(audioSetup: audio)
         let ids = DeterministicIDGenerator()
-        await vm.createModel(name: "OpenAI", baseURL: URL(string: "https://api.openai.com/v1")!, modelId: "gpt-test",
+        let saved = await vm.createModel(name: "OpenAI", baseURL: URL(string: "https://api.openai.com/v1")!, modelId: "gpt-test",
                              apiKey: "test-key", supportsThinking: false, maxContextTokens: 8192,
                              providerId: "openai", idGenerator: { ids.nextID() }, now: Date(timeIntervalSince1970: 0))
         #expect(vm.modelEditError == nil)
         #expect(commits.isEmpty)
         #expect(vm.models.first?.providerId == "openai")
-        await vm.commitAudioSetup(enabled: true, useThisKey: true, revision: 0)
+        await vm.commitAudioSetup(for: try #require(saved), enabled: true, useThisKey: true, revision: 0)
         #expect(commits.count == 1)
         #expect(commits.first?.0.id == vm.models.first?.id)
         #expect(commits.first?.1 == true)
@@ -2079,6 +2336,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
     var saveGate: KeyRotationSaveGate?
+    var deleteGate: KeyRotationSaveGate?
     var retiredKeyCleanupGate: KeyRotationSaveGate?
 
     init(rows: [ModelConfigurationRecord]) {
@@ -2138,6 +2396,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     }
     func delete(id: String) async throws {
         guard let row = rows.first(where: { $0.id == id }) else { return }
+        await deleteGate?.suspend()
         if let ref = row.apiKeyRef { try await deleteAPIKey(ref: ref) }
         if let error = deleteRowError { throw error }
         rows.removeAll { $0.id == id }

@@ -124,7 +124,7 @@ public final class NarrationSettingsController {
             }
             ref = committed.keyRef
         }
-        guard hasSameCredential(as: selected) else { throw SpeechGenerationError.missingKey }
+        try validatePlaybackAuthorization(selected)
         let key = try await keychain.getString(ref: ref)
         if !selected.ownsKey {
             let current = await listSources()
@@ -132,17 +132,22 @@ public final class NarrationSettingsController {
                 throw SpeechGenerationError.missingKey
             }
         }
-        guard hasSameCredential(as: selected), record.enabled == true,
+        try validatePlaybackAuthorization(selected)
+        guard record.enabled == true,
               let key, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SpeechGenerationError.missingKey
         }
         return key
     }
 
-    private func hasSameCredential(as selected: NarrationSettingsRecord) -> Bool {
-        // Preferences advance the draft revision without changing permission or credential identity.
-        record.enabled == selected.enabled && record.sourceId == selected.sourceId
-            && record.keyRef == selected.keyRef && record.ownsKey == selected.ownsKey
+    private func validatePlaybackAuthorization(_ selected: NarrationSettingsRecord) throws {
+        guard record.enabled == selected.enabled, record.sourceId == selected.sourceId,
+              record.keyRef == selected.keyRef, record.ownsKey == selected.ownsKey else {
+            throw SpeechGenerationError.missingKey
+        }
+        // A committed voice choice supersedes old work before availability refresh
+        // delivers onChange. Cancellation keeps the transport ready for that switch.
+        guard record.preferredVoiceId == selected.preferredVoiceId else { throw CancellationError() }
     }
 
     public func configure(

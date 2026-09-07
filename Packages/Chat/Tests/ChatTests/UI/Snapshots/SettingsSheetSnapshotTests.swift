@@ -920,6 +920,40 @@ struct SettingsSheetSnapshotTests {
         await verify(theme: .vellumLight, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
     }
 
+    @Test("model detail disables Save and Delete during a shared mutation")
+    func modelDetailBusy() async {
+        await verifyBusyModelDetail(theme: .vellumLight, name: "settings_model_detail_busy_light")
+    }
+
+    @Test("model detail disables Save and Delete during a shared mutation (dark)")
+    func modelDetailBusyDark() async {
+        await verifyBusyModelDetail(theme: .vellumDark, name: "settings_model_detail_busy_dark")
+    }
+
+    private func verifyBusyModelDetail(
+        theme: SuperTheme.Identifier, name: String, function: String = #function
+    ) async {
+        let gate = SnapshotModelMutationGate()
+        let viewModel = makeViewModel(modelRepository: NoopModelRepository(fetchGate: gate))
+        viewModel._setSnapshotState(
+            settings: .default, models: Self.sampleModels, tools: Self.sampleTools, chatCount: 7
+        )
+        let save = Task {
+            await viewModel.updateModel(
+                id: "opus", name: "Pending", baseURL: nil, modelId: "claude-opus-4-7",
+                apiKey: "", supportsThinking: true, maxContextTokens: 200_000
+            )
+        }
+        await gate.waitUntilEntered()
+        #expect(viewModel.isModelMutationInFlight(id: "opus"))
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .modelDetail(id: "opus"))
+            .superTheme(.make(theme))
+            .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+        await gate.release()
+        _ = await save.value
+    }
+
     // Locks in the `baseURL == nil` init path introduced by the
     // provider-kind discriminator work: `_baseURLText` falls back
     // to the placeholder default when the row's URL is nil.
@@ -1477,7 +1511,8 @@ struct SettingsSheetSnapshotTests {
 
     private func makeViewModel(
         appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
-        audioSetup: ProviderAudioSetup? = nil
+        audioSetup: ProviderAudioSetup? = nil,
+        modelRepository: any ModelConfigurationRepository = NoopModelRepository()
     ) -> SettingsViewModel {
         // Snapshots default to `.unavailable(.deviceNotEligible)` so the
         // host's real `SystemLanguageModel.default.availability` (which
@@ -1489,7 +1524,7 @@ struct SettingsSheetSnapshotTests {
         SettingsViewModel(
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
-            modelRepository: NoopModelRepository(),
+            modelRepository: modelRepository,
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
@@ -1571,9 +1606,36 @@ private struct NoopSettingRepository: SettingRepository {
     func all() async throws -> [String: String] { [:] }
 }
 
+private actor SnapshotModelMutationGate {
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        entered = true
+        for waiter in entryWaiters { waiter.resume() }
+        entryWaiters.removeAll()
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func release() {
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
 private struct NoopModelRepository: ModelConfigurationRepository {
+    var fetchGate: SnapshotModelMutationGate?
     func all() async throws -> [ModelConfigurationRecord] { [] }
-    func fetch(id: String) async throws -> ModelConfigurationRecord? { nil }
+    func fetch(id: String) async throws -> ModelConfigurationRecord? {
+        await fetchGate?.suspend()
+        return nil
+    }
     func selected() async throws -> ModelConfigurationRecord? { nil }
     func save(_ record: ModelConfigurationRecord) async throws {}
     func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {}

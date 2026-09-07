@@ -7,6 +7,48 @@ import Testing
 @Suite("Narration credential preferences")
 @MainActor
 struct NarrationCredentialPreferenceTests {
+    @Test(arguments: [false, true], [NarrationVoice.appleDefault, NarrationVoice(company: .openAI, identifier: "cedar")])
+    func committedVoiceChangeRejectsOldReadBeforeAvailabilityRefresh(ownsKey: Bool, choice: NarrationVoice) async throws {
+        let fixture = try PreferenceCredentialFixture()
+        try await fixture.configure(ownsKey: ownsKey)
+        let generator = PreferenceSpeechGenerator()
+        let player = PreferenceAudioPlayer()
+        let service = OpenAINarrationService(
+            generator: generator, player: player, cache: try NarrationAudioCache.makeInMemory(clock: FixedClock())
+        ) { try await fixture.settings.apiKey() }
+        let apple = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: service, settings: fixture.settings)
+        controller.voice = .marin
+        await fixture.keys.suspendNextRead()
+        controller.start(utterances: [.init(verseNumber: 1, text: "One")])
+        await fixture.keys.waitUntilSuspended()
+        let pending = try #require(service._pendingTask)
+        await fixture.sources.suspendNextRead()
+        let save = Task { try await fixture.settings.setPreference(voice: choice, rate: 1) }
+        await fixture.sources.waitUntilSuspended()
+        #expect(fixture.settings.record.preferredVoiceId == choice.id)
+        #expect(controller.voice == .marin) // Availability refresh has not delivered onChange yet.
+
+        await fixture.keys.release()
+        await pending.value
+
+        #expect(await generator.callCount == 0)
+        #expect(player.playCount == 0)
+        await fixture.sources.release()
+        try await save.value
+        #expect(controller.voice == choice)
+        #expect(controller.lastError == nil)
+        if choice.company == .apple {
+            #expect(apple.lastStartArgs?.voiceIdentifier == choice.identifier)
+            #expect(apple.startCallCount == 1)
+        } else {
+            await service._waitForPendingTask()
+            #expect(await generator.callCount == 1)
+            #expect(player.playCount == 1)
+        }
+        controller.stop()
+    }
+
     @Test(arguments: [false, true])
     func rateSavePreservesPendingCredentialRead(ownsKey: Bool) async throws {
         let fixture = try PreferenceCredentialFixture()
@@ -102,13 +144,15 @@ struct NarrationCredentialPreferenceTests {
 @MainActor
 private struct PreferenceCredentialFixture {
     let keys = PreferenceKeychain()
+    let sources = PreferenceSources()
     let source = ProviderAudioCredential(id: "model", name: "OpenAI", keyRef: "borrowed-ref")
     let settings: NarrationSettingsController
     init() throws {
         let source = source
+        let sources = sources
         settings = NarrationSettingsController(
             repository: GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory()),
-            keychain: keys, listSources: { [source] }, clock: FixedClock(), ids: DeterministicIDGenerator()
+            keychain: keys, listSources: { await sources.read(source) }, clock: FixedClock(), ids: DeterministicIDGenerator()
         )
     }
     func configure(ownsKey: Bool) async throws {
@@ -139,6 +183,25 @@ private actor PreferenceKeychain: KeychainClient {
     }
     func setString(_ value: String, ref: String) async throws { values[ref] = value }
     func delete(ref: String) async throws { values[ref] = nil }
+    func suspendNextRead() { armed = true; entered = false }
+    func waitUntilSuspended() async { if !entered { await withCheckedContinuation { entry = $0 } } }
+    func release() { completion?.resume(); completion = nil }
+}
+
+private actor PreferenceSources {
+    private var armed = false
+    private var entered = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Void, Never>?
+    func read(_ source: ProviderAudioCredential) async -> [ProviderAudioCredential] {
+        if armed {
+            armed = false
+            entered = true
+            entry?.resume(); entry = nil
+            await withCheckedContinuation { completion = $0 }
+        }
+        return [source]
+    }
     func suspendNextRead() { armed = true; entered = false }
     func waitUntilSuspended() async { if !entered { await withCheckedContinuation { entry = $0 } } }
     func release() { completion?.resume(); completion = nil }
