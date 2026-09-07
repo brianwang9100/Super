@@ -52,7 +52,7 @@ Apple narration uses voices installed on your device. OpenAI narration is option
 
 When you choose an OpenAI voice and press Play, passage text, voice choice, and speech instructions are sent directly to OpenAI's speech API over HTTPS. The app may generate one following verse while the current verse plays. No microphone audio, notes, chat history, or reading-activity log is included in those requests. OpenAI's API data policies apply. Audio is AI-generated, and API usage is billed to the account behind your chosen key; a ChatGPT subscription does not include these charges.
 
-Downloaded speech is cached on this device in a bounded, backup-excluded Caches database. The cache can be cleared from Settings → Narration and may be removed by iOS. Keys stay in Keychain; the app stores only credential references alongside narration preferences. Turning narration off or removing its key stops playback and further generation; clearing downloaded narration removes its local cache. Requests already submitted to OpenAI may still be billed.
+Downloaded speech is cached on this device in bounded, backup-excluded files in Caches. The cache can be cleared from Settings → Narration and may be removed by iOS. Keys stay in Keychain; the app stores only credential references alongside narration preferences. Turning narration off or removing its key stops playback and further generation; clearing downloaded narration removes its local cache. Requests already submitted to OpenAI may still be billed.
 
 ### Crash reports and diagnostics
 

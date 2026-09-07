@@ -963,6 +963,60 @@ struct SettingsViewModelTests {
         #expect(await credentialChanges(in: events, bus: bus).isEmpty)
     }
 
+    @Test("Metadata-only edits preserve narration without credential invalidation", arguments: [false, true])
+    func updateModelMetadataDoesNotInvalidateNarration(isDirectOpenAI: Bool) async {
+        var original = Self.keyRotationRow
+        if !isDirectOpenAI { original.providerId = "custom" }
+        let repo = StubModelRepository(rows: [original])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let bus = SuperEventBus()
+        let events = await bus.events()
+        let vm = makeViewModel(modelRepository: repo, eventBus: bus)
+
+        await vm.updateModel(
+            id: "m1", name: "Renamed", baseURL: URL(string: "https://api.openai.com/v1/"), modelId: "new-model",
+            apiKey: "", supportsThinking: true, maxContextTokens: 16_000,
+            searchSelection: (kind: .openAIResponses, searchBackend: "native")
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(vm.lastSavedModel?.name == "Renamed")
+        #expect(vm.lastSavedModel?.modelId == "new-model")
+        #expect(vm.lastSavedModel?.maxContextTokens == 16_000)
+        #expect(vm.lastSavedModel?.kind == .openAIResponses)
+        #expect(vm.lastSavedModel?.apiKeyRef == "ref-1")
+        #expect(repo.storedKeys == ["ref-1": "sk-original"])
+        #expect(await credentialChanges(in: events, bus: bus).isEmpty)
+    }
+
+    @Test("Changes to direct-OpenAI eligibility invalidate borrowed narration",
+          arguments: [false, true], ["baseURL", "providerId"])
+    func updateModelEligibilityChangesInvalidateNarration(wasEligible: Bool, changedField: String) async {
+        let directURL = URL(string: "https://api.openai.com/v1")!
+        let proxyURL = URL(string: "https://proxy.example/v1")!
+        var original = Self.keyRotationRow
+        if !wasEligible {
+            if changedField == "baseURL" { original.baseURL = proxyURL } else { original.providerId = "custom" }
+        }
+        let repo = StubModelRepository(rows: [original])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let bus = SuperEventBus()
+        let events = await bus.events()
+        let vm = makeViewModel(modelRepository: repo, eventBus: bus)
+
+        await vm.updateModel(
+            id: "m1", name: original.name,
+            baseURL: changedField == "baseURL" ? (wasEligible ? proxyURL : directURL) : original.baseURL,
+            modelId: original.modelId, apiKey: "", supportsThinking: false, maxContextTokens: 8_000,
+            providerId: changedField == "providerId" ? (wasEligible ? "custom" : "openai") : original.providerId
+        )
+
+        #expect(vm.modelEditError == nil)
+        #expect(vm.lastSavedModel?.apiKeyRef == "ref-1")
+        #expect(repo.storedKeys == ["ref-1": "sk-original"])
+        #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
+    }
+
     @Test("A committed key rotation publishes the new reference to narration setup")
     func updateModelRotationPublishesCommittedReference() async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
@@ -1399,6 +1453,38 @@ struct SettingsViewModelTests {
         await vm.deleteModel(id: "m1")
         #expect(vm.models.isEmpty)
         #expect(modelRepo.rows.isEmpty)
+    }
+
+    @Test("Failed deletion discards cached provider credentials even after partial Keychain removal",
+          arguments: [false, true])
+    func deleteModelInvalidatesProviderOnFailure(keyWasRemoved: Bool) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        if keyWasRemoved {
+            repo.deleteRowError = KeyRotationTestError.saveFailed
+        } else {
+            repo.deleteAPIKeyError = KeyRotationTestError.keychainFailed
+        }
+        let registry = LLMProviderRegistry()
+        await registry.register(OpenAICompatibleLLMProvider(
+            configuration: Self.keyRotationRow.configuration, apiKey: "sk-original", http: StubHTTPClient()
+        ))
+        let bus = SuperEventBus()
+        let events = await bus.events()
+        let vm = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, eventBus: bus)
+        var changes = 0
+        vm.onModelsChanged = { changes += 1 }
+
+        await vm.deleteModel(id: "m1")
+
+        #expect(await registry.provider(id: "m1") == nil)
+        #expect(await registry.active() == nil)
+        #expect(repo.rows.first == Self.keyRotationRow)
+        #expect(repo.storedKeys["ref-1"] == (keyWasRemoved ? nil : "sk-original"))
+        #expect(vm.models.first?.id == "m1")
+        #expect(vm.modelEditError == "Could not remove the model. Try again.")
+        #expect(changes == 1)
+        #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
     }
 
     @Test("monogram splits on space, dash, and underscore")
@@ -1964,6 +2050,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     var storeAPIKeyError: Error?
     var storeAPIKeyAttempts = 0
     var deleteAPIKeyError: Error?
+    var deleteRowError: Error?
     /// When non-nil, `save` throws this. Lets a test drive
     /// `createAppleFoundationModel` through the persistence-failure
     /// path; AFM rows never call `storeAPIKey`, so the existing
@@ -2025,8 +2112,10 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         return record
     }
     func delete(id: String) async throws {
+        guard let row = rows.first(where: { $0.id == id }) else { return }
+        if let ref = row.apiKeyRef { try await deleteAPIKey(ref: ref) }
+        if let error = deleteRowError { throw error }
         rows.removeAll { $0.id == id }
-        storedKeys[id] = nil
     }
     func setSelected(id: String) async throws {
         // Mirror production's guard: refuse to select a row the binary can't

@@ -166,6 +166,15 @@ public final class NarrationSettingsController {
         if record.ownsKey, next.keyRef != record.keyRef, let ref = record.keyRef {
             next.retiredKeyRefs.append(ref)
         }
+        guard !isSaving, revision == record.revision else { throw NarrationSettingsError.staleDraft }
+        var comparable = next
+        comparable.sourceName = record.sourceName
+        if comparable == record {
+            // Model saves also commit their audio draft. A display-only rename must not
+            // interrupt playback or invalidate an in-flight key read by advancing revision.
+            await refreshCredentials()
+            return
+        }
         try await persist(next, expecting: revision, invalidate: true)
         await cleanRetiredKeys()
     }

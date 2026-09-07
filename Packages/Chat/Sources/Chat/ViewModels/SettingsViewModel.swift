@@ -932,7 +932,16 @@ public final class SettingsViewModel {
             )
             let committed = try await saveModelUpdate(updated, apiKey: apiKey, idGenerator: idGenerator)
             lastSavedModel = committed
-            await eventBus?.publish(.credentialChanged(id: id))
+            let wasDirectOpenAI = ProviderAudioCredential.isDirectOpenAI(
+                providerId: existing.providerId, baseURL: existing.baseURL
+            )
+            let isDirectOpenAI = ProviderAudioCredential.isDirectOpenAI(
+                providerId: committed.providerId, baseURL: committed.baseURL
+            )
+            // Narration borrows credentials, so metadata-only edits must not stop playback.
+            if existing.apiKeyRef != committed.apiKeyRef || wasDirectOpenAI != isDirectOpenAI {
+                await eventBus?.publish(.credentialChanged(id: id))
+            }
             let resolvedKey: String?
             if !apiKey.isEmpty {
                 resolvedKey = apiKey
@@ -1022,11 +1031,14 @@ public final class SettingsViewModel {
     /// rather than orphaning a secret. Also unregisters the provider so
     /// the deleted endpoint disappears from the picker right away.
     public func deleteModel(id: String) async {
+        modelEditError = nil
+        // An opaque deletion failure may follow successful Keychain removal. Discard the
+        // live provider's cached secret before deletion, even if its row must remain for retry.
+        await llmProviderRegistry?.unregister(id: id)
         do {
             try await modelRepository.delete(id: id)
-            await llmProviderRegistry?.unregister(id: id)
-            onModelsChanged?()
         } catch { modelEditError = "Could not remove the model. Try again." }
+        onModelsChanged?()
         // A Keychain-first deletion can remove the key even if the following database write fails.
         await eventBus?.publish(.credentialChanged(id: id))
         await loadModels()

@@ -116,7 +116,7 @@ struct OpenAINarrationTests {
 
     @Test func cacheEvictsOldAudioAndClears() async throws {
         let clock = FixedClock()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue(), clock: clock, limit: 4)
+        let cache = try NarrationAudioCache.makeInMemory(clock: clock, limit: 4)
         try await cache.save(Data([1, 2]), for: "a")
         clock.advance(by: 1)
         try await cache.save(Data([3, 4]), for: "b")
@@ -134,7 +134,7 @@ struct OpenAINarrationTests {
     @Test func clearingDownloadsStopsPlaybackAndPreservesTheConnection() async throws {
         let fixture = try SettingsFixture()
         try await fixture.settings.saveDedicatedKey("audio-key", enabled: true, expecting: 0)
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         try await cache.save(Data([1, 2, 3]), for: "cached-verse")
         let cloud = FakeNarrationService()
         let controller = NarrationController(service: FakeNarrationService(), cloudService: cloud, settings: fixture.settings, cache: cache)
@@ -180,7 +180,7 @@ struct OpenAINarrationTests {
     @Test func stoppedDownloadCannotPlayOrCacheItsLateResult() async throws {
         let generator = GatedSpeech()
         let player = TestAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
         let stream = service.startSpeaking([.init(verseNumber: 1, text: "One")], rate: 1, voice: .marin)
         let consumer = Task { var events: [NarrationEvent] = []; for await event in stream { events.append(event) }; return events }
@@ -198,7 +198,7 @@ struct OpenAINarrationTests {
     @Test func pauseDuringDownloadDefersPlayerUntilResume() async throws {
         let generator = GatedSpeech()
         let player = TestAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
         let stream = service.startSpeaking([.init(verseNumber: 5, text: "One")], rate: 1.5, voice: .marin)
         var iterator = stream.makeAsyncIterator()
@@ -222,7 +222,7 @@ struct OpenAINarrationTests {
 
     @Test func cachedVersesDoNotAnnounceBufferingAtEveryBoundary() async throws {
         let player = TestAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
         for verse in verses {
             try await cache.save(Data([1, 2, 3]), for: NarrationAudioCache.key(text: verse.text, voice: .marin))
@@ -241,7 +241,7 @@ struct OpenAINarrationTests {
     @Test func slowLookAheadAnnouncesBufferingBeforeWaitingAndCanPause() async throws {
         let generator = GatedSpeech()
         let player = ControlledAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         try await cache.save(Data([1]), for: NarrationAudioCache.key(text: "One", voice: .marin))
         let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
         var events = service.startSpeaking([.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin).makeAsyncIterator()
@@ -281,7 +281,7 @@ struct OpenAINarrationTests {
     @Test func oversizedPrefetchedAudioStillPlaysWithoutRegeneration() async throws {
         let generator = CountingSpeech()
         let player = TestAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue(), limit: 0)
+        let cache = try NarrationAudioCache.makeInMemory(limit: 0)
         let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
         let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
         for await _ in service.startSpeaking(verses, rate: 1, voice: .marin) {}
@@ -379,7 +379,7 @@ struct OpenAINarrationTests {
     @Test func longVerseReturnsToSpeakingAfterBufferingAnotherSegment() async throws {
         let generator = GatedSpeech()
         let player = ControlledAudioPlayer()
-        let cache = try NarrationAudioCache(queue: DatabaseQueue())
+        let cache = try NarrationAudioCache.makeInMemory()
         let text = String(repeating: "x", count: 1601)
         let firstSegment = try #require(OpenAINarrationService.segments(text).first)
         try await cache.save(Data([1]), for: NarrationAudioCache.key(text: firstSegment, voice: .marin))

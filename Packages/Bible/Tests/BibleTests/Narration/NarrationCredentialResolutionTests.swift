@@ -7,6 +7,28 @@ import Testing
 @Suite("Narration credential resolution")
 @MainActor
 struct NarrationCredentialResolutionTests {
+    @Test func unchangedAudioCommitAfterModelRenamePreservesPlaybackAndPendingLookup() async throws {
+        let fixture = try CredentialFixture()
+        try await fixture.configure()
+        let revision = fixture.settings.record.revision
+        var invalidations = 0
+        fixture.settings.onInvalidated = { invalidations += 1 }
+        await fixture.keys.suspendNextRead()
+        let lookup = Task { try? await fixture.settings.apiKey() }
+        await fixture.keys.waitUntilSuspended()
+
+        // The model editor commits its audio draft after updating the model's metadata.
+        let renamed = ProviderAudioCredential(id: "model", name: "Renamed model", keyRef: "old-ref")
+        await fixture.projection.set([renamed])
+        try await fixture.settings.providerSetup.commit(renamed, true, false, revision)
+        await fixture.keys.release()
+
+        #expect(await lookup.value == "original")
+        #expect(invalidations == 0)
+        #expect(fixture.settings.record.revision == revision)
+        #expect(fixture.settings.snapshot.source == renamed)
+    }
+
     @Test func borrowerFollowsCommittedReferenceAcrossRotationAndReload() async throws {
         let fixture = try CredentialFixture()
         try await fixture.configure()
