@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   native-previews:
-    # External forks cannot use this project's OIDC/tokenless upload path yet.
+    # Required `argos` status blocks external forks until their upload path is
+    # enabled and verified. A skipped capture job does not satisfy that status.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     timeout-minutes: 45
@@ -51,7 +52,6 @@ jobs:
             screenshots/
             .build/PreviewPilot/run-*/names.txt
             .build/PreviewPilot/run-*/environment.json
-            .build/PreviewPilot/run-*/parity.json
             .build/PreviewPilot/run-*/*.log
             .build/PreviewPilot/run-*/*.xcresult
           include-hidden-files: true

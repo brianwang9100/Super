@@ -27,7 +27,7 @@ records the delivery check, not a replacement for repository settings.
 
 ## Argos native preview workflow
 
-`.github/workflows/argos.yml` adds a separate visual-testing job on PRs and main pushes: pinned iOS simulator capture through `npm test`, followed by an Argos CLI upload. It uses GitHub OIDC authentication for Argos and preserves capture evidence. Existing required tests remain unchanged; see [ARGOS_SETUP.md](ARGOS_SETUP.md) for setup, baseline seeding, and local commands.
+`.github/workflows/argos.yml` adds a separate visual-testing job on PRs and main pushes: pinned iOS simulator capture through `npm test`, followed by an Argos CLI upload. It uses GitHub OIDC authentication for Argos and preserves capture evidence. Main requires both the `argos` visual review status and the `native-previews` capture/upload check, alongside the five existing checks. The iOS build workflow retains all four legacy package legs (598 images); only the 21 composer captures have moved entirely to Argos. Its suite discovery automatically excludes the removed composer suite. External-fork PRs are blocked until their Argos upload path is enabled and verified. See [ARGOS_SETUP.md](ARGOS_SETUP.md) for setup, baseline seeding, and local commands.
 
 Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): representative layouts and documented regression risks, not a Cartesian product of every view, state, theme, and accessibility setting. The audit includes current CI timings and a concrete migration shortlist. Existing checks remain in place until replacement captures and Argos review enforcement are verified.
 

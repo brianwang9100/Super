@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Fail closed on missing, renamed, duplicate, or incomplete pilot images."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -34,10 +33,6 @@ def verify_sources():
     names = re.findall(r'#Preview\("([^"]+)"', source.read_text())
     if len(names) != len(set(names)) or set(names) != {row['preview'] for row in rows}:
         raise ValueError('Source declarations are missing, duplicated, or renamed')
-    for row in rows:
-        digest = hashlib.sha256((ROOT / row['baseline']).read_bytes()).hexdigest()
-        if digest != row['baselineSHA256']:
-            raise ValueError(f'Legacy baseline changed: {row["baseline"]}')
 
 
 def verify_exports(folder):

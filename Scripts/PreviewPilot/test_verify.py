@@ -3,21 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from verify import expected_names, verify_names, verify_exports, verify_sources, verify_dimensions, UIKIT
-from run import validate_migration_report
 
 
 class InventoryTests(unittest.TestCase):
-    def test_migration_allows_pixels_but_rejects_incomplete_or_invalid_comparisons(self):
-        rows = [{'image': name, 'status': 'pixel-mismatch'} for name in expected_names()
-                if name.startswith('Chat_')]
-        validate_migration_report(rows)
-        for invalid in ([], rows[:-1], rows + [rows[0]],
-                        [dict(rows[0], status='dimension-mismatch')] + rows[1:],
-                        [dict(rows[0], status='missing-or-invalid-image')] + rows[1:]):
-            with self.assertRaises(ValueError):
-                validate_migration_report(invalid)
-
-    def test_source_identity_and_unchanged_baselines(self):
+    def test_source_identity(self):
         verify_sources()
 
     def test_complete_discovery(self):
