@@ -1,6 +1,6 @@
 # Visual testing policy and migration audit
 
-Updated 2026-09-07 against commit `00693278`. The policy below applies to new work. The shortlist is a proposed migration inventory, not an implemented test deletion: all existing legacy PNGs and their current CI checks remain in place. Main subsequently added 14 baseline images (557 total after the merge); the historical counts and shortlist below remain tied to the audited commit, and those new regression cases are not retirement candidates.
+The audit tables below describe commit `00693278` (543 images). A fresh tracked-file count at `58d18b5b` finds 619 PNGs: Bible 272, Chat 285, Core 20, Todo 42. The composer retirement removes only its 21 duplicated PNGs, leaving 598; Argos remains at 23 captures. Main protection now requires `argos` and `native-previews`. The broader shortlist remains a proposal, and newly added regression cases are not retirement candidates. Historical tables retain their original counts.
 
 ## Select coverage by risk
 

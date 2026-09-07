@@ -200,6 +200,10 @@ jobs:
           echo "schemes=$schemes" >> "$GITHUB_OUTPUT"
 
   ios-snapshot-test:
+    name: Legacy snapshots (${{ matrix.scheme }})
+    # Remaining Point-Free suites only. Composer coverage now lives in Argos;
+    # discovery below omits its removed suite. Retain all other package coverage
+    # until each replacement is verified. Keep the required ios-test gate stable.
     # Gated on `changes` (like build-app): docs-only PRs skip these macOS
     # legs; the `ios-test` gate below still reports success in that case.
     needs: [changes, discover]

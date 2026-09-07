@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -10,7 +11,7 @@ import run
 
 
 class CaptureDriverTests(unittest.TestCase):
-    def capture(self, inspect=None):
+    def capture(self, inspect=None, decoder_fails=False):
         runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
         device = {'udid': 'owned', 'isAvailable': True,
                   'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'}
@@ -20,6 +21,9 @@ class CaptureDriverTests(unittest.TestCase):
                    'owned', json.dumps({'devices': {runtime: [device]}})]
         captures = []
         def execute(command, **kwargs):
+            if command[0] == 'swift' and decoder_fails:
+                self.assertTrue(kwargs.get('check'), 'Decoder failure must stop staging')
+                raise subprocess.CalledProcessError(1, command)
             if command[0] == 'xcodebuild':
                 captures.append(command)
                 if inspect:
@@ -32,8 +36,17 @@ class CaptureDriverTests(unittest.TestCase):
              patch.object(run.sys, 'argv', ['run.py']), \
              patch.dict(os.environ, {}, clear=True), \
              patch.object(run.subprocess, 'run', side_effect=execute):
-            run.main()
+            if decoder_fails:
+                with patch.object(run.sys, 'argv', ['run.py', '--argos']):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        run.main()
+                self.assertFalse((Path(directory) / 'screenshots').exists())
+            else:
+                run.main()
         return captures
+
+    def test_failed_decoder_prevents_staging(self):
+        self.capture(decoder_fails=True)
 
     def test_language_and_region_are_pinned_for_both_passes(self):
         captures = self.capture()
