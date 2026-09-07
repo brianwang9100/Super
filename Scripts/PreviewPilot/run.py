@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Local-only preview discovery, export and parity; no baseline writes or uploads."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,12 +17,6 @@ HERE = Path(__file__).resolve().parent
 
 def output(*command):
     return subprocess.check_output(command, text=True, cwd=ROOT)
-
-
-def simulator_name(root):
-    canonical = root.resolve()
-    identity = hashlib.sha256(str(canonical).encode()).hexdigest()[:12]
-    return f'SB-{canonical.name}-{identity}-preview-pilot'
 
 
 def main():
@@ -50,21 +43,17 @@ def main():
     minor_disks = [r for r in disks.values() if r.get('runtimeIdentifier', '').endswith('iOS-26-4')]
     if len(minor_disks) != 1 or minor_disks[0].get('build') != '23E254a':
         sys.exit('Refusing capture: ambiguous or stale iOS 26.4 runtime disk images')
+    simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'),
+                       'ensure', '--repo', str(ROOT)).strip()
+    requested = args.simulator or os.environ.get('ARGOS_SIMULATOR_UDID')
+    if requested and requested != simulator:
+        sys.exit('Expected the registered worktree simulator; use Scripts/worktree_simulator.py ensure')
     devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
-    expected_name = simulator_name(ROOT)
-    simulator = args.simulator or os.environ.get('ARGOS_SIMULATOR_UDID')
-    if not simulator:
-        candidates = [d for d in devices.get(matches[0]['identifier'], []) if d['name'] == expected_name]
-        if len(candidates) > 1:
-            sys.exit('Multiple dedicated simulators; specify ARGOS_SIMULATOR_UDID')
-        simulator = candidates[0]['udid'] if candidates else output(
-            'xcrun', 'simctl', 'create', expected_name, 'iPhone 17', matches[0]['identifier']).strip()
-        devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
     selected = [d for d in devices.get(matches[0]['identifier'], []) if d['udid'] == simulator]
-    if (len(selected) != 1 or selected[0]['name'] != expected_name
+    if (len(selected) != 1
             or selected[0]['deviceTypeIdentifier'] != 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'
             or not selected[0]['isAvailable']):
-        sys.exit(f'Expected dedicated {expected_name} iPhone 17 on pinned runtime')
+        sys.exit('Expected registered worktree simulator: iPhone 17 on pinned runtime')
     build = ROOT / '.build' / 'PreviewPilot'
     build.mkdir(parents=True, exist_ok=True)
     run = Path(tempfile.mkdtemp(prefix='run-', dir=build))

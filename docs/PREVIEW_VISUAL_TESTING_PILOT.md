@@ -55,16 +55,16 @@ The runner explicitly limits modules to Chat/Core and filters file/display ident
 
 ## Fail-closed local workflow
 
-Use Xcode **26.4.1 / 17E202**, iOS **26.4.1 / 23E254a**, and an **iPhone 17** at **3×**. XcodeGen is **2.45.4**. The driver verifies versions and the dedicated device's runtime, type, name, and availability before any capture. It refuses missing or mismatched pins. Keep only build 23E254a for the conflated iOS-26-4 identifier. Other iOS minor runtimes are not selected.
+Use Xcode **26.4.1 / 17E202**, iOS **26.4.1 / 23E254a**, and an **iPhone 17** at **3×**. XcodeGen is **2.45.4**. The driver verifies versions and the registered device's runtime, type, and availability before any capture. It refuses missing or mismatched pins. Keep only build 23E254a for the conflated iOS-26-4 identifier. Other iOS minor runtimes are not selected.
 
-Create a per-worktree simulator once (substitute the worktree name):
+Use the shared registered worktree simulator:
 
 ```sh
-xcrun simctl create SB-e7c6-preview-pilot 'iPhone 17' com.apple.CoreSimulator.SimRuntime.iOS-26-4
+python3 Scripts/worktree_simulator.py ensure
 python3 Scripts/PreviewPilot/run.py <returned-UUID>
 ```
 
-Keep this simulator while the branch is in flight; delete only after an eventual merge or explicit cleanup request. The driver creates a fresh run directory; no stale successful export can satisfy a subsequent run. It saves environment metadata, logs, xcresults, names, PNGs, JSON sidecars, and parity results. A capture/validation failure stops the workflow; pixel parity failure deliberately leaves a nonzero final exit.
+Keep the simulator with its worktree; use the registered lifecycle in [TESTING.md](TESTING.md#worktree-simulator-lifecycle) for cleanup. The driver creates a fresh run directory; no stale successful export can satisfy a subsequent run. It saves environment metadata, logs, xcresults, names, PNGs, JSON sidecars, and parity results. A capture/validation failure stops the workflow; pixel parity failure deliberately leaves a nonzero final exit.
 
 1. `TEST_RUNNER_SNAPSHOTS_ALL_IMAGE_NAMES_FILE` makes SnapshotTest write the discovered names and return without rendering.
 2. `verify.py --names` requires exactly the 21 mapped images plus both UIKit probes. Empty, duplicate, missing, renamed, and unexpected names fail.
