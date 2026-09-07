@@ -6,6 +6,8 @@ import GRDB
 public enum ModelConfigurationRepositoryError: Error, Sendable, Equatable {
     /// `setSelected(id:)` referenced a row that doesn't exist.
     case unknownModel(id: String)
+    /// An update's original credential reference no longer matches, or its row was deleted.
+    case staleModel(id: String)
     /// `setSelected(id:)` referenced a row whose `kind` the running binary
     /// can't build a provider for (a native-search kind with no shipped
     /// adapter). Selecting it would demote every other row and then make
@@ -29,6 +31,9 @@ public protocol ModelConfigurationRepository: Sendable {
     /// Insert or update. Does **not** touch the Keychain — pair with
     /// `storeAPIKey(_:ref:)` when persisting a freshly entered key.
     func save(_ record: ModelConfigurationRecord) async throws
+    /// Update an existing row only if its credential reference still matches the caller's snapshot.
+    /// Comparison and persistence are atomic; a stale edit cannot restore a retired reference or deleted row.
+    func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws
     /// Build and insert a record atomically, but only if the table has
     /// no other rows at the moment of the write. The `make` closure is
     /// called *inside* the write transaction — only when the table is
@@ -61,6 +66,8 @@ public protocol ModelConfigurationRepository: Sendable {
     func loadAPIKey(ref: String) async throws -> String?
     /// Remove only the referenced secret, preserving the model row during a failed edit rollback.
     func deleteAPIKey(ref: String) async throws
+    /// Remove a retired secret only when no persisted model, including unknown kinds, references it.
+    func deleteAPIKeyIfUnreferenced(ref: String) async throws
 }
 
 /// GRDB-backed `ModelConfigurationRepository`. The selected-exclusive
@@ -162,6 +169,19 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     public func save(_ record: ModelConfigurationRecord) async throws {
         try await queue.write { db in
             try record.save(db)
+        }
+    }
+
+    public func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {
+        try await queue.write { db in
+            let matches = try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM modelConfiguration WHERE id = ? AND apiKeyRef IS ?)",
+                arguments: [record.id, expectedAPIKeyRef]
+            ) ?? false
+            guard matches else { throw ModelConfigurationRepositoryError.staleModel(id: record.id) }
+            // Update rather than upsert: a concurrent deletion must never resurrect its model.
+            try record.update(db)
         }
     }
 
@@ -279,6 +299,19 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     }
 
     public func deleteAPIKey(ref: String) async throws {
+        try await keychain.delete(ref: ref)
+    }
+
+    public func deleteAPIKeyIfUnreferenced(ref: String) async throws {
+        // Do not use all(): its known-kind filter omits rows written by a newer app version.
+        let isReferenced = try await queue.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM modelConfiguration WHERE apiKeyRef = ?)",
+                arguments: [ref]
+            ) ?? true
+        }
+        guard !isReferenced else { return }
         try await keychain.delete(ref: ref)
     }
 

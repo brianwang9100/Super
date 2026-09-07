@@ -56,6 +56,23 @@ struct OpenAINarrationTests {
         #expect(!reloaded.openAIAvailable)
     }
 
+    @Test(arguments: ["borrowed", "dedicated", "enable"], [false, true])
+    func enablingAfterOptOutInitializesOnlyMissingVoicePreference(path: String, explicitApple: Bool) async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: false, useThisKey: true, expecting: 0)
+        if explicitApple { try await fixture.settings.setPreference(voice: .appleDefault, rate: 1) }
+        let revision = fixture.settings.record.revision
+        switch path {
+        case "borrowed":
+            try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: revision)
+        case "dedicated":
+            try await fixture.settings.saveDedicatedKey("dedicated", enabled: true, expecting: revision)
+        default:
+            try await fixture.settings.setEnabled(true)
+        }
+        #expect(fixture.settings.record.preferredVoiceId == (explicitApple ? NarrationVoice.appleDefault.id : NarrationVoice.marin.id))
+    }
+
     @Test func addingSecondKeyPreservesExplicitNarrationSource() async throws {
         let fixture = try SettingsFixture()
         let second = ProviderAudioCredential(id: "other", name: "Other", keyRef: "other-ref")
@@ -342,6 +359,23 @@ struct OpenAINarrationTests {
         #expect(await generator.requests == ["One"])
     }
 
+    @Test func immediatePlaybackFailureDoesNotStartLookAhead() async throws {
+        let cache = RemovalGatedAudioCache(cachedKey: NarrationAudioCache.key(text: "One", voice: .marin))
+        let generator = CountingSpeech()
+        let player = NarrationAudioPlayer(makePlayer: { _ in RefusingNarrationClip(prepares: false) })
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        await cache.waitForRemoval()
+        // Hold failure cleanup open and drain any speculative request before asserting.
+        _ = await service._pendingPrefetch?.value
+        #expect(await generator.requests.isEmpty)
+        await cache.finishRemoval()
+        #expect(await events.next() == .failed(.speech(.invalidAudio)))
+        #expect(await events.next() == nil)
+    }
+
     @Test func longVerseReturnsToSpeakingAfterBufferingAnotherSegment() async throws {
         let generator = GatedSpeech()
         let player = ControlledAudioPlayer()
@@ -536,4 +570,24 @@ private final class RefusingNarrationClip: NarrationClipPlaying {
     func play() -> Bool { playCount += 1; return false }
     func pause() {}
     func stop() {}
+}
+
+private actor RemovalGatedAudioCache: NarrationAudioCaching {
+    let cachedKey: String
+    private var removing = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Void, Never>?
+
+    init(cachedKey: String) { self.cachedKey = cachedKey }
+    func audio(for key: String) async throws -> Data? { key == cachedKey ? Data([1, 2, 3]) : nil }
+    func save(_ audio: Data, for key: String) async throws {}
+    func remove(_ key: String) async throws {
+        removing = true
+        entry?.resume(); entry = nil
+        await withCheckedContinuation { completion = $0 }
+    }
+    func waitForRemoval() async { if !removing { await withCheckedContinuation { entry = $0 } } }
+    func finishRemoval() { completion?.resume(); completion = nil }
+    func clear() async throws {}
+    func byteCount() async throws -> Int { 3 }
 }

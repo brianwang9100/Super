@@ -131,12 +131,12 @@ import Foundation
                         try self.check(current)
                         self.isPlaying = true
                         let events = self.player.play(bytes, rate: self.rate)
-                        self.prefetchNext(current: current)
                         var finished = false
                         for await event in events {
                             try self.check(current)
                             switch event {
                             case .started:
+                                self.prefetchNext(current: current)
                                 if !started {
                                     started = true
                                     self.continuation?.yield(.started(verseNumber: utterance.verseNumber))

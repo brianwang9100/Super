@@ -42,11 +42,21 @@ struct OpenAINarrationSnapshotTests {
     func deletedBorrowedKey(appearance: String) async throws {
         let keychain = InMemoryKeychainClient()
         try await keychain.setString("snapshot-only", ref: "deleted-ref")
+        let repository = GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory())
+        // Seed a previously configured connection whose model has since been deleted.
+        var record = NarrationSettingsRecord(id: "deleted-connection", updatedAt: FixedClock().now())
+        record.enabled = true
+        record.sourceId = "deleted-model"
+        record.sourceName = "Deleted model"
+        record.keyRef = "deleted-ref"
+        record.preferredVoiceId = NarrationVoice.marin.id
+        record.revision = 1
+        try await repository.save(record, expecting: 0)
         let settings = NarrationSettingsController(
-            repository: GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory()),
+            repository: repository,
             keychain: keychain, listSources: { [] }, clock: FixedClock(), ids: DeterministicIDGenerator(), appleVoicesInstalled: { false }
         )
-        try await settings.configure(credential: .init(id: "deleted-model", name: "Deleted model", keyRef: "deleted-ref"), enabled: true, useThisKey: true, expecting: 0)
+        await settings.load()
         #expect(!settings.hasKey)
         let controller = NarrationController(service: FakeNarrationService(), settings: settings)
         let view = OpenAINarrationSetupSheet(settings: settings, controller: controller)

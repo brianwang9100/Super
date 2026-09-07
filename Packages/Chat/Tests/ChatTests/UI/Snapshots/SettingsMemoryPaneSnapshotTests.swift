@@ -197,12 +197,14 @@ private struct NoopModelRepository: ModelConfigurationRepository {
     func fetch(id: String) async throws -> ModelConfigurationRecord? { nil }
     func selected() async throws -> ModelConfigurationRecord? { nil }
     func save(_ record: ModelConfigurationRecord) async throws {}
+    func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {}
     func insertIfEmpty(make: @Sendable () -> ModelConfigurationRecord) async throws -> ModelConfigurationRecord? { nil }
     func delete(id: String) async throws {}
     func setSelected(id: String) async throws {}
     func storeAPIKey(_ key: String, ref: String) async throws {}
     func loadAPIKey(ref: String) async throws -> String? { nil }
     func deleteAPIKey(ref: String) async throws {}
+    func deleteAPIKeyIfUnreferenced(ref: String) async throws {}
 }
 
 private struct NoopConversationRepository: ConversationRepository {

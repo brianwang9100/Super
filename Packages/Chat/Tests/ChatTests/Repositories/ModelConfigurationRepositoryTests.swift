@@ -78,6 +78,53 @@ struct ModelConfigurationRepositoryTests {
         #expect(try await repo.all().map(\.id) == ["a", "b", "c"])
     }
 
+    @Test("Compare-and-update accepts a matching reference and rejects stale metadata or rotation")
+    func updateRejectsStaleCredentialReference() async throws {
+        let (repo, _) = try makeRepo()
+        let original = makeRecord(id: "model", apiKeyRef: "old-ref")
+        try await repo.save(original)
+        var committed = original
+        committed.apiKeyRef = "new-ref"
+        committed.name = "Committed"
+        try await repo.update(committed, expectedAPIKeyRef: "old-ref")
+
+        for staleRef in ["old-ref", "other-rotation"] {
+            var stale = original
+            stale.apiKeyRef = staleRef
+            await #expect(throws: ModelConfigurationRepositoryError.staleModel(id: "model")) {
+                try await repo.update(stale, expectedAPIKeyRef: "old-ref")
+            }
+        }
+        #expect(try await repo.fetch(id: "model") == committed)
+    }
+
+    @Test("Compare-and-update cannot recreate a deleted model")
+    func updateDoesNotResurrectDeletedModel() async throws {
+        let (repo, _) = try makeRepo()
+        let original = makeRecord(id: "model")
+        try await repo.save(original)
+        try await repo.delete(id: "model")
+
+        await #expect(throws: ModelConfigurationRepositoryError.staleModel(id: "model")) {
+            try await repo.update(original, expectedAPIKeyRef: original.apiKeyRef)
+        }
+        #expect(try await repo.fetch(id: "model") == nil)
+    }
+
+    @Test("Compare-and-update treats a missing key reference as a value to match")
+    func updateMatchesNilCredentialReference() async throws {
+        let (repo, _) = try makeRepo()
+        var record = makeRecord(id: "model", apiKeyRef: nil)
+        try await repo.save(record)
+        record.name = "Renamed"
+        try await repo.update(record, expectedAPIKeyRef: nil)
+
+        await #expect(throws: ModelConfigurationRepositoryError.staleModel(id: "model")) {
+            try await repo.update(record, expectedAPIKeyRef: "different-ref")
+        }
+        #expect(try await repo.fetch(id: "model") == record)
+    }
+
     @Test("Key rollback can remove a newly inserted secret without deleting its model")
     func deleteAPIKeyPreservesModelRow() async throws {
         let (repo, keychain) = try makeRepo()
@@ -89,6 +136,21 @@ struct ModelConfigurationRepositoryTests {
 
         #expect(try await keychain.getString(ref: "ref-1") == nil)
         #expect(try await repo.fetch(id: "model") == record)
+    }
+
+    @Test("Retired key cleanup removes only unreferenced secrets, including unknown-kind references")
+    func deleteAPIKeyIfUnreferencedPreservesEveryModelKind() async throws {
+        let (repo, queue, keychain) = try makeRepoExposingQueue()
+        try await repo.save(makeRecord(id: "known", apiKeyRef: "known-ref"))
+        try await insertUnknownKindRow(queue: queue, id: "future", apiKeyRef: "future-ref")
+        for ref in ["known-ref", "future-ref", "unused-ref"] {
+            try await repo.storeAPIKey("test-secret", ref: ref)
+            try await repo.deleteAPIKeyIfUnreferenced(ref: ref)
+        }
+
+        #expect(try await keychain.getString(ref: "known-ref") == "test-secret")
+        #expect(try await keychain.getString(ref: "future-ref") == "test-secret")
+        #expect(try await keychain.getString(ref: "unused-ref") == nil)
     }
 
     @Test func setSelectedClearsPriorSelection() async throws {

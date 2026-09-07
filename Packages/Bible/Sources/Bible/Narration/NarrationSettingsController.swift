@@ -19,6 +19,7 @@ public final class NarrationSettingsController {
     private let ids: any IDGenerator
     private let appleVoicesInstalled: @Sendable () async -> Bool
     private let listSources: @Sendable () async -> [ProviderAudioCredential]
+    private var credentialRefreshGeneration = 0
     private var credentialTask: Task<Void, Never>?
 
     public init(
@@ -43,6 +44,8 @@ public final class NarrationSettingsController {
     public var openAIAvailable: Bool { record.enabled == true && hasKey }
     public var source: ProviderAudioCredential? {
         guard let id = record.sourceId, let ref = record.keyRef else { return nil }
+        if !record.ownsKey, let current = sources.first(where: { $0.id == id }) { return current }
+        // Preserve the last name/reference for missing-source UI only, never credential lookup.
         return ProviderAudioCredential(id: id, name: record.sourceName ?? "OpenAI key", keyRef: ref)
     }
     public var snapshot: ProviderAudioSnapshot {
@@ -83,28 +86,47 @@ public final class NarrationSettingsController {
     }
 
     public func refreshCredentials() async {
-        sources = await listSources()
+        credentialRefreshGeneration += 1
+        let generation = credentialRefreshGeneration
+        let selected = record
+        let currentSources = await listSources()
+        let ref = selected.ownsKey ? selected.keyRef : currentSources.first(where: { $0.id == selected.sourceId })?.keyRef
+        let available: Bool
+        if let ref {
+            available = ((try? await keychain.getString(ref: ref))?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        } else { available = false }
+        guard generation == credentialRefreshGeneration, selected.revision == record.revision else { return }
         let old = hasKey
-        if let ref = record.keyRef,
-           record.ownsKey || sources.contains(where: { $0.id == record.sourceId && $0.keyRef == ref }) {
-            hasKey = ((try? await keychain.getString(ref: ref))?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
-        } else { hasKey = false }
+        sources = currentSources
+        hasKey = available
         if old && !hasKey { onInvalidated?() }
         onChange?()
     }
 
-    /// Resolves the current source before every request. A model deletion cannot leave a captured key usable.
+    /// Borrowers follow their selected model's committed key reference, never an in-progress replacement.
     public func apiKey() async throws -> String {
-        guard record.enabled == true, let ref = record.keyRef else { throw SpeechGenerationError.missingKey }
-        let revision = record.revision
-        if !record.ownsKey {
+        let selected = record
+        guard selected.enabled == true else { throw SpeechGenerationError.missingKey }
+        let ref: String
+        if selected.ownsKey {
+            guard let ownedRef = selected.keyRef else { throw SpeechGenerationError.missingKey }
+            ref = ownedRef
+        } else {
             let current = await listSources()
-            guard current.contains(where: { $0.id == record.sourceId && $0.keyRef == ref }) else {
+            guard let committed = current.first(where: { $0.id == selected.sourceId }) else {
+                throw SpeechGenerationError.missingKey
+            }
+            ref = committed.keyRef
+        }
+        guard selected.revision == record.revision else { throw SpeechGenerationError.missingKey }
+        let key = try await keychain.getString(ref: ref)
+        if !selected.ownsKey {
+            let current = await listSources()
+            guard current.contains(where: { $0.id == selected.sourceId && $0.keyRef == ref }) else {
                 throw SpeechGenerationError.missingKey
             }
         }
-        let key = try await keychain.getString(ref: ref)
-        guard revision == record.revision, record.enabled == true,
+        guard selected.revision == record.revision, record.enabled == true,
               let key, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SpeechGenerationError.missingKey
         }
@@ -126,13 +148,20 @@ public final class NarrationSettingsController {
             next.ownsKey = false
         }
         next.enabled = enabled
+        if !next.ownsKey {
+            let current = await listSources()
+            if let committed = current.first(where: { $0.id == next.sourceId }) {
+                next.keyRef = committed.keyRef
+                next.sourceName = committed.name
+            } else if enabled { throw NarrationSettingsError.missingCredential }
+        }
         if enabled {
             guard let ref = next.keyRef,
                   let key = try await keychain.getString(ref: ref),
                   !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw NarrationSettingsError.missingCredential
             }
-            if record.enabled == nil { next.preferredVoiceId = NarrationVoice.marin.id }
+            if record.preferredVoiceId == nil { next.preferredVoiceId = NarrationVoice.marin.id }
         }
         if record.ownsKey, next.keyRef != record.keyRef, let ref = record.keyRef {
             next.retiredKeyRefs.append(ref)
@@ -154,7 +183,7 @@ public final class NarrationSettingsController {
         next.keyRef = ref
         next.ownsKey = true
         next.enabled = enabled
-        if enabled, record.enabled == nil { next.preferredVoiceId = NarrationVoice.marin.id }
+        if enabled, record.preferredVoiceId == nil { next.preferredVoiceId = NarrationVoice.marin.id }
         do {
             try await persist(next, expecting: revision, invalidate: true)
         } catch {
@@ -169,7 +198,7 @@ public final class NarrationSettingsController {
         guard !enabled || hasKey else { throw NarrationSettingsError.missingCredential }
         var next = record
         next.enabled = enabled
-        if enabled, record.enabled == nil { next.preferredVoiceId = NarrationVoice.marin.id }
+        if enabled, record.preferredVoiceId == nil { next.preferredVoiceId = NarrationVoice.marin.id }
         try await persist(next, expecting: record.revision, invalidate: true)
     }
 

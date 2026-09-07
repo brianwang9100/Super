@@ -10,9 +10,9 @@ import SwiftUI
 /// settings-side telemetry can join under one filter.
 private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
-/// A model edit failed after replacing a secret, and its previous Keychain state could not be restored.
+/// A model edit failed, and its unused staged secret could not be removed from Keychain.
 private enum ModelCredentialUpdateError: Error, Sendable {
-    case rollbackFailed
+    case stagedKeyCleanupFailed
 }
 
 /// View model backing `SettingsSheet`. Owns the resolved `ChatSettings`
@@ -871,7 +871,8 @@ public final class SettingsViewModel {
         supportsThinking: Bool,
         maxContextTokens: Int,
         searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil,
-        providerId: String? = nil
+        providerId: String? = nil,
+        idGenerator: any IDGenerator = UUIDGenerator()
     ) async {
         modelEditError = nil
         lastSavedModel = nil
@@ -929,13 +930,13 @@ public final class SettingsViewModel {
                 searchBackend: targetSearchBackend,
                 providerId: providerId ?? existing.providerId
             )
-            try await saveModelUpdate(updated, apiKey: apiKey)
-            lastSavedModel = updated
+            let committed = try await saveModelUpdate(updated, apiKey: apiKey, idGenerator: idGenerator)
+            lastSavedModel = committed
             await eventBus?.publish(.credentialChanged(id: id))
             let resolvedKey: String?
             if !apiKey.isEmpty {
                 resolvedKey = apiKey
-            } else if let ref = existing.apiKeyRef {
+            } else if let ref = committed.apiKeyRef {
                 resolvedKey = try? await modelRepository.loadAPIKey(ref: ref)
             } else {
                 resolvedKey = nil
@@ -951,7 +952,7 @@ public final class SettingsViewModel {
             // unavailable). The add paths still go through `registerProvider`.
             if let registry = llmProviderRegistry,
                let replacement = makeLLMProvider(
-                   for: updated,
+                   for: committed,
                    apiKey: resolvedKey,
                    http: httpClient,
                    toolRegistry: toolRegistry,
@@ -962,10 +963,20 @@ public final class SettingsViewModel {
             }
             await loadModels()
             onModelsChanged?()
+            // Finish all committed-state publication before cleanup can suspend behind a newer edit.
+            if let previousRef = existing.apiKeyRef, previousRef != committed.apiKeyRef {
+                do {
+                    try await modelRepository.deleteAPIKeyIfUnreferenced(ref: previousRef)
+                } catch {
+                    chatSettingsLog.warning("Model saved, but its previous unused API key could not be removed from secure storage.")
+                }
+            }
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
             if error is ModelCredentialUpdateError {
-                modelEditError = "Could not save model or restore its previous API key. Re-enter the intended key and save again before using this model or narration."
+                modelEditError = "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Try saving again."
+            } else if case .staleModel = error as? ModelConfigurationRepositoryError {
+                modelEditError = "The model changed while saving. Reopen it and try again."
             } else {
                 modelEditError = "Could not save model: \(error.localizedDescription)"
             }
@@ -973,33 +984,30 @@ public final class SettingsViewModel {
         }
     }
 
-    private func saveModelUpdate(_ record: ModelConfigurationRecord, apiKey: String) async throws {
-        guard !apiKey.isEmpty, let ref = record.apiKeyRef else {
-            try await modelRepository.save(record)
-            return
+    private func saveModelUpdate(
+        _ record: ModelConfigurationRecord, apiKey: String, idGenerator: any IDGenerator
+    ) async throws -> ModelConfigurationRecord {
+        guard !apiKey.isEmpty, let previousRef = record.apiKeyRef else {
+            try await modelRepository.update(record, expectedAPIKeyRef: record.apiKeyRef)
+            return record
         }
-        // Borrowers bind the model id and key ref, so successful rotations must keep the ref.
-        // Capture the previous state before overwriting; a failed read must never destroy it.
-        let previousKey = try await modelRepository.loadAPIKey(ref: ref)
-        try await modelRepository.storeAPIKey(apiKey, ref: ref)
+        // Stage under a fresh ref so concurrent readers only see the committed credential.
+        // The row update publishes the replacement; an unsuccessful save never changes the old key.
+        let stagedRef = idGenerator.nextID()
+        var staged = record
+        staged.apiKeyRef = stagedRef
+        try await modelRepository.storeAPIKey(apiKey, ref: stagedRef)
         do {
-            try await modelRepository.save(record)
+            try await modelRepository.update(staged, expectedAPIKeyRef: previousRef)
         } catch {
             do {
-                if let previousKey {
-                    try await modelRepository.storeAPIKey(previousKey, ref: ref)
-                } else {
-                    try await modelRepository.deleteAPIKey(ref: ref)
-                }
+                try await modelRepository.deleteAPIKey(ref: stagedRef)
             } catch {
-                // Invalidate consumers even when rollback fails: the secret may have changed.
-                await eventBus?.publish(.credentialChanged(id: record.id))
-                throw ModelCredentialUpdateError.rollbackFailed
+                throw ModelCredentialUpdateError.stagedKeyCleanupFailed
             }
-            // Stop any request that read the provisional key and refresh against restored state.
-            await eventBus?.publish(.credentialChanged(id: record.id))
             throw error
         }
+        return staged
     }
 
     /// Reset the model-edit error. Called by `SettingsModelDetailPane`

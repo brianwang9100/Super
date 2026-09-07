@@ -877,13 +877,76 @@ struct SettingsViewModelTests {
             modelId: "gpt",
             apiKey: "sk-rotated",
             supportsThinking: false,
-            maxContextTokens: 8_000
+            maxContextTokens: 8_000,
+            idGenerator: DeterministicIDGenerator(prefix: "rotated-")
         )
-        #expect(modelRepo.storedKeys["ref-1"] == "sk-rotated")
+        #expect(modelRepo.rows.first?.apiKeyRef == "rotated-1")
+        #expect(modelRepo.storedKeys == ["rotated-1": "sk-rotated"])
     }
 
-    @Test("A failed model edit restores the borrowed key and keeps its reference")
-    func updateModelRestoresKeyAfterSaveFailure() async {
+    @Test("Concurrent readers keep the committed key while a model save is suspended", arguments: [false, true])
+    func updateModelHidesStagedKeyDuringSave(fails: Bool) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.saveGate = gate
+        if fails { repo.saveError = KeyRotationTestError.saveFailed }
+        let vm = makeViewModel(modelRepository: repo)
+        let update = Task { await rotateKey(in: vm) }
+        await gate.waitUntilEntered()
+
+        let visible = try? await repo.fetch(id: "m1")
+        #expect(visible?.apiKeyRef == "ref-1")
+        let visibleKey = try? await repo.loadAPIKey(ref: visible?.apiKeyRef ?? "missing")
+        #expect(visibleKey == "sk-original")
+        #expect(vm.lastSavedModel == nil)
+
+        await gate.release()
+        await update.value
+        if fails {
+            #expect(repo.rows.first == Self.keyRotationRow)
+            #expect(repo.storedKeys == ["ref-1": "sk-original"])
+        } else {
+            let committed = repo.rows.first
+            #expect(committed?.apiKeyRef != "ref-1")
+            #expect(repo.storedKeys[committed?.apiKeyRef ?? "missing"] == "sk-replacement")
+            #expect(vm.lastSavedModel == committed)
+        }
+    }
+
+    @Test("An edit suspended before rotation cannot restore a retired key reference", arguments: ["", "sk-stale"])
+    func updateModelRejectsStaleCredentialReference(staleKey: String) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.saveGate = gate
+        let registry = LLMProviderRegistry()
+        let staleVM = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let rotationVM = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let staleEdit = Task {
+            await staleVM.updateModel(
+                id: "m1", name: "Stale", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+                apiKey: staleKey, supportsThinking: false, maxContextTokens: 8_000,
+                idGenerator: DeterministicIDGenerator(prefix: "stale-")
+            )
+        }
+        await gate.waitUntilEntered()
+        repo.saveGate = nil
+
+        await rotateKey(in: rotationVM)
+        await gate.release()
+        await staleEdit.value
+
+        #expect(repo.rows.first?.apiKeyRef == "rotated-1")
+        #expect(repo.rows.first?.name == "Renamed")
+        #expect(repo.storedKeys == ["rotated-1": "sk-replacement"])
+        #expect(staleVM.lastSavedModel == nil)
+        #expect(staleVM.modelEditError != nil)
+        #expect(await registry.provider(id: "m1")?.displayName == "Renamed")
+    }
+
+    @Test("A failed model edit leaves the borrowed key unchanged and deletes the staged key")
+    func updateModelPreservesKeyAfterSaveFailure() async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
         repo.saveError = KeyRotationTestError.saveFailed
@@ -893,50 +956,57 @@ struct SettingsViewModelTests {
 
         await rotateKey(in: vm)
 
-        #expect(repo.storedKeys["ref-1"] == "sk-original")
+        #expect(repo.storedKeys == ["ref-1": "sk-original"])
         #expect(repo.rows.first == Self.keyRotationRow)
         #expect(vm.lastSavedModel == nil)
         #expect(vm.modelEditError?.contains("Could not save model") == true)
-        #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
+        #expect(await credentialChanges(in: events, bus: bus).isEmpty)
     }
 
-    @Test("A committed key rotation retains the reference used by narration")
-    func updateModelRotationPreservesBorrowedReference() async {
+    @Test("A committed key rotation publishes the new reference to narration setup")
+    func updateModelRotationPublishesCommittedReference() async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
         let bus = SuperEventBus()
         let events = await bus.events()
-        let vm = makeViewModel(modelRepository: repo, eventBus: bus)
+        var audioCredentials: [ProviderAudioCredential] = []
+        let audio = ProviderAudioSetup(
+            snapshot: { ProviderAudioSnapshot(enabled: true, source: nil, revision: 0) },
+            commit: { credential, _, _, _ in audioCredentials.append(credential) }
+        )
+        let vm = makeViewModel(modelRepository: repo, audioSetup: audio, eventBus: bus)
 
         await rotateKey(in: vm)
+        await vm.commitAudioSetup(enabled: true, useThisKey: true, revision: 0)
 
-        #expect(repo.storedKeys == ["ref-1": "sk-replacement"])
-        #expect(repo.rows.first?.apiKeyRef == "ref-1")
+        #expect(repo.storedKeys == ["rotated-1": "sk-replacement"])
+        #expect(repo.rows.first?.apiKeyRef == "rotated-1")
         #expect(repo.rows.first?.name == "Renamed")
-        #expect(vm.lastSavedModel?.apiKeyRef == "ref-1")
+        #expect(vm.lastSavedModel?.apiKeyRef == "rotated-1")
+        #expect(audioCredentials.first?.keyRef == "rotated-1")
         #expect(vm.modelEditError == nil)
         #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
     }
 
-    @Test("A rollback failure reports that the previous key was not restored")
-    func updateModelReportsKeyRollbackFailure() async {
+    @Test("Failed staging cleanup reports the unused secret without claiming a saved model")
+    func updateModelReportsStagedKeyCleanupFailure() async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
         repo.saveError = KeyRotationTestError.saveFailed
-        repo.storeAPIKeyFailureAttempt = 2
+        repo.deleteAPIKeyError = KeyRotationTestError.keychainFailed
         let bus = SuperEventBus()
         let events = await bus.events()
         let vm = makeViewModel(modelRepository: repo, eventBus: bus)
 
         await rotateKey(in: vm)
 
-        #expect(repo.storedKeys["ref-1"] == "sk-replacement")
+        #expect(repo.storedKeys == ["ref-1": "sk-original", "rotated-1": "sk-replacement"])
         #expect(repo.rows.first == Self.keyRotationRow)
         #expect(vm.lastSavedModel == nil)
-        #expect(vm.modelEditError == "Could not save model or restore its previous API key. Re-enter the intended key and save again before using this model or narration.")
+        #expect(vm.modelEditError == "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Try saving again.")
         #expect(vm.modelEditError?.contains("sk-original") == false)
         #expect(vm.modelEditError?.contains("sk-replacement") == false)
-        #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
+        #expect(await credentialChanges(in: events, bus: bus).isEmpty)
     }
 
     @Test("A failed edit removes a replacement when no key existed before")
@@ -952,11 +1022,11 @@ struct SettingsViewModelTests {
         #expect(vm.modelEditError?.contains("Could not save model") == true)
     }
 
-    @Test("An unreadable previous key prevents rotation before any mutation")
-    func updateModelDoesNotRotateUnreadableKey() async {
+    @Test("A staging failure leaves the previous row and key unchanged")
+    func updateModelPreservesKeyAfterStagingFailure() async {
         let repo = StubModelRepository(rows: [Self.keyRotationRow])
         repo.storedKeys["ref-1"] = "sk-original"
-        repo.loadAPIKeyError = KeyRotationTestError.keychainFailed
+        repo.storeAPIKeyError = KeyRotationTestError.keychainFailed
         let bus = SuperEventBus()
         let events = await bus.events()
         let vm = makeViewModel(modelRepository: repo, eventBus: bus)
@@ -964,11 +1034,81 @@ struct SettingsViewModelTests {
         await rotateKey(in: vm)
 
         #expect(repo.storedKeys["ref-1"] == "sk-original")
-        #expect(repo.storeAPIKeyAttempts == 0)
+        #expect(repo.storeAPIKeyAttempts == 1)
         #expect(repo.rows.first == Self.keyRotationRow)
         #expect(vm.lastSavedModel == nil)
         #expect(vm.modelEditError != nil)
         #expect(await credentialChanges(in: events, bus: bus).isEmpty)
+    }
+
+    @Test("Delayed retired-key cleanup cannot publish an older provider over a newer rotation")
+    func updateModelPublishesBeforeRetiredKeyCleanup() async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        repo.retiredKeyCleanupGate = gate
+        let registry = LLMProviderRegistry()
+        let firstVM = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let secondVM = makeViewModel(modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient())
+        let firstEdit = Task { await rotateKey(in: firstVM) }
+        await gate.waitUntilEntered()
+        repo.retiredKeyCleanupGate = nil
+
+        #expect(firstVM.lastSavedModel?.apiKeyRef == "rotated-1")
+        #expect(await registry.provider(id: "m1")?.displayName == "Renamed")
+        await secondVM.updateModel(
+            id: "m1", name: "Newest", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+            apiKey: "sk-newest", supportsThinking: false, maxContextTokens: 8_000,
+            idGenerator: DeterministicIDGenerator(prefix: "newest-")
+        )
+        await gate.release()
+        await firstEdit.value
+
+        #expect(repo.rows.first?.apiKeyRef == "newest-1")
+        #expect(repo.storedKeys == ["newest-1": "sk-newest"])
+        #expect(secondVM.lastSavedModel?.apiKeyRef == "newest-1")
+        #expect(await registry.provider(id: "m1")?.displayName == "Newest")
+        #expect(firstVM.modelEditError == nil)
+        #expect(secondVM.modelEditError == nil)
+    }
+
+    @Test("Postcommit cleanup failure preserves the saved row, live provider, and credential event")
+    func updateModelFinishesAfterRetiredKeyCleanupFailure() async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        repo.deleteAPIKeyError = KeyRotationTestError.keychainFailed
+        let bus = SuperEventBus()
+        let events = await bus.events()
+        let registry = LLMProviderRegistry()
+        let vm = makeViewModel(
+            modelRepository: repo, llmProviderRegistry: registry, httpClient: StubHTTPClient(), eventBus: bus
+        )
+
+        await rotateKey(in: vm)
+
+        #expect(repo.storedKeys == ["ref-1": "sk-original", "rotated-1": "sk-replacement"])
+        #expect(repo.rows.first?.apiKeyRef == "rotated-1")
+        #expect(vm.lastSavedModel == repo.rows.first)
+        #expect(vm.models.first?.name == "Renamed")
+        #expect(vm.modelEditError == nil)
+        #expect(await registry.provider(id: "m1")?.displayName == "Renamed")
+        #expect(await credentialChanges(in: events, bus: bus) == ["m1"])
+    }
+
+    @Test("Rotating a model retains an old key still referenced by another model")
+    func updateModelPreservesSharedPreviousKey() async {
+        var other = Self.keyRotationRow
+        other.id = "m2"
+        let repo = StubModelRepository(rows: [Self.keyRotationRow, other])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let vm = makeViewModel(modelRepository: repo)
+
+        await rotateKey(in: vm)
+
+        #expect(repo.storedKeys == ["ref-1": "sk-original", "rotated-1": "sk-replacement"])
+        #expect(repo.rows.first { $0.id == "m2" }?.apiKeyRef == "ref-1")
+        #expect(vm.lastSavedModel?.apiKeyRef == "rotated-1")
+        #expect(vm.modelEditError == nil)
     }
 
     private static var keyRotationRow: ModelConfigurationRecord {
@@ -982,7 +1122,8 @@ struct SettingsViewModelTests {
     private func rotateKey(in viewModel: SettingsViewModel) async {
         await viewModel.updateModel(
             id: "m1", name: "Renamed", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
-            apiKey: "sk-replacement", supportsThinking: false, maxContextTokens: 8_000
+            apiKey: "sk-replacement", supportsThinking: false, maxContextTokens: 8_000,
+            idGenerator: DeterministicIDGenerator(prefix: "rotated-")
         )
     }
 
@@ -1787,6 +1928,30 @@ private enum KeyRotationTestError: Error, Sendable {
     case keychainFailed
 }
 
+/// Holds persistence before it becomes visible so concurrent credential reads are deterministic.
+private actor KeyRotationSaveGate {
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        entered = true
+        for waiter in entryWaiters { waiter.resume() }
+        entryWaiters.removeAll()
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func release() {
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
 private final class StubModelRepository: ModelConfigurationRepository, @unchecked Sendable {
     var rows: [ModelConfigurationRecord]
     /// Plaintext keys keyed by ref so the createModel/updateModel tests
@@ -1798,13 +1963,14 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// `SettingsViewModel.modelEditError`.
     var storeAPIKeyError: Error?
     var storeAPIKeyAttempts = 0
-    var storeAPIKeyFailureAttempt: Int?
-    var loadAPIKeyError: Error?
+    var deleteAPIKeyError: Error?
     /// When non-nil, `save` throws this. Lets a test drive
     /// `createAppleFoundationModel` through the persistence-failure
     /// path; AFM rows never call `storeAPIKey`, so the existing
     /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
+    var saveGate: KeyRotationSaveGate?
+    var retiredKeyCleanupGate: KeyRotationSaveGate?
 
     init(rows: [ModelConfigurationRecord]) {
         self.rows = rows
@@ -1822,6 +1988,16 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
         rows.first { $0.isSelected && $0.kind.hasProviderAdapter }
     }
     func save(_ record: ModelConfigurationRecord) async throws {
+        await saveGate?.suspend()
+        if let error = saveError { throw error }
+        rows.removeAll { $0.id == record.id }
+        rows.append(record)
+    }
+    func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {
+        await saveGate?.suspend()
+        guard rows.contains(where: { $0.id == record.id && $0.apiKeyRef == expectedAPIKeyRef }) else {
+            throw ModelConfigurationRepositoryError.staleModel(id: record.id)
+        }
         if let error = saveError { throw error }
         rows.removeAll { $0.id == record.id }
         rows.append(record)
@@ -1872,15 +2048,19 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     }
     func storeAPIKey(_ key: String, ref: String) async throws {
         storeAPIKeyAttempts += 1
-        if storeAPIKeyAttempts == storeAPIKeyFailureAttempt { throw KeyRotationTestError.keychainFailed }
         if let error = storeAPIKeyError { throw error }
         storedKeys[ref] = key
     }
-    func loadAPIKey(ref: String) async throws -> String? {
-        if let error = loadAPIKeyError { throw error }
-        return storedKeys[ref]
+    func loadAPIKey(ref: String) async throws -> String? { storedKeys[ref] }
+    func deleteAPIKey(ref: String) async throws {
+        if let error = deleteAPIKeyError { throw error }
+        storedKeys[ref] = nil
     }
-    func deleteAPIKey(ref: String) async throws { storedKeys[ref] = nil }
+    func deleteAPIKeyIfUnreferenced(ref: String) async throws {
+        await retiredKeyCleanupGate?.suspend()
+        guard !rows.contains(where: { $0.apiKeyRef == ref }) else { return }
+        try await deleteAPIKey(ref: ref)
+    }
 }
 
 private final class StubConversationRepository: ConversationRepository, @unchecked Sendable {
