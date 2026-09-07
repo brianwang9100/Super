@@ -21,6 +21,13 @@ private let bootstrapLog = Logger(subsystem: "com.brianwang.Super", category: "a
 /// list (see `SuperBible.sources` in `project.yml`). Both targets see
 /// the same source, so any future bootstrap change lands once.
 enum AppBootstrapSupport {
+    /// Runs before the dependency graph is exposed, so recovery cannot sweep a live model edit's staged key.
+    static func recoverModelAPIKeys(from repository: GRDBModelConfigurationRepository) async {
+        do { try await repository.recoverStagedAPIKeysAtStartup() } catch {
+            bootstrapLog.warning("Some unused model API keys could not be removed. Cleanup will retry on the next app launch.")
+        }
+    }
+
     /// `Application Support/Super/`, created on first call and pinned to
     /// `FileProtectionType.complete` so its contents are unreadable while
     /// the device is locked. iOS-enforced; macOS test runs silently no-op

@@ -1,0 +1,143 @@
+import AVFoundation
+import Core
+import Foundation
+
+/// Playback signals are separate from download completion and drive verse highlighting.
+public enum NarrationAudioEvent: Sendable {
+    case started, finished
+    /// The system took the audio session; cached bytes remain valid.
+    case interrupted
+    /// The audio session could not be acquired; this is not a decoding failure.
+    case unavailable
+    /// The player could not decode or play the audio data.
+    case failed
+}
+
+/// Injectable native audio playback with synchronous transport control on the main actor.
+@MainActor public protocol NarrationAudioPlaying: AnyObject {
+    func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent>
+    func pause()
+    func resume()
+    func stop()
+    func setRate(_ rate: Float)
+}
+
+/// Native clip operations kept internal so preparation failures can be reproduced without malformed media fixtures.
+@MainActor
+protocol NarrationClipPlaying: AnyObject {
+    var delegate: (any AVAudioPlayerDelegate)? { get set }
+    var enableRate: Bool { get set }
+    var rate: Float { get set }
+    func prepareToPlay() -> Bool
+    func play() -> Bool
+    func pause()
+    func stop()
+}
+
+extension AVAudioPlayer: NarrationClipPlaying {}
+
+/// MP3 playback backed by Apple's audio player; delegates bridge into one asynchronous event stream.
+@MainActor public final class NarrationAudioPlayer: NSObject, NarrationAudioPlaying, AVAudioPlayerDelegate {
+    private var player: (any NarrationClipPlaying)?
+    private let makePlayer: (Data) throws -> any NarrationClipPlaying
+    private var continuation: AsyncStream<NarrationAudioEvent>.Continuation?
+    #if os(iOS)
+    private var previousSession: (category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions)?
+    private var interruptionTask: Task<Void, Never>?
+    #endif
+
+    public override init() {
+        makePlayer = { try AVAudioPlayer(data: $0) }
+        super.init()
+    }
+
+    init(makePlayer: @escaping (Data) throws -> any NarrationClipPlaying) {
+        self.makePlayer = makePlayer
+        super.init()
+    }
+
+    public func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent> {
+        stop()
+        let (stream, continuation) = AsyncStream<NarrationAudioEvent>.makeStream()
+        self.continuation = continuation
+        #if os(iOS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            previousSession = (session.category, session.mode, session.categoryOptions)
+            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
+            let interruptions = NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification)
+                .compactMap { $0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt }
+            interruptionTask = Task { [weak self] in
+                for await type in interruptions {
+                    guard let self, !Task.isCancelled else { return }
+                    guard type == AVAudioSession.InterruptionType.began.rawValue else { continue }
+                    self.continuation?.yield(.interrupted)
+                    self.stop()
+                    return
+                }
+            }
+        } catch {
+            continuation.yield(.unavailable)
+            stop()
+            return stream
+        }
+        #endif
+        do {
+            let player = try makePlayer(audio)
+            self.player = player
+            player.delegate = self
+            player.enableRate = true
+            player.rate = min(2, max(0.75, rate))
+            guard player.prepareToPlay(), player.play() else {
+                continuation.yield(.failed)
+                stop()
+                return stream
+            }
+            continuation.yield(.started)
+        } catch {
+            continuation.yield(.failed)
+            stop()
+        }
+        return stream
+    }
+    public func pause() { player?.pause() }
+    public func resume() {
+        // No clip is expected when resuming a paused download.
+        guard let player else { return }
+        guard player.play() else {
+            continuation?.yield(.unavailable)
+            stop()
+            return
+        }
+    }
+    public func setRate(_ rate: Float) { player?.rate = min(2, max(0.75, rate)) }
+    public func stop() {
+        player?.stop()
+        player?.delegate = nil
+        player = nil
+        continuation?.finish()
+        continuation = nil
+        #if os(iOS)
+        interruptionTask?.cancel()
+        interruptionTask = nil
+        if let previous = previousSession {
+            previousSession = nil
+            let session = AVAudioSession.sharedInstance()
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(previous.category, mode: previous.mode, options: previous.options)
+        }
+        #endif
+    }
+    nonisolated public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        let id = ObjectIdentifier(player)
+        Task { @MainActor [weak self] in
+            guard let self, let current = self.player, ObjectIdentifier(current) == id else { return }
+            self.continuation?.yield(flag ? .finished : .failed)
+            self.stop()
+        }
+    }
+    nonisolated public func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: (any Error)?) {
+        audioPlayerDidFinishPlaying(player, successfully: false)
+    }
+}

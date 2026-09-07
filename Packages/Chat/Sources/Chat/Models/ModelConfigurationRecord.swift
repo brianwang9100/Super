@@ -40,6 +40,7 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
     /// `nativeSearchAdapter`/`nativeSearchBaseURL`; it is not enforced by this
     /// type. `"debug"` leaves the `kind` as `.openAICompatible` (or `.debug`
     /// for the seeded mock row) — the mock backend rides any provider.
+    public var providerId: String?
     public var searchBackend: String?
 
     public init(
@@ -53,7 +54,8 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
         supportsThinking: Bool = false,
         maxContextTokens: Int = 8_192,
         isSelected: Bool = false,
-        searchBackend: String? = nil
+        searchBackend: String? = nil,
+        providerId: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -66,6 +68,7 @@ public struct ModelConfigurationRecord: Codable, FetchableRecord, PersistableRec
         self.isSelected = isSelected
         self.createdAt = createdAt
         self.searchBackend = searchBackend
+        self.providerId = providerId
     }
 
     /// Project this row to the Core `ModelConfiguration` value used by

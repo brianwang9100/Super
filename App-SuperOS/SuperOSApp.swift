@@ -9,6 +9,7 @@ import SwiftUI
 @main
 struct SuperOSApp: App {
     @State private var state: SuperOSBootstrapState = .loading
+    @State private var isBootstrapping = false
 
     init() {
         // Register EB Garamond Italic + JetBrains Mono Regular before
@@ -29,6 +30,9 @@ struct SuperOSApp: App {
     }
 
     private func load() async {
+        guard case .loading = state, !isBootstrapping else { return }
+        isBootstrapping = true
+        defer { isBootstrapping = false }
         do {
             let dependencies = try await SuperOSAppBootstrap.bootstrap()
             state = .ready(dependencies)

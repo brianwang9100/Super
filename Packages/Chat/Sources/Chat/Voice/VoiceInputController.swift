@@ -1,3 +1,4 @@
+import Core
 import Foundation
 
 /// `@Observable @MainActor` view-model collaborator owned by
@@ -35,7 +36,12 @@ public final class VoiceInputController {
         case failed(String)
     }
 
-    public private(set) var state: State = .idle
+    public private(set) var state: State = .idle {
+        didSet {
+            if state == .listening && oldValue != .listening { audioActivity?.beginCapture() }
+            if state != .listening && oldValue == .listening { audioActivity?.endCapture() }
+        }
+    }
     /// Most recent `.partial` transcript from the active session. The
     /// service accumulates utterances committed across natural pauses
     /// inside a single session, so this value grows as the user keeps
@@ -49,15 +55,18 @@ public final class VoiceInputController {
     /// init to write the transcript into the composer text buffer.
     public var onFinalTranscript: ((String) -> Void)?
 
+    private let audioActivity: AudioActivity?
     private let service: any VoiceInputService
     private var streamTask: Task<Void, Never>?
     /// Set true on every `toggle()` start path, cleared on completion,
     /// so a second `toggle()` arriving in the same task tick (before
     /// `state` flips to `.listening`) doesn't double-start the service.
     private var isStarting = false
+    private var generation = 0
 
-    public init(service: any VoiceInputService) {
+    public init(service: any VoiceInputService, audioActivity: AudioActivity? = nil) {
         self.service = service
+        self.audioActivity = audioActivity
         // Initial availability check — if no on-device model is
         // installed for the device locale, boot into `.unavailable` so
         // the composer dims the mic button before the user ever taps it.
@@ -93,9 +102,11 @@ public final class VoiceInputController {
 
         guard !isStarting else { return }
         isStarting = true
-        defer { isStarting = false }
+        let session = generation
+        defer { if generation == session { isStarting = false } }
 
         let permission = await service.requestPermissions()
+        guard generation == session, !Task.isCancelled else { return }
         guard permission == .granted else {
             state = .denied
             return
@@ -114,6 +125,8 @@ public final class VoiceInputController {
     /// tears down the audio engine; the controller resets to `.idle`
     /// here without waiting for a final event.
     public func stop() {
+        generation += 1
+        isStarting = false
         streamTask?.cancel()
         streamTask = nil
         if state == .listening {
@@ -129,18 +142,19 @@ public final class VoiceInputController {
     }
 
     private func startStream(locale: Locale) {
+        let session = generation
         let stream = service.startRecognition(locale: locale)
         streamTask = Task { [weak self] in
             do {
                 for try await event in stream {
-                    guard let self else { return }
+                    guard let self, !Task.isCancelled, self.generation == session else { return }
                     self.handle(event)
                     self.signalProcessedEvent()
                 }
                 // Stream ended cleanly without a `.final` event — treat
                 // as a normal stop so the controller doesn't strand in
                 // `.listening`.
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 if self.state == .listening {
                     let committed = self.partialTranscript
                     self.partialTranscript = ""
@@ -152,11 +166,11 @@ public final class VoiceInputController {
                 // `stop()` already wrote the terminal state.
                 return
             } catch let error as VoiceInputError {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 self.handle(error)
                 self.signalProcessedEvent()
             } catch {
-                guard let self else { return }
+                guard let self, !Task.isCancelled, self.generation == session else { return }
                 self.partialTranscript = ""
                 self.state = .failed(error.localizedDescription)
                 self.signalProcessedEvent()
