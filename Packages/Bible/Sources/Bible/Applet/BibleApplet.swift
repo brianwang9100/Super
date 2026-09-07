@@ -188,9 +188,15 @@ public struct BibleApplet: MiniApplet {
         generator: any SpeechGenerating,
         cache: any NarrationAudioCaching,
         audioActivity: AudioActivity,
+        appleService: any NarrationService = AVSpeechSynthesizerNarrationService(),
         listSources: @escaping @Sendable () async -> [ProviderAudioCredential]
     ) -> (setup: ProviderAudioSetup, contribution: AppletSettingsContribution)? {
-        guard let database else { return nil }
+        guard let database else {
+            // Reading and Apple speech remain available without writable storage.
+            // They still share the app-lifetime stop hook and microphone ownership.
+            viewModel.installNarration(NarrationController(service: appleService, audioActivity: audioActivity))
+            return nil
+        }
         let settings = NarrationSettingsController(
             repository: GRDBNarrationSettingsRepository(database: database), keychain: keychain, listSources: listSources
         )
@@ -198,7 +204,7 @@ public struct BibleApplet: MiniApplet {
             try await settings.apiKey()
         }
         let controller = NarrationController(
-            service: AVSpeechSynthesizerNarrationService(), cloudService: cloud,
+            service: appleService, cloudService: cloud,
             settings: settings, cache: cache, audioActivity: audioActivity
         )
         viewModel.installNarration(controller)
