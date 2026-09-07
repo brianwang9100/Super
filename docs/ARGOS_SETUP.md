@@ -46,3 +46,11 @@ Review all 23 initial images: 21 composer scenarios and 2 UIKit probes. Renderer
 ## Usage
 
 The pilot uploads 23 screenshots per run. The full existing inventory contains 543 baseline images, so count PR updates, retries, and main captures before expanding. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and commercial eligibility must be checked; it is not assumed by this integration.
+
+## Migration and local workflow
+
+Argos replaces repository-hosted visual baselines and local pixel comparison for migrated scenarios; CI still renders the screenshots. After migration, developers can use Xcode previews and targeted local captures for feedback while CI performs the complete visual comparison. Running the full visual suite locally need not be a blanket pre-PR requirement. Unit, integration, and database snapshot tests remain local requirements for code changes.
+
+`screenshots/` is already ignored in the root `.gitignore`. Keep preview fixtures, capture scripts, and the expected screenshot inventory in Git. Do not globally ignore `__Snapshots__/`: it still contains required Point-Free baselines and can also contain non-image snapshots that remain useful. Ignoring a path does not untrack existing files or remove old Git objects.
+
+The pilot is not yet independent of legacy images: `verify.py` checks composer baseline hashes and `ComparePreviewImages.swift` reads them for parity. Replace that migration-only contract with a standalone capture inventory before deleting composer PNGs. Complete the baseline and required-check validation described above before retiring equivalent legacy visual tests. See [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md) for the measured inventory, proposed shortlist, retirement criteria, and history-cleanup options.

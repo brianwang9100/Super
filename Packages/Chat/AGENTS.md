@@ -23,7 +23,7 @@ Root [`../../AGENTS.md`](../../AGENTS.md) carries the shared rules. Chat-specifi
 
 ## Tests
 
-Snapshot fixtures live in `Tests/ChatTests/UI/__Snapshots__/`. SSE/LLM fixtures in `Tests/ChatTests/Fixtures/`.
+Legacy snapshot fixtures live in `Tests/ChatTests/UI/Snapshots/__Snapshots__/`. Visual coverage selection and Argos retirement follow the root policy and [VISUAL_TESTING_POLICY.md](../../docs/VISUAL_TESTING_POLICY.md). SSE/LLM fixtures live in `Tests/ChatTests/Fixtures/`.
 
 Module-specific test patterns (root [`AGENTS.md`](../../AGENTS.md) §Testing.7 carries the shared rules):
 
