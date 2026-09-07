@@ -16,6 +16,7 @@ import Foundation
     private var generation = 0
     private var task: Task<Void, Never>?
     private var prefetch: Task<(key: String, audio: Data)?, Never>?
+    private var prefetchKey: String?
     private var pausedReadyWaiter: CheckedContinuation<Void, Never>?
     private var readyWhilePaused = false
     private var resumeWaiter: CheckedContinuation<Void, Never>?
@@ -65,7 +66,12 @@ import Foundation
         continuation?.finish()
         continuation = nil
     }
-    public func skipForward() { index += 1; restart() }
+    public func skipForward() {
+        index += 1
+        let destinationKey = index < utterances.count
+            ? NarrationAudioCache.key(text: Self.segments(utterances[index].text).first ?? "", voice: voice) : nil
+        restart(preservingPrefetch: prefetchKey != nil && prefetchKey == destinationKey)
+    }
     public func skipBackward() { restart() }
     public func skipToPreviousVerse() { index = max(0, index - 1); restart() }
     public func setRate(_ rate: Float) { self.rate = rate; player.setRate(rate) }
@@ -74,18 +80,21 @@ import Foundation
         self.voice = new
         if continuation != nil { restart() }
     }
-    private func invalidate() {
+    private func invalidate(preservingPrefetch: Bool = false) {
         generation += 1
         task?.cancel()
         task = nil
-        prefetch?.cancel()
-        prefetch = nil
+        if !preservingPrefetch {
+            prefetch?.cancel()
+            prefetch = nil
+            prefetchKey = nil
+        }
         resumeWaiter?.resume()
         resumeWaiter = nil
         player.stop()
         isPlaying = false
     }
-    private func restart() { invalidate(); begin() }
+    private func restart(preservingPrefetch: Bool = false) { invalidate(preservingPrefetch: preservingPrefetch); begin() }
     private func begin() {
         guard index < utterances.count else { finish(.completed); return }
         let current = generation
@@ -107,10 +116,11 @@ import Foundation
                         }
                         // Announce a real buffer wait before joining look-ahead; a cache hit
                         // goes straight to playback without flashing a loading state.
-                        if segmentIndex == 0, let prefetch = self.prefetch {
+                        if segmentIndex == 0, let prefetch = self.prefetch, self.prefetchKey == cacheKey {
                             let prefetched = await prefetch.value
                             try self.check(current)
                             self.prefetch = nil
+                            self.prefetchKey = nil
                             if cached == nil, prefetched?.key == cacheKey { cached = prefetched?.audio }
                         }
                         let bytes: Data
@@ -136,7 +146,7 @@ import Foundation
                             try self.check(current)
                             switch event {
                             case .started:
-                                self.prefetchNext(current: current)
+                                self.prefetchNext()
                                 if !started {
                                     started = true
                                     self.continuation?.yield(.started(verseNumber: utterance.verseNumber))
@@ -171,24 +181,30 @@ import Foundation
             }
         }
     }
-    private func prefetchNext(current: Int) {
+    private func prefetchNext() {
         guard !paused, prefetch == nil, index + 1 < utterances.count else { return }
         let next = Self.segments(utterances[index + 1].text).first ?? ""
         let voice = voice
+        let cacheKey = NarrationAudioCache.key(text: next, voice: voice)
+        prefetchKey = cacheKey
         prefetch = Task { [weak self] in
             guard let self else { return nil }
             do {
                 let secret = try await self.key()
-                try self.check(current)
-                let cacheKey = NarrationAudioCache.key(text: next, voice: voice)
-                if let cached = try? await self.cache.audio(for: cacheKey) { return (cacheKey, cached) }
-                try self.check(current)
+                // Next may reuse this keyed request across a foreground generation change.
+                // Every other invalidation cancels the task, checked at each async boundary.
+                try Task.checkCancellation()
+                if let cached = try? await self.cache.audio(for: cacheKey) {
+                    try Task.checkCancellation()
+                    return (cacheKey, cached)
+                }
+                try Task.checkCancellation()
                 let data = try await self.generator.generate(text: next, voice: voice, apiKey: secret)
-                try self.check(current)
+                try Task.checkCancellation()
                 // Persistence is optional; keep paid audio available to the foreground
                 // even when the cache is full, unavailable, or rejects an oversized clip.
                 try? await self.cache.save(data, for: cacheKey)
-                try self.check(current)
+                try Task.checkCancellation()
                 return (cacheKey, data)
             } catch { return nil } // Foreground playback presents recoverable errors.
         }

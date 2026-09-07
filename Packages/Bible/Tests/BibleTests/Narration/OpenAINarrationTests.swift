@@ -290,6 +290,101 @@ struct OpenAINarrationTests {
         #expect(try await cache.byteCount() == 0)
     }
 
+    @Test(arguments: [false, true])
+    func nextJoinsSubmittedLookAheadWithoutBillingTwice(cacheWritesFail: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache: any NarrationAudioCaching = cacheWritesFail
+            ? UnwritableAudioCache(failingReads: false) : try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        await generator.complete()
+        #expect(await events.next() == .started(verseNumber: 2))
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 2))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+        _ = await submitted?.value
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.playCount == 2)
+    }
+
+    @Test func stopCancelsLookAheadRetainedByNext() async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let foreground = service._pendingTask
+        service.stop()
+        await generator.complete()
+        await foreground?.value
+        _ = await submitted?.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+        #expect(player.playCount == 1)
+        #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .marin)) == nil)
+    }
+
+    @Test(arguments: [false, true])
+    func replacementWhileJoiningLookAheadCannotReuseOrClearObsoleteWork(changeVoice: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses = ["One", "Two", "Three", "Four"].enumerated().map {
+            NarrationVerseUtterance(verseNumber: $0.offset + 1, text: $0.element)
+        }
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let obsoletePrefetch = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let obsoleteForeground = service._pendingTask
+        if changeVoice {
+            service.setVoice(NarrationVoice(company: .openAI, identifier: "cedar"))
+        } else {
+            service.skipForward()
+        }
+        let audibleVerse = changeVoice ? 2 : 3
+        #expect(await events.next() == .preparing(verseNumber: audibleVerse))
+        #expect(await events.next() == .started(verseNumber: audibleVerse))
+        let newPrefetch = service._pendingPrefetch
+        _ = await newPrefetch?.value
+        #expect(obsoletePrefetch?.isCancelled == true)
+        await generator.complete()
+        await obsoleteForeground?.value
+        _ = await obsoletePrefetch?.value
+        #expect(service._pendingPrefetch != nil)
+        #expect(player.playCount == 2)
+        #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .marin)) == nil)
+        if changeVoice {
+            #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .cedar)) == Data("Two".utf8))
+        }
+        let foreground = service._pendingTask
+        service.stop()
+        await foreground?.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+    }
+
     @Test func interruptionCancelsLookAheadAndPreservesCachedAudio() async throws {
         let generator = GatedSpeech()
         let player = ControlledAudioPlayer()
@@ -499,6 +594,22 @@ private actor GatedSpeech: SpeechGenerating {
     }
     func waitUntilStarted() async { if !started { await withCheckedContinuation { entry = $0 } } }
     func complete() { result?.resume(returning: Data([1, 2, 3])); result = nil }
+}
+
+private actor NextVerseGatedSpeech: SpeechGenerating {
+    private(set) var requests: [String] = []
+    private var submitted = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Data, Never>?
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        requests.append(text)
+        guard text == "Two", !submitted else { return Data(text.utf8) }
+        submitted = true
+        entry?.resume(); entry = nil
+        return await withCheckedContinuation { completion = $0 }
+    }
+    func waitUntilSubmitted() async { if !submitted { await withCheckedContinuation { entry = $0 } } }
+    func complete() { completion?.resume(returning: Data("Two".utf8)); completion = nil }
 }
 
 private struct UnexpectedSpeech: SpeechGenerating {
