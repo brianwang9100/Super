@@ -1,0 +1,101 @@
+{
+  "status": "local new-baseline candidates; not uploaded",
+  "sourceRun": "run-zxx_or45",
+  "repeatRun": "run-80jdufly",
+  "rendererRevision": "856a1c1585e31d4113c019050d6d0712cf6ddadc",
+  "rendererPatchSHA256": "7752096d59f88544d2f884fae40afa8dfee3f56b4a4288b6eb8a576739ead024",
+  "images": [
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_empty_dark.png",
+      "sha256": "18641b1127d6d94166420f1d68657d4533de92cb8fe7004973c98889aa5baae0"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_empty_light.png",
+      "sha256": "d15ca29ebc91fe1674e01e20825651eb72e8e74b6430a5954b37f63cf223fd27"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_dark.png",
+      "sha256": "17ba827d51e39275b3523df00a83bcdd373f79f160273b56fa034bf74f7b301e"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light.png",
+      "sha256": "1937d91f766a939f0d34504254a75703186e4c3bcff689fde4246df2a9185c78"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png",
+      "sha256": "ca9c4115a7c688b2cbca452f14d0534ce8843e7a853996a2b9da6d48b0b72cde"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_mic_unavailable_light.png",
+      "sha256": "e294d8fbaba35df920f11498730bcd962dc4e76651e3e18f94c151cb5803613c"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_mid_morph_light.png",
+      "sha256": "e7a13ba0adf691adc535bc936ea5e1af2e1e33d869f981cbd837bc1bfd2613f3"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_near_max_light.png",
+      "sha256": "3061a8e632f05e6be732aee2cee98534788cc635a3960f8bbc75281eafd43701"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_pill_dark.png",
+      "sha256": "ad827e6bbbad4f455124668339dc1ab91ae70872e0fd654a45f8b25c4580daa9"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_pill_light.png",
+      "sha256": "01092ab26e305a0786f9d14ab8d68daf31f12c2a0b94889cc8993f74f38c989f"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_recording_dark.png",
+      "sha256": "14e621027ea60822259448146e77eafe7b10c4438d09e40226ac431b3966550a"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_recording_light.png",
+      "sha256": "d61b4b4e0f1822c4ec46412a65587398f40d9cbaea533c34602228c2e7095ea2"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_recording_reduce_motion.png",
+      "sha256": "6d0281661cdee7b97d865af30cf83df7d8aae15241b2957c0d251f07e27cfe8c"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_recording_xxl.png",
+      "sha256": "2b681b88e56ffbbaa794564319ad704649be4cc2209c6c88995d3e9a8a3dc74d"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_reference_pill_dark.png",
+      "sha256": "9348a4026c5282a8bad25787878e2d27b6f61f28ec8da02489159b5d85144b6a"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light.png",
+      "sha256": "0eed1f29012c7db81ba34ca18f1089e74a3c7d83ff388227e859de4a05e4610f"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light_xxl.png",
+      "sha256": "d87aa32380ceb84c12fb91cbadf5898ebfaa02987249099a306b706c85aa2e5d"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_reference_pills_multiple_light.png",
+      "sha256": "bf607fe4e00762c726c679836c6cd24168491e29970dbd76a5cf6db792e091df"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_streaming_light.png",
+      "sha256": "bec0342213727bce79fd48585e1543bd5b5c916d2833de1ea066b547512fbb4f"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_typed_light.png",
+      "sha256": "e2bcef932f6b6677c5b447c92c8d94f3b968d27a9c218abc0185b13ff89b068b"
+    },
+    {
+      "name": "Chat_ChatComposerPreviews.swift_composer_typed_light_xxl.png",
+      "sha256": "1e7d128f481fb41822357dcac9d918130b8b523241d0afeb69a0ca284b0fc046"
+    },
+    {
+      "name": "Core_PreviewCollectionController.swift_collection_viewport_light.png",
+      "sha256": "140f9020099a5ab58ae7aab09d5056d1dde568e7b8c2c7e22616e75823a57dd5"
+    },
+    {
+      "name": "Core_PreviewCollectionController.swift_font_panel_light.png",
+      "sha256": "239e1bf7df267394452601f5478882a9a7c2aa941ee16280a107cb9243d48590"
+    }
+  ]
+}

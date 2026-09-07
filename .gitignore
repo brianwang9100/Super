@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Native visual-testing CLI and generated Argos captures
+node_modules/
+screenshots/
+
 # Design reference (extracted prototype, not deliverable)
 .design-tmp/
 
@@ -8,6 +12,7 @@
 .build/
 .swiftpm/
 Package.resolved
+!Scripts/PreviewPilot/Package.resolved
 
 # Xcode
 DerivedData/

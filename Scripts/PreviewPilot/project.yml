@@ -1,0 +1,57 @@
+name: PreviewPilot
+options:
+  bundleIdPrefix: com.brianwang.previewpilot
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGNING_ALLOWED: NO
+    GENERATE_INFOPLIST_FILE: YES
+packages:
+  Core:
+    path: ../../Packages/Core
+  Chat:
+    path: ../../Packages/Chat
+  SnapshotPreviews:
+    url: https://github.com/getsentry/SnapshotPreviews.git
+    revision: 856a1c1585e31d4113c019050d6d0712cf6ddadc
+targets:
+  PreviewPilotHost:
+    type: application
+    platform: iOS
+    sources: [Host]
+    settings:
+      base:
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+    dependencies:
+      - package: Core
+      - package: Chat
+  PreviewPilotTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: PreviewPilotHost
+      - package: SnapshotPreviews
+        product: SnapshottingTests
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PreviewPilotHost.app/PreviewPilotHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  PreviewPilot:
+    build:
+      targets:
+        PreviewPilotHost: all
+        PreviewPilotTests: [test]
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - name: PreviewPilotTests
+          parallelizable: false

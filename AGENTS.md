@@ -49,6 +49,8 @@ Questions and trivial documentation edits do not require the full process unless
 
 ## Testing
 
+Visual changes follow [VISUAL_TESTING_POLICY.md](docs/VISUAL_TESTING_POLICY.md): reuse representative screen/gallery coverage, add captures only for distinct visual risks, and report the count change and rationale in the PR. Preserve legacy coverage until its Argos replacement is verified.
+
 Follow [TESTING.md](docs/TESTING.md) for required coverage, snapshot scaffolding, async seams, and the exact CI simulator environment. Run each affected package's suite before opening a PR; UIKit snapshots require simulator tests in addition to `swift test`. App-target verification has a documented exception there.
 
 Use [the PR template](.github/pull_request_template.md); include the new/updated tests and local results in **Test Coverage**. If a PR has no checks, inspect `gh pr view <N> --json mergeable,mergeStateStatus` for conflicts before retriggering CI.
