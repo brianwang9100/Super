@@ -5,6 +5,12 @@ import XCTest
 /// Proves that a reused simulator's accessibility text size cannot alter the UIKit probes.
 @MainActor
 final class UIKitProbeEnvironmentTests: XCTestCase {
+    func testCaptureUsesEnglishUSLeftToRight() {
+        XCTAssertTrue(Locale.preferredLanguages.first?.hasPrefix("en") == true)
+        XCTAssertEqual(Locale.current.region?.identifier, "US")
+        XCTAssertEqual(UIView().effectiveUserInterfaceLayoutDirection, .leftToRight)
+    }
+
     func testCollectionPinsTextSizeUnderAccessibilityParent() {
         assertDefaultTextSize(PreviewCollectionController())
     }

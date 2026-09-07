@@ -17,17 +17,21 @@ npx --no-install argos upload ./screenshots
 
 The npm command is the native visual-test entry point. The existing Swift package, behavioral, database, and legacy snapshot suites still run through their existing commands and CI checks.
 
+Both Xcode test passes explicitly use English (`en`) and United States (`US`); the capture tests assert the effective language, region, and left-to-right UIKit layout. Both UIKit probes also pin their text-size category to Large. This isolates captures from manual accessibility/localization testing on the registered simulator.
+
+The complete remote Swift dependency graph is locked in `Scripts/PreviewPilot/Package.resolved`. The driver stages that file into the generated project workspace, uses `-onlyUsePackageVersionsFromResolvedFile`, and rejects changed pins after each test pass. The patched renderer remains independently pinned by revision and patch hash. To upgrade dependencies, deliberately resolve a new lockfile, review every changed pin, and rerun capture/regression validation before committing it.
+
 Screenshots are regenerated on each capture. A failed capture does not reach the upload step in CI. Logs, xcresults, sidecars, and the exact legacy parity report stay under `.build/PreviewPilot/run-*/`; no renderer sidecar is uploaded as an Argos snapshot.
 
 The `--argos` mode deliberately reports the reviewed Point-Free pixel differences without failing solely on those differences. It still rejects missing/invalid images, incomplete comparisons, changed dimensions, oversized files, failed tests, and failed discovery. Direct `python3 Scripts/PreviewPilot/run.py <UUID>` retains the strict legacy-parity exit. Neither mode changes existing Point-Free baselines.
 
 ## GitHub Actions
 
-[`.github/workflows/argos.yml`](../.github/workflows/argos.yml) runs on pull requests, pushes to `main`, and manual dispatch. It uses `macos-26`, pinned Xcode and XcodeGen, commit-pinned actions, and `npm ci` with the exact CLI dependency in `package-lock.json`. It runs `npm test`, then `npm exec -- argos upload ./screenshots`. Capture evidence is retained for seven days, including on failures.
+[`.github/workflows/argos.yml`](../.github/workflows/argos.yml) runs on same-repository pull requests, pushes to `main`, and manual dispatch. External-fork PRs skip the entire Argos job while their authentication path is unavailable; existing package/build/snapshot checks still apply. This pilot does not provide Argos coverage for fork PRs yet. It uses `macos-26`, pinned Xcode and XcodeGen, commit-pinned actions, and `npm ci` with the exact CLI dependency in `package-lock.json`. It runs `npm test`, then `npm exec -- argos upload ./screenshots`. Capture evidence is retained for seven days, including on failures.
 
 CI uploads prefer GitHub OIDC: `id-token: write` lets the CLI obtain a short-lived GitHub-signed identity, which Argos verifies before granting build-scoped upload credentials. GitHub OIDC must also be enabled in the Argos project's authentication settings. `ARGOS_PROJECT` selects the project and read-only `GITHUB_TOKEN` provides PR metadata. Keep `ARGOS_TOKEN` unset, since it takes precedence over OIDC. The previously configured repository secret remains unused; local uploads can still use the user's shell token.
 
-Tokenless is the fallback when OIDC is unavailable: Argos verifies the repository, commit, branch, and in-progress workflow through GitHub's API. The previous tokenless CI upload was rejected because tokenless authentication was not enabled in this Argos project, despite successful capture. Enable that option separately if fork PR uploads need it, and validate a fork run before relying on the fallback. See [GitHub Actions authentication](https://argos-ci.com/docs/learn/integrations/github-actions-authentication.md).
+Tokenless is the fallback when OIDC is unavailable: Argos verifies the repository, commit, branch, and in-progress workflow through GitHub's API. The previous tokenless CI upload was rejected because tokenless authentication was not enabled in this Argos project, despite successful capture. Enable that option separately and validate a fork run before removing the workflow job condition. Resolve this coverage limitation before making Argos required for all pull requests. See [GitHub Actions authentication](https://argos-ci.com/docs/learn/integrations/github-actions-authentication.md).
 
 No branch protection or existing required check is changed. Before making Argos required, test a changed screenshot, missing screenshot, failed capture, failed upload, review rejection, and approval. Keep current checks required during this trial.
 

@@ -12,6 +12,7 @@ screenshots/
 .build/
 .swiftpm/
 Package.resolved
+!Scripts/PreviewPilot/Package.resolved
 
 # Xcode
 DerivedData/

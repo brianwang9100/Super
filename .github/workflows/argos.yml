@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   native-previews:
+    # External forks cannot use this project's OIDC/tokenless upload path yet.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     timeout-minutes: 45
     steps:

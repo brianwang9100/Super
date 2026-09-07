@@ -70,9 +70,13 @@ def main():
         'rendererPatchSHA256': patch_digest}, indent=2))
     subprocess.run(['xcodegen', 'generate', '--spec', str(generated_spec), '--project', str(build)],
                    cwd=ROOT, check=True)
+    resolved = build / 'PreviewPilot.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(HERE / 'Package.resolved', resolved)
     command = ['xcodebuild', 'test', '-project', str(build / 'PreviewPilot.xcodeproj'),
                '-scheme', 'PreviewPilot', '-destination', f'platform=iOS Simulator,id={simulator}',
-               '-derivedDataPath', str(build / 'DerivedData'), '-parallel-testing-enabled', 'NO']
+               '-derivedDataPath', str(build / 'DerivedData'), '-parallel-testing-enabled', 'NO',
+               '-testLanguage', 'en', '-testRegion', 'US', '-onlyUsePackageVersionsFromResolvedFile']
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(('TEST_RUNNER_SNAPSHOT', 'SNAPSHOT'))}
     for mode, key, path in [('discovery', 'TEST_RUNNER_SNAPSHOTS_ALL_IMAGE_NAMES_FILE', run / 'names.txt'),
@@ -80,6 +84,8 @@ def main():
         with (run / f'{mode}.log').open('w') as log:
             subprocess.run(command + ['-resultBundlePath', str(run / f'{mode}.xcresult')], cwd=ROOT,
                            env={**environment, key: str(path)}, stdout=log, stderr=subprocess.STDOUT, check=True)
+        if json.loads(resolved.read_text())['pins'] != json.loads((HERE / 'Package.resolved').read_text())['pins']:
+            raise ValueError('Swift package resolution changed during capture')
         subprocess.run([sys.executable, str(HERE / 'verify.py'),
                         '--names' if mode == 'discovery' else '--exports', str(path)], check=True)
     result = subprocess.run(['swift', str(HERE / 'ComparePreviewImages.swift'), str(ROOT),
