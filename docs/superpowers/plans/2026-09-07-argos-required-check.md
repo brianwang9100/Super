@@ -26,7 +26,7 @@
 
 The reviewer confirmed the 21-case legacy suite contains no behavioral assertions. Before this retirement merges, verify the PR selects main build #7 as its reference and reports 23 unchanged captures. Record rejection/approval enforcement and failed capture/upload controls; the prior comparison-only demo is insufficient. If visual approval cannot be exercised with available authentication, leave the cleanup draft and explicitly report that remaining prerequisite instead of claiming migration is complete.
 
-Main capture run 34117546159 succeeded on 2026-09-07; Argos build #7 on commit `58d18b5b` reports success. Branch protection now requires `argos` from Argos App 57576 and `native-previews` from GitHub Actions 15988, in addition to all five previous checks. Other protection settings are preserved.
+Main capture run 34117546159 succeeded on 2026-09-07; Argos build #7 on commit `58d18b5b` reports success. Branch protection now requires `argos` from Argos App 57576 and `native-previews` from GitHub Actions 15368, in addition to all five previous checks. Other protection settings are preserved.
 
 ## Local verification
 
@@ -36,4 +36,8 @@ Main capture run 34117546159 succeeded on 2026-09-07; Argos build #7 on commit `
 - Python: 19 guards pass, including real decoder empty/truncated-file controls and failed-decoder prevention of screenshot staging.
 - Both modified workflows pass `actionlint`; all four legacy package directories still contain suites; deleted composer suite is no longer discovered.
 - GitHub protection reread confirms both new app-bound checks and exact preservation of all previous protection settings.
-- Remote rejection→approval enforcement and cleanup PR reference selection remain delivery checks; no visual approval has been performed by this agent.
+- Remote rejection→approval enforcement and cleanup PR reference selection were completed during delivery; see the outcome below.
+
+## Delivery outcome
+
+PR #332 merged at `80c57219`. [Recorded controls](https://github.com/brianwang9100/Super/pull/332#issuecomment-5571855771) cover capture/upload failures, build #8 with 23 unchanged images against main #7, and deliberate-diff build #2 changing GitHub status from failure on rejection to success on approval. No-change build #8 ignores review disposition; the temporary GitHub review was dismissed. These retirement prerequisites are complete.

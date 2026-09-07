@@ -1,0 +1,128 @@
+[
+  {
+    "preview": "settings_root_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_root_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/rootLight.settings_root_light.png"
+  },
+  {
+    "preview": "settings_root_dark",
+    "image": "Chat_SettingsPanePreviews.swift_settings_root_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/rootDark.settings_root_dark.png"
+  },
+  {
+    "preview": "settings_about_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_about_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/aboutPane.settings_about_light.png"
+  },
+  {
+    "preview": "settings_compaction_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_compaction_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/compactionPane.settings_compaction_light.png"
+  },
+  {
+    "preview": "settings_personalization_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_personalization_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/personalizationPane.settings_personalization_light.png"
+  },
+  {
+    "preview": "settings_verbosity_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_verbosity_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/verbosityPane.settings_verbosity_light.png"
+  },
+  {
+    "preview": "settings_tools_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_tools_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/toolsPane.settings_tools_light.png"
+  },
+  {
+    "preview": "settings_tools_dark",
+    "image": "Chat_SettingsPanePreviews.swift_settings_tools_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/toolsPaneDark.settings_tools_dark.png"
+  },
+  {
+    "preview": "settings_search_on_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_search_on_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/searchPaneOnLight.settings_search_on_light.png"
+  },
+  {
+    "preview": "settings_search_on_dark",
+    "image": "Chat_SettingsPanePreviews.swift_settings_search_on_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/searchPaneOnDark.settings_search_on_dark.png"
+  },
+  {
+    "preview": "settings_search_off_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_search_off_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/searchPaneOffLight.settings_search_off_light.png"
+  },
+  {
+    "preview": "settings_data_idle_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_data_idle_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/dataPaneIdle.settings_data_idle_light.png"
+  },
+  {
+    "preview": "settings_data_idle_dark",
+    "image": "Chat_SettingsPanePreviews.swift_settings_data_idle_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/dataPaneIdle.settings_data_idle_dark.png"
+  },
+  {
+    "preview": "settings_data_failed_light",
+    "image": "Chat_SettingsPanePreviews.swift_settings_data_failed_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/dataPaneFailed.settings_data_failed_light.png"
+  }
+]

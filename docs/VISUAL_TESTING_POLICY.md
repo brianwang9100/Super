@@ -1,6 +1,6 @@
 # Visual testing policy and migration audit
 
-The audit tables below describe commit `00693278` (543 images). A fresh tracked-file count at `58d18b5b` finds 619 PNGs: Bible 272, Chat 285, Core 20, Todo 42. The composer retirement removes only its 21 duplicated PNGs, leaving 598; Argos remains at 23 captures. Main protection now requires `argos` and `native-previews`. The broader shortlist remains a proposal, and newly added regression cases are not retirement candidates. Historical tables retain their original counts.
+The audit tables below describe commit `00693278` (543 images). A fresh tracked-file count at `58d18b5b` finds 619 PNGs: Bible 272, Chat 285, Core 20, Todo 42. The composer retirement in PR #332 left 598 legacy PNGs and 23 Argos captures. The current 14-case Settings tranche changes those counts to 584 and 37 respectively (Settings legacy 90→76). Appearance light/dark/full-height light and data exporting light are deferred for repeatability; all their legacy coverage remains. All four legacy package CI jobs remain required. The reduced set passed two complete local captures with 37 byte-identical PNGs; CI and baseline review remain delivery gates. Main protection now requires `argos` and `native-previews`. The broader shortlist remains a proposal, and newly added regression cases are not retirement candidates. Historical tables retain their original counts.
 
 ## Select coverage by risk
 
@@ -27,7 +27,7 @@ Counts are tracked PNG files under `Packages/**/__Snapshots__/`, not Swift test 
 | Core | 3 | 20 | 1.24 MiB |
 | Total | 63 | 543 | 66.81 MiB |
 
-The current Argos pilot additionally renders 21 composer scenarios and two UIKit renderer/font probes. Its 23 generated PNGs are ignored and are not part of the 543 tracked baselines.
+The initial Argos pilot additionally rendered 21 composer scenarios and two UIKit renderer/font probes. Its 23 generated PNGs are ignored and are not part of the 543 tracked baselines.
 
 A SHA-256 comparison found 21 byte-identical pairs. Examples:
 
