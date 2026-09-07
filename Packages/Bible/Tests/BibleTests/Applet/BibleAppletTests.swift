@@ -16,6 +16,48 @@ struct BibleAppletTests {
         BibleApplet(viewModel: BibleScreenViewModel(textLoader: BundledBibleTextLoader()))
     }
 
+    @Test("Apple narration keeps app lifecycle and microphone ownership without writable Bible storage")
+    func narrationWithoutPersistenceSharesAudioLifecycle() async throws {
+        let apple = FakeNarrationService()
+        let viewModel = BibleScreenViewModel(
+            textLoader: BundledBibleTextLoader(), narration: NarrationController(service: apple)
+        )
+        let applet = BibleApplet(viewModel: viewModel)
+        await viewModel.load()
+        let audio = AudioActivity()
+        audio.beginCapture()
+        let setup = applet.configureNarration(
+            keychain: UnusedAppletKeychain(), generator: UnusedAppletSpeech(),
+            cache: try NarrationAudioCache.makeInMemory(), audioActivity: audio, appleService: apple,
+            listSources: { Issue.record("Apple fallback must not query cloud credentials."); return [] }
+        )
+        #expect(setup == nil)
+        #expect(viewModel.narration.settings == nil)
+        let verses = [NarrationVerseUtterance(verseNumber: 1, text: "One")]
+        viewModel.narration.start(utterances: verses)
+        #expect(apple.startCallCount == 0)
+        #expect(viewModel.narration.lastError == .preemptedByVoiceInput)
+        audio.endCapture()
+        viewModel.narration.start(utterances: verses)
+        viewModel.narration._simulateEvent(.started(verseNumber: 1))
+        // The permanent app observer invokes this hook even when BibleScreen is unmounted.
+        audio.stopPlayback?()
+        #expect(viewModel.narration.state == .idle)
+        #expect(apple.stopCallCount == 1)
+        viewModel.narration.stop()
+
+        audio.beginCapture()
+        let starts = apple.startCallCount
+        viewModel.narration.start(utterances: verses)
+        #expect(apple.startCallCount == starts)
+        #expect(viewModel.narration.lastError == .preemptedByVoiceInput)
+        audio.endCapture()
+        viewModel.narration.start(utterances: verses)
+        #expect(apple.startCallCount == starts + 1)
+        #expect(viewModel.narration.lastError == nil)
+        viewModel.narration.stop()
+    }
+
     @Test("appletID is stable and matches the persisted shell value")
     func appletIDMatchesPlaceholderPersistence() {
         // The shell reads `UserDefaults["shell.activeAppletID"]` at launch.
@@ -262,5 +304,25 @@ struct BibleAppletTests {
         await applet.attach(to: bus)
         let secondCount = await bus.subscriberCount
         #expect(secondCount == firstCount)
+    }
+}
+
+private struct UnusedAppletSpeech: SpeechGenerating {
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        Issue.record("Persistence-free Apple narration must not request cloud speech.")
+        return Data()
+    }
+}
+
+private struct UnusedAppletKeychain: KeychainClient {
+    func getString(ref: String) async throws -> String? {
+        Issue.record("Apple fallback must not read cloud credentials.")
+        return nil
+    }
+    func setString(_ value: String, ref: String) async throws {
+        Issue.record("Apple fallback must not save cloud credentials.")
+    }
+    func delete(ref: String) async throws {
+        Issue.record("Apple fallback must not remove cloud credentials.")
     }
 }

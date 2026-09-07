@@ -6,6 +6,10 @@ import GRDB
 public enum ModelConfigurationRepositoryError: Error, Sendable, Equatable {
     /// `setSelected(id:)` referenced a row that doesn't exist.
     case unknownModel(id: String)
+    /// An update's original credential reference no longer matches, or its row was deleted.
+    case staleModel(id: String)
+    /// Unused keys remain durably tracked for cleanup on a subsequent launch.
+    case stagedKeyCleanupFailed
     /// `setSelected(id:)` referenced a row whose `kind` the running binary
     /// can't build a provider for (a native-search kind with no shipped
     /// adapter). Selecting it would demote every other row and then make
@@ -26,9 +30,12 @@ public protocol ModelConfigurationRepository: Sendable {
     func fetch(id: String) async throws -> ModelConfigurationRecord?
     /// The currently selected model, if any.
     func selected() async throws -> ModelConfigurationRecord?
-    /// Insert or update. Does **not** touch the Keychain — pair with
-    /// `storeAPIKey(_:ref:)` when persisting a freshly entered key.
+    /// Insert or update, atomically releasing the committed key's staging marker.
+    /// Does not touch Keychain; register a fresh reference before writing its secret.
     func save(_ record: ModelConfigurationRecord) async throws
+    /// Update an existing row only if its credential reference still matches the caller's snapshot.
+    /// Comparison and persistence are atomic; a stale edit cannot restore a retired reference or deleted row.
+    func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws
     /// Build and insert a record atomically, but only if the table has
     /// no other rows at the moment of the write. The `make` closure is
     /// called *inside* the write transaction — only when the table is
@@ -59,6 +66,14 @@ public protocol ModelConfigurationRepository: Sendable {
     func storeAPIKey(_ key: String, ref: String) async throws
     /// Read the plaintext key back out, or nil if no entry exists.
     func loadAPIKey(ref: String) async throws -> String?
+    /// Remove only the referenced secret, preserving the model row during a failed edit rollback.
+    func deleteAPIKey(ref: String) async throws
+    /// Remove a retired secret only when no persisted model, including unknown kinds, references it.
+    func deleteAPIKeyIfUnreferenced(ref: String) async throws
+    /// Durably records a fresh reference before any secret is written; never changes a model row.
+    func registerStagedAPIKey(ref: String) async throws
+    /// Deletes only this unused key and then its ledger row; referenced keys retain their secret.
+    func discardStagedAPIKey(ref: String) async throws
 }
 
 /// GRDB-backed `ModelConfigurationRepository`. The selected-exclusive
@@ -160,6 +175,25 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
     public func save(_ record: ModelConfigurationRecord) async throws {
         try await queue.write { db in
             try record.save(db)
+            if let ref = record.apiKeyRef { try ModelStagedKeyRecord.deleteOne(db, key: ref) }
+        }
+    }
+
+    public func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {
+        try await queue.write { db in
+            let matches = try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM modelConfiguration WHERE id = ? AND apiKeyRef IS ?)",
+                arguments: [record.id, expectedAPIKeyRef]
+            ) ?? false
+            guard matches else { throw ModelConfigurationRepositoryError.staleModel(id: record.id) }
+            // Update rather than upsert: a concurrent deletion must never resurrect its model.
+            try record.update(db)
+            if let previous = expectedAPIKeyRef, previous != record.apiKeyRef {
+                // Ownership of the retired secret survives termination immediately after commit.
+                try ModelStagedKeyRecord(id: previous).save(db)
+            }
+            if let ref = record.apiKeyRef { try ModelStagedKeyRecord.deleteOne(db, key: ref) }
         }
     }
 
@@ -274,6 +308,48 @@ public struct GRDBModelConfigurationRepository: ModelConfigurationRepository {
 
     public func loadAPIKey(ref: String) async throws -> String? {
         try await keychain.getString(ref: ref)
+    }
+
+    public func deleteAPIKey(ref: String) async throws {
+        try await keychain.delete(ref: ref)
+    }
+
+    public func deleteAPIKeyIfUnreferenced(ref: String) async throws {
+        // Do not use all(): its known-kind filter omits rows written by a newer app version.
+        let isReferenced = try await queue.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM modelConfiguration WHERE apiKeyRef = ?)",
+                arguments: [ref]
+            ) ?? true
+        }
+        guard !isReferenced else { return }
+        try await keychain.delete(ref: ref)
+    }
+
+    /// Registers a fresh reference before writing to Keychain, without exposing it through a model.
+    public func registerStagedAPIKey(ref: String) async throws {
+        try await queue.write { db in try ModelStagedKeyRecord(id: ref).insert(db) }
+    }
+
+    /// Removes one unused key and its ledger row; raw SQL protects references held by unknown model kinds.
+    public func discardStagedAPIKey(ref: String) async throws {
+        try await deleteAPIKeyIfUnreferenced(ref: ref)
+        // A failed metadata deletion remains retryable even when its secret is already absent.
+        _ = try await queue.write { db in try ModelStagedKeyRecord.deleteOne(db, key: ref) }
+    }
+
+    /// Recovers abandoned keys before any model editing is available. Never call during a live app session.
+    /// Individual failures retain their ledger row and do not prevent attempts for the remaining references.
+    public func recoverStagedAPIKeysAtStartup() async throws {
+        let refs = try await queue.read { db in
+            try ModelStagedKeyRecord.order(Column("id")).fetchAll(db).map(\.id)
+        }
+        var failed = false
+        for ref in refs {
+            do { try await discardStagedAPIKey(ref: ref) } catch { failed = true }
+        }
+        if failed { throw ModelConfigurationRepositoryError.stagedKeyCleanupFailed }
     }
 
     #if DEBUG

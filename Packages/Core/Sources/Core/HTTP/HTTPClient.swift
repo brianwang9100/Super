@@ -40,14 +40,16 @@ public enum HTTPError: Error, Sendable, Equatable {
 /// test stubs can deliver synthetic chunked responses.
 public final class URLSessionHTTPClient: HTTPClient {
     private let configuration: URLSessionConfiguration
+    private let allowsRedirects: Bool
 
-    public init(configuration: URLSessionConfiguration = .ephemeral) {
+    public init(configuration: URLSessionConfiguration = .ephemeral, allowsRedirects: Bool = true) {
         self.configuration = configuration
+        self.allowsRedirects = allowsRedirects
     }
 
     public func stream(_ request: URLRequest) -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { continuation in
-            let delegate = StreamingDelegate(continuation: continuation)
+            let delegate = StreamingDelegate(continuation: continuation, allowsRedirects: allowsRedirects)
             let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
             let task = session.dataTask(with: request)
 
@@ -68,6 +70,7 @@ public final class URLSessionHTTPClient: HTTPClient {
 private final class StreamingDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     typealias Continuation = AsyncThrowingStream<Data, Error>.Continuation
     private let continuation: Continuation
+    private let allowsRedirects: Bool
 
     /// Set when the response status is non-2xx. We then read (rather than
     /// cancel) the body so its bytes can be surfaced in `HTTPError.badStatus`,
@@ -79,8 +82,19 @@ private final class StreamingDelegate: NSObject, URLSessionDataDelegate, @unchec
     /// and we never want a runaway error response to balloon memory.
     private static let maxErrorBodyBytes = 8 * 1024
 
-    init(continuation: Continuation) {
+    init(continuation: Continuation, allowsRedirects: Bool) {
         self.continuation = continuation
+        self.allowsRedirects = allowsRedirects
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(allowsRedirects ? request : nil)
     }
 
     func urlSession(

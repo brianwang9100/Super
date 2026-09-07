@@ -1,0 +1,963 @@
+import AVFoundation
+import Core
+import Foundation
+import GRDB
+import Testing
+@testable import Bible
+
+/// Exercises opt-in persistence, credential ownership, bounded caching, and cancellation before audible playback.
+@Suite("OpenAI narration")
+@MainActor
+struct OpenAINarrationTests {
+    @Test func appleConnectionRechecksAfterVoiceDownload() async throws {
+        let probe = InstalledVoiceProbe()
+        let settings = NarrationSettingsController(
+            repository: GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory()),
+            keychain: InMemoryKeychainClient(), listSources: { [] },
+            appleVoicesInstalled: { await probe.installed }
+        )
+        #expect(settings.appleEnhancedVoicesAvailable == nil)
+        await settings.refreshAppleVoices()
+        #expect(settings.appleEnhancedVoicesAvailable == false)
+        await probe.setInstalled(true)
+        await settings.refreshAppleVoices()
+        #expect(settings.appleEnhancedVoicesAvailable == true)
+        #expect(settings.record.enabled == nil)
+        #expect(!settings.hasKey)
+    }
+
+    @Test func keychainWriteFailureLeavesConnectionUnconfigured() async throws {
+        let repository = GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory())
+        let settings = NarrationSettingsController(
+            repository: repository, keychain: RejectingNarrationKeychain(), listSources: { [] },
+            clock: FixedClock(), ids: DeterministicIDGenerator()
+        )
+        await #expect(throws: NarrationSettingsError.secureStorage) {
+            try await settings.saveDedicatedKey("test-key", enabled: true, expecting: 0)
+        }
+        #expect(try await repository.load() == nil)
+        #expect(settings.record.enabled == nil)
+        #expect(settings.record.keyRef == nil)
+        #expect(!settings.openAIAvailable)
+    }
+
+    @Test func freshInstallRequiresExplicitSaveAndPersistsOptOut() async throws {
+        let fixture = try SettingsFixture()
+        await fixture.settings.load()
+        #expect(fixture.settings.record.enabled == nil)
+        #expect(!fixture.settings.openAIAvailable)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        #expect(fixture.settings.openAIAvailable)
+        #expect(fixture.settings.record.preferredVoiceId == NarrationVoice.marin.id)
+        try await fixture.settings.setEnabled(false)
+        let reloaded = fixture.makeController()
+        await reloaded.load()
+        #expect(reloaded.record.enabled == false)
+        #expect(!reloaded.openAIAvailable)
+    }
+
+    @Test(arguments: ["borrowed", "dedicated", "enable"], [false, true])
+    func enablingAfterOptOutInitializesOnlyMissingVoicePreference(path: String, explicitApple: Bool) async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: false, useThisKey: true, expecting: 0)
+        if explicitApple { try await fixture.settings.setPreference(voice: .appleDefault, rate: 1) }
+        let revision = fixture.settings.record.revision
+        switch path {
+        case "borrowed":
+            try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: revision)
+        case "dedicated":
+            try await fixture.settings.saveDedicatedKey("dedicated", enabled: true, expecting: revision)
+        default:
+            try await fixture.settings.setEnabled(true)
+        }
+        #expect(fixture.settings.record.preferredVoiceId == (explicitApple ? NarrationVoice.appleDefault.id : NarrationVoice.marin.id))
+    }
+
+    @Test func addingSecondKeyPreservesExplicitNarrationSource() async throws {
+        let fixture = try SettingsFixture()
+        let second = ProviderAudioCredential(id: "other", name: "Other", keyRef: "other-ref")
+        try await fixture.keychain.setString("other-test-key", ref: second.keyRef)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        try await fixture.settings.configure(credential: second, enabled: true, useThisKey: false, expecting: 1)
+        #expect(fixture.settings.source?.id == fixture.source.id)
+        #expect(try await fixture.settings.apiKey() == "test-key")
+    }
+
+    @Test func staleDraftCannotOverrideNewerOptOut() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: false, useThisKey: true, expecting: 0)
+        await #expect(throws: NarrationSettingsError.self) {
+            try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        }
+        #expect(fixture.settings.record.enabled == false)
+    }
+
+    @Test func removingOwnedKeyDoesNotDeleteBorrowedChatKey() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.saveDedicatedKey("audio-key", enabled: true, expecting: 0)
+        let owned = try #require(fixture.settings.record.keyRef)
+        try await fixture.settings.removeDedicatedKey()
+        #expect(try await fixture.keychain.getString(ref: owned) == nil)
+        #expect(try await fixture.keychain.getString(ref: fixture.source.keyRef) == "test-key")
+        #expect(!fixture.settings.openAIAvailable)
+    }
+
+    @Test func missingCredentialStopsBeingAvailable() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        var invalidations = 0
+        fixture.settings.onInvalidated = { invalidations += 1 }
+        try await fixture.keychain.delete(ref: fixture.source.keyRef)
+        await fixture.settings.refreshCredentials()
+        #expect(invalidations == 1)
+        #expect(!fixture.settings.openAIAvailable)
+        await #expect(throws: SpeechGenerationError.missingKey) { try await fixture.settings.apiKey() }
+    }
+
+    @Test func cacheEvictsOldAudioAndClears() async throws {
+        let clock = FixedClock()
+        let cache = try NarrationAudioCache.makeInMemory(clock: clock, limit: 4)
+        try await cache.save(Data([1, 2]), for: "a")
+        clock.advance(by: 1)
+        try await cache.save(Data([3, 4]), for: "b")
+        clock.advance(by: 1)
+        _ = try await cache.audio(for: "a")
+        clock.advance(by: 1)
+        try await cache.save(Data([5, 6]), for: "c")
+        #expect(try await cache.audio(for: "b") == nil)
+        #expect(try await cache.audio(for: "a") != nil)
+        #expect(try await cache.byteCount() == 4)
+        try await cache.clear()
+        #expect(try await cache.byteCount() == 0)
+    }
+
+    @Test func clearingDownloadsStopsPlaybackAndPreservesTheConnection() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.saveDedicatedKey("audio-key", enabled: true, expecting: 0)
+        let cache = try NarrationAudioCache.makeInMemory()
+        try await cache.save(Data([1, 2, 3]), for: "cached-verse")
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: FakeNarrationService(), cloudService: cloud, settings: fixture.settings, cache: cache)
+        controller.voice = .marin
+        controller.start(utterances: [.init(verseNumber: 1, text: "One")])
+        controller._simulateEvent(.started(verseNumber: 1))
+
+        try await controller.clearCachedAudio()
+
+        #expect(controller.state == .idle)
+        #expect(cloud.stopCallCount == 1)
+        #expect(try await cache.byteCount() == 0)
+        #expect(fixture.settings.openAIAvailable)
+        #expect(try await fixture.settings.apiKey() == "audio-key")
+    }
+
+    @Test func cacheDirectoryLookupFailureFallsBackToWorkingMemoryCache() async throws {
+        let cache = try NarrationAudioCache.openOrInMemory(
+            directory: { throw CacheFixtureError.unavailable },
+            open: { _ in fatalError("A failed lookup must not attempt a disk open.") }
+        )
+        try await cache.save(Data([1, 2]), for: "verse")
+        #expect(try await cache.audio(for: "verse") == Data([1, 2]))
+    }
+
+    @Test func cacheOpenFailureFallsBackToWorkingMemoryCache() async throws {
+        let cache = try NarrationAudioCache.openOrInMemory(
+            directory: { URL(fileURLWithPath: "/unused-cache-fixture") },
+            open: { _ in throw CacheFixtureError.unavailable }
+        )
+        try await cache.save(Data([3, 4]), for: "verse")
+        #expect(try await cache.audio(for: "verse") == Data([3, 4]))
+    }
+
+    @Test func segmentationPreservesUnicodeAndWordBoundaries() {
+        let text = String(repeating: "In the beginning. 神愛世人 🌍 ", count: 100)
+        let parts = OpenAINarrationService.segments(text)
+        #expect(parts.joined() == text)
+        #expect(parts.allSatisfy { $0.utf8.count <= 1600 })
+        #expect(NarrationAudioCache.key(text: text, voice: .marin) != NarrationAudioCache.key(text: text, voice: .cedar))
+    }
+
+    @Test func stoppedDownloadCannotPlayOrCacheItsLateResult() async throws {
+        let generator = GatedSpeech()
+        let player = TestAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let stream = service.startSpeaking([.init(verseNumber: 1, text: "One")], rate: 1, voice: .marin)
+        let consumer = Task { var events: [NarrationEvent] = []; for await event in stream { events.append(event) }; return events }
+        await generator.waitUntilStarted()
+        let pending = service._pendingTask
+        service.stop()
+        await generator.complete()
+        await pending?.value
+        let events = await consumer.value
+        #expect(events == [.preparing(verseNumber: 1), .cancelled])
+        #expect(player.playCount == 0)
+        #expect(try await cache.byteCount() == 0)
+    }
+
+    @Test func pauseDuringDownloadDefersPlayerUntilResume() async throws {
+        let generator = GatedSpeech()
+        let player = TestAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let stream = service.startSpeaking([.init(verseNumber: 5, text: "One")], rate: 1.5, voice: .marin)
+        var iterator = stream.makeAsyncIterator()
+        #expect(await iterator.next() == .preparing(verseNumber: 5))
+        await generator.waitUntilStarted()
+        service.pause()
+        #expect(await iterator.next() == .paused)
+        await generator.complete()
+        // Wait until the service reaches its paused playback gate, with no scheduler polling.
+        await service._waitUntilReadyWhilePaused()
+        #expect(player.playCount == 0)
+        service.resume()
+        var events: [NarrationEvent] = []
+        while let event = await iterator.next() { events.append(event) }
+        #expect(events.contains(.started(verseNumber: 5)))
+        #expect(events.last == .completed)
+        #expect(player.rates == [1.5])
+        service.setVoice(NarrationVoice(company: .openAI, identifier: "cedar"))
+        #expect(player.playCount == 1)
+    }
+
+    @Test func cachedVersesDoNotAnnounceBufferingAtEveryBoundary() async throws {
+        let player = TestAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        for verse in verses {
+            try await cache.save(Data([1, 2, 3]), for: NarrationAudioCache.key(text: verse.text, voice: .marin))
+        }
+        let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) { "test-key" }
+        let stream = service.startSpeaking(verses, rate: 1, voice: .marin)
+        var events: [NarrationEvent] = []
+        for await event in stream { events.append(event) }
+        #expect(events == [
+            .started(verseNumber: 1), .finishedVerse(verseNumber: 1),
+            .started(verseNumber: 2), .finishedVerse(verseNumber: 2), .completed,
+        ])
+        #expect(player.playCount == 2)
+    }
+
+    @Test func slowLookAheadAnnouncesBufferingBeforeWaitingAndCanPause() async throws {
+        let generator = GatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        try await cache.save(Data([1]), for: NarrationAudioCache.key(text: "One", voice: .marin))
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking([.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilStarted()
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 1))
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        service.pause()
+        #expect(await events.next() == .paused)
+        await generator.complete()
+        await service._waitUntilReadyWhilePaused()
+        #expect(player.playCount == 1)
+        service.resume()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        #expect(await events.next() == .started(verseNumber: 2))
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 2))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+        #expect(player.playCount == 2)
+    }
+
+    @Test(arguments: [false, true])
+    func failedCachePersistenceDoesNotRegeneratePrefetchedAudio(failingReads: Bool) async {
+        let generator = CountingSpeech()
+        let player = TestAudioPlayer()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: UnwritableAudioCache(failingReads: failingReads)) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        var events: [NarrationEvent] = []
+        for await event in service.startSpeaking(verses, rate: 1, voice: .marin) { events.append(event) }
+        #expect(events.last == .completed)
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.clips == [Data("One".utf8), Data("Two".utf8)])
+    }
+
+    @Test func oversizedPrefetchedAudioStillPlaysWithoutRegeneration() async throws {
+        let generator = CountingSpeech()
+        let player = TestAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory(limit: 0)
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        for await _ in service.startSpeaking(verses, rate: 1, voice: .marin) {}
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.clips == [Data("One".utf8), Data("Two".utf8)])
+        #expect(try await cache.byteCount() == 0)
+    }
+
+    @Test(arguments: [false, true])
+    func nextJoinsSubmittedLookAheadWithoutBillingTwice(cacheWritesFail: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache: any NarrationAudioCaching = cacheWritesFail
+            ? UnwritableAudioCache(failingReads: false) : try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        await generator.complete()
+        #expect(await events.next() == .started(verseNumber: 2))
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 2))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+        _ = await submitted?.value
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.playCount == 2)
+    }
+
+    @Test(arguments: [false, true], [false, true])
+    func restartingCurrentVerseRetainsItsLookAhead(cacheWritesFail: Bool, completedBeforeRestart: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache: any NarrationAudioCaching = cacheWritesFail
+            ? UnwritableAudioCache(failingReads: false) : try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = try #require(service._pendingPrefetch)
+        if completedBeforeRestart { await generator.complete(); _ = await submitted.value }
+        for _ in 0..<2 {
+            service.skipBackward()
+            if cacheWritesFail { #expect(await events.next() == .preparing(verseNumber: 1)) }
+            #expect(await events.next() == .started(verseNumber: 1))
+            #expect(!submitted.isCancelled)
+        }
+        await generator.complete()
+        _ = await submitted.value
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 1))
+        if cacheWritesFail { #expect(await events.next() == .preparing(verseNumber: 2)) }
+        #expect(await events.next() == .started(verseNumber: 2))
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 2))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+        #expect(await generator.requests.filter { $0 == "Two" }.count == 1)
+        #expect(player.playCount == 4)
+    }
+
+    @Test func previousWhileJoiningCurrentPrefetchRetainsItUntilStop() async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let service = OpenAINarrationService(
+            generator: generator, player: player, cache: try NarrationAudioCache.makeInMemory()
+        ) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = try #require(service._pendingPrefetch)
+        // Double-Previous at the first verse is a no-op, including its look-ahead.
+        service.skipToPreviousVerse()
+        #expect(!submitted.isCancelled)
+        #expect(player.playCount == 1)
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let oldForeground = service._pendingTask
+        service.skipBackward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        #expect(!submitted.isCancelled)
+        let foreground = service._pendingTask
+        service.stop()
+        #expect(submitted.isCancelled)
+        await generator.complete()
+        await oldForeground?.value
+        await foreground?.value
+        _ = await submitted.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.playCount == 1)
+    }
+
+    @Test func stopCancelsLookAheadRetainedByNext() async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let foreground = service._pendingTask
+        service.stop()
+        await generator.complete()
+        await foreground?.value
+        _ = await submitted?.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+        #expect(player.playCount == 1)
+        #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .marin)) == nil)
+    }
+
+    @Test(arguments: [false, true])
+    func replacementWhileJoiningLookAheadCannotReuseOrClearObsoleteWork(changeVoice: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses = ["One", "Two", "Three", "Four"].enumerated().map {
+            NarrationVerseUtterance(verseNumber: $0.offset + 1, text: $0.element)
+        }
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let obsoletePrefetch = service._pendingPrefetch
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let obsoleteForeground = service._pendingTask
+        if changeVoice {
+            service.setVoice(NarrationVoice(company: .openAI, identifier: "cedar"))
+        } else {
+            service.skipForward()
+        }
+        let audibleVerse = changeVoice ? 2 : 3
+        #expect(await events.next() == .preparing(verseNumber: audibleVerse))
+        #expect(await events.next() == .started(verseNumber: audibleVerse))
+        let newPrefetch = service._pendingPrefetch
+        _ = await newPrefetch?.value
+        #expect(obsoletePrefetch?.isCancelled == true)
+        await generator.complete()
+        await obsoleteForeground?.value
+        _ = await obsoletePrefetch?.value
+        #expect(service._pendingPrefetch != nil)
+        #expect(player.playCount == 2)
+        #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .marin)) == nil)
+        if changeVoice {
+            #expect(try await cache.audio(for: NarrationAudioCache.key(text: "Two", voice: .cedar)) == Data("Two".utf8))
+        }
+        let foreground = service._pendingTask
+        service.stop()
+        await foreground?.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+    }
+
+    @Test func interruptionCancelsLookAheadAndPreservesCachedAudio() async throws {
+        let generator = GatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let firstKey = NarrationAudioCache.key(text: "One", voice: .marin)
+        let nextKey = NarrationAudioCache.key(text: "Two", voice: .marin)
+        try await cache.save(Data([1, 2, 3]), for: firstKey)
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilStarted()
+        let prefetch = service._pendingPrefetch
+        player.finishClip(event: .interrupted)
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+        await generator.complete()
+        _ = await prefetch?.value
+        #expect(try await cache.audio(for: firstKey) == Data([1, 2, 3]))
+        #expect(try await cache.audio(for: nextKey) == nil)
+        #expect(player.playCount == 1)
+    }
+
+    @Test func audioSessionFailurePreservesCachedAudioWhileDecodeFailureEvictsIt() async throws {
+        for unavailable in [true, false] {
+            let player = ControlledAudioPlayer()
+            let cache = try NarrationAudioCache.makeInMemory()
+            let key = NarrationAudioCache.key(text: "One", voice: .marin)
+            try await cache.save(Data([1, 2, 3]), for: key)
+            let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) { "test-key" }
+            var events = service.startSpeaking([.init(verseNumber: 1, text: "One")], rate: 1, voice: .marin).makeAsyncIterator()
+            #expect(await events.next() == .started(verseNumber: 1))
+            player.finishClip(event: unavailable ? .unavailable : .failed)
+            let terminal = await events.next()
+            if unavailable {
+                guard case .failed(.audioSessionFailed, _) = terminal else { Issue.record("Expected an audio-session failure."); return }
+            } else {
+                #expect(terminal == .failed(.speech(.invalidAudio), verseNumber: 1))
+            }
+            #expect(await events.next() == nil)
+            #expect(try await cache.audio(for: key) == (unavailable ? Data([1, 2, 3]) : nil))
+        }
+    }
+
+    @Test(arguments: [false, true])
+    func nativeClipRefusalEvictsCachedAudioAndRetryRegenerates(prepares: Bool) async throws {
+        let clip = RefusingNarrationClip(prepares: prepares)
+        let player = NarrationAudioPlayer(makePlayer: { _ in clip })
+        let cache = try NarrationAudioCache.makeInMemory()
+        let key = NarrationAudioCache.key(text: "One", voice: .marin)
+        try await cache.save(Data([1, 2, 3]), for: key)
+        let generator = CountingSpeech()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One")]
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        // No audible start should be emitted for either preparation or play refusal.
+        #expect(await events.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
+        #expect(await events.next() == nil)
+        #expect(try await cache.audio(for: key) == nil)
+        #expect(await generator.requests.isEmpty)
+        #expect(clip.playCount == (prepares ? 1 : 0))
+
+        var retry = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await retry.next() == .preparing(verseNumber: 1))
+        #expect(await retry.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
+        #expect(await retry.next() == nil)
+        #expect(await generator.requests == ["One"])
+    }
+
+    @Test func nativeResumeRefusalEndsSessionAndPreservesCachedAudio() async throws {
+        let clip = ResumeRefusingNarrationClip()
+        let player = NarrationAudioPlayer(makePlayer: { _ in clip })
+        let cache = try NarrationAudioCache.makeInMemory()
+        let key = NarrationAudioCache.key(text: "One", voice: .marin)
+        try await cache.save(Data([1, 2, 3]), for: key)
+        let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking([.init(verseNumber: 1, text: "One")], rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .started(verseNumber: 1))
+        service.pause()
+        #expect(await events.next() == .paused)
+        service.resume()
+        #expect(clip.playCount == 2)
+        #expect(clip.stopCount == 1)
+        // Avoid waiting forever on the broken adapter, which never terminates its stream.
+        guard clip.stopCount == 1 else { service.stop(); await service._waitForPendingTask(); return }
+        #expect(await events.next() == .resumed)
+        guard case .failed(.audioSessionFailed, _) = await events.next() else {
+            Issue.record("Resume refusal must offer audio-session recovery.")
+            service.stop()
+            return
+        }
+        #expect(await events.next() == nil)
+        #expect(try await cache.audio(for: key) == Data([1, 2, 3]))
+    }
+
+    @Test func immediatePlaybackFailureDoesNotStartLookAhead() async throws {
+        let cache = RemovalGatedAudioCache(cachedKey: NarrationAudioCache.key(text: "One", voice: .marin))
+        let generator = CountingSpeech()
+        let player = NarrationAudioPlayer(makePlayer: { _ in RefusingNarrationClip(prepares: false) })
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        await cache.waitForRemoval()
+        // Hold failure cleanup open and drain any speculative request before asserting.
+        _ = await service._pendingPrefetch?.value
+        #expect(await generator.requests.isEmpty)
+        await cache.finishRemoval()
+        #expect(await events.next() == .failed(.speech(.invalidAudio), verseNumber: 1))
+        #expect(await events.next() == nil)
+    }
+
+    @Test func longVerseReturnsToSpeakingAfterBufferingAnotherSegment() async throws {
+        let generator = GatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache = try NarrationAudioCache.makeInMemory()
+        let text = String(repeating: "x", count: 1601)
+        let firstSegment = try #require(OpenAINarrationService.segments(text).first)
+        try await cache.save(Data([1]), for: NarrationAudioCache.key(text: firstSegment, voice: .marin))
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking([.init(verseNumber: 5, text: text)], rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .started(verseNumber: 5))
+        player.finishClip()
+        #expect(await events.next() == .preparing(verseNumber: 5))
+        await generator.waitUntilStarted()
+        await generator.complete()
+        #expect(await events.next() == .resumed)
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 5))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+    }
+
+    @Test func explicitAppleFallbackResumesFailedVerseAndRetainsSavedPreference() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let apple = FakeNarrationService()
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: cloud, settings: fixture.settings)
+        controller.voice = .marin
+        let queue: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")]
+        controller.start(utterances: queue)
+        controller._simulateEvent(.preparing(verseNumber: 2))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        #expect(apple.lastStartArgs?.startingAt == 1)
+        #expect(controller.voice?.company == .apple)
+        controller.start(utterances: queue)
+        #expect(controller.voice == .marin)
+        #expect(cloud.startCallCount == 2)
+    }
+
+    @Test func capturePreemptsPlaybackAndBlocksRestart() {
+        let audio = AudioActivity()
+        let fake = FakeNarrationService()
+        let controller = NarrationController(service: fake, audioActivity: audio)
+        controller.start(utterances: [.init(verseNumber: 1, text: "One")])
+        audio.beginCapture()
+        #expect(controller.state == .idle)
+        #expect(fake.stopCallCount == 1)
+        controller.start(utterances: [.init(verseNumber: 1, text: "One")])
+        #expect(controller.lastError == .preemptedByVoiceInput)
+        #expect(fake.startCallCount == 1)
+    }
+
+    @Test func credentialFailureAdvancesRetryWithoutBufferingCachedHandoffs() async throws {
+        let cache = try NarrationAudioCache.makeInMemory()
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 4, text: "One"), .init(verseNumber: 7, text: "Two")]
+        for verse in verses {
+            try await cache.save(Data(verse.text.utf8), for: NarrationAudioCache.key(text: verse.text, voice: .marin))
+        }
+        let credential = NarrationCredentialProbe()
+        let player = ControlledAudioPlayer()
+        let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) {
+            guard credential.available else { throw SpeechGenerationError.missingKey }
+            return "test-key"
+        }
+        let retryService = FakeNarrationService()
+        let controller = NarrationController(service: retryService, cloudService: retryService)
+        controller.voice = .marin
+        controller.start(utterances: verses)
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        let started = try #require(await events.next())
+        #expect(started == .started(verseNumber: 4))
+        controller._simulateEvent(started)
+        // Complete the successful look-ahead before failing the next foreground lookup.
+        _ = await service._pendingPrefetch?.value
+        credential.available = false
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 4))
+        let failure = try #require(await events.next())
+        controller._simulateEvent(failure)
+        #expect(controller.lastError == .speech(.missingKey))
+        #expect(await events.next() == nil)
+        controller.retry()
+        #expect(retryService.lastStartArgs?.startingAt == 1)
+        #expect(retryService.lastStartArgs?.utterances == verses)
+        controller.stop()
+    }
+
+    @Test func retryAfterCaptureBlockedStartUsesNewRequestedPosition() {
+        let audio = AudioActivity()
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service, audioActivity: audio)
+        let verses = [4, 7, 9].map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: verses)
+        controller._simulateEvent(.started(verseNumber: 7))
+        audio.beginCapture()
+        controller.start(utterances: verses)
+        #expect(controller.lastError == .preemptedByVoiceInput)
+        audio.endCapture()
+        controller.retry()
+        #expect(service.lastStartArgs?.startingAt == 0)
+        #expect(service.startCallCount == 2)
+        controller.stop()
+    }
+
+    @Test func retryPreservesTemporaryAppleFallbackAndItsLaterVoiceRestoration() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let apple = FakeNarrationService()
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: cloud, settings: fixture.settings)
+        controller.voice = .marin
+        let verses = [4, 7, 9].map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: verses)
+        controller._simulateEvent(.started(verseNumber: 7))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        #expect(apple.lastStartArgs?.startingAt == 1)
+        controller._simulateEvent(.preparing(verseNumber: 9))
+        controller._simulateEvent(.failed(.audioSessionFailed("Unavailable")))
+        controller.retry()
+        #expect(apple.lastStartArgs?.startingAt == 2)
+        #expect(apple.startCallCount == 2)
+        #expect(cloud.startCallCount == 1)
+        #expect(controller.voice?.company == .apple)
+        controller._simulateEvent(.completed)
+        controller.start(utterances: verses)
+        #expect(controller.voice == .marin)
+        #expect(cloud.startCallCount == 2)
+        #expect(cloud.lastStartArgs?.startingAt == 0)
+        controller.stop()
+    }
+
+    @Test(arguments: [false, true])
+    func fallbackSpeedPreservesSavedVoiceUntilExplicitSelection(stopBeforeChangingSpeed: Bool) async throws {
+        let fixture = try SettingsFixture()
+        let apple = FakeNarrationService()
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: cloud, settings: fixture.settings)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let originalAppleId = fixture.settings.record.lastAppleVoiceId
+        let verses = [NarrationVerseUtterance(verseNumber: 7, text: "Verse seven")]
+        controller.start(utterances: verses)
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        if stopBeforeChangingSpeed { controller.stop() }
+
+        await controller.selectRate(1.5)
+
+        #expect(controller.voice?.company == .apple)
+        #expect(fixture.settings.record.preferredVoiceId == NarrationVoice.marin.id)
+        #expect(fixture.settings.record.lastAppleVoiceId == originalAppleId)
+        #expect(try await fixture.repository.load()?.rate == 1.5)
+        #expect(try await fixture.repository.load()?.preferredVoiceId == NarrationVoice.marin.id)
+        controller.stop()
+        controller.start(utterances: verses)
+        #expect(controller.voice == .marin)
+        #expect(cloud.lastStartArgs?.rate == 1.5)
+
+        await controller.selectVoice(.appleDefault)
+        await controller.selectRate(1.25)
+        #expect(fixture.settings.record.preferredVoiceId == NarrationVoice.appleDefault.id)
+        #expect(fixture.settings.record.rate == 1.25)
+        controller.stop()
+    }
+
+    @Test func failedFallbackSpeedSavePreservesPlaybackAndPreferences() async throws {
+        let fixture = try SettingsFixture()
+        let apple = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: FakeNarrationService(), settings: fixture.settings)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        controller.start(utterances: [.init(verseNumber: 7, text: "Verse seven")])
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        let original = fixture.settings.record
+        try await fixture.database.queue.write { db in
+            try db.execute(sql: """
+                CREATE TEMP TRIGGER reject_speed BEFORE UPDATE ON narrationSettings
+                BEGIN SELECT RAISE(ABORT, 'Injected speed save failure'); END
+                """)
+        }
+
+        await controller.selectRate(1.5)
+
+        #expect(controller.rate == 1)
+        #expect(controller.voice?.company == .apple)
+        #expect(fixture.settings.record == original)
+        #expect(try await fixture.repository.load() == original)
+        #expect(fixture.settings.errorMessage == "Playback speed could not be saved. Try again.")
+        controller.stop()
+    }
+
+    @Test func appleFallbackResumesTheLatestAudibleCachedVerse() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let apple = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: FakeNarrationService(), settings: fixture.settings)
+        controller.voice = .marin
+        let verses = (1...4).map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: verses)
+        controller._simulateEvent(.preparing(verseNumber: 1))
+        for verse in 1...3 { controller._simulateEvent(.started(verseNumber: verse)) }
+        controller._simulateEvent(.failed(.speech(.invalidAudio)))
+        controller.useAppleVoice()
+        #expect(apple.lastStartArgs?.startingAt == 2)
+    }
+}
+
+@MainActor
+private struct SettingsFixture {
+    let database: BibleDatabase
+    let repository: GRDBNarrationSettingsRepository
+    let keychain = InMemoryKeychainClient(initial: ["chat-ref": "test-key"])
+    let source = ProviderAudioCredential(id: "chat", name: "OpenAI Chat", keyRef: "chat-ref")
+    let settings: NarrationSettingsController
+    init() throws {
+        database = try BibleDatabase.makeInMemory()
+        repository = GRDBNarrationSettingsRepository(database: database)
+        let source = source
+        settings = NarrationSettingsController(repository: repository, keychain: keychain, listSources: { [source] }, clock: FixedClock(), ids: DeterministicIDGenerator())
+    }
+    func makeController() -> NarrationSettingsController {
+        let source = source
+        return NarrationSettingsController(repository: repository, keychain: keychain, listSources: { [source] })
+    }
+}
+
+private actor GatedSpeech: SpeechGenerating {
+    private var started = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var result: CheckedContinuation<Data, Never>?
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        started = true
+        entry?.resume(); entry = nil
+        return await withCheckedContinuation { result = $0 }
+    }
+    func waitUntilStarted() async { if !started { await withCheckedContinuation { entry = $0 } } }
+    func complete() { result?.resume(returning: Data([1, 2, 3])); result = nil }
+}
+
+private actor NextVerseGatedSpeech: SpeechGenerating {
+    private(set) var requests: [String] = []
+    private var submitted = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Data, Never>?
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        requests.append(text)
+        guard text == "Two", !submitted else { return Data(text.utf8) }
+        submitted = true
+        entry?.resume(); entry = nil
+        return await withCheckedContinuation { completion = $0 }
+    }
+    func waitUntilSubmitted() async { if !submitted { await withCheckedContinuation { entry = $0 } } }
+    func complete() { completion?.resume(returning: Data("Two".utf8)); completion = nil }
+}
+
+private struct UnexpectedSpeech: SpeechGenerating {
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        fatalError("Cached narration must not request speech.")
+    }
+}
+
+private actor CountingSpeech: SpeechGenerating {
+    private(set) var requests: [String] = []
+    func generate(text: String, voice: OpenAISpeechVoice, apiKey: String) async throws -> Data {
+        requests.append(text)
+        return Data(text.utf8)
+    }
+}
+
+private enum CacheFixtureError: Error { case unavailable }
+
+private struct UnwritableAudioCache: NarrationAudioCaching {
+    let failingReads: Bool
+    func audio(for key: String) async throws -> Data? {
+        if failingReads { throw CacheFixtureError.unavailable }
+        return nil
+    }
+    func save(_ audio: Data, for key: String) async throws { throw CacheFixtureError.unavailable }
+    func remove(_ key: String) async throws {}
+    func clear() async throws {}
+    func byteCount() async throws -> Int { 0 }
+}
+
+@MainActor
+private final class TestAudioPlayer: NarrationAudioPlaying {
+    var playCount = 0
+    var rates: [Float] = []
+    var clips: [Data] = []
+    func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent> {
+        playCount += 1; rates.append(rate); clips.append(audio)
+        return AsyncStream { $0.yield(.started); $0.yield(.finished); $0.finish() }
+    }
+    func pause() {}
+    func resume() {}
+    func stop() {}
+    func setRate(_ rate: Float) {}
+}
+
+@MainActor
+private final class ControlledAudioPlayer: NarrationAudioPlaying {
+    private var continuation: AsyncStream<NarrationAudioEvent>.Continuation?
+    private(set) var playCount = 0
+
+    func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent> {
+        precondition(continuation == nil, "Finish the current clip before playing another.")
+        playCount += 1
+        let (stream, continuation) = AsyncStream<NarrationAudioEvent>.makeStream()
+        self.continuation = continuation
+        continuation.yield(.started)
+        return stream
+    }
+    func finishClip(event: NarrationAudioEvent = .finished) {
+        precondition(continuation != nil, "No clip is playing.")
+        continuation?.yield(event)
+        continuation?.finish()
+        continuation = nil
+    }
+    func pause() {}
+    func resume() {}
+    func stop() { continuation?.finish(); continuation = nil }
+    func setRate(_ rate: Float) {}
+}
+
+@MainActor
+private final class NarrationCredentialProbe {
+    var available = true
+}
+
+private actor InstalledVoiceProbe {
+    private(set) var installed = false
+    func setInstalled(_ value: Bool) { installed = value }
+}
+
+/// Reproduces an unsigned simulator app's rejected Keychain write without touching real credentials.
+private struct RejectingNarrationKeychain: KeychainClient {
+    func getString(ref: String) async throws -> String? { nil }
+    func setString(_ value: String, ref: String) async throws {
+        throw KeychainError.unhandledStatus(-34018)
+    }
+    func delete(ref: String) async throws {
+        // A failed write may be partial; only its freshly staged reference may be removed.
+        #expect(ref == "id-2")
+    }
+}
+
+@MainActor
+private final class RefusingNarrationClip: NarrationClipPlaying {
+    weak var delegate: (any AVAudioPlayerDelegate)?
+    var enableRate = false
+    var rate: Float = 1
+    private let prepares: Bool
+    private(set) var playCount = 0
+
+    init(prepares: Bool) { self.prepares = prepares }
+    func prepareToPlay() -> Bool { prepares }
+    func play() -> Bool { playCount += 1; return false }
+    func pause() {}
+    func stop() {}
+}
+
+@MainActor
+private final class ResumeRefusingNarrationClip: NarrationClipPlaying {
+    weak var delegate: (any AVAudioPlayerDelegate)?
+    var enableRate = false
+    var rate: Float = 1
+    private(set) var playCount = 0
+    private(set) var stopCount = 0
+    func prepareToPlay() -> Bool { true }
+    func play() -> Bool { playCount += 1; return playCount == 1 }
+    func pause() {}
+    func stop() { stopCount += 1 }
+}
+
+private actor RemovalGatedAudioCache: NarrationAudioCaching {
+    let cachedKey: String
+    private var removing = false
+    private var entry: CheckedContinuation<Void, Never>?
+    private var completion: CheckedContinuation<Void, Never>?
+
+    init(cachedKey: String) { self.cachedKey = cachedKey }
+    func audio(for key: String) async throws -> Data? { key == cachedKey ? Data([1, 2, 3]) : nil }
+    func save(_ audio: Data, for key: String) async throws {}
+    func remove(_ key: String) async throws {
+        removing = true
+        entry?.resume(); entry = nil
+        await withCheckedContinuation { completion = $0 }
+    }
+    func waitForRemoval() async { if !removing { await withCheckedContinuation { entry = $0 } } }
+    func finishRemoval() { completion?.resume(); completion = nil }
+    func clear() async throws {}
+    func byteCount() async throws -> Int { 3 }
+}

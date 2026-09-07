@@ -862,12 +862,24 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
+    @Test("OpenAI setup offers explicit narration opt-in", arguments: ["light", "dark", "xxl"])
+    func openAINarrationSetup(appearance: String) async {
+        let audio = ProviderAudioSetup(snapshot: { ProviderAudioSnapshot(enabled: nil, source: nil, revision: 0) }, commit: { _, _, _, _ in })
+        await verifyCreateWithProvider(
+            theme: appearance == "dark" ? .vellumDark : .vellumLight, selection: .openAI,
+            availability: .available, existingAppleFoundation: false, name: "openai_narration_\(appearance)",
+            audioSetup: audio, apiKey: "sk-snapshot-only", dynamicType: appearance == "xxl" ? .xxLarge : .large,
+            function: "openAINarrationSetup_\(appearance)"
+        )
+    }
+
     private func verifyCreateWithProvider(
         theme: SuperTheme.Identifier,
         selection: SettingsModelDetailPane.InitialSelection,
         availability: AppleFoundationAvailability,
         existingAppleFoundation: Bool,
         name: String,
+        audioSetup: ProviderAudioSetup? = nil,
         contextWindowError: String? = nil,
         apiKey: String? = nil,
         fetchedModels: [String: [LLMCatalogModel]] = [:],
@@ -875,7 +887,7 @@ struct SettingsSheetSnapshotTests {
         dynamicType: DynamicTypeSize = .large,
         function: String = #function
     ) async {
-        let viewModel = makeViewModel(appleFoundationAvailability: availability)
+        let viewModel = makeViewModel(appleFoundationAvailability: availability, audioSetup: audioSetup)
         viewModel._setSnapshotState(
             settings: .default,
             models: existingAppleFoundation
@@ -906,6 +918,40 @@ struct SettingsSheetSnapshotTests {
     @Test("model detail seeded form (edit flow)")
     func modelDetailEdit() async {
         await verify(theme: .vellumLight, pane: .modelDetail(id: "opus"), name: "settings_model_detail_edit_light")
+    }
+
+    @Test("model detail disables Save and Delete during a shared mutation")
+    func modelDetailBusy() async {
+        await verifyBusyModelDetail(theme: .vellumLight, name: "settings_model_detail_busy_light")
+    }
+
+    @Test("model detail disables Save and Delete during a shared mutation (dark)")
+    func modelDetailBusyDark() async {
+        await verifyBusyModelDetail(theme: .vellumDark, name: "settings_model_detail_busy_dark")
+    }
+
+    private func verifyBusyModelDetail(
+        theme: SuperTheme.Identifier, name: String, function: String = #function
+    ) async {
+        let gate = SnapshotModelMutationGate()
+        let viewModel = makeViewModel(modelRepository: NoopModelRepository(fetchGate: gate))
+        viewModel._setSnapshotState(
+            settings: .default, models: Self.sampleModels, tools: Self.sampleTools, chatCount: 7
+        )
+        let save = Task {
+            await viewModel.updateModel(
+                id: "opus", name: "Pending", baseURL: nil, modelId: "claude-opus-4-7",
+                apiKey: "", supportsThinking: true, maxContextTokens: 200_000
+            )
+        }
+        await gate.waitUntilEntered()
+        #expect(viewModel.isModelMutationInFlight(id: "opus"))
+        let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .modelDetail(id: "opus"))
+            .superTheme(.make(theme))
+            .frame(width: Self.frame.width, height: Self.frame.height)
+        recordOrCompare(view: view, name: name, function: function)
+        await gate.release()
+        _ = await save.value
     }
 
     // Locks in the `baseURL == nil` init path introduced by the
@@ -1464,7 +1510,9 @@ struct SettingsSheetSnapshotTests {
     }
 
     private func makeViewModel(
-        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible)
+        appleFoundationAvailability: AppleFoundationAvailability = .unavailable(.deviceNotEligible),
+        audioSetup: ProviderAudioSetup? = nil,
+        modelRepository: any ModelConfigurationRepository = NoopModelRepository()
     ) -> SettingsViewModel {
         // Snapshots default to `.unavailable(.deviceNotEligible)` so the
         // host's real `SystemLanguageModel.default.availability` (which
@@ -1476,14 +1524,15 @@ struct SettingsSheetSnapshotTests {
         SettingsViewModel(
             appInfo: Self.appInfo,
             settingRepository: NoopSettingRepository(),
-            modelRepository: NoopModelRepository(),
+            modelRepository: modelRepository,
             conversationRepository: NoopConversationRepository(),
             toolRegistry: ToolRegistry(),
             userPersonalizationReceiver: FakeUserPersonalizationReceiver(),
             autoCompactPolicyReceiver: FakeAutoCompactPolicyReceiver(),
             webSearchPolicyReceiver: FakeWebSearchPolicyReceiver(),
             appleFoundationAvailability: appleFoundationAvailability,
-            appleFoundationContextTokens: 4_096
+            appleFoundationContextTokens: 4_096,
+            audioSetup: audioSetup
         )
     }
 }
@@ -1557,16 +1606,48 @@ private struct NoopSettingRepository: SettingRepository {
     func all() async throws -> [String: String] { [:] }
 }
 
+private actor SnapshotModelMutationGate {
+    private var entered = false
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        entered = true
+        for waiter in entryWaiters { waiter.resume() }
+        entryWaiters.removeAll()
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
+
+    func release() {
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
 private struct NoopModelRepository: ModelConfigurationRepository {
+    var fetchGate: SnapshotModelMutationGate?
     func all() async throws -> [ModelConfigurationRecord] { [] }
-    func fetch(id: String) async throws -> ModelConfigurationRecord? { nil }
+    func fetch(id: String) async throws -> ModelConfigurationRecord? {
+        await fetchGate?.suspend()
+        return nil
+    }
     func selected() async throws -> ModelConfigurationRecord? { nil }
     func save(_ record: ModelConfigurationRecord) async throws {}
+    func update(_ record: ModelConfigurationRecord, expectedAPIKeyRef: String?) async throws {}
     func insertIfEmpty(make: @Sendable () -> ModelConfigurationRecord) async throws -> ModelConfigurationRecord? { nil }
     func delete(id: String) async throws {}
     func setSelected(id: String) async throws {}
     func storeAPIKey(_ key: String, ref: String) async throws {}
     func loadAPIKey(ref: String) async throws -> String? { nil }
+    func deleteAPIKey(ref: String) async throws {}
+    func deleteAPIKeyIfUnreferenced(ref: String) async throws {}
+    func registerStagedAPIKey(ref: String) async throws {}
+    func discardStagedAPIKey(ref: String) async throws {}
 }
 
 private struct NoopConversationRepository: ConversationRepository {

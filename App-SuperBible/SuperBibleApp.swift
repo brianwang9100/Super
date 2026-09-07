@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct SuperBibleApp: App {
     @State private var state: SuperBibleBootstrapState = .loading
+    @State private var isBootstrapping = false
     @Environment(\.scenePhase) private var scenePhase
 
     /// Owns the bulk-annotation `BGProcessingTask` registration + lifecycle.
@@ -38,6 +39,11 @@ struct SuperBibleApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
+                    // This observer outlives the Bible backdrop, so narration is
+                    // stopped even after switching to another applet.
+                    if phase != .active, case .ready(let dependencies) = state {
+                        dependencies.audioActivity.stopPlayback?()
+                    }
                     switch phase {
                     case .background:
                         // Schedule a processing task if a run is still active, so
@@ -54,6 +60,9 @@ struct SuperBibleApp: App {
     }
 
     private func load() async {
+        guard case .loading = state, !isBootstrapping else { return }
+        isBootstrapping = true
+        defer { isBootstrapping = false }
         do {
             let dependencies = try await SuperBibleAppBootstrap.bootstrap()
             backgroundController.attach(dependencies.bulkAnnotationBackground)

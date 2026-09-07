@@ -10,6 +10,11 @@ import SwiftUI
 /// settings-side telemetry can join under one filter.
 private let chatSettingsLog = Logger(subsystem: "com.brianwang.Super", category: "chat-settings")
 
+/// A model edit failed, and its unused staged secret could not be removed from Keychain.
+private enum ModelCredentialSaveError: Error, Sendable {
+    case stagedKeyCleanupFailed
+}
+
 /// View model backing `SettingsSheet`. Owns the resolved `ChatSettings`
 /// snapshot, the configured-models list, the registered-tools list, and the
 /// account chrome data shown in the root pane. Mutations write through to
@@ -55,6 +60,7 @@ public final class SettingsViewModel {
         /// instead of re-fetching the record — without this projection the
         /// field would silently read `nil` and the toggle would show "off"
         /// for a row that actually has search configured.
+        public let providerId: String?
         public let searchBackend: String?
 
         public init(
@@ -69,7 +75,8 @@ public final class SettingsViewModel {
             modelId: String = "",
             supportsThinking: Bool = false,
             hasAPIKey: Bool = false,
-            searchBackend: String? = nil
+            searchBackend: String? = nil,
+            providerId: String? = nil
         ) {
             self.id = id
             self.kind = kind
@@ -83,6 +90,7 @@ public final class SettingsViewModel {
             self.supportsThinking = supportsThinking
             self.hasAPIKey = hasAPIKey
             self.searchBackend = searchBackend
+            self.providerId = providerId
         }
     }
 
@@ -127,12 +135,9 @@ public final class SettingsViewModel {
     /// on the Data row in the root pane.
     public private(set) var chatCount: Int = 0
 
-    /// User-facing error message from the most recent `createModel` /
-    /// `updateModel` attempt, or `nil` when the last attempt succeeded or
-    /// none has been made. The model-detail pane reads this to render an
-    /// inline error under the Save button — without it, a Keychain or
-    /// repository failure produces a silent dismiss and the user is left
-    /// wondering why no row appeared.
+    /// Inline model mutation error for the current form. Operations with an
+    /// originating session cannot clear or replace another form's error.
+    /// Non-form callers retain the latest-attempt error behavior.
     public private(set) var modelEditError: String?
 
     /// In-memory, session-scoped cache of live "list models" results, keyed
@@ -168,7 +173,13 @@ public final class SettingsViewModel {
     /// produces the native push/pop slide animation. Public so external
     /// callers (e.g. a chat-side affordance) can deep-link into a pane:
     /// `viewModel.openPane(.modelDetail(id: nil))`.
-    public var navigationPath: [SettingsSheet.Pane] = []
+    public var navigationPath: [SettingsSheet.Pane] = [] {
+        didSet {
+            guard navigationPath != oldValue else { return }
+            navigationGeneration += 1
+            activeModelFormSession = nil
+        }
+    }
 
     /// The pane shown at the base of the navigation stack. `.root` for the
     /// normal Settings entry; a deep-linked pane (e.g. `.models` from the
@@ -183,6 +194,16 @@ public final class SettingsViewModel {
     /// bundle's actual version.
     public let appInfo: SuperAppInfo
 
+    public let audioSetup: ProviderAudioSetup?
+    private let eventBus: SuperEventBus?
+    public private(set) var lastSavedModel: ModelConfigurationRecord?
+    private var modelMutationIDs: Set<String> = []
+    private var modelFormGeneration = 0
+    private var activeModelFormSession: Int?
+    private var navigationGeneration = 0
+    private var pendingPanePop: Task<Void, Never>?
+    /// Test seam for holding the UIKit draft flush before a deferred navigation mutation.
+    var flushPaneCleanup: @MainActor () async -> Void = { await Task.yield() }
     private let store: ChatSettingsStore
     private let modelRepository: any ModelConfigurationRepository
     private let conversationRepository: any ConversationRepository
@@ -284,8 +305,12 @@ public final class SettingsViewModel {
         appleFoundationAvailability: AppleFoundationAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         ),
-        appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens
+        appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens,
+        audioSetup: ProviderAudioSetup? = nil,
+        eventBus: SuperEventBus? = nil
     ) {
+        self.audioSetup = audioSetup
+        self.eventBus = eventBus
         self.appInfo = appInfo
         self.store = ChatSettingsStore(repository: settingRepository)
         self.modelRepository = modelRepository
@@ -396,7 +421,8 @@ public final class SettingsViewModel {
                 modelId: record.modelId,
                 supportsThinking: record.supportsThinking,
                 hasAPIKey: keyExists,
-                searchBackend: record.searchBackend
+                searchBackend: record.searchBackend,
+                providerId: record.providerId
             ))
         }
         models = rows
@@ -660,7 +686,7 @@ public final class SettingsViewModel {
     /// deep-links (e.g. opening Settings preconfigured to model detail).
     public func openPane(_ pane: SettingsSheet.Pane) {
         guard pane != .root else {
-            navigationPath.removeAll()
+            popToRoot()
             return
         }
         navigationPath.append(pane)
@@ -676,12 +702,15 @@ public final class SettingsViewModel {
     /// tick so SwiftUI flushes the @State change into UIKit before the
     /// view is torn down.
     public func popPane() {
+        activeModelFormSession = nil
+        navigationGeneration += 1
+        let generation = navigationGeneration
         if let cleanup = beforePopCleanup {
             beforePopCleanup = nil
             cleanup()
-            Task { @MainActor in
-                await Task.yield()
-                guard !navigationPath.isEmpty else { return }
+            pendingPanePop = Task { @MainActor in
+                await flushPaneCleanup()
+                guard navigationGeneration == generation, !navigationPath.isEmpty else { return }
                 navigationPath.removeLast()
             }
         } else {
@@ -694,12 +723,17 @@ public final class SettingsViewModel {
     /// dismiss so re-presenting always starts at root. Runs the active
     /// pane's cleanup first for the same reason as `popPane()`.
     public func popToRoot() {
+        activeModelFormSession = nil
+        navigationGeneration += 1
         if let cleanup = beforePopCleanup {
             beforePopCleanup = nil
             cleanup()
         }
         navigationPath.removeAll()
     }
+
+    /// Waits for the deferred draft flush in deterministic navigation tests.
+    func waitForPendingPanePop() async { await pendingPanePop?.value }
 
     /// Optional hook the active pane installs in `onAppear` and tears
     /// down in `onDisappear`. `popPane()` and `popToRoot()` invoke it
@@ -711,19 +745,6 @@ public final class SettingsViewModel {
 
     // MARK: - Model CRUD
 
-    /// Insert a brand-new model row. Stores the API key under a freshly
-    /// generated Keychain ref, then writes the record. The generated ids
-    /// (record + key ref) are injectable so tests can pin them.
-    /// Also registers a matching `LLMProvider` with the registry (when
-    /// injected) so the chat surface can use the new model immediately —
-    /// without it the user would have to relaunch the app.
-    ///
-    /// On failure, sets ``modelEditError`` to a human-readable string and
-    /// logs the underlying error via the unified log. Callers
-    /// (`SettingsModelDetailPane`) read ``modelEditError`` to decide
-    /// whether to pop the pane (nil → success, pop; non-nil → keep the
-    /// pane up so the user sees the error). Re-trying clears the error
-    /// at the start of the next attempt.
     /// `true` when an `.appleFoundation` row already exists. The Add-Model
     /// preset picker uses this to disable the Apple Intelligence preset
     /// (one AFM row is enough — adding a second would only confuse the
@@ -735,26 +756,29 @@ public final class SettingsViewModel {
 
     /// Persist a new `.appleFoundation` row, register the live AFM
     /// provider (when the launch-time availability snapshot says AFM is
-    /// usable), and refresh the in-memory list. Mirrors
-    /// ``createModel(name:baseURL:modelId:apiKey:supportsThinking:maxContextTokens:kind:searchBackend:idGenerator:now:)``
+    /// usable), and refresh the in-memory list. Mirrors `createModel`
     /// for the openAI-compatible kind, but skips the Keychain write (AFM
     /// rows have no API key) and force-sets the shape Apple's on-device
     /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
     /// "system-default"`). The `idGenerator` and `now` parameters are
     /// injectable so tests can pin the id and timestamp.
     ///
-    /// Error contract matches `createModel`: on failure sets
-    /// ``modelEditError`` and refreshes the list so the pane can show
-    /// the message and the row count agrees with what actually persisted.
+    /// Returns the committed row or nil on failure. Errors are published only
+    /// while `formSession` is current; omitting it retains non-form behavior.
+    @discardableResult
     public func createAppleFoundationModel(
         name: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
         idGenerator: () -> String = { UUID().uuidString },
-        now: Date = Date()
-    ) async {
-        modelEditError = nil
+        now: Date = Date(),
+        formSession: Int? = nil
+    ) async -> ModelConfigurationRecord? {
         let recordId = idGenerator()
+        guard modelMutationIDs.insert(recordId).inserted else { return nil }
+        defer { modelMutationIDs.remove(recordId) }
+        publishModelEditError(nil, formSession: formSession)
+        lastSavedModel = nil
         do {
             let record = ModelConfigurationRecord(
                 id: recordId,
@@ -769,16 +793,22 @@ public final class SettingsViewModel {
                 isSelected: false
             )
             try await modelRepository.save(record)
+            lastSavedModel = record
             await registerProvider(for: record, apiKey: nil)
             await loadModels()
             onModelsChanged?()
+            return record
         } catch {
             chatSettingsLog.error("createAppleFoundationModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession)
             await loadModels()
+            return nil
         }
     }
 
+    /// Persists a new model and returns its committed row, or nil on failure.
+    /// A supplied form session owns error clearing and publication; credential cleanup always finishes.
+    @discardableResult
     public func createModel(
         name: String,
         baseURL: URL,
@@ -788,14 +818,18 @@ public final class SettingsViewModel {
         maxContextTokens: Int,
         kind: LLMProviderKind = .openAICompatible,
         searchBackend: String? = nil,
+        providerId: String? = nil,
         idGenerator: () -> String = { UUID().uuidString },
-        now: Date = Date()
-    ) async {
-        modelEditError = nil
+        now: Date = Date(),
+        formSession: Int? = nil
+    ) async -> ModelConfigurationRecord? {
         let ref = idGenerator()
         let recordId = idGenerator()
+        guard modelMutationIDs.insert(recordId).inserted else { return nil }
+        defer { modelMutationIDs.remove(recordId) }
+        publishModelEditError(nil, formSession: formSession)
+        lastSavedModel = nil
         do {
-            try await modelRepository.storeAPIKey(apiKey, ref: ref)
             let record = ModelConfigurationRecord(
                 id: recordId,
                 name: name,
@@ -811,18 +845,25 @@ public final class SettingsViewModel {
                 supportsThinking: supportsThinking,
                 maxContextTokens: maxContextTokens,
                 isSelected: false,
-                searchBackend: searchBackend
+                searchBackend: searchBackend,
+                providerId: providerId
             )
-            try await modelRepository.save(record)
+            try await withStagedAPIKey(apiKey, ref: ref) { try await modelRepository.save(record) }
+            lastSavedModel = record
+            await eventBus?.publish(.credentialChanged(id: record.id))
             await registerProvider(for: record, apiKey: apiKey)
             await loadModels()
             onModelsChanged?()
+            return record
         } catch {
             chatSettingsLog.error("createModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            if error is ModelCredentialSaveError {
+                publishModelEditError("Could not save model. An unused key could not be removed from secure storage. Restart the app to retry cleanup.", formSession: formSession)
+            } else { publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession) }
             // Keep models list in sync with what actually persisted; a
             // failed save just means the row never appears.
             await loadModels()
+            return nil
         }
     }
 
@@ -832,15 +873,16 @@ public final class SettingsViewModel {
     /// Re-registers the provider so the live chat surface picks up the
     /// new endpoint/model id without an app restart.
     ///
-    /// Same error-surface contract as `createModel(...)`: on failure
-    /// sets ``modelEditError`` and the pane stays open so the user can
-    /// retry. On success ``modelEditError`` is nil.
+    /// Returns the committed row, or nil on failure or an overlapping mutation.
+    /// A supplied form session owns error clearing and publication; accepted
+    /// persistence and credential cleanup continue after the form closes.
     /// - Parameter searchSelection: The resolved `(kind, searchBackend)` the
     ///   web-search picker produced. `nil` (the default) preserves the row's
     ///   existing kind *and* search backend — keeping every non-search edit
     ///   path unchanged. When non-nil, both are rewritten: flipping Off↔Native
     ///   swaps the persisted `kind` (and base URL, supplied via `baseURL`) so
     ///   `makeLLMProvider` rebuilds the row as the native adapter or back.
+    @discardableResult
     public func updateModel(
         id: String,
         name: String,
@@ -849,17 +891,19 @@ public final class SettingsViewModel {
         apiKey: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
-        searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil
-    ) async {
-        modelEditError = nil
+        searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil,
+        providerId: String? = nil,
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        formSession: Int? = nil
+    ) async -> ModelConfigurationRecord? {
+        guard modelMutationIDs.insert(id).inserted else { return nil }
+        defer { modelMutationIDs.remove(id) }
+        publishModelEditError(nil, formSession: formSession)
+        lastSavedModel = nil
         do {
             guard let existing = try await modelRepository.fetch(id: id) else {
-                modelEditError = "Could not save model: row no longer exists."
-                return
-            }
-            // `.appleFoundation` rows have no `apiKeyRef`; guard avoids nil crash.
-            if !apiKey.isEmpty, let ref = existing.apiKeyRef {
-                try await modelRepository.storeAPIKey(apiKey, ref: ref)
+                publishModelEditError("Could not save model: row no longer exists.", formSession: formSession)
+                return nil
             }
             // Target kind/backend: the picker's resolved pair when supplied,
             // else preserve what's on disk (every non-search edit).
@@ -907,13 +951,25 @@ public final class SettingsViewModel {
                 isSelected: existing.isSelected,
                 // Resolved by the web-search picker (or preserved when the
                 // edit didn't touch search) — see `searchSelection`.
-                searchBackend: targetSearchBackend
+                searchBackend: targetSearchBackend,
+                providerId: providerId ?? existing.providerId
             )
-            try await modelRepository.save(updated)
+            let committed = try await saveModelUpdate(updated, apiKey: apiKey, idGenerator: idGenerator)
+            lastSavedModel = committed
+            let wasDirectOpenAI = ProviderAudioCredential.isDirectOpenAI(
+                providerId: existing.providerId, baseURL: existing.baseURL
+            )
+            let isDirectOpenAI = ProviderAudioCredential.isDirectOpenAI(
+                providerId: committed.providerId, baseURL: committed.baseURL
+            )
+            // Narration borrows credentials, so metadata-only edits must not stop playback.
+            if existing.apiKeyRef != committed.apiKeyRef || wasDirectOpenAI != isDirectOpenAI {
+                await eventBus?.publish(.credentialChanged(id: id))
+            }
             let resolvedKey: String?
             if !apiKey.isEmpty {
                 resolvedKey = apiKey
-            } else if let ref = existing.apiKeyRef {
+            } else if let ref = committed.apiKeyRef {
                 resolvedKey = try? await modelRepository.loadAPIKey(ref: ref)
             } else {
                 resolvedKey = nil
@@ -929,7 +985,7 @@ public final class SettingsViewModel {
             // unavailable). The add paths still go through `registerProvider`.
             if let registry = llmProviderRegistry,
                let replacement = makeLLMProvider(
-                   for: updated,
+                   for: committed,
                    apiKey: resolvedKey,
                    http: httpClient,
                    toolRegistry: toolRegistry,
@@ -940,11 +996,63 @@ public final class SettingsViewModel {
             }
             await loadModels()
             onModelsChanged?()
+            // Finish all committed-state publication before cleanup can suspend behind a newer edit.
+            if let previousRef = existing.apiKeyRef, previousRef != committed.apiKeyRef {
+                do {
+                    try await modelRepository.discardStagedAPIKey(ref: previousRef)
+                } catch {
+                    chatSettingsLog.warning("Model saved, but its previous unused API key could not be removed from secure storage.")
+                }
+            }
+            return committed
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            if error is ModelCredentialSaveError {
+                publishModelEditError("Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Restart the app to retry cleanup.", formSession: formSession)
+            } else if case .staleModel = error as? ModelConfigurationRepositoryError {
+                publishModelEditError("The model changed while saving. Reopen it and try again.", formSession: formSession)
+            } else {
+                publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession)
+            }
             await loadModels()
+            return nil
         }
+    }
+
+    private func saveModelUpdate(
+        _ record: ModelConfigurationRecord, apiKey: String, idGenerator: any IDGenerator
+    ) async throws -> ModelConfigurationRecord {
+        guard !apiKey.isEmpty, let previousRef = record.apiKeyRef else {
+            try await modelRepository.update(record, expectedAPIKeyRef: record.apiKeyRef)
+            return record
+        }
+        // Stage under a fresh ref so concurrent readers only see the committed credential.
+        // The row update publishes the replacement; an unsuccessful save never changes the old key.
+        let stagedRef = idGenerator.nextID()
+        var staged = record
+        staged.apiKeyRef = stagedRef
+        try await withStagedAPIKey(apiKey, ref: stagedRef) {
+            try await modelRepository.update(staged, expectedAPIKeyRef: previousRef)
+        }
+        return staged
+    }
+
+    private func withStagedAPIKey(_ key: String, ref: String, commit: () async throws -> Void) async throws {
+        try await modelRepository.registerStagedAPIKey(ref: ref)
+        do {
+            try await modelRepository.storeAPIKey(key, ref: ref)
+            try await commit()
+        } catch {
+            do { try await modelRepository.discardStagedAPIKey(ref: ref) } catch {
+                throw ModelCredentialSaveError.stagedKeyCleanupFailed
+            }
+            throw error
+        }
+    }
+
+    private func publishModelEditError(_ message: String?, formSession: Int?) {
+        if let formSession, !isModelFormSessionActive(formSession) { return }
+        modelEditError = message
     }
 
     /// Reset the model-edit error. Called by `SettingsModelDetailPane`
@@ -957,12 +1065,85 @@ public final class SettingsViewModel {
     /// Delete a row + its Keychain entry. The repository handles the
     /// Keychain-first ordering so a failed delete leaves the row in place
     /// rather than orphaning a secret. Also unregisters the provider so
-    /// the deleted endpoint disappears from the picker right away.
-    public func deleteModel(id: String) async {
-        try? await modelRepository.delete(id: id)
+    /// the deleted endpoint disappears from the picker right away. A supplied
+    /// form session owns error publication; accepted deletion always finishes.
+    @discardableResult
+    public func deleteModel(id: String, formSession: Int? = nil) async -> Bool {
+        guard modelMutationIDs.insert(id).inserted else { return false }
+        defer { modelMutationIDs.remove(id) }
+        publishModelEditError(nil, formSession: formSession)
+        if lastSavedModel?.id == id { lastSavedModel = nil }
+        // An opaque deletion failure may follow successful Keychain removal. Discard the
+        // live provider's cached secret before deletion, even if its row must remain for retry.
         await llmProviderRegistry?.unregister(id: id)
-        await loadModels()
+        var succeeded = true
+        do {
+            try await modelRepository.delete(id: id)
+        } catch {
+            publishModelEditError("Could not remove the model. Try again.", formSession: formSession)
+            succeeded = false
+        }
         onModelsChanged?()
+        // A Keychain-first deletion can remove the key even if the following database write fails.
+        await eventBus?.publish(.credentialChanged(id: id))
+        await loadModels()
+        return succeeded
+    }
+
+    /// Commits narration using this operation's returned row, independent of other model saves.
+    @discardableResult
+    public func commitAudioSetup(for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int) async -> Bool {
+        await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: nil)
+    }
+
+    private func commitAudioSetup(
+        for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int, session: Int?
+    ) async -> Bool {
+        if let session, !isModelFormSessionActive(session) { return false }
+        guard let audioSetup, let ref = row.apiKeyRef,
+              ProviderAudioCredential.isDirectOpenAI(providerId: row.providerId, baseURL: row.baseURL) else { return true }
+        do {
+            try await audioSetup.commit(
+                ProviderAudioCredential(id: row.id, name: row.name, keyRef: ref), enabled, useThisKey, revision
+            )
+            return session.map { isModelFormSessionActive($0) } ?? true
+        } catch {
+            if let session, !isModelFormSessionActive(session) { return false }
+            modelEditError = "The model was saved, but narration settings were not. Review Narration settings and try again."
+            return false
+        }
+    }
+
+    /// Shared by reopened forms; mutation ownership lasts through publication and final key cleanup.
+    public func isModelMutationInFlight(id: String) -> Bool { modelMutationIDs.contains(id) }
+
+    /// Each appearance owns its completion actions independently of the model ID or navigation path.
+    func beginModelFormSession() -> Int {
+        navigationGeneration += 1
+        modelFormGeneration += 1
+        activeModelFormSession = modelFormGeneration
+        return modelFormGeneration
+    }
+
+    func isModelFormSessionActive(_ session: Int) -> Bool { activeModelFormSession == session }
+
+    func endModelFormSession(_ session: Int) {
+        if activeModelFormSession == session { activeModelFormSession = nil }
+    }
+
+    @discardableResult
+    func popModelForm(ifCurrent session: Int) -> Bool {
+        guard isModelFormSessionActive(session) else { return false }
+        endModelFormSession(session)
+        popPane()
+        return true
+    }
+
+    func commitModelFormAudioSetup(
+        for row: ModelConfigurationRecord, enabled: Bool, useThisKey: Bool, revision: Int, session: Int
+    ) async -> Bool {
+        guard isModelFormSessionActive(session) else { return false }
+        return await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: session)
     }
 
     /// Build a fresh provider for `record` and register it with the live

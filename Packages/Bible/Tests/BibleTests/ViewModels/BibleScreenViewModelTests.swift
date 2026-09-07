@@ -839,13 +839,7 @@ struct BibleScreenViewModelTests {
         await viewModel.load()                          // 1 Peter 2 has 25 verses
 
         viewModel.startNarration()
-        // First-Narrate of the test: the voice-pick + start runs on
-        // a background task spawned by `startNarration`. The card
-        // already shows (`isNarrationSheetPresented` flips synchronously);
-        // we just need to drain the spawned task before asserting on
-        // the queue the service received.
-        await viewModel._waitForPendingNarrationStart()
-        #expect(service.voiceLookupLocales.count == 1)
+        // Starting is synchronous; only playback events arrive asynchronously.
         #expect(service.startCallCount == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == Array(1...25))
@@ -862,8 +856,6 @@ struct BibleScreenViewModelTests {
         if dismissActions { viewModel.dismissActionSheet() }
 
         viewModel.startNarration()
-        await viewModel._waitForPendingNarrationStart()
-        #expect(service.voiceLookupLocales.count == 1)
         let scheduled = service.lastStartArgs?.utterances.map(\.verseNumber) ?? []
         #expect(scheduled == [3, 5, 9])
         #expect(viewModel.isNarrationSheetPresented)
@@ -900,6 +892,23 @@ struct BibleScreenViewModelTests {
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 9, text: "x")])
         controller._simulateEvent(.started(verseNumber: 9))
         #expect(viewModel.narrationCitation == "1 Peter 2:9")
+    }
+
+    @Test("Navigation clears Retry for a failed previous reader context", arguments: [false, true])
+    func navigationInvalidatesFailedNarrationRetry(changeTranslation: Bool) async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+        viewModel.startNarration()
+        controller._simulateEvent(.started(verseNumber: 7))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        if changeTranslation { viewModel.selectTranslation(.web) } else { viewModel.stepChapter(.next) }
+        controller.retry()
+        #expect(controller.lastError == nil)
+        #expect(controller.state == .idle)
+        #expect(service.startCallCount == 1)
+        await viewModel._waitForPendingPersist()
     }
 
     @Test("stepping a chapter stops the active narration")

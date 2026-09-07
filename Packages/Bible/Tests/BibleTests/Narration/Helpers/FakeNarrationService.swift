@@ -30,7 +30,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
         var skipBackwardCallCount = 0
         var skipToPreviousVerseCallCount = 0
         var setRateCalls: [Float] = []
-        var setVoiceCalls: [AVSpeechSynthesisVoice?] = []
+        var setVoiceCalls: [NarrationVoice?] = []
         var lastStartArgs: StartArgs?
         var continuation: AsyncStream<NarrationEvent>.Continuation?
     }
@@ -40,6 +40,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     struct StartArgs: Equatable {
         let utterances: [NarrationVerseUtterance]
         let rate: Float
+        let startingAt: Int
         // AVSpeechSynthesisVoice doesn't conform to Equatable; tests
         // inspect by `voice?.identifier` when they need to assert it.
         let voiceIdentifier: String?
@@ -63,14 +64,14 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     var skipBackwardCallCount: Int { lock.withLock { $0.skipBackwardCallCount } }
     var skipToPreviousVerseCallCount: Int { lock.withLock { $0.skipToPreviousVerseCallCount } }
     var setRateCalls: [Float] { lock.withLock { $0.setRateCalls } }
-    var setVoiceCalls: [AVSpeechSynthesisVoice?] { lock.withLock { $0.setVoiceCalls } }
+    var setVoiceCalls: [NarrationVoice?] { lock.withLock { $0.setVoiceCalls } }
     var lastStartArgs: StartArgs? { lock.withLock { $0.lastStartArgs } }
 
     // MARK: NarrationService
 
     func isAvailable() -> Bool { isAvailableValue }
 
-    func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice? {
+    func bestAvailableVoice(locale: Locale) -> NarrationVoice? {
         lock.withLock { $0.voiceLookupLocales.append(locale) }
         return nil
     }
@@ -78,11 +79,13 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
     func startSpeaking(
         _ utterances: [NarrationVerseUtterance],
         rate: Float,
-        voice: AVSpeechSynthesisVoice?
+        voice: NarrationVoice?,
+        startingAt: Int = 0
     ) -> AsyncStream<NarrationEvent> {
         let args = StartArgs(
             utterances: utterances,
             rate: rate,
+            startingAt: startingAt,
             voiceIdentifier: voice?.identifier
         )
         // Atomically record the start and snapshot the prior
@@ -122,7 +125,7 @@ final class FakeNarrationService: NarrationService, @unchecked Sendable {
         lock.withLock { $0.skipToPreviousVerseCallCount += 1 }
     }
     func setRate(_ rate: Float) { lock.withLock { $0.setRateCalls.append(rate) } }
-    func setVoice(_ voice: AVSpeechSynthesisVoice?) {
+    func setVoice(_ voice: NarrationVoice?) {
         lock.withLock { $0.setVoiceCalls.append(voice) }
     }
 

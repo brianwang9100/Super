@@ -214,7 +214,7 @@ struct BibleNavBar: View {
         switch narrationState {
         case .idle:
             sparkMenu
-        case .speaking, .paused:
+        case .preparing, .speaking, .paused:
             narrationButton
         }
     }
