@@ -26,10 +26,10 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # Third-party community action pinned to a commit SHA (not a mutable
       # tag) so a tag force-push can't swap the code under us.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -61,7 +61,7 @@ jobs:
       matrix:
         scheme: [Super, SuperBible]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
@@ -90,7 +90,7 @@ jobs:
         # target invalidates the SPM cache — a stale cache hiding a real
         # build issue is documented in the SB-M0 fork spec §5.4 as the
         # primary risk of this matrix layout.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
@@ -108,7 +108,7 @@ jobs:
         # change starts fresh while source-only edits warm-start. A stale
         # cache can never go green on broken code — xcodebuild still compiles
         # every changed input on every run.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData/Super-*/Build
           # Xcode version (literal 26.4.1, matching the setup-xcode pin) is in
@@ -179,7 +179,7 @@ jobs:
     outputs:
       schemes: ${{ steps.find.outputs.schemes }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: Packages
       - id: find
@@ -216,7 +216,7 @@ jobs:
       matrix:
         scheme: ${{ fromJSON(needs.discover.outputs.schemes) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         # Pinned explicitly (not `latest-stable`) so SwiftUI snapshot
@@ -241,7 +241,7 @@ jobs:
         run: xcodegen generate
 
       - name: Cache SwiftPM checkouts
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData/Super-*/SourcePackages/checkouts
@@ -256,7 +256,7 @@ jobs:
         # that Build/ tree to incrementally recompile across runs. Keyed per
         # scheme; the Build/ tree excludes Logs/ (xcresults) which are
         # uploaded separately on failure.
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: build/derived/Build
           # Xcode version in the key (see build-app) so a toolchain bump
@@ -275,8 +275,8 @@ jobs:
           # build). A -destination can only express the minor (OS=26.4), so the
           # build is asserted separately below: 23E244 (26.4.0) and 23E254a
           # (26.4.1) both report as "iOS 26.4" yet render differently. When
-          # repinning, update this script (incl. RUNTIME_BUILD), the AGENTS.md
-          # trio (§ "iOS testing"), and re-record every baseline under
+          # repinning, update this script (incl. RUNTIME_BUILD), the
+          # docs/TESTING.md simulator runbook, and re-record every baseline under
           # Packages/*/Tests/.../__Snapshots__.
           #
           # Source of truth: the local PreToolUse guard

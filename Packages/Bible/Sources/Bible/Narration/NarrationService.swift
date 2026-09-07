@@ -23,6 +23,10 @@ public protocol NarrationService: Sendable {
     /// no installed voices for the user's locale.
     func isAvailable() -> Bool
 
+    /// Preferred installed voice for the locale, or `nil` to use the system
+    /// default. Discovery may block, so callers perform it off the main actor.
+    func bestAvailableVoice(locale: Locale) -> AVSpeechSynthesisVoice?
+
     /// Begin a new playback session over `utterances` in array order. The
     /// returned stream emits one `.started` + one `.finishedVerse` per
     /// utterance, then exactly one terminal event (`.completed`,

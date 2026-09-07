@@ -40,31 +40,35 @@ public struct ComposerAccessoryButton {
 
 /// The leading / trailing pair of hovering accessory buttons for the chat
 /// composer — leading pinned to the left screen edge, trailing to the right.
-/// Either side may be `nil` (nothing renders on that edge); an all-`nil` pair
-/// (``none``) renders no accessory row at all, so a target that supplies none
-/// is visually unchanged.
+/// Either side may be `nil` (nothing renders on that edge), with optional
+/// selection controls in the center. An empty configuration (``none``) renders
+/// no accessory row, so a target that supplies none is visually unchanged.
 public struct ComposerAccessoryButtons {
     public let leading: ComposerAccessoryButton?
     public let trailing: ComposerAccessoryButton?
-    /// Dynamic suppression predicate. When it returns `true`, the renderer fades
-    /// the whole accessory row out even though the buttons are present — e.g. the
-    /// Bible reader hides the hovering chevrons once its own previous/next
-    /// chapter footer cards scroll into view. `nil` (the default) never hides.
+    /// Optional selection controls centered between the two edge buttons.
+    public let selection: ComposerAccessorySelection?
+    /// Dynamic suppression predicate for the leading and trailing buttons.
+    /// The selection stays visible when these fade out — e.g. when the Bible
+    /// reader's inline chapter navigation replaces the floating arrows.
+    /// `nil` (the default) never hides the edge buttons.
     ///
     /// Evaluated inside the rendering view's body, so a closure that reads the
     /// publishing applet's `@Observable` state stays reactive: SwiftUI's
     /// Observation tracking records the read and re-renders when the state flips,
     /// so the applet publishes this once rather than republishing on every change.
-    public let shouldHide: (() -> Bool)?
+    public let shouldHideButtons: (() -> Bool)?
 
     public init(
         leading: ComposerAccessoryButton? = nil,
         trailing: ComposerAccessoryButton? = nil,
-        shouldHide: (() -> Bool)? = nil
+        selection: ComposerAccessorySelection? = nil,
+        shouldHideButtons: (() -> Bool)? = nil
     ) {
         self.leading = leading
         self.trailing = trailing
-        self.shouldHide = shouldHide
+        self.selection = selection
+        self.shouldHideButtons = shouldHideButtons
     }
 
     /// The empty pair — nothing renders. The default everywhere a caller opts
@@ -74,8 +78,8 @@ public struct ComposerAccessoryButtons {
     /// the empty pair is trivially cheap to rebuild.
     public static var none: ComposerAccessoryButtons { ComposerAccessoryButtons() }
 
-    /// True when neither edge has a button — the renderer skips the whole row.
-    public var isEmpty: Bool { leading == nil && trailing == nil }
+    /// True when neither edge nor center has a control — the renderer skips the row.
+    public var isEmpty: Bool { leading == nil && trailing == nil && selection == nil }
 }
 
 /// Shell-owned, app-session-lived holder for the chat composer's optional
@@ -94,9 +98,9 @@ public struct ComposerAccessoryButtons {
 @MainActor
 @Observable
 public final class ComposerAccessoryStore {
-    /// The current leading / trailing button pair. The backdrop applet writes
-    /// this (glyphs, enabled flags, action closures) whenever its navigability
-    /// changes; the composer layer reads it and re-renders. ``ComposerAccessoryButtons/none``
+    /// The current edge buttons and optional center selection. The backdrop applet
+    /// writes this when navigation or selection changes; the composer layer reads
+    /// it and re-renders. ``ComposerAccessoryButtons/none``
     /// until a caller fills it.
     public var buttons: ComposerAccessoryButtons = .none
 

@@ -185,31 +185,9 @@ The client uses this response to populate its `AppletRegistry`. It re-fetches on
 
 ## 7. Running Tests
 
-**Swift package tests** (Core + Chat unit tests, in-memory GRDB) — preferred for fast iteration:
-
-```bash
-cd Packages/Core && swift test --parallel
-cd Packages/Chat && swift test --parallel
-```
-
-**iOS-runtime snapshot tests** (Chat SwiftUI views) — run on the simulator via the shared `Chat` scheme. The scheme XML is hand-maintained at `Scripts/xcodegen-extras/Chat.xcscheme` (xcodegen 2.45.4 can't model SPM-package test schemes via `project.yml`); `options.postGenCommand` in `project.yml` copies it into `Super.xcodeproj/xcshareddata/xcschemes/` after every regeneration.
-
-```bash
-xcodebuild test -scheme Chat \
-  -destination 'platform=iOS Simulator,id=472D292D-71F0-4D2B-ADFC-C5D5BAF14450'
-```
-
-Record on iOS **26.4.1 (build `23E254a`)** — keep only that 26.4.x build installed locally (see [`AGENTS.md`](../AGENTS.md) §5 "iOS testing"); the `enforce-snapshot-sim.py` PreToolUse guard refuses these runs if a stale `23E244` is also installed.
-
-To re-record snapshot baselines after an intentional visual change:
-
-```bash
-TEST_RUNNER_SNAPSHOT_RECORD=1 xcodebuild test -scheme Chat ...
-```
-
-The `TEST_RUNNER_` prefix is required — `xcodebuild` only forwards env vars with that prefix into the iOS test process.
-
-**Server tests** *(future)* will use a Docker Compose test profile with an isolated Postgres instance.
+[TESTING.md](TESTING.md) is the current test runbook: affected-package suites,
+UIKit snapshot requirements, per-worktree simulator setup, recording, and
+app-target verification. Read it before running or recording simulator tests.
 
 ## 8. Development Workflow
 

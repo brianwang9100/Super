@@ -6,7 +6,7 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleChapterReader` driven directly. Two scenarios:
+/// Snapshots of `BibleChapterReader` driven directly:
 ///
 /// - The **generating** annotation-bubble state — the dotted bubble beside the
 ///   title while a `bible.annotate` dispatch is in flight.
@@ -21,6 +21,8 @@ import Testing
 /// - The **bookmarked title** — the chapter's bookmark slot holding a ribbon,
 ///   so the title cluster leads with the filled (tinted) bookmark glyph.
 ///   `BibleScreenSnapshotTests` covers the outline (unbookmarked) state.
+/// - The **chapter end** — inline navigation stays above the space reserved
+///   for floating controls, including with larger reading text.
 ///
 /// Rendered across the Vellum light / dark pair because the outlined glyph
 /// strokes in `theme.inkFaint`; the other six theme variants are pixel-locked
@@ -64,6 +66,59 @@ struct BibleChapterReaderSnapshotTests {
         try verifyBookmarked(theme: .vellumDark, name: "bookmarked_title_dark")
     }
 
+    @Test("chapter-end navigation clears the floating controls",
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func chapterEnd(theme: SuperTheme.Identifier) throws {
+        try verifyChapterEnd(theme: theme, name: "chapter_end_\(theme.rawValue)")
+    }
+
+    @Test("chapter-end clearance remains available at XXL",
+          arguments: [SuperTheme.Identifier.vellumLight, .vellumDark])
+    func chapterEndXXL(theme: SuperTheme.Identifier) throws {
+        try verifyChapterEnd(theme: theme, name: "chapter_end_\(theme.rawValue)_xxl", dynamicType: .xxLarge)
+    }
+
+    private func verifyChapterEnd(
+        theme themeID: SuperTheme.Identifier,
+        name: String,
+        dynamicType: DynamicTypeSize = .large,
+        function: String = #function
+    ) throws {
+        let database = try BibleDatabase.makeInMemory()
+        let chapter = try #require(
+            try DatabaseBibleTextLoader().loadChapter(bookId: "1PE", chapterNumber: 2, translation: .web)
+        )
+        let theme = SuperTheme.make(themeID)
+        let view = BibleChapterReader(
+            chapter: chapter,
+            bookId: "1PE",
+            bookName: "1 Peter",
+            selectedVerses: [25],
+            previousLabel: "1 Peter 1",
+            nextLabel: "1 Peter 3",
+            onTapVerse: { _ in },
+            onPrevious: {},
+            onNext: {},
+            onBackgroundTap: {}
+        )
+        .defaultScrollAnchor(.bottom)
+        .frame(width: 402, height: 760)
+        .background(theme.background)
+        .superTheme(theme)
+        .superTypography(.make(.serif))
+        .dynamicTypeSize(dynamicType)
+        .databaseContext(.readOnly { database.queue })
+
+        let failure = verifySnapshot(
+            of: view,
+            as: .image(layout: .fixed(width: 402, height: 760)),
+            named: name,
+            record: SnapshotEnvironment.isRecording ? .all : nil,
+            testName: function
+        )
+        if let failure { Issue.record("\(name): \(failure)") }
+    }
+
     /// Render 1 Peter 2 with an empty annotation database (so the chapter
     /// bubble isn't filled) and a `.running` dispatch status, which flips the
     /// title bubble to its generating glyph. The empty in-memory
@@ -90,7 +145,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 chapterDispatchStatus: .running(requestId: "gen")
@@ -162,7 +217,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 onNoteGlyphTap: { _ in }
@@ -220,7 +275,7 @@ struct BibleChapterReaderSnapshotTests {
                 onTapVerse: { _ in },
                 onPrevious: {},
                 onNext: {},
-                onClearSelection: {},
+                onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
                 onNoteGlyphTap: { _ in },

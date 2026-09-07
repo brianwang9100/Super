@@ -1,6 +1,6 @@
 # Visual testing policy and migration audit
 
-Updated 2026-09-07 against commit `00693278`. The policy below applies to new work. The shortlist is a proposed migration inventory, not an implemented test deletion: all 543 legacy PNGs and their current CI checks remain in place.
+Updated 2026-09-07 against commit `00693278`. The policy below applies to new work. The shortlist is a proposed migration inventory, not an implemented test deletion: all existing legacy PNGs and their current CI checks remain in place. Main subsequently added 14 baseline images (557 total after the merge); the historical counts and shortlist below remain tied to the audited commit, and those new regression cases are not retirement candidates.
 
 ## Select coverage by risk
 
