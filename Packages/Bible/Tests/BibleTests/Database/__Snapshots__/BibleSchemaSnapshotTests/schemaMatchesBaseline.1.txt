@@ -29,6 +29,9 @@ CREATE TABLE narrationSettings (
     retiredKeyRefs TEXT NOT NULL,
     updatedAt DATETIME NOT NULL
 );
+CREATE TABLE narrationStagedKey (
+    id TEXT PRIMARY KEY NOT NULL
+);
 
 bibleAnnotation
 
@@ -45,3 +48,5 @@ bulkAnnotationRun
 bulkAnnotationRunUnit
 
 narrationSettings
+
+narrationStagedKey

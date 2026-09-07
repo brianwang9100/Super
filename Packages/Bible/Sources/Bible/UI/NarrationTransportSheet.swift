@@ -81,7 +81,7 @@ struct NarrationTransportSheet: View {
                         if controller.voice?.company == .openAI {
                             Button("Use Apple voice") { controller.useAppleVoice() }
                         }
-                        Button("Retry", action: onRestart)
+                        Button("Retry") { controller.retry() }
                     }.font(typography.font(.footnote))
                 }
             }

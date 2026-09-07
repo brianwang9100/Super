@@ -431,4 +431,11 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             """)
     }
 
+    migrator.registerMigration("v11_narrationStagedKey") { db in
+        try db.execute(sql: """
+            CREATE TABLE narrationStagedKey (
+                id TEXT PRIMARY KEY NOT NULL
+            )
+            """)
+    }
 }

@@ -43,19 +43,22 @@ public actor NarrationAudioCache: NarrationAudioCaching {
     }
 
     private let storage: (any NarrationAudioFileStorage)?
+    private let clearUnavailableDisk: (@Sendable () async throws -> Void)?
     private let clock: any Clock
     private let limit: Int
     private var entries: [String: Entry] = [:]
     private var totalBytes = 0
 
-    private init(clock: any Clock, limit: Int) {
+    private init(clock: any Clock, limit: Int, clearUnavailableDisk: (@Sendable () async throws -> Void)? = nil) {
         self.storage = nil
+        self.clearUnavailableDisk = clearUnavailableDisk
         self.clock = clock
         self.limit = max(0, limit)
     }
 
     init(storage: any NarrationAudioFileStorage, clock: any Clock = SystemClock(), limit: Int = 100 * 1_024 * 1_024) throws {
         self.storage = storage
+        self.clearUnavailableDisk = nil
         self.clock = clock
         self.limit = max(0, limit)
         do {
@@ -77,13 +80,27 @@ public actor NarrationAudioCache: NarrationAudioCaching {
 
     /// Optional disk caching must not prevent launch when directory lookup or opening fails.
     public static func openOrInMemory(
-        directory: @Sendable () throws -> URL = {
+        directory: @escaping @Sendable () throws -> URL = {
             try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appending(path: "OpenAINarration")
         },
-        open: @Sendable (URL) throws -> NarrationAudioCache = { try NarrationAudioCache.open(in: $0) }
+        open: @escaping @Sendable (URL) throws -> NarrationAudioCache = { try NarrationAudioCache.open(in: $0) }
     ) throws -> NarrationAudioCache {
-        do { return try open(directory()) } catch { return try makeInMemory() }
+        var resolvedDirectory: URL?
+        do {
+            let url = try directory()
+            resolvedDirectory = url
+            return try open(url)
+        } catch {
+            let originalDirectory = resolvedDirectory
+            return NarrationAudioCache(clock: SystemClock(), limit: 100 * 1_024 * 1_024, clearUnavailableDisk: {
+                // Keep the original location if lookup succeeded. A later Clear must
+                // remove the persisted clips that opening could not access at launch.
+                let url = try originalDirectory ?? directory()
+                let disk = try open(url)
+                try await disk.clear()
+            })
+        }
     }
 
     public static func open(in directory: URL, clock: any Clock = SystemClock(), limit: Int = 100 * 1_024 * 1_024) throws -> NarrationAudioCache {
@@ -135,6 +152,9 @@ public actor NarrationAudioCache: NarrationAudioCaching {
 
     public func clear() async throws {
         do {
+            // Preserve usable memory audio if disk cleanup still fails. After this
+            // await, clearing the current memory entries has no suspension points.
+            try await clearUnavailableDisk?()
             try storage?.removeTemporaryFiles()
             for name in entries.keys.sorted() { try removeFile(name) }
         } catch { throw NarrationAudioCacheError.unavailable }

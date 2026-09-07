@@ -19,6 +19,41 @@ import Testing
 @Suite("NarrationController")
 @MainActor
 struct NarrationControllerTests {
+    @Test("Retry resumes the failed verse within the original selection", arguments: [false, true])
+    func retryPreservesFailurePosition(preparing: Bool) {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service, cloudService: service)
+        controller.voice = .marin
+        controller.rate = 1.5
+        let queue = [4, 7, 9].map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: queue)
+        controller._simulateEvent(.started(verseNumber: 4))
+        controller._simulateEvent(preparing ? .preparing(verseNumber: 7) : .started(verseNumber: 7))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.retry()
+        #expect(service.lastStartArgs?.startingAt == 1)
+        #expect(service.lastStartArgs?.utterances == queue)
+        #expect(controller.voice == .marin)
+        #expect(service.lastStartArgs?.rate == 1.5)
+        #expect(controller.lastError == nil)
+        controller.stop()
+    }
+
+    @Test("Stopping a failed session prevents Retry from reviving an old reader context")
+    func stopClearsFailedSessionRetry() {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        controller.start(utterances: [.init(verseNumber: 4, text: "Old chapter")])
+        controller._simulateEvent(.started(verseNumber: 4))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        // Chapter and translation navigation both stop narration before changing the reader.
+        controller.stop()
+        controller.retry()
+        #expect(controller.lastError == nil)
+        #expect(controller.state == .idle)
+        #expect(service.startCallCount == 1)
+    }
+
     @Test("initial voice discovery uses the injected service and requested locale")
     func initialVoiceUsesInjectedService() {
         let service = FakeNarrationService()

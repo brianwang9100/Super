@@ -550,6 +550,51 @@ struct OpenAINarrationTests {
         #expect(fake.startCallCount == 1)
     }
 
+    @Test func retryAfterCaptureBlockedStartUsesNewRequestedPosition() {
+        let audio = AudioActivity()
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service, audioActivity: audio)
+        let verses = [4, 7, 9].map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: verses)
+        controller._simulateEvent(.started(verseNumber: 7))
+        audio.beginCapture()
+        controller.start(utterances: verses)
+        #expect(controller.lastError == .preemptedByVoiceInput)
+        audio.endCapture()
+        controller.retry()
+        #expect(service.lastStartArgs?.startingAt == 0)
+        #expect(service.startCallCount == 2)
+        controller.stop()
+    }
+
+    @Test func retryPreservesTemporaryAppleFallbackAndItsLaterVoiceRestoration() async throws {
+        let fixture = try SettingsFixture()
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let apple = FakeNarrationService()
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: cloud, settings: fixture.settings)
+        controller.voice = .marin
+        let verses = [4, 7, 9].map { NarrationVerseUtterance(verseNumber: $0, text: "Verse \($0)") }
+        controller.start(utterances: verses)
+        controller._simulateEvent(.started(verseNumber: 7))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        #expect(apple.lastStartArgs?.startingAt == 1)
+        controller._simulateEvent(.preparing(verseNumber: 9))
+        controller._simulateEvent(.failed(.audioSessionFailed("Unavailable")))
+        controller.retry()
+        #expect(apple.lastStartArgs?.startingAt == 2)
+        #expect(apple.startCallCount == 2)
+        #expect(cloud.startCallCount == 1)
+        #expect(controller.voice?.company == .apple)
+        controller._simulateEvent(.completed)
+        controller.start(utterances: verses)
+        #expect(controller.voice == .marin)
+        #expect(cloud.startCallCount == 2)
+        #expect(cloud.lastStartArgs?.startingAt == 0)
+        controller.stop()
+    }
+
     @Test func appleFallbackResumesTheLatestAudibleCachedVerse() async throws {
         let fixture = try SettingsFixture()
         try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
@@ -691,7 +736,10 @@ private struct RejectingNarrationKeychain: KeychainClient {
     func setString(_ value: String, ref: String) async throws {
         throw KeychainError.unhandledStatus(-34018)
     }
-    func delete(ref: String) async throws { fatalError("A failed Keychain write must not delete any key.") }
+    func delete(ref: String) async throws {
+        // A failed write may be partial; only its freshly staged reference may be removed.
+        #expect(ref == "id-2")
+    }
 }
 
 @MainActor

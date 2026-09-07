@@ -894,6 +894,23 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.narrationCitation == "1 Peter 2:9")
     }
 
+    @Test("Navigation clears Retry for a failed previous reader context", arguments: [false, true])
+    func navigationInvalidatesFailedNarrationRetry(changeTranslation: Bool) async {
+        let service = FakeNarrationService()
+        let controller = NarrationController(service: service)
+        let viewModel = makeViewModel(narration: controller)
+        await viewModel.load()
+        viewModel.startNarration()
+        controller._simulateEvent(.started(verseNumber: 7))
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        if changeTranslation { viewModel.selectTranslation(.web) } else { viewModel.stepChapter(.next) }
+        controller.retry()
+        #expect(controller.lastError == nil)
+        #expect(controller.state == .idle)
+        #expect(service.startCallCount == 1)
+        await viewModel._waitForPendingPersist()
+    }
+
     @Test("stepping a chapter stops the active narration")
     func steppingStopsNarration() async {
         let service = FakeNarrationService()

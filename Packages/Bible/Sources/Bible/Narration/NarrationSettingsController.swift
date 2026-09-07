@@ -21,6 +21,7 @@ public final class NarrationSettingsController {
     private let listSources: @Sendable () async -> [ProviderAudioCredential]
     private var credentialRefreshGeneration = 0
     private var credentialTask: Task<Void, Never>?
+    private static let stagedKeyCleanupMessage = "An unused narration key could not be removed. Restart the app or save again to retry cleanup."
 
     public init(
         repository: any NarrationSettingsRepository,
@@ -59,10 +60,14 @@ public final class NarrationSettingsController {
     }
 
     public func load() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
         do {
             if let saved = try await repository.load() { record = saved }
+            await cleanStagedKeys()
             await refreshCredentials()
-            await cleanRetiredKeys()
+            await cleanRetiredKeysWhileSaving()
         } catch { errorMessage = "Narration settings could not be loaded. Try again." }
     }
 
@@ -184,8 +189,18 @@ public final class NarrationSettingsController {
         guard !isSaving, revision == record.revision else { throw NarrationSettingsError.staleDraft }
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw NarrationSettingsError.missingCredential }
+        isSaving = true
+        defer { isSaving = false }
+        await cleanStagedKeys()
         let ref = ids.nextID()
-        do { try await keychain.setString(trimmed, ref: ref) } catch { throw NarrationSettingsError.secureStorage }
+        // Register cleanup ownership before writing a secret; active settings and revision stay unchanged.
+        do { try await repository.registerStagedKey(ref: ref) } catch { throw NarrationSettingsError.persistence }
+        do {
+            try await keychain.setString(trimmed, ref: ref)
+        } catch {
+            await cleanFailedStagedKey(ref: ref)
+            throw NarrationSettingsError.secureStorage
+        }
         var next = record
         if record.ownsKey, let old = record.keyRef { next.retiredKeyRefs.append(old) }
         next.sourceId = ref
@@ -195,13 +210,13 @@ public final class NarrationSettingsController {
         next.enabled = enabled
         if enabled, record.preferredVoiceId == nil { next.preferredVoiceId = NarrationVoice.marin.id }
         do {
-            try await persist(next, expecting: revision, invalidate: true)
+            try await commitWhileSaving(next, expecting: revision, invalidate: true)
         } catch {
-            // Only this freshly created, narration-owned key is eligible for rollback.
-            try await keychain.delete(ref: ref)
+            // Failed rollback keeps its durable ledger row, and must not hide the original save failure.
+            await cleanFailedStagedKey(ref: ref)
             throw error
         }
-        await cleanRetiredKeys()
+        await cleanRetiredKeysWhileSaving()
     }
 
     public func setEnabled(_ enabled: Bool) async throws {
@@ -237,6 +252,11 @@ public final class NarrationSettingsController {
         guard !isSaving, revision == record.revision else { throw NarrationSettingsError.staleDraft }
         isSaving = true
         defer { isSaving = false }
+        try await commitWhileSaving(value, expecting: revision, invalidate: invalidate)
+    }
+
+    private func commitWhileSaving(_ value: NarrationSettingsRecord, expecting revision: Int, invalidate: Bool) async throws {
+        guard isSaving, revision == record.revision else { throw NarrationSettingsError.staleDraft }
         var next = value
         next.revision = revision + 1
         next.updatedAt = clock.now()
@@ -247,12 +267,38 @@ public final class NarrationSettingsController {
     }
 
     private func cleanRetiredKeys() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        await cleanRetiredKeysWhileSaving()
+    }
+
+    private func cleanRetiredKeysWhileSaving() async {
         guard !record.retiredKeyRefs.isEmpty else { return }
         do {
             for ref in record.retiredKeyRefs { try await keychain.delete(ref: ref) }
             var next = record
             next.retiredKeyRefs = []
-            try await persist(next, expecting: record.revision, invalidate: false)
+            try await commitWhileSaving(next, expecting: record.revision, invalidate: false)
         } catch { errorMessage = "An old narration key could not be removed. Reopen Narration settings to retry." }
+    }
+
+    private func cleanStagedKeys() async {
+        do {
+            for ref in try await repository.stagedKeyRefs() { try await discardStagedKey(ref: ref) }
+            if errorMessage == Self.stagedKeyCleanupMessage { errorMessage = nil }
+        } catch { errorMessage = Self.stagedKeyCleanupMessage }
+    }
+
+    private func cleanFailedStagedKey(ref: String) async {
+        do { try await discardStagedKey(ref: ref) } catch { errorMessage = Self.stagedKeyCleanupMessage }
+    }
+
+    private func discardStagedKey(ref: String) async throws {
+        // Recheck authoritative state even after a failed save: an active owned key is never cleanup work.
+        let active = try await repository.load()
+        if active?.ownsKey != true || active?.keyRef != ref { try await keychain.delete(ref: ref) }
+        // A failed metadata deletion leaves the reference retryable, including when its secret is already gone.
+        try await repository.removeStagedKey(ref: ref)
     }
 }

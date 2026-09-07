@@ -329,6 +329,65 @@ struct NarrationAudioCacheTests {
         #expect(storage.writtenBytes == 0)
     }
 
+    @Test(arguments: [false, true])
+    func fallbackClearRecoversOriginalDiskAudio(failLookup: Bool) async throws {
+        let fixture = try await FallbackCacheFixture(failLookup: failLookup)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try await fixture.fallback.save(Data([4, 5]), for: "memory")
+        fixture.gate.setUnavailable(false)
+        try await fixture.fallback.clear()
+        #expect(try await fixture.fallback.byteCount() == 0)
+        #expect(try await fixture.fallback.audio(for: "memory") == nil)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.clips.path).isEmpty)
+        #expect(try Data(contentsOf: fixture.legacy) == Data([8, 9]))
+        // Keep the cleanup handle after success too, rather than forgetting the disk destination.
+        let disk = try NarrationAudioCache.open(in: fixture.directory)
+        try await disk.save(Data([6, 7]), for: "another-persisted-clip")
+        try await fixture.fallback.clear()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.clips.path).isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func fallbackClearReportsDiskFailureAndRetainsItsRetry(failLookup: Bool) async throws {
+        let fixture = try await FallbackCacheFixture(failLookup: failLookup)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try await fixture.fallback.save(Data([4, 5]), for: "memory")
+        await #expect(throws: NarrationAudioCacheError.unavailable) { try await fixture.fallback.clear() }
+        #expect(try await fixture.fallback.audio(for: "memory") == Data([4, 5]))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.clips.path).count == 2)
+        fixture.gate.setUnavailable(false)
+        try await fixture.fallback.clear()
+        #expect(try await fixture.fallback.byteCount() == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.clips.path).isEmpty)
+    }
+
+    @Test func fallbackClearRetainsTheInitiallyResolvedDirectory() async throws {
+        let directory = temporaryDirectory()
+        let otherDirectory = temporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: otherDirectory)
+        }
+        let original = try NarrationAudioCache.open(in: directory)
+        try await original.save(Data([1]), for: "original")
+        let other = try NarrationAudioCache.open(in: otherDirectory)
+        try await other.save(Data([2]), for: "other")
+        let currentDirectory = OSAllocatedUnfairLock(initialState: directory)
+        let gate = FallbackCacheGate()
+        let fallback = try NarrationAudioCache.openOrInMemory(
+            directory: { currentDirectory.withLock { $0 } },
+            open: { url in
+                try gate.checkAvailability()
+                return try NarrationAudioCache.open(in: url)
+            }
+        )
+        currentDirectory.withLock { $0 = otherDirectory }
+        gate.setUnavailable(false)
+        try await fallback.clear()
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.appending(path: "clips").path).isEmpty)
+        #expect(try await other.audio(for: "other") == Data([2]))
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     }
@@ -391,5 +450,46 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
             guard !state.rejectsTouches else { throw NarrationAudioCacheError.unavailable }
             state.files[name]?.date = date
         }
+    }
+}
+
+/// Disk failures are temporary; the fallback must retain enough information to retry user-requested cleanup.
+private struct FallbackCacheFixture {
+    let directory: URL
+    let clips: URL
+    let legacy: URL
+    let fallback: NarrationAudioCache
+    let gate: FallbackCacheGate
+
+    init(failLookup: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        self.directory = directory
+        clips = directory.appending(path: "clips")
+        legacy = directory.appending(path: "narration-audio.sqlite")
+        let disk = try NarrationAudioCache.open(in: directory)
+        try await disk.save(Data([1, 2, 3]), for: "persisted")
+        try Data([6, 7]).write(to: clips.appending(path: ".01234567-89AB-4CDE-8F01-23456789ABCD.tmp"))
+        try Data([8, 9]).write(to: legacy)
+        let gate = FallbackCacheGate()
+        self.gate = gate
+        fallback = try NarrationAudioCache.openOrInMemory(
+            directory: {
+                if failLookup { try gate.checkAvailability() }
+                return directory
+            },
+            open: { url in
+                if !failLookup { try gate.checkAvailability() }
+                return try NarrationAudioCache.open(in: url)
+            }
+        )
+    }
+}
+
+/// Synchronous availability gate used only by the injected cache directory/open functions.
+private final class FallbackCacheGate: Sendable {
+    private let unavailable = OSAllocatedUnfairLock(initialState: true)
+    func setUnavailable(_ value: Bool) { unavailable.withLock { $0 = value } }
+    func checkAvailability() throws {
+        if unavailable.withLock({ $0 }) { throw NarrationAudioCacheError.unavailable }
     }
 }

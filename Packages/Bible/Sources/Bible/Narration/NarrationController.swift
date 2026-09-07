@@ -189,6 +189,16 @@ public final class NarrationController {
         restorePreferredVoiceOnNextStart = true
     }
 
+    /// Retry the failed verse in the existing queue without replaying the earlier selection.
+    public func retry() {
+        guard lastError != nil, !lastUtterances.isEmpty else { return }
+        let index = lastUtterances.firstIndex { $0.verseNumber == recoveryVerseNumber } ?? 0
+        let restoreAfterSession = restorePreferredVoiceOnNextStart
+        restorePreferredVoiceOnNextStart = false
+        start(utterances: lastUtterances, startingAt: index)
+        restorePreferredVoiceOnNextStart = restoreAfterSession
+    }
+
     public func clearCachedAudio() async throws {
         stop()
         try await cache?.clear()
@@ -228,13 +238,14 @@ public final class NarrationController {
         lastError = nil
 
         self.lastUtterances = utterances
+        recoveryVerseNumber = utterances.isEmpty ? nil
+            : utterances[min(max(0, startingAt), utterances.count - 1)].verseNumber
         guard !isCaptureActive else {
             handle(.failed(.preemptedByVoiceInput))
             return
         }
         guard !utterances.isEmpty else { activeService.stop(); state = .idle; currentVerseNumber = nil; return }
         state = .preparing
-        recoveryVerseNumber = utterances[min(max(0, startingAt), utterances.count - 1)].verseNumber
         currentVerseNumber = nil
         let stream = activeService.startSpeaking(utterances, rate: rate, voice: voice, startingAt: startingAt)
         streamTask = Task { [weak self] in
@@ -258,6 +269,10 @@ public final class NarrationController {
     /// Cancel the in-flight session. Idempotent — the controller stays
     /// in whatever state it's in until the service yields `.cancelled`.
     public func stop() {
+        // Navigation also stops an already failed session. Its Retry must not revive
+        // the old chapter or translation after the reader has changed context.
+        lastError = nil
+        recoveryVerseNumber = nil
         guard state != .idle else { return }
         activeService.stop()
         streamTask?.cancel()
