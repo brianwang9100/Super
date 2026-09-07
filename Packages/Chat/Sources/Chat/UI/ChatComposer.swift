@@ -135,6 +135,32 @@ public struct ChatComposer: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var pulseOpacity: CGFloat = 0.6
 
+    #if DEBUG
+    @Environment(\.chatComposerPreviewPulse) private var previewPulse
+    #endif
+
+    private var recordingPulseScale: CGFloat {
+        #if DEBUG
+        if let previewPulse { return previewPulse.scale }
+        #endif
+        return pulseScale
+    }
+
+    private var recordingPulseOpacity: CGFloat {
+        #if DEBUG
+        if let previewPulse { return previewPulse.opacity }
+        #endif
+        return pulseOpacity
+    }
+
+    private var shouldAnimateRecordingPulse: Bool {
+        #if DEBUG
+        ChatComposerPreviewPulse.shouldAnimate(reduceMotion: reduceMotion, override: previewPulse)
+        #else
+        !reduceMotion
+        #endif
+    }
+
     /// Effective reduce-motion flag — test override wins when set, the
     /// system env value is the default. Lets snapshot tests pin the
     /// no-pulse rendering even though `\.accessibilityReduceMotion`
@@ -445,8 +471,8 @@ public struct ChatComposer: View {
                 .overlay {
                     if !reduceMotion {
                         Circle()
-                            .stroke(theme.accent.opacity(pulseOpacity), lineWidth: 2)
-                            .scaleEffect(pulseScale)
+                            .stroke(theme.accent.opacity(recordingPulseOpacity), lineWidth: 2)
+                            .scaleEffect(recordingPulseScale)
                     }
                 }
         }
@@ -454,7 +480,7 @@ public struct ChatComposer: View {
         .accessibilityLabel("Stop recording")
         .accessibilityHint("Double-tap to stop voice input and insert the transcript.")
         .onAppear {
-            guard !reduceMotion else { return }
+            guard shouldAnimateRecordingPulse else { return }
             withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
                 pulseScale = 1.5
                 pulseOpacity = 0

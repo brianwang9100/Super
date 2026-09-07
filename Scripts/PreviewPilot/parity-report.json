@@ -1,0 +1,401 @@
+[
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/dynamicTypeXXL.composer_typed_light_xxl.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.88313064308089184,
+    "changedPixels" : 364249,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_typed_light_xxl.png",
+    "maximumChannelDifference" : 50,
+    "meanAbsoluteChannelDifference" : 0.29351233598091414,
+    "pixelsWithChannelDifferenceAbove2" : 2153,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/emptyDark.composer_empty_dark.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.24341256679565137,
+    "changedPixels" : 100396,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_empty_dark.png",
+    "maximumChannelDifference" : 76,
+    "meanAbsoluteChannelDifference" : 0.51065639153162068,
+    "pixelsWithChannelDifferenceAbove2" : 6149,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/emptyLight.composer_empty_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.91032895949104375,
+    "changedPixels" : 375467,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_empty_light.png",
+    "maximumChannelDifference" : 36,
+    "meanAbsoluteChannelDifference" : 0.30803099512185661,
+    "pixelsWithChannelDifferenceAbove2" : 2853,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/fontScaleMax.composer_font_scale_max_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.8839161890353302,
+    "changedPixels" : 364573,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light.png",
+    "maximumChannelDifference" : 41,
+    "meanAbsoluteChannelDifference" : 0.29428939609942489,
+    "pixelsWithChannelDifferenceAbove2" : 2248,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/fontScaleMaxDark.composer_font_scale_max_dark.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.23506250424291797,
+    "changedPixels" : 96952,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_font_scale_max_dark.png",
+    "maximumChannelDifference" : 76,
+    "meanAbsoluteChannelDifference" : 0.14942223579955971,
+    "pixelsWithChannelDifferenceAbove2" : 1451,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/fontScaleMaxXXL.composer_font_scale_max_light_xxl.png",
+    "baselinePixels" : [
+      1206,
+      352
+    ],
+    "changedPixelFraction" : 0.88525648273782598,
+    "changedPixels" : 375802,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png",
+    "maximumChannelDifference" : 41,
+    "meanAbsoluteChannelDifference" : 0.29277264246947082,
+    "pixelsWithChannelDifferenceAbove2" : 2287,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      352
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/micUnavailableLight.composer_mic_unavailable_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.9114515143580344,
+    "changedPixels" : 375930,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_mic_unavailable_light.png",
+    "maximumChannelDifference" : 25,
+    "meanAbsoluteChannelDifference" : 0.30487850707476266,
+    "pixelsWithChannelDifferenceAbove2" : 2539,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/midMorphLight.composer_mid_morph_light.png",
+    "baselinePixels" : [
+      1206,
+      230
+    ],
+    "changedPixelFraction" : 0.71196553464561252,
+    "changedPixels" : 197485,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_mid_morph_light.png",
+    "maximumChannelDifference" : 38,
+    "meanAbsoluteChannelDifference" : 0.22462055663710434,
+    "pixelsWithChannelDifferenceAbove2" : 2375,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      230
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/multipleReferencePillsLight.composer_reference_pills_multiple_light.png",
+    "baselinePixels" : [
+      1206,
+      433
+    ],
+    "changedPixelFraction" : 0.80919689466447597,
+    "changedPixels" : 422561,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_reference_pills_multiple_light.png",
+    "maximumChannelDifference" : 36,
+    "meanAbsoluteChannelDifference" : 0.27389658711829612,
+    "pixelsWithChannelDifferenceAbove2" : 3581,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      433
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/nearMaxContext.composer_near_max_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.90981253576173715,
+    "changedPixels" : 375254,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_near_max_light.png",
+    "maximumChannelDifference" : 36,
+    "meanAbsoluteChannelDifference" : 0.30847286472122815,
+    "pixelsWithChannelDifferenceAbove2" : 2879,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/oneReferencePillDark.composer_reference_pill_dark.png",
+    "baselinePixels" : [
+      1206,
+      433
+    ],
+    "changedPixelFraction" : 0.20095251226546251,
+    "changedPixels" : 104937,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_reference_pill_dark.png",
+    "maximumChannelDifference" : 78,
+    "meanAbsoluteChannelDifference" : 0.12507612055197453,
+    "pixelsWithChannelDifferenceAbove2" : 1604,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      433
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/oneReferencePillLight.composer_reference_pill_light.png",
+    "baselinePixels" : [
+      1206,
+      433
+    ],
+    "changedPixelFraction" : 0.84262674311276564,
+    "changedPixels" : 440018,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_reference_pill_light.png",
+    "maximumChannelDifference" : 50,
+    "meanAbsoluteChannelDifference" : 0.27324166312394915,
+    "pixelsWithChannelDifferenceAbove2" : 2540,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      433
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/oneReferencePillXXL.composer_reference_pill_light_xxl.png",
+    "baselinePixels" : [
+      1206,
+      447
+    ],
+    "changedPixelFraction" : 0.81408394270259443,
+    "changedPixels" : 438858,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_reference_pill_light_xxl.png",
+    "maximumChannelDifference" : 50,
+    "meanAbsoluteChannelDifference" : 0.26596232113110807,
+    "pixelsWithChannelDifferenceAbove2" : 2609,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      447
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/pillModeDark.composer_pill_dark.png",
+    "baselinePixels" : [
+      1206,
+      228
+    ],
+    "changedPixelFraction" : 0.026228506589857727,
+    "changedPixels" : 7212,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_pill_dark.png",
+    "maximumChannelDifference" : 144,
+    "meanAbsoluteChannelDifference" : 0.10356205085682697,
+    "pixelsWithChannelDifferenceAbove2" : 980,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      228
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/pillModeLight.composer_pill_light.png",
+    "baselinePixels" : [
+      1206,
+      228
+    ],
+    "changedPixelFraction" : 0.71677431555671933,
+    "changedPixels" : 197090,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_pill_light.png",
+    "maximumChannelDifference" : 36,
+    "meanAbsoluteChannelDifference" : 0.21344210962730209,
+    "pixelsWithChannelDifferenceAbove2" : 1529,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      228
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/recordingDark.composer_recording_dark.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.24440904638600369,
+    "changedPixels" : 100807,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_recording_dark.png",
+    "maximumChannelDifference" : 76,
+    "meanAbsoluteChannelDifference" : 0.51273117841591265,
+    "pixelsWithChannelDifferenceAbove2" : 6521,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/recordingLight.composer_recording_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.89299118442873349,
+    "changedPixels" : 368316,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_recording_light.png",
+    "maximumChannelDifference" : 25,
+    "meanAbsoluteChannelDifference" : 0.30539129401724324,
+    "pixelsWithChannelDifferenceAbove2" : 3071,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/recordingReduceMotion.composer_recording_reduce_motion.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.89278994889102248,
+    "changedPixels" : 368233,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_recording_reduce_motion.png",
+    "maximumChannelDifference" : 25,
+    "meanAbsoluteChannelDifference" : 0.30431116832989052,
+    "pixelsWithChannelDifferenceAbove2" : 2981,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/recordingXXL.composer_recording_xxl.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.89045028269956261,
+    "changedPixels" : 367268,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_recording_xxl.png",
+    "maximumChannelDifference" : 25,
+    "meanAbsoluteChannelDifference" : 0.31025670865943189,
+    "pixelsWithChannelDifferenceAbove2" : 3507,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/streamingShowsStop.composer_streaming_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.89277540174371806,
+    "changedPixels" : 368227,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_streaming_light.png",
+    "maximumChannelDifference" : 25,
+    "meanAbsoluteChannelDifference" : 0.30425358587181056,
+    "pixelsWithChannelDifferenceAbove2" : 2981,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  },
+  {
+    "baseline" : "Packages\/Chat\/Tests\/ChatTests\/UI\/Snapshots\/__Snapshots__\/ChatComposerSnapshotTests\/typedFlipsToSend.composer_typed_light.png",
+    "baselinePixels" : [
+      1206,
+      342
+    ],
+    "changedPixelFraction" : 0.88817607867097259,
+    "changedPixels" : 366330,
+    "image" : "Chat_ChatComposerPreviews.swift_composer_typed_light.png",
+    "maximumChannelDifference" : 50,
+    "meanAbsoluteChannelDifference" : 0.29448760098144755,
+    "pixelsWithChannelDifferenceAbove2" : 2153,
+    "precision" : 1,
+    "previewPixels" : [
+      1206,
+      342
+    ],
+    "status" : "pixel-mismatch"
+  }
+]

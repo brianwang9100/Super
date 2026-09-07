@@ -25,6 +25,12 @@ records the delivery check, not a replacement for repository settings.
 
 ---
 
+## Argos native preview workflow
+
+`.github/workflows/argos.yml` adds a separate visual-testing job on PRs and main pushes: pinned iOS simulator capture through `npm test`, followed by an Argos CLI upload. It uses GitHub OIDC authentication for Argos and preserves capture evidence. Existing required tests remain unchanged; see [ARGOS_SETUP.md](ARGOS_SETUP.md) for setup, baseline seeding, and local commands.
+
+Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): representative layouts and documented regression risks, not a Cartesian product of every view, state, theme, and accessibility setting. The audit includes current CI timings and a concrete migration shortlist. Existing checks remain in place until replacement captures and Argos review enforcement are verified.
+
 ## 1. Goals & Philosophy
 
 The [root delivery workflow](../AGENTS.md#delivery-workflow) is the canonical

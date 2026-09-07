@@ -1,0 +1,18 @@
+[
+  {
+    "app": "Super.app",
+    "binariesInspected": [
+      "Super"
+    ],
+    "findings": [],
+    "status": "pass"
+  },
+  {
+    "app": "SuperBible.app",
+    "binariesInspected": [
+      "SuperBible"
+    ],
+    "findings": [],
+    "status": "pass"
+  }
+]

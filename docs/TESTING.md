@@ -10,7 +10,7 @@ Read this before adding tests, changing SwiftUI views, recording snapshots, or v
 | Bug fix | Regression that fails before the fix; explain any unavailable regression in the PR |
 | GRDB schema/query | In-memory `DatabaseQueue` integration test; `GRDBSnapshotTesting` when schema shape matters |
 | Cross-applet event/tool | Exercise a real in-memory `SuperEventBus` |
-| SwiftUI view | Snapshot key applicable states in Vellum light/dark at default Dynamic Type; add XXL for text reflow, Reduce Motion for animation, and each supported form factor for applet layouts |
+| SwiftUI view | Cover distinct visual risks through existing or new screen/gallery captures; follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md) for state, theme, accessibility, and form-factor selection |
 
 Coverage floors remain Core ≥80%, applets ≥70%, and future server ≥80%; do not lower them. The workflows currently print Swift coverage summaries; Codecov gating remains planned.
 
@@ -26,6 +26,13 @@ Before opening a PR, run `swift test` from **each affected package root**. This 
 - Do not serialize logic suites to mask races. The snapshot recording exception is below. Reuse Core's `FixedClock`/`DeterministicIDGenerator`; do not create local copies.
 
 Package `AGENTS.md` files identify their local fixtures and drain seams.
+
+## Visual coverage selection
+
+- **New or changed SwiftUI view** → **cover the visual risk, not every view declaration.** Reuse an existing screen or component-gallery scenario when it visibly exercises the change. Add a screenshot only for a distinct layout, theme, reflow, or visual regression risk that existing coverage misses; behavior, data permutations, and state transitions belong in unit/integration tests. Follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
+- **Keep the visual matrix small.** Use Vellum light/dark for a representative primary layout; cover additional states in one theme unless they introduce a separate color/contrast risk. Add XXL, app font-scale extremes, Reduce Motion, and another form factor only where they exercise distinct behavior. Keep a representative reflow case for text-heavy surfaces, known visual regression cases, and each distinct applet-level iPhone/iPad/Mac layout. Do not multiply every state by every axis. All eight palettes belong in the existing package theme galleries, not every screen suite.
+- **Every new screenshot needs a reason.** In the PR's Test Coverage section, name the scenario, the defect it would catch, why an existing capture is insufficient, and the before/after screenshot count. Prefer a small readable component gallery over separate captures of every pill, icon, or toggle. Byte-identical baselines are audit candidates, not proof that their input cases are redundant; retain behavioral assertions and investigate ineffective fixtures before removing coverage.
+- **Argos migration is incremental.** The current native preview pilot coexists with Point-Free suites. Keep legacy tests and PNGs until their selected replacement captures pass, the Argos baseline is reviewed, and the required review gate is verified. Retire the paired legacy visual assertions and PNGs together; preserve behavioral tests and GRDB/text snapshots. The pilot still reads composer baselines for parity and must be decoupled before those files are removed. Generated Argos screenshots stay ignored; fixture code and the expected capture inventory stay tracked. Only rerecord or approve intentional visual changes, never to make a check pass.
 
 ## Snapshot conventions
 

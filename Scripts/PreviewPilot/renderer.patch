@@ -1,0 +1,39 @@
+diff --git a/Sources/SnapshotPreviewsCore/ExpandingViewController.swift b/Sources/SnapshotPreviewsCore/ExpandingViewController.swift
+index 92026bc..9113db4 100644
+--- a/Sources/SnapshotPreviewsCore/ExpandingViewController.swift
++++ b/Sources/SnapshotPreviewsCore/ExpandingViewController.swift
+@@ -17,9 +17,11 @@ import SnapshotSharedModels
+ public final class ExpandingViewController: UIHostingController<EmergeModifierView>, ScrollExpansionProviding {
+ 
+   var supportsExpansion: Bool {
+-    rootView.supportsExpansion
++    !hasFixedLayout && rootView.supportsExpansion
+   }
+ 
++  private var hasFixedLayout = false
++
+   private let HeightExpansionTimeLimitInSeconds: UInt64 = 30
+ 
+   private var didCall = false
+@@ -61,11 +63,21 @@ public final class ExpandingViewController: UIHostingController<EmergeModifierVi
+     removeConstraints()
+     switch layout {
+     case let .fixed(width: width, height: height):
++      hasFixedLayout = true
+       widthAnchor = view.widthAnchor.constraint(equalToConstant: width)
+       widthAnchor?.isActive = true
+       heightAnchor = view.heightAnchor.constraint(equalToConstant: height)
+       heightAnchor?.isActive = true
++    case .sizeThatFits:
++      hasFixedLayout = false
++      // Match the minimum intrinsic proposal used by the legacy SwiftUI snapshot contract.
++      let fittingSize = sizeThatFits(in: .zero)
++      widthAnchor = view.widthAnchor.constraint(equalToConstant: fittingSize.width)
++      widthAnchor?.isActive = true
++      heightAnchor = view.heightAnchor.constraint(equalToConstant: fittingSize.height)
++      heightAnchor?.isActive = true
+     default:
++      hasFixedLayout = false
+       let fittingSize = sizeThatFits(in: UIScreen.main.bounds.size)
+       widthAnchor = view.widthAnchor.constraint(greaterThanOrEqualToConstant: fittingSize.width)
+       widthAnchor?.isActive = true
