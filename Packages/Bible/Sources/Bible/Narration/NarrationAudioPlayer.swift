@@ -22,16 +22,39 @@ public enum NarrationAudioEvent: Sendable {
     func setRate(_ rate: Float)
 }
 
+/// Native clip operations kept internal so preparation failures can be reproduced without malformed media fixtures.
+@MainActor
+protocol NarrationClipPlaying: AnyObject {
+    var delegate: (any AVAudioPlayerDelegate)? { get set }
+    var enableRate: Bool { get set }
+    var rate: Float { get set }
+    func prepareToPlay() -> Bool
+    func play() -> Bool
+    func pause()
+    func stop()
+}
+
+extension AVAudioPlayer: NarrationClipPlaying {}
+
 /// MP3 playback backed by Apple's audio player; delegates bridge into one asynchronous event stream.
 @MainActor public final class NarrationAudioPlayer: NSObject, NarrationAudioPlaying, AVAudioPlayerDelegate {
-    private var player: AVAudioPlayer?
+    private var player: (any NarrationClipPlaying)?
+    private let makePlayer: (Data) throws -> any NarrationClipPlaying
     private var continuation: AsyncStream<NarrationAudioEvent>.Continuation?
     #if os(iOS)
     private var previousSession: (category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions)?
     private var interruptionTask: Task<Void, Never>?
     #endif
 
-    public override init() { super.init() }
+    public override init() {
+        makePlayer = { try AVAudioPlayer(data: $0) }
+        super.init()
+    }
+
+    init(makePlayer: @escaping (Data) throws -> any NarrationClipPlaying) {
+        self.makePlayer = makePlayer
+        super.init()
+    }
 
     public func play(_ audio: Data, rate: Float) -> AsyncStream<NarrationAudioEvent> {
         stop()
@@ -61,13 +84,13 @@ public enum NarrationAudioEvent: Sendable {
         }
         #endif
         do {
-            let player = try AVAudioPlayer(data: audio)
+            let player = try makePlayer(audio)
             self.player = player
             player.delegate = self
             player.enableRate = true
             player.rate = min(2, max(0.75, rate))
             guard player.prepareToPlay(), player.play() else {
-                continuation.yield(.unavailable)
+                continuation.yield(.failed)
                 stop()
                 return stream
             }
@@ -79,7 +102,7 @@ public enum NarrationAudioEvent: Sendable {
         return stream
     }
     public func pause() { player?.pause() }
-    public func resume() { player?.play() }
+    public func resume() { _ = player?.play() }
     public func setRate(_ rate: Float) { player?.rate = min(2, max(0.75, rate)) }
     public func stop() {
         player?.stop()

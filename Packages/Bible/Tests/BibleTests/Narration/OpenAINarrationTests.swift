@@ -1,3 +1,4 @@
+import AVFoundation
 import Core
 import Foundation
 import GRDB
@@ -316,6 +317,31 @@ struct OpenAINarrationTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func nativeClipRefusalEvictsCachedAudioAndRetryRegenerates(prepares: Bool) async throws {
+        let clip = RefusingNarrationClip(prepares: prepares)
+        let player = NarrationAudioPlayer(makePlayer: { _ in clip })
+        let cache = try NarrationAudioCache.makeInMemory()
+        let key = NarrationAudioCache.key(text: "One", voice: .marin)
+        try await cache.save(Data([1, 2, 3]), for: key)
+        let generator = CountingSpeech()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        let verses: [NarrationVerseUtterance] = [.init(verseNumber: 1, text: "One")]
+        var events = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        // No audible start should be emitted for either preparation or play refusal.
+        #expect(await events.next() == .failed(.speech(.invalidAudio)))
+        #expect(await events.next() == nil)
+        #expect(try await cache.audio(for: key) == nil)
+        #expect(await generator.requests.isEmpty)
+        #expect(clip.playCount == (prepares ? 1 : 0))
+
+        var retry = service.startSpeaking(verses, rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await retry.next() == .preparing(verseNumber: 1))
+        #expect(await retry.next() == .failed(.speech(.invalidAudio)))
+        #expect(await retry.next() == nil)
+        #expect(await generator.requests == ["One"])
+    }
+
     @Test func longVerseReturnsToSpeakingAfterBufferingAnotherSegment() async throws {
         let generator = GatedSpeech()
         let player = ControlledAudioPlayer()
@@ -495,4 +521,19 @@ private struct RejectingNarrationKeychain: KeychainClient {
         throw KeychainError.unhandledStatus(-34018)
     }
     func delete(ref: String) async throws { fatalError("A failed Keychain write must not delete any key.") }
+}
+
+@MainActor
+private final class RefusingNarrationClip: NarrationClipPlaying {
+    weak var delegate: (any AVAudioPlayerDelegate)?
+    var enableRate = false
+    var rate: Float = 1
+    private let prepares: Bool
+    private(set) var playCount = 0
+
+    init(prepares: Bool) { self.prepares = prepares }
+    func prepareToPlay() -> Bool { prepares }
+    func play() -> Bool { playCount += 1; return false }
+    func pause() {}
+    func stop() {}
 }

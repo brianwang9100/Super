@@ -38,6 +38,11 @@ struct SuperBibleApp: App {
                     }
                 }
                 .onChange(of: scenePhase) { _, phase in
+                    // This observer outlives the Bible backdrop, so narration is
+                    // stopped even after switching to another applet.
+                    if phase != .active, case .ready(let dependencies) = state {
+                        dependencies.audioActivity.stopPlayback?()
+                    }
                     switch phase {
                     case .background:
                         // Schedule a processing task if a run is still active, so
