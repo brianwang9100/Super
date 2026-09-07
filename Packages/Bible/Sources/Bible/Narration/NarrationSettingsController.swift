@@ -49,7 +49,8 @@ public final class NarrationSettingsController {
         return ProviderAudioCredential(id: id, name: record.sourceName ?? "OpenAI key", keyRef: ref)
     }
     public var snapshot: ProviderAudioSnapshot {
-        ProviderAudioSnapshot(enabled: record.enabled, source: source, revision: record.revision)
+        // Recovery labels may reference removed credentials; setup drafts need an available choice.
+        ProviderAudioSnapshot(enabled: record.enabled, source: hasKey ? source : nil, revision: record.revision)
     }
     public var providerSetup: ProviderAudioSetup {
         ProviderAudioSetup(snapshot: { self.snapshot }) { credential, enabled, useThisKey, revision in

@@ -359,6 +359,32 @@ struct OpenAINarrationTests {
         #expect(await generator.requests == ["One"])
     }
 
+    @Test func nativeResumeRefusalEndsSessionAndPreservesCachedAudio() async throws {
+        let clip = ResumeRefusingNarrationClip()
+        let player = NarrationAudioPlayer(makePlayer: { _ in clip })
+        let cache = try NarrationAudioCache.makeInMemory()
+        let key = NarrationAudioCache.key(text: "One", voice: .marin)
+        try await cache.save(Data([1, 2, 3]), for: key)
+        let service = OpenAINarrationService(generator: UnexpectedSpeech(), player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking([.init(verseNumber: 1, text: "One")], rate: 1, voice: .marin).makeAsyncIterator()
+        #expect(await events.next() == .started(verseNumber: 1))
+        service.pause()
+        #expect(await events.next() == .paused)
+        service.resume()
+        #expect(clip.playCount == 2)
+        #expect(clip.stopCount == 1)
+        // Avoid waiting forever on the broken adapter, which never terminates its stream.
+        guard clip.stopCount == 1 else { service.stop(); await service._waitForPendingTask(); return }
+        #expect(await events.next() == .resumed)
+        guard case .failed(.audioSessionFailed) = await events.next() else {
+            Issue.record("Resume refusal must offer audio-session recovery.")
+            service.stop()
+            return
+        }
+        #expect(await events.next() == nil)
+        #expect(try await cache.audio(for: key) == Data([1, 2, 3]))
+    }
+
     @Test func immediatePlaybackFailureDoesNotStartLookAhead() async throws {
         let cache = RemovalGatedAudioCache(cachedKey: NarrationAudioCache.key(text: "One", voice: .marin))
         let generator = CountingSpeech()
@@ -570,6 +596,19 @@ private final class RefusingNarrationClip: NarrationClipPlaying {
     func play() -> Bool { playCount += 1; return false }
     func pause() {}
     func stop() {}
+}
+
+@MainActor
+private final class ResumeRefusingNarrationClip: NarrationClipPlaying {
+    weak var delegate: (any AVAudioPlayerDelegate)?
+    var enableRate = false
+    var rate: Float = 1
+    private(set) var playCount = 0
+    private(set) var stopCount = 0
+    func prepareToPlay() -> Bool { true }
+    func play() -> Bool { playCount += 1; return playCount == 1 }
+    func pause() {}
+    func stop() { stopCount += 1 }
 }
 
 private actor RemovalGatedAudioCache: NarrationAudioCaching {

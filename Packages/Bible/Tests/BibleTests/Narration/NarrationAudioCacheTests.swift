@@ -254,6 +254,81 @@ struct NarrationAudioCacheTests {
     }
     #endif
 
+    @Test(arguments: [false, true])
+    func interruptedWritesAreRemovedOnStartupAndClear(clear: Bool) async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = try NarrationAudioCache.open(in: directory, limit: 4)
+        try await cache.save(Data([1, 2]), for: "committed")
+        let clips = directory.appending(path: "clips")
+        let interrupted = clips.appending(path: ".01234567-89AB-4CDE-8F01-23456789ABCD.tmp")
+        try Data(repeating: 9, count: 6).write(to: interrupted)
+        if clear {
+            try await cache.clear()
+            #expect(try await cache.byteCount() == 0)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: clips.path).isEmpty)
+        } else {
+            let reopened = try NarrationAudioCache.open(in: directory, limit: 4)
+            #expect(try await reopened.audio(for: "committed") == Data([1, 2]))
+            #expect(try await reopened.byteCount() == 2)
+            let files = try FileManager.default.contentsOfDirectory(at: clips, includingPropertiesForKeys: [.fileSizeKey])
+            let bytes = try files.reduce(0) { try $0 + ($1.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) }
+            #expect(bytes <= 4)
+        }
+        #expect(!FileManager.default.fileExists(atPath: interrupted.path))
+    }
+
+    @Test func temporaryCleanupLeavesOtherFilesAndNonregularMatchesUntouched() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = FileManager.default
+        let cache = try NarrationAudioCache.open(in: directory)
+        let clips = directory.appending(path: "clips")
+        let unrelated = clips.appending(path: ".unfinished.tmp")
+        try Data([1]).write(to: unrelated)
+        let noncanonical = clips.appending(path: ".01234567-89ab-4cde-8f01-23456789abcd.tmp")
+        try Data([2]).write(to: noncanonical)
+        let malformed = clips.appending(path: ".XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX.tmp")
+        try Data([3]).write(to: malformed)
+        let nested = clips.appending(path: ".12345678-9ABC-4DEF-8012-3456789ABCDE.tmp")
+        try manager.createDirectory(at: nested, withIntermediateDirectories: true)
+        let link = clips.appending(path: ".23456789-ABCD-4EF0-8123-456789ABCDEF.tmp")
+        try manager.createSymbolicLink(at: link, withDestinationURL: unrelated)
+        let preserved = [unrelated, noncanonical, malformed, nested, link].map(\.lastPathComponent)
+        let reopened = try NarrationAudioCache.open(in: directory)
+        try await reopened.clear()
+        #expect(Set(try manager.contentsOfDirectory(atPath: clips.path)) == Set(preserved))
+        #expect(try Data(contentsOf: unrelated) == Data([1]))
+        #expect(try await cache.byteCount() == 0)
+    }
+
+    @Test func temporaryCleanupFailurePreventsDiskAdmissionAndUsesMemoryFallback() async throws {
+        let storage = FaultingNarrationAudioStorage()
+        storage.failTemporaryCleanup(true)
+        #expect(throws: NarrationAudioCacheError.unavailable) { try NarrationAudioCache(storage: storage) }
+        let fallback = try NarrationAudioCache.openOrInMemory(
+            directory: { URL(fileURLWithPath: "/unused") },
+            open: { _ in try NarrationAudioCache(storage: storage) }
+        )
+        try await fallback.save(Data([1, 2]), for: "a")
+        #expect(try await fallback.audio(for: "a") == Data([1, 2]))
+        #expect(storage.writtenBytes == 0)
+    }
+
+    @Test func temporaryCleanupFailureDoesNotReportClearSuccess() async throws {
+        let storage = FaultingNarrationAudioStorage()
+        let cache = try NarrationAudioCache(storage: storage)
+        try await cache.save(Data([1, 2]), for: "a")
+        storage.failTemporaryCleanup(true)
+        await #expect(throws: NarrationAudioCacheError.unavailable) { try await cache.clear() }
+        #expect(try await cache.byteCount() == 2)
+        #expect(storage.writtenBytes == 2)
+        storage.failTemporaryCleanup(false)
+        try await cache.clear()
+        #expect(try await cache.byteCount() == 0)
+        #expect(storage.writtenBytes == 0)
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     }
@@ -270,11 +345,18 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
         var rejectsWrites = false
         var rejectsTouches = false
         var rejectsReads = false
+        var rejectsTemporaryCleanup = false
         var successfulRemovalsBeforeFailure: Int?
     }
     private let state = OSAllocatedUnfairLock(initialState: State())
     var writtenBytes: Int { state.withLock { $0.files.values.reduce(0) { $0 + $1.audio.count } } }
     func failWrites() { state.withLock { $0.rejectsWrites = true } }
+    func failTemporaryCleanup(_ fails: Bool) { state.withLock { $0.rejectsTemporaryCleanup = fails } }
+    func removeTemporaryFiles() throws {
+        try state.withLock { state in
+            guard !state.rejectsTemporaryCleanup else { throw NarrationAudioCacheError.unavailable }
+        }
+    }
     func failTouches() { state.withLock { $0.rejectsTouches = true } }
     func failReads(_ fails: Bool) { state.withLock { $0.rejectsReads = fails } }
     func failRemoval(after successfulRemovals: Int?) { state.withLock { $0.successfulRemovalsBeforeFailure = successfulRemovals } }

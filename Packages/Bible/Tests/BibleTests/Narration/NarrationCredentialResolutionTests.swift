@@ -7,6 +7,65 @@ import Testing
 @Suite("Narration credential resolution")
 @MainActor
 struct NarrationCredentialResolutionTests {
+    @Test("A new model draft replaces a removed borrowed source while preserving opt-out", arguments: [false, true])
+    func modelDraftDefaultsToNewKeyAfterBorrowedSourceRemoval(enabled: Bool) async throws {
+        let fixture = try CredentialFixture()
+        try await fixture.configure()
+        if !enabled { try await fixture.settings.setEnabled(false) }
+        await fixture.projection.set([])
+        try await fixture.keys.delete(ref: "old-ref")
+        await fixture.settings.refreshCredentials()
+        let setup = fixture.settings.providerSetup
+        let snapshot = setup.snapshot()
+
+        #expect(fixture.settings.source == fixture.source) // Retain the recovery label.
+        #expect(snapshot.source == nil)
+        #expect(snapshot.enabled == enabled)
+        let editingId: String? = nil
+        // Match the model registration draft's default selection for a newly created model.
+        let useThisKey = snapshot.source == nil || snapshot.source?.id == editingId
+        #expect(useThisKey)
+        let replacement = ProviderAudioCredential(id: "new-model", name: "New OpenAI model", keyRef: "new-ref")
+        try await fixture.keys.setString("replacement", ref: replacement.keyRef)
+        await fixture.projection.set([replacement])
+
+        try await setup.commit(replacement, snapshot.enabled ?? true, useThisKey, snapshot.revision)
+
+        #expect(fixture.settings.record.sourceId == replacement.id)
+        #expect(fixture.settings.record.keyRef == replacement.keyRef)
+        #expect(fixture.settings.record.enabled == enabled)
+        #expect(fixture.settings.hasKey)
+        #expect(fixture.settings.snapshot.source == replacement)
+        if enabled { #expect(try await fixture.settings.apiKey() == "replacement") }
+    }
+
+    @Test("A new model draft preserves an available selected source even when narration is disabled",
+          arguments: [false, true])
+    func modelDraftPreservesAvailableSource(enabled: Bool) async throws {
+        let fixture = try CredentialFixture()
+        try await fixture.configure()
+        if !enabled { try await fixture.settings.setEnabled(false) }
+        let setup = fixture.settings.providerSetup
+        let snapshot = setup.snapshot()
+
+        #expect(snapshot.source == fixture.source)
+        #expect(snapshot.enabled == enabled)
+        let editingId: String? = nil
+        let useThisKey = snapshot.source == nil || snapshot.source?.id == editingId
+        #expect(!useThisKey)
+        let newSource = ProviderAudioCredential(id: "new-model", name: "Another OpenAI model", keyRef: "new-ref")
+        try await fixture.keys.setString("another-key", ref: newSource.keyRef)
+        await fixture.projection.set([fixture.source, newSource])
+
+        try await setup.commit(newSource, snapshot.enabled ?? true, useThisKey, snapshot.revision)
+
+        #expect(fixture.settings.record.sourceId == fixture.source.id)
+        #expect(fixture.settings.record.keyRef == fixture.source.keyRef)
+        #expect(fixture.settings.record.enabled == enabled)
+        #expect(fixture.settings.record.revision == snapshot.revision)
+        #expect(fixture.settings.snapshot.source == fixture.source)
+    }
+
     @Test func unchangedAudioCommitAfterModelRenamePreservesPlaybackAndPendingLookup() async throws {
         let fixture = try CredentialFixture()
         try await fixture.configure()

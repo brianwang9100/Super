@@ -102,7 +102,15 @@ extension AVAudioPlayer: NarrationClipPlaying {}
         return stream
     }
     public func pause() { player?.pause() }
-    public func resume() { _ = player?.play() }
+    public func resume() {
+        // No clip is expected when resuming a paused download.
+        guard let player else { return }
+        guard player.play() else {
+            continuation?.yield(.unavailable)
+            stop()
+            return
+        }
+    }
     public func setRate(_ rate: Float) { player?.rate = min(2, max(0.75, rate)) }
     public func stop() {
         player?.stop()

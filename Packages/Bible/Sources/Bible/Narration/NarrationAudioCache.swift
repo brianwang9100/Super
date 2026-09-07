@@ -17,6 +17,8 @@ public enum NarrationAudioCacheError: Error, Sendable { case unavailable }
 
 /// Synchronous storage operations let the cache actor keep admission and eviction atomic with its index.
 protocol NarrationAudioFileStorage: Sendable {
+    /// Remove interrupted writes before admitting clips or reporting a successful clear.
+    func removeTemporaryFiles() throws
     func files() throws -> [NarrationAudioFile]
     func read(_ name: String) throws -> Data?
     /// A failed write must leave the previous complete clip intact.
@@ -57,6 +59,7 @@ public actor NarrationAudioCache: NarrationAudioCaching {
         self.clock = clock
         self.limit = max(0, limit)
         do {
+            try storage.removeTemporaryFiles()
             var loaded: [String: Entry] = [:]
             for file in try storage.files() where Self.owns(file.name) && file.byteCount >= 0 {
                 loaded[file.name] = Entry(byteCount: file.byteCount, accessedAt: file.accessedAt, audio: nil)
@@ -132,6 +135,7 @@ public actor NarrationAudioCache: NarrationAudioCaching {
 
     public func clear() async throws {
         do {
+            try storage?.removeTemporaryFiles()
             for name in entries.keys.sorted() { try removeFile(name) }
         } catch { throw NarrationAudioCacheError.unavailable }
     }
@@ -183,6 +187,21 @@ private struct FileNarrationAudioStorage: NarrationAudioFileStorage {
         try excluded.setResourceValues(values)
         self.directory = directory.appending(path: "clips", directoryHint: .isDirectory)
         try manager.createDirectory(at: self.directory, withIntermediateDirectories: true)
+    }
+
+    func removeTemporaryFiles() throws {
+        let manager = FileManager.default
+        let urls = try manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        for url in urls {
+            let name = url.lastPathComponent
+            // UUIDGenerator emits canonical uppercase UUIDs. Other temporary files are not ours.
+            guard name.count == 41, name.hasPrefix("."), name.hasSuffix(".tmp") else { continue }
+            let identifier = String(name.dropFirst().dropLast(4))
+            guard let uuid = UUID(uuidString: identifier), uuid.uuidString == identifier else { continue }
+            let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isRegularFile == true, values.isSymbolicLink != true else { continue }
+            try manager.removeItem(at: url)
+        }
     }
 
     func files() throws -> [NarrationAudioFile] {
