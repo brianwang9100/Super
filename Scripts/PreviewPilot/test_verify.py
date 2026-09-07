@@ -6,6 +6,17 @@ from verify import expected_names, verify_names, verify_exports, verify_sources,
 
 
 class InventoryTests(unittest.TestCase):
+    def test_settings_group_is_required_and_dimensions_are_fixed(self):
+        names = expected_names()
+        settings = [name for name in names if '_SettingsPanePreviews.swift_' in name]
+        self.assertEqual(len(settings), 14)
+        with self.assertRaises(ValueError):
+            verify_names([name for name in names if name not in settings])
+        pane = 'Chat_SettingsPanePreviews.swift_settings_root_light.png'
+        verify_dimensions(pane, 1206, 2622)
+        with self.assertRaises(ValueError):
+            verify_dimensions(pane, 1206, 4020)
+
     def test_source_identity(self):
         verify_sources()
 

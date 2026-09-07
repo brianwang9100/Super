@@ -8,14 +8,26 @@ import struct
 
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = Path(__file__).with_name('composer-inventory.json')
+GROUPS = [(INVENTORY, 'ChatComposerPreviews.swift', 21),
+          (Path(__file__).with_name('settings-inventory.json'), 'SettingsPanePreviews.swift', 14)]
 UIKIT = 'Core_PreviewCollectionController.swift_collection_viewport_light.png'
 FONTS = 'Core_PreviewCollectionController.swift_font_panel_light.png'
 
 
+def inventory_rows():
+    rows = []
+    for path, source, count in GROUPS:
+        group = json.loads(path.read_text())
+        if len(group) != count or any(row['image'] != f'Chat_{source}_{row["preview"]}.png' for row in group):
+            raise ValueError(f'Invalid checked-in capture inventory: {path.name}')
+        rows.extend(group)
+    return rows
+
+
 def expected_names():
-    rows = json.loads(INVENTORY.read_text())
+    rows = inventory_rows()
     names = [row['image'] for row in rows] + [UIKIT, FONTS]
-    if len(rows) != 21 or len(set(names)) != 23:
+    if len(set(names)) != len(names):
         raise ValueError('Invalid checked-in pilot inventory')
     return names
 
@@ -28,11 +40,12 @@ def verify_names(names):
 
 
 def verify_sources():
-    rows = json.loads(INVENTORY.read_text())
-    source = ROOT / 'Packages/Chat/Sources/Chat/UI/Previews/ChatComposerPreviews.swift'
-    names = re.findall(r'#Preview\("([^"]+)"', source.read_text())
-    if len(names) != len(set(names)) or set(names) != {row['preview'] for row in rows}:
-        raise ValueError('Source declarations are missing, duplicated, or renamed')
+    for path, filename, _ in GROUPS:
+        rows = json.loads(path.read_text())
+        source = ROOT / 'Packages/Chat/Sources/Chat/UI/Previews' / filename
+        names = re.findall(r'#Preview\("([^"]+)"', source.read_text())
+        if len(names) != len(set(names)) or set(names) != {row['preview'] for row in rows}:
+            raise ValueError(f'Source declarations are missing, duplicated, or renamed: {filename}')
 
 
 def verify_exports(folder):
@@ -55,7 +68,7 @@ def verify_exports(folder):
 
 
 def verify_dimensions(name, width, height):
-    dimensions = {row['image']: tuple(row['pixels']) for row in json.loads(INVENTORY.read_text())}
+    dimensions = {row['image']: tuple(row['pixels']) for row in inventory_rows()}
     dimensions.update({UIKIT: (1206, 540), FONTS: (1206, 540)})
     if (width, height) != dimensions.get(name):
         raise ValueError(f'Capture dimensions differ from the fixture contract for {name}: {width}x{height}')
@@ -72,7 +85,7 @@ def main():
         verify_names(args.names.read_text().splitlines())
     else:
         verify_exports(args.exports)
-    print('Verified exactly 21 ChatComposer previews + 2 UIKit probes')
+    print(f'Verified exactly {len(expected_names())} captures across {len(GROUPS)} Chat fixture groups + 2 UIKit probes')
 
 
 if __name__ == '__main__':
