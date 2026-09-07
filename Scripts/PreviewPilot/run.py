@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local-only preview discovery, export and parity; no baseline writes or uploads."""
+"""Discover and validate native captures locally; Argos owns visual comparison."""
 import argparse
 import json
 import os
@@ -9,7 +9,7 @@ import sys
 import tempfile
 import shutil
 from prepare_renderer import prepare
-from verify import INVENTORY, verify_exports
+from verify import verify_exports
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -23,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('simulator', nargs='?', help='Dedicated simulator UUID; otherwise find or create it')
     parser.add_argument('--argos', action='store_true',
-                        help='Publish verified PNGs for new Argos baselines; report legacy pixel differences')
+                        help='Stage verified PNGs in screenshots for a separate Argos CLI upload')
     args = parser.parse_args()
     screenshots = ROOT / 'screenshots'
     if args.argos:
@@ -88,10 +88,9 @@ def main():
             raise ValueError('Swift package resolution changed during capture')
         subprocess.run([sys.executable, str(HERE / 'verify.py'),
                         '--names' if mode == 'discovery' else '--exports', str(path)], check=True)
-    result = subprocess.run(['swift', str(HERE / 'ComparePreviewImages.swift'), str(ROOT),
-                             str(run / 'images'), str(run / 'parity.json')], cwd=ROOT)
-    if args.argos and result.returncode in (0, 1):
-        validate_migration_report(json.loads((run / 'parity.json').read_text()))
+    subprocess.run(['swift', str(HERE / 'ValidatePreviewImages.swift'),
+                    str(run / 'images')], cwd=ROOT, check=True)
+    if args.argos:
         verify_exports(run / 'images')
         images = sorted((run / 'images').glob('*.png'))
         if any(path.stat().st_size > 50_000_000 for path in images):
@@ -99,16 +98,7 @@ def main():
         screenshots.mkdir()
         for path in images:
             shutil.copy2(path, screenshots / path.name)
-        print(f'Prepared {len(images)} native screenshots in {screenshots}; legacy report: {run / "parity.json"}')
-    elif result.returncode:
-        sys.exit(f'Legacy parity failed; capture evidence and comparison: {run / "parity.json"}')
-
-
-def validate_migration_report(rows):
-    expected = {row['image'] for row in json.loads(INVENTORY.read_text())}
-    if (len(rows) != len(expected) or {row.get('image') for row in rows} != expected
-            or any(row.get('status') not in ('exact', 'pixel-mismatch') for row in rows)):
-        raise ValueError('Migration permits legacy pixel differences only; comparison must be complete and valid')
+        print(f'Prepared {len(images)} native screenshots in {screenshots}; evidence: {run}')
 
 
 if __name__ == '__main__':

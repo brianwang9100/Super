@@ -1,6 +1,5 @@
 [
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/dynamicTypeXXL.composer_typed_light_xxl.png",
     "preview": "composer_typed_light_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light_xxl.png",
     "pixels": [
@@ -24,9 +23,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "e3c362abc4d8f48ef761878066da07b5b99f413cc163120b48a66df8cca40c6a",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -38,7 +34,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/emptyDark.composer_empty_dark.png",
     "preview": "composer_empty_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_dark.png",
     "pixels": [
@@ -62,9 +57,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "75e95d2435bbaed4bc98f4894c616c2ea2fb2a872839066b0a707d2851b0693f",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -76,7 +68,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/emptyLight.composer_empty_light.png",
     "preview": "composer_empty_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_light.png",
     "pixels": [
@@ -100,9 +91,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "2b719c4442ef9476af918ed82971aa2e794c49adec27ac23f63fc784d1f0fd97",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -114,7 +102,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMax.composer_font_scale_max_light.png",
     "preview": "composer_font_scale_max_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light.png",
     "pixels": [
@@ -138,9 +125,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "0c54ba568b9f774357a62acf001a951cd23ae2ca12c8617c83d90b6a2c9fada2",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -152,7 +136,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMaxDark.composer_font_scale_max_dark.png",
     "preview": "composer_font_scale_max_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_dark.png",
     "pixels": [
@@ -176,9 +159,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "d7985fb1cebc5e865f0b625516c9bce531a2a3bccb59df0b79c492d07a25a4fd",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -190,7 +170,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/fontScaleMaxXXL.composer_font_scale_max_light_xxl.png",
     "preview": "composer_font_scale_max_light_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png",
     "pixels": [
@@ -214,9 +193,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "e8a713501708987d97830cc12cd7d2fc390f2c25d50d5f92ccce8f2547233a62",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -228,7 +204,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/micUnavailableLight.composer_mic_unavailable_light.png",
     "preview": "composer_mic_unavailable_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_mic_unavailable_light.png",
     "pixels": [
@@ -252,9 +227,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "f336939adfcca243564c09896e6092e2ae76b6f4b269767a7274e54769905605",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -266,7 +238,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/midMorphLight.composer_mid_morph_light.png",
     "preview": "composer_mid_morph_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_mid_morph_light.png",
     "pixels": [
@@ -290,9 +261,6 @@
     "maxTokens": 128000,
     "progress": 0.15,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "7773d73921878d128a16d3e72d9a97fd26bc978274abd9a56ea00d4f2b420204",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -304,7 +272,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/multipleReferencePillsLight.composer_reference_pills_multiple_light.png",
     "preview": "composer_reference_pills_multiple_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pills_multiple_light.png",
     "pixels": [
@@ -337,9 +304,6 @@
         "label": "Romans 8:28 (WEB)"
       }
     ],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "b16dac5dad716a19247457656b30a11f634f175d39282c10f7b46dacf1e07081",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -351,7 +315,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/nearMaxContext.composer_near_max_light.png",
     "preview": "composer_near_max_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_near_max_light.png",
     "pixels": [
@@ -375,9 +338,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "8cf533153c00542d0d8b34b639d340704df3cf18197e2d5cef64dcd69f3e68ab",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -389,7 +349,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillDark.composer_reference_pill_dark.png",
     "preview": "composer_reference_pill_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_dark.png",
     "pixels": [
@@ -418,9 +377,6 @@
         "label": "John 3:16-17 (WEB)"
       }
     ],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "77527f08a9042af503002ec9ea74aaaf9e2f0e9fd03a7f4fe9fa600d885d0493",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -432,7 +388,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillLight.composer_reference_pill_light.png",
     "preview": "composer_reference_pill_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light.png",
     "pixels": [
@@ -461,9 +416,6 @@
         "label": "John 3:16-17 (WEB)"
       }
     ],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "bce8439cfe2052e99c30abc8743bc5e5828ae475b3a6a9a72a21dbaad67dbd95",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -475,7 +427,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/oneReferencePillXXL.composer_reference_pill_light_xxl.png",
     "preview": "composer_reference_pill_light_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light_xxl.png",
     "pixels": [
@@ -504,9 +455,6 @@
         "label": "John 3:16-17 (WEB)"
       }
     ],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "a5732276e1e030ab11cd3d0f83e5120940f8634731d4de38e4d6195de2f6bb0c",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -518,7 +466,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/pillModeDark.composer_pill_dark.png",
     "preview": "composer_pill_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_pill_dark.png",
     "pixels": [
@@ -542,9 +489,6 @@
     "maxTokens": 128000,
     "progress": 0,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "d927689a9819b22e2a9d1ce6f4b045bcc04c682bb942a6129a86b1dd5f8c4a04",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -556,7 +500,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/pillModeLight.composer_pill_light.png",
     "preview": "composer_pill_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_pill_light.png",
     "pixels": [
@@ -580,9 +523,6 @@
     "maxTokens": 128000,
     "progress": 0,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "7fd987b479b3a9773aa6cba5e72004dae4c0b806bfc9c365dfcb919125e5bd02",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -594,7 +534,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingDark.composer_recording_dark.png",
     "preview": "composer_recording_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_dark.png",
     "pixels": [
@@ -618,9 +557,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "5dba2f42e0cf5f931f66fac1ff08cde9d9b68c94ee670fd1b0eb13af09040768",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -644,7 +580,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingLight.composer_recording_light.png",
     "preview": "composer_recording_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_light.png",
     "pixels": [
@@ -668,9 +603,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "1cfd7332a9996941c518be8cff8abdba7b357d215c1d89cc6d419070c92a7d12",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -694,7 +626,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingReduceMotion.composer_recording_reduce_motion.png",
     "preview": "composer_recording_reduce_motion",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_reduce_motion.png",
     "pixels": [
@@ -718,9 +649,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "2eacf8c02e7d3c430f2f83c93338d330576f201a177a240a868842a457aa4bbd",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -744,7 +672,6 @@
     "previewReduceMotion": true
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/recordingXXL.composer_recording_xxl.png",
     "preview": "composer_recording_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_xxl.png",
     "pixels": [
@@ -768,9 +695,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "837094f8011dea68e3f4a7956512c060109b322afd274f403c1b68d16e6f1f80",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -794,7 +718,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/streamingShowsStop.composer_streaming_light.png",
     "preview": "composer_streaming_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_streaming_light.png",
     "pixels": [
@@ -818,9 +741,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "b63fd15b6f8d4cc1a984e32d7cb5c6f97c149f42b36056fbf68f5f75881e411f",
     "modelOptions": [
       {
         "id": "gpt-4o",
@@ -832,7 +752,6 @@
     "previewReduceMotion": false
   },
   {
-    "baseline": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatComposerSnapshotTests/typedFlipsToSend.composer_typed_light.png",
     "preview": "composer_typed_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light.png",
     "pixels": [
@@ -856,9 +775,6 @@
     "maxTokens": 128000,
     "progress": 1,
     "references": [],
-    "precision": 1,
-    "perceptualPrecision": 1,
-    "baselineSHA256": "37e836fb6aba21df5211f09a6f188f6c75457f094848e4d76524ddfca50bff52",
     "modelOptions": [
       {
         "id": "gpt-4o",
