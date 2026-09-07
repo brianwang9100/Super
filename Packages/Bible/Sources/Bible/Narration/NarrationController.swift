@@ -174,7 +174,7 @@ public final class NarrationController {
 
     public func selectRate(_ value: Float) async {
         do {
-            try await settings?.setPreference(voice: voice, rate: value)
+            try await settings?.setRate(value)
             rate = value
         } catch { settings?.errorMessage = "Playback speed could not be saved. Try again." }
     }

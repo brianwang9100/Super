@@ -124,7 +124,7 @@ public final class NarrationSettingsController {
             }
             ref = committed.keyRef
         }
-        guard selected.revision == record.revision else { throw SpeechGenerationError.missingKey }
+        guard hasSameCredential(as: selected) else { throw SpeechGenerationError.missingKey }
         let key = try await keychain.getString(ref: ref)
         if !selected.ownsKey {
             let current = await listSources()
@@ -132,11 +132,17 @@ public final class NarrationSettingsController {
                 throw SpeechGenerationError.missingKey
             }
         }
-        guard selected.revision == record.revision, record.enabled == true,
+        guard hasSameCredential(as: selected), record.enabled == true,
               let key, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SpeechGenerationError.missingKey
         }
         return key
+    }
+
+    private func hasSameCredential(as selected: NarrationSettingsRecord) -> Bool {
+        // Preferences advance the draft revision without changing permission or credential identity.
+        record.enabled == selected.enabled && record.sourceId == selected.sourceId
+            && record.keyRef == selected.keyRef && record.ownsKey == selected.ownsKey
     }
 
     public func configure(
@@ -238,6 +244,13 @@ public final class NarrationSettingsController {
         next.retiredKeyRefs.append(ref)
         try await persist(next, expecting: record.revision, invalidate: true)
         await cleanRetiredKeys()
+    }
+
+    /// Changes speed without promoting a temporary playback voice to the saved preference.
+    public func setRate(_ rate: Float) async throws {
+        var next = record
+        next.rate = Double(rate)
+        try await persist(next, expecting: record.revision, invalidate: false)
     }
 
     public func setPreference(voice: NarrationVoice?, rate: Float) async throws {

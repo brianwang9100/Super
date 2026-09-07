@@ -30,6 +30,9 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         var currentIndex: Int = 0
         var currentRate: Float = AVSpeechUtteranceDefaultSpeechRate
         var currentVoice: AVSpeechSynthesisVoice?
+        /// Retained even when AVSpeech cannot pause a preparing utterance yet.
+        /// Requeues preserve the user's intent; Resume or teardown clears it.
+        var pauseRequested = false
         /// Session-version counter — incremented on every requeue
         /// (skip, setRate, setVoice, restart) and at session start.
         /// Each utterance entry carries the version it was enqueued
@@ -45,6 +48,11 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         /// preempted / interruption). On the next `didCancel` we yield
         /// `.cancelled` exactly once.
         var didEmitTerminal: Bool = false
+        var activeUtterance: UtteranceIdentity? {
+            guard continuation != nil, let (key, entry) = utteranceVerse.first,
+                  entry.sessionVersion == sessionVersion else { return nil }
+            return UtteranceIdentity(key: key, version: sessionVersion)
+        }
         #if os(iOS)
         var savedSessionCategory: AVAudioSession.Category?
         var savedSessionMode: AVAudioSession.Mode?
@@ -59,6 +67,11 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     private struct UtteranceEntry {
         let verseNumber: Int
         let sessionVersion: Int
+    }
+
+    private struct UtteranceIdentity: Sendable {
+        let key: ObjectIdentifier
+        let version: Int
     }
 
     public convenience init(coordinator: (any NarrationAudioCoordinator)? = nil) {
@@ -156,6 +169,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
                 state.sessionVersion += 1
                 state.utteranceVerse.removeAll(keepingCapacity: true)
                 state.didEmitTerminal = false
+                state.pauseRequested = false
                 return state.sessionVersion
             }
             continuation.onTermination = { [weak self] _ in
@@ -166,11 +180,47 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     }
 
     nonisolated public func pause() {
-        synth.pauseSpeaking(at: .word)
+        requestPause()
     }
 
     nonisolated public func resume() {
-        _ = synth.continueSpeaking()
+        let identity = lock.withLock { state -> UtteranceIdentity? in
+            guard state.continuation != nil else { return nil }
+            state.pauseRequested = false
+            return state.activeUtterance
+        }
+        if let identity { applyPlaybackIntent(paused: false, to: identity) }
+    }
+
+    private func requestPause(expectedVersion: Int? = nil) {
+        let identity = lock.withLock { state -> UtteranceIdentity? in
+            guard state.continuation != nil,
+                  expectedVersion == nil || state.sessionVersion == expectedVersion else { return nil }
+            state.pauseRequested = true
+            return state.activeUtterance
+        }
+        if let identity { applyPlaybackIntent(paused: true, to: identity, boundary: .word) }
+    }
+
+    /// A delegate correction applies only to the utterance that produced it.
+    /// Recheck after leaving the callback's lock pass, then call AVSpeech outside
+    /// the lock because it may synchronously acknowledge the request.
+    private func applyPlaybackIntent(
+        paused: Bool,
+        to identity: UtteranceIdentity,
+        boundary: AVSpeechBoundary = .immediate
+    ) {
+        let shouldApply = lock.withLock { state in
+            state.continuation != nil && state.pauseRequested == paused
+                && state.sessionVersion == identity.version
+                && state.utteranceVerse[identity.key]?.sessionVersion == identity.version
+        }
+        guard shouldApply else { return }
+        if paused {
+            synth.pauseSpeaking(at: boundary)
+        } else {
+            synth.continueSpeaking()
+        }
     }
 
     nonisolated public func stop() {
@@ -387,6 +437,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
             }
             state.didEmitTerminal = true
             state.continuation = nil
+            state.pauseRequested = false
             return continuation
         }
         continuation?.yield(terminal)
@@ -395,13 +446,25 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
 
     // MARK: Interruption
 
+    /// Capture the session before the actor hop; returning its task also lets
+    /// tests drain a delayed interruption without posting global notifications.
+    @discardableResult
+    func pauseForAudioInterruption() -> Task<Void, Never>? {
+        guard let version = lock.withLock({ state in
+            state.continuation == nil ? nil : state.sessionVersion
+        }) else { return nil }
+        return Task { @MainActor [weak self] in
+            self?.requestPause(expectedVersion: version)
+        }
+    }
+
     #if os(iOS)
     @objc private func handleAudioInterruption(_ note: Notification) {
         guard
             let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
             let type = AVAudioSession.InterruptionType(rawValue: raw)
         else { return }
-        // `.began` → pause and emit .paused. `.ended` is ignored — per
+        // `.began` requests a pause. `.ended` is ignored — per
         // Apple's HIG we don't auto-resume; the user re-taps the pill.
         guard type == .began else { return }
         // `NotificationCenter` delivers `interruptionNotification` on an
@@ -411,12 +474,7 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         // rate / voice) or on the AVSpeech delegate thread that owns the
         // chain (`speakVerse` from `didFinish`). This handler is on
         // neither, so funnel it through the main actor.
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.synth.pauseSpeaking(at: .word)
-            let continuation = self.lock.withLock { $0.continuation }
-            continuation?.yield(.paused)
-        }
+        pauseForAudioInterruption()
     }
     #endif
 }
@@ -429,21 +487,24 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         didStart utterance: AVSpeechUtterance
     ) {
         let key = ObjectIdentifier(utterance)
-        let (verseNumber, continuation) = lock.withLock {
-            state -> (Int?, AsyncStream<NarrationEvent>.Continuation?) in
+        let started = lock.withLock { state -> (Int, AsyncStream<NarrationEvent>.Continuation, UtteranceIdentity)? in
             // `currentIndex` is set when the verse is queued (see
             // `speakVerse(at:)`), so there's nothing to remap here — just
             // drop stale callbacks left over from a cancelled queue so
             // they don't yield a phantom `.started` for a verse the
             // current session has already moved past.
             guard let entry = state.utteranceVerse[key],
-                  entry.sessionVersion == state.sessionVersion else {
-                return (nil, nil)
+                  entry.sessionVersion == state.sessionVersion,
+                  let continuation = state.continuation else {
+                return nil
             }
-            return (entry.verseNumber, state.continuation)
+            return (entry.verseNumber, continuation, UtteranceIdentity(key: key, version: entry.sessionVersion))
         }
-        guard let verseNumber, let continuation else { return }
+        guard let (verseNumber, continuation, identity) = started else { return }
         continuation.yield(.started(verseNumber: verseNumber))
+        // A preparation-time pause can be refused. Retain it until AVSpeech
+        // actually starts, and publish start before any synchronous pause ack.
+        applyPlaybackIntent(paused: true, to: identity)
     }
 
     public func speechSynthesizer(
@@ -496,16 +557,32 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         _ synthesizer: AVSpeechSynthesizer,
         didPause utterance: AVSpeechUtterance
     ) {
-        let continuation = lock.withLock { $0.continuation }
-        continuation?.yield(.paused)
+        acknowledgePlayback(paused: true, utterance: utterance)
     }
 
     public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didContinue utterance: AVSpeechUtterance
     ) {
-        let continuation = lock.withLock { $0.continuation }
-        continuation?.yield(.resumed)
+        acknowledgePlayback(paused: false, utterance: utterance)
+    }
+
+    private func acknowledgePlayback(paused: Bool, utterance: AVSpeechUtterance) {
+        let key = ObjectIdentifier(utterance)
+        let acknowledgement = lock.withLock { state -> (AsyncStream<NarrationEvent>.Continuation, UtteranceIdentity, Bool)? in
+            guard let entry = state.utteranceVerse[key],
+                  entry.sessionVersion == state.sessionVersion,
+                  let continuation = state.continuation else { return nil }
+            return (continuation, UtteranceIdentity(key: key, version: entry.sessionVersion), state.pauseRequested)
+        }
+        guard let (continuation, identity, pauseRequested) = acknowledgement else { return }
+        if paused == pauseRequested {
+            continuation.yield(paused ? .paused : .resumed)
+        } else {
+            // A newer explicit request superseded this acknowledgement. Do not
+            // record new intent, and do not let an old utterance control a new one.
+            applyPlaybackIntent(paused: pauseRequested, to: identity)
+        }
     }
 
     public func speechSynthesizer(
@@ -521,8 +598,7 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
         // so its cancelled utterance fails both guards below and can't
         // fire a spurious `.cancelled` against the new verse.
         let key = ObjectIdentifier(utterance)
-        let shouldEmit = lock.withLock {
-            state -> Bool in
+        let shouldEmit = lock.withLock { state -> Bool in
             guard let entry = state.utteranceVerse.removeValue(forKey: key) else {
                 // No entry means the utterance is from a prior queue
                 // whose entries were wiped by `requeue`'s `removeAll`,

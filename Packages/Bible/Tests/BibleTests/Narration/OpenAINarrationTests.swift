@@ -630,6 +630,65 @@ struct OpenAINarrationTests {
         controller.stop()
     }
 
+    @Test(arguments: [false, true])
+    func fallbackSpeedPreservesSavedVoiceUntilExplicitSelection(stopBeforeChangingSpeed: Bool) async throws {
+        let fixture = try SettingsFixture()
+        let apple = FakeNarrationService()
+        let cloud = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: cloud, settings: fixture.settings)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        let originalAppleId = fixture.settings.record.lastAppleVoiceId
+        let verses = [NarrationVerseUtterance(verseNumber: 7, text: "Verse seven")]
+        controller.start(utterances: verses)
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        if stopBeforeChangingSpeed { controller.stop() }
+
+        await controller.selectRate(1.5)
+
+        #expect(controller.voice?.company == .apple)
+        #expect(fixture.settings.record.preferredVoiceId == NarrationVoice.marin.id)
+        #expect(fixture.settings.record.lastAppleVoiceId == originalAppleId)
+        #expect(try await fixture.repository.load()?.rate == 1.5)
+        #expect(try await fixture.repository.load()?.preferredVoiceId == NarrationVoice.marin.id)
+        controller.stop()
+        controller.start(utterances: verses)
+        #expect(controller.voice == .marin)
+        #expect(cloud.lastStartArgs?.rate == 1.5)
+
+        await controller.selectVoice(.appleDefault)
+        await controller.selectRate(1.25)
+        #expect(fixture.settings.record.preferredVoiceId == NarrationVoice.appleDefault.id)
+        #expect(fixture.settings.record.rate == 1.25)
+        controller.stop()
+    }
+
+    @Test func failedFallbackSpeedSavePreservesPlaybackAndPreferences() async throws {
+        let fixture = try SettingsFixture()
+        let apple = FakeNarrationService()
+        let controller = NarrationController(service: apple, cloudService: FakeNarrationService(), settings: fixture.settings)
+        try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
+        controller.start(utterances: [.init(verseNumber: 7, text: "Verse seven")])
+        controller._simulateEvent(.failed(.speech(.unavailable)))
+        controller.useAppleVoice()
+        let original = fixture.settings.record
+        try await fixture.database.queue.write { db in
+            try db.execute(sql: """
+                CREATE TEMP TRIGGER reject_speed BEFORE UPDATE ON narrationSettings
+                BEGIN SELECT RAISE(ABORT, 'Injected speed save failure'); END
+                """)
+        }
+
+        await controller.selectRate(1.5)
+
+        #expect(controller.rate == 1)
+        #expect(controller.voice?.company == .apple)
+        #expect(fixture.settings.record == original)
+        #expect(try await fixture.repository.load() == original)
+        #expect(fixture.settings.errorMessage == "Playback speed could not be saved. Try again.")
+        controller.stop()
+    }
+
     @Test func appleFallbackResumesTheLatestAudibleCachedVerse() async throws {
         let fixture = try SettingsFixture()
         try await fixture.settings.configure(credential: fixture.source, enabled: true, useThisKey: true, expecting: 0)
@@ -648,12 +707,14 @@ struct OpenAINarrationTests {
 
 @MainActor
 private struct SettingsFixture {
+    let database: BibleDatabase
     let repository: GRDBNarrationSettingsRepository
     let keychain = InMemoryKeychainClient(initial: ["chat-ref": "test-key"])
     let source = ProviderAudioCredential(id: "chat", name: "OpenAI Chat", keyRef: "chat-ref")
     let settings: NarrationSettingsController
     init() throws {
-        repository = GRDBNarrationSettingsRepository(database: try BibleDatabase.makeInMemory())
+        database = try BibleDatabase.makeInMemory()
+        repository = GRDBNarrationSettingsRepository(database: database)
         let source = source
         settings = NarrationSettingsController(repository: repository, keychain: keychain, listSources: { [source] }, clock: FixedClock(), ids: DeterministicIDGenerator())
     }

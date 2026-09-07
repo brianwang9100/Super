@@ -18,6 +18,14 @@ final class FakeSpeechSynthesizer: SpeechSynthesizing {
     nonisolated(unsafe) private(set) var spokenUtterances: [AVSpeechUtterance] = []
     /// Number of `stopSpeaking(at:)` calls.
     nonisolated(unsafe) private(set) var stopCount = 0
+    /// Requested pause boundaries and resume calls, including refused requests.
+    nonisolated(unsafe) private(set) var pauseBoundaries: [AVSpeechBoundary] = []
+    nonisolated(unsafe) private(set) var continueCount = 0
+    var pauseResult = true
+    var continueResult = true
+    /// Optional synchronous delegate acknowledgements for accepted requests.
+    var onPause: (() -> Void)?
+    var onContinue: (() -> Void)?
 
     /// The spoken verses' text, in order — the readable assertion target.
     var spokenTexts: [String] { spokenUtterances.map(\.speechString) }
@@ -35,6 +43,17 @@ final class FakeSpeechSynthesizer: SpeechSynthesizing {
         return true
     }
 
-    @discardableResult func pauseSpeaking(at boundary: AVSpeechBoundary) -> Bool { true }
-    @discardableResult func continueSpeaking() -> Bool { true }
+    @discardableResult
+    func pauseSpeaking(at boundary: AVSpeechBoundary) -> Bool {
+        pauseBoundaries.append(boundary)
+        if pauseResult { onPause?() }
+        return pauseResult
+    }
+
+    @discardableResult
+    func continueSpeaking() -> Bool {
+        continueCount += 1
+        if continueResult { onContinue?() }
+        return continueResult
+    }
 }
