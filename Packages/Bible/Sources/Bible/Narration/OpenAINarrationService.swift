@@ -72,8 +72,19 @@ import Foundation
             ? NarrationAudioCache.key(text: Self.segments(utterances[index].text).first ?? "", voice: voice) : nil
         restart(preservingPrefetch: prefetchKey != nil && prefetchKey == destinationKey)
     }
-    public func skipBackward() { restart() }
-    public func skipToPreviousVerse() { index = max(0, index - 1); restart() }
+    public func skipBackward() {
+        // Same-verse restart can still join its own request after Next, or keep
+        // the unchanged following verse's look-ahead across replay.
+        let reusableKeys = [index, index + 1].filter { utterances.indices.contains($0) }.map {
+            NarrationAudioCache.key(text: Self.segments(utterances[$0].text).first ?? "", voice: voice)
+        }
+        restart(preservingPrefetch: prefetchKey.map(reusableKeys.contains) == true)
+    }
+    public func skipToPreviousVerse() {
+        guard index > 0 else { return }
+        index -= 1
+        restart()
+    }
     public func setRate(_ rate: Float) { self.rate = rate; player.setRate(rate) }
     public func setVoice(_ voice: NarrationVoice?) {
         guard let new = voice?.openAI, self.voice != new else { return }

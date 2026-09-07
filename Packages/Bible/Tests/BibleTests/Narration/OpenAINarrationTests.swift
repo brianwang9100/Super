@@ -316,6 +316,77 @@ struct OpenAINarrationTests {
         #expect(player.playCount == 2)
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func restartingCurrentVerseRetainsItsLookAhead(cacheWritesFail: Bool, completedBeforeRestart: Bool) async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let cache: any NarrationAudioCaching = cacheWritesFail
+            ? UnwritableAudioCache(failingReads: false) : try NarrationAudioCache.makeInMemory()
+        let service = OpenAINarrationService(generator: generator, player: player, cache: cache) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = try #require(service._pendingPrefetch)
+        if completedBeforeRestart { await generator.complete(); _ = await submitted.value }
+        for _ in 0..<2 {
+            service.skipBackward()
+            if cacheWritesFail { #expect(await events.next() == .preparing(verseNumber: 1)) }
+            #expect(await events.next() == .started(verseNumber: 1))
+            #expect(!submitted.isCancelled)
+        }
+        await generator.complete()
+        _ = await submitted.value
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 1))
+        if cacheWritesFail { #expect(await events.next() == .preparing(verseNumber: 2)) }
+        #expect(await events.next() == .started(verseNumber: 2))
+        player.finishClip()
+        #expect(await events.next() == .finishedVerse(verseNumber: 2))
+        #expect(await events.next() == .completed)
+        #expect(await events.next() == nil)
+        #expect(await generator.requests.filter { $0 == "Two" }.count == 1)
+        #expect(player.playCount == 4)
+    }
+
+    @Test func previousWhileJoiningCurrentPrefetchRetainsItUntilStop() async throws {
+        let generator = NextVerseGatedSpeech()
+        let player = ControlledAudioPlayer()
+        let service = OpenAINarrationService(
+            generator: generator, player: player, cache: try NarrationAudioCache.makeInMemory()
+        ) { "test-key" }
+        var events = service.startSpeaking(
+            [.init(verseNumber: 1, text: "One"), .init(verseNumber: 2, text: "Two")], rate: 1, voice: .marin
+        ).makeAsyncIterator()
+        #expect(await events.next() == .preparing(verseNumber: 1))
+        #expect(await events.next() == .started(verseNumber: 1))
+        await generator.waitUntilSubmitted()
+        let submitted = try #require(service._pendingPrefetch)
+        // Double-Previous at the first verse is a no-op, including its look-ahead.
+        service.skipToPreviousVerse()
+        #expect(!submitted.isCancelled)
+        #expect(player.playCount == 1)
+        service.skipForward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        let oldForeground = service._pendingTask
+        service.skipBackward()
+        #expect(await events.next() == .preparing(verseNumber: 2))
+        #expect(!submitted.isCancelled)
+        let foreground = service._pendingTask
+        service.stop()
+        #expect(submitted.isCancelled)
+        await generator.complete()
+        await oldForeground?.value
+        await foreground?.value
+        _ = await submitted.value
+        #expect(await events.next() == .cancelled)
+        #expect(await events.next() == nil)
+        #expect(await generator.requests == ["One", "Two"])
+        #expect(player.playCount == 1)
+    }
+
     @Test func stopCancelsLookAheadRetainedByNext() async throws {
         let generator = NextVerseGatedSpeech()
         let player = ControlledAudioPlayer()

@@ -67,6 +67,8 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
     private struct UtteranceEntry {
         let verseNumber: Int
         let sessionVersion: Int
+        /// Actual delegate acknowledgement, separate from requested pause intent.
+        var isPaused = false
     }
 
     private struct UtteranceIdentity: Sendable {
@@ -218,9 +220,30 @@ public final class AVSpeechSynthesizerNarrationService: NSObject, NarrationServi
         guard shouldApply else { return }
         if paused {
             synth.pauseSpeaking(at: boundary)
-        } else {
-            synth.continueSpeaking()
+        } else if !synth.continueSpeaking() {
+            failRefusedContinuation(for: identity)
         }
+    }
+
+    private func failRefusedContinuation(for identity: UtteranceIdentity) {
+        let failure = lock.withLock { state -> (AsyncStream<NarrationEvent>.Continuation, Int)? in
+            // Preparation-time Resume may only withdraw an unacknowledged pause.
+            // Recheck after AVSpeech returns so synchronous acknowledgements,
+            // newer intent, and replacement sessions supersede this refusal.
+            guard state.sessionVersion == identity.version,
+                  let entry = state.utteranceVerse[identity.key],
+                  entry.sessionVersion == identity.version, entry.isPaused,
+                  !state.pauseRequested, !state.didEmitTerminal,
+                  let continuation = state.continuation else { return nil }
+            state.didEmitTerminal = true
+            state.continuation = nil
+            state.pauseRequested = false
+            return (continuation, entry.verseNumber)
+        }
+        guard let (continuation, verseNumber) = failure else { return }
+        synth.stopSpeaking(at: .immediate)
+        continuation.yield(.failed(.unavailable, verseNumber: verseNumber))
+        continuation.finish()
     }
 
     nonisolated public func stop() {
@@ -573,6 +596,7 @@ extension AVSpeechSynthesizerNarrationService: AVSpeechSynthesizerDelegate {
             guard let entry = state.utteranceVerse[key],
                   entry.sessionVersion == state.sessionVersion,
                   let continuation = state.continuation else { return nil }
+            state.utteranceVerse[key]?.isPaused = paused
             return (continuation, UtteranceIdentity(key: key, version: entry.sessionVersion), state.pauseRequested)
         }
         guard let (continuation, identity, pauseRequested) = acknowledgement else { return }

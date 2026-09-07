@@ -26,6 +26,8 @@ final class FakeSpeechSynthesizer: SpeechSynthesizing {
     /// Optional synchronous delegate acknowledgements for accepted requests.
     var onPause: (() -> Void)?
     var onContinue: (() -> Void)?
+    /// Synchronous state changes that occur while a continuation result is pending.
+    var onContinueAttempt: (() -> Void)?
 
     /// The spoken verses' text, in order — the readable assertion target.
     var spokenTexts: [String] { spokenUtterances.map(\.speechString) }
@@ -53,7 +55,9 @@ final class FakeSpeechSynthesizer: SpeechSynthesizing {
     @discardableResult
     func continueSpeaking() -> Bool {
         continueCount += 1
-        if continueResult { onContinue?() }
-        return continueResult
+        let result = continueResult
+        onContinueAttempt?()
+        if result { onContinue?() }
+        return result
     }
 }

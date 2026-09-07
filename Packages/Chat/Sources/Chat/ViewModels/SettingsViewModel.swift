@@ -135,12 +135,9 @@ public final class SettingsViewModel {
     /// on the Data row in the root pane.
     public private(set) var chatCount: Int = 0
 
-    /// User-facing error message from the most recent `createModel` /
-    /// `updateModel` attempt, or `nil` when the last attempt succeeded or
-    /// none has been made. The model-detail pane reads this to render an
-    /// inline error under the Save button — without it, a Keychain or
-    /// repository failure produces a silent dismiss and the user is left
-    /// wondering why no row appeared.
+    /// Inline model mutation error for the current form. Operations with an
+    /// originating session cannot clear or replace another form's error.
+    /// Non-form callers retain the latest-attempt error behavior.
     public private(set) var modelEditError: String?
 
     /// In-memory, session-scoped cache of live "list models" results, keyed
@@ -748,19 +745,6 @@ public final class SettingsViewModel {
 
     // MARK: - Model CRUD
 
-    /// Insert a brand-new model row. Stores the API key under a freshly
-    /// generated Keychain ref, then writes the record. The generated ids
-    /// (record + key ref) are injectable so tests can pin them.
-    /// Also registers a matching `LLMProvider` with the registry (when
-    /// injected) so the chat surface can use the new model immediately —
-    /// without it the user would have to relaunch the app.
-    ///
-    /// On failure, sets ``modelEditError`` to a human-readable string and
-    /// logs the underlying error via the unified log. Callers
-    /// (`SettingsModelDetailPane`) read ``modelEditError`` to decide
-    /// whether to pop the pane (nil → success, pop; non-nil → keep the
-    /// pane up so the user sees the error). Re-trying clears the error
-    /// at the start of the next attempt.
     /// `true` when an `.appleFoundation` row already exists. The Add-Model
     /// preset picker uses this to disable the Apple Intelligence preset
     /// (one AFM row is enough — adding a second would only confuse the
@@ -772,29 +756,28 @@ public final class SettingsViewModel {
 
     /// Persist a new `.appleFoundation` row, register the live AFM
     /// provider (when the launch-time availability snapshot says AFM is
-    /// usable), and refresh the in-memory list. Mirrors
-    /// ``createModel(name:baseURL:modelId:apiKey:supportsThinking:maxContextTokens:kind:searchBackend:idGenerator:now:)``
+    /// usable), and refresh the in-memory list. Mirrors `createModel`
     /// for the openAI-compatible kind, but skips the Keychain write (AFM
     /// rows have no API key) and force-sets the shape Apple's on-device
     /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
     /// "system-default"`). The `idGenerator` and `now` parameters are
     /// injectable so tests can pin the id and timestamp.
     ///
-    /// Error contract matches `createModel`: on failure sets
-    /// ``modelEditError`` and refreshes the list so the pane can show
-    /// the message and the row count agrees with what actually persisted.
+    /// Returns the committed row or nil on failure. Errors are published only
+    /// while `formSession` is current; omitting it retains non-form behavior.
     @discardableResult
     public func createAppleFoundationModel(
         name: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
         idGenerator: () -> String = { UUID().uuidString },
-        now: Date = Date()
+        now: Date = Date(),
+        formSession: Int? = nil
     ) async -> ModelConfigurationRecord? {
         let recordId = idGenerator()
         guard modelMutationIDs.insert(recordId).inserted else { return nil }
         defer { modelMutationIDs.remove(recordId) }
-        modelEditError = nil
+        publishModelEditError(nil, formSession: formSession)
         lastSavedModel = nil
         do {
             let record = ModelConfigurationRecord(
@@ -817,12 +800,14 @@ public final class SettingsViewModel {
             return record
         } catch {
             chatSettingsLog.error("createAppleFoundationModel failed: \(String(describing: error), privacy: .public)")
-            modelEditError = "Could not save model: \(error.localizedDescription)"
+            publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession)
             await loadModels()
             return nil
         }
     }
 
+    /// Persists a new model and returns its committed row, or nil on failure.
+    /// A supplied form session owns error clearing and publication; credential cleanup always finishes.
     @discardableResult
     public func createModel(
         name: String,
@@ -835,13 +820,14 @@ public final class SettingsViewModel {
         searchBackend: String? = nil,
         providerId: String? = nil,
         idGenerator: () -> String = { UUID().uuidString },
-        now: Date = Date()
+        now: Date = Date(),
+        formSession: Int? = nil
     ) async -> ModelConfigurationRecord? {
         let ref = idGenerator()
         let recordId = idGenerator()
         guard modelMutationIDs.insert(recordId).inserted else { return nil }
         defer { modelMutationIDs.remove(recordId) }
-        modelEditError = nil
+        publishModelEditError(nil, formSession: formSession)
         lastSavedModel = nil
         do {
             let record = ModelConfigurationRecord(
@@ -872,8 +858,8 @@ public final class SettingsViewModel {
         } catch {
             chatSettingsLog.error("createModel failed: \(String(describing: error), privacy: .public)")
             if error is ModelCredentialSaveError {
-                modelEditError = "Could not save model. An unused key could not be removed from secure storage. Restart the app to retry cleanup."
-            } else { modelEditError = "Could not save model: \(error.localizedDescription)" }
+                publishModelEditError("Could not save model. An unused key could not be removed from secure storage. Restart the app to retry cleanup.", formSession: formSession)
+            } else { publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession) }
             // Keep models list in sync with what actually persisted; a
             // failed save just means the row never appears.
             await loadModels()
@@ -887,9 +873,9 @@ public final class SettingsViewModel {
     /// Re-registers the provider so the live chat surface picks up the
     /// new endpoint/model id without an app restart.
     ///
-    /// Same error-surface contract as `createModel(...)`: on failure
-    /// sets ``modelEditError`` and the pane stays open so the user can
-    /// retry. On success ``modelEditError`` is nil.
+    /// Returns the committed row, or nil on failure or an overlapping mutation.
+    /// A supplied form session owns error clearing and publication; accepted
+    /// persistence and credential cleanup continue after the form closes.
     /// - Parameter searchSelection: The resolved `(kind, searchBackend)` the
     ///   web-search picker produced. `nil` (the default) preserves the row's
     ///   existing kind *and* search backend — keeping every non-search edit
@@ -907,15 +893,16 @@ public final class SettingsViewModel {
         maxContextTokens: Int,
         searchSelection: (kind: LLMProviderKind, searchBackend: String?)? = nil,
         providerId: String? = nil,
-        idGenerator: any IDGenerator = UUIDGenerator()
+        idGenerator: any IDGenerator = UUIDGenerator(),
+        formSession: Int? = nil
     ) async -> ModelConfigurationRecord? {
         guard modelMutationIDs.insert(id).inserted else { return nil }
         defer { modelMutationIDs.remove(id) }
-        modelEditError = nil
+        publishModelEditError(nil, formSession: formSession)
         lastSavedModel = nil
         do {
             guard let existing = try await modelRepository.fetch(id: id) else {
-                modelEditError = "Could not save model: row no longer exists."
+                publishModelEditError("Could not save model: row no longer exists.", formSession: formSession)
                 return nil
             }
             // Target kind/backend: the picker's resolved pair when supplied,
@@ -1021,11 +1008,11 @@ public final class SettingsViewModel {
         } catch {
             chatSettingsLog.error("updateModel failed: \(String(describing: error), privacy: .public)")
             if error is ModelCredentialSaveError {
-                modelEditError = "Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Restart the app to retry cleanup."
+                publishModelEditError("Could not save model. Its existing API key is unchanged, but an unused replacement key could not be removed from secure storage. Restart the app to retry cleanup.", formSession: formSession)
             } else if case .staleModel = error as? ModelConfigurationRepositoryError {
-                modelEditError = "The model changed while saving. Reopen it and try again."
+                publishModelEditError("The model changed while saving. Reopen it and try again.", formSession: formSession)
             } else {
-                modelEditError = "Could not save model: \(error.localizedDescription)"
+                publishModelEditError("Could not save model: \(error.localizedDescription)", formSession: formSession)
             }
             await loadModels()
             return nil
@@ -1063,6 +1050,11 @@ public final class SettingsViewModel {
         }
     }
 
+    private func publishModelEditError(_ message: String?, formSession: Int?) {
+        if let formSession, !isModelFormSessionActive(formSession) { return }
+        modelEditError = message
+    }
+
     /// Reset the model-edit error. Called by `SettingsModelDetailPane`
     /// on appear so a stale message from a previous attempt doesn't
     /// flash on the next open.
@@ -1073,12 +1065,13 @@ public final class SettingsViewModel {
     /// Delete a row + its Keychain entry. The repository handles the
     /// Keychain-first ordering so a failed delete leaves the row in place
     /// rather than orphaning a secret. Also unregisters the provider so
-    /// the deleted endpoint disappears from the picker right away.
+    /// the deleted endpoint disappears from the picker right away. A supplied
+    /// form session owns error publication; accepted deletion always finishes.
     @discardableResult
-    public func deleteModel(id: String) async -> Bool {
+    public func deleteModel(id: String, formSession: Int? = nil) async -> Bool {
         guard modelMutationIDs.insert(id).inserted else { return false }
         defer { modelMutationIDs.remove(id) }
-        modelEditError = nil
+        publishModelEditError(nil, formSession: formSession)
         if lastSavedModel?.id == id { lastSavedModel = nil }
         // An opaque deletion failure may follow successful Keychain removal. Discard the
         // live provider's cached secret before deletion, even if its row must remain for retry.
@@ -1087,7 +1080,7 @@ public final class SettingsViewModel {
         do {
             try await modelRepository.delete(id: id)
         } catch {
-            modelEditError = "Could not remove the model. Try again."
+            publishModelEditError("Could not remove the model. Try again.", formSession: formSession)
             succeeded = false
         }
         onModelsChanged?()

@@ -30,6 +30,155 @@ struct AVSpeechSynthesizerNarrationServiceTests {
     /// service never reads it.
     private let unusedSynth = AVSpeechSynthesizer()
 
+    @Test("refused Resume after an acknowledged pause finishes with a recoverable failure")
+    func refusedResumeAfterPauseFails() async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(4, "four")], rate: 1, voice: nil)
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.pause()
+        service.speechSynthesizer(unusedSynth, didPause: current)
+        let stopsBeforeResume = fake.stopCount
+        fake.continueResult = false
+        service.resume()
+
+        #expect(fake.stopCount == stopsBeforeResume + 1)
+        service.resume()
+        #expect(fake.continueCount == 1)
+        service.speechSynthesizer(unusedSynth, didContinue: current)
+        service.speechSynthesizer(unusedSynth, didCancel: current)
+        // Bound collection against the unfixed service, which leaves the stream open.
+        service.stop()
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [.started(verseNumber: 4), .paused, .failed(.unavailable, verseNumber: 4)])
+
+        let retry = service.startSpeaking([utterance(4, "four")], rate: 1, voice: nil)
+        let retried = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: retried)
+        service.speechSynthesizer(unusedSynth, didFinish: retried)
+        let retryEvents = await retry.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(retryEvents == [.started(verseNumber: 4), .finishedVerse(verseNumber: 4), .completed])
+    }
+
+    @Test("requeues discard the replaced utterance's actual paused state", arguments: [false, true])
+    func requeueDoesNotInheritAcknowledgedPause(changesVoice: Bool) async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(1, "one")], rate: 1, voice: nil)
+        let old = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: old)
+        service.pause()
+        service.speechSynthesizer(unusedSynth, didPause: old)
+        if changesVoice { service.setVoice(nil) } else { service.setRate(1.5) }
+        service.speechSynthesizer(unusedSynth, didPause: old)
+        service.speechSynthesizer(unusedSynth, didContinue: old)
+        fake.continueResult = false
+        let stopsBeforeResume = fake.stopCount
+        service.resume()
+        #expect(fake.stopCount == stopsBeforeResume)
+
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.speechSynthesizer(unusedSynth, didFinish: current)
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [
+            .started(verseNumber: 1), .paused, .started(verseNumber: 1), .finishedVerse(verseNumber: 1), .completed,
+        ])
+    }
+
+    @Test("refused corrective continuation after a late pause also fails safely")
+    func refusedContinuationAfterLatePauseFails() async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(3, "three")], rate: 1, voice: nil)
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.pause()
+        fake.continueResult = false
+        service.resume()
+        service.speechSynthesizer(unusedSynth, didPause: current)
+        service.stop()
+
+        #expect(fake.continueCount == 2)
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [.started(verseNumber: 3), .failed(.unavailable, verseNumber: 3)])
+    }
+
+    @Test("a synchronous resumed acknowledgement supersedes a refused continuation result")
+    func continuedAcknowledgementSupersedesRefusal() async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(1, "one")], rate: 1, voice: nil)
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.pause()
+        service.speechSynthesizer(unusedSynth, didPause: current)
+        fake.continueResult = false
+        fake.onContinueAttempt = { [weak service] in
+            service?.speechSynthesizer(unusedSynth, didContinue: current)
+        }
+        let stopsBeforeResume = fake.stopCount
+        service.resume()
+        #expect(fake.stopCount == stopsBeforeResume)
+        service.speechSynthesizer(unusedSynth, didFinish: current)
+
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [.started(verseNumber: 1), .paused, .resumed, .finishedVerse(verseNumber: 1), .completed])
+    }
+
+    @Test("a newer Pause request supersedes a refused continuation result")
+    func newerPauseSupersedesRefusal() async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(1, "one")], rate: 1, voice: nil)
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.pause()
+        service.speechSynthesizer(unusedSynth, didPause: current)
+        fake.continueResult = false
+        fake.onContinueAttempt = { [weak service] in service?.pause() }
+        let stopsBeforeResume = fake.stopCount
+        service.resume()
+        #expect(fake.stopCount == stopsBeforeResume)
+        service.stop()
+
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [.started(verseNumber: 1), .paused, .cancelled])
+    }
+
+    @Test("a stopped or replaced session ignores an old refused continuation", arguments: [false, true])
+    func replacementSupersedesRefusal(startsReplacement: Bool) async throws {
+        let fake = FakeSpeechSynthesizer()
+        let service = AVSpeechSynthesizerNarrationService(coordinator: nil, synthesizer: fake)
+        let stream = service.startSpeaking([utterance(1, "one")], rate: 1, voice: nil)
+        let current = try #require(fake.lastUtterance)
+        service.speechSynthesizer(unusedSynth, didStart: current)
+        service.pause()
+        service.speechSynthesizer(unusedSynth, didPause: current)
+        fake.continueResult = false
+        var replacement: AsyncStream<NarrationEvent>?
+        fake.onContinueAttempt = { [weak service] in
+            service?.stop()
+            if startsReplacement {
+                replacement = service?.startSpeaking([utterance(2, "two")], rate: 1, voice: nil)
+            }
+        }
+        let stopsBeforeResume = fake.stopCount
+        service.resume()
+        #expect(fake.stopCount == stopsBeforeResume + (startsReplacement ? 2 : 1))
+        let events = await stream.reduce(into: [NarrationEvent]()) { $0.append($1) }
+        #expect(events == [.started(verseNumber: 1), .paused, .cancelled])
+
+        if let replacement {
+            let replaced = try #require(fake.lastUtterance)
+            service.speechSynthesizer(unusedSynth, didStart: replaced)
+            service.speechSynthesizer(unusedSynth, didFinish: replaced)
+            let replacementEvents = await replacement.reduce(into: [NarrationEvent]()) { $0.append($1) }
+            #expect(replacementEvents == [.started(verseNumber: 2), .finishedVerse(verseNumber: 2), .completed])
+        }
+    }
+
     @Test("a refused preparing pause is retried when the same utterance starts")
     func preparingPauseIsRetriedOnStart() async throws {
         let fake = FakeSpeechSynthesizer()

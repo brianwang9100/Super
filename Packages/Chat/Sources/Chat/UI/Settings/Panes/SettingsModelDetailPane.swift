@@ -649,7 +649,7 @@ struct SettingsModelDetailPane: View {
                 isSavingModel = true
                 Task {
                     defer { isSavingModel = false }
-                    let deleted = await viewModel.deleteModel(id: editingId)
+                    let deleted = await viewModel.deleteModel(id: editingId, formSession: formSession)
                     guard deleted, viewModel.isModelFormSessionActive(formSession) else { return }
                     apiKey = ""
                     viewModel.beforePopCleanup = nil
@@ -1477,7 +1477,8 @@ struct SettingsModelDetailPane: View {
                         supportsThinking: supportsThinking,
                         // Persist the live on-device window, not the (read-only,
                         // possibly stale) text field — keeps the row honest.
-                        maxContextTokens: viewModel.appleFoundationContextTokens
+                        maxContextTokens: viewModel.appleFoundationContextTokens,
+                        formSession: formSession
                     )
                     if saved != nil {
                         viewModel.popModelForm(ifCurrent: formSession)
@@ -1489,7 +1490,8 @@ struct SettingsModelDetailPane: View {
                     let saved = await viewModel.createAppleFoundationModel(
                         name: trimmedName,
                         supportsThinking: supportsThinking,
-                        maxContextTokens: viewModel.appleFoundationContextTokens
+                        maxContextTokens: viewModel.appleFoundationContextTokens,
+                        formSession: formSession
                     )
                     if saved != nil {
                         viewModel.popModelForm(ifCurrent: formSession)
@@ -1548,7 +1550,8 @@ struct SettingsModelDetailPane: View {
                     supportsThinking: supportsThinking,
                     maxContextTokens: maxCtx,
                     searchSelection: updateSelection,
-                    providerId: providerID
+                    providerId: providerID,
+                    formSession: formSession
                 )
             } else {
                 saved = await viewModel.createModel(
@@ -1560,7 +1563,8 @@ struct SettingsModelDetailPane: View {
                     maxContextTokens: maxCtx,
                     kind: resolved.kind,
                     searchBackend: resolved.searchBackend,
-                    providerId: providerID
+                    providerId: providerID,
+                    formSession: formSession
                 )
             }
             guard viewModel.isModelFormSessionActive(formSession) else { return }

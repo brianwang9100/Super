@@ -1636,6 +1636,133 @@ struct SettingsViewModelTests {
         #expect(credentials.isEmpty)
     }
 
+    @Test("Model failures belong to the form that started the mutation",
+          arguments: ["update", "create", "apple", "delete"], ["current", "new-empty", "new-error", "reopened"])
+    func staleModelSaveFailureCannotReplaceCurrentFormError(operation: String, destination: String) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let gate = KeyRotationSaveGate()
+        if operation == "delete" {
+            repo.deleteGate = gate
+            repo.deleteRowError = KeyRotationTestError.saveFailed
+        } else {
+            repo.saveGate = gate
+            repo.saveError = KeyRotationTestError.saveFailed
+        }
+        let vm = makeViewModel(modelRepository: repo)
+        vm.openPane(.modelDetail(id: "m1"))
+        let originSession = vm.beginModelFormSession()
+        let mutation = Task { await runFormModelMutation(operation, in: vm, formSession: originSession) }
+        await gate.waitUntilEntered()
+        var currentSession = originSession
+        let destinationID = destination == "reopened" ? "m1" : "m2"
+        if destination != "current" {
+            vm.popToRoot()
+            vm.openPane(.modelDetail(id: destinationID))
+            currentSession = vm.beginModelFormSession()
+            vm.clearModelEditError()
+            if destination == "new-error" {
+                await seedCurrentModelError(in: vm, formSession: currentSession)
+            }
+        }
+        let currentError = vm.modelEditError
+        await gate.release()
+        #expect(await mutation.value == false)
+
+        if destination == "current" {
+            let prefix = operation == "delete" ? "Could not remove the model" : "Could not save model"
+            #expect(vm.modelEditError?.hasPrefix(prefix) == true)
+        } else {
+            #expect(vm.modelEditError == currentError)
+            #expect(vm.navigationPath == [.modelDetail(id: destinationID)])
+        }
+        #expect(vm.isModelFormSessionActive(currentSession))
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        #expect(!vm.isModelMutationInFlight(id: "created-2"))
+        #expect(!vm.isModelMutationInFlight(id: "apple-1"))
+        #expect(repo.rows == [Self.keyRotationRow])
+        #expect(repo.storedKeys == (operation == "delete" ? [:] : ["ref-1": "sk-original"]))
+        #expect(repo.stagedKeyRefs.isEmpty)
+    }
+
+    @Test("A delayed departed operation cannot clear the current form's error", arguments: ["update", "create", "apple", "delete"])
+    func expiredModelMutationCannotClearCurrentError(operation: String) async {
+        let repo = StubModelRepository(rows: [Self.keyRotationRow])
+        repo.storedKeys["ref-1"] = "sk-original"
+        let vm = makeViewModel(modelRepository: repo)
+        vm.openPane(.modelDetail(id: "m1"))
+        let originSession = vm.beginModelFormSession()
+        vm.popToRoot()
+        vm.openPane(.modelDetail(id: "m2"))
+        let currentSession = vm.beginModelFormSession()
+        await seedCurrentModelError(in: vm, formSession: currentSession)
+        let currentError = vm.modelEditError
+        #expect(currentError == "Could not save model: row no longer exists.")
+
+        // Successful persistence publishes no new error; only an incorrect entry clear can change this value.
+        #expect(await runFormModelMutation(operation, in: vm, formSession: originSession))
+        #expect(vm.modelEditError == currentError)
+        #expect(vm.isModelFormSessionActive(currentSession))
+        #expect(vm.navigationPath == [.modelDetail(id: "m2")])
+        #expect(repo.stagedKeyRefs.isEmpty)
+    }
+
+    @Test("An awaited missing-row result only reports to its originating form", arguments: [false, true])
+    func missingModelErrorRespectsFormSession(formClosed: Bool) async {
+        let repo = StubModelRepository(rows: [])
+        let gate = KeyRotationSaveGate()
+        repo.fetchGate = gate
+        let vm = makeViewModel(modelRepository: repo)
+        vm.openPane(.modelDetail(id: "m1"))
+        let originSession = vm.beginModelFormSession()
+        let mutation = Task { await runFormModelMutation("update", in: vm, formSession: originSession) }
+        await gate.waitUntilEntered()
+        if formClosed {
+            vm.popToRoot()
+            vm.openPane(.modelDetail(id: "m2"))
+            _ = vm.beginModelFormSession()
+            vm.clearModelEditError()
+        }
+        await gate.release()
+        #expect(await mutation.value == false)
+        #expect(vm.modelEditError == (formClosed ? nil : "Could not save model: row no longer exists."))
+        #expect(!vm.isModelMutationInFlight(id: "m1"))
+        #expect(repo.storedKeys.isEmpty)
+    }
+
+    private func seedCurrentModelError(in viewModel: SettingsViewModel, formSession: Int) async {
+        await viewModel.updateModel(
+            id: "missing", name: "Missing", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+            apiKey: "", supportsThinking: false, maxContextTokens: 8_000, formSession: formSession
+        )
+    }
+
+    private func runFormModelMutation(_ operation: String, in viewModel: SettingsViewModel, formSession: Int) async -> Bool {
+        let ids = DeterministicIDGenerator(prefix: "created-")
+        switch operation {
+        case "create":
+            return await viewModel.createModel(
+                name: "Created", baseURL: Self.keyRotationRow.baseURL!, modelId: "gpt", apiKey: "sk-created",
+                supportsThinking: false, maxContextTokens: 8_000, idGenerator: { ids.nextID() },
+                now: FixedClock().now(), formSession: formSession
+            ) != nil
+        case "apple":
+            let appleIDs = DeterministicIDGenerator(prefix: "apple-")
+            return await viewModel.createAppleFoundationModel(
+                name: "Apple", supportsThinking: false, maxContextTokens: 4_096,
+                idGenerator: { appleIDs.nextID() }, now: FixedClock().now(), formSession: formSession
+            ) != nil
+        case "delete":
+            return await viewModel.deleteModel(id: "m1", formSession: formSession)
+        default:
+            return await viewModel.updateModel(
+                id: "m1", name: "Updated", baseURL: Self.keyRotationRow.baseURL, modelId: "gpt",
+                apiKey: "sk-replacement", supportsThinking: false, maxContextTokens: 8_000,
+                idGenerator: DeterministicIDGenerator(prefix: "rotated-"), formSession: formSession
+            ) != nil
+        }
+    }
+
     @Test("An expired narration follow-up cannot publish an error into the current form")
     func staleAudioCompletionCannotReplaceCurrentFormError() async {
         let gate = KeyRotationSaveGate()
@@ -2335,6 +2462,7 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     /// path; AFM rows never call `storeAPIKey`, so the existing
     /// `storeAPIKeyError` seam can't trip the error branch.
     var saveError: Error?
+    var fetchGate: KeyRotationSaveGate?
     var saveGate: KeyRotationSaveGate?
     var deleteGate: KeyRotationSaveGate?
     var retiredKeyCleanupGate: KeyRotationSaveGate?
@@ -2344,7 +2472,10 @@ private final class StubModelRepository: ModelConfigurationRepository, @unchecke
     }
 
     func all() async throws -> [ModelConfigurationRecord] { rows }
-    func fetch(id: String) async throws -> ModelConfigurationRecord? { rows.first { $0.id == id } }
+    func fetch(id: String) async throws -> ModelConfigurationRecord? {
+        await fetchGate?.suspend()
+        return rows.first { $0.id == id }
+    }
     /// Mirrors `GRDBModelConfigurationRepository.selected()`, which filters
     /// the selection through `buildableKindRequest` — a selected row whose
     /// kind has no shipped adapter (the native-search kinds) is excluded so
