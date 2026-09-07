@@ -23,6 +23,8 @@ For substantive implementation tasks, unless the user directs otherwise:
 6. Monitor CI and Codex review; fix failures and address review findings. Request a Codex pass if none starts.
 7. After explicit Codex approval of the **current revision** and passing applicable CI, mark the PR ready and enable auto-merge. Verify required checks remain enforced; never bypass them. Disable auto-merge before pushing further changes, or immediately upon detecting another head revision; re-enable only after renewed approval and CI for that revision. Verify the eventual merge.
 
+While waiting on a PR, check CI and Codex review together **every 10 minutes** unless the user requests a different cadence. Prefer a scheduled wakeup over repeated short waits, fetch compact status updates, and stay quiet when nothing actionable changes. Once the current revision has approval and passing checks, proceed with the authorized merge steps and verify the result immediately; the polling interval does not delay those actions. Stop monitoring after the merge is verified.
+
 Questions and trivial documentation edits do not require the full process unless requested.
 
 ## Worktree discipline
