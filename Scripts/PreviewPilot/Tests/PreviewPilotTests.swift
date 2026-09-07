@@ -3,13 +3,14 @@ import SnapshottingTests
 import UIKit
 import XCTest
 
-/// Exports only the ChatComposer matrix and Core's UIKit proof, never the legacy suites.
+/// Exports selected Chat preview groups and Core's UIKit probes, never the legacy suites.
 final class PreviewPilotTests: SnapshotTest {
     override class func snapshotPreviewModules() -> [String]? { ["Chat", "Core"] }
 
     override class func snapshotPreviews() -> [String]? {
         [
             "^Chat/ChatComposerPreviews.swift:composer_.*$",
+            "^Chat/SettingsPanePreviews.swift:settings_.*$",
             "^Core/PreviewCollectionController.swift:(collection_viewport_light|font_panel_light)$",
         ]
     }

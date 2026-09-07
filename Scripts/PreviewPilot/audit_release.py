@@ -7,7 +7,8 @@ import sys
 
 FORBIDDEN = ('SnapshottingTests', 'SnapshotPreviews', 'PreviewsSupport', 'SnapshotSharedModels',
              'SnapshotPreferences', 'SimpleDebugger', 'FlyingFox', 'Sentry', 'Argos',
-             'PreviewChatComposer', 'ChatComposerPreviewPulse', 'PreviewCollectionController', 'composer_empty_light')
+             'PreviewChatComposer', 'ChatComposerPreviewPulse', 'PreviewCollectionController', 'composer_empty_light',
+             'PreviewSettingsPane', 'PreviewSettingsReceiver', 'SettingsPanePreviews', 'settings_root_light')
 
 
 def audit(app):

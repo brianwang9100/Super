@@ -6,11 +6,14 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-/// Pixel-stable snapshots of `SettingsSheet`'s content across themes and
+/// Remaining legacy snapshots of `SettingsSheet`'s content across themes and
 /// panes. The sheet now presents via a native `.sheet` (the system owns the
 /// scrim, drag bar, and rounded surface), so each scenario renders the sheet
 /// content on a fixed-size neutral container — the presentation chrome is the
 /// system's and out of scope for these content snapshots.
+///
+/// Fourteen representative cases now live in `SettingsPanePreviews.swift`;
+/// keep the unmigrated cases here until their replacements are verified.
 ///
 /// Note on the Dynamic Type XXL companions: post-`SuperTypography`, settings
 /// text resolves through `typography.font(_ role:)` (system path, `relativeTo:
@@ -164,16 +167,6 @@ struct SettingsSheetSnapshotTests {
             configPane: .memory
         ),
     ]
-
-    @Test("root pane in light")
-    func rootLight() async {
-        await verify(theme: .vellumLight, pane: .root, name: "settings_root_light")
-    }
-
-    @Test("root pane in dark")
-    func rootDark() async {
-        await verify(theme: .vellumDark, pane: .root, name: "settings_root_dark")
-    }
 
     @Test("models pane populated")
     func modelsPopulated() async {
@@ -1165,16 +1158,6 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    @Test("personalization pane")
-    func personalizationPane() async {
-        await verify(theme: .vellumLight, pane: .personalization, name: "settings_personalization_light")
-    }
-
-    @Test("default verbosity pane")
-    func verbosityPane() async {
-        await verify(theme: .vellumLight, pane: .verbosity, name: "settings_verbosity_light")
-    }
-
     @Test("appearance pane")
     func appearancePane() async {
         await verify(theme: .vellumLight, pane: .appearance, name: "settings_appearance_light")
@@ -1234,19 +1217,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("tools pane")
-    func toolsPane() async {
-        await verify(theme: .vellumLight, pane: .tools, name: "settings_tools_light")
-    }
-
-    @Test("tools pane in dark")
-    func toolsPaneDark() async {
-        await verify(
-            theme: .vellumDark, pane: .tools, name: "settings_tools_dark",
-            settings: Self.settings(themeId: .vellumDark)
-        )
-    }
-
     @Test("dynamic type XXL on tools pane")
     func toolsPaneXXL() async {
         let function = #function
@@ -1267,35 +1237,12 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_tools_light_xxl", function: function)
     }
 
-    @Test("compaction pane")
-    func compactionPane() async {
-        await verify(theme: .vellumLight, pane: .compaction, name: "settings_compaction_light")
-    }
-
     // Search pane — the two key states are the cost gate ON (default) and
     // OFF, each across light / dark / sepia, plus an XXL fixed-chrome
     // sentinel (see the suite note: settings text scales with the in-app
-    // font-scale slider, not OS Dynamic Type, so the XXL baseline is
-    // intentionally byte-identical to `searchPaneOnLight` and a diff would
+    // font-scale slider, not OS Dynamic Type, so the XXL baseline
+    // intentionally matches the former default-DT baseline and a diff would
     // flag an accidental reintroduction of Dynamic Type scaling here).
-    @Test("search pane, gate on, light")
-    func searchPaneOnLight() async {
-        await verify(theme: .vellumLight, pane: .search, name: "settings_search_on_light")
-    }
-
-    @Test("search pane, gate on, dark")
-    func searchPaneOnDark() async {
-        await verify(theme: .vellumDark, pane: .search, name: "settings_search_on_dark")
-    }
-
-    @Test("search pane, gate off, light")
-    func searchPaneOffLight() async {
-        await verify(
-            theme: .vellumLight, pane: .search, name: "settings_search_off_light",
-            settings: Self.settings(askBeforeSearching: false)
-        )
-    }
-
     @Test("search pane, gate off, dark")
     func searchPaneOffDark() async {
         await verify(
@@ -1314,12 +1261,6 @@ struct SettingsSheetSnapshotTests {
             .dynamicTypeSize(.xxLarge)
             .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: "settings_search_on_light_xxl", function: function)
-    }
-
-    @Test("data pane — export idle")
-    func dataPaneIdle() {
-        verifyDataPane(theme: .vellumLight, phase: .idle, name: "settings_data_idle_light")
-        verifyDataPane(theme: .vellumDark, phase: .idle, name: "settings_data_idle_dark")
     }
 
     /// Dynamic Type XXL sentinel for the label/status reflow column. Settings
@@ -1349,7 +1290,6 @@ struct SettingsSheetSnapshotTests {
     @Test("data pane — export failed")
     func dataPaneFailed() {
         let phase = ChatExportController.Phase.failed(message: "Could not write the export file.")
-        verifyDataPane(theme: .vellumLight, phase: phase, name: "settings_data_failed_light")
         verifyDataPane(theme: .vellumDark, phase: phase, name: "settings_data_failed_dark")
     }
 
@@ -1369,11 +1309,6 @@ struct SettingsSheetSnapshotTests {
             .dynamicTypeSize(dynamicType)
             .frame(width: Self.frame.width, height: Self.frame.height)
         recordOrCompare(view: view, name: name, function: function)
-    }
-
-    @Test("about pane")
-    func aboutPane() async {
-        await verify(theme: .vellumLight, pane: .about, name: "settings_about_light")
     }
 
     @Test("dynamic type XXL on root pane")
