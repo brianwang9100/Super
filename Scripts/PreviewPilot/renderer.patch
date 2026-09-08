@@ -37,3 +37,49 @@ index 92026bc..9113db4 100644
        let fittingSize = sizeThatFits(in: UIScreen.main.bounds.size)
        widthAnchor = view.widthAnchor.constraint(greaterThanOrEqualToConstant: fittingSize.width)
        widthAnchor?.isActive = true
+diff --git a/Sources/SnapshotPreviewsCore/View+Snapshot.swift b/Sources/SnapshotPreviewsCore/View+Snapshot.swift
+index 2d884f3..903f739 100644
+--- a/Sources/SnapshotPreviewsCore/View+Snapshot.swift
++++ b/Sources/SnapshotPreviewsCore/View+Snapshot.swift
+@@ -35,6 +35,9 @@ extension View {
+       _colorScheme = scheme
+     }
+     let controller = ExpandingViewController(rootView: wrappedView)
++    // Establish a capture-owned clock before UIKit installs repeating animations.
++    controller.view.layer.speed = 0
++    controller.view.layer.timeOffset = 0
+     controller.setupView(layout: layout)
+ 
+     let windowRootVC = Self.setupRootVC(subVC: controller)
+@@ -62,6 +65,9 @@ extension View {
+         return
+       }
+ 
++      // Sample the actual controls at a deterministic, visible animation phase.
++      controller.view.layer.timeOffset = 0.25
++      CATransaction.flush()
+       if async {
+         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+           let imageResult = Self.takeSnapshot(layout: layout, renderingMode: renderingMode, window: window, rootVC: containerVC, targetView: controller.view)
+@@ -121,7 +127,9 @@ extension View {
+     maxTotalPixels: Double = 40_000_000) -> Result<UIImage, RenderingError>
+   {
+     if renderingMode == EmergeRenderingMode.window {
+-      let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
++      let format = UIGraphicsImageRendererFormat()
++      format.preferredRange = .standard
++      let renderer = UIGraphicsImageRenderer(size: window.bounds.size, format: format)
+       let screenshot = renderer.image { _ in
+           window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+       }
+@@ -161,7 +169,9 @@ extension View {
+     if targetSize.height > maxSize || targetSize.width > maxSize || totalPixels > maxTotalPixels {
+       return .failure(RenderingError.maxSize(targetSize))
+     }
+-    let renderer = UIGraphicsImageRenderer(size: targetSize)
++    let format = UIGraphicsImageRendererFormat()
++    format.preferredRange = .standard
++    let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+     let image = renderer.image { context in
+       drawCode(context.cgContext)
+     }
