@@ -50,8 +50,4 @@ struct RecordReferenceTests {
         let decoded = try JSONDecoder().decode(RecordReference.self, from: data)
         #expect(decoded == original)
     }
-
-    @Test func equalInstancesCompareEqual() {
-        #expect(sample(id: "same") == sample(id: "same"))
-    }
 }

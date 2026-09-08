@@ -1,5 +1,6 @@
 import Core
 import Foundation
+import Synchronization
 import Testing
 @testable import Chat
 
@@ -1662,6 +1663,7 @@ struct ChatScreenViewModelTests {
 
     @Test("confirmCopy flips the pill on immediately and clears after the dismissal task drains")
     func confirmCopyFlipsThenAutoDismisses() async {
+        let release = SleepGate()
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
@@ -1669,12 +1671,17 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [SelectableModel(model)]
+            availableModels: [SelectableModel(model)],
+            copyConfirmationSleep: { duration in
+                #expect(duration == .seconds(1.2))
+                await release.wait()
+            }
         )
 
         viewModel.confirmCopy()
         #expect(viewModel.showCopyConfirmation == true)
 
+        release.release()
         await viewModel._waitForPendingCopyDismissalTask()
         #expect(viewModel.showCopyConfirmation == false)
     }
@@ -1685,6 +1692,11 @@ struct ChatScreenViewModelTests {
         // tap's dwell timer would fire halfway through the second tap's
         // dwell and clip the pill early. This pins the cancel-and-replace
         // shape so a future refactor can't drop it.
+        let firstEntered = SleepGate()
+        let firstRelease = SleepGate()
+        let firstFinished = SleepGate()
+        let secondRelease = SleepGate()
+        let callCount = Mutex(0)
         let viewModel = ChatScreenViewModel(
             conversationId: conversationId,
             conversationTitle: "Test",
@@ -1692,13 +1704,34 @@ struct ChatScreenViewModelTests {
             messageRepository: StubMessageRepository(),
             toolCallRepository: StubToolCallRepository(),
             checkpointRepository: StubCheckpointRepository(),
-            availableModels: [SelectableModel(model)]
+            availableModels: [SelectableModel(model)],
+            copyConfirmationSleep: { _ in
+                let index = callCount.withLock { count in
+                    defer { count += 1 }
+                    return count
+                }
+                if index == 0 {
+                    firstEntered.release()
+                    await firstRelease.wait()
+                    defer { firstFinished.release() }
+                    #expect(Task.isCancelled)
+                    try Task.checkCancellation()
+                } else {
+                    #expect(index == 1)
+                    await secondRelease.wait()
+                    #expect(!Task.isCancelled)
+                }
+            }
         )
 
         viewModel.confirmCopy()
+        await firstEntered.wait()
         viewModel.confirmCopy()
+        firstRelease.release()
+        await firstFinished.wait()
         #expect(viewModel.showCopyConfirmation == true)
 
+        secondRelease.release()
         await viewModel._waitForPendingCopyDismissalTask()
         // Only the second task's dwell window resets the flag; the
         // first task was cancelled before it could touch state.

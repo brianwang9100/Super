@@ -12,16 +12,12 @@ enum BibleToolJSON {
 
     /// The integer value at `key`, accepting an integral double too (some
     /// providers serialize integers as doubles). `nil` when absent, non-numeric,
-    /// non-finite, or fractional.
+    /// non-finite, fractional, or outside the representable Int range.
     static func optionalInt(_ input: [String: JSONValue], key: String) -> Int? {
         guard let raw = input[key] else { return nil }
         if case .int(let value) = raw { return value }
         if case .double(let value) = raw {
-            // `Int(_:)` traps on NaN/±∞ — standard JSON can't carry those, but
-            // guard before the cast so a non-finite value degrades to nil.
-            guard value.isFinite else { return nil }
-            let rounded = Int(value)
-            return Double(rounded) == value ? rounded : nil
+            return Int(exactly: value)
         }
         return nil
     }

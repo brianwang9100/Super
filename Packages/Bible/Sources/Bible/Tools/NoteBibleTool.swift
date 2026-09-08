@@ -240,9 +240,9 @@ public struct NoteBibleTool: ToolExecutor {
         }
 
         let bookId = try requireNonEmptyString(input, key: "bookId")
-        let rawChapterNumber = optionalInt(input, key: "chapterNumber")
-        let rawVerseStart = optionalInt(input, key: "verseStart")
-        let rawVerseEnd = optionalInt(input, key: "verseEnd")
+        let rawChapterNumber = BibleToolJSON.optionalInt(input, key: "chapterNumber")
+        let rawVerseStart = BibleToolJSON.optionalInt(input, key: "verseStart")
+        let rawVerseEnd = BibleToolJSON.optionalInt(input, key: "verseEnd")
 
         // `target` is the authoritative discriminator. We enforce the fields
         // the unit *requires*, then coerce away any position fields it doesn't
@@ -302,17 +302,6 @@ public struct NoteBibleTool: ToolExecutor {
             throw ValidationError(message: "\(key) must not be empty.")
         }
         return value
-    }
-
-    private static func optionalInt(_ input: [String: JSONValue], key: String) -> Int? {
-        guard let raw = input[key] else { return nil }
-        if case .int(let value) = raw { return value }
-        if case .double(let value) = raw {
-            // Some providers serialize integers as doubles; round-trip safely.
-            let rounded = Int(value)
-            return Double(rounded) == value ? rounded : nil
-        }
-        return nil
     }
 
     private static func successResult(_ content: String, id: String) -> ToolResult {

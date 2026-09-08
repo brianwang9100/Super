@@ -55,6 +55,20 @@ struct TodoFilterTests {
         #expect(out.count == 2)
     }
 
+    @Test("terminal state and label filters both apply", arguments: [TodoFilter.StateScope.done, .cancelled])
+    func terminalStateAndLabelFiltersCombine(_ scope: TodoFilter.StateScope) {
+        let work = label("work", "Work")
+        let rows = [
+            task("open", state: .open, labels: [work]),
+            task("done", state: .done, labels: [work]),
+            task("cancelled", state: .cancelled, labels: [work]),
+            task("unlabelled-done", state: .done),
+            task("unlabelled-cancelled", state: .cancelled),
+        ]
+        let out = applyFilter(TodoFilter(state: scope, labelIds: ["work"]), to: rows, now: now)
+        #expect(out.map(\.id) == [scope == .done ? "done" : "cancelled"])
+    }
+
     @Test func labelFilterIsOrSemantics() {
         let work = label("L1", "Work")
         let home = label("L2", "Home")
@@ -72,9 +86,10 @@ struct TodoFilterTests {
             task("a", priority: .normal),
             task("b", priority: .urgent),
             task("c", priority: .high),
+            task("d", priority: .high, createdAt: now.addingTimeInterval(60)),
         ]
         let out = applyFilter(TodoFilter(sort: .priority, state: .all), to: rows, now: now)
-        #expect(out.map(\.id) == ["b", "c", "a"])
+        #expect(out.map(\.id) == ["b", "d", "c", "a"])
     }
 
     @Test func sortByNewestUsesCreatedAtDesc() {
@@ -108,11 +123,12 @@ struct TodoFilterTests {
         #expect(groups.map(\.title) == ["Urgent", "High", "Normal"])
     }
 
-    @Test func groupByDueProducesTodayUpcomingNoDate() {
+    @Test func groupByDueIncludesOverdueAndLaterToday() {
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         let rows = [
-            task("today", due: today),
+            task("overdue", due: today.addingTimeInterval(-1)),
+            task("today", due: tomorrow.addingTimeInterval(-1)),
             task("soon", due: tomorrow),
             task("none", due: nil),
         ]
@@ -120,6 +136,28 @@ struct TodoFilterTests {
         let filtered = applyFilter(filter, to: rows, now: today, calendar: calendar)
         let groups = groupTasks(filtered, filter: filter, now: today, calendar: calendar)
         #expect(groups.map(\.title) == ["Today", "Upcoming", "No date"])
+        #expect(groups.map { $0.tasks.map(\.id) } == [["overdue", "today"], ["soon"], ["none"]])
+    }
+
+    @Test func groupingOmitsEmptyBuckets() {
+        let rows = [task("high", priority: .high)]
+        let priorityGroups = groupTasks(rows, filter: TodoFilter(sort: .priority), now: now, calendar: calendar)
+        #expect(priorityGroups.map(\.title) == ["High"])
+        #expect(priorityGroups.flatMap(\.tasks).map(\.id) == ["high"])
+        let dueGroups = groupTasks(rows, filter: TodoFilter(sort: .dueDate), now: now, calendar: calendar)
+        #expect(dueGroups.map(\.title) == ["No date"])
+        #expect(dueGroups.flatMap(\.tasks).map(\.id) == ["high"])
+        for sort in [TodoFilter.Sort.priority, .dueDate] {
+            #expect(groupTasks([], filter: TodoFilter(sort: sort), now: now, calendar: calendar).isEmpty)
+        }
+    }
+
+    @Test func nonOpenScopesRemainUngrouped() {
+        let rows = [task("done", state: .done), task("cancelled", state: .cancelled)]
+        for sort in [TodoFilter.Sort.priority, .dueDate] {
+            let groups = groupTasks(rows, filter: TodoFilter(sort: sort, state: .all), now: now, calendar: calendar)
+            #expect(groups == [TodoListGroup(id: "_ungrouped", title: nil, tasks: rows)])
+        }
     }
 
     @Test func sortByDueDateOrdersTodayThenUpcomingThenNoDate() {

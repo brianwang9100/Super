@@ -8,16 +8,7 @@ import Testing
 struct BibleHighlightColorTests {
     @Test("the raw values are the stable identifiers persisted to the database")
     func rawValuesAreStable() {
-        #expect(BibleHighlightColor.yellow.rawValue == "yellow")
-        #expect(BibleHighlightColor.green.rawValue == "green")
-        #expect(BibleHighlightColor.blue.rawValue == "blue")
-        #expect(BibleHighlightColor.pink.rawValue == "pink")
-        #expect(BibleHighlightColor.lavender.rawValue == "lavender")
-    }
-
-    @Test("the palette offers five colours")
-    func paletteHasFiveColours() {
-        #expect(BibleHighlightColor.allCases.count == 5)
+        #expect(BibleHighlightColor.allCases.map(\.rawValue) == ["yellow", "green", "blue", "pink", "lavender"])
     }
 
     @Test("the light verse tint reuses the vivid swatch")

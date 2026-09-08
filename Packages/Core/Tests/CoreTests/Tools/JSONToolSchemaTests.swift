@@ -95,4 +95,25 @@ struct JSONToolSchemaTests {
         #expect(outerItems["type"] == .string("array"))
         #expect(object(outerItems["items"])["type"] == .string("integer"))
     }
+
+    @Test func nestedObjectsCarryRequiredFieldsAndConstrainedArrayItems() {
+        let schema = JSONToolSchema.parametersObject(for: [
+            LLMToolParameter(name: "options", type: .object, description: "Options", valueSchema: .object([
+                LLMToolParameter(name: "flags", type: .array, description: "Flags", isRequired: true,
+                                 valueSchema: .scalar(.string, enumValues: ["fast", "safe"])),
+                LLMToolParameter(name: "extra", type: .object, description: "Extra", valueSchema: .object([])),
+            ])),
+        ])
+        let options = object(properties(of: schema)["options"])
+        #expect(options["type"] == .string("object"))
+        #expect(options["description"] == .string("Options"))
+        #expect(options["required"] == .array([.string("flags")]))
+        let props = object(options["properties"])
+        let flags = object(props["flags"])
+        #expect(flags["description"] == .string("Flags"))
+        #expect(flags["items"] == .object(["type": .string("string"), "enum": .array([.string("fast"), .string("safe")])]))
+        let extra = object(props["extra"])
+        #expect(extra["properties"] == .object([:]))
+        #expect(extra["required"] == nil)
+    }
 }

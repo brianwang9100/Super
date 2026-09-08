@@ -24,11 +24,29 @@ struct BibleParagraphTests {
             == .poetry([BibleVerse(number: 6, text: "b")]))
     }
 
-    @Test("round-trips through encode then decode")
-    func roundTrips() throws {
-        let original: BibleParagraph = .poetry([BibleVerse(number: 8, text: "line\nbreak")])
-        let encoded = try JSONEncoder().encode(original)
-        #expect(try decoder.decode(BibleParagraph.self, from: encoded) == original)
+    @Test("every paragraph kind encodes its discriminator and payload")
+    func encodesEveryKind() throws {
+        let cases: [(BibleParagraph, String)] = [
+            (.heading("A title"), #"{"type":"heading","text":"A title"}"#),
+            (.prose([BibleVerse(number: 1, text: "text")]), #"{"type":"prose","verses":[{"number":1,"text":"text"}]}"#),
+            (.poetry([BibleVerse(number: 8, text: "line\nbreak")]), #"{"type":"poetry","verses":[{"number":8,"text":"line\nbreak"}]}"#),
+        ]
+        for (paragraph, json) in cases {
+            let encoded = try JSONEncoder().encode(paragraph)
+            let expected = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? NSDictionary
+            #expect(try JSONSerialization.jsonObject(with: encoded) as? NSDictionary == expected)
+            #expect(try decoder.decode(BibleParagraph.self, from: encoded) == paragraph)
+        }
+    }
+
+    @Test("known paragraph kinds reject missing or wrongly typed payloads", arguments: [
+        #"{"type":"heading"}"#, #"{"type":"heading","text":42}"#,
+        #"{"type":"prose"}"#, #"{"type":"poetry","verses":"wrong"}"#,
+    ])
+    func rejectsInvalidPayload(_ json: String) {
+        #expect(throws: DecodingError.self) {
+            try decoder.decode(BibleParagraph.self, from: Data(json.utf8))
+        }
     }
 
     @Test("an unknown type tag is rejected")
@@ -43,7 +61,7 @@ struct BibleParagraphTests {
     func rejectsMalformedJSON() {
         let json = Data(#"{"type":"prose","verses":"#.utf8)
         #expect(throws: (any Error).self) {
-            try decoder.decode(BibleBook.self, from: json)
+            try decoder.decode(BibleParagraph.self, from: json)
         }
     }
 }

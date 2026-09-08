@@ -98,12 +98,23 @@ jobs:
         uses: actions/cache@v6
         with:
           path: Packages/${{ matrix.package }}/.build
-          # Xcode version (literal 26.4.1, matching the setup-xcode pin) in the
-          # key so a runner-image toolchain bump busts the compiled .build
-          # cache instead of restoring modules built by a different Swift.
-          key: spm-${{ runner.os }}-xc26.4.1-${{ matrix.package }}-${{ hashFiles(format('Packages/{0}/Package.resolved', matrix.package)) }}
+          # Cache entries are immutable. Package.resolved alone (currently
+          # untracked) left a fixed primary key, so rebuilt outputs were never
+          # saved. Hash package inputs and Core, the applets' local dependency.
+          # Keep architecture/toolchain boundaries in the fallback too.
+          key: >-
+            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc26.4.1-${{ matrix.package }}-${{
+              hashFiles(
+                format('Packages/{0}/Package.swift', matrix.package),
+                format('Packages/{0}/Package.resolved', matrix.package),
+                format('Packages/{0}/Sources/**', matrix.package),
+                format('Packages/{0}/Tests/**', matrix.package),
+                'Packages/Core/Package.swift', 'Packages/Core/Package.resolved',
+                'Packages/Core/Sources/**', '.github/workflows/swift-test.yml'
+              )
+            }}
           restore-keys: |
-            spm-${{ runner.os }}-xc26.4.1-${{ matrix.package }}-
+            spm-v2-${{ runner.os }}-${{ runner.arch }}-xc26.4.1-${{ matrix.package }}-
 
       - name: Run tests
         working-directory: Packages/${{ matrix.package }}
