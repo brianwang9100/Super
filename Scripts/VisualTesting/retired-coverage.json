@@ -1,0 +1,31 @@
+[
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingAutomatic.settings_models_titling_automatic_light.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailable.settings_models_afm_available_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/Settings/ChatSettingsTests.swift",
+    "behavioralTests": [
+      "titleSettingsDefaults",
+      "titleModelIdClearsToAutomatic"
+    ],
+    "rationale": "Same Settings pane, availability, model/tool rows, chat count, theme and default title settings. Both legacy PNGs are SHA256-identical; retained behavioral tests assert the automatic defaults and reset."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingAutomaticDark.settings_models_titling_automatic_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailableDark.settings_models_afm_available_dark.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/Settings/ChatSettingsTests.swift",
+    "behavioralTests": [
+      "titleSettingsDefaults",
+      "titleModelIdClearsToAutomatic"
+    ],
+    "rationale": "Same dark Settings pane, availability, model/tool rows, chat count and default title settings. Both legacy PNGs are SHA256-identical; retained behavioral tests assert the automatic defaults and reset."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/compactionBanner.list_compaction_light.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/compactionBannerWithMarkdown.list_compaction_markdown_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/ChatScreenViewModelProjectionTests.swift",
+    "behavioralTests": [
+      "compactionBannerInsertion"
+    ],
+    "rationale": "Retained capture has the same user/assistant/banner/user arrangement, Vellum light theme and 402x600 frame, with a richer markdown summary. Behavioral test asserts the banner position after the cutoff and its exact summary."
+  }
+]

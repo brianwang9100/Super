@@ -7,39 +7,17 @@ import re
 import subprocess
 import sys
 
-FALLBACK_DEVICE = "iPhone 17"
-FALLBACK_OS = "26.4"
-FALLBACK_BUILD = "23E254a"
-FALLBACK_XCODE = "26.4.1"
 DOC = 'docs/TESTING.md "Simulator environment"'
 
 
 def load_pin():
-    """Read the pinned device, runtime, build, and Xcode version from CI."""
-    device, osv, build, xcode = (
-        FALLBACK_DEVICE, FALLBACK_OS, FALLBACK_BUILD, FALLBACK_XCODE)
-    here = os.path.abspath(__file__)
-    root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
-    workflow = os.path.join(root, ".github", "workflows", "ios-build.yml")
-    try:
-        with open(workflow, encoding="utf-8") as handle:
-            text = handle.read()
-    except Exception:
-        return device, osv, build, xcode
-    match = re.search(
-        r'simctl\s+list\s+devices\s+--json\s+"iOS\s+([0-9]+\.[0-9]+)"', text)
-    if match:
-        osv = match.group(1)
-    match = re.search(r'RUNTIME_BUILD="?([0-9A-Za-z]+)"?', text)
-    if match:
-        build = match.group(1)
-    match = re.search(r'\.get\("name"\)\s*==\s*"([^"]+)"', text)
-    if match:
-        device = match.group(1)
-    versions = set(re.findall(r'xcode-version:\s*"?([0-9][0-9.]*)"?', text))
-    if len(versions) == 1:
-        xcode = versions.pop()
-    return device, osv, build, xcode
+    """Read the same canonical pins as both capture drivers and simulator owner."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path.insert(0, os.path.join(root, 'Scripts'))
+    from worktree_simulator import read_pin
+    pin = read_pin(root)
+    minor = '.'.join(pin['ios_version'].split('.')[:2])
+    return pin['device'], minor, pin['ios_build'], pin['xcode_version'], pin['xcode_build']
 
 
 def allow():
@@ -74,7 +52,10 @@ concrete = [d for d in dests
 if not concrete:
     allow()
 
-PIN_DEVICE, PIN_OS, PIN_BUILD, PIN_XCODE = load_pin()
+try:
+    PIN_DEVICE, PIN_OS, PIN_BUILD, PIN_XCODE, PIN_XCODE_BUILD = load_pin()
+except Exception as error:
+    deny("Cannot read canonical simulator pins: " + str(error) + ". See " + DOC + ".")
 
 
 def parse_kv(dest):
@@ -117,8 +98,8 @@ def mismatch_reason(found_device, found_os, dest):
         "iOS snapshot runs must match CI's pinned simulator: "
         + PIN_DEVICE + " / iOS " + PIN_OS + ". This -destination resolves to "
         + (found_device or "an unknown device") + " / iOS "
-        + (found_os or "unknown") + " (" + dest + "). Recording or verifying on "
-        "the wrong device or runtime drifts the pixel-exact baselines. Use "
+        + (found_os or "unknown") + " (" + dest + "). Capturing on "
+        "the wrong device or runtime drifts the Argos comparisons. Use "
         '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
         + PIN_OS + '". See ' + DOC + "."
     )
@@ -148,12 +129,12 @@ if builds is not None:
     stale = sorted({build for build in builds if build and build != PIN_BUILD})
     if stale:
         deny(
-            "iOS " + PIN_OS + " snapshot baselines are pinned to build "
+            "iOS " + PIN_OS + " visual captures are pinned to build "
             + PIN_BUILD + ", but this machine also has " + ", ".join(stale)
             + " installed. simctl conflates same-minor runtimes under one "
-            "identifier (iOS-" + PIN_OS.replace(".", "-") + "), so a recording "
+            "identifier (iOS-" + PIN_OS.replace(".", "-") + "), so a capture "
             "or verification on OS=" + PIN_OS + " can silently land on the wrong "
-            "build and drift the pixel-exact baselines. Remove the stale runtime(s) "
+            "build and drift the Argos comparisons. Remove the stale runtime(s) "
             "so only " + PIN_BUILD + " remains: find the UUID with "
             "'xcrun simctl runtime list', then 'xcrun simctl runtime delete <uuid>'. "
             "See " + DOC + "."
@@ -175,7 +156,7 @@ for dest in concrete:
     if name is None:
         deny(
             "This -destination names no device (" + dest + "), so xcodebuild "
-            "picks one arbitrarily and the snapshot baselines drift. Pin it: "
+            "picks one arbitrarily and the visual captures drift. Pin it: "
             '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
             + PIN_OS + '". See ' + DOC + "."
         )
@@ -204,14 +185,15 @@ def effective_xcode_version():
     except Exception:
         return None
     match = re.search(r"Xcode\s+([0-9][0-9.]*)", output)
-    return match.group(1) if match else None
+    build = re.search(r"Build version\s+([0-9A-Za-z]+)", output)
+    return (match.group(1), build.group(1) if build else None) if match else None
 
 
 xcode = effective_xcode_version()
-if xcode is not None and xcode != PIN_XCODE:
+if xcode is not None and xcode != (PIN_XCODE, PIN_XCODE_BUILD):
     deny(
-        "Selected Xcode is " + xcode + ", but snapshot baselines are recorded "
-        "and verified against Xcode " + PIN_XCODE + " — a toolchain mismatch "
+        "Selected Xcode is " + xcode[0] + " build " + (xcode[1] or "unknown") + ", but visual captures are rendered "
+        "against Xcode " + PIN_XCODE + " build " + PIN_XCODE_BUILD + " — a toolchain mismatch "
         "shifts the system text renderer and SwiftUI layout, drifting the baselines. "
         "Select the pinned Xcode (xcode-select -s /Applications/Xcode-"
         + PIN_XCODE + ".app, or prefix the command with DEVELOPER_DIR=/Applications/"

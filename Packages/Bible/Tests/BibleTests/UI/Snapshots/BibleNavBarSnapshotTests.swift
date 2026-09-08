@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -12,9 +13,10 @@ import Testing
 /// collapses to a citation pill; plus the chevron-less form (SuperBible,
 /// `showsChapterChevrons: false`), where the chevrons hover above the chat
 /// composer instead (see `ComposerAccessoryFlankSnapshotTests`).
-@Suite("BibleNavBar snapshots")
+@Suite("BibleNavBar snapshots", .serialized)
 @MainActor
 struct BibleNavBarSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the nav bar renders in the light theme")
@@ -148,11 +150,10 @@ struct BibleNavBarSnapshotTests {
         .frame(width: 402, height: 96)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 96)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

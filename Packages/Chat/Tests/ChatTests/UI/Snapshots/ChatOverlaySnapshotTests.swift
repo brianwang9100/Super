@@ -2,6 +2,7 @@
 import Core
 import Foundation
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -103,11 +104,10 @@ struct ChatOverlaySnapshotTests {
         .superTheme(.make(.vellumLight))
         .frame(width: Self.frame.width, height: Self.frame.height)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
             named: "overlay_mid_drag_light",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: #function
         )
         if let failure {
@@ -156,11 +156,10 @@ struct ChatOverlaySnapshotTests {
         .superTheme(.make(theme))
         .frame(width: Self.frame.width, height: Self.frame.height)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -201,11 +200,10 @@ struct ChatOverlaySnapshotTests {
         // surface and blurred backdrop produce sub-pixel anti-aliasing
         // around the rounded corners that's runtime-stable but not
         // pixel-identical across recording sessions.
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

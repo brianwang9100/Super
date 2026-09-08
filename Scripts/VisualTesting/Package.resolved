@@ -1,0 +1,104 @@
+{
+  "pins": [
+    {
+      "identity": "grdb.swift",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/groue/GRDB.swift.git",
+      "state": {
+        "revision": "b83108d10f42680d78f23fe4d4d80fc88dab3212",
+        "version": "7.11.1"
+      }
+    },
+    {
+      "identity": "grdbquery",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/groue/GRDBQuery.git",
+      "state": {
+        "revision": "540dc48e86af2972b4f1815616aa1ed8ac97845a",
+        "version": "0.11.0"
+      }
+    },
+    {
+      "identity": "grdbsnapshottesting",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/groue/GRDBSnapshotTesting.git",
+      "state": {
+        "revision": "dc9c6664160558980ebe6a327e2aef60829e7ee4",
+        "version": "0.4.2"
+      }
+    },
+    {
+      "identity": "networkimage",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/gonzalezreal/NetworkImage",
+      "state": {
+        "revision": "2849f5323265386e200484b0d0f896e73c3411b9",
+        "version": "6.0.1"
+      }
+    },
+    {
+      "identity": "splash",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/johnsundell/splash.git",
+      "state": {
+        "revision": "7f4df436eb78fe64fe2c32c58006e9949fa28ad8",
+        "version": "0.16.0"
+      }
+    },
+    {
+      "identity": "swift-cmark",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/swiftlang/swift-cmark",
+      "state": {
+        "revision": "924936d0427cb25a61169739a7660230bffa6ea6",
+        "version": "0.8.0"
+      }
+    },
+    {
+      "identity": "swift-custom-dump",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/pointfreeco/swift-custom-dump",
+      "state": {
+        "revision": "4fb9e7cbb4b8f5a7354005db39447f570d6b3e19",
+        "version": "1.7.3"
+      }
+    },
+    {
+      "identity": "swift-markdown-ui",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/gonzalezreal/swift-markdown-ui.git",
+      "state": {
+        "revision": "5f613358148239d0292c0cef674a3c2314737f9e",
+        "version": "2.4.1"
+      }
+    },
+    {
+      "identity": "swift-snapshot-testing",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/pointfreeco/swift-snapshot-testing.git",
+      "state": {
+        "revision": "59a99c458de4d2dee580529b61b4f78dca7b7fa6",
+        "version": "1.19.4"
+      }
+    },
+    {
+      "identity": "swift-syntax",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/swiftlang/swift-syntax",
+      "state": {
+        "revision": "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version": "603.0.2"
+      }
+    },
+    {
+      "identity": "xctest-dynamic-overlay",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/pointfreeco/xctest-dynamic-overlay",
+      "state": {
+        "revision": "d9308ad679143c26a30dec52daefe82f54af2b82",
+        "version": "1.13.1"
+      }
+    }
+  ],
+  "version": 2
+}

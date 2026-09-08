@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -12,9 +13,10 @@ import Testing
 ///
 /// Glass controls render through the deterministic solid fallback inside the
 /// test process (see `SuperGlass`); real glass is verified on-device.
-@Suite("BulkAnnotation snapshots")
+@Suite("BulkAnnotation snapshots", .serialized)
 @MainActor
 struct BulkAnnotationSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let coverage = AnnotationCoverage(books: 3, chapters: 38, verses: 1_204)
@@ -203,11 +205,10 @@ struct BulkAnnotationSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 393, height: height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }

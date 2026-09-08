@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Core
@@ -31,12 +32,8 @@ import Testing
 /// (`MarkdownBodyMetrics.fontScale`), not Dynamic Type — that's the
 /// axis the inter-item spacing tracks.
 ///
-/// Not `.serialized`: Core's snapshot suites don't serialize (root
-/// AGENTS.md §Testing.7 — serialization is per-module all-or-none, and
-/// order-independence comes from the font registration in `init`, not
-/// from serialization). The suite was serialized in its original ChatTests
-/// home, where the whole module serializes.
-@Suite("MarkdownText snapshots")
+/// Serial capture protects the shared UIKit rendering environment.
+@Suite("MarkdownText snapshots", .serialized)
 @MainActor
 struct MarkdownTextSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
@@ -134,11 +131,10 @@ struct MarkdownTextSnapshotTests {
             .frame(width: 402)
             .background(SuperTheme.make(theme).background)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .sizeThatFits),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }

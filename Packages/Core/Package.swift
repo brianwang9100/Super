@@ -9,6 +9,7 @@ let package = Package(
     ],
     products: [
         .library(name: "Core", targets: ["Core"]),
+        .library(name: "VisualTestSupport", targets: ["VisualTestSupport"]),
     ],
     dependencies: [
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.0"),
@@ -16,6 +17,11 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
     ],
     targets: [
+        .target(
+            name: "VisualTestSupport",
+            dependencies: [.product(name: "SnapshotTesting", package: "swift-snapshot-testing")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .target(
             name: "Core",
             dependencies: [
@@ -40,17 +46,10 @@ let package = Package(
             name: "CoreTests",
             dependencies: [
                 "Core",
+                "VisualTestSupport",
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "splash"),
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
-            ],
-            // Snapshot PNG baselines live next to each snapshot test file
-            // under `__Snapshots__/<TestSuite>/`. They're consumed by
-            // SnapshotTesting at runtime via `Bundle.module`-relative
-            // lookups SwiftPM doesn't model — excluding them silences the
-            // "unhandled files" warning without changing test behavior.
-            exclude: [
-                "UI/Snapshots/__Snapshots__",
             ],
             resources: [
                 .process("Resources"),

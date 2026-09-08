@@ -2,6 +2,7 @@
 import Core
 import GRDBQuery
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -12,9 +13,10 @@ import Testing
 /// Lapis / Scriptorium / Slate — and Vellum again — get their palette coverage
 /// on the verse-reading surface (EB Garamond reading body, verse numbers,
 /// chapter title), so a palette regression in any family fails here.
-@Suite("Theme gallery — Bible reader")
+@Suite("Theme gallery — Bible reader", .serialized)
 @MainActor
 struct ThemeGallerySnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts before any render so the chapter
     /// title's brand serif and the EB Garamond reading body resolve instead of
     /// baking the system fallback (see SnapshotFontRegistration).
@@ -51,11 +53,10 @@ struct ThemeGallerySnapshotTests {
         .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: "gallery_reader_\(id.rawValue)",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: #function
         )
         if let failure {

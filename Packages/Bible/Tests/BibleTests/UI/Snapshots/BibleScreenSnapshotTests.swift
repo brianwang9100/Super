@@ -3,6 +3,7 @@ import Core
 import Foundation
 import GRDBQuery
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -27,9 +28,10 @@ import Testing
 /// content itself is covered directly by `BibleActionSheetSnapshotTests`,
 /// `NarrationTransportSheetSnapshotTests`, `BibleBookSheetSnapshotTests`, and
 /// `BibleTranslationSheetSnapshotTests`.
-@Suite("BibleScreen snapshots")
+@Suite("BibleScreen snapshots", .serialized)
 @MainActor
 struct BibleScreenSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts before any render so the chapter
     /// title and section headings resolve their brand serif instead of baking
     /// the system fallback — and so this suite stays order-independent (font
@@ -110,7 +112,7 @@ struct BibleScreenSnapshotTests {
     func selectionActiveLight() async {
         for dismissActions in [false, true] {
             verify(await selectionScreen(dismissActions: dismissActions),
-                   theme: .vellumLight, name: "selection_active_light",
+                   theme: .vellumLight, name: "selection_active_light" + (dismissActions ? "-dismissed" : ""),
                    context: "dismissActions: \(dismissActions)")
         }
     }
@@ -119,7 +121,7 @@ struct BibleScreenSnapshotTests {
     func selectionActiveDark() async {
         for dismissActions in [false, true] {
             verify(await selectionScreen(dismissActions: dismissActions),
-                   theme: .vellumDark, name: "selection_active_dark",
+                   theme: .vellumDark, name: "selection_active_dark" + (dismissActions ? "-dismissed" : ""),
                    context: "dismissActions: \(dismissActions)")
         }
     }
@@ -129,7 +131,7 @@ struct BibleScreenSnapshotTests {
         for dismissActions in [false, true] {
             verify(await selectionScreen(dismissActions: dismissActions),
                    theme: .vellumLight, dynamicType: .xxLarge,
-                   name: "selection_active_light_xxl",
+                   name: "selection_active_light_xxl" + (dismissActions ? "-dismissed" : ""),
                    context: "dismissActions: \(dismissActions)")
         }
     }
@@ -139,7 +141,7 @@ struct BibleScreenSnapshotTests {
         for dismissActions in [false, true] {
             verify(await selectionScreen(dismissActions: dismissActions),
                    theme: .vellumDark, dynamicType: .xxLarge,
-                   name: "selection_active_dark_xxl",
+                   name: "selection_active_dark_xxl" + (dismissActions ? "-dismissed" : ""),
                    context: "dismissActions: \(dismissActions)")
         }
     }
@@ -471,11 +473,10 @@ struct BibleScreenSnapshotTests {
             .dynamicTypeSize(dynamicType)
             .frame(width: 402, height: 760)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

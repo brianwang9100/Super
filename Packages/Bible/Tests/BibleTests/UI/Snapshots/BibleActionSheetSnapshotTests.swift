@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -9,11 +10,12 @@ import Testing
 /// three themes and for both a single-verse and a multi-range citation. The
 /// sheet stacks the AI action row over the plain-text (Copy/Share) row, split
 /// by a hairline divider. The sheet's own type sizes are fixed, but a Dynamic
-/// Type XXL variant is recorded per root `AGENTS.md` §Testing — it guards
+/// Type XXL variant is captured for Argos — it guards
 /// against a future font change reflowing the swatch / action rows.
-@Suite("BibleActionSheet snapshots")
+@Suite("BibleActionSheet snapshots", .serialized)
 @MainActor
 struct BibleActionSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the action sheet renders in the light theme")
@@ -64,11 +66,10 @@ struct BibleActionSheetSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 330)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

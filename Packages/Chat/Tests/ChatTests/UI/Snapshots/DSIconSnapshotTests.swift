@@ -2,6 +2,7 @@
 import Core
 import Foundation
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 import UIKit
@@ -14,7 +15,7 @@ import UIKit
 /// shape of every icon so an unintended SVG edit (or a regression in
 /// template-rendering) fails the test instead of slipping through
 /// per-call-site snapshots one at a time.
-@Suite("DSIcon catalog snapshots")
+@Suite("DSIcon catalog snapshots", .serialized)
 @MainActor
 struct DSIconSnapshotTests {
     /// Register Core's bundled brand fonts before any render so this suite
@@ -81,11 +82,10 @@ struct DSIconSnapshotTests {
             .background(superTheme.background)
             .environment(\.colorScheme, superTheme.isDark ? .dark : .light)
             .frame(width: Self.gridWidth, height: Self.gridHeight)
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: Self.gridWidth, height: Self.gridHeight)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

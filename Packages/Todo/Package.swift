@@ -38,6 +38,7 @@ let package = Package(
         .testTarget(
             name: "TodoTests",
             dependencies: [
+                .product(name: "VisualTestSupport", package: "Core"),
                 "Todo",
                 .product(name: "Core", package: "Core"),
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
@@ -45,7 +46,6 @@ let package = Package(
             ],
             exclude: [
                 "Database/__Snapshots__",
-                "UI/Snapshots/__Snapshots__",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
