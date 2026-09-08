@@ -73,7 +73,9 @@ def simulator_environment():
         raise ValueError('Expected registered device on the pinned runtime')
     if selected[0]['state'] != 'Booted':
         subprocess.run(['xcrun', 'simctl', 'boot', simulator], check=True, timeout=120)
-    subprocess.run(['xcrun', 'simctl', 'bootstatus', simulator, '-b'], check=True, timeout=300)
+    # Fresh hosted simulators can spend several minutes migrating system data.
+    # Keep readiness bounded and fail before testing if boot still cannot finish.
+    subprocess.run(['xcrun', 'simctl', 'bootstatus', simulator, '-b'], check=True, timeout=900)
     return simulator, {'xcode': pins['xcode_version'], 'build': pins['xcode_build'], 'runtime': matches[0], 'device': selected[0]}
 
 
