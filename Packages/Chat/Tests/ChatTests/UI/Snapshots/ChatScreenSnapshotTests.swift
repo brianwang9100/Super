@@ -62,6 +62,71 @@ struct ChatScreenSnapshotTests {
         verifyPopulated(theme: .vellumDark, name: "screen_populated_dark")
     }
 
+    /// Existing screen captures fit the viewport. These cover floating glass
+    /// contrast over text and centering/gap above the real composer inset.
+    @Test("copy confirmation above the scroll-to-bottom control in light theme")
+    func scrollToBottomLight() throws {
+        try verifyScrollToBottom(theme: .vellumLight, name: "screen_scroll_to_bottom_light", showCopyConfirmation: true)
+    }
+
+    @Test("scroll-to-bottom control above the composer in dark theme")
+    func scrollToBottomDark() throws {
+        try verifyScrollToBottom(theme: .vellumDark, name: "screen_scroll_to_bottom_dark")
+    }
+
+    private func verifyScrollToBottom(
+        theme: SuperTheme.Identifier, name: String, showCopyConfirmation: Bool = false, function: String = #function
+    ) throws {
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        let messages = (0..<12).map { index in
+            MessageRecord(
+                id: "message-\(index)", conversationId: "c",
+                role: index.isMultiple(of: 2) ? .user : .assistant,
+                content: index.isMultiple(of: 2)
+                    ? "What does it mean to love your neighbor?"
+                    : "It means treating another person's good as something worth your care. Start with the people you encounter today, listening closely and offering practical help.",
+                createdAt: now.addingTimeInterval(Double(index))
+            )
+        }
+        let viewModel = makeViewModel(initialMessages: messages)
+        viewModel._setSnapshotState(
+            items: ChatScreenViewModel.project(messages: messages, toolCalls: [], checkpoint: nil),
+            usedTokens: 1_200,
+            showCopyConfirmation: showCopyConfirmation
+        )
+        let view = ChatScreen(viewModel: viewModel)
+            .superTheme(.make(theme))
+            // Capture settled chrome; the spring's sub-pixel opacity tail is
+            // timing-dependent, while its shared motion token is covered in code.
+            .transaction { $0.disablesAnimations = true }
+        let controller = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        func findScrollView(_ view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView { return scroll }
+            return view.subviews.lazy.compactMap { findScrollView($0) }.first
+        }
+        let scroll = try #require(findScrollView(controller.view))
+        scroll.setContentOffset(.zero, animated: false)
+        // Let scroll geometry and button visibility settle before capturing.
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.7))
+        let failure = verifyVisualSnapshot(
+            of: controller,
+            as: .image(size: window.bounds.size),
+            named: name,
+            testName: function
+        )
+        if let failure { Issue.record("\(name): \(failure)") }
+    }
+
     @Test("no-model error banner over empty state, light")
     func noModelErrorLight() {
         verifyNoModelError(theme: .vellumLight, name: "screen_no_model_error_light")

@@ -60,6 +60,8 @@ public struct MessageList: View {
     public let scrollRequest: ScrollRequest?
     /// Unpersisted partial response retained after a stop or error.
     public let interruptedResponse: StreamingState?
+    /// Shows the non-interactive copy confirmation above transcript navigation.
+    public let showCopyConfirmation: Bool
 
     public init(
         items: [Item],
@@ -67,6 +69,7 @@ public struct MessageList: View {
         error: ErrorState? = nil,
         scrollRequest: ScrollRequest? = nil,
         interruptedResponse: StreamingState? = nil,
+        showCopyConfirmation: Bool = false,
         verbosity: ChatVerbosity = .simple,
         onRetry: @escaping () -> Void = {},
         onContentTap: @escaping () -> Void = {},
@@ -81,6 +84,7 @@ public struct MessageList: View {
         self.error = error
         self.scrollRequest = scrollRequest
         self.interruptedResponse = interruptedResponse
+        self.showCopyConfirmation = showCopyConfirmation
         self.verbosity = verbosity
         self.onRetry = onRetry
         self.onContentTap = onContentTap
@@ -97,6 +101,10 @@ public struct MessageList: View {
     @State private var focus = MessageListFocus()
     @State private var focusMeasurementID = 0
     @State private var thinkingExpansion: [ThinkingKey: Bool] = [:]
+    @State private var bottomScroll = BottomScrollState()
+    @State private var bottomVisibility = ScrollToBottomButton.VisibilityState()
+
+    private static let bottomID = "__transcript_bottom"
 
     /// The live response and its saved row share the same logical slot.
     private struct ThinkingKey: Hashable {
@@ -116,13 +124,39 @@ public struct MessageList: View {
         )
     }
 
+    /// Geometry callbacks mutate the request without invalidating layout.
+    private final class BottomScrollState {
+        var request = MessageListBottomScrollRequest<BottomContent>()
+    }
+
+    /// Corrections belong to the content present at the tap, never later tokens.
+    private struct BottomContent: Equatable {
+        let items: [Item]
+        let streamingTail: StreamingState?
+        let interruptedResponse: StreamingState?
+        let error: ErrorState?
+        let viewport: CGSize
+        let verbosity: ChatVerbosity
+        let thinkingExpansion: [ThinkingKey: Bool]
+    }
+
+    private struct BottomGeometry: Equatable {
+        let bottomY: CGFloat
+        let content: BottomContent
+    }
+
     public var body: some View {
         GeometryReader { geometry in
-            transcript(containerHeight: geometry.size.height)
+            transcript(containerSize: geometry.size)
         }
     }
 
-    private func transcript(containerHeight: CGFloat) -> some View {
+    private func transcript(containerSize: CGSize) -> some View {
+        let containerHeight = containerSize.height
+        let bottomContent = BottomContent(
+            items: items, streamingTail: streamingTail, interruptedResponse: interruptedResponse,
+            error: error, viewport: containerSize, verbosity: verbosity, thinkingExpansion: thinkingExpansion
+        )
         let turns = MessageListTurn.group(items)
         return ScrollViewReader { proxy in
             ScrollView {
@@ -156,6 +190,21 @@ public struct MessageList: View {
                             guard let geometry else { return }
                             perform(focus.measure(geometry), using: proxy)
                         }
+                        .onGeometryChange(for: BottomGeometry?.self) { geometry in
+                            guard turn.id == turns.last?.id else { return nil }
+                            return BottomGeometry(
+                                bottomY: geometry.frame(in: .named("transcript-viewport")).maxY + 8,
+                                content: bottomContent
+                            )
+                        } action: { geometry in
+                            guard let geometry else { return }
+                            if bottomScroll.request.shouldRefine(
+                                distanceToBottom: geometry.bottomY - containerHeight,
+                                isRendered: true, content: geometry.content
+                            ) {
+                                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                            }
+                        }
                     }
                     if turns.isEmpty {
                         responseTail(turn: nil)
@@ -166,6 +215,22 @@ public struct MessageList: View {
                 // Synchronous viewport input, never a geometry-to-state feedback
                 // loop. The focused turn keeps its space even after a short reply.
                 .frame(minHeight: containerHeight, alignment: .top)
+                .id(Self.bottomID)
+                .onGeometryChange(for: BottomGeometry.self) { geometry in
+                    BottomGeometry(
+                        bottomY: geometry.frame(in: .named("transcript-viewport")).maxY,
+                        content: bottomContent
+                    )
+                } action: { geometry in
+                    // The stack can seek using estimates, but the rendered last
+                    // turn above confirms arrival after lazy materialization.
+                    if bottomScroll.request.shouldRefine(
+                        distanceToBottom: geometry.bottomY - containerHeight,
+                        isRendered: turns.isEmpty, content: geometry.content
+                    ) {
+                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                    }
+                }
                 .contentShape(Rectangle())
                 .simultaneousGesture(TapGesture().onEnded { onContentTap() })
             }
@@ -176,14 +241,42 @@ public struct MessageList: View {
             // preserve the leading reading edge; only a user action calls scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .sizeChanges)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                ScrollToBottomButton.VisibilityState.isAwayFromBottom(geometry)
+            } action: { _, isAway in
+                bottomVisibility.isVisible = isAway
+            }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 8) {
+                    if showCopyConfirmation {
+                        CopyConfirmationPill()
+                            .transition(.opacity)
+                            .allowsHitTesting(false)
+                    }
+                    // Retain this slot while the arrow fades or is hidden, so
+                    // the confirmation never moves across its hit target.
+                    ScrollToBottomButton(visibility: bottomVisibility) {
+                        focus.cancel()
+                        bottomScroll.request.begin(content: bottomContent)
+                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                    }
+                }
+                .padding(.bottom, ScrollToBottomButton.bottomPadding)
+                .animation(.easeInOut(duration: 0.18), value: showCopyConfirmation)
+            }
+            .onChange(of: bottomContent) { _, _ in
+                bottomScroll.request.cancel()
+            }
             .onChange(of: scrollRequest, initial: true) { previous, request in
                 guard let request, turns.contains(where: { $0.id == request.messageID }) else { return }
+                bottomScroll.request.cancel()
                 // Mount restored history immediately; animate only new intent.
                 perform(focus.begin(request, animated: previous != request && !reduceMotion), using: proxy)
             }
             .onScrollPhaseChange { previous, phase in
                 if phase == .tracking || phase == .interacting || phase == .decelerating {
                     focus.cancel()
+                    bottomScroll.request.cancel()
                 } else if phase == .animating {
                     focus.motionBegan()
                 } else if previous == .animating, phase == .idle {

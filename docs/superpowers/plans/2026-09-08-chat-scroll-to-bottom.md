@@ -1,0 +1,42 @@
+# Chat scroll-to-bottom implementation plan
+
+**Goal:** Show a centered down-arrow above the composer whenever the transcript is away from its bottom, and let a tap return to the latest content.
+
+**Approach:** Keep geometry observation and explicit scrolling inside `MessageList`, where transcript scrolling already lives. Render a 44-point circular glass `ScrollToBottomButton` as a bottom-centered overlay with an 8-point gap. Observe only whether the remaining scroll distance exceeds a small layout tolerance, including content insets. Use `SuperMotion.chrome(hiding:reduceMotion:)` for the same 0.4-second reveal / 0.6-second hide as the chapter controls (0.2 seconds with Reduce Motion). A tap marks the current turn-focus request complete and seeks a bottom target through `ScrollViewReader`; any lazy-layout refinement must be bounded and relinquish ownership on arrival or user interaction. Do not retain a bound `ScrollPosition` bottom edge, which could follow later content growth. Subsequent response growth never scrolls automatically.
+
+**Scope:** Chat package only; no applet or shell API changes. The control inherits transcript visibility and resets with the existing conversation identity. Hidden controls must neither receive taps nor appear in accessibility. Use theme, typography, glass, and haptics conventions already used by `ComposerAccessoryFlank`.
+
+**Risks:** Lazy row measurement must not leave the scroll above the bottom; geometry observation must not create a layout loop; button visibility must respond to streaming growth and viewport changes without changing the reading position. Preserve send/retry/regenerate turn focus and short-response blank space. Verify Reduce Motion and keyboard/composer placement.
+
+## Steps
+
+- [x] Review this plan with an independent review subagent and address actionable findings: use a proxy target seek without a persistent bottom-edge binding. Test growth immediately after the jump and subsequent explicit turn focus.
+- [x] Preserve the existing UIKit transcript behavior suite and add four lifecycle tests for completion, later growth, bounded lazy-layout correction, and cancellation. A proposed real-button host test failed because the hosted SwiftUI accessibility tree is empty in the unit-test runner; remove that vacuous harness and verify actual taps through the running app's simulator accessibility tooling.
+- [x] Implement the overlay, geometry predicate, and explicit bottom-edge action. Keep animation scoped to button opacity and avoid adding transcript layout space. Isolate visibility observation in the button.
+- [x] Add light/dark ChatScreen captures for floating glass contrast over text and centering above the actual composer. Existing captures fit the viewport and cannot show this control. Legacy PNG count: 581 → 583; no retirements, Argos inventory unchanged. Recorded on Xcode 26.4.1 (17E202), iOS 26.4.1 (23E254a), iPhone 17.
+- [x] Run the Chat package suite, relevant simulator behavior and visual checks, and lint/diff checks. Review changes with a separate subagent and address findings.
+- [ ] Create a draft PR using the repository template. Monitor CI and Codex review every 10 minutes. Mark ready and enable auto-merge only with passing applicable checks and explicit Codex approval of the current revision, then verify merge.
+
+**Validation constraints:** CI currently pins Xcode 26.4.1 and iOS 26.4 build 23E254a on iPhone 17. Use `Scripts/worktree_simulator.py ensure` for this worktree's device. The initially selected local toolchain is Xcode 27.0 (27A5252f); locate the pinned toolchain before recording any baseline.
+
+**Progress:** Full Chat `swift test --parallel`: 1,108 tests passed, including the measured composer-inset regression. SuperBible simulator build passed. Changed Swift files pass SwiftLint. Independent implementation review and the inset correction were approved without actionable findings. Manual QA used 40 varied-height turns: scrolling to response 21 shows the arrow; tapping reaches response 40's end marker and fades it away. A subsequent send stays at the question while the canned response grows; short content hides the arrow. Post-jump ownership release is covered by the request lifecycle tests.
+
+**Final simulator validation:** The full Chat run passed 1,361 tests; the two new snapshots differed by a small glass-edge opacity tail. After disabling animation in those new fixtures and re-recording only their baselines, all 66 tests across the five affected UI suites passed with `TEST SUCCEEDED`. Existing snapshots remain unchanged.
+
+**Existing stress issue:** Entering a roughly 1,900-character composer draft after loading long history can stall native SwiftUI layout. Repeating the identical input with `MessageList.swift` restored to base commit `79b70606` reproduces the same sustained CPU use and native layout stack. This is not introduced by the button; no unrelated composer behavior is changed here.
+
+## PR review follow-up
+
+Codex identified that the existing non-interactive copy confirmation covers the arrow and passes taps through. Place both controls in one bottom-aligned transcript overlay, with the confirmation 8 points above the arrow's permanently reserved 44-point slot. A captured initial attempt showed that keeping the overlays in different parents used different coordinate origins, so both now share the same `MessageList` overlay. Use an opacity-only transition so the pill never slides across the arrow. Include both controls in the new light-theme screen capture and inspect their separation; preserve the dark capture for glass contrast.
+
+Main's completed Argos migration landed during implementation. Merge it, convert the two new fixtures to `verifyVisualSnapshot`, register their names/dimensions in the package inventory, and remove their generated Git PNGs. The final inventory changes from 623 to 625 total captures (Chat 244 to 246). Validate migration/discovery checks, the affected Chat package and simulator suites, and local capture output before pushing and requesting a fresh Codex pass.
+
+**Follow-up validation:** The separate reviewer approved the shared overlay and inspected the combined capture. The final run passed 1,108 Chat macOS tests and 65 simulator tests across the five affected suites (15 screen, 31 transcript capture, 19 scroll behavior/visibility). All 15 ChatScreen and 31 MessageList exported images passed inventory-name, dimension, PNG decoding, and completeness validation. All 23 visual-pipeline tests, discovery, lint, and diff checks passed. PR #342 remains draft pending fresh Codex approval and passing CI for the follow-up revision.
+
+## Lazy-bottom review follow-up
+
+The request currently treats any zero remaining distance as completion, including the lazy stack's provisional estimated bottom; the scroll-visibility callback also cancels on that estimate. Preserve the bounded request through estimated-bottom observations and complete it only against the last rendered turn's bottom geometry. Remove cancellation from the visibility callback. Keep a snapshot of the transcript inputs and viewport associated with the tap so new streaming content, persistence, or resizing cancels the request before it can issue a correction for different content. Retain the four-correction budget and manual/new-turn cancellation.
+
+Add a deterministic regression for provisional zero followed by materialized positive distance, then actual arrival. Test that a changed content snapshot cancels even before actual arrival and cannot restart the request. Run the Chat package and simulator scroll behavior suites, inspect the final capture for unchanged placement, and exercise a long varied-height history in the app where practical. Have an independent reviewer critique the plan and final change before pushing.
+
+**Lazy-bottom validation:** The provisional-bottom regression failed on the prior helper and passes with rendered-target completion. All 1,110 Chat macOS tests and 67 affected simulator tests pass; the two new screen captures are byte-identical to the previously inspected versions, and all 46 screen/transcript exports validate against the inventory. SuperBible simulator build, lint, and diff checks pass. In a synthetic 240-turn varied-height conversation, scrolling back to response 216 and tapping once reaches the visible `LATEST RESPONSE 240 END.` marker; the arrow fades away. The independent implementation reviewer approved the corrected geometry and request lifetime.

@@ -414,26 +414,10 @@ public struct ChatScreen: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
                 }
-                .overlay(alignment: .bottom) {
-                    // Transient "Copied!" pill floats at the bottom edge
-                    // of the transcript area, which puts it directly
-                    // above the composer at every progress level. The
-                    // `.clipped()` that used to hide its off-screen
-                    // slide-in start is gone (see the trade-off note
-                    // below), so it now fades/slides in at the edge.
-                    if viewModel.showCopyConfirmation {
-                        CopyConfirmationPill()
-                            .padding(.bottom, 8)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            .allowsHitTesting(false)
-                    }
-                }
                 // Deliberately no `.clipped()` here: it would crop the composer's
                 // glass elevation shadow in pill mode. The transcript's own
                 // ScrollView self-clips, and the panel `.mask` rounds/contains the
-                // card in semi + expanded. Trade-off: the copy-pill loses its
-                // emerge-from-behind-the-composer clip, which is acceptable.
-                .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
+                // card in semi + expanded.
         }
         .background(panelBackground)
         // Crop the panel to a floating-card width with a mask rather than
@@ -769,6 +753,7 @@ public struct ChatScreen: View {
                 error: viewModel.error,
                 scrollRequest: viewModel.scrollRequest,
                 interruptedResponse: viewModel.interruptedResponse,
+                showCopyConfirmation: viewModel.showCopyConfirmation,
                 verbosity: verbosity,
                 onRetry: onRetry,
                 onContentTap: onContentTap,
