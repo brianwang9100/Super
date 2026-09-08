@@ -145,7 +145,7 @@ public struct MessageList: View {
                             alignment: .top
                         )
                         .id(turn.id)
-                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { geometry in
+                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { [focusMeasurementID] geometry in
                             guard let request = scrollRequest, request.messageID == turn.id else { return nil }
                             return MessageListFocus.Geometry(
                                 request: request,

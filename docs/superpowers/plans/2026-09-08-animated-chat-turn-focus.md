@@ -20,4 +20,7 @@
 - [x] Build and visually exercise sending with the canned debug provider on the dedicated worktree simulator; inspect animation frames and final position. Native drag begins 0.102 seconds after send and cancels the focus; response growth retains that reading position. Two subsequent history seeks land at screen y=127.67, the expected inset below the transcript header.
 - [x] Separate code review and actionable findings addressed; final review reports no serious findings.
 - [x] Full Chat suites pass: 1,109 tests in 83 suites on macOS; 1,362 tests in 111 suites on the iPhone 17 simulator, Xcode 26.4.1 / iOS 26.4.1 build 23E254a. Existing 581 PNG baselines (247 Chat) remain unchanged; zero added or retired captures. Changed-source SwiftLint and `git diff --check` pass.
-- [ ] Create a draft PR and follow current-head Codex approval and required CI through verified merge. Monitor every ten minutes while pending.
+- [x] Create draft PR #341 and request Codex review.
+- [ ] Follow current-head Codex approval and required CI through verified merge. Monitor every ten minutes while pending.
+
+**CI follow-up:** The package CI command promotes Swift concurrency warnings to errors. Capture the measurement ID by value when constructing the geometry transform, so its Sendable closure does not read main-actor state. This preserves generation-based final measurements without weakening isolation. The narrow correction received an independent review with no findings. CI's exact `swift test --parallel --enable-code-coverage -Xswiftc -warnings-as-errors` command passes all 1,109 tests; the app build passes, and the native send from older history still lands at screen y=127.67.
