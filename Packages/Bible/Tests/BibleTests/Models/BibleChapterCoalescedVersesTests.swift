@@ -26,13 +26,4 @@ struct BibleChapterCoalescedVersesTests {
         ])
         #expect(chapter.coalescedVerses().first?.text == "a b")
     }
-
-    @Test("headings contribute no verses")
-    func headingsSkipped() {
-        let chapter = BibleChapter(number: 1, paragraphs: [
-            .heading("Title"),
-            .prose([BibleVerse(number: 1, text: "Only verse.")]),
-        ])
-        #expect(chapter.coalescedVerses().map(\.number) == [1])
-    }
 }

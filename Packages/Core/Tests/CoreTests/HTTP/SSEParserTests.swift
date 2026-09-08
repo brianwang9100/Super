@@ -50,9 +50,22 @@ struct SSEParserTests {
     }
 
     @Test func mixedCRLFAndLF() {
-        var parser = SSEParser()
-        let events = parser.append(Data("event: ping\r\ndata: pong\r\n\r\n".utf8))
-        #expect(events == [SSEEvent(event: "ping", data: "pong")])
+        // Both separator orderings must select the earliest boundary.
+        for separators in [("\r\n\r\n", "\n\n"), ("\n\n", "\r\n\r\n")] {
+            var parser = SSEParser()
+            let events = parser.append(Data("data: first\(separators.0)data: second\(separators.1)".utf8))
+            #expect(events == [SSEEvent(data: "first"), SSEEvent(data: "second")])
+        }
+    }
+
+    @Test func utf8AndCRLFRemainIntactAcrossEveryByteBoundary() {
+        let bytes = Data("data: café 🙏\r\n\r\n".utf8)
+        for split in 1..<bytes.count {
+            var parser = SSEParser()
+            #expect(parser.append(Data(bytes.prefix(split))).isEmpty, "split at byte \(split)")
+            #expect(parser.append(Data(bytes.dropFirst(split))) == [SSEEvent(data: "café 🙏")])
+            #expect(parser.finish().isEmpty)
+        }
     }
 
     @Test func parsesEventName() {

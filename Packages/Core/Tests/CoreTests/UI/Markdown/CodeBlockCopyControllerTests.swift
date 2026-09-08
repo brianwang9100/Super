@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Core
 
@@ -16,17 +17,18 @@ struct CodeBlockCopyControllerTests {
     @Test("copy writes to the injected pasteboard and flips state to .copied")
     func copyWritesAndFlipsState() async {
         let pasteboard = RecordingPasteboardClient()
-        // Sleep that never returns — the test only cares about the
-        // state immediately after `copy()`, before the revert window.
+        let release = SleepGate()
         let controller = CodeBlockCopyController(
             pasteboard: pasteboard,
-            sleep: { _ in try await Task.sleep(for: .seconds(60)) }
+            sleep: { _ in await release.wait() }
         )
 
         controller.copy("hello world")
 
         #expect(pasteboard.writes == ["hello world"])
         #expect(controller.state == .copied)
+        release.release()
+        await controller._waitForRevert()
     }
 
     @Test("state reverts to .idle once the revert sleep returns")
@@ -51,40 +53,44 @@ struct CodeBlockCopyControllerTests {
         #expect(controller.state == .idle)
     }
 
-    /// Regression test for the M-4 race: the original implementation
-    /// spawned an unmanaged `Task` per tap with no cancellation, so a
-    /// rapid second tap would race the first revert and an older revert
-    /// would wipe the newer `.copied` state. The controller now cancels
-    /// the prior revert before scheduling a new one.
-    ///
-    /// We assert the cancellation by counting how many times the *injected*
-    /// sleep got past the cancellation barrier — only the most recent
-    /// one should produce a state mutation.
     @Test("rapid copies cancel the prior revert task")
     func rapidCopiesCancelOlderReverts() async {
         let pasteboard = RecordingPasteboardClient()
-        let release = SleepGate()
+        let firstEntered = SleepGate()
+        let firstRelease = SleepGate()
+        let firstFinished = SleepGate()
+        let secondRelease = SleepGate()
+        let callCount = Mutex(0)
         let controller = CodeBlockCopyController(
             pasteboard: pasteboard,
-            sleep: { _ in await release.wait() }
+            sleep: { _ in
+                let index = callCount.withLock { count in
+                    defer { count += 1 }
+                    return count
+                }
+                if index == 0 {
+                    firstEntered.release()
+                    await firstRelease.wait()
+                    defer { firstFinished.release() }
+                    #expect(Task.isCancelled)
+                    try Task.checkCancellation()
+                } else {
+                    #expect(index == 1)
+                    await secondRelease.wait()
+                    #expect(!Task.isCancelled)
+                }
+            }
         )
 
         controller.copy("first")
-        // No ordering wait is needed before the second tap: `copy` creates
-        // the first revert task synchronously, so the second `copy` always
-        // cancels it. Cancellation is order-independent of whether that task
-        // has reached its (gated) sleep yet.
+        await firstEntered.wait()
         controller.copy("second")
+        firstRelease.release()
+        await firstFinished.wait()
+        #expect(controller.state == .copied)
 
-        // Releasing the gate now wakes both tasks. The first one's
-        // `Task.isCancelled` check will be true (cancelled by the second
-        // tap), so it must not flip state. The second one writes .idle.
-        release.release()
-        // Drain the current (second) revert task on an observable signal
-        // instead of polling `Task.yield()`; the cancelled first task never
-        // mutates state, so any later completion can't disturb the assertion.
+        secondRelease.release()
         await controller._waitForRevert()
-
         #expect(pasteboard.writes == ["first", "second"])
         #expect(controller.state == .idle)
     }
@@ -93,9 +99,10 @@ struct CodeBlockCopyControllerTests {
     func pasteboardHotSwap() async {
         let first = RecordingPasteboardClient()
         let second = RecordingPasteboardClient()
+        let release = SleepGate()
         let controller = CodeBlockCopyController(
             pasteboard: first,
-            sleep: { _ in try await Task.sleep(for: .seconds(60)) }
+            sleep: { _ in await release.wait() }
         )
 
         controller.copy("one")
@@ -104,8 +111,7 @@ struct CodeBlockCopyControllerTests {
 
         #expect(first.writes == ["one"])
         #expect(second.writes == ["two"])
+        release.release()
+        await controller._waitForRevert()
     }
 }
-
-// SleepGate is shared with other test suites — see
-// `Tests/ChatTests/UI/Support/SleepGate.swift`.

@@ -362,35 +362,16 @@ struct ContextAssemblerTests {
         #expect(assembly.messages[2].role == .assistant)
     }
 
-    @Test func overThresholdClassificationFiresAtConfiguredFraction() throws {
-        let assembler = ContextAssembler()
-        // ~80 chars total → ~20 tokens via chars/4. Model max 100k (full
-        // tier — raw meter) → far under any sensible threshold.
-        let lightMessages: [MessageRecord] = [
-            makeMessage(id: "m1", role: .user, content: String(repeating: "a", count: 80), offset: 0),
-        ]
-        let lightAssembly = try assembler.assemble(
-            messages: lightMessages,
-            toolCalls: [],
-            checkpoint: nil,
-            model: makeModel(maxContextTokens: 100_000)
-        )
-        #expect(lightAssembly.isOverThreshold(0.5) == false)
-        #expect(lightAssembly.isOverThreshold(0.75) == false)
-
-        // ~400k chars → ~100k tokens vs. 100k max → ratio 1.0.
-        let heavyMessages: [MessageRecord] = [
-            makeMessage(id: "m1", role: .user, content: String(repeating: "a", count: 400_000), offset: 0),
-        ]
-        let heavyAssembly = try assembler.assemble(
-            messages: heavyMessages,
-            toolCalls: [],
-            checkpoint: nil,
-            model: makeModel(maxContextTokens: 100_000)
-        )
-        #expect(heavyAssembly.isOverThreshold(0.5))
-        #expect(heavyAssembly.isOverThreshold(0.75))
-        #expect(heavyAssembly.isOverThreshold(0.9))
+    @Test func overThresholdClassificationIncludesExactBoundary() {
+        for threshold in [0.5, 0.75, 0.9] {
+            let boundary = Int(threshold * 100)
+            let below = ContextAssembly(messages: [], totalTokens: boundary - 1, maxTokens: 100)
+            let exact = ContextAssembly(messages: [], totalTokens: boundary, maxTokens: 100)
+            let above = ContextAssembly(messages: [], totalTokens: boundary + 1, maxTokens: 100)
+            #expect(!below.isOverThreshold(threshold))
+            #expect(exact.isOverThreshold(threshold))
+            #expect(above.isOverThreshold(threshold))
+        }
     }
 
     @Test func ratioIsZeroWhenMaxTokensInvalid() throws {

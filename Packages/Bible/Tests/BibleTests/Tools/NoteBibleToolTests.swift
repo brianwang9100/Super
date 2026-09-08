@@ -22,6 +22,24 @@ struct NoteBibleToolTests {
         return (tool, repository)
     }
 
+    @Test("unrepresentable positions return an error without writing", arguments: ["chapterNumber", "verseStart", "verseEnd"])
+    func rejectsUnrepresentablePositions(_ key: String) async throws {
+        let (tool, repo) = makeTool()
+        var input: [String: JSONValue] = [
+            "target": .string("verse"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(28),
+            "verseEnd": .int(30),
+            "action": .string("create"),
+            "body": .string("A note."),
+        ]
+        input[key] = .double(.greatestFiniteMagnitude)
+        let result = try await tool.execute(input: input)
+        #expect(result.isError)
+        #expect(await repo.inserted.isEmpty)
+    }
+
     // MARK: - Create
 
     @Test("create inserts a verse note with stamped provenance and timestamps")

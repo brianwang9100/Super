@@ -73,10 +73,13 @@ struct BibleSearchQueryParserTests {
         )
     }
 
-    @Test("an inverted range falls back to a chapter result")
-    func invertedRange() {
-        // 6 < 5 is rejected by the verse parser, so the row still offers the chapter.
-        #expect(parse("1 Peter 2:6-5").resolved == .chapter(bookId: "1PE", bookName: "1 Peter", chapterNumber: 2))
+    @Test("malformed verse ranges retain the valid chapter", arguments: [
+        "6-5", "0", "x", "0-2", "x-2", "1-x", "1-2-3",
+    ])
+    func malformedVerseRangeFallsBackToChapter(_ verse: String) {
+        let result = parse("John 3:\(verse)")
+        #expect(result.bookNameQuery == "John")
+        #expect(result.resolved == .chapter(bookId: "JHN", bookName: "John", chapterNumber: 3))
     }
 
     @Test("an ambiguous book with a chapter falls back to book filtering")

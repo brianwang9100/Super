@@ -25,6 +25,23 @@ struct AnnotateBibleToolTests {
         return (tool, repository)
     }
 
+    @Test("unrepresentable positions return an error without writing", arguments: ["chapterNumber", "verseStart", "verseEnd"])
+    func rejectsUnrepresentablePositions(_ key: String) async throws {
+        let (tool, repo) = makeTool()
+        var input: [String: JSONValue] = [
+            "target": .string("verse"),
+            "bookId": .string("ROM"),
+            "chapterNumber": .int(8),
+            "verseStart": .int(28),
+            "verseEnd": .int(30),
+            "summary": .string(sampleSummary),
+        ]
+        input[key] = .double(.greatestFiniteMagnitude)
+        let result = try await tool.execute(input: input)
+        #expect(result.isError)
+        #expect(await repo.lastCall == nil)
+    }
+
     // MARK: - Descriptor schema
 
     /// The single-summary redesign: the descriptor takes one required

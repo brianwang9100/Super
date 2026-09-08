@@ -45,21 +45,25 @@ struct TokenEstimatorTests {
     @Test func messagesArrayRollsUpEveryBlockKind() {
         let estimator = HeuristicTokenEstimator()
         let messages: [LLMMessage] = [
-            LLMMessage(role: .system, text: "You are helpful."),
-            LLMMessage(role: .user, text: "Hi there."),
+            LLMMessage(role: .system, text: "1234"),                 // 1
             LLMMessage(role: .assistant, content: [
-                .text("Sure thing."),
-                .toolUse(id: "t1", name: "echo", input: .object(["text": .string("ping")]), signature: nil),
+                .text("12345"),                                   // 2
+                .thinking(content: "123456789", signature: nil),   // 3
+                .thinking(content: "1234", signature: "12345"),    // 1 + 2
+                .toolUse(id: "t1", name: "echo", input: .object(["x": .int(1)]), signature: nil), // 1 + 2
+                .searchResult([
+                    SourceCitation(id: "s1", title: "1234", url: URL(string: "https://example.test/1")!, snippet: "12345"), // 1 + 2
+                    SourceCitation(id: "s2", title: "123456789", url: URL(string: "https://example.test/2")!), // 3
+                ]),
             ]),
             LLMMessage(role: .tool, content: [
-                .toolResult(toolUseID: "t1", content: "pong", isError: false),
+                .toolResult(toolUseID: "t1", content: "1234567890123", isError: false), // 4
             ]),
         ]
-        let total = estimator.estimate(messages: messages)
-        // Sanity: total is positive and exceeds the longest single block,
-        // proving the rollup actually adds across blocks.
-        #expect(total > estimator.estimate("You are helpful."))
-        #expect(total > 0)
+        // Hand-counted chars/4 costs; dropping any block, name, signature,
+        // snippet, or one of the messages must change the result.
+        #expect(estimator.estimate(messages: messages) == 22)
+        #expect(estimator.estimate(messages: []) == 0)
     }
 
     @Test func toolUseInputContributesToBudget() {

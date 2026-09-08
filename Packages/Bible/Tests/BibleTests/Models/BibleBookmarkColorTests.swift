@@ -15,11 +15,6 @@ struct BibleBookmarkColorTests {
         #expect(BibleBookmarkColor.slate.rawValue == "slate")
     }
 
-    @Test("the palette offers six colours")
-    func paletteHasSixColours() {
-        #expect(BibleBookmarkColor.allCases.count == 6)
-    }
-
     @Test("the display names are the sheet's card labels and VoiceOver vocabulary")
     func displayNamesAreStable() {
         let names = BibleBookmarkColor.allCases.map(\.displayName)

@@ -17,12 +17,6 @@ struct ChatVerbosityTests {
     }
 
     @Test func displayNamesAreCapitalized() {
-        #expect(ChatVerbosity.simple.displayName == "Simple")
-        #expect(ChatVerbosity.thinking.displayName == "Thinking")
-        #expect(ChatVerbosity.verbose.displayName == "Verbose")
-    }
-
-    @Test func allCasesIsExhaustive() {
-        #expect(ChatVerbosity.allCases.count == 3)
+        #expect(ChatVerbosity.allCases.map(\.displayName) == ["Simple", "Thinking", "Verbose"])
     }
 }

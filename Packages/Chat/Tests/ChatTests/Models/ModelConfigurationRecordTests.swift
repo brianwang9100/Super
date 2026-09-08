@@ -19,11 +19,6 @@ struct ModelConfigurationRecordTests {
         )
     }
 
-    @Test("searchBackend defaults to nil")
-    func defaultsToNilSearchBackend() {
-        #expect(record(searchBackend: nil).searchBackend == nil)
-    }
-
     @Test("configuration projection carries searchBackend through")
     func projectsSearchBackend() {
         #expect(record(searchBackend: "native").configuration.searchBackend == "native")

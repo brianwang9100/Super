@@ -190,6 +190,7 @@ public final class ChatScreenViewModel {
     /// each fresh `confirmCopy()` so a rapid second copy resets the timer
     /// instead of letting the prior task race the new one.
     private var copyDismissalTask: Task<Void, Never>?
+    private let copyConfirmationSleep: @Sendable (Duration) async throws -> Void
     /// The fire-and-forget regenerate `Task` spawned by
     /// `confirmRegeneration()`. Held so the test seam can await its
     /// completion deterministically.
@@ -229,7 +230,8 @@ public final class ChatScreenViewModel {
         toolDisplayNames: [String: String] = [:],
         suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
         hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
-        clock: any Clock = SystemClock()
+        clock: any Clock = SystemClock(),
+        copyConfirmationSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -244,6 +246,7 @@ public final class ChatScreenViewModel {
         self.suggestionsProvider = suggestionsProvider
         self.hapticsEngine = hapticsEngine
         self.clock = clock
+        self.copyConfirmationSleep = copyConfirmationSleep
         self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
@@ -594,9 +597,9 @@ public final class ChatScreenViewModel {
         // with the pill animating in.
         AccessibilityNotification.Announcement("Copied to clipboard").post()
         copyDismissalTask?.cancel()
-        copyDismissalTask = Task { [weak self] in
+        copyDismissalTask = Task { [weak self, copyConfirmationSleep] in
             do {
-                try await Task.sleep(for: .seconds(1.2))
+                try await copyConfirmationSleep(.seconds(1.2))
                 self?.showCopyConfirmation = false
             } catch {
                 // Cancelled by a subsequent confirmCopy() — leave state unchanged.
