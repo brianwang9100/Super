@@ -1,5 +1,17 @@
 import SwiftUI
 
+/// Pins the read-only system motion preference in previews and UI tests.
+private struct MessageListReduceMotionOverrideKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    var messageListReduceMotionOverride: Bool? {
+        get { self[MessageListReduceMotionOverrideKey.self] }
+        set { self[MessageListReduceMotionOverrideKey.self] = newValue }
+    }
+}
+
 /// Transcript with stable turn containers. Explicit sends focus the user
 /// message at the top; response updates never request a scroll.
 public struct MessageList: View {
@@ -80,7 +92,10 @@ public struct MessageList: View {
     }
 
     @Environment(\.superTheme) private var theme
-    @State private var focus = TurnFocus()
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.messageListReduceMotionOverride) private var reduceMotionOverride
+    @State private var focus = MessageListFocus()
+    @State private var focusMeasurementID = 0
     @State private var thinkingExpansion: [ThinkingKey: Bool] = [:]
 
     /// The live response and its saved row share the same logical slot.
@@ -99,18 +114,6 @@ public struct MessageList: View {
             get: { thinkingExpansion[key] ?? verbosity.atLeast(.thinking) },
             set: { thinkingExpansion[key] = $0 }
         )
-    }
-
-    /// A non-observable latch: geometry callbacks must not invalidate layout.
-    private final class TurnFocus {
-        var completed: ScrollRequest?
-        var current: ScrollRequest?
-        var attempts = 0
-    }
-
-    private struct TurnGeometry: Equatable {
-        let request: ScrollRequest
-        let viewportY: CGFloat
     }
 
     public var body: some View {
@@ -142,34 +145,22 @@ public struct MessageList: View {
                             alignment: .top
                         )
                         .id(turn.id)
-                        .onGeometryChange(for: TurnGeometry?.self) { geometry in
+                        .onGeometryChange(for: MessageListFocus.Geometry?.self) { geometry in
                             guard let request = scrollRequest, request.messageID == turn.id else { return nil }
-                            return TurnGeometry(
+                            return MessageListFocus.Geometry(
                                 request: request,
-                                viewportY: geometry.frame(in: .named("transcript-viewport")).minY
+                                viewportY: geometry.frame(in: .named("transcript-viewport")).minY,
+                                measurementID: focusMeasurementID
                             )
                         } action: { geometry in
-                            guard let geometry, focus.completed != geometry.request else { return }
-                            if focus.current != geometry.request {
-                                focus.current = geometry.request
-                                focus.attempts = 0
-                            }
-                            // ID seeks into lazy history can initially use estimated
-                            // row heights. Refine only this explicit request against
-                            // the materialized turn, then relinquish all ownership.
-                            if abs(geometry.viewportY) <= 9 || focus.attempts >= 4 {
-                                focus.completed = geometry.request
-                                return
-                            }
-                            focus.attempts += 1
-                            proxy.scrollTo(geometry.request.messageID, anchor: .top)
+                            guard let geometry else { return }
+                            perform(focus.measure(geometry), using: proxy)
                         }
                     }
                     if turns.isEmpty {
                         responseTail(turn: nil)
                     }
                 }
-                .scrollTargetLayout(isEnabled: scrollRequest != nil)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 // Synchronous viewport input, never a geometry-to-state feedback
@@ -185,17 +176,36 @@ public struct MessageList: View {
             // preserve the leading reading edge; only a user action calls scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .sizeChanges)
-            .onChange(of: scrollRequest, initial: true) { _, request in
+            .onChange(of: scrollRequest, initial: true) { previous, request in
                 guard let request, turns.contains(where: { $0.id == request.messageID }) else { return }
-                if focus.completed != request {
-                    proxy.scrollTo(request.messageID, anchor: .top)
-                }
+                // Mount restored history immediately; animate only new intent.
+                perform(focus.begin(request, animated: previous != request && !reduceMotion), using: proxy)
             }
-            .onScrollPhaseChange { _, phase in
+            .onScrollPhaseChange { previous, phase in
                 if phase == .tracking || phase == .interacting || phase == .decelerating {
-                    focus.completed = scrollRequest
+                    focus.cancel()
+                } else if phase == .animating {
+                    focus.motionBegan()
+                } else if previous == .animating, phase == .idle {
+                    let nextMeasurementID = focusMeasurementID + 1
+                    if focus.motionEnded(awaiting: nextMeasurementID) {
+                        // One fresh measurement per completed move, even when
+                        // the last animation frame's geometry callback is late.
+                        focusMeasurementID = nextMeasurementID
+                    }
                 }
             }
+        }
+    }
+
+    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+    private func perform(_ move: MessageListFocus.Move?, using proxy: ScrollViewProxy) {
+        guard let move else { return }
+        // Native scroll phases report when this movement actually finishes;
+        // withAnimation's completion can fire before a proxy scroll is done.
+        withAnimation(move.animated ? .easeInOut(duration: 0.3) : nil) {
+            proxy.scrollTo(move.request.messageID, anchor: .top)
         }
     }
 

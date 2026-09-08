@@ -92,7 +92,7 @@ For a brand-new/empty chat the title renders as "New chat".
 
 Messages render inline in a single vertical column. There is **no chat-side metadata** (no avatars, no role labels, no per-message timestamps). Identity comes from the bubble shape and alignment alone.
 
-Sending positions the user's message at the top of the viewport. The response grows below it without automatically moving the viewport, including when the reader scrolls to the response's current bottom. Retry and Regenerate refocus the corresponding user message. Users scroll freely to read longer replies.
+Sending moves the user's message to the top of the viewport with a short ease-in-out glide. The response grows below it without automatically moving the viewport, including when the reader scrolls to the response's current bottom. Retry and Regenerate animate the same refocus. Users can interrupt the move by dragging and scroll freely to read longer replies. Reduce Motion positions the message immediately; opening an existing transcript also mounts without a scroll animation.
 
 The focused turn reserves at least one viewport of space, including after a short response finishes, so completion does not pull the user message downward. The next send transfers that space to the new turn. Opening existing history starts at its latest content. Stopped or failed partial replies remain visible in memory until another turn or reload; they show no working spinner and are not saved as completed messages.
 
