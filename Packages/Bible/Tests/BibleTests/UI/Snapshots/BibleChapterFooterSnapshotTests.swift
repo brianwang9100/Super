@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -11,9 +12,10 @@ import Testing
 ///
 /// The both-cards state covers the three themes; the single-card states
 /// cover the canon's two ends, where one card drops out.
-@Suite("BibleChapterFooter snapshots")
+@Suite("BibleChapterFooter snapshots", .serialized)
 @MainActor
 struct BibleChapterFooterSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("both cards render in the light theme")
@@ -57,11 +59,10 @@ struct BibleChapterFooterSnapshotTests {
         .frame(width: 402, height: 140)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 140)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

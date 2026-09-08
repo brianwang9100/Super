@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-FORBIDDEN = ('SnapshottingTests', 'SnapshotPreviews', 'PreviewsSupport', 'SnapshotSharedModels',
+FORBIDDEN = ('VisualTestSupport', 'VisualSnapshotExporter', 'verifyVisualSnapshot', 'SnapshotTesting', 'SnapshottingTests', 'SnapshotPreviews', 'PreviewsSupport', 'SnapshotSharedModels',
              'SnapshotPreferences', 'SimpleDebugger', 'FlyingFox', 'Sentry', 'Argos',
              'PreviewChatComposer', 'ChatComposerPreviewPulse', 'PreviewCollectionController', 'composer_empty_light',
              'PreviewSettingsPane', 'PreviewSettingsReceiver', 'SettingsPanePreviews', 'settings_root_light')

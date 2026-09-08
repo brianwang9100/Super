@@ -2,6 +2,7 @@
 import Core
 import Foundation
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -224,11 +225,10 @@ struct ChatScreenSnapshotTests {
         // fringe the `noModelError*` fixtures hit. Allow a small fraction
         // of pixels to differ within a small perceptual delta. Scoped to
         // `verifyEmpty` so the rest of the suite stays pixel-exact.
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -261,11 +261,10 @@ struct ChatScreenSnapshotTests {
             .dynamicTypeSize(dynamicType)
             .frame(width: 402, height: 874)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -316,11 +315,10 @@ struct ChatScreenSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 874)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -343,11 +341,10 @@ struct ChatScreenSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: 0.99, perceptualPrecision: 0.97, layout: .fixed(width: 402, height: 874)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

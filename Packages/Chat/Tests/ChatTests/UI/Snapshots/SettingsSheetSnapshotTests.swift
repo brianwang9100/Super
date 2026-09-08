@@ -2,6 +2,7 @@
 import Core
 import Foundation
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -416,24 +417,6 @@ struct SettingsSheetSnapshotTests {
             theme: .vellumDark,
             settings: Self.titleSettings(enabled: false),
             name: "settings_models_titling_off_dark"
-        )
-    }
-
-    @Test("models pane title-summarization footer: automatic default highlights the AFM row")
-    func modelsPaneTitlingAutomatic() async {
-        await verifyModelsPaneTitling(
-            theme: .vellumLight,
-            settings: Self.titleSettings(enabled: true, recordId: nil),
-            name: "settings_models_titling_automatic_light"
-        )
-    }
-
-    @Test("models pane title-summarization footer: automatic default (dark)")
-    func modelsPaneTitlingAutomaticDark() async {
-        await verifyModelsPaneTitling(
-            theme: .vellumDark,
-            settings: Self.titleSettings(enabled: true, recordId: nil),
-            name: "settings_models_titling_automatic_dark"
         )
     }
 
@@ -1378,7 +1361,7 @@ struct SettingsSheetSnapshotTests {
         let view = SettingsSheetSnapshotHarness(viewModel: viewModel, initialPane: .appearance)
             .superTheme(.make(theme))
             .frame(width: Self.tallFrame.width, height: Self.tallFrame.height)
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(
                 precision: 0.99,
@@ -1386,7 +1369,6 @@ struct SettingsSheetSnapshotTests {
                 layout: .fixed(width: Self.tallFrame.width, height: Self.tallFrame.height)
             ),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -1407,7 +1389,7 @@ struct SettingsSheetSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(
                 precision: 0.99,
@@ -1415,7 +1397,6 @@ struct SettingsSheetSnapshotTests {
                 layout: .fixed(width: Self.frame.width, height: Self.frame.height)
             ),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

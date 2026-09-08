@@ -45,6 +45,7 @@ let package = Package(
         .testTarget(
             name: "ChatTests",
             dependencies: [
+                .product(name: "VisualTestSupport", package: "Core"),
                 "Chat",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),

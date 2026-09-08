@@ -9,16 +9,32 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  id-token: write
+
+env:
+  PYTHONPATH: ${{ github.workspace }}/.build/visual-python
 
 concurrency:
   group: argos-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  native-previews:
-    # Required `argos` status blocks external forks until their upload path is
-    # enabled and verified. A skipped capture job does not satisfy that status.
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.packages.outputs.value }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Install image validation dependency
+        run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
+      - name: Test capture guards
+        run: python3 -m unittest discover -s Scripts/VisualTesting -p 'test_*.py'
+      - id: packages
+        name: Validate and discover package capture owners
+        run: echo "value=$(python3 Scripts/VisualTesting/discover.py)" >> "$GITHUB_OUTPUT"
+
+  capture-native:
+    # External forks have no supported upload identity; the required aggregate
+    # fails closed when this native capture leg is skipped.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: macos-26
     timeout-minutes: 45
@@ -35,24 +51,121 @@ jobs:
           xcode-version: '26.4.1'
       - uses: ./.github/actions/install-xcodegen
       - run: npm ci --ignore-scripts
+      - name: Install image validation dependency
+        run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
       - name: Test and capture native previews
-        run: npm test
-      - name: Upload screenshots to Argos
-        run: npm exec -- argos upload ./screenshots
-        env:
-          # Use GitHub OIDC; no reusable upload secret enters PR code.
-          ARGOS_PROJECT: brianwang9100/Super
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Preserve capture evidence
+        run: |
+          python3 -m unittest discover -s Scripts/PreviewPilot -p 'test_*.py'
+          python3 Scripts/PreviewPilot/run.py --argos
+          python3 Scripts/VisualTesting/seal.py native screenshots --output .build/VisualTesting/native
+      - name: Publish native capture artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: visual-native
+          path: .build/VisualTesting/native/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve native capture evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: native-preview-evidence
           path: |
-            screenshots/
             .build/PreviewPilot/run-*/names.txt
             .build/PreviewPilot/run-*/environment.json
             .build/PreviewPilot/run-*/*.log
             .build/PreviewPilot/run-*/*.xcresult
           include-hidden-files: true
           retention-days: 7
+
+  capture-package:
+    needs: discover
+    runs-on: macos-26
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
+        with:
+          xcode-version: '26.4.1'
+      - uses: ./.github/actions/install-xcodegen
+      - name: Install image validation dependency
+        run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
+      - name: Capture package fixtures and run their UIKit assertions
+        env:
+          CAPTURE_PACKAGE: ${{ matrix.package }}
+        run: python3 Scripts/VisualTesting/capture.py "$CAPTURE_PACKAGE" --output ".build/VisualTesting/package-$CAPTURE_PACKAGE"
+      - name: Publish validated package capture artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: visual-${{ matrix.package }}
+          path: .build/VisualTesting/package-${{ matrix.package }}/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve package test evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: package-visual-evidence-${{ matrix.package }}
+          path: |
+            .build/VisualTesting/run-${{ matrix.package }}-*/environment.json
+            .build/VisualTesting/run-${{ matrix.package }}-*/*.log
+            .build/VisualTesting/run-${{ matrix.package }}-*/*.xcresult
+          include-hidden-files: true
+          retention-days: 7
+
+  ios-test:
+    # Preserve the required context while the former comparison jobs become
+    # capture jobs. Skipped, failed, or cancelled package legs never pass.
+    needs: [discover, capture-package]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require discovery and every package test leg
+        env:
+          DISCOVERY: ${{ needs.discover.result }}
+          PACKAGES: ${{ needs.capture-package.result }}
+        run: test "$DISCOVERY" = success && test "$PACKAGES" = success
+
+  native-previews:
+    # Required capture/upload context; only this job may upload an Argos build.
+    needs: [discover, capture-native, capture-package]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - name: Require every capture leg before downloading artifacts
+        env:
+          DISCOVERY: ${{ needs.discover.result }}
+          NATIVE: ${{ needs.capture-native.result }}
+          PACKAGES: ${{ needs.capture-package.result }}
+        run: test "$DISCOVERY" = success && test "$NATIVE" = success && test "$PACKAGES" = success
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install image validation dependency
+        run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
+      - name: Download this run's capture shards without flattening
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: visual-*
+          path: .build/visual-artifacts
+          merge-multiple: false
+      - name: Validate complete inventory and stage the single upload
+        run: python3 Scripts/VisualTesting/aggregate.py --artifacts .build/visual-artifacts --output screenshots
+      - name: Upload the complete build to Argos
+        run: npm exec -- argos upload ./screenshots
+        env:
+          ARGOS_PROJECT: brianwang9100/Super
+          GITHUB_TOKEN: ${{ github.token }}

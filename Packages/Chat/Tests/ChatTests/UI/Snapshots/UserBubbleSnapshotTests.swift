@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -9,7 +10,7 @@ import Testing
 /// sent-message form of the feature. Covers text + a pill, text + multiple
 /// pills, the pills-only message (empty text), across themes and at
 /// Dynamic Type XXL.
-@Suite("UserBubble verse-pill snapshots")
+@Suite("UserBubble verse-pill snapshots", .serialized)
 @MainActor
 struct UserBubbleSnapshotTests {
     /// Register Core's bundled brand fonts before any render so this suite
@@ -33,11 +34,10 @@ struct UserBubbleSnapshotTests {
     }
 
     private func recordOrCompare<V: View>(view: V, name: String, function: String = #function) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .sizeThatFits),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }

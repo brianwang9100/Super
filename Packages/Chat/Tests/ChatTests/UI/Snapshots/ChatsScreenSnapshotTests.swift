@@ -3,6 +3,7 @@ import Core
 import Foundation
 import GRDBQuery
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -136,11 +137,10 @@ struct ChatsScreenSnapshotTests {
             .superTypography(.make(.serif, fontScale: fontScale))
             .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: Self.frame.width, height: Self.frame.height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
