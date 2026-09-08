@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -10,9 +11,10 @@ import Testing
 /// load-bearing case: it locks the stable left-to-right order and the 3pt
 /// gap before PR3 folds the cluster into `VerseFlowLayout`. The single
 /// variants confirm each glyph collapses without leaving a gap.
-@Suite("VerseTrailers snapshots")
+@Suite("VerseTrailers snapshots", .serialized)
 @MainActor
 struct VerseTrailersSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("annotation + note co-trail in stable order, light")
@@ -67,11 +69,10 @@ struct VerseTrailersSnapshotTests {
         .frame(width: 160, height: 64)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 160, height: 64)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

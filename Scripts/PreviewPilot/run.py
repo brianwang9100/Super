@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 import shutil
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from worktree_simulator import read_pin
 from prepare_renderer import prepare
 from verify import verify_exports
 
@@ -24,25 +26,33 @@ def main():
     parser.add_argument('simulator', nargs='?', help='Dedicated simulator UUID; otherwise find or create it')
     parser.add_argument('--argos', action='store_true',
                         help='Stage verified PNGs in screenshots for a separate Argos CLI upload')
+    parser.add_argument('--output', type=Path, help='Fresh PNG directory; requires --argos')
     args = parser.parse_args()
-    screenshots = ROOT / 'screenshots'
+    if args.output is not None and not args.argos:
+        parser.error('--output requires --argos')
+    pins = read_pin(ROOT)
+    runtime_suffix = 'iOS-' + '-'.join(pins['ios_version'].split('.')[:2])
+    screenshots = args.output if args.output is not None else ROOT / 'screenshots'
     if args.argos:
         if screenshots.is_symlink():
             sys.exit('Refusing to replace a symlink at screenshots')
         if screenshots.exists():
+            if args.output is not None:
+                sys.exit('Explicit capture output already exists; choose a fresh directory')
             shutil.rmtree(screenshots)
-    if output('xcodebuild', '-version').strip() != 'Xcode 26.4.1\nBuild version 17E202':
-        sys.exit('Refusing capture: expected Xcode 26.4.1 / 17E202')
-    if output('xcodegen', '--version').strip() != 'Version: 2.45.4':
-        sys.exit('Expected XcodeGen 2.45.4')
+    if output('xcodebuild', '-version').strip() != f'Xcode {pins["xcode_version"]}\nBuild version {pins["xcode_build"]}':
+        sys.exit('Refusing capture: Xcode does not match simulator-pins.json')
+    if output('xcodegen', '--version').strip() != f'Version: {pins["xcodegen_version"]}':
+        sys.exit('XcodeGen does not match simulator-pins.json')
     runtimes = json.loads(output('xcrun', 'simctl', 'list', 'runtimes', '-j'))['runtimes']
-    matches = [r for r in runtimes if r['identifier'].endswith('iOS-26-4')]
-    if len(matches) != 1 or matches[0]['buildversion'] != '23E254a' or not matches[0]['isAvailable']:
-        sys.exit('Refusing capture: expected only iOS 26.4.1 build 23E254a for the 26.4 identifier')
+    matches = [r for r in runtimes if r['identifier'].endswith(runtime_suffix)]
+    if (len(matches) != 1 or matches[0]['buildversion'] != pins['ios_build']
+            or matches[0].get('version') != pins['ios_version'] or not matches[0]['isAvailable']):
+        sys.exit('Refusing capture: expected only the pinned iOS runtime version and build')
     disks = json.loads(output('xcrun', 'simctl', 'runtime', 'list', '-j'))
-    minor_disks = [r for r in disks.values() if r.get('runtimeIdentifier', '').endswith('iOS-26-4')]
-    if len(minor_disks) != 1 or minor_disks[0].get('build') != '23E254a':
-        sys.exit('Refusing capture: ambiguous or stale iOS 26.4 runtime disk images')
+    minor_disks = [r for r in disks.values() if r.get('runtimeIdentifier', '').endswith(runtime_suffix)]
+    if len(minor_disks) != 1 or minor_disks[0].get('build') != pins['ios_build']:
+        sys.exit('Refusing capture: ambiguous or stale pinned runtime disk images')
     simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'),
                        'ensure', '--repo', str(ROOT)).strip()
     requested = args.simulator or os.environ.get('ARGOS_SIMULATOR_UDID')
@@ -51,9 +61,9 @@ def main():
     devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
     selected = [d for d in devices.get(matches[0]['identifier'], []) if d['udid'] == simulator]
     if (len(selected) != 1
-            or selected[0]['deviceTypeIdentifier'] != 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'
+            or selected[0]['deviceTypeIdentifier'] != 'com.apple.CoreSimulator.SimDeviceType.' + pins['device'].replace(' ', '-')
             or not selected[0]['isAvailable']):
-        sys.exit('Expected registered worktree simulator: iPhone 17 on pinned runtime')
+        sys.exit('Expected registered worktree simulator on pinned device and runtime')
     build = ROOT / '.build' / 'PreviewPilot'
     build.mkdir(parents=True, exist_ok=True)
     run = Path(tempfile.mkdtemp(prefix='run-', dir=build))
@@ -65,7 +75,7 @@ def main():
         'include': [str(HERE / 'project.yml')],
         'packages': {'SnapshotPreviews': {'path': str(renderer), 'url': None, 'revision': None}}
     }))
-    (run / 'environment.json').write_text(json.dumps({'xcode': '26.4.1', 'build': '17E202',
+    (run / 'environment.json').write_text(json.dumps({'xcode': pins['xcode_version'], 'build': pins['xcode_build'],
         'runtime': matches[0], 'runtimeDisk': minor_disks[0], 'device': selected[0],
         'rendererPatchSHA256': patch_digest}, indent=2))
     subprocess.run(['xcodegen', 'generate', '--spec', str(generated_spec), '--project', str(build)],
@@ -95,7 +105,7 @@ def main():
         images = sorted((run / 'images').glob('*.png'))
         if any(path.stat().st_size > 50_000_000 for path in images):
             sys.exit('Argos screenshot exceeds 50 MB; refusing a partial upload set')
-        screenshots.mkdir()
+        screenshots.mkdir(parents=True)
         for path in images:
             shutil.copy2(path, screenshots / path.name)
         print(f'Prepared {len(images)} native screenshots in {screenshots}; evidence: {run}')

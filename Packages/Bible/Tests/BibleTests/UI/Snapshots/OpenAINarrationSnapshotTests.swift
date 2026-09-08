@@ -1,14 +1,16 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
 
 /// Pins OpenAI setup and selected-company layouts across appearance and text sizes.
-@Suite("OpenAI narration snapshots")
+@Suite("OpenAI narration snapshots", .serialized)
 @MainActor
 struct OpenAINarrationSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test(arguments: ["setup", "enabled", "disabled", "error"], ["light", "dark", "xxl"])
@@ -76,9 +78,8 @@ struct OpenAINarrationSnapshotTests {
         )
         .superTheme(.make(appearance == "dark" ? .vellumDark : .vellumLight))
         .dynamicTypeSize(appearance == "xxl" ? .xxLarge : .large)
-        if let failure = verifySnapshot(of: view, as: .image(layout: .fixed(width: 360, height: 520)),
+        if let failure = verifyVisualSnapshot(of: view, as: .image(layout: .fixed(width: 360, height: 520)),
                                         named: "voices_\(state)_\(appearance)",
-                                        record: SnapshotEnvironment.isRecording ? .all : nil,
                                         testName: "voices_\(state)_\(appearance)") {
             Issue.record("\(failure)")
         }
@@ -113,8 +114,8 @@ struct OpenAINarrationSnapshotTests {
     }
 
     private func verify(_ view: some View, name: String, height: CGFloat) {
-        if let failure = verifySnapshot(of: view, as: .image(layout: .fixed(width: 402, height: height)), named: name,
-                                        record: SnapshotEnvironment.isRecording ? .all : nil, testName: name) {
+        if let failure = verifyVisualSnapshot(of: view, as: .image(layout: .fixed(width: 402, height: height)), named: name,
+                                        testName: name) {
             Issue.record("\(failure)")
         }
     }

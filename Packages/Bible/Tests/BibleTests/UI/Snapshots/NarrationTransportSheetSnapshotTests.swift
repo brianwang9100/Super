@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -15,9 +16,10 @@ import Testing
 /// `_simulateEvent(_:)` test seam instead of yielding through the
 /// fake's `AsyncStream` + polling for the consumer Task to wake —
 /// per root AGENTS.md §Testing.2.
-@Suite("NarrationTransportSheet snapshots")
+@Suite("NarrationTransportSheet snapshots", .serialized)
 @MainActor
 struct NarrationTransportSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     // Buffering uses the system ProgressView, with no custom motion or layout branch.
@@ -112,11 +114,10 @@ struct NarrationTransportSheetSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 320)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Todo
@@ -43,11 +44,10 @@ struct TodoStateBoxSnapshotTests {
         .superTheme(resolved)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 90)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

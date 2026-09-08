@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -91,11 +92,10 @@ struct SourceCitationsPillSnapshotTests {
             .padding(.vertical, 16)
             .frame(width: 402, height: height)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

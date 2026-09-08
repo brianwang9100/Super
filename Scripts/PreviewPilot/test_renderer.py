@@ -59,7 +59,7 @@ class RegisteredSimulatorTests(unittest.TestCase):
             if command == ('xcodegen', '--version'):
                 return 'Version: 2.45.4'
             if command == ('xcrun', 'simctl', 'list', 'runtimes', '-j'):
-                return json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'isAvailable': True}]})
+                return json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'version': '26.4.1', 'isAvailable': True}]})
             if command == ('xcrun', 'simctl', 'runtime', 'list', '-j'):
                 return json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '23E254a'}})
             if command == ('xcrun', 'simctl', 'list', 'devices', '-j'):

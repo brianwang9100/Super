@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -8,9 +9,10 @@ import Testing
 /// Snapshots of `AnnotationDisclaimerSheet` — the first-run liability
 /// modal across the three themes plus a Dynamic Type XXL pass to
 /// confirm the body paragraphs don't truncate at larger sizes.
-@Suite("AnnotationDisclaimerSheet snapshots")
+@Suite("AnnotationDisclaimerSheet snapshots", .serialized)
 @MainActor
 struct AnnotationDisclaimerSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
     /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
@@ -48,11 +50,10 @@ struct AnnotationDisclaimerSheetSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 393, height: height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

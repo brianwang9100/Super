@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -9,10 +10,11 @@ import Testing
 ///
 /// The toast is a fixed dark card regardless of theme; the baselines confirm
 /// it reads against the light, dark, and sepia page backgrounds. The card
-/// uses fixed type sizes, so no Dynamic Type variant is recorded.
-@Suite("BibleAttachToast snapshots")
+/// uses fixed type sizes, so no Dynamic Type variant is captured.
+@Suite("BibleAttachToast snapshots", .serialized)
 @MainActor
 struct BibleAttachToastSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the toast renders over a light page")
@@ -43,11 +45,10 @@ struct BibleAttachToastSnapshotTests {
         .frame(width: 402, height: 110)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 110)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

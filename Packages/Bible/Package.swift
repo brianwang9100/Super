@@ -40,15 +40,15 @@ let package = Package(
         .testTarget(
             name: "BibleTests",
             dependencies: [
+                .product(name: "VisualTestSupport", package: "Core"),
                 "Bible",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 .product(name: "GRDBSnapshotTesting", package: "GRDBSnapshotTesting"),
             ],
-            // Snapshot baselines are read from the source tree at test time
+            // Database snapshots are read from the source tree at test time
             // via `#filePath`, not the bundle — exclude them from resource
             // processing.
             exclude: [
-                "UI/Snapshots/__Snapshots__",
                 "Database/__Snapshots__",
             ],
             // `Fixtures/Text/` holds the 264 per-book `<CODE>-<bookID>.json`

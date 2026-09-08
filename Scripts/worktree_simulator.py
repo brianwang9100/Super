@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +16,21 @@ import uuid
 
 class LifecycleError(Exception):
     """An ownership or inventory error that must not trigger deletion."""
+
+
+def read_pin(repo):
+    """Read the shared capture environment; reject missing or malformed pins."""
+    path = Path(repo) / 'Scripts/VisualTesting/simulator-pins.json'
+    try:
+        pin = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise LifecycleError(f'Cannot read simulator pins from {path}: {error}') from error
+    keys = ('device', 'ios_version', 'ios_build', 'xcode_version',
+            'xcode_build', 'xcodegen_version')
+    if not isinstance(pin, dict) or any(
+            not isinstance(pin.get(key), str) or not pin[key].strip() for key in keys):
+        raise LifecycleError(f'Invalid simulator pins in {path}')
+    return pin
 
 
 def command(args):
@@ -113,24 +127,20 @@ class Simulators:
         return result
 
     def profile(self):
-        """Read the existing CI literals; fail rather than fall back to stale pins."""
-        text = (self.repo / '.github/workflows/ios-build.yml').read_text()
-        def one(pattern):
-            matches = set(re.findall(pattern, text))
-            if len(matches) != 1:
-                raise LifecycleError('Cannot resolve a unique simulator pin from CI')
-            return matches.pop()
-        version = one(r'simctl\s+list\s+devices\s+--json\s+"iOS\s+([0-9.]+)"')
-        build = one(r'RUNTIME_BUILD="([0-9A-Za-z]+)"')
-        model = one(r'\.get\("name"\)\s*==\s*"([^"]+)"')
-        xcode = one(r'xcode-version:\s*"([0-9.]+)"')
-        if f'Xcode {xcode}\n' not in self.run(['xcodebuild', '-version']) + '\n':
-            raise LifecycleError(f'Select CI Xcode {xcode} before creating a simulator')
+        """Use the shared capture pins without changing simulator ownership."""
+        pin = read_pin(self.repo)
+        version, build, model = pin['ios_version'], pin['ios_build'], pin['device']
+        xcode = pin['xcode_version']
+        expected = f"Xcode {xcode}\nBuild version {pin['xcode_build']}"
+        if self.run(['xcodebuild', '-version']).strip() != expected:
+            raise LifecycleError(f"Select CI Xcode {xcode} build {pin['xcode_build']} before creating a simulator")
         runtimes = json.loads(self.run(['xcrun', 'simctl', 'list', 'runtimes', '--json']))['runtimes']
+        minor = '.'.join(version.split('.')[:2])
         matches = [r for r in runtimes if r.get('isAvailable') and
-                   (r.get('version') == version or r.get('version', '').startswith(version + '.'))
+                   (r.get('version') == minor or r.get('version', '').startswith(minor + '.'))
                    and '.iOS-' in r.get('identifier', '')]
-        if len(matches) != 1 or matches[0].get('buildversion') != build:
+        if (len(matches) != 1 or matches[0].get('version') != version
+                or matches[0].get('buildversion') != build):
             raise LifecycleError(f'Install only CI iOS {version} build {build} for that minor')
         types = json.loads(self.run(['xcrun', 'simctl', 'list', 'devicetypes', '--json']))['devicetypes']
         models = [d['identifier'] for d in types if d.get('name') == model]

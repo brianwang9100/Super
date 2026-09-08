@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -9,9 +10,10 @@ import Testing
 /// state across the three themes, the search, alphabetical, and no-results
 /// variants, one Dynamic Type XXL pass, plus two scroll-anchor variants
 /// covering the mid-canon short-book and long-book late-chapter branches.
-@Suite("BibleBookSheet snapshots")
+@Suite("BibleBookSheet snapshots", .serialized)
 @MainActor
 struct BibleBookSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
     /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
@@ -278,11 +280,10 @@ struct BibleBookSheetSnapshotTests {
         .dynamicTypeSize(dynamicType)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -312,11 +313,10 @@ struct BibleBookSheetSnapshotTests {
         .superTheme(theme)
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
