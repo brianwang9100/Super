@@ -24,6 +24,12 @@ public final class ChatScreenViewModel {
     /// every `userMessageSaved` / `assistantMessageSaved` /
     /// `compactionCompleted` event so the view sees post-write state.
     public private(set) var items: [MessageList.Item] = []
+    /// Explicit send/retry intent, emitted only when its user row is available.
+    public private(set) var scrollRequest: MessageList.ScrollRequest?
+    /// Partial output retained in memory after interruption; never a persisted row.
+    public private(set) var interruptedResponse: MessageList.StreamingState?
+    private var pendingScrollMessageID: String?
+    private let clock: any Clock
 
     /// Resolved empty-state starter actions. Populated once per conversation by
     /// `loadSuggestionsIfNeeded(fallback:)` — the AFM-generated set when Apple
@@ -222,7 +228,8 @@ public final class ChatScreenViewModel {
         referenceInbox: ChatReferenceInbox? = nil,
         toolDisplayNames: [String: String] = [:],
         suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
-        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
+        clock: any Clock = SystemClock()
     ) {
         self.conversationId = conversationId
         self.headerTitle = conversationTitle
@@ -236,6 +243,7 @@ public final class ChatScreenViewModel {
         self.toolDisplayNames = toolDisplayNames
         self.suggestionsProvider = suggestionsProvider
         self.hapticsEngine = hapticsEngine
+        self.clock = clock
         self.streamingCoalescer = StreamingTextCoalescer()
         self.availableModels = availableModels
         self.modelOptions = availableModels.map {
@@ -322,6 +330,7 @@ public final class ChatScreenViewModel {
     /// has in flight so a re-mounted screen picks up the live response
     /// from where it currently is — see `attachToLiveTurnIfAny()`.
     public func load() async {
+        interruptedResponse = nil
         await refreshTranscript()
         await attachToLiveTurnIfAny()
     }
@@ -870,6 +879,9 @@ public final class ChatScreenViewModel {
             error = nil
             return
         }
+        if let user = items.last(where: { if case .userBubble = $0 { return true }; return false }) {
+            requestScroll(to: user.id)
+        }
         error = nil
         beginStream { [driver] in
             await driver.retry(model: model)
@@ -892,6 +904,7 @@ public final class ChatScreenViewModel {
         // that was cancelled mid-burst could leave the timer scheduled.
         // Reset so a new turn never inherits a stale tail-piece.
         streamingCoalescer.reset()
+        interruptedResponse = nil
         isStreaming = true
         streamingTail = MessageList.StreamingState(
             thinking: "",
@@ -924,6 +937,15 @@ public final class ChatScreenViewModel {
         // a later timer fire can't write into a nil `streamingTail`.
         streamingCoalescer.flush()
         await refreshTranscript()
+        if let tail = streamingTail, !tail.text.isEmpty || !tail.thinking.isEmpty {
+            interruptedResponse = MessageList.StreamingState(
+                thinking: tail.thinking,
+                thinkingStartedAt: tail.thinkingStartedAt,
+                thinkingDurationMs: tail.thinkingStartedAt.map { max(0, Int(clock.now().timeIntervalSince($0) * 1_000)) },
+                text: tail.text,
+                isCompacting: false
+            )
+        }
         streamingTail = nil
         isStreaming = false
         streamTask = nil
@@ -943,6 +965,7 @@ public final class ChatScreenViewModel {
         if isDetached { return }
         switch event {
         case .userMessageSaved(let userMessage):
+            pendingScrollMessageID = userMessage.id
             await refreshTranscript()
             await applyFallbackTitleIfNeeded(userText: userMessage.content)
         case .textDelta(let chunk):
@@ -964,14 +987,10 @@ public final class ChatScreenViewModel {
             // identical to what the persisted assistant row will render
             // a moment later through `refreshTranscript()`.
             streamingCoalescer.flush()
-            // Clear the streaming text now that the canonical row exists.
-            streamingTail = MessageList.StreamingState(
-                thinking: "",
-                thinkingStartedAt: nil,
-                text: "",
-                isCompacting: streamingTail?.isCompacting ?? false
-            )
-            await refreshTranscript()
+            // Keep the live text visible during repository reads. Publish its
+            // replacement and clear it together so a deep reader never sees
+            // an intermediate collapsed transcript.
+            await refreshTranscript(replacingStreamingTailWith: assistantMessage)
             maybeGenerateTitle(from: assistantMessage)
         case .compactionStarted:
             streamingTail = MessageList.StreamingState(
@@ -1029,7 +1048,7 @@ public final class ChatScreenViewModel {
         guard let current = streamingTail else { return }
         streamingTail = MessageList.StreamingState(
             thinking: current.thinking + chunk,
-            thinkingStartedAt: current.thinkingStartedAt ?? Date(),
+            thinkingStartedAt: current.thinkingStartedAt ?? clock.now(),
             text: current.text,
             isCompacting: current.isCompacting
         )
@@ -1166,7 +1185,11 @@ public final class ChatScreenViewModel {
         return lowered == "new chat"
     }
 
-    private func refreshTranscript() async {
+    private func requestScroll(to messageID: String) {
+        scrollRequest = .init(messageID: messageID, sequence: (scrollRequest?.sequence ?? 0) + 1)
+    }
+
+    private func refreshTranscript(replacingStreamingTailWith savedAssistant: MessageRecord? = nil) async {
         do {
             let messages = try await messageRepository.fetchAll(conversationId: conversationId)
             let toolCalls = try await toolCallRepository.fetchByConversation(conversationId)
@@ -1177,11 +1200,26 @@ public final class ChatScreenViewModel {
                 checkpoint: checkpoint,
                 toolDisplayNames: toolDisplayNames
             )
+            if let messageID = pendingScrollMessageID,
+               items.contains(where: { $0.id == messageID }) {
+                requestScroll(to: messageID)
+                pendingScrollMessageID = nil
+            }
             self.usedTokens = messages.reduce(0) { $0 + ($1.tokenCount ?? 0) }
         } catch {
             self.error = MessageList.ErrorState(
                 message: "Could not load messages: \(error.localizedDescription)"
             )
+        }
+        if let savedAssistant {
+            // The event confirms this row was persisted even if a subsequent
+            // read failed. Show that real row until a refresh supplies its tool
+            // metadata, rather than duplicating it as an interrupted tail or
+            // appending the next tool round's tokens to the completed response.
+            if !items.contains(where: { $0.id == savedAssistant.id }) {
+                items += Self.project(messages: [savedAssistant], toolCalls: [], checkpoint: nil)
+            }
+            streamingTail = .init(thinking: "", text: "", isCompacting: streamingTail?.isCompacting ?? false)
         }
     }
 
