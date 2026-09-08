@@ -77,6 +77,8 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
 
 The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `WaitingSpark`, `TypingCaret`, `MessageActionButton`) each live in their own file under `Chat/UI/Messages/`.
 
+`MessageList` groups rows into stable user-message-keyed turn containers. An explicit `ScrollRequest` from send/retry/regenerate positions that turn at the top and gives it a viewport-sized minimum height. Streaming and persistence updates never issue scroll commands. `TranscriptObserver` forwards that request and any in-memory interrupted response; `MessageList+Content.swift` owns the public presentation data types.
+
 **View model:** `ChatScreenViewModel` (`Chat/ViewModels/ChatScreenViewModel.swift`).
 
 Owns: composer buffer, projected `MessageList.Item` list, live `streamingTail`, terminal `error`, model selection, the active verbosity used for rendering (seeded at init from `ChatSettings.defaultVerbosity` and pushed in by the host when the Settings sheet changes it), used/max token counts, header title (mutated by `TitleGenerator` after the first exchange), and a `VoiceInputController` collaborator.

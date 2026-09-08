@@ -15,11 +15,11 @@ struct AssistantMessage: View {
     /// Gemini's mandatory "Google Search Suggestions" HTML, present only on a
     /// grounded Gemini turn. Rendered unmodified and always visible (not
     /// collapsible) per Google's grounding terms; nil hides it.
-    var searchSuggestionsHTML: String? = nil
+    var searchSuggestionsHTML: String?
     /// Search-engine label + query for the expandable "Web search" cell
     /// (`nil` when this turn ran no search).
-    var searchSystem: String? = nil
-    var searchQuery: String? = nil
+    var searchSystem: String?
+    var searchQuery: String?
     let verbosity: ChatVerbosity
     /// Disables Regenerate while a turn is mid-stream. Copy stays
     /// enabled — copying text from an older response during a new one
@@ -39,6 +39,7 @@ struct AssistantMessage: View {
     var onConfirmSearch: (String) -> Void = { _ in }
     /// Fired with the parked tool-call id when the user declines ("Skip").
     var onSkipSearch: (String) -> Void = { _ in }
+    var thinkingExpansion: Binding<Bool>?
     @Environment(\.superTheme) private var theme
     @Environment(\.chatAppearance) private var appearance
 
@@ -53,7 +54,8 @@ struct AssistantMessage: View {
                 ThinkingBlock(
                     text: thinking,
                     durationSource: .finished(durationMs: thinkingDurationMs),
-                    verbosity: verbosity
+                    verbosity: verbosity,
+                    expansion: thinkingExpansion
                 )
             }
             ForEach(toolCalls) { call in
