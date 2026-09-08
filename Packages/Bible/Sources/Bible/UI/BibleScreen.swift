@@ -181,7 +181,7 @@ public struct BibleScreen: View {
         // applet — or a later re-entry — never inherits a hidden state. Clear
         // the composer chevrons too so they don't outlive the reader.
         .onDisappear {
-            viewModel.narration.stop()
+            viewModel.dismissNarrationSheet()
             viewModel.resetImmersive()
             publishChromeVisibility(true)
             clearComposerAccessories()

@@ -7,6 +7,40 @@ import os
 /// Disposable narration clips remain independent of Bible's single user-state database.
 @Suite("Narration audio cache")
 struct NarrationAudioCacheTests {
+    @Test(arguments: [false, true])
+    func cancelledDiskCommitDiscardsTemporaryFileAndPreservesPreviousClip(hasPrevious: Bool) async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = try FileNarrationAudioStorage(directory: directory)
+        let name = String(repeating: "a", count: 64) + ".mp3"
+        let date = FixedClock().now()
+        if hasPrevious { try storage.write(Data([1, 2]), named: name, accessedAt: date, beforeCommit: {}) }
+        let download = Task {
+            try storage.write(Data([3, 4, 5]), named: name, accessedAt: date) {
+                withUnsafeCurrentTask { $0?.cancel() }
+                try Task.checkCancellation()
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await download.value }
+        #expect(try storage.read(name) == (hasPrevious ? Data([1, 2]) : nil))
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.appending(path: "clips").path)
+        #expect(files == (hasPrevious ? [name] : []))
+    }
+
+    @Test(arguments: [false, true])
+    func cancellationDuringWriteDoesNotCommitOrReplaceAudio(hasPrevious: Bool) async throws {
+        let storage = FaultingNarrationAudioStorage()
+        let cache = try NarrationAudioCache(storage: storage)
+        if hasPrevious { try await cache.save(Data([1, 2]), for: "verse") }
+        storage.cancelDuringWrite()
+        let download = Task { try await cache.save(Data([3, 4, 5]), for: "verse") }
+        await #expect(throws: CancellationError.self) { try await download.value }
+        #expect(try await cache.audio(for: "verse") == (hasPrevious ? Data([1, 2]) : nil))
+        #expect(try await cache.byteCount() == (hasPrevious ? 2 : 0))
+        let reopened = try NarrationAudioCache(storage: storage)
+        #expect(try await reopened.audio(for: "verse") == (hasPrevious ? Data([1, 2]) : nil))
+    }
+
     @Test func cacheCreatesOnlyAudioFiles() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -402,6 +436,7 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
     private struct State {
         var files: [String: StoredFile] = [:]
         var rejectsWrites = false
+        var cancelsDuringWrite = false
         var rejectsTouches = false
         var rejectsReads = false
         var rejectsTemporaryCleanup = false
@@ -410,6 +445,7 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
     private let state = OSAllocatedUnfairLock(initialState: State())
     var writtenBytes: Int { state.withLock { $0.files.values.reduce(0) { $0 + $1.audio.count } } }
     func failWrites() { state.withLock { $0.rejectsWrites = true } }
+    func cancelDuringWrite() { state.withLock { $0.cancelsDuringWrite = true } }
     func failTemporaryCleanup(_ fails: Bool) { state.withLock { $0.rejectsTemporaryCleanup = fails } }
     func removeTemporaryFiles() throws {
         try state.withLock { state in
@@ -430,9 +466,11 @@ private final class FaultingNarrationAudioStorage: NarrationAudioFileStorage {
             return state.files[name]?.audio
         }
     }
-    func write(_ audio: Data, named name: String, accessedAt: Date) throws {
+    func write(_ audio: Data, named name: String, accessedAt: Date, beforeCommit: @Sendable () throws -> Void) throws {
         try state.withLock { state in
             guard !state.rejectsWrites else { throw NarrationAudioCacheError.unavailable }
+            if state.cancelsDuringWrite { withUnsafeCurrentTask { $0?.cancel() } }
+            try beforeCommit()
             state.files[name] = StoredFile(audio: audio, date: accessedAt)
         }
     }

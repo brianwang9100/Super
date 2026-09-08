@@ -52,8 +52,8 @@
 ## Phase 4 — Delivery
 
 - [x] Separate change-review subagent checks final diff for correctness, cancellation, persistence, concurrency, and regressions; fix findings and rerun affected checks.
-- [ ] Create draft PR with repository template, phase summary, concrete test results, UI evidence, and before/after screenshot count.
-- [ ] Request Codex review if absent; record exact requested head SHA. Check CI and review together every 10 minutes through a heartbeat, quiet while unchanged.
+- [x] Create draft PR with repository template, phase summary, concrete test results, UI evidence, and before/after screenshot count.
+- [x] Request Codex review if absent; record exact requested head SHA. Check CI and review together every 10 minutes through a heartbeat, quiet while unchanged.
 - [ ] After explicit Codex approval of current SHA and all applicable CI passes, verify required protections, mark ready, enable auto-merge, and verify merge. Disable auto-merge before any subsequent push; obtain renewed approval and CI afterward.
 
 ## Risks and verification
@@ -76,3 +76,15 @@ Plan review findings incorporated: use a stable stream-session token distinct fr
 Final local logic verification: 832 tests in 82 suites passed. The zero-prefetch retention regression failed before the fix and passes after window pruning at every verse. Scoped review confirmed the fix and explicit visible picker label with no further findings. Existing narration snapshots cover the UI; 24 PNG baselines changed, inventory stays 581→581 (delta 0). No live paid speech requests were used.
 
 Simulator verification with recording disabled: all 1,039 tests in 108 suites passed, including existing UIKit snapshots. Changed-file lint exits 0; only pre-existing BibleScreenViewModel warnings remain.
+
+
+### PR review and Argos integration
+
+- Opened draft PR #340 and requested Codex review of `16afda78de75a19ef319e12c0fa00a733a694cfd`; a 10-minute heartbeat follows CI and review through verified merge.
+- Merged main's completed Argos migration (`30ce9d50`), resolving deleted PNG conflicts by retaining the migrated source fixtures and removing legacy images. Current visual inventory remains **623 → 623** (582 package + 41 native). No generated PNGs are committed in the final PR diff.
+- Addressed Codex's cancellation finding by rechecking cancellation after eviction and immediately before atomic file replacement. Rejected writes discard their temporary file and preserve any prior complete clip. Added failing-then-passing regressions for new/replacement clips and real filesystem cleanup.
+- Addressed Codex's reader-exit finding by using `dismissNarrationSheet()` on disappearance, clearing presentation state and stopping playback/downloads together. Existing dismissal coverage verifies both effects.
+- A separate scoped review found no remaining serious issues in either fix.
+- Fresh verification after integrating main: **834 tests / 82 suites** in the full Bible package run and **159 tests / 4 suites** in focused simulator narration, cache, reader lifecycle, and snapshot suites; both succeeded on the pinned environment above.
+- Exported all **54 existing narration captures** for local inspection and verified their filenames and pixel dimensions against the Argos inventory. Light/dark/XXL settings and modal layouts are readable. This targeted export is not a complete Argos bundle; CI performs the full comparison.
+- The three review-fix Swift files pass SwiftLint with caching disabled. Full changed-file lint retains only pre-existing view-model warnings; diff whitespace checks pass. No live paid speech requests were made.
