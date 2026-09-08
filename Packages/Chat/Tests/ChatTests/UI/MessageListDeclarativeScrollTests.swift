@@ -411,6 +411,10 @@ private struct MessageListHost: View {
             interruptedResponse: driver.interruptedResponse,
             verbosity: driver.verbosity
         )
+        // Hostless XCTest does not advance native scroll animations. Keep
+        // these final-geometry regressions deterministic with Reduce Motion;
+        // focus sequencing is unit-tested and the glide is recorded in-app.
+        .environment(\.messageListReduceMotionOverride, true)
         .ignoresSafeArea()
     }
 }
