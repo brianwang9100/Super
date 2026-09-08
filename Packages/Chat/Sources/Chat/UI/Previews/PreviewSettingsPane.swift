@@ -5,6 +5,7 @@ import SwiftUI
 /// Native Settings content fixture preserving the legacy pane, navigation, and typography contract.
 struct PreviewSettingsPane: View {
     let theme: SuperTheme.Identifier
+    let height: CGFloat
     let pane: SettingsSheet.Pane
     @State private var viewModel: SettingsViewModel
     @State private var presented = true
@@ -12,10 +13,12 @@ struct PreviewSettingsPane: View {
     init(
         pane: SettingsSheet.Pane,
         theme: SuperTheme.Identifier,
+        height: CGFloat = 874,
         selectedTheme: ChatSettings.ThemeID = .vellumLight,
         askBeforeSearching: Bool = true,
         exportPhase: ChatExportController.Phase? = nil
     ) {
+        self.height = height
         self.pane = pane
         self.theme = theme
         var settings = ChatSettings.default
@@ -54,7 +57,7 @@ struct PreviewSettingsPane: View {
         .superTheme(.make(theme))
         .superTypography(.make(viewModel.settings.typographyID, fontScale: viewModel.settings.fontScale))
         .dynamicTypeSize(.large)
-        .frame(width: 402, height: 874)
+        .frame(width: 402, height: height)
     }
 
     private static let sampleModels: [SettingsViewModel.ModelRow] = [

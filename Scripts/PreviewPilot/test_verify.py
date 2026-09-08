@@ -9,13 +9,19 @@ class InventoryTests(unittest.TestCase):
     def test_settings_group_is_required_and_dimensions_are_fixed(self):
         names = expected_names()
         settings = [name for name in names if '_SettingsPanePreviews.swift_' in name]
-        self.assertEqual(len(settings), 14)
+        self.assertEqual(len(settings), 18)
         with self.assertRaises(ValueError):
             verify_names([name for name in names if name not in settings])
         pane = 'Chat_SettingsPanePreviews.swift_settings_root_light.png'
         verify_dimensions(pane, 1206, 2622)
         with self.assertRaises(ValueError):
             verify_dimensions(pane, 1206, 4020)
+
+    def test_full_appearance_gallery_keeps_all_theme_rows(self):
+        name = 'Chat_SettingsPanePreviews.swift_settings_appearance_haptics_light.png'
+        verify_dimensions(name, 1206, 4020)
+        with self.assertRaises(ValueError):
+            verify_dimensions(name, 1206, 2622)
 
     def test_source_identity(self):
         verify_sources()

@@ -9,7 +9,7 @@ import struct
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = Path(__file__).with_name('composer-inventory.json')
 GROUPS = [(INVENTORY, 'ChatComposerPreviews.swift', 21),
-          (Path(__file__).with_name('settings-inventory.json'), 'SettingsPanePreviews.swift', 14)]
+          (Path(__file__).with_name('settings-inventory.json'), 'SettingsPanePreviews.swift', 18)]
 UIKIT = 'Core_PreviewCollectionController.swift_collection_viewport_light.png'
 FONTS = 'Core_PreviewCollectionController.swift_font_panel_light.png'
 

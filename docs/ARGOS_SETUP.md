@@ -13,7 +13,7 @@ npm test
 npx --no-install argos upload ./screenshots
 ```
 
-`npm test` runs the Python guard tests, obtains the registered worktree simulator through `Scripts/worktree_simulator.py ensure`, discovers and renders 37 previews, validates the full inventory and exact dimensions, and decodes all PNGs. It publishes only PNGs to the ignored `./screenshots` directory. An explicit UUID argument or `ARGOS_SIMULATOR_UDID` must match the helper's registered device. Ownership is recorded in the common Git directory; names start with `SuperWT-`. The helper isolates sibling worktrees and safely follows moved worktrees. The pilot still independently checks its exact Xcode/runtime/device pins. Old unregistered pilot devices are not reused or automatically removed. See [simulator lifecycle](TESTING.md#worktree-simulator-lifecycle).
+`npm test` runs the Python guard tests, obtains the registered worktree simulator through `Scripts/worktree_simulator.py ensure`, discovers and renders 41 previews, validates the full inventory and exact dimensions, and decodes all PNGs. It publishes only PNGs to the ignored `./screenshots` directory. An explicit UUID argument or `ARGOS_SIMULATOR_UDID` must match the helper's registered device. Ownership is recorded in the common Git directory; names start with `SuperWT-`. The helper isolates sibling worktrees and safely follows moved worktrees. The pilot still independently checks its exact Xcode/runtime/device pins. Old unregistered pilot devices are not reused or automatically removed. See [simulator lifecycle](TESTING.md#worktree-simulator-lifecycle).
 
 If the default developer directory selects Xcode 27, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'` for the local commands; the driver still verifies the exact 26.4.1 build.
 
@@ -45,7 +45,7 @@ The initial capture and upload succeeded on 2026-09-06: [build #1](https://app.a
 
 A local upload uses the current Git branch and commit. Uncommitted fixture/tooling changes are included in the captured images but are not a committed baseline. The first upload from `codex/argos-visual-testing` is an onboarding build. PR #329 landed on `main`; [main capture run 34117546159](https://github.com/brianwang9100/Super/actions/runs/34117546159) succeeded and [build #7](https://app.argos-ci.com/brianwang9100/Super/builds/7) established the reference at `58d18b5b`. Argos reported success with its automatic main-branch approval. This is distinct from a reviewer accepting a PR diff. [Baseline behavior](https://argos-ci.com/docs/quickstart/any-test-framework.md).
 
-The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). The current Settings tranche adds 14 pane captures; further coverage expansion remains incremental.
+The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). Settings now contributes 18 pane captures after stabilizing the four cases deferred from the first 14-case migration; further coverage expansion remains incremental.
 
 ## Verified diff demonstration
 
@@ -55,7 +55,7 @@ For reviewer access, use `env -u ARGOS_TOKEN npx --no-install argos login`, then
 
 ## Usage
 
-The current tranche increases Argos from 23 to 37 screenshots per run and reduces legacy PNGs from 598 to 584 (Settings 90→76). Count PR updates, retries, and main captures before expanding. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and commercial eligibility must be checked; it is not assumed by this integration.
+The stabilization tranche increases Argos from 37 to 41 screenshots per run and reduces legacy PNGs from 584 to 580 (Settings 76→72). Count PR updates, retries, and main captures before expanding. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and commercial eligibility must be checked; it is not assumed by this integration.
 
 ## Migration and local workflow
 
@@ -63,8 +63,12 @@ Argos replaces repository-hosted visual baselines and local pixel comparison for
 
 `screenshots/` is already ignored in the root `.gitignore`. Keep preview fixtures, capture scripts, and the expected screenshot inventory in Git. Do not globally ignore `__Snapshots__/`: it still contains required Point-Free baselines and can also contain non-image snapshots that remain useful. Ignoring a path does not untrack existing files or remove old Git objects.
 
-Composer capture uses a standalone inventory of 21 preview names and dimensions. The Settings tranche adds root light/dark, about, compaction, personalization, verbosity, tools light/dark, search on light/dark/off light, and data idle light/dark/failed light: 14 captures. Together with the two UIKit probes, the expected inventory is 37. The four legacy package jobs remain required for 584 images, including 76 Settings images.
+Composer capture uses a standalone inventory of 21 preview names and dimensions. Settings contributes 18 captures: root light/dark, appearance light/dark/full-height light, about, compaction, personalization, verbosity, tools light/dark, search on light/dark/off light, and data idle light/dark/exporting light/failed light. Together with the two UIKit probes, the expected inventory is 41. The four legacy package jobs remain required for 580 images, including 72 Settings images.
 
-Appearance light/dark/full-height light and data exporting light are deferred because their captures did not repeat consistently. Their legacy assertions and PNGs remain, along with all other Settings scenarios outside this tranche. The reduced 37-image set passed two complete local captures with byte-identical PNGs; all 23 previous Argos images remain unchanged. See [Settings migration results](ARGOS_SETTINGS_MIGRATION_RESULTS.md) for evidence and the remaining CI/baseline review gate.
+The four previously deferred cases now have repeatable native replacements. The three migrated appearance methods and their PNGs are retired together; the exporting method retains its dark assertion and PNG while retiring only light. All other Settings scenarios remain in the legacy suite. The [initial Settings migration results](ARGOS_SETTINGS_MIGRATION_RESULTS.md) remain historical evidence for the earlier 14-case tranche.
+
+The capture renderer requests standard 8-bit color (`preferredRange = .standard`) for both window and target rendering. It pauses the host layer before mounting (`speed = 0`, `timeOffset = 0`) and advances it to a fixed 0.25 seconds at the settled callback. This captures the actual installed spinner at a repeatable phase; it does not substitute a static symbol or change app code. Compared with standard-color rendering alone, adding the fixed clock changed only the exporting capture.
+
+Final captures `run-vwpc86mr` and `run-2gmtruca` contain 41/41 byte-identical PNGs. Validation includes 21 Python guards and 47 iOS tests, a delayed-spinner regression that fails without the fixed clock and passes with it while asserting visible ink, and a guard against cropping the tall appearance capture. The color-range change intentionally changes the previous 37 images; they are not unchanged baselines. Argos inspection and approval of those changes and the four added captures remain pending for this PR. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md).
 
 Visual inspection of the candidate Settings captures found the pane content and headers retained. The native renderer positions content approximately 14pt lower and renders slider thumbs and some color/glass/capsule details differently from Point-Free; pixel parity is not claimed. Historical parity and repeatability reports remain as audit evidence, not live baseline dependencies. See [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md) for the measured inventory, proposed shortlist, retirement criteria, and history-cleanup options.
