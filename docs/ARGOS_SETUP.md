@@ -1,6 +1,6 @@
 # Argos visual testing
 
-This project exports package UI fixtures and native iOS `#Preview` scenarios, then uploads the complete 622-image set with the Argos CLI, following the [any-framework quickstart](https://argos-ci.com/docs/quickstart/any-test-framework.md). No Playwright or app runtime SDK is involved.
+This project exports package UI fixtures and native iOS `#Preview` scenarios, then uploads the complete 623-image set with the Argos CLI, following the [any-framework quickstart](https://argos-ci.com/docs/quickstart/any-test-framework.md). No Playwright or app runtime SDK is involved.
 
 ## Local usage
 
@@ -14,7 +14,7 @@ npm test
 npx --no-install argos upload ./screenshots
 ```
 
-`npm test` runs the capture guards, exports all four package shards (581 images), captures the native shard (41 images), and validates the complete inventory before staging only PNGs in ignored `./screenshots`. Pillow from the checked-in requirements is required for complete image decoding. The pinned environment comes from [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both drivers, the simulator helper, and the local guard.
+`npm test` runs the capture guards, exports all four package shards (582 images), captures the native shard (41 images), and validates the complete inventory before staging only PNGs in ignored `./screenshots`. Pillow from the checked-in requirements is required for complete image decoding. The pinned environment comes from [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both drivers, the simulator helper, and the local guard.
 
 Both drivers obtain the registered worktree simulator through `Scripts/worktree_simulator.py ensure`; explicit native UUID arguments must match that association. Ownership is recorded in the common Git directory and survives worktree moves. See [simulator lifecycle](TESTING.md#worktree-simulator-lifecycle). If the default developer directory selects Xcode 27, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'`; the drivers still verify the exact pinned build.
 
@@ -44,7 +44,7 @@ The initial capture and upload succeeded on 2026-09-06: [build #1](https://app.a
 
 A local upload uses the current Git branch and commit. Uncommitted fixture/tooling changes are included in the captured images but are not a committed baseline. The first upload from `codex/argos-visual-testing` is an onboarding build. PR #329 landed on `main`; [main capture run 34117546159](https://github.com/brianwang9100/Super/actions/runs/34117546159) succeeded and [build #7](https://app.argos-ci.com/brianwang9100/Super/builds/7) established the reference at `58d18b5b`. Argos reported success with its automatic main-branch approval. This is distinct from a reviewer accepting a PR diff. [Baseline behavior](https://argos-ci.com/docs/quickstart/any-test-framework.md).
 
-The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). Settings now contributes 18 native pane captures. The complete migration also exports 581 package images; new coverage still needs a distinct visual-risk rationale.
+The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). Settings now contributes 18 native pane captures. The complete migration also exports 582 package images; new coverage still needs a distinct visual-risk rationale.
 
 ## Verified diff demonstration
 
@@ -54,11 +54,11 @@ For reviewer access, use `env -u ARGOS_TOKEN npx --no-install argos login`, then
 
 ## Usage
 
-Each complete run uploads 622 screenshots: 581 package captures and 41 native previews. Count PR updates, retries, and main captures before expanding coverage. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and is not assumed by this integration.
+Each complete run uploads 623 screenshots: 582 package captures and 41 native previews. Count PR updates, retries, and main captures before expanding coverage. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and is not assumed by this integration.
 
 ## Migration and local workflow
 
-Argos is the sole image baseline store. Source fixtures, capture inventories, and renderer dependencies remain tracked; generated PNGs stay ignored. GRDB and text snapshots remain in Git. The migration exports 581 package cases, preserving their original strategy, traits, dimensions, and behavioral assertions, and retains the 41 native captures. Four existing Bible reader fixtures rendered open and dismissed action states under the same filename; distinct dismissed-state IDs now preserve both outputs. The former 580 filenames represented 584 states, and three verified consolidations leave 581 package captures. These are existing test scenarios, not four newly added scenarios; see [the coverage policy](VISUAL_TESTING_POLICY.md#verified-consolidations).
+Argos is the sole image baseline store. Source fixtures, capture inventories, and renderer dependencies remain tracked; generated PNGs stay ignored. GRDB and text snapshots remain in Git. The migration exports 582 package cases, preserving their original strategy, traits, dimensions, and behavioral assertions, and retains the 41 native captures. Four existing Bible reader fixtures rendered open and dismissed action states under the same filename; distinct dismissed-state IDs now preserve both outputs. After incorporating main PR #338’s `focusedTurn` fixture, the 581 former filenames represent 585 states, and three verified consolidations leave 582 package captures. These are existing test scenarios, not four newly added scenarios; see [the coverage policy](VISUAL_TESTING_POLICY.md#verified-consolidations).
 
 Native captures include 21 composer scenarios, 18 Settings panes, and two UIKit probes. The native renderer uses standard 8-bit color for window/target rendering and a fixed host-layer clock to capture the real spinner. The historical Settings migration found content approximately 14pt lower and different slider/color/glass details from the old Point-Free rendering; pixel parity was not claimed. Package capture migration retains Point-Free rendering instead of recreating every screen as a native preview.
 

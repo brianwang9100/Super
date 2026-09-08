@@ -27,7 +27,7 @@ records the delivery check, not a replacement for repository settings.
 
 ## Argos visual workflow
 
-[argos.yml](../.github/workflows/argos.yml) captures the complete 622-image inventory on every PR and main push, including documentation-only changes. Four package shards export 581 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
+[argos.yml](../.github/workflows/argos.yml) captures the complete 623-image inventory on every PR and main push, including documentation-only changes. Four package shards export 582 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
 
 Each shard publishes an `images/` directory and a `capture.json` manifest. Aggregation validates the exact inventory, image decoding and dimensions, hashes and commit/run/attempt identity before uploading the complete set once. A missing or failed shard cannot produce a partial green visual build. `ios-test` aggregates the four package capture jobs; `native-previews` covers the complete aggregation and OIDC upload. Main requires both checks and Argos's `argos` review status alongside `build`, `lint`, `gitleaks`, and `swift-test`. Fork PRs remain blocked until their authenticated Argos path is available and verified.
 

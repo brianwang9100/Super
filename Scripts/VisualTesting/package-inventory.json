@@ -3736,6 +3736,16 @@
   {
     "package": "Chat",
     "suite": "MessageListSnapshotTests",
+    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/focusedTurn.focused_turn_short_answer.png",
+    "image": "Chat_MessageListSnapshotTests_focusedTurn.focused_turn_short_answer.png",
+    "pixels": [
+      1206,
+      2100
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "MessageListSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/freshlyMountedLongTranscriptDark.list_long_transcript_anchored_bottom_dark.png",
     "image": "Chat_MessageListSnapshotTests_freshlyMountedLongTranscriptDark.list_long_transcript_anchored_bottom_dark.png",
     "pixels": [

@@ -156,7 +156,6 @@ public struct ChatScreen: View {
         Self.smoothstep(progress, from: 0.15, to: 0.45)
     }
 
-
     /// Pill-mode tap-to-expand overlay. Only mounted in pill mode so it
     /// doesn't swallow taps on the live composer's text field at higher
     /// progress. `<= 0.15` (rather than `< 0.15`) closes the off-by-one
@@ -768,6 +767,8 @@ public struct ChatScreen: View {
                 items: viewModel.items,
                 streamingTail: viewModel.streamingTail,
                 error: viewModel.error,
+                scrollRequest: viewModel.scrollRequest,
+                interruptedResponse: viewModel.interruptedResponse,
                 verbosity: verbosity,
                 onRetry: onRetry,
                 onContentTap: onContentTap,

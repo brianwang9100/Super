@@ -6,507 +6,224 @@ import Testing
 import UIKit
 @testable import Chat
 
-/// Tests for `MessageList`'s scroll behavior under the canonical SwiftUI
-/// chat-layout pattern: a bottom-anchored `ScrollView` whose
-/// `adjustedContentInset.bottom` grows when the keyboard rises (driven by
-/// `safeAreaInset(edge: .bottom)` on `ChatScreen`'s content area).
-/// `UIScrollView`'s built-in content-inset-preservation logic adjusts
-/// `contentOffset` to keep the previously-visible bottom row visible
-/// across keyboard show/dismiss — no app-level scroll math. These tests
-/// are the regression surface for three bugs an earlier imperative
-/// implementation produced:
-///   - Keyboard show hid the bottom message (viewport shrank, offset stayed).
-///   - Keyboard dismiss left a blank gap below content (viewport grew,
-///     offset stayed).
-///   - Submit briefly blanked the content area (onChange fired a
-///     `scrollTo(.bottom)` against in-flux geometry).
-///
-/// The keyboard is simulated through `UIHostingController.additionalSafeAreaInsets`
-/// — matching how SwiftUI's automatic keyboard avoidance feeds the
-/// `safeAreaInset` modifier in production. Pattern otherwise matches
-/// `ChatScreenFocusBindingTests`: a `UIHostingController` inside a
-/// `UIWindow.makeKeyAndVisible()`-ed window, force-laid-out and settled
-/// across a few runloop turns. Assertions read the host's descendant
-/// `UIScrollView` — `contentOffset`, `contentSize`, `bounds.size`,
-/// `adjustedContentInset.bottom`. SSE = Server-Sent Events;
-/// SwiftUI = Apple's declarative UI framework (acronym for orientation).
-@Suite("MessageList declarative scroll anchor")
+/// Real SwiftUI/UIScrollView integration coverage for explicit turn focus
+/// and stationary responses. The bounded runloop pump settles UI layout;
+/// async repository/event behavior is tested with deterministic drain seams.
+// Window ownership and runloop-driven layout are shared UIKit state.
+@Suite("MessageList stationary responses", .serialized)
 @MainActor
 struct MessageListDeclarativeScrollTests {
+    init() { SnapshotFontRegistration.ensureRegistered() }
 
-    // MARK: - Initial position
-
-    /// Short chats (content fits viewport) keep the natural top
-    /// alignment — the content's `.frame(minHeight: containerHeight,
-    /// alignment: .top)` floor fills the viewport so short content sits at
-    /// the top (the floor replaced `.defaultScrollAnchor(.top, for:
-    /// .alignment)`). Guards against an accidental anchor regression that
-    /// would push short chats to the bottom of the viewport with empty
-    /// space above.
-    @Test("short chat starts at top with content fitting viewport")
-    func shortChatStartsAtTop() async throws {
+    @Test("short history fills the viewport and starts at the top")
+    func shortChatStartsAtTop() throws {
         let driver = MessageListDriver(items: makeItems(count: 2))
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        #expect(
-            scrollView.contentSize.height <= scrollView.bounds.height + 1,
-            "expected content to fit, got contentH=\(scrollView.contentSize.height) viewportH=\(scrollView.bounds.height)"
-        )
-        #expect(
-            scrollView.contentOffset.y == 0,
-            "expected top alignment for non-scrollable content, got offsetY=\(scrollView.contentOffset.y)"
-        )
+        let scroll = try requireScrollView(in: controller)
+        #expect(abs(scroll.contentSize.height - scroll.bounds.height) < 1)
+        #expect(scroll.contentOffset.y == 0)
     }
 
-    /// **Bug 2 regression — the content `minHeight` floor is active.**
-    /// Short content's frame must be floored up to the container height
-    /// (`contentSize.height == bounds.height`), not left at its smaller
-    /// intrinsic height. That floor is what makes the short→long
-    /// transition *continuous* in the container height — there's no
-    /// fits-vs-overflows boundary for the old `.defaultScrollAnchor(.top,
-    /// for: .alignment)` to flip on, which is what jittered while the
-    /// surface was actively resized. Combined with `shortChatStartsAtTop`'s
-    /// `contentSize <= bounds + 1`, this pins `contentSize == bounds` for
-    /// short content. A regression that dropped the floor would leave
-    /// `contentSize < bounds` and reintroduce the bistable flip.
-    @Test("short content frame is floored to the container height")
-    func shortContentFloorsToContainerHeight() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 2))
+    @Test("long history opens at the latest content")
+    func longChatStartsAtBottom() throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        #expect(
-            scrollView.contentSize.height >= scrollView.bounds.height - 1,
-            "expected the minHeight floor to fill the viewport, got contentH=\(scrollView.contentSize.height) viewportH=\(scrollView.bounds.height)"
-        )
+        let scroll = try requireScrollView(in: controller)
+        #expect(scroll.contentSize.height > scroll.bounds.height)
+        #expect(distanceFromBottom(scroll) < 2)
     }
 
-    /// **Bug 1 regression — stream-end persist lands at the bottom.**
-    /// Reproduces the stream-end ordering: a streaming tail is showing,
-    /// then it's cleared to empty (content shrinks) AND a persisted
-    /// assistant row is appended (content grows) within the same settle
-    /// window — exactly what `ChatScreenViewModel.assistantMessageSaved`
-    /// does. The `pendingBottomSnap` settle re-snap must land the new row
-    /// at the bottom after content height stabilizes. (The semi-expanded +
-    /// keyboard transient that made the *single* immediate snap miss is
-    /// verified on-device; this guards the settle mechanism + no
-    /// regression in the synthetic harness.)
-    @Test("stream-end clear-tail-then-grow-items lands at bottom")
-    func streamEndPersistLandsAtBottom() async throws {
+    @Test("send from history places a short user message at the top")
+    func sendFocusesUserAtTop() throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: 200), animated: false)
+        settle(controller: controller)
+        let historyHeight = scroll.contentSize.height
+        driver.items += [makeUserItem(id: "sent", chars: 60)]
+        driver.scrollRequest = .init(messageID: "sent", sequence: 1)
+        driver.streamingTail = .init(thinking: "", text: "", isCompacting: false)
+        settle(controller: controller)
+        #expect(scroll.contentSize.height >= historyHeight + scroll.bounds.height - 20,
+                "sending reserves a full viewport for the new turn")
+        try expectMessageAtTop("sent", controller: controller)
+    }
+
+    @Test("first send and short completion keep the user message at the top")
+    func firstSendAndShortCompletionStayStill() throws {
+        let driver = MessageListDriver(items: [makeUserItem(id: "first", chars: 60)])
+        driver.scrollRequest = .init(messageID: "first", sequence: 1)
+        driver.streamingTail = .init(thinking: "", text: "", isCompacting: false)
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        let position = scroll.contentOffset.y
+        driver.items += [makeAssistantItem(id: "answer", chars: 30)]
+        driver.streamingTail = nil
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
+        try expectMessageAtTop("first", controller: controller)
+    }
+
+    @Test("streaming grows past the viewport without moving it", arguments: [false, true])
+    func streamingGrowthAtBottomStaysStationary(thinking: Bool) throws {
         let driver = MessageListDriver(
             items: makeItems(count: 30),
-            streamingTail: MessageList.StreamingState(thinking: "", text: "Streaming reply in progress", isCompacting: false)
+            streamingTail: .init(thinking: "", text: "Beginning of the reply.", isCompacting: false),
+            verbosity: .thinking
         )
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom while streaming")
-
-        // Mirror `.assistantMessageSaved`: clear the tail to empty and
-        // append the persisted row in the same update.
-        driver.streamingTail = MessageList.StreamingState(thinking: "", text: "", isCompacting: false)
-        driver.items += [makeAssistantItem(id: "persisted-reply", chars: 240)]
+        let scroll = try requireScrollView(in: controller)
+        let position = scroll.contentOffset.y
+        let height = scroll.contentSize.height
+        let text = String(repeating: "The response continues below. ", count: 100)
+        driver.streamingTail = .init(thinking: thinking ? text : "", text: thinking ? "" : text, isCompacting: false)
         settle(controller: controller)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected stream-end persist to settle at bottom, got distanceFromBottom=\(distance)"
-        )
+        #expect(scroll.contentSize.height > height + 200)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
     }
 
-    /// Long chats land bottom-anchored on first appear — covered by
-    /// the no-role `.defaultScrollAnchor(.bottom)` modifier, which
-    /// sets the initial offset for an overflowing transcript.
-    @Test("long chat opens with bottom message visible")
-    func longChatStartsAtBottom() async throws {
+    @Test("assistant saves do not move a reader at the bottom")
+    func assistantAppendAtBottomStaysStationary() throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        #expect(
-            scrollView.contentSize.height > scrollView.bounds.height,
-            "preconditions: expected overflowing content"
-        )
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected initial position at bottom, got distanceFromBottom=\(distance)"
-        )
+        let scroll = try requireScrollView(in: controller)
+        let position = scroll.contentOffset.y
+        driver.items += [makeAssistantItem(id: "new-assistant", chars: 900)]
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
     }
 
-    // MARK: - Send / streaming
-    //
-    // Keyboard show/dismiss behavior is verified on-device, not here.
-    // The synthetic test harness can't faithfully simulate SwiftUI's
-    // automatic keyboard avoidance — both `additionalSafeAreaInsets`
-    // (UIKit-level) and host frame resizing (the pre-refactor approach)
-    // are stand-ins that don't propagate through SwiftUI's
-    // `safeAreaInset` / keyboard-avoidance machinery the way a real
-    // `UIResponder.keyboardWillShowNotification` does. Manual
-    // verification on iPhone 17 simulator covers the keyboard cases
-    // (see plan's Verification section).
+    @Test("manual scrolling remains in control during a response")
+    func manualScrollSurvivesDeltas() throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        driver.items += [makeUserItem(id: "sent", chars: 60)]
+        driver.scrollRequest = .init(messageID: "sent", sequence: 1)
+        driver.streamingTail = .init(thinking: "", text: String(repeating: "Reading text. ", count: 160), isCompacting: false)
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentOffset.y + 150), animated: false)
+        settle(controller: controller)
+        let position = scroll.contentOffset.y
+        driver.streamingTail = .init(thinking: "", text: String(repeating: "Reading text. ", count: 200), isCompacting: false)
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
+    }
 
-    /// Appending a message while at bottom stays at bottom — covered
-    /// by the `.onChange(of: items.count) → scrollTo(.bottom)`
-    /// handler (the empirically-broken `.defaultScrollAnchor(.bottom,
-    /// for: .sizeChanges)` is not relied on).
-    @Test("appending a message while at bottom keeps the new message in view")
-    func contentGrowAtBottomStaysAtBottom() async throws {
+    @Test("repeated requests and successive sends focus the requested turn")
+    func successiveRequestsFocusAtTop() throws {
+        let driver = MessageListDriver(items: makeItems(count: 30))
+        driver.items += [makeUserItem(id: "first", chars: 60)]
+        driver.scrollRequest = .init(messageID: "first", sequence: 1)
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: 200), animated: false)
+        settle(controller: controller)
+        driver.scrollRequest = .init(messageID: "first", sequence: 2)
+        settle(controller: controller)
+        try expectMessageAtTop("first", controller: controller)
+        driver.items += [makeAssistantItem(id: "answer", chars: 60), makeUserItem(id: "second", chars: 60)]
+        driver.scrollRequest = .init(messageID: "second", sequence: 3)
+        settle(controller: controller)
+        try expectMessageAtTop("second", controller: controller)
+    }
+
+    @Test("stopping or failing retains the readable partial response", arguments: [false, true])
+    func interruptionStaysStill(failed: Bool) throws {
+        let tail = MessageList.StreamingState(thinking: "", text: String(repeating: "Readable partial response. ", count: 180), isCompacting: false)
+        let driver = MessageListDriver(items: makeItems(count: 30), streamingTail: tail)
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentOffset.y - 100), animated: false)
+        settle(controller: controller)
+        let position = scroll.contentOffset.y
+        driver.interruptedResponse = tail
+        driver.streamingTail = nil
+        if failed { driver.error = .init(message: "Connection lost.") }
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
+        #expect(scroll.contentSize.height > position + 500)
+    }
+
+    @Test("a user message taller than the viewport starts at its beginning")
+    func oversizedUserStartsAtTop() throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
-
-        driver.items += [makeUserItem(id: "appended-tail", chars: 180)]
+        let scroll = try requireScrollView(in: controller)
+        driver.items += [makeUserItem(id: "long-user", chars: 2400)]
+        driver.scrollRequest = .init(messageID: "long-user", sequence: 1)
         settle(controller: controller)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected to remain at bottom after content grew, got distanceFromBottom=\(distance)"
-        )
+        #expect(distanceFromBottom(scroll) > 600,
+                "a long user's first lines, not its bottom, must be visible")
+        let position = scroll.contentOffset.y
+        driver.streamingTail = .init(thinking: "", text: String(repeating: "More response. ", count: 100), isCompacting: false)
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
     }
 
-    /// An assistant row landing while the user is scrolled up reading
-    /// history must NOT yank them to the bottom — the snap policy
-    /// (`shouldSnapOnItemsChange`) gates assistant/banner appends on the
-    /// `wasAtBottom` latch. Mid-turn tool-round saves and the final save
-    /// of a turn the user scrolled away from all take this path; the
-    /// long-travel animated snap the old unconditional handler issued
-    /// here was the precondition of the post-stream offset fight.
-    @Test("assistant row appended while reading history does not yank")
-    func assistantAppendWhileReadingHistoryStays() async throws {
+    @Test("a long live response is replaced without moving the reader")
+    func longResponseHandoffStaysStill() throws {
+        let text = String(repeating: "Visible response paragraph.\n\n", count: 80)
+        let driver = MessageListDriver(items: makeItems(count: 30), streamingTail: .init(thinking: "", text: text, isCompacting: false))
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentOffset.y - 200), animated: false)
+        settle(controller: controller)
+        let position = scroll.contentOffset.y
+        driver.items += [.assistantText(id: "saved", thinking: nil, thinkingDurationMs: nil, text: text,
+            toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil)]
+        driver.streamingTail = nil
+        settle(controller: controller)
+        #expect(abs(scroll.contentOffset.y - position) < 2)
+        #expect(scroll.contentSize.height > position + 500)
+    }
+
+    @Test("tiny viewport and rapid resizes stay responsive")
+    func focusToggleDoesNotHang() throws {
         let driver = MessageListDriver(items: makeItems(count: 30))
+        driver.items += [makeUserItem(id: "sent", chars: 60)]
+        driver.scrollRequest = .init(messageID: "sent", sequence: 1)
         let (controller, window) = makeHost(driver: driver, height: 600)
         defer { teardown(window: window) }
-
         settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        // Scroll up ~300pt so `wasAtBottom` latches false.
-        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
-        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
+        #expect(rapidResizeStorm(controller: controller, iterations: 10) < 1)
+        window.frame.size.height = 90
+        controller.view.frame = window.bounds
+        driver.streamingTail = .init(thinking: "", text: String(repeating: "Reply. ", count: 100), isCompacting: false)
         settle(controller: controller)
-        let positionBefore = scrollView.contentOffset.y
-
-        driver.items += [makeAssistantItem(id: "appended-assistant", chars: 240)]
-        settle(controller: controller)
-
-        #expect(
-            scrollView.contentOffset.y <= positionBefore + 2,
-            "assistant append must not yank a reading-history user; moved from \(positionBefore) to \(scrollView.contentOffset.y)"
-        )
+        let scroll = try requireScrollView(in: controller)
+        #expect(scroll.contentOffset.y <= max(0, scroll.contentSize.height - scroll.bounds.height) + 4)
     }
 
-    /// The user's OWN action (the new last row is their bubble — send,
-    /// regenerate accept) always brings them to the bottom, even from deep
-    /// in history — the unconditional arm of the snap policy.
-    @Test("user bubble appended while reading history snaps to bottom")
-    func userSendWhileReadingHistorySnapsToBottom() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
-        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
-        settle(controller: controller)
-
-        driver.items += [makeUserItem(id: "sent-from-history", chars: 80)]
-        settle(controller: controller)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected the user's own send to land at the bottom, got distanceFromBottom=\(distance)"
-        )
-    }
-
-    /// Mounting the live streaming tail (nil → non-nil with empty
-    /// thinking/text — the "Waiting spark" state immediately after
-    /// send) should land at the bottom of the new content. Covered by
-    /// `.onChange(of: streamingTail) → scrollTo(.bottom)` which fires
-    /// once per settled tail state (mount, every coalesced delta,
-    /// unmount).
-    @Test("streaming tail mount lands at the bottom of the new content")
-    func streamingTailMountLandsAtBottom() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
-
-        driver.streamingTail = MessageList.StreamingState(
-            thinking: "",
-            text: "",
-            isCompacting: false
-        )
-        settle(controller: controller)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected to land at bottom after streamingTail mount, got distanceFromBottom=\(distance)"
-        )
-    }
-
-    /// Streaming-tail *thinking* growth (no visible text yet) must
-    /// keep the bubble at the bottom. The naive observer
-    /// `.onChange(of: streamingTail?.text)` would miss this entirely
-    /// because `.text` stays empty during the pure-thinking phase —
-    /// the user would see the thinking trace push the streaming
-    /// bubble silently below the viewport. Observing the whole
-    /// `streamingTail` struct catches it.
-    @Test("streaming tail thinking-only growth stays at bottom")
-    func streamingThinkingGrowthStaysAtBottom() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
-
-        // Mount the tail in pure-thinking state, then grow `thinking`
-        // without ever touching `.text` — the production shape when
-        // the model emits a thinking trace before any reply text.
-        driver.streamingTail = MessageList.StreamingState(
-            thinking: "Considering the question",
-            text: "",
-            isCompacting: false
-        )
-        settle(controller: controller)
-        let longerThinking = String(repeating: "More thinking. ", count: 80)
-        driver.streamingTail = MessageList.StreamingState(
-            thinking: longerThinking,
-            text: "",
-            isCompacting: false
-        )
-        settle(controller: controller)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 2,
-            "expected to remain at bottom after thinking growth, got distanceFromBottom=\(distance)"
-        )
-    }
-
-    /// **Negative test for the `wasAtBottom` guard on the
-    /// streaming-tail observer.** A user scrolled up reading history
-    /// during a long response must not be yanked back to the bottom
-    /// when a streaming-tail delta arrives — that's the load-bearing
-    /// behavior the `guard wasAtBottom else { return }` line in the
-    /// `.onChange(of: streamingTail)` handler exists to guarantee. A
-    /// future regression that drops the guard would pass every other
-    /// streaming test; this one fails.
-    @Test("streaming tail growth does not scroll when user is reading history")
-    func streamingTailGrowthDoesNotScrollWhenScrolledUp() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        // Scroll up ~300pt so `wasAtBottom` latches false.
-        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
-        scrollView.setContentOffset(CGPoint(x: 0, y: max(0, targetOffsetY)), animated: false)
-        settle(controller: controller)
-        let positionBefore = scrollView.contentOffset.y
-
-        driver.streamingTail = MessageList.StreamingState(
-            thinking: "",
-            text: "Hello",
-            isCompacting: false
-        )
-        settle(controller: controller)
-
-        // The user's contentOffset must not move further toward the
-        // bottom than a couple of points (room for sub-pixel layout
-        // jitter from the tail's mount itself).
-        #expect(
-            scrollView.contentOffset.y <= positionBefore + 2,
-            "streaming tail must not yank a reading-history user to the bottom; moved from \(positionBefore) to \(scrollView.contentOffset.y)"
-        )
-    }
-
-    // MARK: - Verbosity-driven relayout
-
-    /// Flipping verbosity from `.simple` → `.thinking` expands every
-    /// on-screen `ThinkingBlock`, growing content height by hundreds
-    /// of points. When the user was *at the bottom*, they expect to
-    /// stay at the bottom of the new content (latest message
-    /// visible). The two-phase intent capture in
-    /// `.onChange(of: verbosity)` plus the consume in
-    /// `.onScrollGeometryChange`'s action handles this.
-    @Test("verbosity expand from bottom stays at bottom")
-    func verbosityExpandAtBottomStaysAtBottom() async throws {
-        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
-        let beforeContentHeight = scrollView.contentSize.height
-
-        driver.verbosity = .thinking
-        settle(controller: controller)
-
-        #expect(
-            scrollView.contentSize.height > beforeContentHeight,
-            "preconditions: expected verbosity expand to grow content, got \(scrollView.contentSize.height) vs before \(beforeContentHeight)"
-        )
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 4,
-            "expected to stay at bottom after verbosity expand, got distanceFromBottom=\(distance)"
-        )
-    }
-
-    /// Flipping verbosity while *scrolled up reading history* must
-    /// preserve the user's chat-region position. Expansion adds
-    /// content above the visible region; the
-    /// preserve-distance-from-bottom intent compensates so the user
-    /// sees roughly the same chat region. Without the intent, the
-    /// user would be silently dropped backward in the conversation.
-    @Test("verbosity expand from mid-scroll preserves distance from bottom")
-    func verbosityExpandFromHistoryPreservesPosition() async throws {
-        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        // Scroll up to ~300pt from the bottom (mid-history).
-        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
-        scrollView.setContentOffset(CGPoint(x: 0, y: targetOffsetY), animated: false)
-        settle(controller: controller)
-        let beforeDistance = distanceFromBottom(scrollView)
-        #expect(
-            abs(beforeDistance - 300) < 10,
-            "preconditions: expected ~300pt from bottom, got \(beforeDistance)"
-        )
-
-        driver.verbosity = .thinking
-        // 30 iterations × 40 ms = 1.2 s; `LazyVStack` typically settles
-        // within a handful of geometry ticks, and the mode auto-clears
-        // after ``verbosityStableTicksToClear`` (= 3) consecutive
-        // content-height-stable ticks, well before the settle finishes.
-        settle(controller: controller, iterations: 30)
-
-        // Tolerance of 80pt accommodates `LazyVStack`'s row-height
-        // refinement: it can overestimate `contentHeight` on the
-        // last visible scroll tick and refine downward later, after
-        // ``verbosityScrollMode`` has cleared. The realistic UX
-        // outcome is the user lands within ~one row of their previous
-        // position — meaningfully better than the no-handler baseline
-        // (where distance would be off by the full ~1500pt of newly-
-        // expanded content above them). "One row" tracks the reading
-        // body size (≈67pt at the 19pt body); with the standing
-        // `.defaultScrollAnchor(.bottom)` removed (it perpetually fought
-        // the `scrollPosition` binding — the post-stream slosh) the
-        // measured drift sits at exactly one row + jitter (70.0), so the
-        // headroom is a half-row above one row, not below it. A
-        // structural regression would blow past this by hundreds of
-        // points, not single digits.
-        let afterDistance = distanceFromBottom(scrollView)
-        #expect(
-            abs(afterDistance - 300) < 80,
-            "expected distance from bottom preserved (~300pt) across verbosity expand, got \(afterDistance)"
-        )
-    }
-
-    /// Sending a new message inside the verbosity-scroll settling
-    /// window must land at the bottom of the new content, *not* be
-    /// pulled back to the pre-flip distance by a still-active
-    /// `verbosityScrollMode`. The `.onChange(of: items.count)`
-    /// handler clears the verbosity mode before scrolling to bottom
-    /// — otherwise the content-grow tick from the appended item
-    /// would re-apply the preserve-distance intent and strand the
-    /// user `savedDistance` above the latest message.
-    @Test("appending a message during verbosity settle lands at bottom")
-    func appendAfterVerbosityFlipLandsAtBottom() async throws {
-        let driver = MessageListDriver(items: makeItemsWithThinking(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-
-        // Scroll up so the verbosity flip captures a non-zero
-        // preserve-distance, then immediately flip verbosity and
-        // append an item before the settling window closes.
-        let targetOffsetY = scrollView.contentSize.height - scrollView.bounds.height - 300
-        scrollView.setContentOffset(CGPoint(x: 0, y: targetOffsetY), animated: false)
-        settle(controller: controller)
-
-        driver.verbosity = .thinking
-        // Drive only one settle iteration so the verbosity mode is
-        // still active when the append happens — the bug repro
-        // requires the mode to outlive the items-count change.
-        settle(controller: controller, iterations: 1)
-        driver.items += [makeUserItem(id: "sent-during-settle", chars: 60)]
-        settle(controller: controller, iterations: 30)
-
-        let distance = distanceFromBottom(scrollView)
-        #expect(
-            distance < 4,
-            "expected to land at bottom after send-during-verbosity-settle, got distanceFromBottom=\(distance)"
-        )
-    }
-
-    // MARK: - Feedback-loop regression
-
-    /// **Regression test for the on-device hang.** An earlier
-    /// implementation drove scroll restoration from an
-    /// `onScrollGeometryChange` action that called
-    /// `scrollPosition.scrollTo(y:)` on every geometry tick. SwiftUI's
-    /// automatic keyboard avoidance interpolates the bottom safe-area
-    /// inset across the keyboard animation (~250 ms), so every frame
-    /// fired a geometry tick → state mutation → re-render → geometry
-    /// tick. The recursion saturated the main runloop and the app
-    /// locked up. The declarative architecture has no such state seam:
-    /// `MessageList` no longer mutates any `@State` from a geometry
-    /// observer. This test rapidly toggles the host's frame size — the
-    /// pre-refactor trigger shape — and asserts the test thread
-    /// completes within 1 second. A regression would hang far past that.
-    @Test("rapid container size toggles do not hang the runloop")
-    func focusToggleDoesNotHang() async throws {
-        let driver = MessageListDriver(items: makeItems(count: 30))
-        let (controller, window) = makeHost(driver: driver, height: 600)
-        defer { teardown(window: window) }
-
-        settle(controller: controller)
-        let scrollView = try requireScrollView(in: controller)
-        #expect(distanceFromBottom(scrollView) < 2, "preconditions: at bottom")
-
-        let elapsed = rapidResizeStorm(controller: controller, iterations: 10)
-        #expect(
-            elapsed < 1.0,
-            "expected rapid resizes to complete quickly, took \(elapsed)s"
-        )
+    private func expectMessageAtTop(_ id: String, controller: UIViewController) throws {
+        let scroll = try requireScrollView(in: controller)
+        // A short focused turn occupies a viewport, so its beginning is
+        // the content's trailing viewport. This also checks that the blank
+        // response reserve survives completion, independently of text layout.
+        #expect(distanceFromBottom(scroll) < 2,
+                "requested turn \(id) should occupy the trailing viewport")
     }
 
     // MARK: - Helpers
@@ -654,6 +371,9 @@ private final class MessageListDriver {
     var items: [MessageList.Item]
     var streamingTail: MessageList.StreamingState?
     var verbosity: ChatVerbosity
+    var scrollRequest: MessageList.ScrollRequest?
+    var interruptedResponse: MessageList.StreamingState?
+    var error: MessageList.ErrorState?
 
     init(
         items: [MessageList.Item],
@@ -686,6 +406,9 @@ private struct MessageListHost: View {
         MessageList(
             items: driver.items,
             streamingTail: driver.streamingTail,
+            error: driver.error,
+            scrollRequest: driver.scrollRequest,
+            interruptedResponse: driver.interruptedResponse,
             verbosity: driver.verbosity
         )
         .ignoresSafeArea()

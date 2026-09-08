@@ -24,6 +24,10 @@ def discover_suites(root, package):
     files = sorted(folder.glob('*SnapshotTests.swift'))
     if package == 'Core':
         files.append(folder.parent / 'Support/VisualSnapshotExporterTests.swift')
+    if package == 'Chat':
+        # This UIKit behavior suite protects the focused-turn visual fixture;
+        # macOS swift test cannot execute it.
+        files.append(folder.parent / 'MessageListDeclarativeScrollTests.swift')
     if not files:
         raise ValueError(f'No visual suites found for {package}')
     suites = []

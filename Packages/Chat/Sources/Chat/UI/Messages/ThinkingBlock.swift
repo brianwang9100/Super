@@ -13,6 +13,8 @@ struct ThinkingBlock: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @State private var isExpanded: Bool
+    private let expansionOverride: Binding<Bool>?
+    private var expansion: Binding<Bool> { expansionOverride ?? $isExpanded }
 
     /// Two distinct duration sources: `.live` ticks against the wall clock
     /// while the assistant is still thinking, `.finished` shows a static
@@ -25,7 +27,8 @@ struct ThinkingBlock: View {
     /// `.simple` collapses the body so the user just sees a "Thought for
     /// Xs" pill they can tap to inspect; `.thinking` and `.verbose` open
     /// expanded so the trace is visible without an extra tap.
-    init(text: String, durationSource: DurationSource, verbosity: ChatVerbosity) {
+    init(text: String, durationSource: DurationSource, verbosity: ChatVerbosity, expansion: Binding<Bool>? = nil) {
+        self.expansionOverride = expansion
         self.text = text
         self.durationSource = durationSource
         self.verbosity = verbosity
@@ -52,7 +55,7 @@ struct ThinkingBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if isExpanded, !text.isEmpty {
+            if expansion.wrappedValue, !text.isEmpty {
                 MarkdownText(text, bodyStyleOverride: .thinking, treatAsPartial: isLive)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
@@ -70,7 +73,7 @@ struct ThinkingBlock: View {
         // Verbosity changes broadcast a new default expansion state to every
         // block. Individual taps after that still win until the next switch.
         .onChange(of: verbosity) { _, newValue in
-            isExpanded = Self.shouldExpand(for: newValue)
+            expansion.wrappedValue = Self.shouldExpand(for: newValue)
         }
     }
 
@@ -93,7 +96,7 @@ struct ThinkingBlock: View {
     @ViewBuilder
     private func headerButton(label: String) -> some View {
         Button {
-            isExpanded.toggle()
+            expansion.wrappedValue.toggle()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "brain.head.profile")
@@ -103,7 +106,7 @@ struct ThinkingBlock: View {
                     .font(typography.font(.footnote, weight: .medium))
                     .foregroundStyle(theme.inkSoft)
                 Spacer(minLength: 0)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: expansion.wrappedValue ? "chevron.down" : "chevron.right")
                     .font(typography.font(.caption2, weight: .semibold))
                     .foregroundStyle(theme.inkFaint)
             }

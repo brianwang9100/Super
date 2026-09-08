@@ -32,7 +32,7 @@ Package `AGENTS.md` files identify their local fixtures and drain seams.
 - **New or changed SwiftUI view** → **cover the visual risk, not every view declaration.** Reuse an existing screen or component-gallery scenario when it visibly exercises the change. Add a screenshot only for a distinct layout, theme, reflow, or visual regression risk that existing coverage misses; behavior, data permutations, and state transitions belong in unit/integration tests. Follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
 - **Keep the visual matrix small.** Use Vellum light/dark for a representative primary layout; cover additional states in one theme unless they introduce a separate color/contrast risk. Add XXL, app font-scale extremes, Reduce Motion, and another form factor only where they exercise distinct behavior. Keep a representative reflow case for text-heavy surfaces, known visual regression cases, and each distinct applet-level iPhone/iPad/Mac layout. Do not multiply every state by every axis. All eight palettes belong in the existing package theme galleries, not every screen suite.
 - **Every new screenshot needs a reason.** In the PR's Test Coverage section, name the scenario, the defect it would catch, why an existing capture is insufficient, and the before/after screenshot count. Prefer a small readable component gallery over separate captures of every pill, icon, or toggle. Byte-identical baselines are audit candidates, not proof that their input cases are redundant; retain behavioral assertions and investigate ineffective fixtures before removing coverage.
-- **Argos owns image baselines.** The complete inventory contains 622 images: 581 package fixtures and 41 native previews. Package fixtures retain their Point-Free image strategies through the test-only `VisualTestSupport` exporter; generated PNGs stay ignored. Do not record or commit local image baselines. GRDB/text snapshots and behavioral assertions remain independent. Approve only intentional visual changes in Argos, never simply to make a check pass.
+- **Argos owns image baselines.** The complete inventory contains 623 images: 582 package fixtures and 41 native previews. Package fixtures retain their Point-Free image strategies through the test-only `VisualTestSupport` exporter; generated PNGs stay ignored. Do not record or commit local image baselines. GRDB/text snapshots and behavioral assertions remain independent. Approve only intentional visual changes in Argos, never simply to make a check pass.
 
 ## Visual fixture conventions
 
@@ -64,7 +64,7 @@ Use a dedicated **per-worktree** simulator for tests and manual verification, ne
 ```bash
 npm ci
 python3 -m pip install -r Scripts/VisualTesting/requirements.txt
-npm test                              # full 622-image capture and validation
+npm test                              # full 623-image capture and validation
 npm run test:visual:native             # native 41-image subset
 python3 Scripts/VisualTesting/capture.py Chat --output .build/chat-visual-capture
 ```

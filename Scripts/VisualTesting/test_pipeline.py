@@ -184,6 +184,26 @@ class DriverTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 discover_suites(root, 'Todo')
 
+    def test_chat_discovery_requires_stationary_response_behavior_suite(self):
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            folder = root / 'Packages/Chat/Tests/ChatTests/UI/Snapshots'
+            folder.mkdir(parents=True)
+            (folder / 'MessageListSnapshotTests.swift').write_text(
+                '@Suite("Visual", .serialized)\n@MainActor\nstruct MessageListSnapshotTests {}')
+            behavior = folder.parent / 'MessageListDeclarativeScrollTests.swift'
+            with self.assertRaisesRegex(ValueError, 'Missing required capture suite'):
+                discover_suites(root, 'Chat')
+            behavior.write_text(
+                '@Suite("Stationary responses", .serialized)\n@MainActor\n'
+                'struct MessageListDeclarativeScrollTests {}')
+            self.assertEqual(discover_suites(root, 'Chat'),
+                             ['MessageListSnapshotTests', 'MessageListDeclarativeScrollTests'])
+            behavior.write_text(
+                '@Suite("Stationary responses")\n@MainActor\nstruct MessageListDeclarativeScrollTests {}')
+            with self.assertRaisesRegex(ValueError, 'must explicitly use .serialized'):
+                discover_suites(root, 'Chat')
+
     def test_failed_suite_stops_package_capture(self):
         calls = []
         def runner(command, **kwargs):
