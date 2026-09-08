@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -9,9 +10,10 @@ import Testing
 /// notes. Variants cover the empty-state hero across all themes, a
 /// single-note list, a many-note scrolling list across all themes, and a
 /// Dynamic Type XXL pass that exercises the nav bar + card reflow.
-@Suite("NoteListSheet snapshots")
+@Suite("NoteListSheet snapshots", .serialized)
 @MainActor
 struct NoteListSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
     /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
@@ -104,11 +106,10 @@ struct NoteListSheetSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 393, height: height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

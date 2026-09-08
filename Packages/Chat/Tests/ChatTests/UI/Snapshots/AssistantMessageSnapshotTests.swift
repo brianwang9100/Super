@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -153,11 +154,10 @@ struct AssistantMessageSnapshotTests {
         .frame(width: 402)
         .background(SuperTheme.make(theme).background)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(precision: precision, perceptualPrecision: perceptualPrecision, layout: .sizeThatFits),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -11,9 +12,10 @@ import Testing
 /// pale-wash states (the empty-slot rendering). All theme-aware tints — the
 /// `outline`'s `inkFaint` stroke, the filled tints, and the unassigned soft
 /// tints — are pinned in a single baseline per theme.
-@Suite("BookmarkGlyph snapshots")
+@Suite("BookmarkGlyph snapshots", .serialized)
 @MainActor
 struct BookmarkGlyphSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the palette strip renders in the light theme")
@@ -54,11 +56,10 @@ struct BookmarkGlyphSnapshotTests {
         .frame(width: 420, height: 150)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 420, height: 150)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

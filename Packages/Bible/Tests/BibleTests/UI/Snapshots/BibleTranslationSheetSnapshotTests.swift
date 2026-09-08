@@ -1,16 +1,18 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
 
 /// Snapshots of `BibleTranslationSheet` — the translation picker across the
 /// three themes. The sheet uses fixed type sizes (OS Dynamic Type support is
-/// deferred app-wide), so no Dynamic Type variant is recorded.
-@Suite("BibleTranslationSheet snapshots")
+/// deferred app-wide), so no Dynamic Type variant is captured.
+@Suite("BibleTranslationSheet snapshots", .serialized)
 @MainActor
 struct BibleTranslationSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
     /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
@@ -45,11 +47,10 @@ struct BibleTranslationSheetSnapshotTests {
         .frame(width: 402, height: 420)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 420)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

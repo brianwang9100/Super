@@ -18,11 +18,7 @@ lifecycle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lifecycle)
 RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
 MODEL = 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'
-PIN = '''xcode-version: "26.4.1"
-xcrun simctl list devices --json "iOS 26.4"
-RUNTIME_BUILD="23E254a"
-device.get("name") == "iPhone 17"
-'''
+PIN = json.loads((SCRIPT.parent / 'VisualTesting/simulator-pins.json').read_text())
 
 
 class FakeHost:
@@ -75,9 +71,9 @@ class WorktreeSimulatorTests(unittest.TestCase):
         self.repo = self.root / 'repo'
         self.repo.mkdir()
         self.git('init', '-q')
-        workflow = self.repo / '.github/workflows/ios-build.yml'
+        workflow = self.repo / 'Scripts/VisualTesting/simulator-pins.json'
         workflow.parent.mkdir(parents=True)
-        workflow.write_text(PIN)
+        workflow.write_text(json.dumps(PIN))
         self.git('add', '.')
         self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test',
                  '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
@@ -93,6 +89,25 @@ class WorktreeSimulatorTests(unittest.TestCase):
 
     def delete_worktree(self):
         self.git('worktree', 'remove', str(self.worktree))
+
+    def test_missing_pin_fails_before_simulator_mutation(self):
+        (self.worktree / 'Scripts/VisualTesting/simulator-pins.json').unlink()
+        with self.assertRaisesRegex(lifecycle.LifecycleError, 'Cannot read simulator pins'):
+            self.manager.ensure()
+        self.assertEqual(self.host.mutations, [])
+
+    def test_incomplete_pin_fails_before_simulator_mutation(self):
+        (self.worktree / 'Scripts/VisualTesting/simulator-pins.json').write_text('{}')
+        with self.assertRaisesRegex(lifecycle.LifecycleError, 'Invalid simulator pins'):
+            self.manager.ensure()
+        self.assertEqual(self.host.mutations, [])
+
+    def test_changed_xcode_build_fails_before_simulator_mutation(self):
+        pin = dict(PIN, xcode_build='17E999')
+        (self.worktree / 'Scripts/VisualTesting/simulator-pins.json').write_text(json.dumps(pin))
+        with self.assertRaisesRegex(lifecycle.LifecycleError, 'Select CI Xcode'):
+            self.manager.ensure()
+        self.assertEqual(self.host.mutations, [])
 
     def test_association_is_idempotent_and_distinct_per_worktree(self):
         first = self.manager.ensure()

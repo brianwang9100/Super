@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -48,11 +49,10 @@ struct ThemeGallerySnapshotTests {
         let view = MessageList(items: items, verbosity: .verbose)
             .superTheme(.make(id))
             .frame(width: 402, height: 560)
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 560)),
             named: "gallery_chat_\(id.rawValue)",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: #function
         )
         if let failure {

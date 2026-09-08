@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 import UIKit
@@ -29,7 +30,7 @@ import UIKit
 ///
 /// The glass `X` renders its deterministic solid stand-in here (Liquid Glass
 /// captures transparent in offscreen snapshots — see `SuperGlass.swift`).
-@Suite("SheetNavBar snapshots")
+@Suite("SheetNavBar snapshots", .serialized)
 @MainActor
 struct SheetNavBarSnapshotTests {
     /// The title resolves to a system face, so brand-font registration isn't
@@ -206,11 +207,10 @@ struct SheetNavBarSnapshotTests {
         function: String,
         sourceLocation: SourceLocation = #_sourceLocation
     ) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 120)),
             named: named,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

@@ -9,14 +9,27 @@ import unittest
 from unittest.mock import patch
 import run
 
+PINS = run.read_pin(run.ROOT)
+
 
 class CaptureDriverTests(unittest.TestCase):
+    def test_explicit_existing_output_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'captures'
+            output.mkdir()
+            sentinel = output / 'keep.txt'
+            sentinel.write_text('keep')
+            with patch.object(run.sys, 'argv', ['run.py', '--argos', '--output', str(output)]):
+                with self.assertRaisesRegex(SystemExit, 'already exists'):
+                    run.main()
+            self.assertEqual(sentinel.read_text(), 'keep')
+
     def capture(self, inspect=None, decoder_fails=False):
         runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
         device = {'udid': 'owned', 'isAvailable': True,
                   'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'}
         outputs = ['Xcode 26.4.1\nBuild version 17E202', 'Version: 2.45.4',
-                   json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'isAvailable': True}]}),
+                   json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'version': '26.4.1', 'isAvailable': True}]}),
                    json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '23E254a'}}),
                    'owned', json.dumps({'devices': {runtime: [device]}})]
         captures = []
@@ -31,6 +44,7 @@ class CaptureDriverTests(unittest.TestCase):
             return SimpleNamespace(returncode=0)
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(run, 'ROOT', Path(directory)), \
+             patch.object(run, 'read_pin', return_value=PINS), \
              patch.object(run, 'output', side_effect=outputs), \
              patch.object(run, 'prepare', return_value=(Path(directory) / 'renderer', 'digest')), \
              patch.object(run.sys, 'argv', ['run.py']), \

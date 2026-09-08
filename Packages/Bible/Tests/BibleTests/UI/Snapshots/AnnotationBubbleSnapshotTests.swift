@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -10,9 +11,10 @@ import Testing
 /// three themes for the filled silhouette (the colors come from the
 /// theme; the other two states differ only in stroke vs fill, which is
 /// fully captured by the light variant).
-@Suite("AnnotationBubble snapshots")
+@Suite("AnnotationBubble snapshots", .serialized)
 @MainActor
 struct AnnotationBubbleSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("filled bubble renders in the light theme")
@@ -55,11 +57,10 @@ struct AnnotationBubbleSnapshotTests {
         .frame(width: 144, height: 64)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 144, height: 64)),
             named: "multi_stack_light",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: #function
         )
         if let failure {
@@ -84,11 +85,10 @@ struct AnnotationBubbleSnapshotTests {
         .frame(width: 96, height: 96)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 96, height: 96)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

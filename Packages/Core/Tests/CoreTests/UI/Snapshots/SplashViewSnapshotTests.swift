@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 import UIKit
@@ -16,7 +17,7 @@ import UIKit
 /// NOT scale the wordmark or version line. The XXL test is therefore a
 /// layout-stability regression check, not an accessibility-text-scaling
 /// check — the splash deliberately ignores Dynamic Type per design.
-@Suite("SplashView snapshots")
+@Suite("SplashView snapshots", .serialized)
 @MainActor
 struct SplashViewSnapshotTests {
     init() {
@@ -58,11 +59,10 @@ struct SplashViewSnapshotTests {
             .dynamicTypeSize(.xxLarge)
             .frame(width: 402, height: 874)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 874)),
             named: "splash_light_xxl",
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -79,11 +79,10 @@ struct SplashViewSnapshotTests {
             .superTheme(.make(theme))
             .frame(width: 402, height: 874)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 874)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

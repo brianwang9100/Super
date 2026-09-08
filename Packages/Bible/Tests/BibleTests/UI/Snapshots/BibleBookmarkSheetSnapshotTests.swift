@@ -2,6 +2,7 @@
 import Core
 import Foundation
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -16,9 +17,10 @@ import Testing
 ///
 /// The sheet binds `AllBookmarksRequest` itself, so each render seeds an
 /// in-memory database and injects it via `.databaseContext`.
-@Suite("BibleBookmarkSheet snapshots")
+@Suite("BibleBookmarkSheet snapshots", .serialized)
 @MainActor
 struct BibleBookmarkSheetSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("all six slots render empty in the light theme")
@@ -92,11 +94,10 @@ struct BibleBookmarkSheetSnapshotTests {
         .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 560)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
