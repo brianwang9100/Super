@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -10,9 +11,10 @@ import Testing
 /// three themes (the colors are theme-driven); `.outline` is the
 /// construction / empty-state variant and differs only in stroke-vs-fill,
 /// fully captured by the light pass.
-@Suite("NoteGlyph snapshots")
+@Suite("NoteGlyph snapshots", .serialized)
 @MainActor
 struct NoteGlyphSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("filled glyph renders in the light theme")
@@ -51,11 +53,10 @@ struct NoteGlyphSnapshotTests {
         .frame(width: 96, height: 96)
         .superTheme(theme)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 96, height: 96)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

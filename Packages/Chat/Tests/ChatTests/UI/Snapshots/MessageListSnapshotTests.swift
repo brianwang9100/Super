@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -224,21 +225,6 @@ struct MessageListSnapshotTests {
         .superTheme(.make(.vellumLight))
         .frame(width: 402, height: 400)
         recordOrCompare(view: view, name: "list_error_banner_with_action_light", function: function)
-    }
-
-    @Test("compaction banner placement")
-    func compactionBanner() {
-        let function = #function
-        let withBanner: [MessageList.Item] = [
-            .userBubble(id: "u1", text: "older", references: []),
-            .assistantText(id: "a1", thinking: nil, thinkingDurationMs: nil, text: "earlier reply", toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil),
-            .compactionBanner(id: "b1", summary: "User said hello, assistant replied with the time."),
-            .userBubble(id: "u2", text: "follow-up", references: []),
-        ]
-        let view = MessageList(items: withBanner, verbosity: .verbose)
-            .superTheme(.make(.vellumLight))
-            .frame(width: 402, height: 600)
-        recordOrCompare(view: view, name: "list_compaction_light", function: function)
     }
 
     /// Markdown coverage: paragraphs, **bold**, `inline code`, a bulleted
@@ -702,11 +688,10 @@ struct MessageListSnapshotTests {
         name: String,
         function: String = #function
     ) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 700)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

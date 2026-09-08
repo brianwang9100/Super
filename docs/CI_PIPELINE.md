@@ -9,7 +9,7 @@
 | Surface | Current behavior |
 |---|---|
 | [Swift Tests](../.github/workflows/swift-test.yml) | Discovers Swift packages, runs package suites with coverage, and reports the aggregate `swift-test` check. |
-| [iOS Build](../.github/workflows/ios-build.yml) | Builds both `Super` and `SuperBible`, discovers package test schemes for simulator suites, and reports aggregate `build`/`ios-test` checks. |
+| [iOS Build](../.github/workflows/ios-build.yml) | Builds both `Super` and `SuperBible` and reports the aggregate `build` check. |
 | [SwiftLint](../.github/workflows/swiftlint.yml) and [secret scanning](../.github/workflows/secrets-scan.yml) | Report `lint` and `gitleaks`. |
 | [TestFlight](../.github/workflows/testflight.yml) | Archives and uploads SuperOS only (`Super` scheme). SuperBible release support is not implemented. |
 | Native Codex review | Runs through the GitHub integration, separately from Actions; see [§6.3](#63-native-codex-pull-request-review). |
@@ -25,11 +25,15 @@ records the delivery check, not a replacement for repository settings.
 
 ---
 
-## Argos native preview workflow
+## Argos visual workflow
 
-`.github/workflows/argos.yml` adds a separate visual-testing job on PRs and main pushes: pinned iOS simulator capture through `npm test`, followed by an Argos CLI upload. It uses GitHub OIDC authentication for Argos and preserves capture evidence. Main requires both the `argos` visual review status and the `native-previews` capture/upload check, alongside the five existing checks. The current inventory is 41 Argos captures (21 composer, 18 Settings, two UIKit probes) and 580 legacy images. The iOS build workflow retains all four legacy package legs and the remaining Settings suite. Standard 8-bit capture color and a fixed host-layer clock stabilize appearance light/dark/full-height light and data exporting light. Their four legacy images are retired; the remaining 72 Settings legacy images include dark exporting. The renderer color change also intentionally changes the previous 37 Argos images and requires visual baseline review. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md). Suite discovery excludes the removed composer suite and preserves the remaining Settings methods. External-fork PRs are blocked until their Argos upload path is enabled and verified. See [ARGOS_SETUP.md](ARGOS_SETUP.md) for setup, baseline seeding, and local commands.
+[argos.yml](../.github/workflows/argos.yml) captures the complete 622-image inventory on every PR and main push, including documentation-only changes. Four package shards export 581 images using the existing Point-Free strategies through test-only `VisualTestSupport`; the native shard captures 41 previews. Package suites run serially on a registered worktree simulator. The shared [simulator pins](../Scripts/VisualTesting/simulator-pins.json) define the exact Xcode, XcodeGen, iOS build, and device.
 
-Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): representative layouts and documented regression risks, not a Cartesian product of every view, state, theme, and accessibility setting. The audit includes current CI timings and a concrete migration shortlist. Existing checks remain in place until replacement captures and Argos review enforcement are verified.
+Each shard publishes an `images/` directory and a `capture.json` manifest. Aggregation validates the exact inventory, image decoding and dimensions, hashes and commit/run/attempt identity before uploading the complete set once. A missing or failed shard cannot produce a partial green visual build. `ios-test` aggregates the four package capture jobs; `native-previews` covers the complete aggregation and OIDC upload. Main requires both checks and Argos's `argos` review status alongside `build`, `lint`, `gitleaks`, and `swift-test`. Fork PRs remain blocked until their authenticated Argos path is available and verified.
+
+Argos is the sole image baseline store. Generated PNGs are ignored; source fixtures and inventories remain tracked, as do non-image database snapshots. Native previews use standard 8-bit rendering and a fixed host-layer clock; package captures retain their existing renderer and traits. Intentional image changes require Argos review. See [TESTING.md](TESTING.md#simulator-environment) for local commands and [ARGOS_SETUP.md](ARGOS_SETUP.md) for account and baseline setup.
+
+Visual coverage follows [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md): reuse representative layouts and preserve documented regression risks. The migration consolidates only three verified redundant captures; the historical audit shortlist is not permission to delete the remaining matrices. Git history cleanup remains a separate maintenance operation.
 
 ## 1. Goals & Philosophy
 
@@ -223,9 +227,10 @@ jobs:
 
 ### 4.2 Xcode/Simulator Setup on GitHub Actions
 
-The implemented pins and runtime assertions live in
-[ios-build.yml](../.github/workflows/ios-build.yml). Local setup, exact-build
-matching, recording, and simulator lifecycle are documented once in
+The shared pins live in
+[simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json);
+[argos.yml](../.github/workflows/argos.yml) runs the capture drivers that validate them.
+Local setup, exact-build matching, capture, and simulator lifecycle are documented in
 [TESTING.md](TESTING.md#simulator-environment).
 
 ### 4.3 Code Coverage Requirements
@@ -390,7 +395,7 @@ or an approval from another reviewer does not satisfy the Codex gate.
 ### 6.4 CI and Review Gates
 
 Check live branch protection/rules and PR checks when delivering. `main` currently
-requires `build`, `lint`, `gitleaks`, `ios-test`, and `swift-test`. Native Codex
+requires `build`, `lint`, `gitleaks`, `ios-test`, `swift-test`, `native-previews`, and `argos`. Native Codex
 approval is a separate agent-enforced gate, not one of those Actions checks.
 Wait for applicable CI to pass even if protection does not enforce a particular
 check. Do not bypass or weaken repository protections to complete a PR.

@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Chat
@@ -9,7 +10,7 @@ import Testing
 /// shown in the composer strip and (read-only) inside a sent user bubble.
 /// Covers light/dark/sepia, the removable vs. read-only forms, label
 /// truncation, and Dynamic Type XXL.
-@Suite("VerseReferencePill snapshots")
+@Suite("VerseReferencePill snapshots", .serialized)
 @MainActor
 struct VerseReferencePillSnapshotTests {
     /// Register Core's bundled brand fonts before any render so this suite
@@ -24,11 +25,10 @@ struct VerseReferencePillSnapshotTests {
     }
 
     private func recordOrCompare<V: View>(view: V, name: String, function: String = #function) {
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .sizeThatFits),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }

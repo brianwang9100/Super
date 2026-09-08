@@ -1,6 +1,6 @@
 # Argos visual testing
 
-This project captures native iOS `#Preview` scenarios and uploads PNGs with the Argos CLI, following the [any-framework quickstart](https://argos-ci.com/docs/quickstart/any-test-framework.md). No Playwright or app runtime SDK is involved.
+This project exports package UI fixtures and native iOS `#Preview` scenarios, then uploads the complete 622-image set with the Argos CLI, following the [any-framework quickstart](https://argos-ci.com/docs/quickstart/any-test-framework.md). No Playwright or app runtime SDK is involved.
 
 ## Local usage
 
@@ -8,28 +8,27 @@ Prerequisites: macOS, Node 22 or newer, Python 3, Xcode 26.4.1 / 17E202, iOS sim
 
 ```sh
 npm ci --ignore-scripts
+python3 -m pip install -r Scripts/VisualTesting/requirements.txt
 npm test
 # Set ARGOS_TOKEN in your shell environment, then:
 npx --no-install argos upload ./screenshots
 ```
 
-`npm test` runs the Python guard tests, obtains the registered worktree simulator through `Scripts/worktree_simulator.py ensure`, discovers and renders 41 previews, validates the full inventory and exact dimensions, and decodes all PNGs. It publishes only PNGs to the ignored `./screenshots` directory. An explicit UUID argument or `ARGOS_SIMULATOR_UDID` must match the helper's registered device. Ownership is recorded in the common Git directory; names start with `SuperWT-`. The helper isolates sibling worktrees and safely follows moved worktrees. The pilot still independently checks its exact Xcode/runtime/device pins. Old unregistered pilot devices are not reused or automatically removed. See [simulator lifecycle](TESTING.md#worktree-simulator-lifecycle).
+`npm test` runs the capture guards, exports all four package shards (581 images), captures the native shard (41 images), and validates the complete inventory before staging only PNGs in ignored `./screenshots`. Pillow from the checked-in requirements is required for complete image decoding. The pinned environment comes from [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both drivers, the simulator helper, and the local guard.
 
-If the default developer directory selects Xcode 27, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'` for the local commands; the driver still verifies the exact 26.4.1 build.
+Both drivers obtain the registered worktree simulator through `Scripts/worktree_simulator.py ensure`; explicit native UUID arguments must match that association. Ownership is recorded in the common Git directory and survives worktree moves. See [simulator lifecycle](TESTING.md#worktree-simulator-lifecycle). If the default developer directory selects Xcode 27, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'`; the drivers still verify the exact pinned build.
 
-The npm command is the native visual-test entry point. The existing Swift package, behavioral, database, and legacy snapshot suites still run through their existing commands and CI checks.
+For iteration, `npm run test:visual:native` captures and validates the 41 native previews without staging an upload directory. `python3 Scripts/VisualTesting/capture.py Chat --output .build/chat-visual-capture` exports one package to a fresh bundle directory. Substitute Bible/Core/Todo as needed. These subsets are local evidence; never upload a subset as the full Argos build. Use `npm test` before a manual full upload. Local behavioral, integration, and database tests remain required for code changes.
 
-Both Xcode test passes explicitly use English (`en`) and United States (`US`); the capture tests assert the effective language, region, and left-to-right UIKit layout. Both UIKit probes also pin their text-size category to Large. This isolates captures from manual accessibility/localization testing on the registered simulator.
+Package fixtures retain their Point-Free image strategies through test-only `VisualTestSupport`. Each visual suite is serialized and the driver runs one suite at a time with simulator parallel testing disabled. Native capture pins English, United States, left-to-right layout, and Large UIKit text size for the probes. Dependencies are locked in `Scripts/PreviewPilot/Package.resolved` for native previews and `Scripts/VisualTesting/Package.resolved` for package captures; the patched renderer remains pinned by revision and patch hash. Review dependency updates and rerun capture validation before committing them.
 
-The complete remote Swift dependency graph is locked in `Scripts/PreviewPilot/Package.resolved`. The driver stages that file into the generated project workspace, uses `-onlyUsePackageVersionsFromResolvedFile`, and rejects changed pins after each test pass. The patched renderer remains independently pinned by revision and patch hash. To upgrade dependencies, deliberately resolve a new lockfile, review every changed pin, and rerun capture/regression validation before committing it.
-
-Screenshots are regenerated on each capture. A failed capture does not reach the upload step in CI. Logs, xcresults, and sidecars stay under `.build/PreviewPilot/run-*/`; no renderer sidecar is uploaded as an Argos snapshot.
-
-The `--argos` mode stages the validated PNGs for a separate CLI upload. Both modes reject missing/invalid images, changed dimensions, failed tests, and failed discovery; staging also enforces Argos’s size limit. `ValidatePreviewImages.swift` requires complete PNG files and decodes every image, including the UIKit probes. Argos performs pixel comparison against its reference build; local capture no longer reads Point-Free baselines.
+Each shard produces `images/` and `capture.json`. Aggregation checks exact identities and dimensions, full PNG decoding, hashes and run/attempt/commit identity. Missing, duplicate, unexpected, or corrupt output prevents upload. Package logs and xcresults stay under `.build/VisualTesting/run-*`; native evidence stays under `.build/PreviewPilot/run-*`. Sidecars never become Argos snapshots. Argos performs image comparison; no local Git PNG baselines are read or recorded.
 
 ## GitHub Actions
 
-[`.github/workflows/argos.yml`](../.github/workflows/argos.yml) runs on same-repository pull requests, pushes to `main`, and manual dispatch. External-fork PRs skip the entire Argos job while their authentication path is unavailable; existing package/build/snapshot checks still apply. Because `argos` is required, external-fork PRs are blocked from merging until their upload authentication is enabled and verified. A skipped job does not satisfy the separate required `argos` status. It uses `macos-26`, pinned Xcode and XcodeGen, commit-pinned actions, and `npm ci` with the exact CLI dependency in `package-lock.json`. It runs `npm test`, then `npm exec -- argos upload ./screenshots`. Capture evidence is retained for seven days, including on failures.
+[`.github/workflows/argos.yml`](../.github/workflows/argos.yml) runs all five capture shards on every same-repository PR, main push, and manual dispatch, including documentation changes. It validates and aggregates their artifacts before one OIDC upload. The four package jobs feed `ios-test`; `native-previews` covers full aggregation and upload. App builds remain in `ios-build.yml`. Capture evidence is retained for seven days, including on failures. The workflow uses `macos-26`, pinned tools, commit-pinned actions, and the exact CLI dependency in `package-lock.json`.
+
+External-fork PRs remain blocked while their upload authentication path is unavailable. A skipped upload does not satisfy the separate required `argos` status; do not bypass it.
 
 CI uploads prefer GitHub OIDC: `id-token: write` lets the CLI obtain a short-lived GitHub-signed identity, which Argos verifies before granting build-scoped upload credentials. GitHub OIDC must also be enabled in the Argos project's authentication settings. `ARGOS_PROJECT` selects the project and read-only `GITHUB_TOKEN` provides PR metadata. Keep `ARGOS_TOKEN` unset, since it takes precedence over OIDC. The previously configured repository secret remains unused; local uploads can still use the user's shell token.
 
@@ -45,7 +44,7 @@ The initial capture and upload succeeded on 2026-09-06: [build #1](https://app.a
 
 A local upload uses the current Git branch and commit. Uncommitted fixture/tooling changes are included in the captured images but are not a committed baseline. The first upload from `codex/argos-visual-testing` is an onboarding build. PR #329 landed on `main`; [main capture run 34117546159](https://github.com/brianwang9100/Super/actions/runs/34117546159) succeeded and [build #7](https://app.argos-ci.com/brianwang9100/Super/builds/7) established the reference at `58d18b5b`. Argos reported success with its automatic main-branch approval. This is distinct from a reviewer accepting a PR diff. [Baseline behavior](https://argos-ci.com/docs/quickstart/any-test-framework.md).
 
-The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). Settings now contributes 18 pane captures after stabilizing the four cases deferred from the first 14-case migration; further coverage expansion remains incremental.
+The initial baseline contains 23 images: 21 composer scenarios and 2 UIKit probes. Renderer fixes, repeatability evidence, and the one-to-one legacy mapping are documented in [the pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md). Settings now contributes 18 native pane captures. The complete migration also exports 581 package images; new coverage still needs a distinct visual-risk rationale.
 
 ## Verified diff demonstration
 
@@ -55,20 +54,31 @@ For reviewer access, use `env -u ARGOS_TOKEN npx --no-install argos login`, then
 
 ## Usage
 
-The stabilization tranche increases Argos from 37 to 41 screenshots per run and reduces legacy PNGs from 584 to 580 (Settings 76→72). Count PR updates, retries, and main captures before expanding. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and commercial eligibility must be checked; it is not assumed by this integration.
+Each complete run uploads 622 screenshots: 581 package captures and 41 native previews. Count PR updates, retries, and main captures before expanding coverage. Consult [current pricing](https://argos-ci.com/pricing). Open-source sponsorship is conditional and is not assumed by this integration.
 
 ## Migration and local workflow
 
-Argos replaces repository-hosted visual baselines and local pixel comparison for migrated scenarios; CI still renders the screenshots. After migration, developers can use Xcode previews and targeted local captures for feedback while CI performs the complete visual comparison. Running the full visual suite locally need not be a blanket pre-PR requirement. Unit, integration, and database snapshot tests remain local requirements for code changes.
+Argos is the sole image baseline store. Source fixtures, capture inventories, and renderer dependencies remain tracked; generated PNGs stay ignored. GRDB and text snapshots remain in Git. The migration exports 581 package cases, preserving their original strategy, traits, dimensions, and behavioral assertions, and retains the 41 native captures. Four existing Bible reader fixtures rendered open and dismissed action states under the same filename; distinct dismissed-state IDs now preserve both outputs. The former 580 filenames represented 584 states, and three verified consolidations leave 581 package captures. These are existing test scenarios, not four newly added scenarios; see [the coverage policy](VISUAL_TESTING_POLICY.md#verified-consolidations).
 
-`screenshots/` is already ignored in the root `.gitignore`. Keep preview fixtures, capture scripts, and the expected screenshot inventory in Git. Do not globally ignore `__Snapshots__/`: it still contains required Point-Free baselines and can also contain non-image snapshots that remain useful. Ignoring a path does not untrack existing files or remove old Git objects.
+Native captures include 21 composer scenarios, 18 Settings panes, and two UIKit probes. The native renderer uses standard 8-bit color for window/target rendering and a fixed host-layer clock to capture the real spinner. The historical Settings migration found content approximately 14pt lower and different slider/color/glass details from the old Point-Free rendering; pixel parity was not claimed. Package capture migration retains Point-Free rendering instead of recreating every screen as a native preview.
 
-Composer capture uses a standalone inventory of 21 preview names and dimensions. Settings contributes 18 captures: root light/dark, appearance light/dark/full-height light, about, compaction, personalization, verbosity, tools light/dark, search on light/dark/off light, and data idle light/dark/exporting light/failed light. Together with the two UIKit probes, the expected inventory is 41. The four legacy package jobs remain required for 580 images, including 72 Settings images.
+The [pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md), [initial Settings migration results](ARGOS_SETTINGS_MIGRATION_RESULTS.md), and [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md) preserve the evidence for those earlier tranches. They are historical reports, not live baseline dependencies or current full-pipeline results. Every current revision still requires inspected Argos changes and passing required checks.
 
-The four previously deferred cases now have repeatable native replacements. The three migrated appearance methods and their PNGs are retired together; the exporting method retains its dark assertion and PNG while retiring only light. All other Settings scenarios remain in the legacy suite. The [initial Settings migration results](ARGOS_SETTINGS_MIGRATION_RESULTS.md) remain historical evidence for the earlier 14-case tranche.
+The [complete migration results](ARGOS_COMPLETE_MIGRATION_RESULTS.md) record the current full-pipeline verification.
 
-The capture renderer requests standard 8-bit color (`preferredRange = .standard`) for both window and target rendering. It pauses the host layer before mounting (`speed = 0`, `timeOffset = 0`) and advances it to a fixed 0.25 seconds at the settled callback. This captures the actual installed spinner at a repeatable phase; it does not substitute a static symbol or change app code. Compared with standard-color rendering alone, adding the fixed clock changed only the exporting capture.
+For a new package capture, add its Swift fixture and an explicit row to `Scripts/VisualTesting/package-inventory.json`; no historical PNG path is needed. For example:
 
-Final captures `run-vwpc86mr` and `run-2gmtruca` contain 41/41 byte-identical PNGs. Validation includes 21 Python guards and 47 iOS tests, a delayed-spinner regression that fails without the fixed clock and passes with it while asserting visible ink, and a guard against cropping the tall appearance capture. The color-range change intentionally changes the previous 37 images; they are not unchanged baselines. Argos inspection and approval of those changes and the four added captures remain pending for this PR. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md).
+```json
+{
+  "package": "Todo",
+  "suite": "TodoScreenSnapshotTests",
+  "testName": "populatedLight",
+  "captureName": "populated_light",
+  "image": "Todo_TodoScreenSnapshotTests_populatedLight.populated_light.png",
+  "pixels": [1206, 2622]
+}
+```
 
-Visual inspection of the candidate Settings captures found the pane content and headers retained. The native renderer positions content approximately 14pt lower and renders slider thumbs and some color/glass/capsule details differently from Point-Free; pixel parity is not claimed. Historical parity and repeatability reports remain as audit evidence, not live baseline dependencies. See [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md) for the measured inventory, proposed shortlist, retirement criteria, and history-cleanup options.
+`suite` is the Swift filename stem. `testName` and `captureName` are the exporter-sanitized `testName` and `named` arguments: replace runs of non-word characters with `-` and trim edge dashes (for example, `populatedLight()` becomes `populatedLight`). Explicit components use ASCII letters, digits, underscores, and internal dashes. The image identity must match exactly; dimensions are decoded pixels. Omit `legacy` and `variant` for new captures. Existing migration rows retain their historical mappings. Document the distinct visual risk and count change, then run `npm test` to verify the complete set.
+
+Deleting PNGs from the current tree stops image churn but does not remove historical Git objects. History rewriting, force pushes, and repository cleanup remain a separately approved maintenance task described in [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md#generated-files-and-historical-git-storage).

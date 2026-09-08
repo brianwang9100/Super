@@ -2,6 +2,7 @@
 import Core
 import GRDBQuery
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -27,9 +28,10 @@ import Testing
 /// Rendered across the Vellum light / dark pair because the outlined glyph
 /// strokes in `theme.inkFaint`; the other six theme variants are pixel-locked
 /// once in `ThemeGallerySnapshotTests`.
-@Suite("BibleChapterReader snapshots")
+@Suite("BibleChapterReader snapshots", .serialized)
 @MainActor
 struct BibleChapterReaderSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts before any render so the chapter
     /// title's brand serif resolves instead of baking the system fallback —
     /// and so this suite is order-independent (font registration is
@@ -109,11 +111,10 @@ struct BibleChapterReaderSnapshotTests {
         .dynamicTypeSize(dynamicType)
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure { Issue.record("\(name): \(failure)") }
@@ -156,11 +157,10 @@ struct BibleChapterReaderSnapshotTests {
         .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -228,11 +228,10 @@ struct BibleChapterReaderSnapshotTests {
         .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
@@ -287,11 +286,10 @@ struct BibleChapterReaderSnapshotTests {
         .superTypography(.make(.serif))
         .databaseContext(.readOnly { database.queue })
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 402, height: 760)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {

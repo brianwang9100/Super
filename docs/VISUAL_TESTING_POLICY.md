@@ -1,6 +1,20 @@
 # Visual testing policy and migration audit
 
-The audit tables below describe commit `00693278` (543 images). A fresh tracked-file count at `58d18b5b` finds 619 PNGs: Bible 272, Chat 285, Core 20, Todo 42. The composer retirement in PR #332 left 598 legacy PNGs and 23 Argos captures. The first 14-case Settings tranche left 584 legacy PNGs and 37 Argos captures (Settings legacy 90→76). Stabilizing appearance light/dark/full-height light and data exporting light now brings those totals to 580 and 41 (Settings 76→72); dark exporting remains legacy coverage. All four legacy package CI jobs remain required. Two final captures contain 41/41 byte-identical PNGs. Standard 8-bit color intentionally changes the previous 37 Argos baselines; CI and baseline review remain delivery gates. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md) for the renderer clock/color changes and regression controls. Main protection now requires `argos` and `native-previews`. The broader shortlist remains a proposal, and newly added regression cases are not retirement candidates. Historical tables retain their original counts.
+The current capture inventory contains **622 images: 581 package captures and 41 native previews**. Argos is the sole image baseline store. Package fixtures retain their Point-Free rendering strategies through test-only `VisualTestSupport`; generated PNGs are ignored. The four package CI jobs remain, now exporting images for the same complete Argos build as the native shard. Main protection requires `argos`, `native-previews`, and the existing build/test checks.
+
+The audit tables below describe commit `00693278` (543 images), not the current inventory. A later tracked-file count at `58d18b5b` found 619 PNGs; composer and Settings migrations reduced that to 580 while establishing 41 native captures. Those 580 filenames represented 584 rendered states: four `BibleScreenSnapshotTests` fixtures already rendered both `dismissActions = false` and `true` under the same filename. Capture validation exposed the collisions. The migration keeps the original IDs for the open-action state and gives the four dismissed-action variants distinct IDs, then consolidates only the three cases listed below: 584 − 3 = 581 package captures. This preserves existing scenario coverage rather than adding four new test scenarios. The broader historical shortlist remains a proposal; it does not authorize matrix deletion. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md) for historical native renderer verification.
+
+The current package inventory is Bible 276, Chat 243, Core 20, and Todo 42, plus 41 native previews. The four explicit Bible variant IDs account for Bible’s filename count changing from 272 to 276.
+
+## Verified consolidations
+
+| Retired package image case | Retained visual evidence | Retained behavioral evidence |
+| --- | --- | --- |
+| `SettingsSheetSnapshotTests.modelsPaneTitlingAutomatic` | `modelsPaneWithAFMAvailable`: identical light image and equivalent automatic-title/default fixture | `ChatSettingsTests.titleSettingsDefaults` and `titleModelIdClearsToAutomatic` |
+| `SettingsSheetSnapshotTests.modelsPaneTitlingAutomaticDark` | `modelsPaneWithAFMAvailableDark`: identical dark image and equivalent automatic-title/default fixture | The same title-default and reset-to-automatic tests |
+| `MessageListSnapshotTests.compactionBanner` | `compactionBannerWithMarkdown`: same banner placement between the same message roles, with richer summary rendering | `ChatScreenViewModelProjectionTests.compactionBannerInsertion` checks cutoff placement and summary |
+
+These are the only three consolidations in the complete migration. Keep all other fixtures, including newer regression cases, uncertain duplicate-looking states, fixed-chrome XXL sentinels, and distinct minimum-scale/dark reader risks. Existing source fixtures become capture-only tests; database/text snapshots and nonvisual assertions remain intact.
 
 ## Select coverage by risk
 
@@ -17,7 +31,7 @@ Visual tests protect layout, typography, contrast, clipping, layering, and rende
 
 ## Measured inventory
 
-Counts are tracked PNG files under `Packages/**/__Snapshots__/`, not Swift test function counts. Parameterized tests can own multiple images. Database/text snapshots are excluded.
+The historical counts below are tracked PNG files under `Packages/**/__Snapshots__/`, not Swift test function counts. Parameterized tests can own multiple images. Database/text snapshots are excluded.
 
 | Package | UI suite files | PNGs | Current PNG size |
 | --- | ---: | ---: | ---: |
@@ -38,7 +52,7 @@ A SHA-256 comparison found 21 byte-identical pairs. Examples:
 
 ## First migration shortlist: 179 images to 102
 
-These four suites account for one third of the current images. Keep the following existing scenarios as the initial migration selection, subject to the retirement criteria below. Other scenarios are retirement candidates; the retained light/dark, typography, loading/error, and known-regression owners must be confirmed in the replacement renders. This first pass would reduce the repository-wide inventory from 543 to 466 (77 fewer, 14.2%) before any gallery consolidation. It does not claim a corresponding percentage reduction in CI time.
+At the audit commit, these four suites accounted for one third of the images. Keep the following existing scenarios as the initial migration selection, subject to the retirement criteria below. Other scenarios are retirement candidates; the retained light/dark, typography, loading/error, and known-regression owners must be confirmed in the replacement renders. This first pass would reduce the repository-wide inventory from 543 to 466 (77 fewer, 14.2%) before any gallery consolidation. It does not claim a corresponding percentage reduction in CI time.
 
 | Suite | Current | Selected | Selection approach |
 | --- | ---: | ---: | --- |
@@ -145,17 +159,15 @@ Measured from [iOS Build run 34063979885](https://github.com/brianwang9100/Super
 
 These four jobs consumed about 41 runner-minutes. Each simulator boot took roughly two minutes. The snapshot step includes compilation/install/test startup, so it is not a per-image rendering benchmark. Runner availability also caused queue delays. Fewer images should reduce capture work and review volume; cold builds, simulator boot, and queue capacity need separate attention.
 
-1. Finish the OIDC upload and validate Argos comparison/rejection/approval, failed capture/upload, and missing-image handling. Establish and review a main-branch reference and require the actual Argos review check before removing legacy visual enforcement.
-2. Migrate the selected scenarios package by package. Keep a tracked expected-name inventory; fail on missing, duplicate, or unexpected captures. Xcode development previews do not automatically become CI captures. Validate repeatability and intentional-diff detection on the pinned toolchain.
-3. For each retired test, record its visual replacement or behavioral assertion. Review proposed removals as coverage changes. Correct ineffective fixtures rather than silently dropping the risk they were meant to cover.
-4. Remove the pilot's baseline-hash and Point-Free image-parity dependency before deleting its composer PNGs. Keep capture identity, font registration, environment, dimensions, and image-integrity checks independently.
-5. Remove migrated legacy visual assertions and their PNGs together. Preserve nonvisual assertions in mixed suites. Update CI discovery and the `ios-test` aggregation contract in the same change so migrated/empty directories neither fail discovery nor produce a false green. Preserve UIKit-only behavioral tests and app build checks.
-6. Measure a shared native capture job versus package shards: one job can save repeated boot/build overhead; shards can shorten wall time at the cost of more runners. Choose from measured critical-path and runner-minute results. Keep changes to test execution separate from baseline approval.
-7. Once migrated, use Xcode previews and targeted local capture for iteration; CI owns the full visual comparison. A full local render is optional unless debugging rendering or changing capture infrastructure. Local unit, integration, and database tests remain required for code changes.
+The implemented pipeline uses five capture shards: native, Bible, Chat, Core, and Todo. The four package shards retain each scenario's renderer, size, traits, and behavioral assertions. Each job publishes a sealed manifest and images; the aggregate validates all expected names, dimensions, PNG decoding, hashes and current run identity before one upload. `ios-test` preserves the package aggregate contract and `native-previews` covers full validation/upload. Missing or failed shards cannot produce a partial green build.
+
+OIDC upload and Argos rejection→approval enforcement were verified in [PR #332](https://github.com/brianwang9100/Super/pull/332#issuecomment-5571855771). Every new migration still needs inspected output, current-revision review, and passing required checks. Removing Git PNGs does not grant approval to visual changes. Measure the new pipeline after CI runs; the historical table above does not predict its runtime savings.
+
+Use Xcode previews and targeted local capture for iteration; CI owns the full visual comparison on every PR. A full local capture is required when changing capture infrastructure or investigating cross-suite rendering. Local unit, integration, and database tests remain required for code changes. See [local commands](TESTING.md#simulator-environment).
 
 ## Generated files and historical Git storage
 
-Argos stores visual builds and compares them against a reference build; our tests still generate the images. See the [Argos any-framework guide](https://argos-ci.com/docs/quickstart/any-test-framework.md). Source fixtures and capture inventories remain in Git; generated output belongs in ignored `screenshots/`, which is already configured. Retain Point-Free PNGs while their tests or parity tooling use them. Do not ignore every `__Snapshots__/` folder: non-image snapshots remain useful and tracked.
+Argos stores visual builds and compares them against a reference build; our tests still generate the images. See the [Argos any-framework guide](https://argos-ci.com/docs/quickstart/any-test-framework.md). Source fixtures and capture inventories remain in Git; generated output belongs in ignored `screenshots/`, which is already configured. Do not record or commit new Point-Free image baselines; Point-Free remains a test-only image renderer. Do not ignore every `__Snapshots__/` folder: non-image snapshots remain useful and tracked.
 
 Deleting migrated PNGs in a normal commit stops future image churn but does not remove their previous versions. `.gitignore` does not change this. A read-only audit of all local refs found 5,031 historical PNG blobs under package snapshot paths: 823.39 MiB uncompressed and approximately 577.67 MiB in their current Git storage representation. The shared Git object store reports 1.30 GiB of packs plus 80.39 MiB of loose objects. These totals include other branches/worktrees, and delta/shared-object storage means the snapshot figure is not an exact reclaimable-size estimate or a measurement of GitHub's repository size.
 

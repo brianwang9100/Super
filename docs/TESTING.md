@@ -1,6 +1,6 @@
 # Testing
 
-Read this before adding tests, changing SwiftUI views, recording snapshots, or verifying on a simulator. These are Super's test requirements and fixture conventions.
+Read this before adding tests, changing SwiftUI views, capturing visual fixtures, or verifying on a simulator. These are Super's test requirements and fixture conventions.
 
 ## Required coverage
 
@@ -23,7 +23,7 @@ Before opening a PR, run `swift test` from **each affected package root**. This 
 - No `Task.yield()` polling or `Task.sleep` synchronization. Use `_waitFor…()` seams that await task completion, processed-event signals, or synchronous `_simulateEvent(_:)` seams. Drain all mutated state before assertions; drain parent tasks before the children they spawn.
 - When concurrent operations consume an order-sensitive script, await the first operation's entry signal before starting the next (`PermissionGate.waitUntilEntered()`, tool `awaitFirstCall()`).
 - Match strict doubles such as `FakeLLMProvider`: unexpected calls or exhausted scripts fail at the caller. Record main-actor callbacks synchronously in a `@MainActor` spy, not a spawned task.
-- Do not serialize logic suites to mask races. The snapshot recording exception is below. Reuse Core's `FixedClock`/`DeterministicIDGenerator`; do not create local copies.
+- Do not serialize logic suites to mask races. The visual capture serialization requirement is below. Reuse Core's `FixedClock`/`DeterministicIDGenerator`; do not create local copies.
 
 Package `AGENTS.md` files identify their local fixtures and drain seams.
 
@@ -32,26 +32,24 @@ Package `AGENTS.md` files identify their local fixtures and drain seams.
 - **New or changed SwiftUI view** → **cover the visual risk, not every view declaration.** Reuse an existing screen or component-gallery scenario when it visibly exercises the change. Add a screenshot only for a distinct layout, theme, reflow, or visual regression risk that existing coverage misses; behavior, data permutations, and state transitions belong in unit/integration tests. Follow [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
 - **Keep the visual matrix small.** Use Vellum light/dark for a representative primary layout; cover additional states in one theme unless they introduce a separate color/contrast risk. Add XXL, app font-scale extremes, Reduce Motion, and another form factor only where they exercise distinct behavior. Keep a representative reflow case for text-heavy surfaces, known visual regression cases, and each distinct applet-level iPhone/iPad/Mac layout. Do not multiply every state by every axis. All eight palettes belong in the existing package theme galleries, not every screen suite.
 - **Every new screenshot needs a reason.** In the PR's Test Coverage section, name the scenario, the defect it would catch, why an existing capture is insufficient, and the before/after screenshot count. Prefer a small readable component gallery over separate captures of every pill, icon, or toggle. Byte-identical baselines are audit candidates, not proof that their input cases are redundant; retain behavioral assertions and investigate ineffective fixtures before removing coverage.
-- **Argos migration is incremental.** The current native preview pilot coexists with Point-Free suites. Keep legacy tests and PNGs until their selected replacement captures pass, the Argos baseline is reviewed, and the required review gate is verified. Retire the paired legacy visual assertions and PNGs together; preserve behavioral tests and GRDB/text snapshots. Composer’s 21 scenarios now use the standalone Argos inventory; its legacy assertions and PNGs have been removed. The Settings stabilization tranche adds the four previously deferred captures (37→41 total) and retires their paired legacy assertions/PNGs (584→580 total; Settings 76→72). Dark exporting remains in the legacy suite. Two final captures are byte-identical across all 41 images; delayed-spinner and tall-viewport guards preserve the restored coverage. Standard 8-bit capture color intentionally changes the previous 37 baselines, so CI and Argos review remain delivery gates. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md). All four legacy package CI jobs remain required. Generated Argos screenshots stay ignored; fixture code and the expected capture inventory stay tracked. Only rerecord or approve intentional visual changes, never to make a check pass.
+- **Argos owns image baselines.** The complete inventory contains 622 images: 581 package fixtures and 41 native previews. Package fixtures retain their Point-Free image strategies through the test-only `VisualTestSupport` exporter; generated PNGs stay ignored. Do not record or commit local image baselines. GRDB/text snapshots and behavioral assertions remain independent. Approve only intentional visual changes in Argos, never simply to make a check pass.
 
-## Snapshot conventions
+## Visual fixture conventions
 
-Every UIKit view snapshot suite requires all three, even for glyph-only/system-font views:
+Every UIKit visual suite requires:
 
 1. `#if canImport(UIKit)` around the suite.
 2. `init { SnapshotFontRegistration.ensureRegistered() }` in the suite.
-3. `record: SnapshotEnvironment.isRecording ? .all : nil` in assertions.
+3. `import VisualTestSupport` and `verifyVisualSnapshot` with the existing image strategy and explicit stable name.
+4. A `.serialized` suite. The capture driver also disables parallel simulator testing and runs one suite at a time to isolate shared UIKit rendering state.
 
-Font registration in every suite makes rendering independent of suite order. Database schema snapshots render no views and are exempt.
+Font registration in every suite makes rendering independent of suite order. Database schema snapshots render no views and are exempt. Keep the existing size, traits, drawing method, font registration, and behavioral assertions when changing a fixture. The Point-Free dependency is a test-only renderer; Argos performs image comparison. Local recording flags and precision tolerances do not approve Argos changes.
 
-- Per-screen suites cover only `vellumLight`/`vellumDark`. `ThemeGallerySnapshotTests` covers the other theme families once per package; don't fan every screen out over `SuperTheme.Identifier.allCases`.
-- Snapshot serialization is module-consistent: Chat/Todo serialize to guard recording writes; Bible/Core do not. State the recording rationale in one comment, and document any local opt-out. Serialization does not replace font registration.
-- Re-record only intentional visual changes. For font-scale changes alone, the 1.0× render stays byte-identical; maximum-scale baselines change with the slider. The two exempt fixed brand marks remain identical across slider values.
-- The only sanctioned custom-font anti-aliasing tolerance is `precision: 0.99`, `perceptualPrecision: 0.97`, defined as a named constant with the reason. Never use it to conceal structural drift.
+Per-screen suites use Vellum light/dark for primary layouts. `ThemeGallerySnapshotTests` owns the other theme families; do not fan every screen out over `SuperTheme.Identifier.allCases`. Register any approved new capture in the tracked inventory. Parameterized visual states need distinct stable names; four existing Bible reader fixtures previously shared filenames between open and dismissed action states, and now retain both outputs. Missing, duplicate, unexpected, corrupt, or wrong-sized images fail capture validation.
 
 ## Simulator environment
 
-The source of truth is [ios-build.yml](../.github/workflows/ios-build.yml)'s Xcode selection and **Pick iOS simulator** step. Its current pins are Xcode **26.4.1**, iOS **26.4.1 / `23E254a`**, and **iPhone 17**. Match the exact Xcode build and runtime build before recording, not just the iOS minor version. Coordinate pin changes with CI and baselines; don't switch to a beta runner toolchain.
+The source of truth is [simulator-pins.json](../Scripts/VisualTesting/simulator-pins.json), shared by both capture drivers, the worktree simulator helper, and the local guard. Current pins are Xcode **26.4.1 / `17E202`**, XcodeGen **2.45.4**, iOS **26.4.1 / `23E254a`**, and **iPhone 17**. Match the exact toolchain and runtime builds. Coordinate pin changes with CI and Argos review.
 
 ```bash
 xcodebuild -version
@@ -59,9 +57,21 @@ xcrun simctl list runtimes iOS
 xcrun simctl runtime list
 ```
 
-Both `23E244` and `23E254a` report as iOS 26.4 and share the simulator runtime identifier. Keep only the CI build installed for that minor; otherwise `OS=26.4` can select the wrong renderer. The local [snapshot guard](../.codex/hooks/enforce-snapshot-sim.py) checks this against the workflow pins.
+Both `23E244` and `23E254a` report as iOS 26.4 and share the simulator runtime identifier. Keep only the pinned build installed for that minor. When the default Xcode differs, set `DEVELOPER_DIR='/Applications/Xcode 26.app/Contents/Developer'` to the installed pinned toolchain. The local [simulator guard](../.codex/hooks/enforce-snapshot-sim.py) checks concrete destinations against the shared pins.
 
-Use a dedicated **per-worktree** simulator for tests and manual verification, never a shared booted device. From the repository root:
+Use a dedicated **per-worktree** simulator for tests and manual verification, never a shared booted device. The capture drivers call `python3 Scripts/worktree_simulator.py ensure` and reuse its registered UUID. Local visual commands, from the repository root:
+
+```bash
+npm ci
+python3 -m pip install -r Scripts/VisualTesting/requirements.txt
+npm test                              # full 622-image capture and validation
+npm run test:visual:native             # native 41-image subset
+python3 Scripts/VisualTesting/capture.py Chat --output .build/chat-visual-capture
+```
+
+The package command requires a fresh output directory; substitute Bible/Core/Todo as needed. It builds once and runs the serialized visual suites individually. Bundles contain `images/` and `capture.json`; logs and result bundles live under `.build/VisualTesting/`. Normal view iteration can use targeted capture or Xcode previews; CI renders the complete inventory on every PR, including documentation changes. A full local render is required for capture-infrastructure changes and useful for diagnosing rendering; ordinary code changes still require the affected package's local unit/integration/database tests and relevant simulator coverage.
+
+For simulator logic tests or app verification:
 
 ```bash
 xcodegen generate
@@ -69,18 +79,17 @@ SIM_ID=$(python3 Scripts/worktree_simulator.py ensure)
 xcrun simctl boot "$SIM_ID"
 xcrun simctl bootstatus "$SIM_ID" -b
 xcodebuild test -scheme Chat \
-  -destination "platform=iOS Simulator,id=$SIM_ID"
+  -destination "platform=iOS Simulator,id=$SIM_ID" \
+  -parallel-testing-enabled NO
 ```
 
-`ensure` creates once and returns the same UUID on later runs; it does not boot the device. Skip `boot` when it is already booted. Substitute Core/Bible/Todo for the package under test. Package test schemes live in `Scripts/xcodegen-extras/` and are copied by `project.yml`'s post-generation command.
+`ensure` creates once and returns the same UUID on later runs; it does not boot the device. Skip `boot` when it is already booted. Package test schemes live in `Scripts/xcodegen-extras/` and are copied by `project.yml`'s post-generation command. Use the capture driver when exporting images; direct tests do not produce a complete validated Argos bundle.
 
-For intentional recording, prefix the test command with `TEST_RUNNER_SNAPSHOT_RECORD=1`. The `TEST_RUNNER_` prefix forwards the variable into the iOS test process.
-
-If the CI runtime is unavailable, document the exact mismatch and mitigation in the PR. Defer an affected variant with a stated reason, or use the sanctioned tolerance only for sub-pixel custom-font drift. Never bless structural differences as a new baseline.
+If the pinned environment is unavailable, report the exact mismatch and missing verification in the PR. Do not approve a different renderer's output as a substitute for the required capture.
 
 ## Worktree simulator lifecycle
 
-Associate a worktree on first use with [worktree_simulator.py](../Scripts/worktree_simulator.py) `ensure`. It reads CI's Xcode/device/runtime pins and records the simulator UUID, owner path, and Git identity under the common Git directory's `worktree-simulators/registry.json`. This state survives individual worktree deletion. Managed names start with `SuperWT-`; ownership comes from the registry, never a name-prefix guess. Existing unregistered simulators are left alone.
+Associate a worktree on first use with [worktree_simulator.py](../Scripts/worktree_simulator.py) `ensure`. It reads the shared Xcode/device/runtime pins and records the simulator UUID, owner path, and Git identity under the common Git directory's `worktree-simulators/registry.json`. This state survives individual worktree deletion. Managed names start with `SuperWT-`; ownership comes from the registry, never a name-prefix guess. Existing unregistered simulators are left alone.
 
 After `gh pr view <N> --json state` confirms `MERGED`, a clean worktree may be removed with `git worktree remove <path>` from a surviving checkout. Check for uncommitted/untracked work first; do not force removal. Retaining the worktree also retains its simulator. After removal, run from the surviving checkout:
 

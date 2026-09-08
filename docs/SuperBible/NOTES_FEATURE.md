@@ -222,13 +222,13 @@ its stacking contract (co-trailing), Core `ToolExecutor`/`LLMTool`/`ToolRegistra
   `@Query`-bound view.
 - **Tool:** `NoteBibleTool` with a mock `BibleNoteRepository` — each action + every soft-
   validation error path; registry registration through an in-memory `ToolRegistry`.
-- **UI snapshots** (ship with the views, per Bible AGENTS §Tests): `NoteGlyph` (filled +
-  outline), `VerseTrailers` co-trailing layout, `NoteCard` (user / assistant-provenance /
-  swipe), `NoteListSheet` (empty / one / many-scrolling), `NoteEditor` (create-empty /
-  edit-prefilled / delete-confirm) — across **light / dark / sepia × default Dynamic Type**,
-  plus **XXL** for `NoteCard` + `NoteListSheet`, plus reader/action-sheet/book-picker
-  integration snapshots in PR3. Record on the CI trio (Xcode 26.4.1 + iOS 26.4.1 (build `23E254a`) sim + iPhone 17)
-  via the `SNAPSHOT_RECORD` env approach. Coverage stays ≥70%.
+- **Visual captures:** reuse the existing note screen/gallery scenarios for glyph fill,
+  co-trailing layout, provenance, empty/populated/editor states, and reader/book-picker
+  integration. Add a capture only for a distinct uncovered layout or regression risk,
+  following [VISUAL_TESTING_POLICY.md](../VISUAL_TESTING_POLICY.md). Capture on the shared
+  pinned simulator with the Bible driver documented in [TESTING.md](../TESTING.md#simulator-environment).
+  Argos owns the image baseline; do not use local recording flags or commit PNGs.
+  Preserve behavioral assertions and the ≥70% coverage floor.
 
 ## 11. Milestones & PR bundling
 

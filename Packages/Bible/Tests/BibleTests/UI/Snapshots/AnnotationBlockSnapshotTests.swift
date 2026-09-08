@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Core
 import SnapshotTesting
+import VisualTestSupport
 import SwiftUI
 import Testing
 @testable import Bible
@@ -12,9 +13,10 @@ import Testing
 /// shared renderer's block chrome (headings, bold, bullets, blockquote,
 /// auto-linkified citation), and a Dynamic Type XXL pass because the
 /// summary prose reflows.
-@Suite("AnnotationBlock snapshots")
+@Suite("AnnotationBlock snapshots", .serialized)
 @MainActor
 struct AnnotationBlockSnapshotTests {
+    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
     /// EB Garamond chrome faces resolve instead of baking the system
     /// fallback, and so this suite stays order-independent (registration is
@@ -173,11 +175,10 @@ struct AnnotationBlockSnapshotTests {
         .superTheme(theme)
         .dynamicTypeSize(dynamicType)
 
-        let failure = verifySnapshot(
+        let failure = verifyVisualSnapshot(
             of: view,
             as: .image(layout: .fixed(width: 360, height: height)),
             named: name,
-            record: SnapshotEnvironment.isRecording ? .all : nil,
             testName: function
         )
         if let failure {
