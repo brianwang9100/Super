@@ -90,9 +90,11 @@ For a brand-new/empty chat the title renders as "New chat".
 
 ### 3.2 Message Area
 
-Messages render inline in a single vertical column, scrolled to the bottom on new content. There is **no chat-side metadata** (no avatars, no role labels, no per-message timestamps). Identity comes from the bubble shape and alignment alone.
+Messages render inline in a single vertical column. There is **no chat-side metadata** (no avatars, no role labels, no per-message timestamps). Identity comes from the bubble shape and alignment alone.
 
-Auto-scroll sticks to the bottom as tokens stream. If the user scrolls up, streaming keeps going but does not force-scroll.
+Sending positions the user's message at the top of the viewport. The response grows below it without automatically moving the viewport, including when the reader scrolls to the response's current bottom. Retry and Regenerate refocus the corresponding user message. Users scroll freely to read longer replies.
+
+The focused turn reserves at least one viewport of space, including after a short response finishes, so completion does not pull the user message downward. The next send transfers that space to the new turn. Opening existing history starts at its latest content. Stopped or failed partial replies remain visible in memory until another turn or reload; they show no working spinner and are not saved as completed messages.
 
 ### 3.3 Composer
 

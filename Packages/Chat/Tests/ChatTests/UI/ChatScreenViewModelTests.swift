@@ -189,6 +189,98 @@ struct ChatScreenViewModelTests {
         )
     }
 
+    @Test("saved response stays live while its replacement loads")
+    func responseHandoffKeepsTailUntilProjection() async {
+        let user = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Question", createdAt: Date())
+        let answer = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Visible response. ", createdAt: Date())
+        let messages = StubMessageRepository(initial: [user, answer])
+        await messages.suspendNextFetch()
+        let vm = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test",
+            driver: ScriptedDriver(events: [.textDelta(answer.content), .assistantMessageSaved(answer)]),
+            messageRepository: messages, toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(), availableModels: [SelectableModel(model)]
+        )
+        vm._setSnapshotState(items: [.userBubble(id: "u1", text: "Question", references: [])])
+        vm.send("Question")
+        await messages.waitForSuspendedFetch()
+        #expect(vm.streamingTail?.text == answer.content)
+        #expect(vm.items.map(\.id) == ["u1"])
+        await messages.resumeFetch()
+        await vm._waitForPendingStreamTask()
+        #expect(vm.items.map(\.id) == ["u1", "a1"])
+        #expect(vm.streamingTail == nil)
+        #expect(vm.interruptedResponse == nil)
+    }
+
+    @Test("failed assistant reload still hands off before the next response round")
+    func failedAssistantReloadDoesNotDuplicateTail() async {
+        let user = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Question", createdAt: Date())
+        let answer = MessageRecord(id: "a1", conversationId: conversationId, role: .assistant, content: "Saved response. ", createdAt: Date())
+        let messages = StubMessageRepository(initial: [user, answer])
+        await messages.failNextFetch()
+        let vm = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test",
+            driver: ScriptedDriver(events: [
+                .textDelta(answer.content), .assistantMessageSaved(answer),
+                .textDelta("Next round."), .error(.cancelled)
+            ]),
+            messageRepository: messages, toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(), availableModels: [SelectableModel(model)]
+        )
+        vm._setSnapshotState(items: [.userBubble(id: "u1", text: "Question", references: [])])
+        vm.send("Question")
+        await vm._waitForPendingStreamTask()
+        #expect(vm.items.map(\.id) == ["u1", "a1"])
+        #expect(vm.interruptedResponse?.text == "Next round.")
+    }
+
+    @Test("failed initial projection defers turn focus until the row is available")
+    func failedProjectionDefersFocus() async {
+        let user = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Question", createdAt: Date())
+        let messages = StubMessageRepository(initial: [user])
+        await messages.failNextFetch()
+        let vm = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test",
+            driver: ScriptedDriver(events: [.userMessageSaved(user)]),
+            messageRepository: messages, toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(), availableModels: [SelectableModel(model)]
+        )
+        vm.send("Question")
+        await vm._waitForPendingStreamTask()
+        #expect(vm.items.map(\.id) == ["u1"])
+        #expect(vm.scrollRequest == .init(messageID: "u1", sequence: 1))
+    }
+
+    @Test("interrupted output remains in memory until retry", arguments: [false, true])
+    func interruptedResponseIsRetained(cancelled: Bool) async {
+        let clock = FixedClock(Date(timeIntervalSince1970: 1_000))
+        let user = MessageRecord(id: "u1", conversationId: conversationId, role: .user, content: "Question", createdAt: Date())
+        let messages = StubMessageRepository(initial: [user])
+        let vm = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test",
+            driver: ScriptedDriver(events: [
+                .userMessageSaved(user), .thinkingDelta("Reasoning."), .textDelta("Partial reply."),
+                .error(cancelled ? .cancelled : .unauthorized)
+            ]),
+            messageRepository: messages, toolCallRepository: StubToolCallRepository(),
+            checkpointRepository: StubCheckpointRepository(), availableModels: [SelectableModel(model)], clock: clock
+        )
+        vm.send("Question")
+        await vm._waitForPendingStreamTask()
+        #expect(vm.streamingTail == nil)
+        #expect(!vm.isStreaming)
+        #expect(vm.interruptedResponse?.text == "Partial reply.")
+        #expect(vm.interruptedResponse?.thinking == "Reasoning.")
+        #expect(vm.interruptedResponse?.thinkingDurationMs == 0)
+        #expect(vm.items.map(\.id) == ["u1"])
+        #expect(vm.scrollRequest == .init(messageID: "u1", sequence: 1))
+        vm.retry()
+        #expect(vm.interruptedResponse == nil)
+        #expect(vm.scrollRequest == .init(messageID: "u1", sequence: 2))
+        await vm._waitForPendingStreamTask()
+    }
+
     @Test("send accumulates streaming text into the tail until completion")
     func streamingTextAccumulatesThenClears() async throws {
         let driver = ScriptedDriver(events: [
@@ -224,6 +316,8 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.isStreaming == false)
         #expect(viewModel.streamingTail == nil)
         #expect(viewModel.items.count == 2)
+        #expect(viewModel.scrollRequest == .init(messageID: "u1", sequence: 1))
+        #expect(viewModel.interruptedResponse == nil)
         #expect(viewModel.error == nil)
     }
 
@@ -288,6 +382,7 @@ struct ChatScreenViewModelTests {
         await driver.waitForRetry()
         await viewModel._waitForPendingStreamTask()
 
+        #expect(viewModel.scrollRequest == .init(messageID: "u1", sequence: 1))
         #expect(await driver.retryInvocations == 1)
         #expect(await driver.sendInvocationCount == 0)
         #expect(viewModel.error == nil)
@@ -462,6 +557,7 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.composerText == "hi")
         #expect(viewModel.error?.kind == .noModelConfigured)
         #expect(viewModel.error?.message == "Add a model to send messages.")
+        #expect(viewModel.scrollRequest == nil)
         #expect(viewModel.error?.actionLabel == "Add model")
         #expect(viewModel.items.isEmpty)
     }
@@ -1785,6 +1881,7 @@ struct ChatScreenViewModelTests {
         #expect(viewModel.pendingRegenerationTargetID == nil)
         // Drove the retry path — not a second `send`, which would
         // duplicate the user message.
+        #expect(viewModel.scrollRequest == .init(messageID: "u1", sequence: 1))
         #expect(await driver.retryInvocations == 1)
         #expect(await driver.sendInvocationCount == 0)
     }
@@ -2403,6 +2500,21 @@ private actor StubMessageRepository: MessageRepository {
     /// regenerate error-surfacing test to drive the catch branch in
     /// `performRegeneration` without a real DB failure.
     private var deleteError: Error?
+    private var shouldSuspendFetch = false
+    private var shouldFailFetch = false
+    private var fetchContinuation: CheckedContinuation<Void, Never>?
+    private var fetchWaiter: CheckedContinuation<Void, Never>?
+
+    func failNextFetch() { shouldFailFetch = true }
+    func suspendNextFetch() { shouldSuspendFetch = true }
+    func waitForSuspendedFetch() async {
+        if fetchContinuation != nil { return }
+        await withCheckedContinuation { fetchWaiter = $0 }
+    }
+    func resumeFetch() {
+        fetchContinuation?.resume()
+        fetchContinuation = nil
+    }
 
     init(initial: [MessageRecord] = []) {
         self.rows = initial
@@ -2417,7 +2529,19 @@ private actor StubMessageRepository: MessageRepository {
     }
 
     func fetchAll(conversationId: String) async throws -> [MessageRecord] {
-        rows.filter { $0.conversationId == conversationId }
+        if shouldFailFetch {
+            shouldFailFetch = false
+            throw LLMError.unauthorized
+        }
+        if shouldSuspendFetch {
+            shouldSuspendFetch = false
+            await withCheckedContinuation { continuation in
+                fetchContinuation = continuation
+                fetchWaiter?.resume()
+                fetchWaiter = nil
+            }
+        }
+        return rows.filter { $0.conversationId == conversationId }
     }
 
     func fetch(id: String) async throws -> MessageRecord? {

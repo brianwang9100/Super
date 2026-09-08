@@ -10,6 +10,8 @@ import SwiftUI
 struct StreamingTail: View {
     let tail: MessageList.StreamingState
     let verbosity: ChatVerbosity
+    var isActive = true
+    var thinkingExpansion: Binding<Bool>?
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.chatAppearance) private var appearance
@@ -21,12 +23,12 @@ struct StreamingTail: View {
     /// isn't done yet). Suppressed during compaction so we don't double
     /// up with the "Compacting…" row's own progress indicator.
     private var showsWaitingSpark: Bool {
-        !tail.isCompacting
+        isActive && !tail.isCompacting
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if tail.isCompacting {
+            if isActive && tail.isCompacting {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.mini)
                     Text("Compacting…")
@@ -38,8 +40,11 @@ struct StreamingTail: View {
             if !tail.thinking.isEmpty {
                 ThinkingBlock(
                     text: tail.thinking,
-                    durationSource: .live(startedAt: tail.thinkingStartedAt ?? Date()),
-                    verbosity: verbosity
+                    durationSource: isActive
+                        ? .live(startedAt: tail.thinkingStartedAt ?? Date())
+                        : .finished(durationMs: tail.thinkingDurationMs),
+                    verbosity: verbosity,
+                    expansion: thinkingExpansion
                 )
             }
             if !tail.text.isEmpty {

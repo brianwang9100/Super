@@ -619,6 +619,27 @@ struct MessageListSnapshotTests {
         verifyLongTranscript(theme: .vellumLight, name: "list_long_transcript_anchored_bottom")
     }
 
+    /// New visual risk: a sent question stays at the top with reserved space
+    /// below a short answer. Existing snapshots only cover opening history.
+    @Test("focused turn keeps its question at the top after a short answer")
+    func focusedTurn() {
+        let transcript = Self.longTranscriptItems + [
+            .userBubble(id: "focused-question", text: "What does it mean to love your neighbor?", references: []),
+            .assistantText(
+                id: "focused-answer", thinking: nil, thinkingDurationMs: nil,
+                text: "It means treating another person's good as something worth your care.",
+                toolCalls: [], sources: [], searchSuggestionsHTML: nil, searchSystem: nil, searchQuery: nil
+            )
+        ]
+        let view = MessageList(
+            items: transcript,
+            scrollRequest: .init(messageID: "focused-question", sequence: 1)
+        )
+        .superTheme(.make(.vellumLight))
+        .frame(width: 402, height: 700)
+        recordOrCompare(view: view, name: "focused_turn_short_answer")
+    }
+
     @Test("freshly mounted long transcript anchors at bottom (dark)")
     func freshlyMountedLongTranscriptDark() {
         verifyLongTranscript(theme: .vellumDark, name: "list_long_transcript_anchored_bottom_dark")
