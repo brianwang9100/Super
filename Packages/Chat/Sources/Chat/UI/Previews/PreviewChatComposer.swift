@@ -32,6 +32,7 @@ struct PreviewChatComposer: View {
             onSubmit: { _ in },
             isRecording: isRecording,
             isMicAvailable: isMicAvailable,
+            onMinimize: {},
             progress: progress,
             references: references
         )

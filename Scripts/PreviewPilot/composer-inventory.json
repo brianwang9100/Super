@@ -4,11 +4,11 @@
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light_xxl.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -31,18 +31,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_empty_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_dark.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -65,18 +66,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_empty_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_empty_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -99,18 +101,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -133,18 +136,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_dark.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -167,18 +171,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_font_scale_max_light_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_font_scale_max_light_xxl.png",
     "pixels": [
       1206,
-      352
+      376
     ],
     "points": [
       402,
-      117.33333333333333
+      125.33333333333333
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -201,18 +206,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_mic_unavailable_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_mic_unavailable_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -235,18 +241,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_mid_morph_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_mid_morph_light.png",
     "pixels": [
       1206,
-      230
+      228
     ],
     "points": [
       402,
-      76.66666666666667
+      76.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -269,18 +276,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pills_multiple_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pills_multiple_light.png",
     "pixels": [
       1206,
-      433
+      457
     ],
     "points": [
       402,
-      144.33333333333334
+      152.33333333333334
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -312,18 +320,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_near_max_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_near_max_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -346,18 +355,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_dark.png",
     "pixels": [
       1206,
-      433
+      457
     ],
     "points": [
       402,
-      144.33333333333334
+      152.33333333333334
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -385,18 +395,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light.png",
     "pixels": [
       1206,
-      433
+      457
     ],
     "points": [
       402,
-      144.33333333333334
+      152.33333333333334
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -424,18 +435,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_reference_pill_light_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_reference_pill_light_xxl.png",
     "pixels": [
       1206,
-      447
+      471
     ],
     "points": [
       402,
-      149.0
+      157.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -463,7 +475,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_pill_dark",
@@ -497,7 +510,8 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_pill_light",
@@ -531,18 +545,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_dark",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_dark.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumDark",
@@ -577,18 +592,19 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -623,18 +639,19 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_reduce_motion",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_reduce_motion.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -669,18 +686,19 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": true
+    "previewReduceMotion": true,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_recording_xxl",
     "image": "Chat_ChatComposerPreviews.swift_composer_recording_xxl.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -715,18 +733,19 @@
       "legacyCapturePhase": "not explicitly pinned",
       "previewFixedProgress": 0
     },
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_streaming_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_streaming_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -749,18 +768,19 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   },
   {
     "preview": "composer_typed_light",
     "image": "Chat_ChatComposerPreviews.swift_composer_typed_light.png",
     "pixels": [
       1206,
-      342
+      366
     ],
     "points": [
       402,
-      114.0
+      122.0
     ],
     "scale": 3,
     "theme": "vellumLight",
@@ -783,6 +803,7 @@
       }
     ],
     "selectedModelId": "gpt-4o",
-    "previewReduceMotion": false
+    "previewReduceMotion": false,
+    "hasMinimizeAction": true
   }
 ]

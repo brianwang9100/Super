@@ -39,6 +39,9 @@ public struct ChatScreen: View {
     /// mirrors the prior `MinimizedChatPill.onTap`.
     public let onSurfaceTapped: (() -> Void)?
 
+    /// Requests the minimized presentation from the overlay host.
+    public let onMinimize: (() -> Void)?
+
     /// Forwarded to the embedded `ChatDragHandle` *and* to the pill-mode
     /// body-drag overlay. Fires on every drag-changed tick with the live
     /// translation so the overlay can update its chat-surface height in
@@ -85,6 +88,7 @@ public struct ChatScreen: View {
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
         onSurfaceTapped: (() -> Void)? = nil,
+        onMinimize: (() -> Void)? = nil,
         onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
         onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         dragResetToken: Int = 0
@@ -95,6 +99,7 @@ public struct ChatScreen: View {
         self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onSurfaceTapped = onSurfaceTapped
+        self.onMinimize = onMinimize
         self.onDragChanged = onDragChanged
         self.onDragEnded = onDragEnded
         self.dragResetToken = dragResetToken
@@ -567,6 +572,12 @@ public struct ChatScreen: View {
             isRecording: viewModel.voice.state == .listening,
             isMicAvailable: viewModel.voice.state != .unavailable,
             onStopRecording: viewModel.handleStopRecording,
+            onMinimize: onMinimize.map { action in
+                {
+                    dismissKeyboard()
+                    action()
+                }
+            },
             progress: progress,
             references: viewModel.pendingReferences.map {
                 VerseReferencePillModel(id: $0.id, label: $0.displayLabel)

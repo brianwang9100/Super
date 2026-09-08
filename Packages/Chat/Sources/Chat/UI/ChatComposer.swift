@@ -28,8 +28,8 @@ extension EnvironmentValues {
 ///   stream) and stays on this row at every progress so the pill keeps
 ///   its right-side affordance.
 /// - A footer row below the editor — `ChatComposerFooter` (model pill +
-///   context meter) — whose opacity and height interpolate with
-///   `progress` so the row collapses smoothly to zero in pill mode.
+///   context meter) and an optional minimize bar — whose opacity and height
+///   interpolate with `progress` so the row collapses smoothly to zero in pill mode.
 ///
 /// Behavior:
 /// - Return inserts a newline; submission is driven by the trailing
@@ -67,6 +67,8 @@ public struct ChatComposer: View {
     public let onMicTap: () -> Void
     public let onStopRecording: () -> Void
     public let onCancelStreaming: () -> Void
+    /// Collapses the chat through its host. Omit when the composer has no overlay host.
+    public let onMinimize: (() -> Void)?
     /// `0` renders the composer as the minimized pill ("Chat with Super"
     /// label + mic, no footer); `1` renders the full composer (multi-line
     /// editor, footer with model selector + context meter, send/mic
@@ -97,6 +99,7 @@ public struct ChatComposer: View {
         isRecording: Bool = false,
         isMicAvailable: Bool = true,
         onStopRecording: @escaping () -> Void = {},
+        onMinimize: (() -> Void)? = nil,
         progress: Double = 1,
         references: [VerseReferencePillModel] = [],
         onRemoveReference: @escaping (String) -> Void = { _ in }
@@ -116,6 +119,7 @@ public struct ChatComposer: View {
         self.onMicTap = onMicTap
         self.onStopRecording = onStopRecording
         self.onCancelStreaming = onCancelStreaming
+        self.onMinimize = onMinimize
         self.progress = progress
         self.references = references
         self.onRemoveReference = onRemoveReference
@@ -197,15 +201,13 @@ public struct ChatComposer: View {
         Self.smoothstep(progress, from: 0.15, to: 0.45)
     }
 
-    /// Footer row height interpolates from 0 to its intrinsic height so
-    /// the row collapses cleanly without leaving an empty slot at low
-    /// progress. The intrinsic height tracks the trailing button's
-    /// 34pt anchor for the editor row (footer items render slightly
-    /// shorter); pinning to 34pt gives ample room for both the
-    /// `ModelPill` and the `ContextMeter` per the `chat-view.jsx`
-    /// reference.
+    /// Collapse the metadata and optional minimize target together so the
+    /// extra control leaves no height or spacing behind in pill mode.
+    /// The compact metadata slot halves the gap above the minimize bar.
+    /// Its 36pt touch region extends through the 4pt capsule bottom padding
+    /// and 14pt outer gutter while occupying an 18pt layout slot.
     private var footerHeight: CGFloat {
-        CGFloat(footerOpacity) * 34
+        CGFloat(footerOpacity) * (onMinimize == nil ? 34 : 46)
     }
 
     /// Disables the text editor below the threshold so a tap or drag on
@@ -224,7 +226,8 @@ public struct ChatComposer: View {
 
     /// Capsule padding interpolates between the prior `MinimizedChatPill`
     /// values (18 horizontal / 12 vertical) and the full composer's
-    /// values (16 leading / 10 trailing, 10 top / 8 bottom).
+    /// values (16 leading / 10 trailing, 10 top / 8 bottom, or 4 bottom
+    /// when the minimize bar is present).
     private var capsuleLeadingPadding: CGFloat {
         Self.lerp(progress, 18, 16)
     }
@@ -235,7 +238,7 @@ public struct ChatComposer: View {
         Self.lerp(progress, 12, 10)
     }
     private var capsuleBottomPadding: CGFloat {
-        Self.lerp(progress, 12, 8)
+        Self.lerp(progress, 12, onMinimize == nil ? 8 : 4)
     }
 
     /// Outer padding around the capsule: in pill mode the chat-surface
@@ -378,14 +381,18 @@ public struct ChatComposer: View {
 
     @ViewBuilder
     private var footerRow: some View {
-        ChatComposerFooter(
-            modelOptions: modelOptions,
-            selectedModelId: selectedModelId,
-            onSelectModel: onSelectModel,
-            onManageModels: onManageModels,
-            usedTokens: usedTokens,
-            maxTokens: maxTokens
-        )
+        VStack(spacing: 0) {
+            ChatComposerFooter(
+                modelOptions: modelOptions,
+                selectedModelId: selectedModelId,
+                onSelectModel: onSelectModel,
+                onManageModels: onManageModels,
+                usedTokens: usedTokens,
+                maxTokens: maxTokens
+            )
+            .frame(height: onMinimize == nil ? 34 : 28, alignment: .top)
+            minimizeButton
+        }
         .frame(height: footerHeight, alignment: .top)
         .opacity(footerOpacity)
         // Clip the slot so the partially-faded footer doesn't bleed
@@ -394,6 +401,32 @@ public struct ChatComposer: View {
         // Stops VoiceOver/Switch Control from focusing the dropdown when
         // it's visually collapsed in pill mode.
         .allowsHitTesting(footerOpacity > 0.05)
+        .accessibilityHidden(footerOpacity <= 0.05)
+    }
+
+    /// Use the model selector's non-interactive glass treatment in the same
+    /// footer surface, avoiding a separately elevated glass layer.
+    @ViewBuilder
+    private var minimizeButton: some View {
+        if let onMinimize, footerOpacity > 0.05 {
+            Button(action: onMinimize) {
+                Color.clear
+                    .frame(height: 6)
+                    .superGlassButton(in: Capsule(), interactive: false)
+                    .padding(.top, 3)
+                    .frame(height: 36, alignment: .top)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GlassHapticButtonStyle(.selection))
+            .frame(height: 18, alignment: .top)
+            // Match ContextMeter's trailing inset after its text.
+            .padding(.trailing, 4)
+            .accessibilityLabel("Minimize chat")
+            .accessibilityHint("Collapse chat and return to the app underneath")
+            .accessibilityIdentifier("chat.composer.minimize")
+            .allowsHitTesting(footerOpacity > 0.95)
+            .accessibilityHidden(footerOpacity <= 0.95)
+        }
     }
 
     @ViewBuilder

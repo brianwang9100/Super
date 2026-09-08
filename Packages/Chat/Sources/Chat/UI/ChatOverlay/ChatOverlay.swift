@@ -230,6 +230,7 @@ public struct ChatOverlay: View {
             composerIsFocused: externalComposerIsFocused,
             onManageModels: onManageModels,
             onSurfaceTapped: { surfaceTapped() },
+            onMinimize: { minimize() },
             onDragChanged: { translation in
                 updateDrag(
                     translation: translation,
@@ -348,6 +349,13 @@ public struct ChatOverlay: View {
         dragTopEdge = nil
         dragStartTopEdge = nil
         dragResetToken &+= 1
+    }
+
+    private func minimize() {
+        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+            resetDragState()
+            settledState = .minimized
+        }
     }
 
     private func surfaceTapped() {

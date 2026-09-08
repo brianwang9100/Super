@@ -68,6 +68,7 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
     │   │                      (Chat/UI/ChatComposerFooter.swift)
     │   ├── ModelPill          — current model dropdown   (Chat/UI/ModelPill.swift)
     │   └── ContextMeter       — token usage progress     (Chat/UI/ContextMeter.swift)
+    ├── minimizeButton      ⟵ 6pt glass bar below metadata, when hosted in an overlay
     └── trailingButton      ⟵ 34pt circle, four mutually-exclusive states:
                                 · mic           (empty composer, mic available)
                                 · mic.slash     (empty composer, mic unavailable)
@@ -76,6 +77,8 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
 ```
 
 The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `WaitingSpark`, `TypingCaret`, `MessageActionButton`) each live in their own file under `Chat/UI/Messages/`.
+
+The composer's optional `onMinimize` action is supplied by `ChatOverlay` through `ChatScreen`. Its bar matches the model selector's glass, spans from the selector's leading edge to the context label's trailing edge, and fades/collapses with the footer. Tapping it clears keyboard focus and animates the overlay to `.minimized`, preserving the draft and in-flight work. Hosts without the action retain the original footer layout.
 
 `MessageList` groups rows into stable user-message-keyed turn containers. An explicit `ScrollRequest` from send/retry/regenerate positions that turn at the top and gives it a viewport-sized minimum height. Streaming and persistence updates never issue scroll commands. `TranscriptObserver` forwards that request and any in-memory interrupted response; `MessageList+Content.swift` owns the public presentation data types.
 
