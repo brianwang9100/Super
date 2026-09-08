@@ -132,6 +132,9 @@ public actor NarrationAudioCache: NarrationAudioCaching {
     }
 
     public func save(_ audio: Data, for key: String) async throws {
+        // Stop/Clear may run while this actor call is queued. Admission must
+        // reject cancelled downloads before any synchronous filesystem mutation.
+        try Task.checkCancellation()
         guard audio.count <= limit else { return }
         let name = Self.fileName(for: key)
         let previousSize = entries[name]?.byteCount ?? 0

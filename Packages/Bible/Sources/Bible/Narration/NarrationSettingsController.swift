@@ -154,10 +154,12 @@ public final class NarrationSettingsController {
         credential: ProviderAudioCredential,
         enabled: Bool,
         useThisKey: Bool,
-        expecting revision: Int
+        expecting revision: Int,
+        prefetchVerseCount: Int? = nil
     ) async throws {
         guard revision == record.revision else { throw NarrationSettingsError.staleDraft }
         var next = record
+        if let prefetchVerseCount { next.prefetchVerseCount = min(10, max(0, prefetchVerseCount)) }
         if useThisKey || source == nil {
             next.sourceId = credential.id
             next.sourceName = credential.name
@@ -196,7 +198,7 @@ public final class NarrationSettingsController {
         await cleanRetiredKeys()
     }
 
-    public func saveDedicatedKey(_ key: String, enabled: Bool, expecting revision: Int) async throws {
+    public func saveDedicatedKey(_ key: String, enabled: Bool, expecting revision: Int, prefetchVerseCount: Int? = nil) async throws {
         guard !isSaving, revision == record.revision else { throw NarrationSettingsError.staleDraft }
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw NarrationSettingsError.missingCredential }
@@ -213,6 +215,7 @@ public final class NarrationSettingsController {
             throw NarrationSettingsError.secureStorage
         }
         var next = record
+        if let prefetchVerseCount { next.prefetchVerseCount = min(10, max(0, prefetchVerseCount)) }
         if record.ownsKey, let old = record.keyRef { next.retiredKeyRefs.append(old) }
         next.sourceId = ref
         next.sourceName = "Narration-only OpenAI key"
@@ -230,11 +233,13 @@ public final class NarrationSettingsController {
         await cleanRetiredKeysWhileSaving()
     }
 
-    public func setEnabled(_ enabled: Bool) async throws {
+    public func setEnabled(_ enabled: Bool, prefetchVerseCount: Int? = nil) async throws {
         guard !enabled || hasKey else { throw NarrationSettingsError.missingCredential }
         var next = record
+        if let prefetchVerseCount { next.prefetchVerseCount = min(10, max(0, prefetchVerseCount)) }
         next.enabled = enabled
         if enabled, record.preferredVoiceId == nil { next.preferredVoiceId = NarrationVoice.marin.id }
+        guard next != record else { return }
         try await persist(next, expecting: record.revision, invalidate: true)
     }
 

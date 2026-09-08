@@ -200,7 +200,8 @@ public struct BibleApplet: MiniApplet {
         let settings = NarrationSettingsController(
             repository: GRDBNarrationSettingsRepository(database: database), keychain: keychain, listSources: listSources
         )
-        let cloud = OpenAINarrationService(generator: generator, player: NarrationAudioPlayer(), cache: cache) {
+        let cloud = OpenAINarrationService(generator: generator, player: NarrationAudioPlayer(), cache: cache,
+                                           prefetchVerseCount: { settings.record.prefetchVerseCount }) {
             try await settings.apiKey()
         }
         let controller = NarrationController(

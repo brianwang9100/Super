@@ -12,6 +12,7 @@ struct OpenAINarrationSetupSheet: View {
     @FocusState private var keyFieldFocused: Bool
     @State private var sourceId: String
     @State private var revision: Int
+    @State private var prefetchVerseCount: Int
     @State private var saving = false
     @State private var showsClearConfirmation = false
     @State private var message: String?
@@ -22,6 +23,7 @@ struct OpenAINarrationSetupSheet: View {
         _keyDraft = State(initialValue: NarrationKeyDraft(hasSavedKey: settings.hasKey && settings.record.ownsKey))
         _sourceId = State(initialValue: settings.source?.id ?? "")
         _revision = State(initialValue: settings.record.revision)
+        _prefetchVerseCount = State(initialValue: settings.record.prefetchVerseCount)
     }
 
     var body: some View {
@@ -36,6 +38,7 @@ struct OpenAINarrationSetupSheet: View {
                             .font(typography.font(.body)).foregroundStyle(theme.inkSoft)
                     }
                     credentialFields
+                    prefetchSettings
                     billingDisclosure
                     if let message = settings.errorMessage ?? message {
                         Text(message).font(typography.font(.footnote)).foregroundStyle(theme.errorAccent)
@@ -129,6 +132,30 @@ struct OpenAINarrationSetupSheet: View {
         .background(theme.backgroundRaised, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    private var prefetchSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Verses to prefetch").font(typography.font(.body))
+                Spacer()
+                Picker("Verses to prefetch", selection: $prefetchVerseCount) {
+                    ForEach(0...10, id: \.self) { count in
+                        Text(count == 0 ? "0 (Off)" : "\(count)")
+                            .font(typography.font(.body)).tag(count)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .font(typography.font(.body))
+                .accessibilityLabel("Verses to prefetch")
+            }
+            Text("Prepare upcoming verses while narration plays. Choose 0 to turn prefetching off. More verses use more API credits, even if you skip them. Downloaded audio is reused for replay.")
+                .font(typography.font(.footnote))
+                .foregroundStyle(theme.inkSoft)
+        }
+        .padding(18)
+        .background(theme.backgroundRaised, in: RoundedRectangle(cornerRadius: 14))
+    }
+
     private var billingDisclosure: some View {
         VStack(alignment: .leading, spacing: 14) {
             disclosure("Billed by OpenAI", detail: "Audio generation uses your API account's balance. A ChatGPT subscription does not include API usage.")
@@ -189,11 +216,13 @@ struct OpenAINarrationSetupSheet: View {
             do {
                 guard revision == settings.record.revision else { throw NarrationSettingsError.staleDraft }
                 if !keyDraft.replacement.isEmpty {
-                    try await settings.saveDedicatedKey(keyDraft.replacement, enabled: true, expecting: revision)
+                    try await settings.saveDedicatedKey(keyDraft.replacement, enabled: true, expecting: revision,
+                                                        prefetchVerseCount: prefetchVerseCount)
                 } else if let source = settings.sources.first(where: { $0.id == selectedSourceId }) {
-                    try await settings.configure(credential: source, enabled: true, useThisKey: true, expecting: revision)
+                    try await settings.configure(credential: source, enabled: true, useThisKey: true, expecting: revision,
+                                                 prefetchVerseCount: prefetchVerseCount)
                 } else {
-                    try await settings.setEnabled(true)
+                    try await settings.setEnabled(true, prefetchVerseCount: prefetchVerseCount)
                 }
                 keyDraft.clear()
                 sourceId = settings.source?.id ?? ""

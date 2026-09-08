@@ -89,8 +89,16 @@ struct NarrationSettingsPane: View {
                         .background(theme.accentSoft, in: RoundedRectangle(cornerRadius: 10))
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(title).font(typography.font(.subheadline, weight: .medium))
-                            .foregroundStyle(theme.ink)
+                        HStack(spacing: 6) {
+                            Text(title).font(typography.font(.subheadline, weight: .medium))
+                                .foregroundStyle(theme.ink)
+                            if configured == true {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(typography.font(.caption))
+                                    .foregroundStyle(Color.green)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                         Text(subtitle).font(typography.font(.caption))
                             .foregroundStyle(theme.inkFaint)
                             .fixedSize(horizontal: false, vertical: true)
@@ -101,18 +109,19 @@ struct NarrationSettingsPane: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
+            .accessibilityValue(configured == true ? "Configured" : "")
             .accessibilityHint(configured == true ? "Manage connection" : "Set up connection")
 
-            if configured == false {
-                Button("Set up") { setup = connection }
+            if let configured {
+                Button(configured ? "Edit..." : "Set up") { setup = connection }
                     .font(typography.font(.subheadline, weight: .medium))
                     .foregroundStyle(Color.blue)
                     .frame(minHeight: 44)
                     .fixedSize(horizontal: true, vertical: false)
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Set up \(title)")
+                    .accessibilityLabel("\(configured ? "Edit" : "Set up") \(title)")
             } else {
-                Text(configured == true ? "Configured" : "Checking…")
+                Text("Checking…")
                     .font(typography.font(.caption))
                     .foregroundStyle(theme.inkFaint)
                     .fixedSize(horizontal: true, vertical: false)

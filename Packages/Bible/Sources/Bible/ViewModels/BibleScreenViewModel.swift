@@ -58,10 +58,8 @@ public final class BibleScreenViewModel {
     /// sheet all observe the same `currentVerseNumber`.
     public private(set) var narration: NarrationController
 
-    /// Whether the ``NarrationTransportSheet`` is on screen. The sheet
-    /// can be dismissed without stopping narration — the nav-bar
-    /// "Narrating" pill replaces the spark button so the user can
-    /// re-present it.
+    /// Whether narration controls are on screen. Dismiss through
+    /// ``dismissNarrationSheet()`` to stop playback and downloads together.
     public var isNarrationSheetPresented = false
 
     /// The annotation target whose sheet is currently presented, or `nil`
@@ -509,7 +507,7 @@ public final class BibleScreenViewModel {
     }
 
     /// Reopen actions from the selection pill without changing the verses.
-    /// Replaces narration controls, if open, while playback continues.
+    /// Replaces narration controls and stops their playback and downloads.
     public func presentActionSheet() {
         guard !selectedVerses.isEmpty else { return }
         dismissNarrationSheet()
@@ -1410,15 +1408,14 @@ public final class BibleScreenViewModel {
         narration = controller
     }
 
-    /// Re-present the transport sheet — wired to the nav-bar pill the
-    /// user taps after dismissing the sheet without stopping narration.
+    /// Present the narration controls from the reader's nav bar.
     public func presentNarrationSheet() {
         isNarrationSheetPresented = true
     }
 
-    /// Dismiss the transport sheet without stopping narration — the
-    /// nav-bar pill remains visible so the user can re-open it.
+    /// Closing narration also cancels playback and speculative downloads.
     public func dismissNarrationSheet() {
+        narration.stop()
         isNarrationSheetPresented = false
     }
 

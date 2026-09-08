@@ -447,8 +447,8 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.selectedVerses == [9])
     }
 
-    @Test("the selection pill replaces narration controls without stopping playback")
-    func presentingActionSheetKeepsNarrationPlaying() async {
+    @Test("the selection pill dismisses narration and stops playback")
+    func presentingActionSheetStopsNarration() async {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
@@ -464,8 +464,8 @@ struct BibleScreenViewModelTests {
         #expect(viewModel.isActionSheetPresented)
         #expect(!viewModel.isNarrationSheetPresented)
         #expect(viewModel.selectedVerses == [4])
-        #expect(controller.state == .speaking)
-        #expect(service.stopCallCount == 0)
+        #expect(controller.state == .idle)
+        #expect(service.stopCallCount == 1)
     }
 
     @Test("deep links reopen dismissed actions and out-of-range references close them")
@@ -969,8 +969,8 @@ struct BibleScreenViewModelTests {
         #expect(service.startCallCount == 0)
     }
 
-    @Test("dismissNarrationSheet flips the flag without stopping narration")
-    func dismissNarrationSheetDoesNotStop() async {
+    @Test("dismissNarrationSheet stops narration and closes the controls")
+    func dismissNarrationSheetStops() async {
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
         let viewModel = makeViewModel(narration: controller)
@@ -982,7 +982,8 @@ struct BibleScreenViewModelTests {
 
         viewModel.dismissNarrationSheet()
         #expect(viewModel.isNarrationSheetPresented == false)
-        #expect(service.stopCallCount == 0, "dismissing the sheet must keep narration playing")
+        #expect(service.stopCallCount == 1)
+        #expect(controller.state == .idle)
     }
 
     // MARK: - openReference

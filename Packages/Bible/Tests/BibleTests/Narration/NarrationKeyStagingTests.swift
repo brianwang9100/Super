@@ -247,7 +247,14 @@ struct NarrationKeyStagingTests {
         previous.ownsKey = true
         previous.revision = 7
         let saved = previous
-        try await queue.write { try saved.save($0) }
+        // Seed the historical schema explicitly; current record encoding also
+        // includes preferences introduced by later migrations.
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO narrationSettings (id, scope, enabled, keyRef, ownsKey, rate, revision, retiredKeyRefs, updatedAt)
+                VALUES (?, 'narration', ?, ?, ?, ?, ?, '[]', ?)
+                """, arguments: [saved.id, saved.enabled, saved.keyRef, saved.ownsKey, saved.rate, saved.revision, saved.updatedAt])
+        }
 
         try migrator.migrate(queue)
 
