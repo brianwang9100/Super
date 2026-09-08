@@ -12,7 +12,7 @@ import Testing
 /// content on a fixed-size neutral container — the presentation chrome is the
 /// system's and out of scope for these content snapshots.
 ///
-/// Fourteen representative cases now live in `SettingsPanePreviews.swift`;
+/// Eighteen representative cases now live in `SettingsPanePreviews.swift`;
 /// keep the unmigrated cases here until their replacements are verified.
 ///
 /// Note on the Dynamic Type XXL companions: post-`SuperTypography`, settings
@@ -1158,23 +1158,8 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: name, function: function)
     }
 
-    @Test("appearance pane")
-    func appearancePane() async {
-        await verify(theme: .vellumLight, pane: .appearance, name: "settings_appearance_light")
-    }
-
-    // The merged Appearance pane owns the theme grid, so it carries the
-    // full light/dark/sepia × default/XXL matrix per `Packages/Chat/AGENTS.md`.
-    // The dark/sepia variants seed a matching `themeId` so the selected-card
-    // border + halo render on a non-Light card too.
-
-    @Test("appearance pane in dark")
-    func appearancePaneDark() async {
-        await verify(
-            theme: .vellumDark, pane: .appearance, name: "settings_appearance_dark",
-            settings: Self.settings(themeId: .vellumDark)
-        )
-    }
+    // Default light/dark and tall-light appearance now live in Argos.
+    // Retain the XXL sentinel and tall-dark coverage until separately migrated.
 
     @Test("dynamic type XXL on appearance pane")
     func appearancePaneXXL() async {
@@ -1204,11 +1189,6 @@ struct SettingsSheetSnapshotTests {
     // function and baseline names predate the reorder and are kept as-is —
     // baseline filenames embed the function name, so renaming would orphan
     // the recorded PNGs.
-    @Test("appearance pane — full height shows the whole theme grid")
-    func appearancePaneHapticsLight() {
-        verifyTallAppearancePane(theme: .vellumLight, name: "settings_appearance_haptics_light")
-    }
-
     @Test("appearance pane full height — whole theme grid in dark")
     func appearancePaneHapticsDark() {
         verifyTallAppearancePane(
@@ -1279,7 +1259,6 @@ struct SettingsSheetSnapshotTests {
 
     @Test("data pane — exporting")
     func dataPaneExporting() {
-        verifyDataPane(theme: .vellumLight, phase: .exporting, name: "settings_data_exporting_light")
         verifyDataPane(theme: .vellumDark, phase: .exporting, name: "settings_data_exporting_dark")
     }
 

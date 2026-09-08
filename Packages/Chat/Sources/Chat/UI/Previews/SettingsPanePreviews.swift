@@ -58,4 +58,21 @@ import SwiftUI
     PreviewSettingsPane(pane: .data, theme: .vellumLight, exportPhase: .failed(message: "Could not write the export file."))
 }
 
+
+#Preview("settings_appearance_light", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .appearance, theme: .vellumLight)
+}
+
+#Preview("settings_appearance_dark", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .appearance, theme: .vellumDark, selectedTheme: .vellumDark)
+}
+
+#Preview("settings_appearance_haptics_light", traits: .fixedLayout(width: 402, height: 1340)) {
+    PreviewSettingsPane(pane: .appearance, theme: .vellumLight, height: 1340)
+}
+
+#Preview("settings_data_exporting_light", traits: .fixedLayout(width: 402, height: 874)) {
+    PreviewSettingsPane(pane: .data, theme: .vellumLight, exportPhase: .exporting)
+}
+
 #endif
