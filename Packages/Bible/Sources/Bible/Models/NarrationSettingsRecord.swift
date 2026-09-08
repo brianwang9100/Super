@@ -14,6 +14,7 @@ public struct NarrationSettingsRecord: Codable, FetchableRecord, PersistableReco
     public var preferredVoiceId: String?
     public var lastAppleVoiceId: String?
     public var rate: Double = 1
+    public var prefetchVerseCount = 2
     public var revision = 0
     public var retiredKeyRefs: [String] = []
     public var updatedAt: Date

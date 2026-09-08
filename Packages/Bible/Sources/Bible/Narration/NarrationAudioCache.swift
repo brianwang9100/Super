@@ -21,8 +21,9 @@ protocol NarrationAudioFileStorage: Sendable {
     func removeTemporaryFiles() throws
     func files() throws -> [NarrationAudioFile]
     func read(_ name: String) throws -> Data?
-    /// A failed write must leave the previous complete clip intact.
-    func write(_ audio: Data, named name: String, accessedAt: Date) throws
+    /// Validate immediately before atomic replacement. A rejected commit must
+    /// discard staging data and leave the previous complete clip intact.
+    func write(_ audio: Data, named name: String, accessedAt: Date, beforeCommit: @Sendable () throws -> Void) throws
     func remove(_ name: String) throws
     func touch(_ name: String, at date: Date) throws
 }
@@ -132,6 +133,9 @@ public actor NarrationAudioCache: NarrationAudioCaching {
     }
 
     public func save(_ audio: Data, for key: String) async throws {
+        // Stop/Clear may run while this actor call is queued. Admission must
+        // reject cancelled downloads before any synchronous filesystem mutation.
+        try Task.checkCancellation()
         guard audio.count <= limit else { return }
         let name = Self.fileName(for: key)
         let previousSize = entries[name]?.byteCount ?? 0
@@ -140,8 +144,17 @@ public actor NarrationAudioCache: NarrationAudioCaching {
             // Evict before admission so a failed deletion cannot let the directory exceed its bound.
             try Self.evict(entries: &entries, totalBytes: &totalBytes, storage: storage,
                            target: limit - audio.count + previousSize, excluding: name)
-            try storage?.write(audio, named: name, accessedAt: now)
-        } catch { throw NarrationAudioCacheError.unavailable }
+            try Task.checkCancellation()
+            try storage?.write(audio, named: name, accessedAt: now) {
+                try Task.checkCancellation()
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw NarrationAudioCacheError.unavailable
+        }
+        // Successful disk replacement is the commit point. Finish its index
+        // synchronously even if cancellation arrives after that commitment.
         entries[name] = Entry(byteCount: audio.count, accessedAt: now, audio: storage == nil ? audio : nil)
         totalBytes += audio.count - previousSize
     }
@@ -194,7 +207,7 @@ public actor NarrationAudioCache: NarrationAudioCaching {
 }
 
 /// Stores only regular clip files in a dedicated directory; legacy experimental caches stay untouched.
-private struct FileNarrationAudioStorage: NarrationAudioFileStorage {
+struct FileNarrationAudioStorage: NarrationAudioFileStorage {
     let directory: URL
     private let ids: any IDGenerator = UUIDGenerator()
 
@@ -244,7 +257,7 @@ private struct FileNarrationAudioStorage: NarrationAudioFileStorage {
         return try Data(contentsOf: url)
     }
 
-    func write(_ audio: Data, named name: String, accessedAt: Date) throws {
+    func write(_ audio: Data, named name: String, accessedAt: Date, beforeCommit: @Sendable () throws -> Void) throws {
         let temporary = directory.appending(path: ".\(ids.nextID()).tmp")
         defer { try? FileManager.default.removeItem(at: temporary) }
         #if os(iOS)
@@ -253,6 +266,9 @@ private struct FileNarrationAudioStorage: NarrationAudioFileStorage {
         try audio.write(to: temporary)
         #endif
         try FileManager.default.setAttributes([.modificationDate: accessedAt], ofItemAtPath: temporary.path)
+        // Cancellation during staging rolls back through defer without touching
+        // the previously committed clip. Rename linearizes successful admission.
+        try beforeCommit()
         // The protected, complete temporary file replaces the old inode in one operation.
         guard rename(temporary.path, directory.appending(path: name).path) == 0 else {
             throw NarrationAudioCacheError.unavailable

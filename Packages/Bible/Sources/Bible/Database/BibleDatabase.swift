@@ -438,4 +438,11 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
             )
             """)
     }
+
+    migrator.registerMigration("v12_narrationPrefetch") { db in
+        try db.execute(sql: """
+            ALTER TABLE narrationSettings ADD COLUMN prefetchVerseCount INTEGER NOT NULL DEFAULT 2
+                CHECK (prefetchVerseCount BETWEEN 0 AND 10)
+            """)
+    }
 }

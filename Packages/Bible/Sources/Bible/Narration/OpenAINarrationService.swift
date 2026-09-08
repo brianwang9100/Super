@@ -1,9 +1,10 @@
 import Core
 import Foundation
 
-/// Downloaded verse narration with cancellation-safe generations and one-verse look-ahead.
+/// Downloaded verse narration with cancellation-safe generations and a bounded verse-prefetch queue.
 @MainActor public final class OpenAINarrationService: NarrationService {
-    private let generator: any SpeechGenerating
+    private let downloads: NarrationPrefetchQueue
+    private let prefetchVerseCount: @MainActor () -> Int
     private let player: any NarrationAudioPlaying
     private let cache: any NarrationAudioCaching
     private let key: @MainActor () async throws -> String
@@ -15,15 +16,17 @@ import Foundation
     private var isPlaying = false
     private var generation = 0
     private var task: Task<Void, Never>?
-    private var prefetch: Task<(key: String, audio: Data)?, Never>?
-    private var prefetchKey: String?
+    private var sessionID = 0
     private var pausedReadyWaiter: CheckedContinuation<Void, Never>?
     private var readyWhilePaused = false
     private var resumeWaiter: CheckedContinuation<Void, Never>?
     private var continuation: AsyncStream<NarrationEvent>.Continuation?
 
-    public init(generator: any SpeechGenerating, player: any NarrationAudioPlaying, cache: any NarrationAudioCaching, key: @escaping @MainActor () async throws -> String) {
-        self.generator = generator
+    public init(generator: any SpeechGenerating, player: any NarrationAudioPlaying, cache: any NarrationAudioCaching,
+                prefetchVerseCount: @escaping @MainActor () -> Int = { 2 },
+                key: @escaping @MainActor @Sendable () async throws -> String) {
+        self.downloads = NarrationPrefetchQueue(generator: generator, cache: cache, credential: key)
+        self.prefetchVerseCount = prefetchVerseCount
         self.player = player
         self.cache = cache
         self.key = key
@@ -37,22 +40,24 @@ import Foundation
         self.rate = rate
         self.voice = voice?.openAI ?? .marin
         self.paused = false
+        downloads.setPaused(false)
         let (stream, continuation) = AsyncStream<NarrationEvent>.makeStream()
         self.continuation = continuation
-        let session = generation
+        let session = sessionID
         continuation.onTermination = { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.generation == session else { return }
+                guard let self, self.sessionID == session else { return }
                 self.stop()
             }
         }
         begin()
         return stream
     }
-    public func pause() { guard continuation != nil else { return }; paused = true; player.pause(); continuation?.yield(.paused) }
+    public func pause() { guard continuation != nil else { return }; paused = true; downloads.setPaused(true); player.pause(); continuation?.yield(.paused) }
     public func resume() {
         guard paused else { return }
         paused = false
+        downloads.setPaused(false)
         player.resume()
         resumeWaiter?.resume()
         resumeWaiter = nil
@@ -61,29 +66,25 @@ import Foundation
         }
     }
     public func stop() {
+        sessionID += 1
         invalidate()
         continuation?.yield(.cancelled)
         continuation?.finish()
         continuation = nil
     }
     public func skipForward() {
+        guard continuation != nil else { return }
         index += 1
-        let destinationKey = index < utterances.count
-            ? NarrationAudioCache.key(text: Self.segments(utterances[index].text).first ?? "", voice: voice) : nil
-        restart(preservingPrefetch: prefetchKey != nil && prefetchKey == destinationKey)
+        restart(preservingDownloads: true)
     }
     public func skipBackward() {
-        // Same-verse restart can still join its own request after Next, or keep
-        // the unchanged following verse's look-ahead across replay.
-        let reusableKeys = [index, index + 1].filter { utterances.indices.contains($0) }.map {
-            NarrationAudioCache.key(text: Self.segments(utterances[$0].text).first ?? "", voice: voice)
-        }
-        restart(preservingPrefetch: prefetchKey.map(reusableKeys.contains) == true)
+        guard continuation != nil else { return }
+        restart(preservingDownloads: true)
     }
     public func skipToPreviousVerse() {
-        guard index > 0 else { return }
+        guard continuation != nil, index > 0 else { return }
         index -= 1
-        restart()
+        restart(preservingDownloads: true)
     }
     public func setRate(_ rate: Float) { self.rate = rate; player.setRate(rate) }
     public func setVoice(_ voice: NarrationVoice?) {
@@ -91,21 +92,17 @@ import Foundation
         self.voice = new
         if continuation != nil { restart() }
     }
-    private func invalidate(preservingPrefetch: Bool = false) {
+    private func invalidate(preservingDownloads: Bool = false) {
         generation += 1
         task?.cancel()
         task = nil
-        if !preservingPrefetch {
-            prefetch?.cancel()
-            prefetch = nil
-            prefetchKey = nil
-        }
+        if preservingDownloads { downloads.retain(windowKeys) } else { downloads.cancel() }
         resumeWaiter?.resume()
         resumeWaiter = nil
         player.stop()
         isPlaying = false
     }
-    private func restart(preservingPrefetch: Bool = false) { invalidate(preservingPrefetch: preservingPrefetch); begin() }
+    private func restart(preservingDownloads: Bool = false) { invalidate(preservingDownloads: preservingDownloads); begin() }
     private func begin() {
         guard index < utterances.count else { finish(.completed); return }
         let current = generation
@@ -114,34 +111,24 @@ import Foundation
             var attemptedVerseNumber: Int?
             do {
                 while self.index < self.utterances.count {
+                    // Retain only this playback window, including when speculation is off.
+                    self.downloads.retain(self.windowKeys)
                     let utterance = self.utterances[self.index]
                     attemptedVerseNumber = utterance.verseNumber
                     let segments = Self.segments(utterance.text)
                     var started = false
                     for (segmentIndex, text) in segments.enumerated() {
-                        let secret = try await self.key()
+                        _ = try await self.key()
                         try self.check(current)
                         let cacheKey = NarrationAudioCache.key(text: text, voice: self.voice)
-                        var cached = try? await self.cache.audio(for: cacheKey)
+                        let cached = try? await self.cache.audio(for: cacheKey)
                         try self.check(current)
                         if cached == nil && !self.paused {
                             self.continuation?.yield(.preparing(verseNumber: utterance.verseNumber))
                         }
-                        // Announce a real buffer wait before joining look-ahead; a cache hit
-                        // goes straight to playback without flashing a loading state.
-                        if segmentIndex == 0, let prefetch = self.prefetch, self.prefetchKey == cacheKey {
-                            let prefetched = await prefetch.value
-                            try self.check(current)
-                            self.prefetch = nil
-                            self.prefetchKey = nil
-                            if cached == nil, prefetched?.key == cacheKey { cached = prefetched?.audio }
-                        }
                         let bytes: Data
                         if let cached { bytes = cached } else {
-                            try self.check(current)
-                            bytes = try await self.generator.generate(text: text, voice: self.voice, apiKey: secret)
-                            try self.check(current)
-                            try? await self.cache.save(bytes, for: cacheKey)
+                            bytes = try await self.downloads.audio(for: .init(text: text, voice: self.voice))
                         }
                         try self.check(current)
                         if self.paused {
@@ -159,7 +146,7 @@ import Foundation
                             try self.check(current)
                             switch event {
                             case .started:
-                                self.prefetchNext()
+                                self.prefetchNext(afterSegment: segmentIndex)
                                 if !started {
                                     started = true
                                     self.continuation?.yield(.started(verseNumber: utterance.verseNumber))
@@ -200,33 +187,20 @@ import Foundation
             }
         }
     }
-    private func prefetchNext() {
-        guard !paused, prefetch == nil, index + 1 < utterances.count else { return }
-        let next = Self.segments(utterances[index + 1].text).first ?? ""
-        let voice = voice
-        let cacheKey = NarrationAudioCache.key(text: next, voice: voice)
-        prefetchKey = cacheKey
-        prefetch = Task { [weak self] in
-            guard let self else { return nil }
-            do {
-                let secret = try await self.key()
-                // Next may reuse this keyed request across a foreground generation change.
-                // Every other invalidation cancels the task, checked at each async boundary.
-                try Task.checkCancellation()
-                if let cached = try? await self.cache.audio(for: cacheKey) {
-                    try Task.checkCancellation()
-                    return (cacheKey, cached)
-                }
-                try Task.checkCancellation()
-                let data = try await self.generator.generate(text: next, voice: voice, apiKey: secret)
-                try Task.checkCancellation()
-                // Persistence is optional; keep paid audio available to the foreground
-                // even when the cache is full, unavailable, or rejects an oversized clip.
-                try? await self.cache.save(data, for: cacheKey)
-                try Task.checkCancellation()
-                return (cacheKey, data)
-            } catch { return nil } // Foreground playback presents recoverable errors.
-        }
+    private var lookAheadCount: Int { min(10, max(0, prefetchVerseCount())) }
+    private var windowKeys: Set<String> {
+        guard utterances.indices.contains(index) else { return [] }
+        let end = min(utterances.count, index + lookAheadCount + 1)
+        return Set(utterances[index..<end].flatMap { Self.segments($0.text) }.map {
+            NarrationAudioCache.key(text: $0, voice: voice)
+        })
+    }
+    private func prefetchNext(afterSegment segment: Int) {
+        guard lookAheadCount > 0, utterances.indices.contains(index) else { return }
+        let end = min(utterances.count, index + lookAheadCount + 1)
+        let current = Array(Self.segments(utterances[index].text).dropFirst(segment + 1))
+        let following = utterances[(index + 1)..<end].flatMap { Self.segments($0.text) }
+        downloads.prefetch((current + following).map { .init(text: $0, voice: voice) }, retaining: windowKeys)
     }
     private func check(_ expected: Int) throws {
         try Task.checkCancellation()
@@ -263,7 +237,12 @@ import Foundation
         return result
     }
     var _pendingTask: Task<Void, Never>? { task }
-    var _pendingPrefetch: Task<(key: String, audio: Data)?, Never>? { prefetch }
+    var _pendingPrefetch: NarrationPrefetchQueue.Download? {
+        guard utterances.indices.contains(index + 1),
+              let text = Self.segments(utterances[index + 1].text).first else { return nil }
+        return downloads.download(for: NarrationAudioCache.key(text: text, voice: voice))
+    }
+    func _waitForPrefetch() async { await downloads.waitForPendingDownloads() }
     func _waitUntilReadyWhilePaused() async {
         if !readyWhilePaused { await withCheckedContinuation { pausedReadyWaiter = $0 } }
     }

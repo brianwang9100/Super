@@ -28,7 +28,8 @@ CREATE TABLE narrationSettings (
     revision INTEGER NOT NULL,
     retiredKeyRefs TEXT NOT NULL,
     updatedAt DATETIME NOT NULL
-);
+, prefetchVerseCount INTEGER NOT NULL DEFAULT 2
+    CHECK (prefetchVerseCount BETWEEN 0 AND 10));
 CREATE TABLE narrationStagedKey (
     id TEXT PRIMARY KEY NOT NULL
 );
