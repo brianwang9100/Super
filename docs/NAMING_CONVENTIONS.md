@@ -391,9 +391,9 @@ then read to render the merged output.
   property).
 
 **In-tree examples:**
-- `DictationTranscriptAccumulator` — merges multiple recognizer
-  utterances committed across natural pauses inside a single voice
-  recording session into a single rendered transcript.
+- `DictationTranscriptAccumulator` — retains revisions of the current
+  recognizer utterance and drains each completed phrase once for
+  append-only delivery across natural pauses.
   `Packages/Chat/Sources/Chat/Voice/DictationTranscriptAccumulator.swift`.
 
 **Do not use `*Accumulator` for:**

@@ -116,18 +116,21 @@ public final class ChatScreenViewModel {
     /// repaints the header through `@Observable` when the title lands.
     public private(set) var headerTitle: String
 
-    /// Voice-input collaborator. Owns the active dictation session and
-    /// publishes the partial transcript that the composer renders while
-    /// recording. Wired in `init` so `onFinalTranscript` can splice
-    /// committed text into `composerText` at session end.
+    /// Independent voice component; its ordered updates append to this model's draft.
     public let voice: VoiceInputController
 
-    /// Snapshot of the user-typed composer prefix at the moment a
-    /// recording session starts. Used by the view's composer binding to
-    /// keep the typed prefix visible while the partial transcript
-    /// streams in, and consumed by `onFinalTranscript` so the committed
-    /// text appends to the prefix instead of replacing it.
-    public private(set) var committedComposerText: String = ""
+    /// State projected after consuming every preceding voice addition.
+    public private(set) var voiceState: VoiceInputController.State = .idle
+    /// Provisional speech rendered separately from the append-only composer draft.
+    public private(set) var voicePreview = ""
+    private var voiceTask: Task<Void, Never>?
+    private var lastVoiceRevision = 0
+    private var voiceUpdateWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    /// Display-only projection. Recognition can revise the preview, never the draft.
+    public var displayedComposerText: String {
+        composerText + Self.voiceSuffix(voicePreview, after: composerText)
+    }
 
     /// Optional callback the host installs to react to a freshly
     /// generated title — typically `await sidebarViewModel.refresh()` so
@@ -272,19 +275,15 @@ public final class ChatScreenViewModel {
         // fake. Production wires `SpeechRecognizerVoiceInputService` from
         // the shared shell in `App/Shell/AppShell.swift`.
         self.voice = voice ?? VoiceInputController(service: PlaceholderVoiceInputService())
-        // Capture the controller binding so the closure body can reach
-        // committed text without a `self` strong-ref cycle.
-        self.voice.onFinalTranscript = { [weak self] text in
-            guard let self else { return }
-            let prefix = self.committedComposerText
-            if prefix.isEmpty {
-                self.composerText = text
-            } else if text.isEmpty {
-                self.composerText = prefix
-            } else {
-                self.composerText = "\(prefix) \(text)"
+        self.voiceState = self.voice.state
+        // Register synchronously before capture can start. The subscription buffers
+        // all additions; a weak owner avoids keeping a dismissed chat alive forever.
+        let voiceUpdates = self.voice.updates()
+        self.voiceTask = Task { [weak self] in
+            for await update in voiceUpdates {
+                guard let self, !Task.isCancelled else { return }
+                self.consumeVoiceUpdate(update)
             }
-            self.committedComposerText = ""
         }
         // Wired after all stored props are set so the closure can
         // legally capture `self`. The coalescer publishes drained
@@ -502,7 +501,8 @@ public final class ChatScreenViewModel {
     /// has a different ergonomic, special-case it here.
     public func send(_ rawText: String) {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !isStreaming else { return }
+        guard !isStreaming, !voiceState.isRecording, !voice.state.isRecording,
+              lastVoiceRevision == voice.revision else { return }
         let isSlashCommand = SlashCommand(rawText: text) != nil
         // A slash command never becomes a user message, so it carries no
         // verse pills; a regular send consumes whatever is attached.
@@ -745,25 +745,53 @@ public final class ChatScreenViewModel {
         streamTask?.cancel()
     }
 
-    /// User tapped the composer mic. Freezes whatever they had already
-    /// typed into `committedComposerText` so the partial transcript can
-    /// stream in alongside the prefix without clobbering it, then asks
-    /// the controller to start (or stop) the recognition session.
+    /// Starts or stops the independent microphone component without snapshotting text.
     public func handleMicTap() async {
-        committedComposerText = composerText
         await voice.toggle()
     }
 
-    /// User tapped the recording-stop affordance. Forwards to the
-    /// controller, which commits the most recent partial transcript via
-    /// the `onFinalTranscript` callback installed in `init`.
+    /// Stops capture; the subscribed terminal update appends pending speech before
+    /// its idle state makes the send control available.
     public func handleStopRecording() {
         voice.stop()
     }
 
+    private func consumeVoiceUpdate(_ update: VoiceInputUpdate) {
+        if !update.appendedText.isEmpty {
+            composerText.append(Self.voiceSuffix(update.appendedText, after: composerText))
+        }
+        voicePreview = update.preview
+        voiceState = update.state
+        handleVoiceStateChange(update.state)
+        lastVoiceRevision = update.revision
+        let ready = voiceUpdateWaiters.filter { $0.0 <= lastVoiceRevision }
+        voiceUpdateWaiters.removeAll { $0.0 <= lastVoiceRevision }
+        for (_, continuation) in ready { continuation.resume() }
+    }
+
+    private static func voiceSuffix(_ phrase: String, after draft: String) -> String {
+        guard !phrase.isEmpty else { return "" }
+        let separator = draft.last.map { $0.isWhitespace ? "" : " " } ?? ""
+        return separator + phrase
+    }
+
+    /// Waits until the subscriber has consumed all voice updates published so far.
+    func _waitForVoiceUpdates() async {
+        await voice._waitForPendingStop()
+        let revision = voice.revision
+        guard lastVoiceRevision < revision else { return }
+        await withCheckedContinuation { voiceUpdateWaiters.append((revision, $0)) }
+    }
+
+    isolated deinit {
+        voice.stop()
+        voiceTask?.cancel()
+        for (_, continuation) in voiceUpdateWaiters { continuation.resume() }
+    }
+
     /// Translate terminal voice-controller states into the existing
-    /// error-banner surface. Wired from the screen via
-    /// `.onChange(of: voice.state)`. `.unavailable` is reflected
+    /// error-banner surface. Delivered from
+    /// the ordered voice subscription. `.unavailable` is reflected
     /// through the dimmed mic, not a banner; `.idle` and `.listening`
     /// don't touch the banner so an unrelated upstream error stays
     /// visible across a quick mic toggle.
@@ -785,7 +813,7 @@ public final class ChatScreenViewModel {
                 message: Self.voiceFailureMessage(for: reason),
                 showsRetry: false
             )
-        case .unavailable, .idle, .listening:
+        case .unavailable, .idle, .listening, .stopping:
             break
         }
     }
@@ -1450,6 +1478,7 @@ public protocol ChatSessionDriver: Sendable {
 /// "Placeholder" (not "Noop") in the name to keep that lie visible at
 /// every reference site.
 private struct PlaceholderVoiceInputService: VoiceInputService {
+    func stopRecognition() {}
     func isAvailable(locale: Locale) -> Bool { true }
     func requestPermissions() async -> VoiceInputPermissionStatus { .denied }
     func startRecognition(locale: Locale) -> AsyncThrowingStream<VoiceInputEvent, Error> {

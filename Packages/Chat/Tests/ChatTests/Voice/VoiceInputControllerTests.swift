@@ -1,232 +1,262 @@
+import Core
 import Foundation
 import Testing
 @testable import Chat
 
-/// Tests for ``VoiceInputController``'s state machine, partial/final
-/// transcript plumbing, and rapid-toggle guard. Drives the controller
-/// directly with a ``FakeVoiceInputService`` so the assertions don't
-/// depend on standing up `SFSpeechRecognizer` (SFSpeech = Apple's
-/// Speech-recognition framework) or a real microphone.
+/// Exercises recognition lifecycle and the append-only subscription without a mic.
 @Suite("VoiceInputController")
 @MainActor
 struct VoiceInputControllerTests {
-    @Test("toggle starts listening when permissions are granted")
-    func toggleStartsListeningWhenPermissionsGranted() async {
+    @Test("toggle starts capture and stop synchronously releases it")
+    func captureLifecycle() async {
         let service = FakeVoiceInputService()
-        service.permissionStatus = .granted
-        service.isAvailableValue = true
-        let controller = VoiceInputController(service: service)
-
-        #expect(controller.state == .idle)
-        await controller.toggle()
-
-        #expect(controller.state == .listening)
-        #expect(service.startCallCount == 1)
-    }
-
-    @Test("toggle stops listening on the second call")
-    func toggleStopsListeningOnSecondCall() async {
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
+        let activity = AudioActivity()
+        let controller = VoiceInputController(service: service, audioActivity: activity)
         await controller.toggle()
         #expect(controller.state == .listening)
-
+        #expect(service.isCapturing)
+        #expect(activity.isCapturing)
         await controller.toggle()
-
         #expect(controller.state == .idle)
-        // The controller's stop() commits whatever partial existed
-        // (empty here) so no final-transcript callback fires with a
-        // non-empty string. We only assert state.
+        #expect(!service.isCapturing)
+        #expect(!activity.isCapturing)
     }
 
-    @Test("permission denied sets the .denied state without starting a stream")
-    func permissionDeniedSetsDeniedState() async {
+    @Test("permission denial never starts capture")
+    func permissionDenied() async {
         let service = FakeVoiceInputService()
         service.permissionStatus = .denied
         let controller = VoiceInputController(service: service)
-
         await controller.toggle()
-
         #expect(controller.state == .denied)
         #expect(service.startCallCount == 0)
     }
 
-    @Test("service unavailable boots the controller into the .unavailable state")
-    func serviceUnavailableSetsUnavailableState() {
+    @Test("missing on-device model starts unavailable and can recover")
+    func availability() async {
         let service = FakeVoiceInputService()
         service.isAvailableValue = false
         let controller = VoiceInputController(service: service)
-
         #expect(controller.state == .unavailable)
-    }
-
-    @Test("partial transcript reflects service events in order")
-    func partialTranscriptReflectsServiceEvents() async {
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
-        var processed = controller._observeProcessedEvents().makeAsyncIterator()
-        await controller.toggle()
-
-        service.emit(.partial("hel"))
-        await processed.next()
-        #expect(controller.partialTranscript == "hel")
-        service.emit(.partial("hello"))
-        await processed.next()
-        #expect(controller.partialTranscript == "hello")
-        service.emit(.partial("hello there"))
-        await processed.next()
-
-        #expect(controller.partialTranscript == "hello there")
-        #expect(controller.state == .listening)
-    }
-
-    @Test("final event commits via callback, clears partial, returns to idle")
-    func finalEventCommitsViaCallback() async {
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
-        let recorded = TranscriptRecorder()
-        controller.onFinalTranscript = { text in recorded.append(text) }
-        var processed = controller._observeProcessedEvents().makeAsyncIterator()
-
-        await controller.toggle()
-        service.emit(.partial("hel"))
-        await processed.next()
-        service.emit(.final("hello world"))
-        await processed.next()
-
-        #expect(recorded.values == ["hello world"])
-        #expect(controller.partialTranscript == "")
-        #expect(controller.state == .idle)
-    }
-
-    @Test("stream failure sets failed state and clears partial")
-    func streamFailureSetsFailedState() async {
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
-        var processed = controller._observeProcessedEvents().makeAsyncIterator()
-
-        await controller.toggle()
-        service.emit(.partial("typing"))
-        await processed.next()
-        #expect(controller.partialTranscript == "typing")
-        service.failNext(with: .recognizerFailed("boom"))
-        await processed.next()
-
-        #expect(controller.state == .failed("boom"))
-        #expect(controller.partialTranscript == "")
-    }
-
-    @Test("silence timeout commits the most recent partial as a final transcript")
-    func silenceTimeoutCommitsLastPartial() async {
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
-        let recorded = TranscriptRecorder()
-        controller.onFinalTranscript = { text in recorded.append(text) }
-        var processed = controller._observeProcessedEvents().makeAsyncIterator()
-
-        await controller.toggle()
-        service.emit(.partial("hello"))
-        await processed.next()
-        #expect(controller.partialTranscript == "hello")
-        service.failNext(with: .silenceTimeout)
-        await processed.next()
-
-        #expect(recorded.values == ["hello"])
-        #expect(controller.state == .idle)
-        #expect(controller.partialTranscript == "")
-    }
-
-    @Test("cross-pause accumulation: consecutive partials with no intervening .final render as a single growing transcript")
-    func crossPauseAccumulationFlowsThroughAsPartials() async {
-        // Documents the post-fix service contract: when Apple's
-        // SFSpeechRecognizer auto-endpoints on a natural pause, the
-        // service swallows the `.isFinal=true` callback, commits the
-        // utterance to its internal accumulator, transparently spins
-        // up the next recognition task, and continues emitting
-        // `.partial(...)` events that carry the merged transcript.
-        // The controller sees a single uninterrupted stream of
-        // partials — no `.final` until the user actually stops (or
-        // silence-timeout fires) — so a regression that accidentally
-        // re-introduces a mid-session `.final` (botched merge, future
-        // refactor) would break user-facing behavior even when the
-        // `DictationTranscriptAccumulator` unit tests stay green.
-        let service = FakeVoiceInputService()
-        let controller = VoiceInputController(service: service)
-        let recorded = TranscriptRecorder()
-        controller.onFinalTranscript = { text in recorded.append(text) }
-        var processed = controller._observeProcessedEvents().makeAsyncIterator()
-
-        await controller.toggle()
-        // First utterance refines.
-        service.emit(.partial("hel"))
-        await processed.next()
-        service.emit(.partial("hello"))
-        await processed.next()
-        #expect(controller.partialTranscript == "hello")
-
-        // Pause boundary: the service's accumulator now contains
-        // ["hello"] internally; the next partial carries the merged
-        // committed + new-in-flight text.
-        service.emit(.partial("hello world"))
-        await processed.next()
-        #expect(controller.partialTranscript == "hello world")
-
-        // No `.final` has been delivered — the controller is still
-        // listening and `onFinalTranscript` hasn't fired even once.
-        #expect(controller.state == .listening)
-        #expect(recorded.values == [])
-
-        // User taps stop / silence-timeout fires; the accumulated
-        // text commits via the normal terminal-event path.
-        service.failNext(with: .silenceTimeout)
-        await processed.next()
-
-        #expect(recorded.values == ["hello world"])
-        #expect(controller.partialTranscript == "")
-    }
-
-    @Test("rapid toggle inside the same task tick does not double-start the service")
-    func rapidToggleDoesNotDoubleStart() async {
-        let service = FakeVoiceInputService()
-        // Suspend `requestPermissions` so the first toggle is still in
-        // its `await` (state still `.idle`, `isStarting == true`) when
-        // the second toggle arrives. This is the actual race the
-        // controller's `isStarting` guard protects against — two taps
-        // landing inside the same task tick before `state` flips to
-        // `.listening`. Without the gate, the first toggle would
-        // complete synchronously (FakeVoiceInputService returns the
-        // permission status without awaiting) and the second would
-        // route through the `.listening → stop()` arm instead, never
-        // exercising `isStarting` at all.
-        let gate = service.gatePermissions()
-        let controller = VoiceInputController(service: service)
-
-        // Launch the winning toggle and await — on an observable signal, not a
-        // yield-spin — until it has set `isStarting` and parked on the gated
-        // `requestPermissions`. The synchronous prefix of `toggle()` runs on
-        // the serial main actor, so exactly one call sets `isStarting` before
-        // suspending here.
-        async let winner: Void = controller.toggle()
-        await gate.waitUntilEntered()
-
-        // The second toggle now runs with `state == .idle` and
-        // `isStarting == true`, so it hits the guard and returns synchronously
-        // — deterministically exercising the drop without racing the winner.
         await controller.toggle()
         #expect(service.startCallCount == 0)
-
-        gate.release()
-        await winner
-
-        #expect(service.startCallCount == 1)
+        service.isAvailableValue = true
+        await controller.toggle()
         #expect(controller.state == .listening)
     }
-}
 
-/// `@MainActor`-bound recorder so we can capture every onFinalTranscript
-/// fire from inside the test body without sprinkling `Task` hops.
-@MainActor
-private final class TranscriptRecorder {
-    private(set) var values: [String] = []
-    func append(_ text: String) { values.append(text) }
+    @Test("each pause publishes only its phrase and clears only the preview")
+    func phrasesAppendOnce() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        #expect(await updates.next()?.appendedText == "")
+        await controller.toggle()
+        #expect(await updates.next()?.state == .listening)
+        service.emit(.partial("hel"))
+        #expect(await updates.next()?.preview == "hel")
+        service.emit(.partial("hello"))
+        #expect(await updates.next()?.preview == "hello")
+        service.emit(.utterance("Hello."))
+        let first = await updates.next()
+        #expect(first?.appendedText == "Hello.")
+        #expect(first?.preview == "")
+        #expect(first?.state == .listening)
+        service.emit(.partial("world"))
+        #expect(await updates.next()?.preview == "world")
+        service.emit(.utterance("world"))
+        #expect(await updates.next()?.appendedText == "world")
+        controller.stop()
+        #expect(await updates.next()?.state == .stopping)
+        let stopped = await updates.next()
+        #expect(stopped?.appendedText == "")
+        #expect(stopped?.state == .idle)
+    }
+
+    @Test("all terminal paths preserve the pending phrase once", arguments: [
+        VoiceInputError.silenceTimeout, .recognizerFailed("boom"),
+        .audioEngineFailed("audio"), .permissionDenied, .unavailable
+    ])
+    func errorsPreserveSpeech(error: VoiceInputError) async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        _ = await updates.next()
+        await controller.toggle()
+        _ = await updates.next()
+        service.emit(.partial("last words"))
+        _ = await updates.next()
+        service.failNext(with: error)
+        let terminal = await updates.next()
+        #expect(terminal?.appendedText == "last words")
+        #expect(terminal?.preview == "")
+        #expect(terminal?.state != .listening)
+        #expect(controller.state == terminal?.state)
+        let revision = controller.revision
+        controller.stop()
+        #expect(controller.revision == revision)
+    }
+
+    @Test("empty final commits the last nonempty partial")
+    func emptyFinal() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        _ = await updates.next()
+        await controller.toggle()
+        _ = await updates.next()
+        service.emit(.partial("hello"))
+        _ = await updates.next()
+        service.emit(.partial(""))
+        #expect(await updates.next()?.preview == "hello")
+        service.emit(.final(""))
+        #expect(await updates.next()?.appendedText == "hello")
+        #expect(controller.state == .idle)
+    }
+
+    @Test("clean stream end and explicit stop flush speech", arguments: [true, false])
+    func stopFlushes(cleanEnd: Bool) async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        _ = await updates.next()
+        await controller.toggle()
+        _ = await updates.next()
+        service.emit(.partial("hello"))
+        _ = await updates.next()
+        if cleanEnd {
+            service.finish()
+        } else {
+            controller.stop()
+            #expect(await updates.next()?.state == .stopping)
+        }
+        let terminal = await updates.next()
+        #expect(terminal?.appendedText == "hello")
+        #expect(terminal?.state == .idle)
+        #expect(!service.isCapturing)
+    }
+
+    @Test("new subscribers see the preview but do not replay completed phrases")
+    func lateSubscription() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
+        await controller.toggle()
+        service.emit(.utterance("already delivered"))
+        await processed.next()
+        service.emit(.partial("pending"))
+        await processed.next()
+        var updates = controller.updates().makeAsyncIterator()
+        let initial = await updates.next()
+        #expect(initial?.appendedText == "")
+        #expect(initial?.preview == "pending")
+        controller.stop()
+        #expect(await updates.next()?.state == .stopping)
+        #expect(await updates.next()?.appendedText == "pending")
+    }
+
+    @Test("buffered phrases survive stop and restart without old callbacks corrupting capture")
+    func restartFencesOldStream() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var processed = controller._observeProcessedEvents().makeAsyncIterator()
+        var updates = controller.updates().makeAsyncIterator()
+        await controller.toggle()
+        service.emit(.utterance("yes"))
+        await processed.next()
+        controller.stop()
+        await controller.toggle()
+        service.emit(.utterance("yes"))
+        await processed.next()
+        #expect(controller.state == .listening)
+        #expect(service.isCapturing)
+        controller.stop()
+        await controller._waitForPendingStop()
+        let finalRevision = controller.revision
+        var phrases: [String] = []
+        while let update = await updates.next() {
+            if !update.appendedText.isEmpty { phrases.append(update.appendedText) }
+            if update.revision == finalRevision { break }
+        }
+        #expect(phrases == ["yes", "yes"])
+    }
+
+    @Test("stop drains recognition events already queued by the service")
+    func stopDrainsServiceBuffer() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        _ = await updates.next()
+        await controller.toggle()
+        _ = await updates.next()
+        service.emit(.partial("first"))
+        _ = await updates.next()
+        service.emit(.utterance("first complete"))
+        service.emit(.partial("second"))
+        controller.stop()
+        #expect(!service.isCapturing)
+        var phrases: [String] = []
+        while let update = await updates.next() {
+            if !update.appendedText.isEmpty { phrases.append(update.appendedText) }
+            if update.state == .idle { break }
+        }
+        #expect(phrases == ["first complete", "second"])
+    }
+
+    @Test("a later stop invalidates a restart waiting for the old stream to drain")
+    func stopInvalidatesPendingRestart() async {
+        let service = FakeVoiceInputService()
+        service.delayStopCompletion()
+        let controller = VoiceInputController(service: service)
+        await controller.toggle()
+        controller.stop()
+        #expect(controller.state == .stopping)
+        let (entered, signal) = AsyncStream<Void>.makeStream()
+        let restarting = Task { @MainActor in
+            signal.yield(())
+            // Same-actor synchronous prefix enters the drain wait before the
+            // entry signal can resume the test on this actor.
+            await controller.toggle()
+        }
+        var entry = entered.makeAsyncIterator()
+        await entry.next()
+        controller.stop()
+        service.finish()
+        await restarting.value
+        #expect(controller.state == .idle)
+        #expect(service.startCallCount == 1)
+        #expect(!service.isCapturing)
+    }
+
+    @Test("terminal event fences already-buffered later events")
+    func finalIsTerminal() async {
+        let service = FakeVoiceInputService()
+        let controller = VoiceInputController(service: service)
+        var updates = controller.updates().makeAsyncIterator()
+        _ = await updates.next()
+        await controller.toggle()
+        _ = await updates.next()
+        service.emit(.final("first"))
+        service.emit(.final("stale"))
+        service.emit(.partial("stale preview"))
+        #expect(await updates.next()?.appendedText == "first")
+        await controller.toggle()
+        #expect(await updates.next()?.state == .listening)
+        service.emit(.final("second"))
+        #expect(await updates.next()?.appendedText == "second")
+    }
+
+    @Test("rapid toggles cannot double-start a pending permission request")
+    func rapidToggle() async {
+        let service = FakeVoiceInputService()
+        let gate = service.gatePermissions()
+        let controller = VoiceInputController(service: service)
+        async let winner: Void = controller.toggle()
+        await gate.waitUntilEntered()
+        await controller.toggle()
+        #expect(service.startCallCount == 0)
+        gate.release()
+        await winner
+        #expect(service.startCallCount == 1)
+    }
 }
