@@ -52,6 +52,9 @@ public struct BibleApplet: MiniApplet {
     /// applet is the active backdrop.
     private let viewModel: BibleScreenViewModel
 
+    /// Applet-lifetime annotation request state shared by every Bible reader model.
+    private let annotationDispatchViewModel: BibleAnnotationDispatchViewModel
+
     /// App-session subscriber that routes inbound Bible deep links (Chat
     /// citation taps + external `super://` URLs) onto `viewModel`. The
     /// composition root calls `attach(to:)` once during bootstrap; until
@@ -145,15 +148,18 @@ public struct BibleApplet: MiniApplet {
         // is a no-op in production today. The adapter needs to live
         // at the composition root (`SuperOSAppBootstrap`) to bridge Bible →
         // Chat without violating the no-cross-applet-imports rule.
+        let annotationDispatchViewModel = BibleAnnotationDispatchViewModel()
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
             highlightRepository: highlightRepository,
             noteRepository: noteRepository,
             bookmarkRepository: database.map { GRDBBibleBookmarkRepository(database: $0) },
-            hapticsEngine: hapticsEngine
+            hapticsEngine: hapticsEngine,
+            annotationDispatchViewModel: annotationDispatchViewModel
         )
         self.viewModel = viewModel
+        self.annotationDispatchViewModel = annotationDispatchViewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
     }
 
@@ -171,6 +177,7 @@ public struct BibleApplet: MiniApplet {
         textSearcher: (any BibleTextSearching)? = nil
     ) {
         self.viewModel = viewModel
+        self.annotationDispatchViewModel = viewModel.annotationDispatchViewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
         self.database = nil
         self.databaseContext = databaseContext
@@ -323,18 +330,18 @@ public struct BibleApplet: MiniApplet {
     /// attach. Wires:
     ///
     /// - `BibleReferenceInbox` for inbound Bible deep links from Chat.
-    /// - `BibleScreenViewModel` for headless `bibleAnnotateCompleted`
-    ///   envelopes so the per-target dispatch table flips on
-    ///   completion (success removes the entry; failure flips to a
-    ///   retry-button state).
+    /// - `BibleAnnotationDispatchViewModel` for applet-lifetime annotation
+    ///   requests and their matching completion state.
+    /// - `BibleScreenViewModel` for full-reader sidebar dismissal.
     ///
     /// Applet struct copies share the same `referenceInbox` and
-    /// `viewModel` references (both classes), so calling this on the
+    /// subscriber and view-model references, so calling this on the
     /// locally-held value before the struct is moved into the
     /// `AppletRegistry` is sufficient.
     public func attach(to bus: SuperEventBus) async {
         await referenceInbox.attach(to: bus)
-        await viewModel.attach(to: bus)
+        await annotationDispatchViewModel.attach(to: bus)
+        await viewModel.attachSidebar(to: bus)
         await viewModel.narration.settings?.attach(to: bus)
         await viewModel.narration.prepareDefaultVoice()
     }
