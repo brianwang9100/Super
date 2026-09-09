@@ -23,6 +23,7 @@ import SwiftUI
 ///    the system so they open in Safari.
 private struct BibleMarkdownRendering: ViewModifier {
     @Environment(\.superTypography) private var typography
+    @Environment(\.markdownBibleCitationPolicy) private var bibleCitationPolicy
 
     let openLink: (BibleDeepLink) -> Void
 
@@ -31,6 +32,7 @@ private struct BibleMarkdownRendering: ViewModifier {
             .markdownBodyMetrics(MarkdownBodyMetrics(fontScale: typography.fontScale))
             .environment(\.openURL, OpenURLAction { url in
                 if let link = BibleDeepLink(url: url) {
+                    guard bibleCitationPolicy == .enabled else { return .discarded }
                     openLink(link)
                     return .handled
                 }
