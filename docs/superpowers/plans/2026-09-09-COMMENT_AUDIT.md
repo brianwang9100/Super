@@ -1,6 +1,6 @@
 # Comment Audit Implementation Plan
 
-> **For agentic workers:** Use `superpowers:executing-plans` to execute the reviewed tasks. Root `AGENTS.md` requires a plan-review subagent and a separate implementation-review subagent. This document is planning only; implementation has not started.
+> **For agentic workers:** Use `superpowers:executing-plans` to execute the reviewed tasks. Root `AGENTS.md` requires a plan-review subagent and a separate implementation-review subagent. Execution was authorized after plan review. Policy, root/tooling, Core, Todo, Bible, and all Chat tests are reviewed; the Chat source pass and final delivery checks are in progress.
 
 **Goal:** Reduce unnecessary source-reading tokens by removing redundant comments and shortening useful explanations, while preserving information needed to use and maintain the code correctly.
 
@@ -84,36 +84,36 @@ This is the recommended approach. A policy-only change would leave the existing 
 **Files:** Modify `AGENTS.md`; create `docs/COMMENT_AUDIT.md`; use ignored `.build/comment-audit/` for per-file inventory and temporary measurement tools.
 
 - [x] Obtain an independent plan critique and address actionable findings before implementation. Counts were independently reproduced; project-generation and embedded-script validation contradictions were corrected.
-- [ ] Refresh the baseline revision and tracked-file inventory with `git ls-files`. Classify files as maintained code/configuration or explicitly excluded; use counts to order review, never to skip low-density files.
-- [ ] Apply the exact policy above. Search active root/nested instructions and lint/build configuration for conflicting requirements; amend only live contradictions. Check that `CLAUDE.md` still resolves to `AGENTS.md`.
-- [ ] Record each in-scope path as pending, then later as changed or reviewed/retained. Keep the detailed checklist ignored; put baseline revision, scope, method, representative decisions, and aggregate completion counts in the concise tracked audit report.
-- [ ] Run `git diff --check` and verify changed Markdown links. Commit the policy/report scaffold as the first reviewable change.
+- [x] Refresh the baseline revision and tracked-file inventory with `git ls-files`. Classify files as maintained code/configuration or explicitly excluded; use counts to order review, never to skip low-density files.
+- [x] Apply the exact policy above. Search active root/nested instructions and lint/build configuration for conflicting requirements; amend only live contradictions. Check that `CLAUDE.md` still resolves to `AGENTS.md`.
+- [x] Record each in-scope path as pending, then later as changed or reviewed/retained. Keep the detailed checklist ignored; put baseline revision, scope, method, representative decisions, and aggregate completion counts in the concise tracked audit report.
+- [x] Run `git diff --check` and verify changed Markdown links. Commit the policy/report scaffold as the first reviewable change.
 
 ### 2. Calibrate on representative files
 
 **Files:** The first four Swift files in the representative table: `ClockTests.swift`, `Clock.swift`, `AppShellLaunchBehavior.swift`, and `SuperEvent.swift`.
 
-- [ ] Apply the policy to these four files. A suitable replacement for the launch-type introduction is: `/// Applied only at cold launch; foreground returns preserve the current shell state.` Keep the unsupported initial state documented next to `initialChatState`.
-- [ ] Compare each removed explanation against the signature, implementation, and relevant callers/tests. Retain useful API information at its owner and shorten lengthy rationale without losing preconditions, failure modes, or ordering.
-- [ ] Inspect the diff for lost meaning and unintended edits. Record a few before/after examples in `docs/COMMENT_AUDIT.md` so later batches follow the same standard.
-- [ ] Complete the applicable validation below. Use these examples to calibrate the remaining work without requiring a separate user approval for every batch once execution is authorized.
+- [x] Apply the policy to these four files. A suitable replacement for the launch-type introduction is: `/// Applied only at cold launch; foreground returns preserve the current shell state.` Keep the unsupported initial state documented next to `initialChatState`.
+- [x] Compare each removed explanation against the signature, implementation, and relevant callers/tests. Retain useful API information at its owner and shorten lengthy rationale without losing preconditions, failure modes, or ordering.
+- [x] Inspect the diff for lost meaning and unintended edits. Record a few before/after examples in `docs/COMMENT_AUDIT.md` so later batches follow the same standard.
+- [x] Complete the applicable validation below. Use these examples to calibrate the remaining work without requiring a separate user approval for every batch once execution is authorized.
 
 ### 3. Complete the Swift audit in reviewable batches
 
 **Files:** All remaining tracked Swift files under `Packages/{Core,Todo,Chat,Bible}`, `App`, `App-SuperOS`, `App-SuperBible`, and `Scripts`.
 
-- [ ] Finish Core and Todo, including tests, helpers, previews, and manifests. Delete repeated test-suite summaries and obvious member/initializer narration. Preserve public contracts and persistence invariants.
+- [x] Finish Core and Todo, including tests, helpers, previews, and manifests. Delete repeated test-suite summaries and obvious member/initializer narration. Preserve public contracts and persistence invariants.
 - [ ] Review Chat, beginning with `ChatScreenViewModel.swift`, `ChatSession.swift`, `SettingsModelDetailPane.swift`, `ChatScreen.swift`, `OverlayContentDragGesture.swift`, and `ContextAssembler.swift`; then cover every remaining path. Pay particular attention to streaming completion, cancellation, task-draining seams, provider quirks, and prompt composition.
-- [ ] Review Bible, beginning with `BibleScreenViewModel.swift`, `BulkAnnotationRunner+Live.swift`, `BibleChapterReader.swift`, `BibleParagraphBlock.swift`, and `BibleApplet.swift`; then cover every remaining path. Preserve SQLite ownership, annotation/narration ordering, selection, and accessibility constraints.
-- [ ] Finish shared shell, both target bootstraps, and Swift scripts. Read the linked shell/target architecture documents before editing those areas. Remove outdated roadmap narration after checking actual behavior; keep platform and first-frame workarounds.
+- [x] Review Bible, beginning with `BibleScreenViewModel.swift`, `BulkAnnotationRunner+Live.swift`, `BibleChapterReader.swift`, `BibleParagraphBlock.swift`, and `BibleApplet.swift`; then cover every remaining path. Preserve SQLite ownership, annotation/narration ordering, selection, and accessibility constraints.
+- [x] Finish shared shell, both target bootstraps, and Swift scripts. Read the linked shell/target architecture documents before editing those areas. Remove outdated roadmap narration after checking actual behavior; keep platform and first-frame workarounds.
 - [ ] For each batch, include trailing comments, block comments, `MARK:` headings, and test comments in the manual review. Mark every inventoried path changed or reviewed/retained; validate and commit each coherent batch.
 
 ### 4. Audit tooling and finish measurement
 
 **Files:** Tracked scripts including `Packages/Bible/Scripts`, `.github/workflows`, `.github/actions`, tracked hook/rule files, design JSX, `project.yml`, `.swiftlint.yml`, and `Config/Base.xcconfig`; update `docs/COMMENT_AUDIT.md`.
 
-- [ ] Review explanatory comments in each remaining maintained source/configuration file. Remove repeated command narration and duplicated configuration explanations; retain reproducibility, parser, release, environment, and operational pitfalls. Keep runtime strings/docstrings and functional directives unchanged.
-- [ ] Validate edited languages/configuration as described below. A build/capture tool parsing source text may depend on layout even when the compiler ignores it; include the existing tooling guard suites when relevant.
+- [x] Review explanatory comments in each remaining maintained source/configuration file. Remove repeated command narration and duplicated configuration explanations; retain reproducibility, parser, release, environment, and operational pitfalls. Keep runtime strings/docstrings and functional directives unchanged.
+- [x] Validate edited languages/configuration as described below. A build/capture tool parsing source text may depend on layout even when the compiler ignores it; include the existing tooling guard suites when relevant.
 - [ ] Repeat the baseline counts on the identical original file set and method. Report before/after comment lines and UTF-8 bytes by area, alongside reviewed/changed/retained file counts. Do not include new plan/report prose in source savings.
 - [ ] If a tokenizer is already available, measure full-file before/after tokens on that same set and name the tokenizer. Otherwise report bytes and lines only; do not convert characters to an asserted token-saving percentage or install a dependency just for this report.
 - [ ] Reconcile every inventory entry and document exclusions/deferred issues. Completion means all in-scope files reviewed, with no deletion quota and no unsupported token or runtime claims.
@@ -128,7 +128,7 @@ This is the recommended approach. A policy-only change would leave the existing 
 
 ## Validation
 
-**For this planning task:** Only the plan file is added. Run Markdown path checks and `git diff --check`; no application tests are needed.
+**Planning validation (completed):** Markdown path checks, `git diff --check`, and independent plan review. Implementation validation is recorded in [the audit report](../../COMMENT_AUDIT.md).
 
 **For implementation:** No new behavior tests or permanent audit infrastructure are needed. Run existing checks appropriate to the touched files:
 
