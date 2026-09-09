@@ -183,9 +183,13 @@ struct RecordPreviewPresentationObserver: UIViewControllerRepresentable {
             while let parent = presenter.parent { presenter = parent }
             guard presenter.presentingViewController != nil, !presenter.isBeingDismissed else { return }
             if let transition = presenter.transitionCoordinator {
-                transition.animate(alongsideTransition: nil) { [weak self, weak presenter] context in
+                let registered = transition.animate(alongsideTransition: nil) { [weak self, weak presenter] context in
                     guard !context.isCancelled, let presenter, !presenter.isBeingDismissed else { return }
                     self?.emitReady()
+                }
+                // A late registration can be rejected even though native appearance completed.
+                if !registered, !transition.isCancelled, !presenter.isBeingDismissed {
+                    emitReady()
                 }
             } else {
                 emitReady()

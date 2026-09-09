@@ -127,6 +127,9 @@ struct AppShell: View {
     /// and body re-eval gives the dispatcher fresh `@Environment`
     /// values so `withAnimation` honors the live `reduceMotion`.
     @State private var pendingRequests: [ShellRequest] = []
+    @State private var navigationQueue = SerialActionQueue()
+    // Queued transitions can outlive the environment captured when they were enqueued.
+    @State private var navigationReduceMotion = false
     @State private var recordPreview = RecordPreviewPresentation()
     /// Remains true during Settings dismissal, until native onDismiss.
     @State private var settingsOwnsPresentation = false
@@ -364,6 +367,9 @@ struct AppShell: View {
         .task {
             await ensureViewModel()
         }
+        .onChange(of: reduceMotion, initial: true) { _, value in
+            navigationReduceMotion = value
+        }
         // Narrow observers instead of one broad one on `settings`
         // so unrelated mutations (system prompt, verbosity, auto-compact
         // threshold) don't churn the host's render state — only the
@@ -460,7 +466,7 @@ struct AppShell: View {
                 switch request {
                 case .navigation(let navigation): route(navigation)
                 case .preview(let reference):
-                    guard !settingsOwnsPresentation, !sidebarOpen,
+                    guard !navigationQueue.isBusy, !settingsOwnsPresentation, !sidebarOpen,
                           let applet = registry.applets.first(where: { $0.appletID == reference.appletID })
                     else { continue }
                     if recordPreview.present(reference: reference, applet: applet) {
@@ -489,13 +495,20 @@ struct AppShell: View {
     private func route(_ navigation: ShellNavigation) {
         pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
         guard !recordPreview.deferNavigation(navigation) else { return }
+        navigationReduceMotion = reduceMotion
         switch navigation {
-        case .openConversation(let id): Task { await selectConversation(id: id) }
-        case .newConversation: Task { await startNewChat() }
-        case .openApplet(let id): selectApplet(id: id)
-        case .composerAttention(let request): Task { await handleComposerAttention(request) }
-        case .settings(let root, let pushed): presentSettings(rootedAt: root, pushing: pushed)
-        case .sidebar: presentSidebar()
+        case .openConversation(let id):
+            navigationQueue.enqueue { await selectConversation(id: id) }
+        case .newConversation:
+            navigationQueue.enqueue { await startNewChat() }
+        case .openApplet(let id):
+            navigationQueue.enqueueSynchronous { selectApplet(id: id) }
+        case .composerAttention(let request):
+            navigationQueue.enqueue { await handleComposerAttention(request) }
+        case .settings(let root, let pushed):
+            navigationQueue.enqueueSynchronous { presentSettings(rootedAt: root, pushing: pushed) }
+        case .sidebar:
+            navigationQueue.enqueueSynchronous { presentSidebar() }
         }
     }
 
@@ -537,7 +550,7 @@ struct AppShell: View {
         dismissKeyboard()
         registry.activeID = id
         UserDefaults.standard.set(id, forKey: Self.activeAppletStorageKey)
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
             chatState = .minimized
         }
     }
@@ -642,6 +655,11 @@ struct AppShell: View {
     private func ensureViewModel() async {
         guard !bootstrapStarted else { return }
         bootstrapStarted = true
+        // Reserve the first slot before subscribing to navigation events or suspending.
+        await navigationQueue.enqueue { await initializeViewModels() }.value
+    }
+
+    private func initializeViewModels() async {
         // Begin draining the cross-applet bus before any composer
         // mounts, so a verse added early is buffered, not lost.
         await referenceInbox.attach(to: dependencies.eventBus)
@@ -675,7 +693,8 @@ struct AppShell: View {
                     recordPreview.invalidateCompletion(preservingNavigation: true)
                     pendingRequests.removeAll { if case .preview = $0 { true } else { false } }
                 case .previewRecord(let reference):
-                    guard !recordPreview.isActive, !settingsOwnsPresentation, !sidebarOpen else { continue }
+                    guard !navigationQueue.isBusy, !recordPreview.isActive,
+                          !settingsOwnsPresentation, !sidebarOpen else { continue }
                     pendingRequests.append(.preview(reference))
                 case .openRecord(let reference):
                     // The receiving applet's own bus subscriber
@@ -930,7 +949,7 @@ struct AppShell: View {
         // Selecting a chat is an intent to focus on chat — snap the
         // overlay to expanded if the user came from minimized/semi over
         // an applet backdrop.
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
             chatState = .expanded
         }
         guard id != activeConversationId else { return }
@@ -995,7 +1014,7 @@ struct AppShell: View {
         guard chatState != target else { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             withAnimation(
-                SuperMotion.transition(reduceMotion: reduceMotion),
+                SuperMotion.transition(reduceMotion: navigationReduceMotion),
                 completionCriteria: .logicallyComplete
             ) {
                 chatState = target
