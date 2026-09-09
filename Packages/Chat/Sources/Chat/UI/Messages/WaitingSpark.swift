@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Small spinning spark shown while the assistant is "thinking" but

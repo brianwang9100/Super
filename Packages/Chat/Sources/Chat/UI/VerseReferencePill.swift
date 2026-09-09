@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// UI-local projection of a `RecordReference` for the composer strip and

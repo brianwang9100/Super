@@ -170,6 +170,7 @@ struct ChatSessionCompactionTests {
         // Compaction events fired in order, before the assistant save.
         let kinds = events.map { event -> String in
             switch event {
+            case .modelResolved: return "modelResolved"
             case .userMessageSaved: return "user"
             case .textDelta: return "text"
             case .thinkingDelta: return "thinking"

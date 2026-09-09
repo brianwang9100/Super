@@ -1,4 +1,5 @@
 import GRDBQuery
+import Core
 import SwiftUI
 
 /// Per-tool config pane reached from the gear affordance on the Memory

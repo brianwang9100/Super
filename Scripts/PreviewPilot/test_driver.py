@@ -25,12 +25,12 @@ class CaptureDriverTests(unittest.TestCase):
             self.assertEqual(sentinel.read_text(), 'keep')
 
     def capture(self, inspect=None, decoder_fails=False):
-        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
+        runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-27-0'
         device = {'udid': 'owned', 'isAvailable': True,
                   'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'}
-        outputs = ['Xcode 26.4.1\nBuild version 17E202', 'Version: 2.45.4',
-                   json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '23E254a', 'version': '26.4.1', 'isAvailable': True}]}),
-                   json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '23E254a'}}),
+        outputs = ['Xcode 27.0\nBuild version 27A5252f', 'Version: 2.45.4',
+                   json.dumps({'runtimes': [{'identifier': runtime, 'buildversion': '24A5423a', 'version': '27.0', 'isAvailable': True}]}),
+                   json.dumps({'disk': {'runtimeIdentifier': runtime, 'build': '24A5423a'}}),
                    'owned', json.dumps({'devices': {runtime: [device]}})]
         captures = []
         def execute(command, **kwargs):

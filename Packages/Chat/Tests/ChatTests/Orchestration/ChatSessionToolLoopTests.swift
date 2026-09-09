@@ -134,6 +134,7 @@ struct ChatSessionToolLoopTests {
         // Event sequence carried both lifecycle markers for the tool call.
         let kinds = events.map { event -> String in
             switch event {
+            case .modelResolved: return "modelResolved"
             case .userMessageSaved: return "user"
             case .textDelta: return "text"
             case .thinkingDelta: return "thinking"

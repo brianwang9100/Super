@@ -9,7 +9,7 @@ class InventoryTests(unittest.TestCase):
     def test_settings_group_is_required_and_dimensions_are_fixed(self):
         names = expected_names()
         settings = [name for name in names if '_SettingsPanePreviews.swift_' in name]
-        self.assertEqual(len(settings), 18)
+        self.assertEqual(len(settings), 21)
         with self.assertRaises(ValueError):
             verify_names([name for name in names if name not in settings])
         pane = 'Chat_SettingsPanePreviews.swift_settings_root_light.png'

@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Custom 44×26 iOS-style toggle. Mirrors `Switch` from `settings.jsx`:

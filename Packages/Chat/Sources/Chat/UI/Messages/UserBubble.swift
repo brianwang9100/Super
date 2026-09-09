@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Right-aligned soft-green chat bubble for a single user-authored message.

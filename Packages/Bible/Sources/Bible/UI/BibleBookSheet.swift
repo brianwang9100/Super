@@ -16,6 +16,12 @@ import SwiftUI
 /// surfaces (chat tool calls, the chapter reader's regenerate path)
 /// repaint the picker without intervention.
 struct BibleBookSheet: View {
+    /// Only layout sizes matter for initial positioning, not live scroll offsets.
+    private struct InitialScrollLayout: Equatable {
+        let contentSize: CGSize
+        let viewportSize: CGSize
+    }
+
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Bindable var viewModel: BibleBookSheetViewModel
@@ -29,11 +35,6 @@ struct BibleBookSheet: View {
     let currentBookId: String
     let currentChapterNumber: Int
 
-    /// Single-fire latch so the picker anchors to the current position
-    /// exactly once per appearance. Without it, subsequent layout passes
-    /// triggered by search/order toggles would yank the scroll back to the
-    /// current position after the reader has moved it.
-    @State private var didAutoScroll = false
     /// Extra bottom padding so the order toggle clears the shell's
     /// minimized chat pill; `0` in standalone (snapshot) contexts.
     let bottomInset: CGFloat
@@ -224,9 +225,19 @@ struct BibleBookSheet: View {
                 .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onAppear {
-                guard !didAutoScroll, let anchor = viewModel.initialScrollAnchor else { return }
-                didAutoScroll = true
+            .onScrollGeometryChange(for: InitialScrollLayout.self) { geometry in
+                InitialScrollLayout(contentSize: geometry.contentSize, viewportSize: geometry.containerSize)
+            } action: { _, layout in
+                viewModel.updateInitialScrollLayout(
+                    contentSize: layout.contentSize,
+                    viewportSize: layout.viewportSize
+                )
+            }
+            .onChange(of: viewModel.canResolveInitialScroll, initial: true) { _, _ in
+                // onAppear can precede target registration on iOS 27. The
+                // target's own geometry and the scroll layout must both exist
+                // before consuming this sole, non-animated positioning request.
+                guard let anchor = viewModel.consumeInitialScrollAnchor() else { return }
                 switch anchor {
                 case .bookRow(let bookId):
                     proxy.scrollTo(Self.bookRowID(bookId), anchor: .top)
@@ -307,6 +318,8 @@ struct BibleBookSheet: View {
         let isCurrent = book.id == currentBookId
         let hasAnnotations = booksWithAnnotations.contains(book.id)
         let hasNotes = booksWithNotes.contains(book.id)
+        let scrollAnchor = BibleBookSheetScrollAnchor.bookRow(bookId: book.id)
+        let isInitialScrollTarget = viewModel.initialScrollAnchor == scrollAnchor
 
         VStack(alignment: .leading, spacing: 0) {
             // Row layout: a tappable name area (expansion toggle) flush
@@ -353,6 +366,11 @@ struct BibleBookSheet: View {
             }
         }
         .id(Self.bookRowID(book.id))
+        .onGeometryChange(for: CGSize?.self) { geometry in
+            isInitialScrollTarget ? geometry.size : nil
+        } action: { size in
+            if let size { viewModel.updateInitialScrollTarget(scrollAnchor, size: size) }
+        }
     }
 
     /// The leading run of filled ribbon glyphs on a book row — one per
@@ -509,6 +527,8 @@ struct BibleBookSheet: View {
     private func chapterCell(for book: BibleBookSummary, number: Int) -> some View {
         let isCurrent = book.id == currentBookId && number == currentChapterNumber
         let bookmark = bookmarkColor(forBook: book.id, chapter: number)
+        let scrollAnchor = BibleBookSheetScrollAnchor.chapterCell(bookId: book.id, chapterNumber: number)
+        let isInitialScrollTarget = viewModel.initialScrollAnchor == scrollAnchor
         Button {
             onSelectChapter(book.id, number)
         } label: {
@@ -527,6 +547,11 @@ struct BibleBookSheet: View {
         .buttonStyle(GlassHapticButtonStyle(.selection))
         .accessibilityLabel(Self.chapterCellLabel(bookName: book.name, number: number, bookmark: bookmark))
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
+        .onGeometryChange(for: CGSize?.self) { geometry in
+            isInitialScrollTarget ? geometry.size : nil
+        } action: { size in
+            if let size { viewModel.updateInitialScrollTarget(scrollAnchor, size: size) }
+        }
     }
 
     /// The cell's fill + number, split out so the bookmark badge overlay can

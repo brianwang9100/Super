@@ -1,8 +1,8 @@
 {
   "device": "iPhone 17",
-  "ios_version": "26.4.1",
-  "ios_build": "23E254a",
-  "xcode_version": "26.4.1",
-  "xcode_build": "17E202",
+  "ios_version": "27.0",
+  "ios_build": "24A5423a",
+  "xcode_version": "27.0",
+  "xcode_build": "27A5252f",
   "xcodegen_version": "2.45.4"
 }

@@ -107,6 +107,35 @@ struct ChatScreenViewModelTests {
         #expect(resolved == nil)
     }
 
+    @Test("fresh selection respects the seeded PCC record before sorted debug alternatives")
+    func initialSelectionRespectsSeed() {
+        let debug = SelectableModel(recordId: "debug-canned", model: makeModel(id: "debug"))
+        let pcc = SelectableModel(recordId: "seed", model: makeModel(id: "private-cloud-compute"))
+        #expect(ChatScreenViewModel.resolveInitialModelId(
+            persisted: nil, available: [debug, pcc], preferredRecordId: "seed"
+        ) == "seed")
+    }
+
+    @Test("an existing explicit local selection wins over the new OS default")
+    func initialSelectionPreservesExistingChoice() {
+        let local = SelectableModel(recordId: "local", model: makeModel(id: "system-default"))
+        let pcc = SelectableModel(recordId: "pcc", model: makeModel(id: "private-cloud-compute"))
+        for persisted in ["local", "system-default"] {
+            #expect(ChatScreenViewModel.resolveInitialModelId(
+                persisted: persisted, available: [pcc, local], preferredRecordId: "pcc"
+            ) == "local")
+        }
+    }
+
+    @Test("a stale picker choice resolves to the selected unavailable PCC record, not another backend")
+    func staleChoiceRespectsSelectedRecord() {
+        let remote = SelectableModel(recordId: "remote", model: makeModel(id: "remote"))
+        let pcc = SelectableModel(recordId: "pcc", model: makeModel(id: "private-cloud-compute"))
+        #expect(ChatScreenViewModel.resolveInitialModelId(
+            persisted: "deleted", available: [remote, pcc], preferredRecordId: "pcc"
+        ) == "pcc")
+    }
+
     @Test("two rows sharing a modelId are independently selectable by record id")
     func sameModelIdRowsSelectableByRecordId() {
         // The convergence guarantee: two configured models with the SAME
@@ -135,6 +164,58 @@ struct ChatScreenViewModelTests {
     }
 
     // MARK: - Empty-state suggestions
+
+    @Test(arguments: [false, true])
+    func resolvedContextReachesComposerWithoutChangingSelection(lateSubscriber: Bool) async {
+        let placeholder = LLMModel(id: "private-cloud-compute", displayName: "PCC", maxContextTokens: 0)
+        let resolved = SelectableModel(recordId: "pcc", model: LLMModel(
+            id: placeholder.id, displayName: placeholder.displayName, maxContextTokens: 32_768
+        ))
+        let other = SelectableModel(recordId: "other", model: placeholder)
+        let driver = ScriptedDriver(
+            events: [],
+            pendingSnapshot: .init(
+                accumulatedText: "", accumulatedThinking: "",
+                resolvedModel: lateSubscriber ? resolved : nil
+            ),
+            pendingSubscribeEvents: lateSubscriber ? [] : [.modelResolved(resolved)]
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test", driver: driver,
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [.init(recordId: "pcc", model: placeholder), other], selectedModelId: "pcc"
+        )
+        await viewModel.load()
+        await viewModel._waitForPendingStreamTask()
+        #expect(viewModel.selectedModelId == "pcc")
+        #expect(viewModel.maxContextTokens == 32_768)
+        #expect(viewModel.modelOptions.first?.maxContextTokens == 32_768)
+        #expect(viewModel.availableModels.last == other)
+    }
+
+    @Test
+    func staleResolvedContextCannotReviveOrReplaceAModel() async {
+        let current = SelectableModel(recordId: "existing", model: model)
+        let changedBackend = SelectableModel(recordId: current.recordId, model: LLMModel(
+            id: "private-cloud-compute", displayName: "PCC", maxContextTokens: 32_768
+        ))
+        let deleted = SelectableModel(recordId: "deleted", model: model)
+        let driver = ScriptedDriver(
+            events: [], pendingSnapshot: .init(accumulatedText: "", accumulatedThinking: ""),
+            pendingSubscribeEvents: [.modelResolved(changedBackend), .modelResolved(deleted)]
+        )
+        let viewModel = ChatScreenViewModel(
+            conversationId: conversationId, conversationTitle: "Test", driver: driver,
+            messageRepository: StubMessageRepository(initial: []),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [current], selectedModelId: current.recordId
+        )
+        await viewModel.load()
+        await viewModel._waitForPendingStreamTask()
+        #expect(viewModel.availableModels == [current])
+        #expect(viewModel.selectedModelId == current.recordId)
+    }
 
     @Test("loadSuggestionsIfNeeded resolves the provider's suggestions into state")
     func loadsGeneratedSuggestions() async {

@@ -5822,5 +5822,247 @@
       1206,
       780
     ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_ios26_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_ios26_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_ios26_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_ios26_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_pcc_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_pcc_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_pcc_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_pcc_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_local_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_local_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_local_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_local_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_duplicate_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_duplicate_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_duplicate_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_duplicate_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_unavailable_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_unavailable_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_unavailable_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_unavailable_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_quota_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_quota_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_quota_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_quota_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_both_vellumLight_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_both_vellumLight_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistration",
+    "captureName": "apple_both_vellumDark_default",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistration.apple_both_vellumDark_default.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_ios26_vellumLight_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_ios26_vellumLight_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_ios26_vellumDark_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_ios26_vellumDark_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_pcc_vellumLight_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_pcc_vellumLight_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_pcc_vellumDark_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_pcc_vellumDark_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_unavailable_vellumLight_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_unavailable_vellumLight_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_unavailable_vellumDark_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_unavailable_vellumDark_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_quota_vellumLight_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_quota_vellumLight_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
+  },
+  {
+    "package": "Chat",
+    "suite": "SettingsSheetSnapshotTests",
+    "testName": "appleModelRegistrationXXL",
+    "captureName": "apple_quota_vellumDark_xxl",
+    "image": "Chat_SettingsSheetSnapshotTests_appleModelRegistrationXXL.apple_quota_vellumDark_xxl.png",
+    "pixels": [
+      1206,
+      2622
+    ]
   }
 ]

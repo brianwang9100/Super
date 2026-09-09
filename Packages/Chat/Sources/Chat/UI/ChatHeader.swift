@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Sticky chat header. Centered title that tracks the chat font-scale knob.

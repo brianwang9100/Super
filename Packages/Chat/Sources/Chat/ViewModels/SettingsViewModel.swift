@@ -261,25 +261,20 @@ public final class SettingsViewModel {
     /// restart (e.g. refreshing `ChatScreenViewModel.availableModels`).
     public var onModelsChanged: (@MainActor () -> Void)?
 
-    /// Live AFM availability surfaced to the panes so an
-    /// `.appleFoundation` row can render its subtitle and toggle state
-    /// from the OS rather than from the persisted record alone.
-    ///
-    /// Snapshotted once at init from `SystemLanguageModel.default.availability`
-    /// (or the injected override in tests). The Apple SDK marks the
-    /// underlying property as `Observable`, so a future revision could
-    /// re-read on every render; for the MVP a launch-time snapshot is
-    /// fine — toggling Apple Intelligence in System Settings already
-    /// requires an app relaunch to take effect.
+    /// Legacy local-model availability for existing initializers and fixtures.
+    /// Product surfaces use refreshed `appleFoundationStatuses` for each variant.
     public let appleFoundationAvailability: AppleFoundationAvailability
 
-    /// The on-device AFM context window surfaced to the panes so the
-    /// `.appleFoundation` detail row can render (read-only) and persist the
-    /// real window. Snapshotted once at init from
-    /// `AppleFoundationLLMProvider.deviceContextTokens` (or the injected
-    /// override in tests/fixtures, which keeps snapshots deterministic without
-    /// touching the real device API).
+    /// Legacy local context metadata; refreshed per-model status owns the UI value.
     public let appleFoundationContextTokens: Int
+
+    /// Per-model readiness is independent from the OS-based default choice.
+    public private(set) var appleFoundationStatuses: [AppleFoundationModel: AppleFoundationModelStatus]
+    public private(set) var supportsPrivateCloudCompute: Bool
+    public private(set) var isSavingAppleModel = false
+    private let appleFoundationStatusProvider: (any AppleFoundationModelStatusProvider)?
+    private var usesSnapshotState = false
+    private var appleStatusRefreshGeneration: [AppleFoundationModel: Int] = [:]
 
     public init(
         appInfo: SuperAppInfo,
@@ -306,6 +301,7 @@ public final class SettingsViewModel {
             SystemLanguageModel.default.availability
         ),
         appleFoundationContextTokens: Int = AppleFoundationLLMProvider.deviceContextTokens,
+        appleFoundationStatusProvider: (any AppleFoundationModelStatusProvider)? = nil,
         audioSetup: ProviderAudioSetup? = nil,
         eventBus: SuperEventBus? = nil
     ) {
@@ -341,6 +337,24 @@ public final class SettingsViewModel {
         self.modelListingService = modelListingService ?? httpClient.map { LiveModelListingService(http: $0) }
         self.appleFoundationAvailability = appleFoundationAvailability
         self.appleFoundationContextTokens = appleFoundationContextTokens
+        self.appleFoundationStatusProvider = appleFoundationStatusProvider
+        self.supportsPrivateCloudCompute = appleFoundationStatusProvider?.supportsPrivateCloudCompute ?? false
+        let localAvailability: AppleFoundationModelStatus.Availability
+        switch appleFoundationAvailability {
+        case .available: localAvailability = .available
+        case .unavailable(let reason): localAvailability = .unavailable(.local(reason))
+        }
+        self.appleFoundationStatuses = [
+            .local: AppleFoundationModelStatus(
+                model: .local, availability: localAvailability, contextTokens: appleFoundationContextTokens
+            ),
+            .privateCloudCompute: AppleFoundationModelStatus(
+                model: .privateCloudCompute,
+                availability: .unavailable(
+                    appleFoundationStatusProvider?.supportsPrivateCloudCompute == true ? .systemNotReady : .requiresNewerOS
+                )
+            ),
+        ]
     }
 
     /// `true` once `load()` has populated state from any source — the
@@ -365,6 +379,82 @@ public final class SettingsViewModel {
         self.tools = tools
         self.chatCount = chatCount
         self.hasLoaded = true
+        self.usesSnapshotState = true
+    }
+
+    /// Pin logical OS/readiness states without querying the host from a snapshot.
+    func _setAppleFoundationSnapshotState(
+        supportsPrivateCloudCompute: Bool,
+        statuses: [AppleFoundationModel: AppleFoundationModelStatus]
+    ) {
+        self.supportsPrivateCloudCompute = supportsPrivateCloudCompute
+        self.appleFoundationStatuses = statuses
+        self.usesSnapshotState = true
+    }
+
+    /// Refresh on settings entry/foreground; generation also checks status itself.
+    public func refreshAppleFoundationStatuses() async {
+        for model in AppleFoundationModel.allCases {
+            guard !Task.isCancelled else { return }
+            await refreshAppleFoundationStatus(for: model)
+        }
+    }
+
+    /// A local save must not wait on unrelated PCC metadata. Per-model versions
+    /// prevent an overlapping lifecycle refresh from publishing stale readiness.
+    private func refreshAppleFoundationStatus(for model: AppleFoundationModel) async {
+        guard !Task.isCancelled, !usesSnapshotState, let appleFoundationStatusProvider else { return }
+        let generation = (appleStatusRefreshGeneration[model] ?? 0) + 1
+        appleStatusRefreshGeneration[model] = generation
+        let status = await appleFoundationStatusProvider.status(for: model)
+        guard !Task.isCancelled, !usesSnapshotState,
+              generation == appleStatusRefreshGeneration[model] else { return }
+        appleFoundationStatuses[model] = status.model == model ? status : AppleFoundationModelStatus(
+            model: model, availability: .unavailable(.unknown)
+        )
+    }
+
+    /// Current model-specific readiness; missing state never implies availability.
+    public func appleFoundationStatus(for model: AppleFoundationModel) -> AppleFoundationModelStatus {
+        appleFoundationStatuses[model] ?? AppleFoundationModelStatus(
+            model: model, availability: .unavailable(.unknown)
+        )
+    }
+
+    /// Registration availability does not conflate quota exhaustion with OS support.
+    public func appleFoundationRegistrationIssue(for model: AppleFoundationModel) -> String? {
+        if model == .privateCloudCompute, !supportsPrivateCloudCompute {
+            return "Private Cloud Compute requires iOS 27 or later."
+        }
+        if hasAppleFoundationModel(model) { return "This Apple Intelligence model is already added." }
+        let status = appleFoundationStatus(for: model)
+        if case .unavailable = status.availability { return appleFoundationStatusMessage(for: model) }
+        return nil
+    }
+
+    /// Checks duplicate registration by variant, not by the shared provider kind.
+    public func hasAppleFoundationModel(_ model: AppleFoundationModel) -> Bool {
+        models.contains { $0.kind == .appleFoundation && $0.modelId == model.rawValue }
+    }
+
+    /// Prefer the OS default, then the other usable, unregistered Apple variant.
+    public var preferredAppleFoundationModel: AppleFoundationModel? {
+        let candidates: [AppleFoundationModel] = supportsPrivateCloudCompute
+            ? [.privateCloudCompute, .local] : [.local]
+        return candidates.first { appleFoundationRegistrationIssue(for: $0) == nil }
+    }
+
+    /// Display-safe status text; never render SDK debug descriptions or payloads.
+    public func appleFoundationStatusMessage(for model: AppleFoundationModel) -> String? {
+        let status = appleFoundationStatus(for: model)
+        switch status.blockingError {
+        case .providerError(_, let message): return message
+        case .requestFailed: return "Apple Intelligence is temporarily unavailable."
+        case .some: return "This model is currently unavailable."
+        case .none: break
+        }
+        if status.quota?.isApproachingLimit == true { return "Approaching the daily PCC usage limit." }
+        return nil
     }
 
     /// Snapshot seam for the live model-list states the Add-Model dropdown
@@ -652,7 +742,7 @@ public final class SettingsViewModel {
     }
 
     /// Selects the model used to summarize chat titles. Pass `nil` for
-    /// "automatic" (resolves to the Apple Foundation Model when available).
+    /// "automatic" (uses the configured local Apple model, never the PCC default).
     /// Stores the summarizer's **record id** (`ModelRow.id` ==
     /// `ModelConfigurationRecord.id`), the unique per-model identity the title
     /// path resolves through `LLMProviderRegistry.provider(id:)`. Pass the row
@@ -745,51 +835,58 @@ public final class SettingsViewModel {
 
     // MARK: - Model CRUD
 
-    /// `true` when an `.appleFoundation` row already exists. The Add-Model
-    /// preset picker uses this to disable the Apple Intelligence preset
-    /// (one AFM row is enough — adding a second would only confuse the
-    /// model list and `registerProvider` already gates on
-    /// availability).
+    /// Whether any Apple model is configured; duplicate enforcement uses the
+    /// variant-specific overload so local and PCC can coexist.
     public var hasAppleFoundationModel: Bool {
         models.contains { $0.kind == .appleFoundation }
     }
 
-    /// Persist a new `.appleFoundation` row, register the live AFM
-    /// provider (when the launch-time availability snapshot says AFM is
-    /// usable), and refresh the in-memory list. Mirrors `createModel`
-    /// for the openAI-compatible kind, but skips the Keychain write (AFM
-    /// rows have no API key) and force-sets the shape Apple's on-device
-    /// model expects (`baseURL = nil`, `apiKeyRef = nil`, `modelId =
-    /// "system-default"`). The `idGenerator` and `now` parameters are
-    /// injectable so tests can pin the id and timestamp.
-    ///
-    /// Returns the committed row or nil on failure. Errors are published only
-    /// while `formSession` is current; omitting it retains non-form behavior.
+    /// Register one Apple variant without an HTTP endpoint or Keychain credential.
+    /// OS/readiness and per-variant duplicate guards run before allocating an ID;
+    /// quota exhaustion does not prevent saving a configuration for later use.
+    /// - Parameters:
+    ///   - supportsThinking: Legacy form input; Apple reasoning controls are not exposed.
+    ///   - maxContextTokens: Legacy form input; model-specific status supplies metadata.
     @discardableResult
     public func createAppleFoundationModel(
         name: String,
         supportsThinking: Bool,
         maxContextTokens: Int,
+        model: AppleFoundationModel = .local,
         idGenerator: () -> String = { UUID().uuidString },
         now: Date = Date(),
         formSession: Int? = nil
     ) async -> ModelConfigurationRecord? {
-        let recordId = idGenerator()
-        guard modelMutationIDs.insert(recordId).inserted else { return nil }
-        defer { modelMutationIDs.remove(recordId) }
+        guard !isSavingAppleModel else { return nil }
+        isSavingAppleModel = true
+        defer { isSavingAppleModel = false }
+        await refreshAppleFoundationStatus(for: model)
+        if let issue = appleFoundationRegistrationIssue(for: model) {
+            publishModelEditError(issue, formSession: formSession)
+            return nil
+        }
         publishModelEditError(nil, formSession: formSession)
         lastSavedModel = nil
         do {
+            let existing = try await modelRepository.all()
+            guard !existing.contains(where: { $0.kind == .appleFoundation && $0.modelId == model.rawValue }) else {
+                publishModelEditError("This Apple Intelligence model is already added.", formSession: formSession)
+                await loadModels()
+                return nil
+            }
+            let recordId = idGenerator()
+            guard modelMutationIDs.insert(recordId).inserted else { return nil }
+            defer { modelMutationIDs.remove(recordId) }
             let record = ModelConfigurationRecord(
                 id: recordId,
                 name: name,
                 baseURL: nil,
                 apiKeyRef: nil,
-                modelId: "system-default",
+                modelId: model.rawValue,
                 createdAt: now,
                 kind: .appleFoundation,
-                supportsThinking: supportsThinking,
-                maxContextTokens: maxContextTokens,
+                supportsThinking: false,
+                maxContextTokens: appleFoundationStatus(for: model).contextTokens ?? model.fallbackContextTokens,
                 isSelected: false
             )
             try await modelRepository.save(record)
@@ -867,6 +964,8 @@ public final class SettingsViewModel {
         }
     }
 
+    // Existing form-field API stays source-compatible with both app targets and previews.
+    // swiftlint:disable function_parameter_count
     /// Update an existing row. A blank `apiKey` argument leaves the
     /// stored key untouched — the form treats the field as "tap to
     /// change" and only writes through when the user types something.
@@ -903,6 +1002,11 @@ public final class SettingsViewModel {
         do {
             guard let existing = try await modelRepository.fetch(id: id) else {
                 publishModelEditError("Could not save model: row no longer exists.", formSession: formSession)
+                return nil
+            }
+            if existing.kind == .appleFoundation,
+               modelId != existing.modelId || searchSelection != nil {
+                publishModelEditError("Add the other Apple Intelligence model separately instead of changing this model's type.", formSession: formSession)
                 return nil
             }
             // Target kind/backend: the picker's resolved pair when supplied,
@@ -974,24 +1078,18 @@ public final class SettingsViewModel {
             } else {
                 resolvedKey = nil
             }
-            // Build the replacement first; only swap when we actually have one
-            // to register, so an edit never unregisters a working provider and
-            // leaves nothing in its place (which would silently kill chat for
-            // that row until restart). Building first makes the unregister
-            // condition *exactly* what registration would do — no
-            // `hasProviderAdapter` proxy that could drift from `makeLLMProvider`
-            // (a kind can be buildable-by-kind yet yield no provider when the
-            // row is missing its HTTP client or base URL, or AFM is
-            // unavailable). The add paths still go through `registerProvider`.
+            // Replace in place so editing the active local/PCC row cannot
+            // momentarily select another backend through unregister's fallback.
+            // If no replacement can be constructed, leave the existing one intact.
             if let registry = llmProviderRegistry,
-               let replacement = makeLLMProvider(
+               let replacement = await makeLLMProvider(
                    for: committed,
                    apiKey: resolvedKey,
                    http: httpClient,
                    toolRegistry: toolRegistry,
-                   appleFoundationAvailability: appleFoundationAvailability
+                   appleFoundationAvailability: appleFoundationAvailability,
+                   appleFoundationStatusProvider: appleFoundationStatusProvider
                ) {
-                await registry.unregister(id: id)
                 await registry.register(replacement)
             }
             await loadModels()
@@ -1072,13 +1170,24 @@ public final class SettingsViewModel {
         guard modelMutationIDs.insert(id).inserted else { return false }
         defer { modelMutationIDs.remove(id) }
         publishModelEditError(nil, formSession: formSession)
+        let retainsAppleProvider: Bool
+        do {
+            retainsAppleProvider = try await modelRepository.fetch(id: id)?.kind == .appleFoundation
+        } catch {
+            // A failed read cannot establish whether invalidating this provider is safe.
+            publishModelEditError("Could not remove the model. Try again.", formSession: formSession)
+            return false
+        }
         if lastSavedModel?.id == id { lastSavedModel = nil }
         // An opaque deletion failure may follow successful Keychain removal. Discard the
         // live provider's cached secret before deletion, even if its row must remain for retry.
-        await llmProviderRegistry?.unregister(id: id)
+        // Apple configurations carry no cached Keychain secret. Keep their exact
+        // selection until persistence succeeds, including unavailable PCC rows.
+        if !retainsAppleProvider { await llmProviderRegistry?.unregister(id: id) }
         var succeeded = true
         do {
             try await modelRepository.delete(id: id)
+            if retainsAppleProvider { await llmProviderRegistry?.unregister(id: id) }
         } catch {
             publishModelEditError("Could not remove the model. Try again.", formSession: formSession)
             succeeded = false
@@ -1146,22 +1255,17 @@ public final class SettingsViewModel {
         return await commitAudioSetup(for: row, enabled: enabled, useThisKey: useThisKey, revision: revision, session: session)
     }
 
-    /// Build a fresh provider for `record` and register it with the live
-    /// registry. The per-kind dispatch is shared with the launch path
-    /// (`AppBootstrapSupport.hydrateProviders`) through `makeLLMProvider`, so
-    /// the two can't drift on which kinds are buildable: `.openAICompatible`
-    /// and `.openAIResponses` need the injected HTTP client; `.appleFoundation`
-    /// is skipped when AFM is unavailable; native-search kinds without a
-    /// shipped adapter build nothing. No-op when no registry was injected
-    /// (tests and previews don't wire one).
+    /// Register the same provider construction used by bootstrap. Known Apple
+    /// variants remain registered when unavailable; no registry means no work.
     private func registerProvider(for record: ModelConfigurationRecord, apiKey: String?) async {
         guard let registry = llmProviderRegistry else { return }
-        guard let provider = makeLLMProvider(
+        guard let provider = await makeLLMProvider(
             for: record,
             apiKey: apiKey,
             http: httpClient,
             toolRegistry: toolRegistry,
-            appleFoundationAvailability: appleFoundationAvailability
+            appleFoundationAvailability: appleFoundationAvailability,
+            appleFoundationStatusProvider: appleFoundationStatusProvider
         ) else { return }
         await registry.register(provider)
     }

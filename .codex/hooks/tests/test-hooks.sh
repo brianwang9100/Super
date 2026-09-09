@@ -92,7 +92,7 @@ run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_i
 assert_allowed
 
 run_hook "$snapshot_hook" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
-assert_denied "pinned simulator"
+assert_denied "CI"
 
 # Codex runs registered hooks from the session cwd. Exercise both configured
 # commands from a nested package so a repository-root-relative path is required.
@@ -106,7 +106,7 @@ run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$r
 assert_allowed
 
 run_registered_hook "exec_command|Bash" '{"tool_name":"exec_command","cwd":"'"$repo"'","tool_input":{"cmd":"xcodebuild test -destination \"platform=iOS Simulator,name=iPhone 16,OS=26.4\""}}'
-assert_denied "pinned simulator"
+assert_denied "CI"
 
 if [ "$failures" -gt 0 ]; then
   printf 'Hook fixture tests failed: %s\n' "$failures"

@@ -171,4 +171,20 @@ import SwiftUI
     )
 }
 
+// Full cloud label and unresolved context protect distinct footer geometry.
+#Preview("composer_pcc_unresolved_light", traits: .sizeThatFitsLayout) {
+    PreviewChatComposer(text: "", theme: .vellumLight, usedTokens: 0, privateCloudCompute: true)
+}
+
+#Preview("composer_pcc_unresolved_dark", traits: .sizeThatFitsLayout) {
+    PreviewChatComposer(text: "", theme: .vellumDark, usedTokens: 0, privateCloudCompute: true)
+}
+
+#Preview("composer_pcc_unresolved_light_xxl", traits: .sizeThatFitsLayout) {
+    PreviewChatComposer(text: "", theme: .vellumLight, usedTokens: 0, dynamicType: .xxLarge, privateCloudCompute: true)
+}
+
+#Preview("composer_pcc_unresolved_dark_xxl", traits: .sizeThatFitsLayout) {
+    PreviewChatComposer(text: "", theme: .vellumDark, usedTokens: 0, dynamicType: .xxLarge, privateCloudCompute: true)
+}
 #endif

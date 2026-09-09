@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Models pane. Mirrors `ModelsPane` from `settings.jsx`: each configured
@@ -29,6 +30,7 @@ struct SettingsModelsPane: View {
                 .padding(.bottom, 12)
         }
         .padding(.top, 8)
+        .task { await viewModel.refreshAppleFoundationStatuses() }
     }
 
     /// All-caps section label matching the title-summarization footer's
@@ -70,7 +72,10 @@ struct SettingsModelsPane: View {
                         Text(subtitle(for: model))
                             .font(typography.mono(12, relativeTo: .caption))
                             .foregroundStyle(isAvailable ? theme.inkFaint : theme.errorInk)
-                            .lineLimit(1)
+                            // Apple rows include processing location and a
+                            // readiness reason; neither may disappear in an ellipsis.
+                            .lineLimit(model.kind == .appleFoundation ? nil : 1)
+                            .fixedSize(horizontal: false, vertical: model.kind == .appleFoundation)
                             .truncationMode(.middle)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,7 +113,7 @@ struct SettingsModelsPane: View {
     /// Whether the row is usable right now. `.openAICompatible` rows are
     /// always usable from the UI's perspective — wire-level errors
     /// surface as runtime banners, not toggle gating. `.appleFoundation`
-    /// rows are usable only when the OS reports AFM as available.
+    /// rows require their own readiness, quota, and resolved metadata.
     private func isModelAvailable(_ model: SettingsViewModel.ModelRow) -> Bool {
         switch model.kind {
         case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
@@ -117,7 +122,8 @@ struct SettingsModelsPane: View {
             // surface as runtime banners, not toggle gating.
             return true
         case .appleFoundation:
-            return viewModel.appleFoundationAvailability.isAvailable
+            guard let variant = AppleFoundationModel(rawValue: model.modelId) else { return false }
+            return viewModel.appleFoundationStatus(for: variant).canGenerate
         #if DEBUG
         case .debug:
             return true
@@ -127,19 +133,20 @@ struct SettingsModelsPane: View {
 
     /// `.openAICompatible` rows show context + endpoint (the existing
     /// monospaced "4K ctx · api.openai.com" line). `.appleFoundation`
-    /// rows show the model id when available, and the unavailability
-    /// reason otherwise — the AFM equivalent of an endpoint subtitle.
+    /// rows retain visible local/cloud identity even when a custom name is used,
+    /// followed by measured context or an actionable status.
     private func subtitle(for model: SettingsViewModel.ModelRow) -> String {
         switch model.kind {
         case .openAICompatible, .anthropicNative, .geminiNative, .openAIResponses:
             return "\(model.maxContextTokens / 1000)K ctx · \(model.endpoint)"
         case .appleFoundation:
-            switch viewModel.appleFoundationAvailability {
-            case .available:
-                return "\(model.maxContextTokens / 1000)K ctx · on-device"
-            case .unavailable(let reason):
-                return reason.subtitle
+            guard let variant = AppleFoundationModel(rawValue: model.modelId) else { return "Unsupported Apple model" }
+            let location = variant == .local ? "Local only · on-device" : "PCC · Apple cloud"
+            if let message = viewModel.appleFoundationStatusMessage(for: variant) { return "\(location) · \(message)" }
+            if let context = viewModel.appleFoundationStatus(for: variant).contextTokens {
+                return "\(context / 1000)K ctx · \(location)"
             }
+            return location
         #if DEBUG
         case .debug:
             return "\(model.maxContextTokens / 1000)K ctx · canned responses"
@@ -150,7 +157,7 @@ struct SettingsModelsPane: View {
     /// Footer: which model — if any — summarizes new chat titles, a knob
     /// independent of the conversation's active model. The toggle is the
     /// master on/off; when on, the radio list picks the summarizer from the
-    /// configured models. Apple Intelligence is the automatic default
+    /// configured models. Local Apple Intelligence is the automatic default
     /// (highlighted when the user hasn't made an explicit pick) and is shown
     /// disabled when it's unavailable on this device. When off — or when the
     /// resolved model is unavailable — titles fall back to the first message.
@@ -167,6 +174,10 @@ struct SettingsModelsPane: View {
                     }
                 }
             }
+            Text("Automatic titles use Local only when configured; otherwise they use the first message. Choosing PCC here uses cloud processing and its daily quota.")
+                .font(typography.font(.caption))
+                .foregroundStyle(theme.inkFaint)
+                .padding(.horizontal, 20)
         }
     }
 
@@ -197,9 +208,8 @@ struct SettingsModelsPane: View {
     }
 
     /// One radio row in the summarizer-model list. `nil` `titleModelId`
-    /// (automatic) highlights the Apple Foundation row; an explicit id
-    /// highlights the matching model. Unavailable rows (AFM when Apple
-    /// Intelligence is off) are dimmed and non-selectable.
+    /// (automatic) highlights only the local Apple row; an explicit id
+    /// highlights its exact model. Unavailable rows are dimmed and non-selectable.
     private func titleModelRow(_ model: SettingsViewModel.ModelRow, isLast: Bool) -> some View {
         let isAvailable = isModelAvailable(model)
         let isSelected = isTitleModelSelected(model)
@@ -207,10 +217,16 @@ struct SettingsModelsPane: View {
             Task { await viewModel.setTitleModelId(model.id) }
         }) {
             HStack(spacing: 14) {
-                Text(model.name)
-                    .font(typography.font(.subheadline))
-                    .foregroundStyle(isAvailable ? theme.ink : theme.inkFaint)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.name)
+                        .font(typography.font(.subheadline))
+                    if let location = Self.appleModelLocation(kind: model.kind, modelID: model.modelId) {
+                        Text(location)
+                            .font(typography.font(.caption))
+                    }
+                }
+                .foregroundStyle(isAvailable ? theme.ink : theme.inkFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if isSelected {
                     CheckIcon(size: 16)
                         .foregroundStyle(isAvailable ? theme.accent : theme.inkFaint)
@@ -232,8 +248,26 @@ struct SettingsModelsPane: View {
         }
         .buttonStyle(.plain)
         .disabled(!isAvailable)
-        .accessibilityLabel(model.name)
+        .accessibilityLabel(Self.titleModelAccessibilityLabel(
+            name: model.name, kind: model.kind, modelID: model.modelId
+        ))
         .accessibilityValue(isSelected ? "Selected" : "")
+    }
+
+    /// Processing location remains visible even when a saved Apple model has a custom name.
+    nonisolated static func appleModelLocation(kind: LLMProviderKind, modelID: String) -> String? {
+        guard kind == .appleFoundation else { return nil }
+        switch AppleFoundationModel(rawValue: modelID) {
+        case .local: return "Local only · on-device"
+        case .privateCloudCompute: return "PCC · Apple cloud"
+        case .none: return "Unsupported Apple model"
+        }
+    }
+
+    /// VoiceOver gets the same local/cloud disclosure as the visible title-model row.
+    nonisolated static func titleModelAccessibilityLabel(name: String, kind: LLMProviderKind, modelID: String) -> String {
+        guard let location = appleModelLocation(kind: kind, modelID: modelID) else { return name }
+        return "\(name), \(location)"
     }
 
     private var titleDivider: some View {
@@ -246,11 +280,11 @@ struct SettingsModelsPane: View {
     /// Whether `model` is the current title summarizer. An explicit
     /// `titleModelId` matches by the row's unique **record id** (`model.id`,
     /// not `modelId` — two rows can share a `modelId`, which would light both
-    /// up); the automatic default (`nil`) highlights the Apple Foundation row.
+    /// up); the automatic default (`nil`) highlights the local Apple row only.
     private func isTitleModelSelected(_ model: SettingsViewModel.ModelRow) -> Bool {
         guard let id = viewModel.settings.titleModelId else {
-            // Automatic ⇒ Apple Foundation row.
-            return model.kind == .appleFoundation
+            // Automatic titles never inherit the PCC chat default.
+            return model.kind == .appleFoundation && model.modelId == AppleFoundationModel.local.rawValue
         }
         // Resolve to a single record id so exactly one row checks — including a
         // legacy persisted `LLMModel.id`, matching `TitleGenerator`'s
@@ -273,5 +307,4 @@ struct SettingsModelsPane: View {
         for model in models where model.modelId == id { return model.id }
         return nil
     }
-
 }

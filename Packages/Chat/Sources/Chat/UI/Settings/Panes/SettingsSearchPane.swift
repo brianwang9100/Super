@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Search pane. Holds the global native web-search cost gate — the

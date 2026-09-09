@@ -44,7 +44,11 @@ public struct ChatComposerFooter: View {
                 onManageModels: onManageModels
             )
             Spacer(minLength: 0)
-            ContextMeter(usedTokens: usedTokens, maxTokens: maxTokens)
+            // An unresolved Apple context window is not a measured zero-token
+            // capacity. Keep it out of both the visible and VoiceOver footer.
+            if maxTokens > 0 {
+                ContextMeter(usedTokens: usedTokens, maxTokens: maxTokens)
+            }
         }
     }
 }

@@ -3,7 +3,8 @@
 Public App Store app, scheme `SuperBible`. Read the [fork design](../docs/superpowers/specs/2026-05-23-superbible-fork-design.md) and [overview](../docs/SuperBible/OVERVIEW.md) before target changes.
 
 - Cold launch always selects Bible and minimizes Chat, ignoring the persisted backdrop. Foreground returns preserve session state. Configure this through `AppShellLaunchBehavior`, not target checks in the shared shell.
-- v1 is local-only: no accounts, server, or sync. BYOK calls go directly to providers; Keychain keys use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. The planned v2 path is Sign in with Apple + CloudKit private database. Revisit fork-spec §7 before introducing a different cloud architecture.
+- v1 stores data locally: no accounts, app server, or sync. Inference follows the selected model: Apple local stays on-device, Apple Private Cloud Compute (PCC) uses Apple's framework-managed cloud on iOS 27+, and BYOK calls go directly to providers. Keychain keys use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. The planned v2 path is Sign in with Apple + CloudKit private database. Revisit fork-spec §7 before introducing a different cloud architecture.
+- Empty model stores select local on iOS 26 and PCC on iOS 27+, independently of temporary readiness; populated stores preserve their selection. Signed PCC access and full-persona/tool validation remain release gates in [the migration plan](../docs/XCODE_27_PCC_PLAN.md).
 - Free, BYOK, no ads/IAP/premium tier/paywalls. The only donation surface is the Settings → About GitHub Sponsors link in `SFSafariViewController`.
 - Changes to collection, transmission, storage, capabilities, or Keychain accessibility require a same-PR update to [PRIVACY.md](PRIVACY.md). Diagnostics follow [SuperBible observability](../docs/SuperBible/OBSERVABILITY.md).
 

@@ -1,203 +1,315 @@
 #!/usr/bin/env python3
-"""Guard concrete iOS Simulator xcodebuild runs against CI's pinned trio."""
+"""Keep concrete iOS simulator commands on CI's exact snapshot toolchain.
 
+Pins come from Scripts/VisualTesting/simulator-pins.json, including the exact
+compiler build: a setup-xcode beta selector does not identify a beta build.
+Missing, malformed, conflicting, or unresolvable pins fail closed for concrete
+simulator commands. Unrelated commands and generic simulator builds are ignored.
+
+SUPER_IOS_COMPATIBILITY=1 permits build/build-for-testing on another iOS runtime
+with the pinned Xcode. It never permits test execution or snapshot recording;
+install/launch the resulting app with simctl for manual compatibility checks.
+"""
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+from pathlib import Path
+from typing import NamedTuple
+
 
 DOC = 'docs/TESTING.md "Simulator environment"'
+WORKFLOW = Path(__file__).resolve().parents[2] / "Scripts/VisualTesting/simulator-pins.json"
+DESTINATION = re.compile(r'''-destination\s+(?:"([^"]*)"|'([^']*)'|(\S+))''')
+VERSION = r"[0-9]+\.[0-9]+(?:\.[0-9]+)?"
+BUILD = r"[0-9]+[A-Z][0-9A-Za-z]+"
 
 
-def load_pin():
-    """Read the same canonical pins as both capture drivers and simulator owner."""
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    sys.path.insert(0, os.path.join(root, 'Scripts'))
-    from worktree_simulator import read_pin
-    pin = read_pin(root)
-    minor = '.'.join(pin['ios_version'].split('.')[:2])
-    return pin['device'], minor, pin['ios_build'], pin['xcode_version'], pin['xcode_build']
+class PinError(ValueError):
+    """An authoritative workflow pin cannot be read unambiguously."""
 
 
-def allow():
-    """Exit successfully without producing a hook decision."""
-    sys.exit(0)
+class Pin(NamedTuple):
+    """The simulator identity and exact compiler/runtime builds used by CI."""
+
+    device: str
+    os_version: str
+    runtime_build: str
+    xcode_selector: str
+    xcode_build: str
+
+    @property
+    def device_type(self):
+        return "com.apple.CoreSimulator.SimDeviceType." + self.device.replace(" ", "-")
 
 
-def deny(reason):
-    """Emit Codex's PreToolUse deny decision without failing the command hook."""
-    print(json.dumps({"hookSpecificOutput": {
-        "hookEventName": "PreToolUse",
-        "permissionDecision": "deny",
-        "permissionDecisionReason": reason,
-    }}))
-    sys.exit(0)
+def unique_literal(values, name, pattern):
+    """Require every occurrence to be a valid, identical literal."""
+    if not values:
+        raise PinError("missing " + name)
+    parsed = []
+    for value in values:
+        value = value.strip()
+        if value[:1] in ("'", '"'):
+            if len(value) < 2 or value[-1] != value[0]:
+                raise PinError("malformed " + name)
+            value = value[1:-1]
+        if not re.fullmatch(pattern, value):
+            raise PinError("malformed " + name)
+        parsed.append(value)
+    if len(set(parsed)) != 1:
+        raise PinError("conflicting " + name + " values")
+    return parsed[0]
 
 
-try:
-    payload = json.load(sys.stdin)
-    tool_input = payload.get("tool_input") or {}
-    cmd = tool_input.get("cmd") or tool_input.get("command") or ""
-except Exception:
-    allow()
-
-if "xcodebuild" not in cmd:
-    allow()
-
-_DEST = re.compile(r'''-destination\s+(?:"([^"]*)"|'([^']*)'|(\S+))''')
-dests = [a or b or c for (a, b, c) in _DEST.findall(cmd)]
-concrete = [d for d in dests
-            if "platform=iOS Simulator" in d and "generic/" not in d]
-if not concrete:
-    allow()
-
-try:
-    PIN_DEVICE, PIN_OS, PIN_BUILD, PIN_XCODE, PIN_XCODE_BUILD = load_pin()
-except Exception as error:
-    deny("Cannot read canonical simulator pins: " + str(error) + ". See " + DOC + ".")
-
-
-def parse_kv(dest):
-    """Split a destination string into key-value pairs."""
-    out = {}
-    for part in dest.split(","):
-        if "=" in part:
-            key, value = part.split("=", 1)
-            out[key.strip()] = value.strip()
-    return out
-
-
-def resolve_udid(udid):
-    """Resolve a literal simulator UDID, failing open when simctl is unavailable."""
+def parse_pin(text):
+    """Validate the canonical JSON without interpreting workflow shell text."""
     try:
-        raw = subprocess.run(
-            ["xcrun", "simctl", "list", "devices", "--json"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-        data = json.loads(raw)
-        raw_types = subprocess.run(
-            ["xcrun", "simctl", "list", "devicetypes", "--json"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-        models = {item["identifier"]: item["name"]
-                  for item in json.loads(raw_types)["devicetypes"]}
-    except Exception:
-        return None, None
-    for runtime_id, devices in (data.get("devices") or {}).items():
-        for device in devices:
-            if device.get("udid") == udid:
-                match = re.search(r"iOS-(\d+)-(\d+)", runtime_id)
-                osv = (match.group(1) + "." + match.group(2)) if match else None
-                # Worktree-owned devices have custom display names; the type is the model.
-                return models.get(device.get("deviceTypeIdentifier")), osv
-    return None, None
+        pin = json.loads(text)
+        patterns = {"device": r"iPhone [0-9A-Za-z ()+-]+", "ios_version": VERSION,
+                    "ios_build": BUILD, "xcode_version": VERSION, "xcode_build": BUILD,
+                    "xcodegen_version": VERSION}
+        if not isinstance(pin, dict) or any(
+                not isinstance(pin.get(key), str) or not re.fullmatch(pattern, pin[key])
+                for key, pattern in patterns.items()):
+            raise PinError("invalid canonical simulator pins")
+        return Pin(pin["device"], ".".join(pin["ios_version"].split(".")[:2]),
+                   pin["ios_build"], pin["xcode_version"], pin["xcode_build"])
+    except (ValueError, TypeError) as error:
+        raise PinError("invalid canonical simulator pins") from error
 
 
-def mismatch_reason(found_device, found_os, dest):
-    """Describe a concrete destination that diverges from CI's pinned trio."""
-    return (
-        "iOS snapshot runs must match CI's pinned simulator: "
-        + PIN_DEVICE + " / iOS " + PIN_OS + ". This -destination resolves to "
-        + (found_device or "an unknown device") + " / iOS "
-        + (found_os or "unknown") + " (" + dest + "). Capturing on "
-        "the wrong device or runtime drifts the Argos comparisons. Use "
-        '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
-        + PIN_OS + '". See ' + DOC + "."
-    )
-
-
-def installed_pinned_minor_builds():
-    """Return available runtime builds on CI's pinned iOS minor, if readable."""
+def load_pin(workflow=WORKFLOW):
+    """Read the same canonical JSON as capture drivers and simulator ownership."""
     try:
-        raw = subprocess.run(
-            ["xcrun", "simctl", "list", "runtimes", "--json"],
-            capture_output=True, text=True, timeout=10, check=True).stdout
-        data = json.loads(raw)
-    except Exception:
-        return None
+        return parse_pin(workflow.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise PinError("cannot read " + str(workflow)) from error
+
+
+def parse_kv(destination):
+    """Split a destination into key/value pairs, rejecting conflicting keys."""
+    values = {}
+    for part in destination.split(","):
+        if "=" not in part:
+            continue
+        key, value = (item.strip() for item in part.split("=", 1))
+        if key in values and values[key] != value:
+            raise ValueError("conflicting -destination " + key)
+        values[key] = value
+    return values
+
+
+def command_environment(command, environment):
+    """Honor literal inline overrides for both xcodebuild and xcrun probes."""
+    result = dict(environment)
+    names = ("DEVELOPER_DIR", "SUPER_IOS_COMPATIBILITY", "SNAPSHOT_RECORD",
+             "TEST_RUNNER_SNAPSHOT_RECORD")
+    for name in names:
+        matches = re.findall(
+            r"(?:^|\s)" + name + r'''=(?:"([^"]*)"|'([^']*)'|([^\s;|&]+))''', command)
+        values = {a or b or c for a, b, c in matches}
+        if len(values) > 1:
+            raise ValueError("multiple " + name + " overrides cannot be verified")
+        if values:
+            value = values.pop()
+            if "$" in value or "`" in value:
+                raise ValueError("use a literal " + name + " override")
+            result[name] = value
+    return result
+
+
+def output(arguments, environment):
+    """Run a bounded, read-only toolchain inventory command."""
+    return subprocess.run(arguments, capture_output=True, text=True, timeout=10,
+                          env=environment, check=True).stdout
+
+
+def normalized_version(version):
+    components = [int(part) for part in version.split(".")]
+    while len(components) > 1 and components[-1] == 0:
+        components.pop()
+    return tuple(components)
+
+
+def check_xcode(pin, environment, run):
+    """Check a beta's build independently from its marketing version."""
+    raw = run(["xcodebuild", "-version"], environment)
+    version = re.search(r"^Xcode\s+(" + VERSION + r")\s*$", raw, re.M)
+    build = re.search(r"^Build version\s+(" + BUILD + r")\s*$", raw, re.M)
+    if not version or not build:
+        return "Cannot verify the selected Xcode version and build. Run xcodebuild -version."
+    expected_version = pin.xcode_selector.removesuffix("-beta")
+    if (normalized_version(version.group(1)) != normalized_version(expected_version)
+            or build.group(1) != pin.xcode_build):
+        return ("Selected Xcode is " + version.group(1) + " (" + build.group(1)
+                + "), but CI requires " + pin.xcode_selector + " (" + pin.xcode_build
+                + "). Select that exact Xcode using a literal DEVELOPER_DIR override "
+                "or xcode-select before recording or verifying snapshots. See " + DOC + ".")
+    return None
+
+
+def check_runtime(pin, environment, run):
+    """Verify both available runtimes and installed disk images for ambiguity."""
+    data = json.loads(run(["xcrun", "simctl", "list", "runtimes", "--json"], environment))
     builds = []
-    for runtime in data.get("runtimes") or []:
+    for runtime in data["runtimes"]:
         if not runtime.get("isAvailable"):
             continue
-        version = runtime.get("version") or ""
-        if version == PIN_OS or version.startswith(PIN_OS + "."):
+        if not runtime.get("identifier", "").startswith("com.apple.CoreSimulator.SimRuntime.iOS-"):
+            continue
+        version = runtime.get("version", "")
+        if version == pin.os_version or version.startswith(pin.os_version + "."):
             builds.append(runtime.get("buildversion"))
-    return builds
-
-
-builds = installed_pinned_minor_builds()
-if builds is not None:
-    stale = sorted({build for build in builds if build and build != PIN_BUILD})
-    if stale:
-        deny(
-            "iOS " + PIN_OS + " visual captures are pinned to build "
-            + PIN_BUILD + ", but this machine also has " + ", ".join(stale)
-            + " installed. simctl conflates same-minor runtimes under one "
-            "identifier (iOS-" + PIN_OS.replace(".", "-") + "), so a capture "
-            "or verification on OS=" + PIN_OS + " can silently land on the wrong "
-            "build and drift the Argos comparisons. Remove the stale runtime(s) "
-            "so only " + PIN_BUILD + " remains: find the UUID with "
-            "'xcrun simctl runtime list', then 'xcrun simctl runtime delete <uuid>'. "
-            "See " + DOC + "."
-        )
-
-
-for dest in concrete:
-    kv = parse_kv(dest)
-    name, osv, sid = kv.get("name"), kv.get("OS"), kv.get("id")
-    if sid is not None:
-        if "$" in sid or "`" in sid:
+    if builds != [pin.runtime_build]:
+        found = ", ".join(str(build or "unknown") for build in builds) or "none"
+        return ("CI requires exactly one available iOS " + pin.os_version
+                + " runtime at build " + pin.runtime_build + "; found: " + found
+                + ". Same-minor simulator installs cannot reliably select a build by "
+                "destination. Inspect xcrun simctl runtime list and coordinate any "
+                "runtime changes with other worktrees before retrying. See " + DOC + ".")
+    # `list runtimes` can collapse two installed point builds to one runtime
+    # identifier. Inspect disk images separately so the hidden image cannot
+    # change which renderer a same-minor destination uses.
+    images = json.loads(run(["xcrun", "simctl", "runtime", "list", "-j"], environment))
+    image_builds = []
+    runtime_id = "com.apple.CoreSimulator.SimRuntime.iOS-" + pin.os_version.replace(".", "-")
+    for image in images.values():
+        identifier = image.get("runtimeIdentifier", "")
+        if not identifier.startswith("com.apple.CoreSimulator.SimRuntime.iOS-"):
             continue
-        resolved_name, resolved_os = resolve_udid(sid)
-        if resolved_name is None:
+        version = image.get("version", "")
+        if (identifier == runtime_id or version == pin.os_version
+                or version.startswith(pin.os_version + ".")):
+            image_builds.append(image.get("build"))
+    if image_builds != [pin.runtime_build]:
+        found = ", ".join(str(build or "unknown") for build in image_builds) or "none"
+        return ("CI requires exactly one installed iOS " + pin.os_version
+                + " disk image at build " + pin.runtime_build + "; found: " + found
+                + ". simctl list runtimes may hide same-minor images. Inspect xcrun "
+                "simctl runtime list and coordinate runtime changes with other worktrees.")
+    return None
+
+
+def matching_devices(values, environment, run):
+    """Resolve literal UDIDs/custom names without treating names as device types."""
+    data = json.loads(run(["xcrun", "simctl", "list", "devices", "--json"], environment))
+    found = []
+    for runtime, devices in data["devices"].items():
+        match = re.fullmatch(r"com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)", runtime)
+        if not match:
             continue
-        if resolved_name != PIN_DEVICE or resolved_os != PIN_OS:
-            deny(mismatch_reason(resolved_name, resolved_os, dest))
-        continue
-    if name is None:
-        deny(
-            "This -destination names no device (" + dest + "), so xcodebuild "
-            "picks one arbitrarily and the visual captures drift. Pin it: "
-            '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
-            + PIN_OS + '". See ' + DOC + "."
-        )
-    if osv is None:
-        deny(
-            "This -destination pins name=" + name + " but no OS=, so xcodebuild "
-            "selects the newest installed runtime — which drifts from CI's iOS "
-            + PIN_OS + ". Add OS=" + PIN_OS + " explicitly: "
-            '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
-            + PIN_OS + '". See ' + DOC + "."
-        )
-    if name != PIN_DEVICE or osv != PIN_OS:
-        deny(mismatch_reason(name, osv, dest))
+        os_version = match.group(1) + "." + match.group(2)
+        for device in devices:
+            if device.get("isAvailable") is False:
+                continue
+            if values.get("id"):
+                matches = device.get("udid") == values["id"]
+            else:
+                matches = (device.get("name") == values.get("name")
+                           and os_version == values.get("OS"))
+            if matches:
+                found.append((device, os_version))
+    return found
 
 
-def effective_xcode_version():
-    """Return the selected Xcode version, including a DEVELOPER_DIR override."""
-    env = dict(os.environ)
-    match = re.search(r'''DEVELOPER_DIR=(?:"([^"]*)"|'([^']*)'|(\S+))''', cmd)
-    if match:
-        env["DEVELOPER_DIR"] = match.group(1) or match.group(2) or match.group(3)
-    try:
-        output = subprocess.run(
-            ["xcodebuild", "-version"], capture_output=True, text=True,
-            timeout=10, env=env, check=True).stdout
-    except Exception:
+def check_destination(destination, pin, environment, run):
+    """Verify each destination, including a dedicated worktree simulator."""
+    values = parse_kv(destination)
+    if not values.get("id") and not values.get("name"):
+        return "Pin an explicit simulator name and OS, or a literal UDID: " + destination
+    if not values.get("id") and not values.get("OS"):
+        return "Add OS=" + pin.os_version + " to the simulator destination: " + destination
+    if any("$" in value or "`" in value for value in values.values()):
+        return "Use a literal simulator UDID or name/OS so snapshot pins can be verified."
+    if values.get("OS") and values["OS"] != pin.os_version:
+        return "CI snapshot runtime is iOS " + pin.os_version + ", not " + values["OS"] + "."
+    # Names are mutable, even the canonical one. Every destination must resolve
+    # to exactly one simulator with the pinned immutable hardware identifier.
+    matches = matching_devices(values, environment, run)
+    if len(matches) != 1:
+        return "Cannot resolve exactly one available simulator for: " + destination
+    device, os_version = matches[0]
+    device_type = device.get("deviceTypeIdentifier")
+    hardware_matches = device_type == pin.device_type
+    if not hardware_matches or os_version != pin.os_version:
+        return ("This destination is not CI's " + pin.device + " / iOS "
+                + pin.os_version + ": " + destination + ". See " + DOC + ".")
+    return None
+
+
+def compatibility_reason(command, environment):
+    """Compatibility mode compiles apps but cannot execute screenshot suites."""
+    if any(environment.get(name) == "1" for name in
+           ("SNAPSHOT_RECORD", "TEST_RUNNER_SNAPSHOT_RECORD")):
+        return "SUPER_IOS_COMPATIBILITY refuses snapshot recording. Unset the recording flags."
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+    if any(token in {"test", "test-without-building"} for token in tokens):
+        return ("SUPER_IOS_COMPATIBILITY allows build/build-for-testing only, never test "
+                "execution against another runtime's snapshot baselines. Install and "
+                "launch the built app with simctl for manual iOS compatibility checks.")
+    if not any(token in {"build", "build-for-testing"} for token in tokens):
+        return "SUPER_IOS_COMPATIBILITY requires an explicit build or build-for-testing action."
+    return None
+
+
+def evaluate(command, workflow=WORKFLOW, environment=None, run=output):
+    """Return a denial reason, or None to preserve the PreToolUse allow contract."""
+    if "xcodebuild" not in command:
         return None
-    match = re.search(r"Xcode\s+([0-9][0-9.]*)", output)
-    build = re.search(r"Build version\s+([0-9A-Za-z]+)", output)
-    return (match.group(1), build.group(1) if build else None) if match else None
+    destinations = [a or b or c for a, b, c in DESTINATION.findall(command)]
+    concrete = [destination for destination in destinations
+                if "platform=iOS Simulator" in destination and "generic/" not in destination]
+    if not concrete:
+        return None
+    try:
+        pin = load_pin(workflow)
+        selected_environment = command_environment(
+            command, os.environ if environment is None else environment)
+        reason = check_xcode(pin, selected_environment, run)
+        if reason:
+            return reason
+        if selected_environment.get("SUPER_IOS_COMPATIBILITY") == "1":
+            return compatibility_reason(command, selected_environment)
+        reason = check_runtime(pin, selected_environment, run)
+        if reason:
+            return reason
+        for destination in concrete:
+            reason = check_destination(destination, pin, selected_environment, run)
+            if reason:
+                return reason
+    except PinError as error:
+        return ("Cannot read canonical simulator pins: " + str(error)
+                + ". Fix Scripts/VisualTesting/simulator-pins.json; the guard has no fallback pins.")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError,
+            subprocess.SubprocessError) as error:
+        return ("Cannot verify the concrete iOS simulator command against CI pins (" + type(error).__name__
+                + "). Verify the selected Xcode and simctl inventory before retrying.")
+    return None
 
 
-xcode = effective_xcode_version()
-if xcode is not None and xcode != (PIN_XCODE, PIN_XCODE_BUILD):
-    deny(
-        "Selected Xcode is " + xcode[0] + " build " + (xcode[1] or "unknown") + ", but visual captures are rendered "
-        "against Xcode " + PIN_XCODE + " build " + PIN_XCODE_BUILD + " — a toolchain mismatch "
-        "shifts the system text renderer and SwiftUI layout, drifting the baselines. "
-        "Select the pinned Xcode (xcode-select -s /Applications/Xcode-"
-        + PIN_XCODE + ".app, or prefix the command with DEVELOPER_DIR=/Applications/"
-        "Xcode-" + PIN_XCODE + ".app/Contents/Developer). See " + DOC + "."
-    )
+def main():
+    """Read Codex/Bash hook payloads and emit only actionable denials."""
+    try:
+        payload = json.load(sys.stdin)
+        tool_input = payload.get("tool_input") or {}
+        command = tool_input.get("cmd") or tool_input.get("command") or ""
+    except (ValueError, AttributeError, TypeError):
+        return
+    if not isinstance(command, str):
+        return
+    reason = evaluate(command)
+    if reason:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }}))
 
-allow()
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,7 @@ UDID = 'B87FDEDA-EEB0-4CFA-9DDE-8781E8982455'
 
 
 class SnapshotSimulatorGuardTests(unittest.TestCase):
-    def decision(self, model, display_name='SuperWT-test-owner', pin_override=None, xcode_build='17E202'):
+    def decision(self, model, display_name='SuperWT-test-owner', pin_override=None, xcode_build='27A5252f'):
         original_read = Path.read_text
         def read_text(path, *args, **kwargs):
             if path.name == 'simulator-pins.json' and pin_override is not None:
@@ -22,12 +22,17 @@ class SnapshotSimulatorGuardTests(unittest.TestCase):
             return original_read(path, *args, **kwargs)
         def run(args, **kwargs):
             if args == ['xcodebuild', '-version']:
-                output = f'Xcode 26.4.1\nBuild version {xcode_build}\n'
+                output = f'Xcode 27.0\nBuild version {xcode_build}\n'
+            elif args == ['xcrun', 'simctl', 'runtime', 'list', '-j']:
+                output = json.dumps({'pinned': {
+                    'runtimeIdentifier': 'com.apple.CoreSimulator.SimRuntime.iOS-27-0',
+                    'version': '27.0', 'build': '24A5423a'}})
             elif args[3] == 'runtimes':
                 output = json.dumps({'runtimes': [{'isAvailable': True,
-                    'version': '26.4.1', 'buildversion': '23E254a'}]})
+                    'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-27-0',
+                    'version': '27.0', 'buildversion': '24A5423a'}]})
             elif args[3] == 'devices':
-                output = json.dumps({'devices': {'com.apple.CoreSimulator.SimRuntime.iOS-26-4': [
+                output = json.dumps({'devices': {'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [
                     {'udid': UDID, 'name': display_name,
                      'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.' + model.replace(' ', '-')}]}})
             elif args[3] == 'devicetypes':
@@ -42,9 +47,7 @@ class SnapshotSimulatorGuardTests(unittest.TestCase):
         with patch('sys.stdin', io.StringIO(json.dumps(payload))), \
                 patch('subprocess.run', side_effect=run), \
                 patch.object(Path, 'read_text', read_text), redirect_stdout(output):
-            with self.assertRaises(SystemExit) as exited:
-                runpy.run_path(str(HOOK), run_name='__main__')
-        self.assertEqual(exited.exception.code, 0)
+            runpy.run_path(str(HOOK), run_name='__main__')
         return output.getvalue()
 
     def test_custom_name_on_pinned_model_is_allowed(self):

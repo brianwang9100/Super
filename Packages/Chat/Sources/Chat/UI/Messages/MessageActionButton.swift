@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Small 26pt icon-only button used by ``AssistantMessage`` for the

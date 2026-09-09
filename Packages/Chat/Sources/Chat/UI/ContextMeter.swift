@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Thin progress bar + numeric "used / max" label rendered to the right of

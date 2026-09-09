@@ -13,6 +13,7 @@ import tempfile
 from pipeline import ROOT, PACKAGES, identity, inventories, require_new_output, write_bundle
 sys.path.insert(0, str(ROOT / 'Scripts'))
 from worktree_simulator import read_pin
+from ios_coverage import CaptureCoverage
 
 
 def output(*command):
@@ -90,13 +91,25 @@ def verify_resolution(resolved):
         raise ValueError('Swift package resolution changed during capture')
 
 
-def run_suites(command, suites, package, evidence, environment, runner=subprocess.run, resolved=None):
+def run_suites(command, suites, package, evidence, environment, runner=subprocess.run, resolved=None, coverage=None):
     for index, suite in enumerate(suites):
         result = evidence / f'{index:02d}-{suite}.xcresult'
         print(f'Capturing {package}/{suite} ({index+1}/{len(suites)})', flush=True)
-        with (evidence / f'{index:02d}-{suite}.log').open('w') as log:
-            runner(command + [f'-only-testing:{package}Tests/{suite}', '-resultBundlePath', str(result)],
-                   cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=900)
+        arguments = command + [f'-only-testing:{package}Tests/{suite}', '-resultBundlePath', str(result)]
+        status, timed_out = 0, False
+        try:
+            with (evidence / f'{index:02d}-{suite}.log').open('w') as log:
+                runner(arguments, cwd=ROOT, env=environment, stdout=log,
+                       stderr=subprocess.STDOUT, check=True, timeout=900)
+        except subprocess.CalledProcessError as error:
+            status = error.returncode
+            raise
+        except subprocess.TimeoutExpired:
+            status, timed_out = -1, True
+            raise
+        finally:
+            if coverage is not None:
+                coverage.collect(suite, result, arguments, status, timed_out)
         if test_count(result) <= 0:
             raise ValueError(f'No tests executed for selected suite {package}/{suite}')
         if resolved is not None:
@@ -131,17 +144,23 @@ def main():
                '-parallel-testing-enabled', 'NO', '-testLanguage', 'en', '-testRegion', 'US',
                '-enableCodeCoverage', 'YES', '-skipPackagePluginValidation',
                '-onlyUsePackageVersionsFromResolvedFile', 'CODE_SIGNING_ALLOWED=NO']
+    coverage = CaptureCoverage(ROOT, args.package, evidence, invocation, environment_info,
+                               suites, build / f'DerivedData-{args.package}')
     with (evidence / 'build.log').open('w') as log:
         subprocess.run(['xcodebuild', 'build-for-testing'] + options, cwd=ROOT, check=True,
                        stdout=log, stderr=subprocess.STDOUT, timeout=1800)
     verify_resolution(resolved)
+    coverage.prepare(options)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(('SNAPSHOT', 'TEST_RUNNER_SNAPSHOT', 'ARGOS_OUTPUT', 'TEST_RUNNER_ARGOS_OUTPUT'))}
     environment['TEST_RUNNER_ARGOS_OUTPUT_DIR'] = str(images)
     # One suite per invocation plus .serialized prevents Swift Testing interleaving
     # independently of XCTest's process-level parallel-testing switch.
     run_suites(['xcodebuild', 'test-without-building'] + options, suites, args.package, evidence,
-               environment, resolved=resolved)
+               environment, resolved=resolved, coverage=coverage)
+    logic_environment = {key: value for key, value in environment.items()
+                         if key != 'TEST_RUNNER_ARGOS_OUTPUT_DIR'}
+    coverage.finish(options, logic_environment)
     if identity() != invocation:
         raise ValueError('Checkout changed during capture; rerun against one revision')
     write_bundle(images, destination, args.package, rows, invocation, environment_info)

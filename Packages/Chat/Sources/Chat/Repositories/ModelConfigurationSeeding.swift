@@ -1,31 +1,24 @@
 import Core
 import Foundation
 
-/// Helpers for seeding the `modelConfiguration` table on first launch.
-///
-/// Fresh installs ship with no provider rows, so the Chat applet opens
-/// onto the `noModelConfigured` empty state — bad first impression. The
-/// composition root calls `seedDefaultIfEmpty` before hydrating
-/// providers; on a genuinely empty database it inserts one
-/// `.appleFoundation` row (zero-config, on-device, free) and marks it
-/// `isSelected = true` so the existing `LLMProviderRegistry.setActive`
-/// path picks it up.
-///
-/// The seeded row is a regular `ModelConfigurationRecord` — not a
-/// privileged singleton. Users can delete it like any other model;
-/// nothing here re-creates it on later launches once the table has any
-/// row. That preserves user agency: someone who removes AFM and adds
-/// only Gemini doesn't get AFM silently brought back.
+/// Seeds the composition root's chosen Apple model into an empty model repository.
+/// Existing configurations and selections remain unchanged; readiness does not
+/// decide whether the persistent default is local or Private Cloud Compute (PCC).
 public enum ModelConfigurationSeeding {
-    /// Seed a default `.appleFoundation` row when the repository is
-    /// empty. No-op when any row already exists. `idGenerator` and
-    /// `clock` are injected so tests can pin both.
+    /// Insert one selected Apple model using injected identity and metadata.
+    /// The composition root chooses the variant by OS support; absent live
+    /// context metadata uses that variant's static fallback, not another model.
     ///
+    /// - Parameters:
+    ///   - model: The OS-appropriate variant selected outside persistence logic.
+    ///   - maxContextTokens: Resolved model metadata, or `nil` while unavailable.
     /// - Returns: The seeded record, or `nil` when the table already
     ///   had rows (no seed performed).
     @discardableResult
     public static func seedDefaultIfEmpty(
         repository: any ModelConfigurationRepository,
+        model: AppleFoundationModel = .local,
+        maxContextTokens: Int? = nil,
         idGenerator: any IDGenerator = UUIDGenerator(),
         clock: any Clock = SystemClock()
     ) async throws -> ModelConfigurationRecord? {
@@ -37,17 +30,14 @@ public enum ModelConfigurationSeeding {
         try await repository.insertIfEmpty {
             ModelConfigurationRecord(
                 id: idGenerator.nextID(),
-                name: AppleFoundationLLMProvider.defaultModelDisplayName,
+                name: model.displayName,
                 baseURL: nil,
                 apiKeyRef: nil,
-                modelId: AppleFoundationLLMProvider.defaultModelID,
+                modelId: model.rawValue,
                 createdAt: clock.now(),
                 kind: .appleFoundation,
                 supportsThinking: false,
-                // Persist the real on-device window so the row is honest. The
-                // AFM provider re-reads it live at init regardless, so this is
-                // cosmetic for budgeting — but it keeps the stored value true.
-                maxContextTokens: AppleFoundationLLMProvider.deviceContextTokens,
+                maxContextTokens: maxContextTokens ?? model.fallbackContextTokens,
                 isSelected: true
             )
         }

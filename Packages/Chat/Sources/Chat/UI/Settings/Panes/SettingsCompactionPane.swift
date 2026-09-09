@@ -1,3 +1,4 @@
+import Core
 import SwiftUI
 
 /// Compaction pane. Not in `settings.jsx` — designed to match the same

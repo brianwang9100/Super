@@ -784,5 +784,141 @@
     ],
     "selectedModelId": "gpt-4o",
     "previewReduceMotion": false
+  },
+  {
+    "preview": "composer_pcc_unresolved_light",
+    "image": "Chat_ChatComposerPreviews.swift_composer_pcc_unresolved_light.png",
+    "pixels": [
+      1206,
+      342
+    ],
+    "points": [
+      402,
+      114
+    ],
+    "scale": 3,
+    "theme": "vellumLight",
+    "dynamicType": "large",
+    "fontScale": 1,
+    "reduceMotion": null,
+    "text": "",
+    "isStreaming": false,
+    "isRecording": false,
+    "isMicAvailable": true,
+    "usedTokens": 0,
+    "maxTokens": 0,
+    "progress": 1,
+    "references": [],
+    "modelOptions": [
+      {
+        "id": "pcc-record",
+        "displayName": "Private Cloud Compute (PCC)",
+        "maxContextTokens": 0
+      }
+    ],
+    "selectedModelId": "pcc-record",
+    "previewReduceMotion": false
+  },
+  {
+    "preview": "composer_pcc_unresolved_light_xxl",
+    "image": "Chat_ChatComposerPreviews.swift_composer_pcc_unresolved_light_xxl.png",
+    "pixels": [
+      1206,
+      342
+    ],
+    "points": [
+      402,
+      114
+    ],
+    "scale": 3,
+    "theme": "vellumLight",
+    "dynamicType": "xxLarge",
+    "fontScale": 1,
+    "reduceMotion": null,
+    "text": "",
+    "isStreaming": false,
+    "isRecording": false,
+    "isMicAvailable": true,
+    "usedTokens": 0,
+    "maxTokens": 0,
+    "progress": 1,
+    "references": [],
+    "modelOptions": [
+      {
+        "id": "pcc-record",
+        "displayName": "Private Cloud Compute (PCC)",
+        "maxContextTokens": 0
+      }
+    ],
+    "selectedModelId": "pcc-record",
+    "previewReduceMotion": false
+  },
+  {
+    "preview": "composer_pcc_unresolved_dark",
+    "image": "Chat_ChatComposerPreviews.swift_composer_pcc_unresolved_dark.png",
+    "pixels": [
+      1206,
+      342
+    ],
+    "points": [
+      402,
+      114
+    ],
+    "scale": 3,
+    "theme": "vellumDark",
+    "dynamicType": "large",
+    "fontScale": 1,
+    "reduceMotion": null,
+    "text": "",
+    "isStreaming": false,
+    "isRecording": false,
+    "isMicAvailable": true,
+    "usedTokens": 0,
+    "maxTokens": 0,
+    "progress": 1,
+    "references": [],
+    "modelOptions": [
+      {
+        "id": "pcc-record",
+        "displayName": "Private Cloud Compute (PCC)",
+        "maxContextTokens": 0
+      }
+    ],
+    "selectedModelId": "pcc-record",
+    "previewReduceMotion": false
+  },
+  {
+    "preview": "composer_pcc_unresolved_dark_xxl",
+    "image": "Chat_ChatComposerPreviews.swift_composer_pcc_unresolved_dark_xxl.png",
+    "pixels": [
+      1206,
+      342
+    ],
+    "points": [
+      402,
+      114
+    ],
+    "scale": 3,
+    "theme": "vellumDark",
+    "dynamicType": "xxLarge",
+    "fontScale": 1,
+    "reduceMotion": null,
+    "text": "",
+    "isStreaming": false,
+    "isRecording": false,
+    "isMicAvailable": true,
+    "usedTokens": 0,
+    "maxTokens": 0,
+    "progress": 1,
+    "references": [],
+    "modelOptions": [
+      {
+        "id": "pcc-record",
+        "displayName": "Private Cloud Compute (PCC)",
+        "maxContextTokens": 0
+      }
+    ],
+    "selectedModelId": "pcc-record",
+    "previewReduceMotion": false
   }
 ]

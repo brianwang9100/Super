@@ -12,6 +12,7 @@ permissions:
 
 env:
   PYTHONPATH: ${{ github.workspace }}/.build/visual-python
+  XCODE_BUILD: '27A5252f'
 
 concurrency:
   group: argos-${{ github.ref }}
@@ -36,7 +37,7 @@ jobs:
     # External forks have no supported upload identity; the required aggregate
     # fails closed when this native capture leg is skipped.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -48,7 +49,7 @@ jobs:
           cache: npm
       - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
         with:
-          xcode-version: '26.4.1'
+          xcode-version: '27.0-beta'
       - uses: ./.github/actions/install-xcodegen
       - run: npm ci --ignore-scripts
       - name: Install image validation dependency
@@ -80,8 +81,8 @@ jobs:
 
   capture-package:
     needs: discover
-    runs-on: macos-26
-    timeout-minutes: 90
+    runs-on: xcode-27
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -90,7 +91,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
         with:
-          xcode-version: '26.4.1'
+          xcode-version: '27.0-beta'
       - uses: ./.github/actions/install-xcodegen
       - name: Install image validation dependency
         run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
@@ -105,6 +106,13 @@ jobs:
           path: .build/VisualTesting/package-${{ matrix.package }}/
           if-no-files-found: error
           retention-days: 7
+      - name: Publish complete raw coverage evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: coverage-${{ matrix.package }}
+          path: .build/VisualTesting/run-${{ matrix.package }}-*/coverage/
+          if-no-files-found: error
+          retention-days: 7
       - name: Preserve package test evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -114,13 +122,30 @@ jobs:
             .build/VisualTesting/run-${{ matrix.package }}-*/environment.json
             .build/VisualTesting/run-${{ matrix.package }}-*/*.log
             .build/VisualTesting/run-${{ matrix.package }}-*/*.xcresult
+            .build/VisualTesting/run-${{ matrix.package }}-*/coverage/
           include-hidden-files: true
           retention-days: 7
+
+  coverage:
+    needs: [discover, capture-package]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: coverage-${{ matrix.package }}
+          path: .build/coverage
+      - name: Enforce complete test union and unchanged source-line floor
+        run: python3 Scripts/ios_coverage.py --evidence .build/coverage
 
   ios-test:
     # Preserve the required context while the former comparison jobs become
     # capture jobs. Skipped, failed, or cancelled package legs never pass.
-    needs: [discover, capture-package]
+    needs: [discover, capture-package, coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -128,7 +153,8 @@ jobs:
         env:
           DISCOVERY: ${{ needs.discover.result }}
           PACKAGES: ${{ needs.capture-package.result }}
-        run: test "$DISCOVERY" = success && test "$PACKAGES" = success
+          COVERAGE: ${{ needs.coverage.result }}
+        run: test "$DISCOVERY" = success && test "$PACKAGES" = success && test "$COVERAGE" = success
 
   native-previews:
     # Required capture/upload context; only this job may upload an Argos build.

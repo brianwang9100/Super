@@ -308,10 +308,11 @@ public final class ChatScreenViewModel {
     /// legacy persisted *model id* (`LLMModel.id`, how this was stored before
     /// the record-id convergence), mapping it to that row's record id; the
     /// value re-persists as a record id on the next selection. Falls back to
-    /// the first available model, or nil when the list is empty.
+    /// the selected/seeded record, then the first model, or nil for an empty list.
     public static func resolveInitialModelId(
         persisted: String?,
-        available: [SelectableModel]
+        available: [SelectableModel],
+        preferredRecordId: String? = nil
     ) -> String? {
         if let match = available.first(where: { $0.recordId == persisted }) {
             return match.recordId
@@ -319,6 +320,9 @@ public final class ChatScreenViewModel {
         // Legacy fallback: an old persisted `LLMModel.id`.
         if let legacy = available.first(where: { $0.model.id == persisted }) {
             return legacy.recordId
+        }
+        if let preferred = available.first(where: { $0.recordId == preferredRecordId }) {
+            return preferred.recordId
         }
         return available.first?.recordId
     }
@@ -357,6 +361,7 @@ public final class ChatScreenViewModel {
         }
         let (snapshot, stream) = await driver.subscribe()
         guard let snapshot else { return }
+        if let model = snapshot.resolvedModel { applyResolvedModel(model) }
         // `thinkingStartedAt` rides on the snapshot so the elapsed-time
         // label survives detach + re-attach. Without this the "Thought
         // for Xs" counter would visibly reset whenever a user navigated
@@ -845,6 +850,20 @@ public final class ChatScreenViewModel {
         }
     }
 
+    /// A metadata refresh must never revive a deleted row, replace an edited
+    /// backend, or move the user's current selection.
+    private func applyResolvedModel(_ resolved: SelectableModel) {
+        guard resolved.model.maxContextTokens > 0,
+              let index = availableModels.firstIndex(where: {
+                  $0.recordId == resolved.recordId && $0.model.id == resolved.model.id
+              }) else { return }
+        availableModels[index] = resolved
+        modelOptions = availableModels.map {
+            ModelPill.Option(id: $0.recordId, displayName: $0.model.displayName,
+                             maxContextTokens: $0.model.maxContextTokens)
+        }
+    }
+
     /// Apply a new verbosity from an external source. `nil` is a no-op
     /// so an optional-binding observable (`ChatVerbosity?`) can pass
     /// straight through during the bootstrap window without an extra
@@ -967,6 +986,8 @@ public final class ChatScreenViewModel {
         // they've already navigated away from.
         if isDetached { return }
         switch event {
+        case .modelResolved(let model):
+            applyResolvedModel(model)
         case .userMessageSaved(let userMessage):
             pendingScrollMessageID = userMessage.id
             await refreshTranscript()

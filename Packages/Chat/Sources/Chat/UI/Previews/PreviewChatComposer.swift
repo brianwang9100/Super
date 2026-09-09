@@ -16,6 +16,7 @@ struct PreviewChatComposer: View {
     var dynamicType: DynamicTypeSize = .large
     var reduceMotion = false
     var references: [VerseReferencePillModel] = []
+    var privateCloudCompute = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -24,11 +25,15 @@ struct PreviewChatComposer: View {
             text: .constant(text),
             isFocused: $isFocused,
             isStreaming: isStreaming,
-            modelOptions: [.init(id: "gpt-4o", displayName: "GPT-4o", maxContextTokens: 128_000)],
-            selectedModelId: "gpt-4o",
+            modelOptions: [.init(
+                id: privateCloudCompute ? "pcc-record" : "gpt-4o",
+                displayName: privateCloudCompute ? AppleFoundationModel.privateCloudCompute.displayName : "GPT-4o",
+                maxContextTokens: privateCloudCompute ? 0 : 128_000
+            )],
+            selectedModelId: privateCloudCompute ? "pcc-record" : "gpt-4o",
             onSelectModel: { _ in },
             usedTokens: usedTokens,
-            maxTokens: 128_000,
+            maxTokens: privateCloudCompute ? 0 : 128_000,
             onSubmit: { _ in },
             isRecording: isRecording,
             isMicAvailable: isMicAvailable,
