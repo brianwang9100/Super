@@ -197,10 +197,17 @@ enum SuperBibleAppBootstrap {
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
-        try await ModelConfigurationSeeding.seedDefaultIfEmpty(
-            repository: modelConfigRepo,
-            model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
-        )
+        do {
+            try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+                repository: modelConfigRepo,
+                model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
+            )
+        } catch {
+            // Default registration is best-effort; users can retry in Settings.
+            #if DEBUG
+            print("[AppleFoundationModel] default registration failed; continuing startup")
+            #endif
+        }
 
         #if DEBUG
         do {

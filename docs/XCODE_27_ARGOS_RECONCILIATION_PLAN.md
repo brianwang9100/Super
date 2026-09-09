@@ -40,4 +40,42 @@ Review the whole feature diff independently. Then update/create one draft PR usi
 
 ## Validation record
 
-Pending. Prior validation in `docs/XCODE_27_PCC_PLAN.md` predates this reconciliation and is not evidence for the rebased revision.
+Reconciled revision `c02220f1` passed all four local package suites (Core 352,
+Chat 1152, Bible 841, Todo 87), both unsigned simulator app builds, 211 Python
+checks, hook fixtures, and workflow lint. GitHub's four package suites, both
+app builds, native capture, and iOS 26 compatibility smoke also passed. These
+results do not replace validation of subsequent fixes.
+
+The full local capture stopped at Chat's declarative scroll suite: Xcode 27's
+automatic offset adjustments caused six assertion failures. Native's 48
+captures and Bible's 276 captures completed; Bible's complete test union had
+zero skips and 88.90% raw physical-line coverage. No complete 652-image result
+or partial-baseline upload is claimed.
+
+Follow-up fixes preserve optional default-registration recovery in both app
+bootstraps and disable automatic offset adjustments only in the iOS 27+
+transcript. The narrower value-scoped scroll approach retained a 196-point
+live-to-saved handoff jump, so the modifier covers descendant transactions.
+All 13 focused UIKit scroll functions pass, including a positive-controlled,
+same-run rendered check of reading-position preservation during resizing.
+This adds no stored image baseline or capture-inventory entry.
+
+For the app-only bootstrap regression, unsigned Release builds of both apps
+first reproduced `Bootstrap failed` with an insert-aborting SQLite trigger in
+fresh, backed-up synthetic containers on the worktree-owned simulator. Fixed
+builds reached their normal shells while that trigger remained installed and
+model rows remained empty. After removing the test triggers, both apps seeded
+and selected `private-cloud-compute` on relaunch. Both Debug and Release app
+rebuilds passed; no injected faults remain. Independent scoped code reviews
+found no serious issues in either follow-up fix.
+
+The related MessageList snapshot suite passed 31 tests, and focus/turn/composer
+integration passed 11 tests. Actual animated send/retry/regenerate and drag
+interruption remain unverified: the simulator HID helper cannot locate
+SimulatorKit under Xcode 27, and native UI fallback reports a locked Mac.
+No real model request or temporary retry fault was created during that check.
+
+Remaining gates: final-source full capture/coverage, animated in-app scroll
+acceptance, current-revision CI/Codex approval and Argos review, plus PCC
+capability/signing and real-device cloud validation. Keep the PR draft and
+auto-merge disabled until the applicable acceptance gates are satisfied.

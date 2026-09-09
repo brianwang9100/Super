@@ -187,19 +187,21 @@ enum SuperOSAppBootstrap {
         let bootAvailability = AppleFoundationAvailability(
             SystemLanguageModel.default.availability
         )
-        try await ModelConfigurationSeeding.seedDefaultIfEmpty(
-            repository: modelConfigRepo,
-            model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
-        )
+        do {
+            try await ModelConfigurationSeeding.seedDefaultIfEmpty(
+                repository: modelConfigRepo,
+                model: appleStatusProvider.supportsPrivateCloudCompute ? .privateCloudCompute : .local
+            )
+        } catch {
+            // Default registration is best-effort; users can retry in Settings.
+            #if DEBUG
+            print("[AppleFoundationModel] default registration failed; continuing startup")
+            #endif
+        }
 
         #if DEBUG
-        // Swallow seed failures: a transient GRDB error here (WAL
-        // contention, full disk) should *not* crash bootstrap on a
-        // simulator — the debug provider just doesn't show up in the
-        // picker until the next launch. Mirrors the do/catch the
-        // production AFM seed above uses, but with `print` instead of
-        // `assertionFailure` so dev-loop annoyance is bounded to a log
-        // line rather than a hard trap.
+        // Debug registration is also best-effort: a transient seed failure
+        // leaves the provider out of the picker until the next launch.
         do {
             // Gate the "Debug (todo)" row on the Todo applet being injected —
             // its tool is registered above, so the registry is the source of

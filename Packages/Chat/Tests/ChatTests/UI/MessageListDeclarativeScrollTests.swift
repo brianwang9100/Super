@@ -217,6 +217,49 @@ struct MessageListDeclarativeScrollTests {
         #expect(scroll.contentOffset.y <= max(0, scroll.contentSize.height - scroll.bounds.height) + 4)
     }
 
+    @Test("resizing keeps the visible reading edge in place")
+    func resizePreservesVisibleReadingEdge() throws {
+        let items: [MessageList.Item] = (0..<50).map { index in
+            .userBubble(
+                id: "resize-\(index)",
+                text: "Question \(index): " + String(repeating: "Readable context. ", count: 12),
+                references: []
+            )
+        }
+        let driver = MessageListDriver(items: items)
+        let (controller, window) = makeHost(driver: driver, height: 600)
+        defer { teardown(window: window) }
+        settle(controller: controller)
+        let scroll = try requireScrollView(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentSize.height / 2), animated: false)
+        settle(controller: controller)
+        let original = readingEdge(in: controller)
+        scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentOffset.y + 40), animated: false)
+        settle(controller: controller)
+        let reading = readingEdge(in: controller)
+        #expect(original != reading, "the rendered probe must detect a real change in reading position")
+
+        for height: CGFloat in [450, 750, 600] {
+            window.frame.size.height = height
+            controller.view.frame = window.bounds
+            settle(controller: controller)
+            #expect(readingEdge(in: controller) == reading,
+                    "resizing must preserve visible text, even if lazy height estimates change")
+        }
+    }
+
+    /// Compare visible content within one run, without creating a stored image
+    /// baseline. Exclude scroll indicators and sample only the leading viewport.
+    private func readingEdge(in controller: UIViewController) -> Data {
+        let area = CGRect(x: 16, y: 16, width: controller.view.bounds.width - 32, height: 180)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: area.size, format: format).pngData { context in
+            context.cgContext.translateBy(x: -area.minX, y: -area.minY)
+            controller.view.layer.render(in: context.cgContext)
+        }
+    }
+
     private func expectMessageAtTop(_ id: String, controller: UIViewController) throws {
         let scroll = try requireScrollView(in: controller)
         // A short focused turn occupies a viewport, so its beginning is

@@ -177,6 +177,17 @@ public struct MessageList: View {
             // preserve the leading reading edge; only a user action calls scrollTo.
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .sizeChanges)
+            .transaction { transaction in
+                #if os(iOS)
+                if #available(iOS 27.0, *) {
+                    // iOS 27 follows response layout changes even with a top
+                    // size-change anchor. Live-to-saved replacement also lays
+                    // out descendants in later transactions, so scope this to
+                    // the transcript, not a single input-value transaction.
+                    transaction.scrollContentOffsetAdjustmentBehavior = .disabled
+                }
+                #endif
+            }
             .onChange(of: scrollRequest, initial: true) { previous, request in
                 guard let request, turns.contains(where: { $0.id == request.messageID }) else { return }
                 // Mount restored history immediately; animate only new intent.
