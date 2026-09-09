@@ -368,21 +368,10 @@ public struct ChatScreen: View {
                 // and the surface grows upward from it.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
-                // Tap-to-dismiss must attach to `content` (a *sibling* of the
-                // composer), not to the `.safeAreaInset` composite below (an
-                // *ancestor* of the composer). On the composite the
-                // `.simultaneousGesture` fires concurrently with the composer
-                // `TextField`'s own tap and resigns first responder before the
-                // edit (select/copy) menu can present — so tapping a focused
-                // composer used to drop the keyboard. As a sibling gesture it's
-                // outside the eligibility set for taps the composer layer
-                // consumes, so composer taps reach the `TextField` untouched
-                // while transcript/empty-state taps still dismiss. Do not move
-                // this back below `.safeAreaInset`.
+                // Keyboard dismissal belongs to the transcript rows and empty
+                // state below, so floating navigation and composer taps retain
+                // focus. Keep the drag handoff's full content hit region here.
                 .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture().onEnded { dismissKeyboard() }
-                )
                 // Drag-anywhere on the transcript/empty-state content: a
                 // `UIPanGestureRecognizer` that scrolls the transcript until it
                 // hits an edge, then hands the same finger-drag off to resizing
@@ -680,6 +669,10 @@ public struct ChatScreen: View {
                             .padding(.bottom, 14)
                     }
                 }
+                // Include blank space and suggestions, while keeping this
+                // gesture outside the transcript's floating navigation overlay.
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
                 .task { viewModel.loadSuggestionsIfNeeded(fallback: suggestedChatActions) }
         } else {
             // The streaming tail observation is confined to
