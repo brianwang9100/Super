@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// Saving an explicitly supplied OpenAI credential connects narration after billing disclosure.
 struct OpenAINarrationSetupSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

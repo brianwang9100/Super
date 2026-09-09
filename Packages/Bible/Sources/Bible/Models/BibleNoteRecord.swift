@@ -1,26 +1,9 @@
 import Foundation
 import GRDB
 
-/// One user- or assistant-authored note persisted in `bibleNote`.
-///
-/// The table is polymorphic: a row's `target` discriminates between book,
-/// chapter, and verse-range scopes, and the optional position columns
-/// (`chapterNumber`, `verseStart`, `verseEnd`) are filled per target:
-///
-/// - `target == .book` — only `bookId` set; other position columns nil.
-/// - `target == .chapter` — `bookId` and `chapterNumber` set.
-/// - `target == .verse` — `bookId`, `chapterNumber`, `verseStart`,
-///   `verseEnd` all set (`verseEnd == verseStart` for a single verse).
-///
-/// A target can hold many notes — each renders as one card in the list sheet.
-/// Notes are true per-row CRUD (created / edited / deleted individually),
-/// unlike annotations' regenerate-the-whole-group model — so the record
-/// carries both `createdAt` (the card's "date written") and `updatedAt`
-/// (bumped on edit).
-///
-/// `source` is `.user` for a note typed in the editor or `.assistant` for one
-/// the chat tool wrote; `modelId` stamps which LLM (Large Language Model)
-/// produced an assistant note and is nil for user notes.
+/// Uses BibleNoteTarget's nullable position encoding. Multiple notes per target are
+/// edited individually; createdAt is the original date and updatedAt changes on edit.
+/// User notes have nil modelId; assistant notes retain model provenance.
 public struct BibleNoteRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleNote"
 

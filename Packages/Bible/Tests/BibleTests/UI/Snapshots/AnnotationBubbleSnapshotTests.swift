@@ -6,15 +6,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `AnnotationBubble` — the speech-bubble glyph in each of
-/// its three states (`.empty`, `.generating`, `.filled`) and across the
-/// three themes for the filled silhouette (the colors come from the
-/// theme; the other two states differ only in stroke vs fill, which is
-/// fully captured by the light variant).
+/// Filled states cover theme colors; light captures suffice for the stroke-only state differences.
 @Suite("AnnotationBubble snapshots", .serialized)
 @MainActor
 struct AnnotationBubbleSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("filled bubble renders in the light theme")
@@ -37,12 +32,7 @@ struct AnnotationBubbleSnapshotTests {
         verify(theme: .vellumLight, state: .generating, name: "generating_light")
     }
 
-    /// Three filled bubbles side-by-side — the composition `BibleChapterReader`
-    /// uses in PR3 when multiple overlapping verse-range annotations share a
-    /// `verseEnd` (per `ANNOTATIONS.md` §5). The 3-pt gap and inline-flex
-    /// arrangement match the JSX `screens.jsx` `trailingCount` block. The
-    /// snapshot guards the per-bubble spacing contract so PR3 can layer the
-    /// stack directly without re-deriving the metrics.
+    /// Overlapping ranges ending on one verse must keep separate, evenly spaced bubbles.
     @Test("three bubbles stack horizontally after one verse")
     func multiStackLight() {
         let theme = SuperTheme.make(.vellumLight)
@@ -75,9 +65,7 @@ struct AnnotationBubbleSnapshotTests {
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
-        // Render at 64×64 (4× the production 16pt size) so anti-aliasing
-        // and the bottom-left tail are easy to inspect by eye in the
-        // baseline image.
+        // Enlarge the glyph to make edge antialiasing and the tail inspectable.
         let view = ZStack {
             theme.background
             AnnotationBubble(state: state, size: 48)

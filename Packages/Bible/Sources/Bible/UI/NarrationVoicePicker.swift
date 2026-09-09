@@ -1,7 +1,6 @@
 import Core
 import SwiftUI
 
-/// A wide, scrollable voice chooser with a stable company order and a visible selection mark.
 struct NarrationVoicePicker: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

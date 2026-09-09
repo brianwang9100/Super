@@ -3,13 +3,10 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `AnnotateBibleTool` — input validation, stamping, the
-/// single-summary write, and the source/modelId derivation contract.
 @Suite("AnnotateBibleTool")
 struct AnnotateBibleToolTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 
-    /// A short but plausible markdown summary for happy-path inputs.
     private let sampleSummary = "### Context\n\n**Paul** writes to a mixed Jew/Gentile church."
 
     private func makeTool(
@@ -44,9 +41,6 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Descriptor schema
 
-    /// The single-summary redesign: the descriptor takes one required
-    /// `summary` string and no longer declares the multi-card `entries`
-    /// array (whose Gemini `valueSchema` requirement died with it).
     @Test("descriptor declares a required summary string and no entries array")
     func descriptorDeclaresSummaryNotEntries() {
         let parameters = AnnotateBibleTool.descriptor.parameters
@@ -58,25 +52,16 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Descriptor prompt steering
 
-    /// Regression: the descriptor must steer the model to reserve
-    /// `bible.annotate` for explicit annotate requests (it writes a
-    /// persistent summary) rather than firing on plain context/explain
-    /// questions. Asserts the load-bearing steer words, not whole
-    /// sentences, so wording can be polished without churning the test.
+    /// Context questions previously caused unwanted persistent annotations.
     @Test("descriptor reserves the tool for explicit annotate requests")
     func descriptorSteersExplicitAnnotateOnly() {
         let description = AnnotateBibleTool.descriptor.description.lowercased()
         #expect(description.contains("only when the user explicitly asks to annotate"))
         #expect(description.contains("answer in the conversation"))
-        // Free-text note requests belong to `bible.note`, not annotate.
         #expect(description.contains("bible.note"))
     }
 
-    /// Regression: a cited cross-reference is only for a genuine
-    /// intertextual link (quotation / allusion / citation), never a merely
-    /// thematically similar verse. Guards against the prior
-    /// "illuminating"-only wording that produced junk "see this similar
-    /// verse" citations.
+    /// The former "illuminating" guidance invited merely thematic links as cross-references.
     @Test("descriptor restricts citations to genuine cross-references")
     func descriptorRestrictsCrossReferences() {
         let description = AnnotateBibleTool.descriptor.description.lowercased()
@@ -102,7 +87,6 @@ struct AnnotateBibleToolTests {
         let result = try await tool.execute(input: input)
         #expect(result.isError == false)
         #expect(result.content == "Wrote an annotation for the target.")
-        // Exactly one artifact — the single summary row just written.
         #expect(result.artifacts.count == 1)
         #expect(result.artifacts.first?.type == "annotation")
         #expect(result.artifacts.first?.id == "anno-1")
@@ -178,10 +162,6 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Replace semantics
 
-    /// Calling the tool twice for the same target converges on one row —
-    /// the write goes through `repository.replace`, which clears the
-    /// target's prior rows before inserting. Driven against the real GRDB
-    /// repository so the clearing is the production query, not a spy echo.
     @Test("a second call for the same target replaces the prior row")
     func secondCallReplacesPriorRow() async throws {
         let database = try BibleDatabase.makeInMemory()
@@ -258,9 +238,6 @@ struct AnnotateBibleToolTests {
 
     // MARK: - Position-field coercion
 
-    /// `target` is the authoritative discriminator: a `book` payload that
-    /// carries stray chapter/verse fields is accepted, and those fields are
-    /// coerced to `nil` rather than rejected.
     @Test("book target coerces stray chapter/verse fields to nil")
     func bookCoercesStrayPositionFields() async throws {
         let (tool, repo) = makeTool()
@@ -281,8 +258,6 @@ struct AnnotateBibleToolTests {
         #expect(inserts[0].verseEnd == nil)
     }
 
-    /// The reported bug: a chapter payload with a stray `verseStart` no longer
-    /// errors — the verse fields are dropped, `chapterNumber` is preserved.
     @Test("chapter target coerces stray verse fields to nil")
     func chapterCoercesStrayVerseFields() async throws {
         let (tool, repo) = makeTool()
@@ -303,10 +278,7 @@ struct AnnotateBibleToolTests {
         #expect(inserts[0].verseEnd == nil)
     }
 
-    /// Regression: a coerced chapter row must remain addressable by a
-    /// chapter-target read (`verseStart IS NULL`) — i.e. it isn't orphaned by
-    /// the stray verse fields the caller sent. Driven against the real GRDB
-    /// repository so the `IS NULL` query is the production one.
+    /// Stray verse fields previously orphaned chapter rows from IS NULL target queries.
     @Test("coerced chapter row is found by a chapter-target read")
     func coercedChapterRowIsAddressable() async throws {
         let database = try BibleDatabase.makeInMemory()
@@ -366,8 +338,6 @@ struct AnnotateBibleToolTests {
 
 // MARK: - Doubles
 
-/// Strict spy that records the last `replace` call and asserts repository
-/// methods aren't used outside the contract `AnnotateBibleTool` exercises.
 private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
     struct ReplaceCall: Sendable {
         let target: BibleAnnotationTarget
@@ -387,10 +357,6 @@ private actor SpyBibleAnnotationRepository: BibleAnnotationRepository {
         verseStart: Int?,
         verseEnd: Int?
     ) async throws -> [BibleAnnotationRecord] {
-        // Strict double: the tool path never reads, so a hit here is a
-        // caller-side bug. Fail loudly with a stack trace that points at
-        // the misconfigured test rather than returning an empty array
-        // and letting downstream assertions accidentally pass.
         fatalError("SpyBibleAnnotationRepository.list called — tool path should not read.")
     }
 

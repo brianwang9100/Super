@@ -6,15 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleAttachToast` — the chat-attach "coming soon" toast.
-///
-/// The toast is a fixed dark card regardless of theme; the baselines confirm
-/// it reads against the light, dark, and sepia page backgrounds. The card
-/// uses fixed type sizes, so no Dynamic Type variant is captured.
 @Suite("BibleAttachToast snapshots", .serialized)
 @MainActor
 struct BibleAttachToastSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the toast renders over a light page")

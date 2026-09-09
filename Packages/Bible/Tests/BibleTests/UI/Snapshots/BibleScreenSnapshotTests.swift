@@ -8,34 +8,11 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleScreen` — the chapter reader with its floating nav
-/// bar, prev / next footer, verse selection, persisted highlights, and chat
-/// stubs.
-///
-/// The populated state renders the real bundled 1 Peter 2 across the three
-/// themes at default and XXL Dynamic Type, per root `AGENTS.md` §Testing.
-/// Genesis 1 and Revelation 22 capture the canon's two ends, where a nav
-/// arrow and a footer card drop out. The selection state shows the citation
-/// pill and the solid selection underline; the narration state shows the
-/// active verse underlined; the highlighted state shows verses painted in
-/// three persisted colours; the toast state covers the chat "coming soon"
-/// stub. The unavailable state covers the "chapter unavailable" fallback.
-///
-/// The bottom sheets (action sheet, narration card, book / translation
-/// pickers) present as native `.sheet`s, which `swift-snapshot-testing` can't
-/// capture in its single layout pass — these suites therefore snapshot only
-/// the reader-side decorations a selection / narration produces. The sheet
-/// content itself is covered directly by `BibleActionSheetSnapshotTests`,
-/// `NarrationTransportSheetSnapshotTests`, `BibleBookSheetSnapshotTests`, and
-/// `BibleTranslationSheetSnapshotTests`.
+/// Native sheets need separate content captures: the snapshotter's single layout
+/// pass only captures reader decorations. Sheet-specific suites cover their contents.
 @Suite("BibleScreen snapshots", .serialized)
 @MainActor
 struct BibleScreenSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts before any render so the chapter
-    /// title and section headings resolve their brand serif instead of baking
-    /// the system fallback — and so this suite stays order-independent (font
-    /// registration is process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("1 Peter 2 renders in the light theme")
@@ -146,9 +123,7 @@ struct BibleScreenSnapshotTests {
         }
     }
 
-    /// Pins the scale-aware underline weight at its 1pt floor: at the 0.8× slider
-    /// the rule rounds to 1pt (vs 2pt at the default size the tests above cover).
-    /// The weight is theme-independent, so one theme locks the behaviour.
+    /// One theme suffices for the theme-independent 1pt underline floor.
     @Test("verse selection underline thins to its 1pt floor at the min font scale")
     func selectionActiveFontScaleMinLight() async {
         verify(await selectionScreen(), theme: .vellumLight, fontScale: 0.8,
@@ -199,11 +174,8 @@ struct BibleScreenSnapshotTests {
                name: "highlighted_dark_xxl")
     }
 
-    // The min slider (0.8×) is where the wash's height divergence on the
-    // verse-number cell was largest — its raised marker inflated that cell's box,
-    // and a box-filling `.background` washed it taller than its neighbors, breaking
-    // the seam. The wash is now a baseline-anchored fixed-height band, so every
-    // word's wash matches. These guard that fix.
+    // At minimum scale, the raised verse number inflated its cell's wash most visibly.
+    // The baseline-anchored band must stay level with neighboring words.
     @Test("persisted highlights paint a seamless band at the min font scale (light)")
     func highlightedFontScaleMinLight() async throws {
         verify(try await highlightedScreen(), theme: .vellumLight, fontScale: 0.8,
@@ -240,11 +212,6 @@ struct BibleScreenSnapshotTests {
                name: "immersive_dark_xxl")
     }
 
-    /// A `BibleScreen` on 1 Peter 2 driven into immersive mode: a user-driven
-    /// downward scroll run past the hide gate flips `isImmersive`, sliding the
-    /// nav bar up off screen and fading it out. The reader itself still renders
-    /// from the top, so the snapshot captures the chapter with its nav bar gone
-    /// — the reclaimed reading space the feature exists to provide.
     private func immersiveScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
@@ -274,11 +241,6 @@ struct BibleScreenSnapshotTests {
                name: "annotated_light_xxl")
     }
 
-    /// A `BibleScreen` on 1 Peter 2 with one chapter-target annotation
-    /// (a bubble next to the title) plus two verse-target rows ending at
-    /// distinct verses (bubbles inline after each verse's last word).
-    /// Wired to a database context whose `bibleAnnotation` rows the
-    /// chapter reader's `@Query<ChapterAnnotationsRequest>` observes.
     private func annotatedScreen() async throws -> some View {
         let database = try BibleDatabase.makeInMemory()
         let now = Date(timeIntervalSince1970: 1_700_000_000)
@@ -355,8 +317,6 @@ struct BibleScreenSnapshotTests {
                name: "narrating_dark_xxl")
     }
 
-    /// Pins the dashed narration rule at the same 1pt floor as selection when
-    /// the slider is at 0.8× (both share `underlineWeight`).
     @Test("the active-verse dashed underline thins to its 1pt floor at the min font scale")
     func narratingFontScaleMinLight() async {
         verify(await narratingScreen(currentVerse: 4),
@@ -364,17 +324,7 @@ struct BibleScreenSnapshotTests {
                name: "narrating_font_scale_min_light")
     }
 
-    /// A `BibleScreen` whose narration controller is driven into
-    /// `.speaking` on `currentVerse`. The fake service lets the test
-    /// hold the controller in that state for the snapshot without
-    /// invoking the real `AVSpeechSynthesizer`. The transport card itself
-    /// presents as a native `.sheet` (not captured here); this snapshot
-    /// covers the reader-side active-verse underline.
-    ///
-    /// Drives the `.started` event via `NarrationController
-    /// ._simulateEvent(_:)` rather than the fake's `AsyncStream` so the
-    /// state transition is deterministic, per root AGENTS.md §
-    /// Testing.2.
+    // Apply the event synchronously so the capture cannot race stream consumption.
     private func narratingScreen(currentVerse: Int) async -> BibleScreen {
         let service = FakeNarrationService()
         let narration = NarrationController(service: service)
@@ -389,7 +339,6 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A `BibleScreen` over the real bundled text, loaded to `position`.
     private func screen(at position: BiblePosition) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
@@ -399,8 +348,7 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A selected reader with actions open or dismissed. Both states must
-    /// match the existing selection baselines: the citation and underline stay.
+    /// Dismissing actions must preserve the citation and underline baseline.
     private func selectionScreen(dismissActions: Bool = false) async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
@@ -412,7 +360,6 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A `BibleScreen` on 1 Peter 2 with the chat "coming soon" toast raised.
     private func toastScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
@@ -423,17 +370,13 @@ struct BibleScreenSnapshotTests {
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A `BibleScreen` whose text loader always fails.
     private func unavailableScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(textLoader: ThrowingBibleTextLoader())
         await viewModel.load()
         return BibleScreen(viewModel: viewModel)
     }
 
-    /// A `BibleScreen` on 1 Peter 2 with three verses highlighted in three
-    /// colours, wired to the database context whose `bibleHighlight` rows the
-    /// chapter renderer's `@Query` observes. Verses 2, 4, and 7 are chosen so
-    /// all three colours sit above the snapshot fold.
+    // Keep all three highlight colors above the captured frame's fold.
     private func highlightedScreen() async throws -> some View {
         let database = try BibleDatabase.makeInMemory()
         let now = Date(timeIntervalSince1970: 1_700_000_000)

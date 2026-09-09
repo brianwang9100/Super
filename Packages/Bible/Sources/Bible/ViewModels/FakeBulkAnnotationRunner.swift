@@ -1,28 +1,15 @@
 import Foundation
 
-/// In-memory stand-in for the real bulk-annotation engine. Drives realistic
-/// `queued → generating → done` (and a seeded `failed`) transitions so the hub,
-/// job card, and per-book progress are fully interactive, previewable, and
-/// snapshot-testable before the LLM-backed runner exists.
-///
-/// `autoAdvance` runs the simulation on a timer for previews / the simulator.
-/// Tests construct it with `autoAdvance: false` and call `step()` to advance
-/// deterministically (no sleeps), per the project's async-test rules.
+/// Preview simulation. Tests disable autoAdvance and call step() for deterministic progress.
 @MainActor
 public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
     public private(set) var snapshot: BulkRunSnapshot?
     public var onSnapshotChange: (@MainActor @Sendable () -> Void)?
 
-    /// Plans handed to `start(_:)`, in call order — a test seam so a view-model
-    /// test can assert how a selection was resolved into a `BulkRunPlan`
-    /// (e.g. whether a whole-book selection flagged its book for book-level
-    /// generation). Not used by previews.
     public private(set) var startedPlans: [BulkRunPlan] = []
 
     private let autoAdvance: Bool
     private let stepInterval: Duration
-    /// Chapters seeded to fail the first time they generate (then they succeed
-    /// on a manual retry). Used to demo the partial-failure state.
     private var failOnce: Set<ChapterRef>
     private var driver: Task<Void, Never>?
 
@@ -36,8 +23,6 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
         self.failOnce = failOnce
     }
 
-    /// Seed a snapshot directly — lets previews/tests render a specific mid-run
-    /// or partial-failure state without stepping there.
     public func seed(_ snapshot: BulkRunSnapshot) {
         self.snapshot = snapshot
         notify()
@@ -50,7 +35,6 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
         for book in plan.books {
             var chapterRows: [BulkChapterProgress] = []
             for (index, number) in book.chapters.enumerated() {
-                // The first chapter of the first book starts generating.
                 let isFirstUnit = index == 0 && book.bookID == firstBookID
                 let state: BulkUnitState = isFirstUnit ? .generating : .queued
                 chapterRows.append(
@@ -100,15 +84,11 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
         notify()
     }
 
-    /// The in-memory fake keeps no ledger, so the "Recently finished" list (a
-    /// DB-backed `@Query`) is always empty in previews — these are no-ops the
-    /// protocol requires. The real engine drives the list.
+    /// No ledger means no finished-run history; these operations are no-ops.
     public func resume(runID: String) {}
     public func dismissFinishedRun(id: String) {}
 
-    /// Advance the simulation by one unit. Finishes the current generating
-    /// chapter (done, or failed if seeded), then promotes the next queued one.
-    /// Returns `false` when nothing is left to do.
+    /// Finishes the current unit and promotes the next; false means no work remains.
     @discardableResult
     public func step() -> Bool {
         guard var snap = snapshot, snap.isRunning else { return false }
@@ -127,12 +107,9 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
         return changed || promoted
     }
 
-    // MARK: - Private
-
     @discardableResult
     private func promoteNextQueuedToGenerating() -> Bool {
         guard var snap = snapshot else { return false }
-        // Don't run a second unit while one is already generating.
         let anyGenerating = snap.books.contains { $0.chapters.contains { $0.state == .generating } }
         if anyGenerating { return false }
         for b in snap.books.indices {
@@ -171,8 +148,6 @@ public final class FakeBulkAnnotationRunner: BulkAnnotationRunning {
 
     private func notify() { onSnapshotChange?() }
 
-    /// Deterministic per-chapter annotation count (matches the design's
-    /// hand-picked spread so previews read naturally).
     private static func noteCount(_ n: Int) -> Int {
         let bank = [9, 14, 11, 16, 12, 8, 13, 18, 10, 15, 7, 12, 9, 11, 14, 6]
         return bank[(n - 1) % bank.count]

@@ -2,45 +2,16 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// The scrolling chapter column: the chapter title, its heading / prose /
-/// poetry paragraphs, and the prev / next footer.
-///
-/// Verse highlights are bound reactively here through GRDBQuery's `@Query`,
-/// which observes the chapter's `bibleHighlight` rows: a highlight written
-/// from the action sheet — or, later, restored by sync — repaints the verse
-/// without this view reloading. `BibleScreen` gives the reader a fresh
-/// identity per chapter, so the constant `@Query` request always carries the
-/// on-screen position.
+/// BibleScreen supplies a fresh identity per chapter so constant decoration queries
+/// always observe the displayed position.
 struct BibleChapterReader: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Verse-body base point — matches `BibleParagraphBlock.verseBodySize` so the
-    /// between-paragraph margin scales on the same two axes (OS Dynamic Type via
-    /// the metric, the app slider via `typography.fontScale`) as the line gaps.
     @ScaledMetric(relativeTo: .body) private var verseBodySize: CGFloat = SuperTypography.readingBodySize
     @Query<ChapterHighlightsRequest> private var highlights: [BibleHighlightRecord]
-    /// Annotation rows for the on-screen chapter. Drives both the
-    /// chapter-title bubble (any row with target `.chapter`) and the
-    /// per-verse trailing bubble stacks (rows with target `.verse`,
-    /// grouped by `verseEnd`). Writes from anywhere — the popover's
-    /// regenerate path, an in-chat tool call, the future bulk runner —
-    /// flow back through this `@Query` and repaint without re-rendering
-    /// the chapter's text. `BookAnnotationsExistenceRequest` (the
-    /// book-picker badge feed) is held separately by the picker.
     @Query<ChapterAnnotationsRequest> private var annotations: [BibleAnnotationRecord]
-    /// Note rows for the on-screen chapter. Drives the chapter-title note
-    /// glyph (any row with target `.chapter`) and the per-verse trailing note
-    /// glyphs (rows with target `.verse`, grouped by `verseEnd`). Writes from
-    /// the editor or an in-chat `bible.note` tool call flow back through this
-    /// `@Query` and repaint without re-rendering the chapter's text — the
-    /// same reactive contract the annotation feed above follows.
     @Query<ChapterNotesRequest> private var notes: [BibleNoteRecord]
-    /// The chapter's bookmark slot, if any. Drives the chapter-title
-    /// bookmark glyph's fill. Writes from anywhere — the bookmark sheet
-    /// (including a *move* from another chapter), or the Bookmarks applet —
-    /// flow back through this `@Query` and repaint without re-rendering the
-    /// chapter's text.
     @Query<ChapterBookmarkRequest> private var chapterBookmark: BibleBookmarkRecord?
 
     private let chapter: BibleChapter
@@ -66,58 +37,15 @@ struct BibleChapterReader: View {
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
 
-    /// Whether the latest scroll phase is one the *user* drove
-    /// (`.interacting` / `.decelerating`) versus a programmatic `scrollTo`
-    /// (`.animating`) the reader issues for narration follow, selection, and
-    /// deep-link landing. Gates `onScroll`'s `userDriven` flag so an
-    /// auto-scroll never toggles immersive chrome.
+    // Programmatic scrolling must not toggle immersive chrome.
     @State private var scrollIsUserDriven = false
 
-    /// - Parameters:
-    ///   - bookId: the book whose highlights the `@Query` observes; paired
-    ///     with `chapter.number` it scopes the observation to this chapter.
-    ///   - currentNarratingVerse: verse currently spoken by the narrator —
-    ///     drives the inline underline and the auto-scroll proxy. `nil`
-    ///     when narration is idle.
-    ///   - suppressNarrationScroll: when `true`, the reader keeps the
-    ///     scroll offset stable as the narrator advances. Honored when
-    ///     the user has selected verses — the spec disables auto-scroll
-    ///     so the reader stays anchored to whatever the user is reading.
-    ///   - bottomOverlayKind: which bottom sheet is presented over the reader.
-    ///     The paired selection auto-scroll runs only for `.selection` (lifting
-    ///     the just-selected verse clear of the action sheet); `.narration`
-    ///     leaves narration's own follow-scroll the sole driver. Either kind also
-    ///     grows the reader's bottom scroll reserve to the sheet's height plus a
-    ///     margin (see `bottomClearHeight(for:)`): the sheets float over the
-    ///     still-interactive page without a scrim, so without the reserve the
-    ///     last verses would stay hidden behind the sheet instead of scrolling
-    ///     clear of it.
-    ///   - onBackgroundTap: invoked when a tap lands on the column but misses
-    ///     every verse word.
-    ///   - pendingScrollVerse: verse number to scroll to on appear and on
-    ///     subsequent changes. Set by `BibleScreenViewModel.openReference`
-    ///     for deep-link navigation; `nil` for normal browsing. The
-    ///     reader consumes it once via `onConsumeScroll` so a later
-    ///     manual chapter step doesn't re-snap to the old anchor.
-    ///   - onConsumeScroll: called after the reader issues the pending
-    ///     deep-link scroll so the view model can clear the target.
-    ///   - onAnnotationBubbleTap: tap on a *filled* chapter / verse bubble —
-    ///     presents the annotation popover for the target.
-    ///   - onRequestChapterAnnotation: tap on an *empty* chapter bubble —
-    ///     fires a chapter-level generation intent (disclaimer-gated by the
-    ///     view model). `nil` suppresses the empty bubble's generate action.
-    ///   - chapterDispatchStatus: the chapter target's in-flight dispatch
-    ///     status, or `nil` when none. A `.running` status renders the
-    ///     chapter bubble in its generating state.
-    ///   - onNoteGlyphTap: tap on a note glyph (a verse trailer or the chapter
-    ///     title), filled or outline — presents the note list sheet for the
-    ///     target. The user composes from the list's `+`; an empty range opens
-    ///     to the list's empty state rather than auto-opening the editor.
-    ///     `nil` suppresses note glyphs (preview / driver host).
-    ///   - onBookmarkTap: tap on the chapter-title bookmark glyph, outline or
-    ///     filled — presents the bookmark sheet. The screen knows the current
-    ///     chapter, so no spec travels. `nil` suppresses the glyph
-    ///     (preview / driver host).
+    /// Suppress narration scroll during user selection. Selection sheets get a separate
+    /// one-time lift; narration sheets leave follow-scroll to playback. Both enlarge
+    /// bottom clearance so the final verses can scroll above the sheet.
+    /// Consume pendingScrollVerse after issuing its scroll to avoid replay on navigation.
+    /// Nil note/bookmark callbacks omit their glyphs; nil annotation generation disables
+    /// the empty bubble. Note taps open the list without automatically composing.
     init(
         chapter: BibleChapter,
         bookId: String,
@@ -182,7 +110,6 @@ struct BibleChapterReader: View {
         self.onFooterVisible = onFooterVisible
     }
 
-    /// Highlight colour keyed by verse number, decoded from the observed rows.
     private var highlightsByVerse: [Int: BibleHighlightColor] {
         var map: [Int: BibleHighlightColor] = [:]
         for record in highlights {
@@ -192,11 +119,7 @@ struct BibleChapterReader: View {
         return map
     }
 
-    /// Verse-target annotation specs keyed by `verseEnd`, with each value
-    /// the deduplicated list of ranges that end at that verse. Drives the
-    /// trailing-bubble stack a paragraph renders after the verse's last
-    /// word. Overlapping ranges that share a `verseEnd` produce multiple
-    /// bubbles, in stable insertion order.
+    /// Deduplicate ranges per ending verse while retaining stable insertion order.
     private var annotationsByVerseEnd: [Int: [BibleAnnotationTargetSpec]] {
         var map: [Int: [BibleAnnotationTargetSpec]] = [:]
         var seen: Set<String> = []
@@ -217,21 +140,11 @@ struct BibleChapterReader: View {
         return map
     }
 
-    /// `true` when at least one row attaches to the on-screen chapter as
-    /// a `.chapter`-target — drives the bubble alongside the chapter
-    /// title. Book-target rows live in the picker; verse-target rows
-    /// drive the trailing stacks.
     private var hasChapterAnnotation: Bool {
         annotations.contains { $0.target == .chapter }
     }
 
-    /// Verse-target note specs keyed by `verseEnd`, each value the
-    /// deduplicated list of ranges that hold at least one note ending at that
-    /// verse. Drives the trailing note glyphs a paragraph renders after the
-    /// annotation bubbles. Distinct ranges sharing a `verseEnd` (e.g. 16-18
-    /// and 18-18) produce separate glyphs in stable insertion order — the
-    /// same grouping `annotationsByVerseEnd` uses, so the two glyph systems
-    /// stack identically.
+    /// Deduplicate note ranges per ending verse, preserving query order after annotation bubbles.
     private var notesByVerseEnd: [Int: [BibleNoteTargetSpec]] {
         var map: [Int: [BibleNoteTargetSpec]] = [:]
         var seen: Set<String> = []
@@ -252,9 +165,6 @@ struct BibleChapterReader: View {
         return map
     }
 
-    /// `true` when at least one row attaches to the on-screen chapter as a
-    /// `.chapter`-target note — flips the chapter-title note glyph from
-    /// outline (compose) to filled (open the list).
     private var hasChapterNote: Bool {
         notes.contains { $0.target == .chapter }
     }
@@ -294,63 +204,34 @@ struct BibleChapterReader: View {
                         onNext: onNext
                     )
 
-                    // Clear the minimized chat pill and floating accessory row
-                    // so neither can obscure the chapter footer at the scroll end.
-                    // While a floating action / narration sheet is up this grows
-                    // to that sheet's height plus a margin so the last verses can
-                    // scroll clear of it instead of staying stuck behind it.
                     Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind))
                 }
                 .padding(.horizontal, 26)
-                // Top inset clears the floating nav bar; the bar's gradient
-                // fades over the first lines as they scroll up beneath it.
+                // Clear the floating nav bar while allowing text to scroll beneath its gradient.
                 .padding(.top, 68)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // A tap that misses every verse word dismisses the action sheet.
                 .contentShape(Rectangle())
                 .onTapGesture { onBackgroundTap() }
             }
-            // Immersive-chrome driver: report the live content offset plus
-            // whether the *user* is driving the scroll. The phase gate keeps
-            // the programmatic `scrollTo` calls below (narration follow,
-            // selection-into-view, deep-link landing — all `.animating`) from
-            // hiding or revealing chrome out from under the reader.
             .onScrollPhaseChange { _, newPhase in
                 scrollIsUserDriven = newPhase == .interacting || newPhase == .decelerating
             }
-            // Reads `scrollIsUserDriven` (set above) rather than capturing the
-            // phase in the closure. The two modifiers aren't ordering-guaranteed
-            // by SwiftUI, but phase events arrive with the touch and geometry
-            // changes on the next display pass, so the flag is current here. The
-            // one boundary sample (an `.animating`→`.interacting` turn) that
-            // could read the stale phase is treated as `userDriven: false`,
-            // which only updates the reducer's baseline — chrome can't misfire.
+            // Read the live phase flag; phase and geometry modifiers have no ordering guarantee.
+            // A false boundary sample only updates the reducer baseline and cannot toggle chrome.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y
             } action: { _, newOffset in
                 onScroll(newOffset, scrollIsUserDriven)
             }
-            // Whether the chapter footer's prev / next cards are scrolled into
-            // view, so the screen can hide the (now-redundant) hovering composer
-            // chevrons. `footerRevealThreshold` covers the bottom scroll reserve
-            // plus the footer cards, so this trips as those cards enter the
-            // viewport rather than only when the content is pinned to the very
-            // bottom. Unlike immersive, it's not gated on user-driven scrolling —
-            // a programmatic landing at the chapter end should hide them too.
+            // Hide redundant hovering arrows when footer cards enter view, including programmatic scrolls.
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 let maxY = geometry.contentSize.height - geometry.containerSize.height
                 return maxY > 0 && geometry.contentOffset.y >= maxY - Self.footerRevealThreshold
             } action: { _, footerVisible in
                 onFooterVisible(footerVisible)
             }
-            // When the verse-selection action sheet appears, scroll the
-            // just-selected verse up to `y = 0.35` (a third from top — same
-            // anchor narration uses) so the floating sheet doesn't cover it.
-            // Dismiss intentionally does *not* scroll back: the reader stays
-            // where it scrolled to, keeping the user's place under the
-            // just-closed sheet. Gated to the action sheet (`.selection`): the
-            // narration card has its own current-verse follow-scroll, so a
-            // paired selection scroll here would fight it.
+            // Lift selected text when actions appear. Dismissal preserves the resulting place;
+            // narration uses its own follow-scroll and must not compete with this path.
             .onChange(of: bottomOverlayKind) { oldKind, newKind in
                 guard Self.shouldScrollSelectionIntoView(oldKind: oldKind, newKind: newKind),
                       let verse = selectedVerses.min() else { return }
@@ -366,10 +247,7 @@ struct BibleChapterReader: View {
                 guard let new, Self.shouldAutoScroll(suppressed: suppressNarrationScroll) else {
                     return
                 }
-                // y=0.35 puts the verse roughly a third from the top —
-                // far enough below the floating nav bar to read cleanly,
-                // with upcoming text still visible underneath. Honors
-                // Reduce Motion via a `nil` animation.
+                // A 0.35 anchor clears the nav bar while leaving upcoming text visible.
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.35)
                 withAnimation(animation) {
                     proxy.scrollTo(
@@ -378,14 +256,7 @@ struct BibleChapterReader: View {
                     )
                 }
             }
-            // Deep-link landing: scroll the first selected verse into
-            // view. `.task(id:)` runs on first appear AND whenever the
-            // target changes, so a same-chapter deep link (already on
-            // Romans 8, tap a Romans 8:30 link) still snaps the verse
-            // into view even though the reader's `.id(position)` didn't
-            // change. The `onConsumeScroll` callback clears the target
-            // on the view model so a later manual chapter step doesn't
-            // re-trigger.
+            // task(id:) handles same-chapter links too; consume after scrolling so later navigation cannot replay it.
             .task(id: pendingScrollVerse) {
                 guard let target = pendingScrollVerse else { return }
                 let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.35)
@@ -400,40 +271,20 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// `true` while the chapter target's headless `bible.annotate` dispatch
-    /// is in flight — flips the chapter bubble to its generating state.
     private var isChapterGenerating: Bool {
         if case .running = chapterDispatchStatus { return true }
         return false
     }
 
-    /// The italicised chapter title — book name + chapter number — with a
-    /// trailing chapter-level annotation bubble. The bubble is always shown
-    /// when a sheet host is wired (`onAnnotationBubbleTap` non-nil), so
-    /// every chapter offers a generate affordance per spec §5; it's
-    /// suppressed in preview / driver views without a host. State follows
-    /// `AnnotationBubble.state(...)`: empty (no rows) → tapping generates,
-    /// generating (dispatch in flight) → disabled, filled (rows exist) →
-    /// tapping presents the popover.
     @ViewBuilder
     private var chapterTitle: some View {
-        // The brand display face (EB Garamond Italic) is inherently
-        // italic, so no `.italic()` modifier is needed — matching the
-        // sidebar wordmark's `display(_:)` usage. `relativeTo: .largeTitle`
-        // carries OS Dynamic Type on the custom face; `SuperTypography` folds
-        // in the app font-scale slider, so the title scales on both axes.
         let title = Text("\(bookName) \(chapter.number)")
             .font(typography.display(34, relativeTo: .largeTitle))
             .foregroundStyle(theme.ink)
-        // The trailing glyph cluster appears when any glyph system has a
-        // host wired. Stable order — bookmark glyph first (it marks the
-        // chapter itself, where the other two open content *about* it),
-        // then annotation bubble, then note glyph, mirroring `VerseTrailers`
-        // and the verse-end stacks below for the trailing pair.
         if onAnnotationBubbleTap != nil || onNoteGlyphTap != nil || onBookmarkTap != nil {
             HStack(alignment: .center, spacing: 14) {
                 title
-                // .center, not .firstTextBaseline: Canvas icons have no text baseline.
+                // Canvas icons have no text baseline; center the cluster.
                 HStack(alignment: .center, spacing: 7) {
                     chapterBookmarkGlyph
                     chapterAnnotationBubble
@@ -445,15 +296,9 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// The chapter-title bookmark glyph — tapping always opens the bookmark
-    /// sheet for the chapter. Renders filled in the assigned ribbon's tint
-    /// when the chapter is bookmarked, outline when not. `EmptyView` when no
-    /// bookmark host is wired.
     @ViewBuilder
     private var chapterBookmarkGlyph: some View {
         if let onBookmarkTap {
-            // An unknown colorId (retired by a future build) renders as
-            // outline — the fail-safe `record.color == nil` path.
             let color = chapterBookmark?.color
             let glyphState: BookmarkGlyph.GlyphState =
                 color.map { .filled($0) } ?? .outline
@@ -461,7 +306,7 @@ struct BibleChapterReader: View {
                 onBookmarkTap()
             } label: {
                 BookmarkGlyph(state: glyphState, size: 24)
-                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    // Reach the 44pt tap height without widening the visible icon gap.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
@@ -470,10 +315,6 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// The chapter-title annotation bubble — empty (no rows) → tapping
-    /// generates, generating (dispatch in flight) → disabled, filled (rows
-    /// exist) → tapping presents the popover. `EmptyView` when no annotation
-    /// host is wired (preview / driver view).
     @ViewBuilder
     private var chapterAnnotationBubble: some View {
         if let onAnnotationBubbleTap {
@@ -491,26 +332,17 @@ struct BibleChapterReader: View {
                 }
             } label: {
                 AnnotationBubble(state: state, size: 24)
-                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    // Reach the 44pt tap height without widening the visible icon gap.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // `.generating` is non-interactive; an `.empty` bubble with no
-            // generate callback wired (preview / driver host) would be a
-            // dead control, so disable it rather than render a tap that
-            // silently no-ops. The live screen always wires the callback.
+            // Disable empty bubbles without a host to avoid inert controls in previews.
             .disabled(state == .generating || (state == .empty && onRequestChapterAnnotation == nil))
             .accessibilityLabel(Self.chapterBubbleLabel(for: state))
         }
     }
 
-    /// The chapter-title note glyph — tapping always opens the note list for
-    /// the chapter (the empty state prompts the user to compose from the `+`).
-    /// Renders filled when notes exist, outline when none yet. Notes have no
-    /// generating state (writes land synchronously through the editor), so it's
-    /// a plain two-state glyph unlike the annotation bubble. `EmptyView` when no
-    /// note host is wired.
     @ViewBuilder
     private var chapterNoteGlyph: some View {
         if let onNoteGlyphTap {
@@ -522,7 +354,7 @@ struct BibleChapterReader: View {
                 onNoteGlyphTap(spec)
             } label: {
                 NoteGlyph(state: glyphState, size: 24)
-                    // No horizontal padding so the icon→icon gap is just the cluster spacing; vertical-only reaches the 44pt HIG tap height.
+                    // Reach the 44pt tap height without widening the visible icon gap.
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
             }
@@ -531,7 +363,6 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// VoiceOver label for the chapter bubble, keyed to its state.
     static func chapterBubbleLabel(for state: AnnotationBubble.BubbleState) -> String {
         switch state {
         case .filled: return "View chapter annotations"
@@ -540,65 +371,35 @@ struct BibleChapterReader: View {
         }
     }
 
-    /// VoiceOver label for the chapter-title note glyph, keyed to whether the
-    /// chapter already carries notes.
     static func chapterNoteGlyphLabel(hasNote: Bool) -> String {
         hasNote ? "View chapter notes" : "Open chapter notes"
     }
 
-    /// VoiceOver label for the chapter-title bookmark glyph, keyed to the
-    /// chapter's assigned ribbon colour (`nil` when unbookmarked).
     static func chapterBookmarkLabel(for color: BibleBookmarkColor?) -> String {
         guard let color else { return "Bookmark this chapter" }
         return "Chapter bookmarked \(color.displayName) — edit bookmark"
     }
 
-    /// Clears the shell's 60pt chat pill, 36pt accessory inset, and 44pt row,
-    /// with a 20pt gap above the controls. Keep this reserve stable as immersive
-    /// chrome hides or returns, so the chapter's scroll extent does not jump.
+    /// Clears the chat pill and accessory row. Keep this stable while immersive chrome
+    /// hides or returns so scroll extent does not jump.
     static let bottomChromeClearance: CGFloat = 160
 
-    /// Distance from the bottom of the scroll content within which the chapter
-    /// footer's prev / next cards are considered "on screen" — the `bottomChromeClearance`
-    /// reserve below the footer plus roughly the cards' own height. Crossing it
-    /// reports the footer visible so the redundant hovering composer chevrons hide.
+    /// Includes bottom clearance and footer height so visibility changes as cards enter view.
     static let footerRevealThreshold: CGFloat = bottomChromeClearance + 120
 
-    /// Breathing room added above a presented sheet's height in the reader's
-    /// bottom scroll reserve, so the last verse rests a comfortable gap above
-    /// the sheet's top edge rather than flush against it. Matches the
-    /// `bottomReserve` the pre-native-sheet screen folded into its inset math.
+    /// Extra clearance above the floating sheet, in points.
     static let overlayBottomReserve: CGFloat = 100
 
-    /// Bottom scroll clearance to reserve below the chapter footer. With no
-    /// sheet up that clears the chat pill and accessory row; while the action or
-    /// narration sheet is presented it's that sheet's height plus
-    /// `overlayBottomReserve`, so the last verses + footer can scroll clear of
-    /// the sheet instead of staying behind it (the sheets float over the
-    /// still-interactive page with no scrim, so the reader must make the room).
-    /// Factored out as a pure function so a unit test can cover it without a
-    /// SwiftUI host.
     static func bottomClearHeight(for kind: BibleBottomOverlayKind?) -> CGFloat {
         guard let kind else { return bottomChromeClearance }
         return kind.estimatedSheetHeight + overlayBottomReserve
     }
 
-    /// Decide whether a narration advance should auto-scroll. Factored
-    /// out so a unit test can cover the predicate without standing up a
-    /// SwiftUI host.
     static func shouldAutoScroll(suppressed: Bool) -> Bool {
         !suppressed
     }
 
-    /// `true` only when the verse-selection action sheet has just appeared
-    /// (`nil → .selection`) — the transition that scrolls the selected verse up
-    /// to `y = 0.35` so the floating sheet doesn't cover it. Every other
-    /// transition is `false`: a dismiss now leaves the reader where it scrolled
-    /// to (the user keeps their place under the just-closed sheet), and any
-    /// transition involving `.narration` (a selection→narration hand-off, or
-    /// narration on its own) is owned by narration's own follow-scroll. Factored
-    /// out as a pure predicate so a unit test can cover the branches without
-    /// standing up a SwiftUI host.
+    /// Only nil-to-selection lifts selected text; dismissal preserves place and narration owns its own scroll.
     static func shouldScrollSelectionIntoView(
         oldKind: BibleBottomOverlayKind?,
         newKind: BibleBottomOverlayKind?
@@ -607,10 +408,7 @@ struct BibleChapterReader: View {
     }
 }
 
-/// Identity tag attached to each verse's first word so
-/// `ScrollViewReader.scrollTo` can find it as narration advances. Lives
-/// next to the reader since it's an implementation detail of the auto-
-/// scroll wiring, not a public type.
+// Shared by verse words and the reader's scroll proxy.
 struct VerseAnchor: Hashable {
     let verseNumber: Int
 }

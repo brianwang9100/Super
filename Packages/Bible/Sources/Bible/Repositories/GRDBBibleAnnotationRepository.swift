@@ -1,13 +1,7 @@
 import Foundation
 import GRDB
 
-/// GRDB-backed `BibleAnnotationRepository` over the `bibleAnnotation` table.
-///
-/// `replace(...)` runs the delete and the inserts in one `queue.write`
-/// transaction so a regenerate that throws mid-call leaves the existing
-/// rows intact. Throws originating below the transaction roll back
-/// automatically — there is no partial-state window where the popover
-/// could observe the old rows gone but the new rows not yet inserted.
+// One write transaction preserves old rows if replacement throws and prevents partial query results.
 public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
     private let queue: DatabaseQueue
 
@@ -44,10 +38,7 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
         inserting records: [BibleAnnotationRecord]
     ) async throws {
         try await queue.write { db in
-            // Belt-and-braces: a caller passing records whose position
-            // fields disagree with the target-group arguments would land
-            // hidden in the table, untouched by a later replace on the
-            // same group. Reject explicitly so the inconsistency surfaces.
+            // Reject mismatched positions or future replacements would leave these rows outside their group.
             for record in records {
                 guard record.target == target,
                       record.bookId == bookId,
@@ -113,9 +104,7 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
         }
     }
 
-    /// The base query for one target group. Equality on a nullable column
-    /// in GRDB needs the IS-NULL branch explicit; `nil`-typed comparisons
-    /// otherwise compile but always evaluate false in SQL.
+    // Explicit nil branches produce SQL IS NULL for absent position coordinates.
     private static func targetGroupQuery(
         target: BibleAnnotationTarget,
         bookId: String,
@@ -145,10 +134,7 @@ public struct GRDBBibleAnnotationRepository: BibleAnnotationRepository {
     }
 }
 
-/// Errors thrown by `GRDBBibleAnnotationRepository` for caller-side mistakes.
 public enum BibleAnnotationRepositoryError: Error, Sendable, Equatable {
-    /// A record passed to `replace(...)` carries position fields that
-    /// don't match the target-group arguments — the row would be
-    /// orphaned from the group it claims to belong to.
+    /// A replacement row's positions disagree with its target group.
     case recordOutsideTargetGroup(id: String)
 }

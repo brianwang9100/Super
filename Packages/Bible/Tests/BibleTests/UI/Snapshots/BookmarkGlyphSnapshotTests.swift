@@ -6,16 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BookmarkGlyph` — the ribbon glyph marking a bookmarked
-/// chapter. One palette grid per theme: the top row is the `outline` state
-/// followed by the six filled colours; the bottom row is the six `unassigned`
-/// pale-wash states (the empty-slot rendering). All theme-aware tints — the
-/// `outline`'s `inkFaint` stroke, the filled tints, and the unassigned soft
-/// tints — are pinned in a single baseline per theme.
 @Suite("BookmarkGlyph snapshots", .serialized)
 @MainActor
 struct BookmarkGlyphSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the palette strip renders in the light theme")
@@ -34,9 +27,7 @@ struct BookmarkGlyphSnapshotTests {
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
-        // Render at 40pt (≈1.7× the production title size) so the notch and
-        // corner radii are inspectable by eye; 7 glyphs + gaps fit 420 wide.
-        // Top row: outline + six filled. Bottom row: six unassigned washes.
+        // Enlarge the glyphs so notch/radius details remain inspectable in the palette grid.
         let view = ZStack {
             theme.background
             VStack(spacing: 18) {

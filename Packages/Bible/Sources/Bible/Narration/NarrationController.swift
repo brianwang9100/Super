@@ -3,30 +3,11 @@ import Core
 import Foundation
 import Observation
 
-/// `@Observable @MainActor` view-model collaborator owned by
-/// ``BibleScreenViewModel``. Drives a single in-flight
-/// ``NarrationService`` session: forwards start/pause/resume/stop/skip
-/// commands and maps the service's `AsyncStream<NarrationEvent>` into
-/// `state` / `currentVerseNumber` / `lastError` the reader and the
-/// transport sheet observe.
-///
-/// State machine:
-///
-///     .idle  ── start() ──►  (service)  ── .started ──►  .speaking
-///                                                            │
-///       .paused ◄── .paused ── pause() ──┘                   │
-///              ── resume() / .resumed ──► .speaking          │
-///       .idle  ◄── .completed / .cancelled / .failed ────────┘
-///
-/// `stop()` is idempotent: a second call before the service's
-/// `.cancelled` event arrives is a no-op (the controller is already
-/// running its teardown).
+/// Owns one narration session. Service events drive reader state; terminal events
+/// return to idle, and stop() also tears down synchronously.
 @Observable
 @MainActor
 public final class NarrationController {
-    /// Coarse UI state. The transport sheet swaps its play/pause glyph on
-    /// `.paused`; the nav bar pill renders only when state is
-    /// `.speaking` / `.paused`; everything else lives in `.idle`.
     public enum State: Equatable, Sendable {
         case idle
         case preparing
@@ -35,43 +16,21 @@ public final class NarrationController {
     }
 
     public private(set) var state: State = .idle
-    /// Verse currently being spoken, or `nil` when idle. Drives the
-    /// reader's underline and the auto-scroll proxy.
     public private(set) var currentVerseNumber: Int?
-    /// Most recent terminal error from a failed session. Cleared on the
-    /// next successful `start(...)`.
+    /// Most recent terminal error; cleared on the next start or stop.
     public private(set) var lastError: NarrationError?
-    /// Playback speed as a **user-facing multiple of normal speech**
-    /// (1.0 = normal, 0.5 = half-speed, 1.5 = one-and-a-half). The
-    /// service maps this to the AVSpeech absolute-rate scale through a
-    /// conservative curve so the *perceived* speedup matches the
-    /// display value — Apple's `AVSpeechUtterance.rate` is non-linear
-    /// (1.0 absolute is ~3-4× perceived, not 2×) and naively passing
-    /// the display value through made 1.5× sound like 2× and 2× sound
-    /// like 4×. Range and step are policy of the transport sheet's
-    /// slider; the controller / service accept any positive value and
-    /// clamp internally.
+    /// User-facing multiple of normal speech (1.0 = normal), mapped by the service to its native rate.
     public var rate: Float = 1.0 {
         didSet {
-            // Picker may write back the same value (re-selecting the
-            // already-selected row in a SwiftUI `Menu`). Forwarding a
-            // no-op rate to the service would trigger a needless
-            // `stopSpeaking + requeue` mid-verse — audible click for
-            // zero behavioural change.
+            // Re-selecting the same rate must not audibly stop and requeue the current verse.
             guard rate != oldValue else { return }
             activeService.setRate(rate)
         }
     }
-    /// Selected synthesizer voice, or `nil` for the system default. The
-    /// transport sheet's picker writes here; the controller forwards the
-    /// change to the service so the new voice is audible from the next
-    /// verse boundary, without the user having to stop and re-start.
+    /// Nil selects the system default. Live changes are forwarded immediately to the service.
     public var voice: NarrationVoice? {
         didSet {
-            // Same idempotence as `rate`: re-selecting the active
-            // voice in the picker writes the same identifier back and
-            // must not requeue. `AVSpeechSynthesisVoice` isn't
-            // `Equatable`, so compare by `identifier`.
+            // Re-selecting the same voice must not requeue playback.
             guard voice != oldValue else { return }
             if state != .idle, oldValue?.company != voice?.company {
                 let wasPaused = state == .paused
@@ -83,15 +42,7 @@ public final class NarrationController {
         }
     }
 
-    /// Optional terminal-event hook. Fires once per session when it
-    /// lands in `.idle` via any terminal event (`.completed`,
-    /// `.cancelled`, or `.failed`). Currently unused by `BibleScreen`
-    /// — the transport card is intentionally kept open after a
-    /// completed playthrough so the big play button can re-trigger
-    /// Narrate without reopening the spark menu, consistent with the
-    /// `Stop-keeps-the-card` rule. Reserve this for callers that *do*
-    /// want a notification (e.g. a future "auto-advance to next
-    /// chapter" preference).
+    /// Fires once when a session reaches idle through a terminal event.
     public var onCompletion: (@MainActor () -> Void)?
 
     private let service: any NarrationService
@@ -111,16 +62,9 @@ public final class NarrationController {
     }
     private var streamTask: Task<Void, Never>?
     private let now: @MainActor () -> Date
-    /// Timestamp of the most recent `skipPrevious()` tap, used to detect
-    /// double-taps within ``skipPreviousDoubleTapWindow``. `nil` once the
-    /// window has lapsed or after a session terminates.
     private var lastSkipPreviousAt: Date?
 
-    /// Window inside which a second `skipPrevious()` tap counts as a
-    /// "jump to previous verse" rather than a "restart current verse".
-    /// 1.0s mirrors the 2000s-music-player rewind interaction the spec
-    /// calls for — short enough that a deliberate single tap stays a
-    /// restart, long enough to forgive the second tap.
+    /// Seconds within which a second back tap jumps to the previous verse.
     public static let skipPreviousDoubleTapWindow: TimeInterval = 1.0
 
     public init(
@@ -214,8 +158,7 @@ public final class NarrationController {
         service.bestAvailableVoice(locale: locale)
     }
 
-    /// Begin a new session. Cancels any in-flight session first so the
-    /// underlying service only ever has one queue in flight.
+    /// Starts a replacement session, cancelling consumption of the old stream first.
     public func start(utterances: [NarrationVerseUtterance], startingAt: Int = 0) {
         if restorePreferredVoiceOnNextStart {
             restorePreferredVoiceOnNextStart = false
@@ -224,15 +167,8 @@ public final class NarrationController {
                 voice = settings.record.preferredVoiceId.flatMap(NarrationVoice.init(id:)) ?? .appleDefault
             }
         }
-        // Tear down any prior session synchronously. The prior stream
-        // task is cancelled cooperatively (Swift Concurrency doesn't
-        // preempt), and its for-await loop checks `Task.isCancelled`
-        // on every iteration so it exits *before* processing any
-        // `.cancelled` event the service will yield as part of its own
-        // teardown — without that guard the old task would overwrite
-        // the new session's freshly-set `state = .speaking` with
-        // `state = .idle` and the nav-bar speaker would flicker back to
-        // sparkles on every Narrate retap.
+        // The old consumer must check cancellation before handling buffered terminal events,
+        // or it can overwrite the replacement session's state.
         streamTask?.cancel()
         streamTask = nil
         lastError = nil
@@ -266,8 +202,7 @@ public final class NarrationController {
         activeService.resume()
     }
 
-    /// Cancel the in-flight session. Idempotent — the controller stays
-    /// in whatever state it's in until the service yields `.cancelled`.
+    /// Stops playback and returns to idle synchronously; also clears failed-session recovery.
     public func stop() {
         // Navigation also stops an already failed session. Its Retry must not revive
         // the old chapter or translation after the reader has changed context.
@@ -285,19 +220,13 @@ public final class NarrationController {
         activeService.skipForward()
     }
 
-    /// 2000s-music-player rewind: a single tap restarts the current
-    /// verse; a second tap within
-    /// ``skipPreviousDoubleTapWindow`` jumps to the previous verse
-    /// instead. The service handles the queue rewind for both paths.
+    /// One tap restarts this verse; a second within skipPreviousDoubleTapWindow jumps back.
     public func skipPrevious() {
         guard state != .idle else { return }
         let timestamp = now()
         if let last = lastSkipPreviousAt,
            timestamp.timeIntervalSince(last) < Self.skipPreviousDoubleTapWindow {
-            // Inside the double-tap window — jump back a verse and
-            // clear the timestamp so a third quick tap doesn't chain
-            // into yet another previous-verse jump (each step is a
-            // discrete double-tap intent).
+            // Consume the pair so a third quick tap starts a new double-tap intent.
             lastSkipPreviousAt = nil
             activeService.skipToPreviousVerse()
         } else {
@@ -306,36 +235,18 @@ public final class NarrationController {
         }
     }
 
-    /// Test seam: synchronously process one event without routing
-    /// through the AsyncStream consumer Task. Production code goes
-    /// through `start(utterances:)`'s stream-consumer Task on the
-    /// service's `AsyncStream<NarrationEvent>`; this lets tests drive
-    /// state transitions without polling the scheduler for the stream
-    /// Task to wake up — see root AGENTS.md §Testing.2 on why
-    /// condition-polling on `Task.yield()` is forbidden. Underscore
-    /// prefix marks it as a non-stable surface, not part of the
-    /// production API.
+    /// Processes an event synchronously for deterministic state-transition tests.
     @MainActor
     func _simulateEvent(_ event: NarrationEvent) {
         handle(event)
     }
 
-    /// Test seam: await the in-flight stream-consumer `Task` so a test
-    /// can synchronize on "the controller has drained its
-    /// subscription" without polling. Returns immediately when no
-    /// session is active. Mirrors
-    /// `ChatScreenViewModel._waitForPendingStreamTask()`.
+    /// Drains the active consumer; returns immediately without one.
     func _waitForPendingStreamTask() async {
         await streamTask?.value
     }
 
-    /// Test seam: the current stream-consumer `Task`, or `nil` when no
-    /// session is in flight. Lets a test capture the *prior* task
-    /// before `start(_:)` replaces it, then `await task?.value` to
-    /// deterministically synchronize on the prior task's exit (used
-    /// to verify it bails out via `Task.isCancelled` before
-    /// processing a buffered `.cancelled` event left behind by the
-    /// service's teardown).
+    /// Capture before replacement to await the previous consumer's cancellation.
     var _currentStreamTask: Task<Void, Never>? { streamTask }
 
     private func handle(_ event: NarrationEvent) {
@@ -348,8 +259,6 @@ public final class NarrationController {
             recoveryVerseNumber = verseNumber
             state = .speaking
         case .finishedVerse:
-            // No transition — the next `.started` or a terminal event
-            // follows immediately.
             break
         case .paused:
             state = .paused

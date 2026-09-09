@@ -3,15 +3,9 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `DatabaseBibleTextLoader` against an in-memory `chapter` table —
-/// the decode path (all three paragraph shapes plus a boundary-fragmented verse),
-/// the missing-book / missing-chapter → nil contract, and the unavailable-database
-/// degradation.
 @Suite("DatabaseBibleTextLoader")
 struct DatabaseBibleTextLoaderTests {
-    /// A chapter exercising every paragraph kind: a heading, prose, poetry with an
-    /// embedded line break, and verse 2 fragmented across the prose/poetry boundary
-    /// (two fragments sharing one number).
+    // Exercise every paragraph kind and verse 2 split across prose/poetry boundaries.
     private static let richChapter = BibleChapter(number: 2, paragraphs: [
         .heading("A Heading"),
         .prose([

@@ -6,17 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleNavBar` — the reading surface's top bar. Covers the
-/// chevron-bearing form (SuperOS, `showsChapterChevrons: true`) in its default
-/// state across the two default-family themes, with each chapter arrow disabled
-/// at the canon's two ends, and in selection mode where the centre group
-/// collapses to a citation pill; plus the chevron-less form (SuperBible,
-/// `showsChapterChevrons: false`), where the chevrons hover above the chat
-/// composer instead (see `ComposerAccessoryFlankSnapshotTests`).
 @Suite("BibleNavBar snapshots", .serialized)
 @MainActor
 struct BibleNavBarSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("the nav bar renders in the light theme")
@@ -53,7 +45,7 @@ struct BibleNavBarSnapshotTests {
                name: "selection_dark", selectionCitation: "1 Peter 2:4-6, 9")
     }
 
-    // MARK: - Chevron-less form (SuperBible — chevrons hover above the composer)
+    // MARK: - Chevron-less form
 
     @Test("the chevron-less bar centres the pill in the light theme")
     func noChevronsLight() {

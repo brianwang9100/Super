@@ -3,11 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Integration tests for `AnnotationCoverageRequest` — the raw distinct
-/// books / chapters / summed-verses SQL backing the hub's coverage card.
-/// Runs against an in-memory `bible.sqlite` so the hand-written SQL (the
-/// `bookId || ':' || chapterNumber` distinct trick and the verse-range SUM)
-/// is exercised, not just the view that renders the result.
 @Suite("AnnotationCoverageRequest")
 struct AnnotationCoverageRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -42,7 +37,6 @@ struct AnnotationCoverageRequestTests {
     @Test("counts distinct books and chapters, and sums verse ranges across books")
     func counts() async throws {
         let (repository, database) = try makeFixture()
-        // Romans: a book prologue, a chapter summary (ch 8), and a 3-verse range.
         try await repository.replace(target: .book, bookId: "ROM", chapterNumber: nil,
             verseStart: nil, verseEnd: nil, inserting: [record("r-book", target: .book, bookId: "ROM")])
         try await repository.replace(target: .chapter, bookId: "ROM", chapterNumber: 8,
@@ -51,7 +45,6 @@ struct AnnotationCoverageRequestTests {
         try await repository.replace(target: .verse, bookId: "ROM", chapterNumber: 8,
             verseStart: 28, verseEnd: 30,
             inserting: [record("r-v", target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30)])
-        // Genesis: a chapter summary (ch 1) and a single-verse annotation.
         try await repository.replace(target: .chapter, bookId: "GEN", chapterNumber: 1,
             verseStart: nil, verseEnd: nil,
             inserting: [record("g-ch1", target: .chapter, bookId: "GEN", chapterNumber: 1)])

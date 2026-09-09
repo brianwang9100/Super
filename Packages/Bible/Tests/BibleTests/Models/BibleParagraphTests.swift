@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleParagraph`'s discriminated-union Codable: each `type`
-/// decodes to the matching case, and unknown or malformed input is rejected.
 @Suite("BibleParagraph coding")
 struct BibleParagraphTests {
     private let decoder = JSONDecoder()

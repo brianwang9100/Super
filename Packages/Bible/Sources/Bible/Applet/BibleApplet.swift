@@ -4,41 +4,22 @@ import GRDBQuery
 import SwiftUI
 import os
 
-/// Diagnostics for `BibleApplet` composition-root wiring (the bulk-annotation
-/// hub's fire-and-forget actions), under the same `com.brianwang.Super`
-/// subsystem the rest of the app logs through.
 private let bibleAppletLog = Logger(subsystem: "com.brianwang.Super", category: "bible-applet")
 
-/// The Bible mini-applet entry point. Registered with the shell's
-/// `AppletRegistry` at composition root; the shell renders `rootView()`
-/// behind the chat overlay.
-///
-/// The applet owns one `BibleScreenViewModel` for the lifetime of the
-/// registry entry, so the reader's place survives re-renders of the backdrop.
-/// It also holds the read-only `DatabaseContext` injected into the SwiftUI
-/// environment so the chapter renderer's highlight `@Query` can observe the
-/// `bibleHighlight` table.
+/// Retains one reader view model across root-view rebuilds. User-data failures
+/// disable persistence and dependent tools while leaving bundled text available.
 public struct BibleApplet: MiniApplet {
-    /// Stable, lowercase identifier — used for routing, settings keys, and
-    /// deep-link URIs (`super://bible/<recordID>`).
     public static let appletID: String = "bible"
     public var appletID: String { Self.appletID }
     public var displayName: String { "Bible" }
-    /// Muted plum, matching the prior placeholder so the sidebar glyph and
-    /// chat-card accent strips don't shift visually on upgrade.
     public static let accentColor: Color = Color(red: 0.52, green: 0.32, blue: 0.55)
     public var accentColor: Color { Self.accentColor }
     public var systemPrompt: String { AppletSystemPrompt.load(from: .module) }
-    /// Lean briefing for small-context-window models. Deliberately omits the
-    /// `bible.annotate`/`bible.note` guidance — those tools are dropped on the
-    /// compact tier (see Chat's `CompactToolPolicy`), and describing tools the
-    /// model can't call invites hallucinated calls.
+    /// Omits guidance for tools excluded by CompactToolPolicy to avoid hallucinated calls.
     public var compactSystemPrompt: String {
         AppletSystemPrompt.load(from: .module, resource: "SystemPrompt.compact")
     }
 
-    /// Bible-flavored empty-state prompts. The shell surfaces these (alongside
-    /// any other registered applet's) as tappable chat-starter buttons.
     public var suggestedChatActions: [SuggestedChatAction] {
         [
             SuggestedChatAction(label: "Explain a verse", message: "Explain a Bible verse to me."),
@@ -47,66 +28,30 @@ public struct BibleApplet: MiniApplet {
         ]
     }
 
-    /// The single view model backing the reading surface. Held here (not
-    /// rebuilt per `rootView()` call) so navigation state persists while the
-    /// applet is the active backdrop.
     private let viewModel: BibleScreenViewModel
 
-    /// App-session subscriber that routes inbound Bible deep links (Chat
-    /// citation taps + external `super://` URLs) onto `viewModel`. The
-    /// composition root calls `attach(to:)` once during bootstrap; until
-    /// then the inbox holds the viewModel ref but has no subscription.
+    // Held for the app session; attach during bootstrap to receive links while the reader is unmounted.
     private let referenceInbox: BibleReferenceInbox
 
-    /// Read-only database access for the chapter renderer's highlight
-    /// `@Query`, injected into the SwiftUI environment by `rootView()`. `nil`
-    /// when the database failed to open — the reader then shows no highlights
-    /// rather than failing outright.
+    // Nil storage context makes decoration queries return empty results.
     private let databaseContext: DatabaseContext?
 
-    /// The applet's `bible.sqlite` handle, retained so the bulk-annotation
-    /// runner can build its `GRDBBulkAnnotationLedger` from it without the
-    /// database leaking past the applet. `nil` when the database failed to open.
+    // Keep the writable database inside Bible; the bulk runner shares its ledger.
     private let database: BibleDatabase?
 
-    /// Write seam for the `bible.annotate` tool. `nil` when the database
-    /// failed to open at init; `registerAnnotationTool(in:)` then becomes
-    /// a no-op so the rest of the reader still loads.
     private let annotationRepository: (any BibleAnnotationRepository)?
 
-    /// Write seam for the `bible.note` tool. `nil` when the database failed
-    /// to open at init; `registerNoteTool(in:)` then becomes a no-op so the
-    /// rest of the reader still loads.
     private let noteRepository: (any BibleNoteRepository)?
 
-    /// Read/write seam for the `bible.highlight` tool. `nil` when the database
-    /// failed to open at init; `registerHighlightTool(in:)` then becomes a
-    /// no-op so the rest of the reader still loads. Shared with the view model
-    /// so the tool and the reader's action sheet point at the same
-    /// `bible.sqlite` queue.
+    // Share the reader's queue so tool writes update its queries.
     private let highlightRepository: (any BibleHighlightRepository)?
 
-    /// Read seam for the `bible.lookup` read action's current-translation
-    /// fallback. Shared with the view model so both see the same `bible.sqlite`
-    /// row. `nil` when the database failed to open — the tool still registers
-    /// and defaults the translation when one isn't passed explicitly.
+    // Nil user storage still permits lookup with the default translation.
     private let readingPositionRepository: (any BibleReadingPositionRepository)?
 
-    /// Content-search seam for the `bible.lookup` search action, over the
-    /// read-only bundled `bible-text.sqlite` FTS index. `nil` only if that
-    /// bundle resource is missing/unreadable — `registerLookupTool(in:)` then
-    /// becomes a no-op so the rest of the reader still loads.
     private let textSearcher: (any BibleTextSearching)?
 
-    /// Production entry point — bundled text plus an on-disk store under
-    /// Application Support for the reading position and verse highlights.
-    ///
-    /// The database opens synchronously here: it is three small tables
-    /// behind three tiny migrations, and the applet is built in each
-    /// target's bootstrap (`SuperOSAppBootstrap` / `SuperBibleAppBootstrap`)
-    /// where no `async` context exists. Should the Bible schema ever grow
-    /// heavy, move this open into the bootstrap alongside `ChatDatabase`
-    /// rather than blocking the launch path.
+    /// Opens user storage synchronously under Application Support; bundled text is independent.
     @MainActor
     public init(hapticsEngine: any HapticsEngine = NoOpHapticsEngine()) {
         let database = BibleApplet.openDatabase()
@@ -115,36 +60,17 @@ public struct BibleApplet: MiniApplet {
             DatabaseContext.readOnly { db.queue }
         }
         self.annotationRepository = database.map { GRDBBibleAnnotationRepository(database: $0) }
-        // One note repository instance shared by the `bible.note` tool
-        // (`registerNoteTool`) and the view model's note CRUD — both point at
-        // the same `bible.sqlite` queue, so a single instance avoids a latent
-        // divergence if the repository ever gains instance-level state.
         let noteRepository = database.map { GRDBBibleNoteRepository(database: $0) }
         self.noteRepository = noteRepository
-        // One reading-position repository shared by the `bible.lookup` tool and
-        // the view model — both point at the same `bible.sqlite` queue.
         let readingPositionRepository = database.map { GRDBBibleReadingPositionRepository(database: $0) }
         self.readingPositionRepository = readingPositionRepository
-        // One highlight repository shared by the `bible.highlight` tool
-        // (`registerHighlightTool`) and the view model's action-sheet
-        // highlighting — both point at the same `bible.sqlite` queue.
         let highlightRepository = database.map { GRDBBibleHighlightRepository(database: $0) }
         self.highlightRepository = highlightRepository
-        // The bundled `bible-text.sqlite` is independent of `bible.sqlite` and backs
-        // both reading (`DatabaseBibleTextLoader`) and search
-        // (`BundledBibleTextSearcher`). Open it once and share the handle; a
-        // missing/corrupt resource degrades both to soft no-ops (search returns
-        // nothing, the reader shows "unavailable") rather than crashing.
+        // Share the bundled read-only database between reading and search. A missing or corrupt
+        // resource yields unavailable text and disables lookup without crashing the reader.
         let textDatabase = try? BibleTextDatabase.openBundled()
         self.textSearcher = textDatabase.map(BundledBibleTextSearcher.init(database:))
-        // TODO(narration-arbitration): Wire a shell-side
-        // `NarrationAudioCoordinator` adapter that reads from Chat's
-        // `VoiceInputController`. The default `BibleScreenViewModel`
-        // init constructs an `AVSpeechSynthesizerNarrationService`
-        // with `coordinator: nil`, so the preempt-on-active-mic check
-        // is a no-op in production today. The adapter needs to live
-        // at the composition root (`SuperOSAppBootstrap`) to bridge Bible →
-        // Chat without violating the no-cross-applet-imports rule.
+        // The shell installs shared AudioActivity arbitration through configureNarration.
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
@@ -157,9 +83,7 @@ public struct BibleApplet: MiniApplet {
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
     }
 
-    /// Test seam: inject a view model wired to in-memory doubles so a test
-    /// never touches the real on-disk database. The highlight `@Query` runs
-    /// without a database context — it falls back to an empty result.
+    /// Injects test storage without opening the on-disk database. A nil context yields empty decorations.
     @MainActor
     init(
         viewModel: BibleScreenViewModel,
@@ -216,20 +140,8 @@ public struct BibleApplet: MiniApplet {
         ))
     }
 
-    /// Register the `bible.annotate` tool with the given registry, using
-    /// this applet's local database. No-op if the database failed to open
-    /// at init — the reader still loads, just without the tool.
-    ///
-    /// Called from each app's bootstrap (`SuperBibleAppBootstrap` /
-    /// `SuperOSAppBootstrap`), mirroring how Chat ships `TimeNowTool` and
-    /// `MemoryTool`. Tool ownership stays with the applet so the
-    /// Bible-internal `BibleDatabase` + repository never leak into the
-    /// composition root.
-    ///
-    /// `stampProvider` is required (no default) so a new composition root
-    /// must consciously choose one — passing the active-model provider in
-    /// production, never silently defaulting to the empty-modelId fallback
-    /// (which would resurrect the "Generated by AI" bug).
+    /// No-op when user storage failed to open. Production must supply an active-model
+    /// stamp provider so saved annotations carry model provenance.
     public func registerAnnotationTool(
         in registry: ToolRegistry,
         stampProvider: any BibleAnnotationStampProvider,
@@ -247,13 +159,7 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Register the `bible.note` tool with the given registry, using this
-    /// applet's local database. No-op if the database failed to open at init.
-    ///
-    /// Called from each app's bootstrap alongside `registerAnnotationTool`,
-    /// so the assistant can create / edit / delete notes during a chat turn.
-    /// Tool ownership stays with the applet so the Bible-internal
-    /// `BibleDatabase` + repository never leak into the composition root.
+    /// No-op when user storage failed to open.
     public func registerNoteTool(
         in registry: ToolRegistry,
         clock: any Clock = SystemClock(),
@@ -271,15 +177,7 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Register the `bible.highlight` tool with the given registry, using this
-    /// applet's local database. No-op if the database failed to open at init.
-    ///
-    /// Called from each app's bootstrap alongside `registerNoteTool`, so the
-    /// assistant can read, search, set, and clear verse highlights during a
-    /// chat turn. Writes land in the same `bibleHighlight` table the reader's
-    /// `@Query` observes, so an on-screen chapter redraws automatically. Tool
-    /// ownership stays with the applet so the Bible-internal `BibleDatabase` +
-    /// repository never leak into the composition root.
+    /// No-op when user storage failed to open. Writes update the reader through its queries.
     public func registerHighlightTool(
         in registry: ToolRegistry,
         clock: any Clock = SystemClock()
@@ -293,19 +191,7 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Register the `bible.lookup` tool with the given registry, so the
-    /// assistant can both fetch verbatim verse text (`action:'read'`) and find
-    /// verses by topic (`action:'search'`) from local storage before answering
-    /// Bible questions. Replaces the former separate `bible.read` /
-    /// `bible.search` registrations — one descriptor halves the schema the model
-    /// pays for on every turn (it matters most on the compact tier).
-    ///
-    /// No-op only if the bundled `bible-text.sqlite` resource couldn't be opened.
-    /// Both the read loader (`DatabaseBibleTextLoader`) and the searcher
-    /// (`BundledBibleTextSearcher`) read from that same bundled DB, so a missing
-    /// resource breaks both paths — there's nothing to register. It ships with
-    /// the app, so this is effectively always available. Called from each app's
-    /// bootstrap alongside `registerNoteTool`.
+    /// Registers read and search together; no-op when the bundled text database is unavailable.
     public func registerLookupTool(in registry: ToolRegistry) async {
         guard let textSearcher else { return }
         await registry.register(
@@ -317,21 +203,8 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Subscribe the applet to the shared event bus on `bus`. Called
-    /// once per composition root after the shared `SuperEventBus` is
-    /// constructed. Idempotent — both observers no-op on a second
-    /// attach. Wires:
-    ///
-    /// - `BibleReferenceInbox` for inbound Bible deep links from Chat.
-    /// - `BibleScreenViewModel` for headless `bibleAnnotateCompleted`
-    ///   envelopes so the per-target dispatch table flips on
-    ///   completion (success removes the entry; failure flips to a
-    ///   retry-button state).
-    ///
-    /// Applet struct copies share the same `referenceInbox` and
-    /// `viewModel` references (both classes), so calling this on the
-    /// locally-held value before the struct is moved into the
-    /// `AppletRegistry` is sufficient.
+    /// Attach once during bootstrap; repeated observer attachment is harmless. Applet
+    /// copies share the inbox and view model, so attaching before registry insertion is sufficient.
     public func attach(to bus: SuperEventBus) async {
         await referenceInbox.attach(to: bus)
         await viewModel.attach(to: bus)
@@ -339,30 +212,12 @@ public struct BibleApplet: MiniApplet {
         await viewModel.narration.prepareDefaultVoice()
     }
 
-    /// Test seam exposing the inbox so a test can publish events through
-    /// a real in-memory bus and assert the view-model side-effect.
-    /// Underscore prefix marks this as not part of the stable public
-    /// API, matching the convention used by other applets.
     var _referenceInbox: BibleReferenceInbox { referenceInbox }
 
-    /// The full bulk-annotation wiring for the production shell: the Settings
-    /// hub contribution **and** the background scheduler, both driving a single
-    /// shared `BulkAnnotationRunner` over the applet's `bible.sqlite` ledger.
-    ///
-    /// Built here (rather than at the composition root) so the Bible-internal
-    /// `BibleDatabase` + `GRDBBulkAnnotationLedger` never leak — only the
-    /// Core-typed `generator` crosses the seam, mirroring
-    /// `registerAnnotationTool(in:)`. One runner backs both the foreground hub
-    /// and the background task, so the two never run competing loops over the
-    /// same run rows. `nil` when the database failed to open.
-    ///
-    /// - Parameters:
-    ///   - generator: the cross-package generation seam (Bible can't import
-    ///     Chat, so the dispatcher arrives as a Core `BibleAnnotateGenerating`).
-    ///   - currentModelID: resolves the model active at run kickoff for the run
-    ///     record's `modelId` metadata (the registry is actor-isolated, hence
-    ///     async). The authoritative per-annotation stamp is still the
-    ///     dispatcher's `.userBulk` stamp provider.
+    /// Shares one runner between the Settings hub and background scheduler, preventing
+    /// competing loops over the same ledger. Returns nil when user storage is unavailable.
+    /// `currentModelID` records kickoff metadata; the dispatcher supplies each annotation's
+    /// authoritative `.userBulk` stamp.
     @MainActor
     public func makeBulkAnnotationWiring(
         requiresCostConfirmation: Bool,
@@ -371,8 +226,6 @@ public struct BibleApplet: MiniApplet {
     ) -> BulkAnnotationWiring? {
         guard let databaseContext, let database else { return nil }
         let ledger = GRDBBulkAnnotationLedger(database: database)
-        // Shared across the runner (preserve-mode skip check + the hub's "Delete
-        // all annotations" reset) — all reading/writing the same `bible.sqlite`.
         let annotationRepository = GRDBBibleAnnotationRepository(database: database)
         let runner = BulkAnnotationRunner(
             ledger: ledger,
@@ -380,13 +233,8 @@ public struct BibleApplet: MiniApplet {
             annotationRepository: annotationRepository,
             currentModelID: currentModelID
         )
-        // Resume an in-progress run on launch (no-op when none is active).
         Task { await runner.restore() }
-        // The hub's "Delete all annotations" reset writes through the same
-        // `bible.sqlite` the runner persists to; the sync closure spawns the
-        // async clear (the coverage `@Query` reactively redraws to zero). A
-        // failed clear is logged rather than swallowed — otherwise the tap
-        // would silently look like a no-op (the `@Query` just retains old rows).
+        // Clear through the runner's store so coverage queries refresh; log failures from this synchronous action.
         let contribution = BibleAnnotationsSettings.contribution(
             databaseContext: databaseContext,
             runner: runner,
@@ -407,12 +255,7 @@ public struct BibleApplet: MiniApplet {
         return BulkAnnotationWiring(settingsContribution: contribution, background: background)
     }
 
-    /// Build the companion Bookmarks mini-applet, handing over this applet's
-    /// read-only `DatabaseContext` so its screen's `@Query` observes the same
-    /// `bibleBookmark` rows the reader writes — without the Bible-internal
-    /// `BibleDatabase` leaking into the composition root (mirrors
-    /// `makeBulkAnnotationWiring`). SuperBible registers the result in its
-    /// applet array; SuperOS does not.
+    /// Shares the reader's read-only context without exposing BibleDatabase to the shell.
     public func makeBookmarksApplet() -> BibleBookmarksApplet {
         BibleBookmarksApplet(databaseContext: databaseContext)
     }
@@ -432,29 +275,14 @@ public struct BibleApplet: MiniApplet {
         return AnyView(screen.databaseContext(databaseContext))
     }
 
-    /// Opens the Bible database, or returns `nil` if it can't be created — the
-    /// reader then runs without relaunch restore or highlight persistence
-    /// rather than failing outright.
     private static func openDatabase() -> BibleDatabase? {
         guard let directory = try? dataDirectory() else { return nil }
         return try? BibleDatabase.open(in: directory)
     }
 
-    /// `Application Support/Super/`, created if missing — the same directory
-    /// the shell uses for `chat.sqlite`. The `.complete` protection class is
-    /// applied here (best-effort, iOS-enforced) so the directory itself is
-    /// pinned. The on-disk `bible.sqlite` is independently pinned to
-    /// `.complete` inside `BibleDatabase.open(in:)`, mirroring the host
-    /// app's `AppBootstrapSupport.ensureDirectoryExists` + `ChatDatabase.open`
-    /// pattern (shared by both `SuperOSAppBootstrap` and
-    /// `SuperBibleAppBootstrap`). The `-wal` / `-shm` sidecars SQLite creates at runtime fall
-    /// back to the app's default protection class (iOS defaults to
-    /// `.completeUntilFirstUserAuthentication`, not `.none` — see Apple's
-    /// File-System Data Protection guide). If stricter "encrypted while
-    /// locked" semantics are needed for the sidecars too, the bulletproof
-    /// fix is adding `com.apple.developer.default-data-protection =
-    /// NSFileProtectionComplete` to the target entitlements — tracked as
-    /// an SB-M4 hardening item in `TODO.md`.
+    /// Pins the directory to `.complete` protection best-effort; BibleDatabase pins the
+    /// database separately. SQLite sidecars use the app's default protection class, so
+    /// stricter while-locked protection also requires a target default-data-protection entitlement.
     private static func dataDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,

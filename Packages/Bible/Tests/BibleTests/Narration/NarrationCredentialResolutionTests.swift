@@ -3,7 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Borrowed narration credentials follow only committed model projections across asynchronous refreshes.
 @Suite("Narration credential resolution")
 @MainActor
 struct NarrationCredentialResolutionTests {

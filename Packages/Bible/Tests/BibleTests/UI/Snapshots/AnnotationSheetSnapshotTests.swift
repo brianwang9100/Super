@@ -6,20 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `AnnotationSheet` — the bottom sheet hosting the single
-/// annotation card. Variants cover the empty / generating / error
-/// states, the generating-over-populated precedence (a regenerate hides
-/// the stale card behind the spinner), the populated single-card state
-/// in light + dark, and Dynamic Type XXL passes for the surfaces whose
-/// text reflows.
 @Suite("AnnotationSheet snapshots", .serialized)
 @MainActor
 struct AnnotationSheetSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
-    /// Register Core's bundled brand fonts so the migrated JetBrains Mono /
-    /// EB Garamond chrome faces resolve instead of baking the system
-    /// fallback, and so this suite stays order-independent (registration is
-    /// process-global; see `SnapshotFontRegistration`).
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     private static let citation = "Romans 8:28-30"

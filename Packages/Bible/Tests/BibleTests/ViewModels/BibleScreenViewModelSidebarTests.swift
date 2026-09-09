@@ -3,17 +3,7 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleScreenViewModel`'s reaction to the shell's
-/// `SuperEvent.sidebarOpened` envelope: a native sheet renders in its own
-/// window above the in-view sidebar drawer, so when the drawer opens the
-/// view model must dismiss whatever sheet it's presenting or the menu
-/// slides in behind it.
-///
-/// Synchronization (per AGENTS.md §2 — no `Task.yield()` polling): publish
-/// `sidebarOpened` and await the view model's subscription processing it
-/// through the `_onNextSidebarDismiss` test seam, which fires after the
-/// dismissal has run. The assertion that follows sees the post-event state
-/// deterministically.
+/// Native sheets sit above the sidebar window; passive sheets must dismiss for the drawer to be visible.
 @Suite("BibleScreenViewModel sidebar handoff")
 @MainActor
 struct BibleScreenViewModelSidebarTests {
@@ -38,9 +28,7 @@ struct BibleScreenViewModelSidebarTests {
         return viewModel
     }
 
-    /// Publish `sidebarOpened` and await the view model's subscription
-    /// processing it. `_onNextSidebarDismiss` resumes the continuation only
-    /// after the dismissal has run, so the trailing assertion is race-free.
+    /// Resumes only after sidebar dismissal has been processed.
     private func openSidebarAndAwait(
         on bus: SuperEventBus,
         through viewModel: BibleScreenViewModel
@@ -112,11 +100,7 @@ struct BibleScreenViewModelSidebarTests {
         #expect(viewModel.presentedNoteList == nil)
     }
 
-    /// The annotation disclaimer is a confirmation gate, not a passive
-    /// sheet — `dismissPresentedSheets()` deliberately spares it because
-    /// dismissing it discards the user's pending annotation intent. This
-    /// locks that invariant in so a future refactor can't start dismissing
-    /// it without a failing test.
+    /// Dismissing the disclaimer discards pending intent, so sidebar handoff must preserve this confirmation.
     @Test("opening the sidebar does NOT dismiss the annotation disclaimer")
     func sparesDisclaimerGate() async {
         let bus = SuperEventBus()

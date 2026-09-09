@@ -2,9 +2,6 @@ import Core
 import Testing
 @testable import Bible
 
-/// Tests for `BibleBookCatalog` — chapter stepping across book boundaries
-/// and the canon's two hard ends, plus a faithfulness check that every
-/// catalog entry agrees with every bundled translation's text.
 @Suite("BibleBookCatalog")
 struct BibleBookCatalogTests {
     private let catalog = BibleBookCatalog.standard
@@ -36,7 +33,6 @@ struct BibleBookCatalogTests {
 
     @Test("stepping forward past the last chapter wraps to the next book")
     func stepForwardCrossesBookBoundary() {
-        // Genesis ends at chapter 50; the next chapter is Exodus 1.
         let next = catalog.step(
             from: BiblePosition(bookId: "GEN", chapterNumber: 50),
             direction: .next
@@ -46,7 +42,6 @@ struct BibleBookCatalogTests {
 
     @Test("stepping backward from a first chapter wraps to the previous book's last")
     func stepBackwardCrossesBookBoundary() {
-        // Exodus 1 back is Genesis 50.
         let previous = catalog.step(
             from: BiblePosition(bookId: "EXO", chapterNumber: 1),
             direction: .previous
@@ -85,9 +80,7 @@ struct BibleBookCatalogTests {
     func catalogMatchesBundledText(_ translation: BibleTranslation) throws {
         let loader = BundledBibleTextLoader()
         for summary in catalog.books {
-            // A missing resource throws here, so this also asserts that all
-            // 66 books exist for the translation — i.e. switching to it can
-            // never strand the reader on a blank chapter.
+            // Loading every book also catches missing resources that would strand the reader.
             let book = try loader.loadBook(id: summary.id, translation: translation)
             #expect(book.name == summary.name, "name mismatch for \(translation.rawValue)-\(summary.id)")
             #expect(
@@ -103,15 +96,8 @@ struct BibleBookCatalogTests {
 
     @Test("Bible's catalog and Core's parser index agree on every book")
     func catalogAgreesWithCoreIndex() {
-        // `Core.BibleBookIndex` is the Chat-side linkifier's data table
-        // for matching citations in LLM prose; `Bible.BibleBookCatalog`
-        // is the reader's own table. They were intentionally kept as
-        // two separate authoritative copies (the plan opted not to
-        // refactor the reader to consume Core) — but a drift between
-        // them would mean Chat could emit a `super://` link the Bible
-        // reader silently rejects in `openReference`. This test pins
-        // the parity so a future single-side edit fails here, not in
-        // production.
+        // Core linkifies Chat citations while Bible independently validates reader targets.
+        // Keep both catalogs in sync so generated links remain openable.
         let catalogRows = catalog.books.map { ($0.id, $0.name, $0.chapterCount) }
         let indexRows = BibleBookIndex.canonical.map { ($0.id, $0.name, $0.chapterCount) }
         #expect(catalogRows.count == indexRows.count)

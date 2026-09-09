@@ -1,42 +1,22 @@
 import SwiftUI
 
-/// The outcome of a greedy line-wrap: each item's placement origin within the
-/// flow (top-leading anchor; text items baseline-aligned within their row,
-/// baseline-less glyphs vertically centred) and the total size the wrapped
-/// rows occupy.
+/// Origins use top-leading coordinates, with text baselines aligned and glyphs centered per row.
 struct VerseFlowResult: Equatable {
     let origins: [CGPoint]
     let size: CGSize
 }
 
-/// Marks a flow cell that should sit vertically *centred* in its row rather
-/// than baseline-aligned with the row's text. Set on the trailing annotation /
-/// note glyphs — they carry no meaningful text baseline, so centring keeps
-/// them mid-line beside taller verse text. Words leave it at the default
-/// (`false`) so they baseline-align.
+/// Marks baseline-less glyphs for vertical centering; words retain baseline alignment.
 struct CentersInRowKey: LayoutValueKey {
     static let defaultValue = false
 }
 
-/// A greedy line-wrapping layout: places its subviews left-to-right and moves
-/// to the next line when the next subview would overflow the proposed width.
-///
-/// `BibleParagraphBlock` lays each verse word out as its own subview so a word
-/// can carry a tap target and a per-verse selection background; this layout
-/// reflows them into a left-justified paragraph. Wrapping is greedy — the same
-/// line-breaking SwiftUI's own `Text` applies to left-aligned text — so the
-/// result matches a single concatenated `Text` visually.
 struct VerseFlowLayout: Layout {
-    /// The subviews' measured sizes and first-text baselines plus the width
-    /// they were measured at, carried from `sizeThatFits` to `placeSubviews`
-    /// so each word is measured once per layout pass. Keyed by width because
-    /// the over-wide clamp in `measuredSizes` is width-dependent — a stale
-    /// cache from a different proposed width would mis-place a clamped subview.
+    // Cache by width because over-wide word measurements depend on the proposal.
     struct Cache {
         var maxWidth: CGFloat
         var sizes: [CGSize]
-        /// Each item's first-text baseline as a distance from its box top, or
-        /// `nil` for a cell flagged `CentersInRowKey` (centred, not aligned).
+        /// Distance from box top, or nil for a centered glyph.
         var baselines: [CGFloat?]
     }
 
@@ -76,10 +56,6 @@ struct VerseFlowLayout: Layout {
         }
     }
 
-    /// The subviews' sizes and baselines for `maxWidth`, reusing the cache only
-    /// when it was filled at the same width — and subview count — so a pass
-    /// with a different proposed width re-measures rather than placing with
-    /// stale, possibly mis-clamped sizes.
     private func cachedMetrics(_ subviews: Subviews, maxWidth: CGFloat, cache: inout Cache) -> (sizes: [CGSize], baselines: [CGFloat?]) {
         if cache.maxWidth == maxWidth, cache.sizes.count == subviews.count {
             return (cache.sizes, cache.baselines)
@@ -93,9 +69,7 @@ struct VerseFlowLayout: Layout {
         return (sizes, baselines)
     }
 
-    /// Each subview's size — a subview wider than the line is re-measured
-    /// against `maxWidth` so it wraps its own glyphs internally rather than
-    /// overflowing the trailing margin.
+    // Remeasure over-wide words at the line width so their glyphs wrap within the margin.
     private func measuredSizes(_ subviews: Subviews, maxWidth: CGFloat) -> [CGSize] {
         subviews.map { subview in
             let natural = subview.sizeThatFits(.unspecified)
@@ -104,19 +78,8 @@ struct VerseFlowLayout: Layout {
         }
     }
 
-    /// Greedy line-wrap arithmetic, factored out of the `Layout` callbacks so
-    /// it can be unit-tested without SwiftUI's opaque `Subviews`.
-    ///
-    /// Items flow left-to-right, wrapping to a new line when the next item
-    /// would overflow `maxWidth`. An item already wider than `maxWidth` still
-    /// takes its own line rather than looping forever — callers clamp such an
-    /// item's measured width so it never actually exceeds the line.
-    ///
-    /// `baselines[i]` is item `i`'s first-text baseline measured from its box
-    /// top, or `nil` to centre that item in its row instead (a trailing glyph
-    /// with no meaningful text baseline). A short or empty `baselines` treats
-    /// the unspecified items as centred — so a caller passing only `itemSizes`
-    /// gets pure box-centring.
+    /// Greedy wrapping gives an over-wide item its own line. Missing/nil baseline
+    /// entries center their cells; supplied baselines are distances from box tops.
     static func flow(
         itemSizes: [CGSize],
         baselines: [CGFloat?] = [],
@@ -134,13 +97,7 @@ struct VerseFlowLayout: Layout {
             i < baselines.count ? baselines[i] : nil
         }
 
-        // Align the just-finished row. Text items (those carrying a baseline)
-        // drop so every baseline coincides at the row's lowest one, keeping all
-        // words on a single line however much a raised verse-number marker
-        // inflates its word's box. Items with no baseline — the trailing glyphs
-        // — centre vertically instead, sitting mid-line beside the verse text.
-        // A row of equal-height, equal-baseline words gets all-zero offsets, so
-        // a plain word-only row is left untouched.
+        // Align text to the lowest baseline, including marker-inflated words; center glyphs separately.
         func alignRow(end: Int) {
             var rowBaseline: CGFloat?
             for i in rowStart..<end {

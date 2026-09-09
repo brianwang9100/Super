@@ -1,28 +1,17 @@
-// `import Combine` is mandatory (see `AnnotationCoverageRequest`): the
-// `ValueObservationQueryable` conformance needs the `AnyPublisher: Publisher`
-// conformance visible here. No Combine data flow is used.
+// Required for GRDBQuery's AnyPublisher conformance; data flow still uses @Query.
 import Combine
 import Foundation
 import GRDB
 import GRDBQuery
 
-/// GRDBQuery request observing the **finished** bulk runs the hub's "Recently
-/// finished" section lists — terminal runs (`completedAt != nil`) that weren't a
-/// user cancel, newest-completed first, each projected with its book names and
-/// unit tallies.
-///
-/// The fetch reads both `bulkAnnotationRun` and `bulkAnnotationRunUnit`, so the
-/// `@Query` re-fires when a run goes terminal (the runner writes the row), when a
-/// run is dismissed (`deleteRun`), and when the 24 h sweep clears old rows —
-/// keeping the section live without the view polling.
+/// Excludes cancelled runs. Observes runs and units so completion, dismissal,
+/// and history sweeps refresh the list.
 public struct FinishedRunsRequest: ValueObservationQueryable {
     public static var defaultValue: [FinishedRunSummary] { [] }
 
     public init() {}
 
     public func fetch(_ db: Database) throws -> [FinishedRunSummary] {
-        // Terminal, non-cancelled runs, newest-completed first (`id` is a
-        // deterministic tiebreak, matching `completedRuns()`).
         let runs = try BulkAnnotationRunRecord
             .filter(Column("completedAt") != nil)
             .filter(Column("status") != BulkRunStatus.cancelled.rawValue)
@@ -30,8 +19,7 @@ public struct FinishedRunsRequest: ValueObservationQueryable {
             .fetchAll(db)
         guard !runs.isEmpty else { return [] }
 
-        // One pass over every listed run's units (ordinal order), grouped in
-        // memory — cheaper and clearer than a correlated aggregate per run.
+        // Fetch units in one pass to avoid a separate query per listed run.
         let runIDs = runs.map(\.id)
         let units = try BulkAnnotationRunUnitRecord
             .filter(runIDs.contains(Column("runId")))

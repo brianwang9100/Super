@@ -3,9 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `BookAnnotationsExistenceRequest` — the book-picker bubble
-/// visibility request returning the set of `bookId`s carrying a book-level
-/// annotation (chapter- and verse-level rows don't count).
 @Suite("BookAnnotationsExistenceRequest")
 struct BookAnnotationsExistenceRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)

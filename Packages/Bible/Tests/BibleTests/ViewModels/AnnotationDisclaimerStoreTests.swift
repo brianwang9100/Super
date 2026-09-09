@@ -2,11 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `UserDefaultsAnnotationDisclaimerStore` — the injectable
-/// flag wrapper that gates the first-run liability sheet. Each test
-/// uses a freshly-suited `UserDefaults` so the production
-/// `bible.annotations.disclaimerAcknowledged` key on `.standard` is
-/// never touched.
 @Suite("UserDefaultsAnnotationDisclaimerStore")
 struct UserDefaultsAnnotationDisclaimerStoreTests {
     private func makeStore(_ id: String = UUID().uuidString)

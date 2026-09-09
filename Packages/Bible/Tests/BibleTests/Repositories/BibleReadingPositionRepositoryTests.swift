@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Integration tests for `GRDBBibleReadingPositionRepository` against an
-/// in-memory database — the fresh-install, round-trip, and replace-in-place
-/// behaviours the single-row reading cursor relies on.
 @Suite("GRDBBibleReadingPositionRepository")
 struct BibleReadingPositionRepositoryTests {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)

@@ -2,9 +2,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `BibleToolTranslationResolver` — the translation-argument resolution
-/// shared by the read and search paths of `bible.lookup`: explicit strict validation, the
-/// current-translation fallback, and the default when no position is available.
 @Suite("BibleToolTranslationResolver")
 struct BibleToolTranslationResolverTests {
     private func repository(_ code: String?) -> any BibleReadingPositionRepository {

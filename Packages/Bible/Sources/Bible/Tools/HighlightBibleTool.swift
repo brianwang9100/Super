@@ -1,29 +1,10 @@
 import Core
 import Foundation
 
-/// `ToolExecutor` that reads, searches, sets, and clears the reader's verse
-/// highlights in the `bibleHighlight` table on the assistant's behalf.
-///
-/// One tool, four actions — `read`, `search`, `set`, `clear` — discriminated by
-/// an `action` parameter so the LLM (Large Language Model) has a single
-/// highlight capability rather than four. The two lookups are inverse: `read`
-/// maps verses → colour, `search` maps a colour → verses. The two writes mirror
-/// the repository: `set` highlights (or recolours) a verse range, `clear`
-/// soft-deletes the highlights on a range.
-///
-/// Highlights are visual-only and translation-agnostic — there is no provenance
-/// to stamp (unlike `bible.note`), so the colour and verse identity are the
-/// whole record. `clear` runs without a confirmation gate, matching
-/// `bible.note` delete: a cleared highlight is soft-deleted and trivially
-/// restored by re-highlighting.
-///
-/// Validation rejects bad input *softly*: a missing or malformed field returns a
-/// `ToolResult` with `isError: true` and a remediation message instead of
-/// throwing, so the model sees the failure and can retry rather than tearing
-/// down the whole turn.
+/// Highlights are translation-independent. Clear needs no confirmation because
+/// soft-deleted highlights can be restored. Invalid arguments return correctable
+/// error results without terminating the model's turn.
 public struct HighlightBibleTool: ToolExecutor {
-    /// Dotted form namespaces the tool under its applet, matching `bible.read`,
-    /// `bible.note`, etc.
     public static let toolID = "bible.highlight"
 
     public static let appletID = "bible"
@@ -116,8 +97,6 @@ public struct HighlightBibleTool: ToolExecutor {
         summary: "Reads, searches, sets, or clears verse highlight colours."
     )
 
-    /// Build a `ToolRegistration` ready to hand to `ToolRegistry.register(_:)`.
-    /// The composition root calls this in each app's bootstrap.
     public static func registration(
         repository: any BibleHighlightRepository,
         clock: any Clock = SystemClock(),
@@ -179,7 +158,6 @@ public struct HighlightBibleTool: ToolExecutor {
             return Self.successResult("No highlights in \(scope).")
         }
 
-        // Stable colour order so the same state always reads the same way.
         let clauses = BibleHighlightColor.allCases.compactMap { color -> String? in
             guard let verses = versesByColor[color], !verses.isEmpty else { return nil }
             return "\(color.displayName.lowercased()) \(BibleCitationFormatter.verseClause(verses))"
@@ -196,8 +174,6 @@ public struct HighlightBibleTool: ToolExecutor {
             return Self.successResult("No verses highlighted \(color.displayName.lowercased())\(scope).")
         }
 
-        // Group verses by (bookId, chapter); render books in canonical order and
-        // chapters ascending, citing each chapter's verse run.
         var versesByBookChapter: [String: [Int: [Int]]] = [:]
         for row in rows {
             versesByBookChapter[row.bookId, default: [:]][row.chapterNumber, default: []].append(row.verseNumber)
@@ -290,7 +266,6 @@ public struct HighlightBibleTool: ToolExecutor {
         }
     }
 
-    /// Resolve the required `book` (by name or code) and an in-bounds `chapter`.
     private func resolveBookAndChapter(_ input: [String: JSONValue]) throws -> (BibleBookSummary, Int) {
         guard let bookRaw = BibleToolJSON.optionalString(input, key: "book"), !bookRaw.isEmpty else {
             throw ValidationError(message: "book is required. Pass a full book name like 'John' or '1 Corinthians', or a 3-letter code like 'JHN'.")
@@ -307,8 +282,6 @@ public struct HighlightBibleTool: ToolExecutor {
         return (summary, chapter)
     }
 
-    /// Resolve an optional `book` for `search` — `nil` (whole bible) when absent,
-    /// an error only when present but unresolvable.
     private func resolveOptionalBook(_ input: [String: JSONValue]) throws -> BibleBookSummary? {
         guard let bookRaw = BibleToolJSON.optionalString(input, key: "book"), !bookRaw.isEmpty else {
             return nil
@@ -319,12 +292,8 @@ public struct HighlightBibleTool: ToolExecutor {
         return summary
     }
 
-    /// A verse range for `set`/`clear`, where one is mandatory — a missing range
-    /// errors rather than defaulting to the whole chapter (unbounded per-verse
-    /// looping). An over-long range is also rejected: `set`/`clear` write one row
-    /// per verse, so without a cap a range like 1–999999 would fire ~a million
-    /// writes. The tool has no verse-count source (no text loader), so it bounds
-    /// the span by `maxVerseSpan` rather than the chapter's true length.
+    /// Require a bounded range: each verse causes a write and no loader supplies the
+    /// chapter's actual verse count. Missing ranges must not imply unbounded whole-chapter work.
     private func requireRange(_ input: [String: JSONValue], verb: String) throws -> ClosedRange<Int> {
         guard let range = try Self.resolveRange(input) else {
             throw ValidationError(message: "\(verb) requires a verse range: pass verseStart (and an optional verseEnd). The whole chapter is not a valid target for \(verb).")
@@ -335,7 +304,6 @@ public struct HighlightBibleTool: ToolExecutor {
         return range
     }
 
-    /// The required `color` for `set`/`search`, mapped from its lowercased name.
     private static func requireColor(_ input: [String: JSONValue]) throws -> BibleHighlightColor {
         guard let raw = BibleToolJSON.optionalString(input, key: "color"), !raw.isEmpty else {
             throw ValidationError(message: "color is required. Use one of: \(colorList).")
@@ -346,10 +314,6 @@ public struct HighlightBibleTool: ToolExecutor {
         return color
     }
 
-    /// Apply the single-verse-friendly range rules: both absent → `nil` (no
-    /// range — whole chapter for `read`, an error for `set`/`clear`); start only
-    /// → single verse; both → span; end without start or any non-positive bound
-    /// → error.
     private static func resolveRange(_ input: [String: JSONValue]) throws -> ClosedRange<Int>? {
         let start = BibleToolJSON.optionalInt(input, key: "verseStart")
         let end = BibleToolJSON.optionalInt(input, key: "verseEnd")
@@ -368,9 +332,7 @@ public struct HighlightBibleTool: ToolExecutor {
         }
     }
 
-    /// Upper bound on verses a single `set`/`clear` may touch. Each verse is one
-    /// write, so this caps the per-verse loop; 200 admits any real chapter (the
-    /// longest, Psalm 119, has 176 verses) while rejecting an over-long range.
+    // Bounds per-verse writes while admitting every real chapter (Psalm 119 has 176 verses).
     static let maxVerseSpan = 200
 
     private static let colorList = BibleHighlightColor.allCases.map(\.rawValue).joined(separator: ", ")

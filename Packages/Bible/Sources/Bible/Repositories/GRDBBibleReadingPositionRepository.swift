@@ -1,10 +1,5 @@
 import GRDB
 
-/// GRDB-backed `BibleReadingPositionRepository` over the `bibleReadingPosition`
-/// table.
-///
-/// The table holds at most one row (`BibleReadingPositionRecord.currentID`);
-/// `save` upserts it so every write replaces the cursor in place.
 public struct GRDBBibleReadingPositionRepository: BibleReadingPositionRepository {
     private let queue: DatabaseQueue
 

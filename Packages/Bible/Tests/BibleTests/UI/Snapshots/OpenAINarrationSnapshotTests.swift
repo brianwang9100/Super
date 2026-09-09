@@ -6,11 +6,9 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Pins OpenAI setup and selected-company layouts across appearance and text sizes.
 @Suite("OpenAI narration snapshots", .serialized)
 @MainActor
 struct OpenAINarrationSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test(arguments: ["setup", "enabled", "disabled", "error"], ["light", "dark", "xxl"])

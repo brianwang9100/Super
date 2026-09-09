@@ -3,19 +3,7 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for ``NarrationController``'s state machine: how it maps the
-/// service's `AsyncStream<NarrationEvent>` into the public `state` /
-/// `currentVerseNumber` / `lastError` it exposes to the Bible reader and
-/// transport sheet. The fake service drives the stream directly, so these
-/// assertions don't depend on `AVSpeechSynthesizer`.
-///
-/// Synchronization model: tests drive the controller's state machine via
-/// the controller's `_simulateEvent(_:)` test seam rather than yielding
-/// events through the `AsyncStream` and polling for the consumer Task to
-/// wake up. The seam calls `handle(_:)` directly on `@MainActor`, so a
-/// `#expect` on the following line reads the post-event state without
-/// scheduler races — per root AGENTS.md §Testing.2 ("polling loops are
-/// race amplifiers, not synchronization primitives").
+/// _simulateEvent applies events synchronously on MainActor; stream tests separately drain consumer tasks.
 @Suite("NarrationController")
 @MainActor
 struct NarrationControllerTests {
@@ -161,8 +149,6 @@ struct NarrationControllerTests {
 
         controller.stop()
         controller.stop()
-        // Even if a sloppy controller forwarded both stops, only one
-        // .cancelled event should ever land back from the service.
         controller._simulateEvent(.cancelled)
 
         #expect(controller.state == .idle)
@@ -244,8 +230,7 @@ struct NarrationControllerTests {
         controller._simulateEvent(.started(verseNumber: 5))
 
         controller.skipPrevious()
-        // Pad slightly past the window so a flaky float comparison
-        // doesn't have us inadvertently inside it.
+        // Stay clear of the floating-point window boundary.
         clock.advance(by: NarrationController.skipPreviousDoubleTapWindow + 0.1)
         controller.skipPrevious()
 
@@ -310,44 +295,21 @@ struct NarrationControllerTests {
 
     @Test("a session replacement cancels the prior streamTask before it can process the buffered .cancelled")
     func secondStartCancelsPriorStreamTaskBeforeIdleOverwrite() async {
-        // Regression guard for the race the production service
-        // creates: `service.startSpeaking(...)` internally yields
-        // `.cancelled` into the *old* stream before closing it
-        // (`AVSpeechSynthesizerNarrationService.teardownActiveSession`),
-        // so the prior stream-consumer Task has a buffered terminal
-        // event queued. Without the `!Task.isCancelled` guard in the
-        // for-await loop, that processing runs *after* the new
-        // session is set up and overwrites
-        // `state = .speaking` / `currentVerseNumber = 10` with
-        // `.idle` / `nil` — the user-visible glitch is the nav-bar
-        // speaker flickering back to sparkles on every Narrate re-tap.
-        //
-        // The fake's `startSpeaking` mirrors the production teardown's
-        // yield-`.cancelled`-then-finish sequence, so this test
-        // exercises the same race. Without the fix the bottom
-        // assertions see `.idle`.
+        // Starting a replacement buffers cancelled in the old stream. Its consumer must
+        // exit before handling that event, or it resets the new session to idle.
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 1, text: "one")])
-        // Use the synchronous seam to advance to `.speaking` — we
-        // need the controller in a non-idle state before triggering
-        // the replacement.
         controller._simulateEvent(.started(verseNumber: 1))
 
-        // Capture the prior streamTask before `start(_:)` replaces it
-        // — once replaced, the controller no longer references it and
-        // there's no other handle to await.
+        // Capture before replacement drops the only handle needed to drain the old consumer.
         let priorTask = controller._currentStreamTask
 
         controller.start(utterances: [NarrationVerseUtterance(verseNumber: 10, text: "ten")])
         controller._simulateEvent(.started(verseNumber: 10))
 
-        // Deterministically wait for the prior task to exit. With the
-        // fix, the for-await guard sees `Task.isCancelled` on the next
-        // iteration and bails *before* `handle(.cancelled)`; without
-        // it, the task processes the buffered `.cancelled` and
-        // mutates state.
+        // Drain the old consumer to expose any late mutation of the new session.
         await priorTask?.value
 
         #expect(controller.state == .speaking)
@@ -367,10 +329,7 @@ struct NarrationControllerTests {
 
     @Test("re-assigning `rate` to its current value does NOT trigger setRate")
     func rateSetterIsIdempotent() {
-        // Regression guard: a SwiftUI `Menu` writes the binding back
-        // even when the user re-selects the already-current row. The
-        // service-level setRate triggers a stopSpeaking + requeue
-        // mid-verse, so a no-op write must NOT propagate.
+        // SwiftUI Menu writes even the current selection; forwarding it would restart speech mid-verse.
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
@@ -381,9 +340,6 @@ struct NarrationControllerTests {
 
     @Test("setting `voice` propagates to the service via setVoice(_:)")
     func voiceSetterPropagatesToService() throws {
-        // Regression guard: prior to the v1.1 fix, the controller's
-        // `voice` was a plain stored property and changes only took
-        // effect on the *next* `start(...)` — the picker felt broken.
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
@@ -394,26 +350,19 @@ struct NarrationControllerTests {
 
         controller.voice = nil  // back to default
         #expect(service.setVoiceCalls.count == 2)
-        // `.last` is `AVSpeechSynthesisVoice??`; require the outer optional, then
-        // confirm the recorded voice was nil. `Optional == nil` needs no
-        // `Equatable` on the voice.
+        // Distinguish a recorded nil voice from an empty call list.
         let lastCall = try #require(service.setVoiceCalls.last)
         #expect(lastCall == nil)
     }
 
     @Test("re-assigning `voice` to a voice with the same identifier does NOT trigger setVoice")
     func voiceSetterIsIdempotent() {
-        // Regression guard for the same SwiftUI Menu write-back issue
-        // as `rateSetterIsIdempotent`. `AVSpeechSynthesisVoice` isn't
-        // `Equatable` so the guard compares identifiers; re-creating
-        // the same voice via init(language:) and assigning must be a
-        // no-op.
+        // Compare voice identifiers: reselecting the same voice must not restart speech.
         let service = FakeNarrationService()
         let controller = NarrationController(service: service)
 
         let voice = AVSpeechSynthesisVoice(language: "en-US")
         controller.voice = voice.map(NarrationVoice.init)
-        // Same identifier (re-fetched from the same locale init).
         controller.voice = AVSpeechSynthesisVoice(language: "en-US").map(NarrationVoice.init)
         #expect(service.setVoiceCalls.count == 1)
     }

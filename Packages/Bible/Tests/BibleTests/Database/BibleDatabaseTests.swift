@@ -3,8 +3,7 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests highlight uniqueness and the seeded legacy annotation upgrade.
-/// `BibleSchemaSnapshotTests` owns the complete current schema inventory.
+/// BibleSchemaSnapshotTests owns the complete current schema inventory.
 @Suite("BibleDatabase")
 struct BibleDatabaseTests {
     @Test("v2 rejects a second row for the same verse")
@@ -23,16 +22,10 @@ struct BibleDatabaseTests {
         }
     }
 
-    /// The legacy → v9 upgrade path: a database stopped at v8 carries the
-    /// multi-card `(category, title, body)` annotation shape; running the
-    /// full migrator must drop those rows wholesale (destructive by
-    /// design — there is no mapping onto the single-summary model),
-    /// rebuild the table with `summary`, and recreate both indexes.
     @Test("v9 drops legacy multi-card rows and rebuilds the summary schema")
     func v9MigratesLegacyAnnotationTable() throws {
         let queue = try DatabaseQueue()
-        // A release-shaped migrator (no DEBUG erase-on-change) so the test
-        // exercises the real upgrade an existing install performs.
+        // Disable DEBUG erase-on-change to exercise the upgrade an existing install performs.
         var migrator = DatabaseMigrator()
         registerBibleMigrations(&migrator)
 
@@ -53,11 +46,8 @@ struct BibleDatabaseTests {
             verseStart: 16, verseEnd: 17, body: "Keep my note", source: .user,
             createdAt: date, updatedAt: date
         )
-        // One legacy multi-card row, inserted raw against the v5 shape
-        // (category as its Int raw value), plus a finished bulk-ledger run
-        // whose `done` unit asserts that row exists — v9 must clear both,
-        // or a resumed run would report chapters annotated whose rows the
-        // rebuild just dropped.
+        // A done ledger unit claims the legacy annotation exists. The rebuild must clear
+        // both, or a resumed run reports annotations whose rows were dropped.
         try queue.write { db in
             try position.insert(db)
             try highlight.insert(db)
@@ -108,8 +98,6 @@ struct BibleDatabaseTests {
         // Units are deleted explicitly — the v6 cascade doesn't fire inside
         // migrations (DatabaseMigrator runs with foreign keys off).
         #expect(unitCount == 0, "ledger units are cleared with their runs")
-        // v9 intentionally drops annotations and their ledger, while preserving
-        // unrelated reader state and user-authored content byte for byte.
         let preserved = try queue.read { db in
             (
                 try BibleReadingPositionRecord.fetchAll(db),

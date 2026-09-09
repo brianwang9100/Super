@@ -2,116 +2,51 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// The book picker: a bottom-aligned sheet listing every book. The expanded
-/// book opens an inline 6-column chapter grid; tapping a chapter jumps there
-/// and closes the sheet. A search field filters by name and a toggle switches
-/// between traditional (Genesis → Revelation, grouped by testament) and
-/// alphabetical order.
-///
-/// Annotation bubbles sit next to each book name. The bubble is `.filled`
-/// when the book has at least one annotation row (any target level), and
-/// `.empty` otherwise — per spec §5, the book picker is one of the two
-/// surfaces that paint empty bubbles to invite generation. The
-/// existence-set comes from a reactive `@Query` so writes from other
-/// surfaces (chat tool calls, the chapter reader's regenerate path)
-/// repaint the picker without intervention.
 struct BibleBookSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Bindable var viewModel: BibleBookSheetViewModel
 
-    /// Declared once and shared by the nav bar and the presentation so the two
-    /// can't drift; an expandable list sheet (`.medium`/`.large`).
     private let sizing = SheetSizing.expandable
 
-    /// The reader's current book / chapter — used to bold the matching row
-    /// and mark the matching chapter cell.
     let currentBookId: String
     let currentChapterNumber: Int
 
-    /// Single-fire latch so the picker anchors to the current position
-    /// exactly once per appearance. Without it, subsequent layout passes
-    /// triggered by search/order toggles would yank the scroll back to the
-    /// current position after the reader has moved it.
+    // Anchor once per appearance; search/order layout changes must not pull the user back.
     @State private var didAutoScroll = false
-    /// Extra bottom padding so the order toggle clears the shell's
-    /// minimized chat pill; `0` in standalone (snapshot) contexts.
+    /// Reserve for the minimized chat pill; zero in standalone contexts.
     let bottomInset: CGFloat
     let onSelectChapter: (_ bookId: String, _ chapterNumber: Int) -> Void
-    /// Tap on a resolved verse-range search row — deep-link to those verses,
-    /// pre-selected, the same as a `super://bible/` citation tap.
+    /// Opens and preselects the resolved range, like a Bible deep link.
     let onSelectVerseRange: (
         _ bookId: String, _ chapterNumber: Int, _ verseStart: Int, _ verseEnd: Int
     ) -> Void
     let onClose: () -> Void
-    /// Tap on a filled bubble — present the annotation sheet for the
-    /// `.book(bookId)` target.
     let onPresentBookAnnotations: (_ bookId: String) -> Void
-    /// Tap on an empty bubble — start a generation intent for the
-    /// `.book(bookId)` target (which the view model routes through its
-    /// disclaimer gate).
     let onRequestBookAnnotations: (_ bookId: String) -> Void
-    /// Tap on a note glyph (filled or outline) — present the note list sheet
-    /// for the `.book(bookId)` target. The user composes from the list's `+`;
-    /// an empty book opens to the list's empty state, not straight to the editor.
+    /// Opens the book-level list, including its empty state; it does not auto-compose.
     let onPresentBookNotes: (_ bookId: String) -> Void
-    /// Book ids whose `.book`-target generation is in flight. A book in
-    /// this set renders its bubble in the generating state (disabled),
-    /// surfacing dispatches triggered from chat or a prior picker visit.
     let generatingBookIds: Set<String>
 
-    /// Books with at least one annotation row at any target level. Used
-    /// to switch each bubble between `.filled` and `.empty` per book. An
-    /// empty set means *no* books have rows; the entire picker shows
-    /// empty bubbles. The default-value-on-failure `[]` matches that —
-    /// failing safe to "no annotations" never misleads the user.
     @Query<BookAnnotationsExistenceRequest> private var booksWithAnnotations: Set<String>
 
-    /// Books with at least one *book-level* note (`target == .book`). Switches
-    /// each row's note glyph between `.filled` and `.outline`. Scoped to
-    /// book-level so the glyph's fill matches what its tap opens
-    /// (`NotesForRangeRequest(target: .book, …)`); verse/chapter notes surface
-    /// on their own glyphs in the reader. Reactive like the annotation set
-    /// above, so a book note written from the reader or chat repaints the
-    /// picker. `[]` on failure → all-outline, which reads as "no notes yet"
-    /// rather than misleading the user.
     @Query<BookNotesExistenceRequest> private var booksWithNotes: Set<String>
 
-    /// Every assigned bookmark slot, reactive like the annotation/note
-    /// existence sets above so a bookmark written from the reader's
-    /// assignment sheet (or moved away) repaints the picker's row icons and
-    /// chapter-cell badges without intervention. `[]` on failure → no
-    /// indicators, which fails safe to "no bookmarks" rather than misleading.
     @Query<AllBookmarksRequest> private var bookmarks: [BibleBookmarkRecord]
 
-    // Font sizes and the chapter cell height are carried as scaled metrics
-    // so the picker tracks Dynamic Type — the design's fixed point sizes,
-    // scaled relative to the nearest system text style.
     @ScaledMetric(relativeTo: .title3) private var bookNameSize: CGFloat = 18
     @ScaledMetric(relativeTo: .subheadline) private var mediumSize: CGFloat = 14
     @ScaledMetric(relativeTo: .footnote) private var controlSize: CGFloat = 13
     @ScaledMetric(relativeTo: .caption) private var countSize: CGFloat = 11
-    /// Fixed width for the trailing chapter count, sized for the widest value
-    /// (Psalms = 150, three monospaced digits) so single- and double-digit
-    /// counts don't shift the glyph cluster's trailing alignment.
+    // Reserve three monospaced digits so chapter counts do not shift the glyph cluster.
     @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 22
     @ScaledMetric(relativeTo: .caption2) private var sectionLabelSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var chapterCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .body) private var bubbleSize: CGFloat = 20
-    /// Row bookmark ribbons sit slightly smaller than the annotation/note
-    /// glyphs (≈75% of `bubbleSize`) so they read as a quieter decoration
-    /// leading the cluster, not a third tappable control.
     @ScaledMetric(relativeTo: .body) private var rowBookmarkSize: CGFloat = 15
-    /// The chapter-cell badge — a small ribbon tucked into the cell's
-    /// top-right corner.
     @ScaledMetric(relativeTo: .body) private var cellBookmarkSize: CGFloat = 11
-    /// Fixed search-field height so focus, the editing caret, or the
-    /// appearing/disappearing clear button can't resize the bar.
     @ScaledMetric(relativeTo: .subheadline) private var searchFieldHeight: CGFloat = 44
 
-    /// Required content + callbacks come first per the AGENTS.md
-    /// "Default parameter values" rule; the lone `bottomInset` default
-    /// stays trailing.
     init(
         viewModel: BibleBookSheetViewModel,
         currentBookId: String,
@@ -150,7 +85,6 @@ struct BibleBookSheet: View {
             bookList
             orderToggle
         }
-        // Detents + drag indicator + background, derived from `sizing`.
         .sheetPresentation(sizing)
     }
 
@@ -181,12 +115,8 @@ struct BibleBookSheet: View {
             }
         }
         .padding(.horizontal, 12)
-        // Fixed height (not vertical padding) so the bar can't resize when the
-        // field gains focus / the caret appears or the clear button shows/hides —
-        // its old height was derived from the tallest child's intrinsic metrics.
+        // Fix height so focus, caret, and clear-button changes cannot resize the bar.
         .frame(height: searchFieldHeight)
-        // Interactive glass — the field still owns its own focus tap; the glass
-        // just adds the press response the rest of the sheet's controls have.
         .superGlassButton(in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal, 14)
         .padding(.bottom, 8)
@@ -194,19 +124,12 @@ struct BibleBookSheet: View {
 
     private var bookList: some View {
         let groups = viewModel.groups
-        // Non-lazy on purpose: the picker scroll-anchors to either a book
-        // row or a specific chapter cell when it first appears, and
-        // `ScrollViewProxy.scrollTo` only resolves ids that are already
-        // laid out. The fan-out is bounded — 66 books + at most one
-        // expanded book's chapter grid (150 in Psalms is the worst case)
-        // — so eager layout is cheap. Lazy variants made `scrollTo`
-        // silently fail for any target below the initial viewport.
+        // scrollTo requires laid-out IDs. Eager layout is bounded by 66 books plus one
+        // chapter grid; lazy layout cannot anchor below the initial viewport.
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let result = viewModel.deepLinkResult {
-                        // The query named a concrete chapter / verse — show a
-                        // single tappable jump row in place of the book list.
                         deepLinkRow(result)
                     } else if groups.isEmpty {
                         emptyState
@@ -240,12 +163,8 @@ struct BibleBookSheet: View {
         }
     }
 
-    /// Stable identifier the book name row registers with `ScrollViewReader`,
-    /// used to scroll a book to the top of the picker viewport.
     static func bookRowID(_ bookId: String) -> String { "book-\(bookId)" }
 
-    /// Stable identifier each chapter cell registers with `ScrollViewReader`,
-    /// used to anchor the current chapter cell into view for long books.
     static func chapterCellID(bookId: String, chapterNumber: Int) -> String {
         "chapter-\(bookId)-\(chapterNumber)"
     }
@@ -268,8 +187,6 @@ struct BibleBookSheet: View {
             .padding(.vertical, 20)
     }
 
-    /// The single jump row shown when the search query resolved to a concrete
-    /// chapter or verse range. Tapping it deep-links and closes the sheet.
     private func deepLinkRow(_ result: BibleSearchResult) -> some View {
         Button {
             switch result {
@@ -309,11 +226,7 @@ struct BibleBookSheet: View {
         let hasNotes = booksWithNotes.contains(book.id)
 
         VStack(alignment: .leading, spacing: 0) {
-            // Row layout: a tappable name area (expansion toggle) flush
-            // left, an annotation bubble carved out as its own tap target,
-            // and the chapter count flush right. Splitting the bubble out
-            // of the expansion button keeps the two intents independent —
-            // tapping the bubble never expands the book and vice versa.
+            // Separate tap targets prevent annotation actions from toggling expansion.
             HStack(spacing: 8) {
                 Button {
                     viewModel.toggleExpansion(bookId: book.id)
@@ -328,12 +241,6 @@ struct BibleBookSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                // The glyphs cluster tightly together; their frames hug
-                // their ink (see AnnotationBubble / NoteGlyph), so this spacing
-                // is the real visible gap between them. The bookmark ribbons
-                // lead the cluster (left of the annotation bubble) and are
-                // emitted only when the book has bookmarks — an absent branch
-                // reserves no spacing, so unbookmarked rows stay pixel-identical.
                 HStack(spacing: 7) {
                     bookmarkRibbons(for: book.id)
                     annotationBubble(for: book.id, hasAnnotations: hasAnnotations)
@@ -355,11 +262,7 @@ struct BibleBookSheet: View {
         .id(Self.bookRowID(book.id))
     }
 
-    /// The leading run of filled ribbon glyphs on a book row — one per
-    /// bookmark the book carries, in chapter order. Decorative: collapsed
-    /// into one combined VoiceOver element (the reader is where a bookmark
-    /// is edited), so the row's tap targets stay the name, the bubble, and
-    /// the note glyph. Emits nothing for a book with no bookmarks.
+    /// Decorative ribbons combine into one VoiceOver element; they add no tap targets.
     @ViewBuilder
     private func bookmarkRibbons(for bookId: String) -> some View {
         let marks = bookmarks(forBook: bookId)
@@ -374,9 +277,6 @@ struct BibleBookSheet: View {
         }
     }
 
-    /// This book's bookmarks in chapter order, each paired with its colour;
-    /// rows whose persisted `colorId` is unknown (a forward-compat slot)
-    /// fail safe by dropping out rather than rendering a blank glyph.
     private func bookmarks(forBook bookId: String) -> [(color: BibleBookmarkColor, chapterNumber: Int)] {
         var marks: [(color: BibleBookmarkColor, chapterNumber: Int)] = []
         for record in bookmarks where record.bookId == bookId {
@@ -388,15 +288,11 @@ struct BibleBookSheet: View {
         return marks
     }
 
-    /// The colour marking a specific chapter cell, or `nil` when unbookmarked.
     private func bookmarkColor(forBook bookId: String, chapter: Int) -> BibleBookmarkColor? {
         bookmarks.first { $0.bookId == bookId && $0.chapterNumber == chapter }?.color
     }
 
-    /// Combined VoiceOver label for a book row's bookmark cluster, e.g.
-    /// `"Bookmarks: Clay chapter 3, Gold chapter 8"`. A `for`-loop, not
-    /// `map`, to stay clear of the `swift test`-on-macOS predicate-closure
-    /// trap this package documents.
+    // A loop avoids the macOS predicate-closure inference issue in Swift tests.
     static func bookBookmarksLabel(_ marks: [(color: BibleBookmarkColor, chapterNumber: Int)]) -> String {
         var parts: [String] = []
         for mark in marks {
@@ -405,8 +301,6 @@ struct BibleBookSheet: View {
         return "Bookmarks: " + parts.joined(separator: ", ")
     }
 
-    /// VoiceOver label for a chapter cell, appending the ribbon colour when
-    /// the chapter is bookmarked so the badge isn't a silent visual-only cue.
     static func chapterCellLabel(bookName: String, number: Int, bookmark: BibleBookmarkColor?) -> String {
         let base = "\(bookName) chapter \(number)"
         guard let bookmark else { return base }
@@ -435,7 +329,6 @@ struct BibleBookSheet: View {
         .accessibilityLabel(Self.bookBubbleLabel(for: state))
     }
 
-    /// VoiceOver label for a book's annotation bubble, keyed to its state.
     static func bookBubbleLabel(for state: AnnotationBubble.BubbleState) -> String {
         switch state {
         case .filled: return "View annotations for this book"
@@ -444,11 +337,6 @@ struct BibleBookSheet: View {
         }
     }
 
-    /// The book row's note glyph — tapping always opens the book-level note
-    /// list (the empty state prompts the user to compose from the `+`). Renders
-    /// filled when the book carries ≥1 *book-level* note, outline when none yet.
-    /// Carved out as its own tap target so it never expands the book or fires
-    /// the annotation bubble.
     private func noteGlyph(for bookId: String, hasNotes: Bool) -> some View {
         let glyphState: NoteGlyph.GlyphState = hasNotes ? .filled : .outline
         return Button {
@@ -463,25 +351,16 @@ struct BibleBookSheet: View {
         .accessibilityLabel(Self.bookNoteGlyphLabel(hasNotes: hasNotes))
     }
 
-    /// VoiceOver label for a book's note glyph, keyed to whether it has notes.
     static func bookNoteGlyphLabel(hasNotes: Bool) -> String {
         hasNotes ? "View notes for this book" : "Open notes for this book"
     }
 
     private func chapterGrid(for book: BibleBookSummary) -> some View {
-        // Non-lazy on purpose: a `LazyVGrid` only materializes the cells in
-        // its viewport, which makes `ScrollViewProxy.scrollTo` for an
-        // off-screen chapter cell (e.g. Psalms 119) silently no-op. With a
-        // bounded fan-out — Psalms's 150 chapters is the worst case —
-        // eager layout is cheap and lets the picker scroll-anchor to any
-        // chapter cell as soon as the book's row is laid out.
+        // Keep cells eager too: lazy off-screen IDs cannot resolve scrollTo. Psalms bounds this at 150 cells.
         let columns = BibleBookSheetViewModel.chapterGridColumns
         let rowCount = (book.chapterCount + columns - 1) / columns
-        // One shared glass sampling region for the whole grid: without it each cell's
-        // interactive glass samples independently and casts its own elevation shadow,
-        // producing the fragmented "strange shadow behind each component" artifacts.
-        // `spacing: 0` sets the merge threshold to 0, so cells share the sampling
-        // region but never merge; the 6pt VStack/HStack gap keeps them separated.
+        // Share glass sampling to avoid per-cell elevation artifacts; zero merge threshold
+        // and explicit gaps keep the cells visually separate.
         return SuperGlassContainer(spacing: 0) {
             VStack(spacing: 6) {
                 ForEach(0..<rowCount, id: \.self) { rowIndex in
@@ -513,9 +392,6 @@ struct BibleBookSheet: View {
             onSelectChapter(book.id, number)
         } label: {
             cellBody(number: number, isCurrent: isCurrent)
-                // A small ribbon tucked into the corner marks a bookmarked
-                // chapter; the `nil` branch adds nothing, so unbookmarked
-                // grids stay pixel-identical to the existing baselines.
                 .overlay(alignment: .topTrailing) {
                     if let bookmark {
                         BookmarkGlyph(state: .filled(bookmark), size: cellBookmarkSize)
@@ -529,14 +405,9 @@ struct BibleBookSheet: View {
         .id(Self.chapterCellID(bookId: book.id, chapterNumber: number))
     }
 
-    /// The cell's fill + number, split out so the bookmark badge overlay can
-    /// layer over either the selected (solid `ink`) or unselected (glass)
-    /// background uniformly.
     @ViewBuilder
     private func cellBody(number: Int, isCurrent: Bool) -> some View {
         if isCurrent {
-            // The current chapter keeps a solid `ink` fill so it reads as
-            // selected against the interactive glass of the other cells.
             chapterLabel(number, isCurrent: true)
                 .background(RoundedRectangle(cornerRadius: 10).fill(theme.ink))
         } else {
@@ -545,8 +416,6 @@ struct BibleBookSheet: View {
         }
     }
 
-    /// The chapter number sized to fill a grid cell; the caller layers the
-    /// background (solid `ink` when selected, interactive glass otherwise).
     private func chapterLabel(_ number: Int, isCurrent: Bool) -> some View {
         Text("\(number)")
             .font(typography.font(size: mediumSize, weight: isCurrent ? .semibold : .medium))
@@ -563,9 +432,6 @@ struct BibleBookSheet: View {
             toggleSegment("Alphabetical", order: .alphabetical)
         }
         .padding(4)
-        // Frosted glass track for the segmented toggle, matching the nav-bar
-        // pills; the active segment keeps its own raised inner capsule so it
-        // still reads as selected against the surface.
         .superGlassSurface(in: Capsule())
         .padding(.top, 8)
         .padding(.bottom, 22 + bottomInset)

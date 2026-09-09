@@ -1,12 +1,7 @@
 import Core
 import SwiftUI
 
-/// The bottom toast that confirms a chat hand-off — used this milestone only
-/// as the "chat ships later" stub.
-///
-/// A dark card regardless of the active theme, matching the design; a tap
-/// anywhere on it dismisses. There is no auto-dismiss timer — the toast stays
-/// until tapped, which keeps it free of a time-based test seam.
+/// Tap to dismiss; no automatic timeout. Uses a dark card in every theme.
 struct BibleAttachToast: View {
     @Environment(\.superTypography) private var typography
     let message: String

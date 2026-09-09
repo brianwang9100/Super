@@ -3,8 +3,6 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `NoteBibleTool` — the create/edit/delete action dispatch, input
-/// validation per action, stamping, and the artifact contract.
 @Suite("NoteBibleTool")
 struct NoteBibleToolTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -123,7 +121,6 @@ struct NoteBibleToolTests {
         #expect(update?.id == "abc")
         #expect(update?.body == "Revised thought.")
         #expect(update?.updatedAt == t0)
-        // Edit must not insert.
         #expect(await repo.inserted.isEmpty)
     }
 
@@ -214,9 +211,6 @@ struct NoteBibleToolTests {
         #expect(result.isError == true)
     }
 
-    /// `target` is the authoritative discriminator: a `book` create that
-    /// carries stray chapter/verse fields is accepted and those fields are
-    /// coerced to `nil` rather than rejected (matches `bible.annotate`).
     @Test("create book target coerces stray chapter/verse fields to nil")
     func createBookCoercesStrayPositionFields() async throws {
         let (tool, repo) = makeTool()
@@ -237,8 +231,6 @@ struct NoteBibleToolTests {
         #expect(note.verseEnd == nil)
     }
 
-    /// A chapter create with a stray `verseStart` no longer errors — the verse
-    /// fields are dropped, `chapterNumber` is preserved.
     @Test("create chapter target coerces stray verse fields to nil")
     func createChapterCoercesStrayVerseFields() async throws {
         let (tool, repo) = makeTool()
@@ -259,11 +251,7 @@ struct NoteBibleToolTests {
         #expect(note.verseEnd == nil)
     }
 
-    /// Regression: a coerced chapter note must remain addressable by a
-    /// chapter-target read (`verseStart IS NULL`) — i.e. it isn't orphaned by
-    /// the stray verse fields the caller sent. Driven against the real GRDB
-    /// repository so the `IS NULL` query is the production one. Mirrors the
-    /// `AnnotateBibleTool` regression.
+    /// Stray verse fields must not orphan chapter notes from IS NULL target queries.
     @Test("coerced chapter note is found by a chapter-target read")
     func coercedChapterNoteIsAddressable() async throws {
         let database = try BibleDatabase.makeInMemory()
@@ -327,8 +315,6 @@ struct NoteBibleToolTests {
     }
 }
 
-/// Registration plumbing — the `bible.note` tool lands in a `ToolRegistry`
-/// enabled, with its descriptor intact.
 @Suite("NoteBibleTool registration")
 struct NoteBibleToolRegistrationTests {
     @Test("registration adds bible.note to the registry, enabled")
@@ -347,9 +333,6 @@ struct NoteBibleToolRegistrationTests {
 
 // MARK: - Doubles
 
-/// Strict spy recording each write. Per the testability rules, methods the
-/// exercised action shouldn't touch are still implemented (the protocol
-/// requires them) but the assertions above pin which were used.
 private actor SpyBibleNoteRepository: BibleNoteRepository {
     struct UpdateCall: Sendable {
         let id: String
@@ -368,7 +351,6 @@ private actor SpyBibleNoteRepository: BibleNoteRepository {
         verseStart: Int?,
         verseEnd: Int?
     ) async throws -> [BibleNoteRecord] {
-        // The tool path never reads — a hit here is a caller-side bug.
         fatalError("SpyBibleNoteRepository.list called — tool path should not read.")
     }
 

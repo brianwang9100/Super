@@ -1,10 +1,6 @@
 import Core
 import SwiftUI
 
-/// Per-book progress for the active job: a summary header (ring · annotation
-/// count · pause/cancel) over a scrollable chapter list. Failures isolate to
-/// their chapter — a banner offers "Retry all" and each failed row its own
-/// Retry — they never restart the run.
 struct BulkAnnotationProgressScreen: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography

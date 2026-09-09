@@ -3,10 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `AnnotatedChaptersRequest` — the Generate sheet's per-chapter "Done"
-/// badge source: the set of `(bookId, chapterNumber)` pairs carrying any
-/// chapter- or verse-level annotation (book-level rows, whose `chapterNumber` is
-/// nil, are excluded).
 @Suite("AnnotatedChaptersRequest")
 struct AnnotatedChaptersRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)

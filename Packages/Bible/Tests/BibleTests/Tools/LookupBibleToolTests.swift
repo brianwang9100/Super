@@ -3,13 +3,7 @@ import Foundation
 import Testing
 @testable import Bible
 
-/// Tests for `LookupBibleTool` — the merged `bible.lookup` tool. The `action`
-/// discriminator routes to the read and search execution cores, results are
-/// re-stamped with the lookup tool id, the shared `translation` applies to both
-/// actions, and the descriptor advertises the union schema (with a compact
-/// variant on every top-level parameter). The per-path behavior itself is
-/// covered exhaustively by `ReadBibleToolTests` / `SearchBibleToolTests`; this
-/// suite covers only the routing seam.
+/// Covers routing; ReadBibleToolTests and SearchBibleToolTests own each action's behavior.
 @Suite("LookupBibleTool")
 struct LookupBibleToolTests {
     private var johnBook: BibleBook {
@@ -64,7 +58,6 @@ struct LookupBibleToolTests {
             ]),
         ])
         #expect(result.isError == false)
-        // The result carries the merged tool's id, not the delegate's old one.
         #expect(result.toolID == LookupBibleTool.toolID)
         #expect(result.content.hasPrefix("John 3:16 (KJV)"))
     }
@@ -140,20 +133,15 @@ struct LookupBibleToolTests {
         #expect(match?.isRequired == false)
         #expect(match?.enumValues == BibleSearchMatchMode.allCases.map(\.rawValue))
 
-        // references is optional at the schema level — validity is gated per
-        // action in the executor, not by the schema (no provider expresses a
-        // discriminated union).
+        // The shared schema has no action-discriminated union; executor validation gates references.
         #expect(params.first { $0.name == "references" }?.isRequired == false)
 
-        // Every top-level parameter ships a compact variant for the compact tier.
         #expect(params.allSatisfy { $0.compactDescription != nil })
     }
 }
 
 // MARK: - Test doubles
 
-/// A `BibleTextLoader` serving chapters from a fixed set of books; `nil` for any
-/// other book id or absent chapter (mirroring the DB loader's missing-row case).
 private struct StubBibleTextLoader: BibleTextLoader {
     let books: [BibleBook]
     func loadChapter(
@@ -164,8 +152,6 @@ private struct StubBibleTextLoader: BibleTextLoader {
     }
 }
 
-/// A `BibleTextSearching` that records the last call's arguments and returns a
-/// fixed result set, so the routing test can assert the search path ran.
 private actor RecordingSearcher: BibleTextSearching {
     let hits: [BibleVerseMatch]
     private(set) var lastTranslation: BibleTranslation?

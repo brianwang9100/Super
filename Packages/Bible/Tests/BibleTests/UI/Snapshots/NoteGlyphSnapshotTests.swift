@@ -6,15 +6,10 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `NoteGlyph` — the folded-page glyph that marks a target
-/// as carrying notes. The `.filled` silhouette is captured across the
-/// three themes (the colors are theme-driven); `.outline` is the
-/// construction / empty-state variant and differs only in stroke-vs-fill,
-/// fully captured by the light pass.
+/// Filled variants cover theme colors; the outline-only shape difference needs one theme.
 @Suite("NoteGlyph snapshots", .serialized)
 @MainActor
 struct NoteGlyphSnapshotTests {
-    // Serialize captures within the suite to avoid interleaving UIKit rendering.
     init() { SnapshotFontRegistration.ensureRegistered() }
 
     @Test("filled glyph renders in the light theme")
@@ -44,8 +39,7 @@ struct NoteGlyphSnapshotTests {
         function: String = #function
     ) {
         let theme = SuperTheme.make(themeID)
-        // Render at 48pt on a 96×96 field (3× the production trailing size)
-        // so the fold cut and ruled lines are inspectable by eye.
+        // Enlarge the glyph so fold and ruling details remain inspectable.
         let view = ZStack {
             theme.background
             NoteGlyph(state: state, size: 48)

@@ -3,8 +3,6 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests for `ChapterAnnotationsRequest` — the per-chapter `@Query`
-/// request that drives reactive bubble visibility in the chapter renderer.
 @Suite("ChapterAnnotationsRequest")
 struct ChapterAnnotationsRequestTests {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -54,7 +52,6 @@ struct ChapterAnnotationsRequestTests {
             ]
         )
         let rows = try fetch(database, book: "ROM", chapter: 8)
-        // Both rows surface; book-target rows would not appear (chapterNumber is null).
         #expect(rows.map(\.id).sorted() == ["chap", "v28-30"])
     }
 
@@ -79,8 +76,7 @@ struct ChapterAnnotationsRequestTests {
     @Test("rows order by (createdAt ASC, id ASC)")
     func ordering() async throws {
         let (repository, database) = try makeFixture()
-        // "b" and "a" share t0 and tie-break on id; "c" is later and sorts
-        // last despite being inserted last in the batch.
+        // Equal timestamps must tie-break by ID; later timestamps sort last.
         let later = t0.addingTimeInterval(60)
         try await repository.replace(
             target: .verse, bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30,

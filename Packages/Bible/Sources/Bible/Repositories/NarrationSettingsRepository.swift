@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 
-/// Persistence failures for conditional narration-setting writes.
 public enum NarrationSettingsError: Error, Sendable {
     case staleDraft, missingCredential, secureStorage, persistence
 }
@@ -36,19 +35,17 @@ public struct GRDBNarrationSettingsRepository: NarrationSettingsRepository {
             }
         }
     }
-    /// Registers a provisional reference before its secret is written to Keychain.
     public func registerStagedKey(ref: String) async throws {
         try await database.queue.write { db in
             try NarrationStagedKeyRecord(id: ref).insert(db)
         }
     }
-    /// Lists durably tracked provisional references in stable order.
+    /// Returns references in stable order.
     public func stagedKeyRefs() async throws -> [String] {
         try await database.queue.read { db in
             try NarrationStagedKeyRecord.order(Column("id")).fetchAll(db).map(\.id)
         }
     }
-    /// Removes cleanup metadata after the secret is deleted or confirmed active.
     public func removeStagedKey(ref: String) async throws {
         _ = try await database.queue.write { db in
             try NarrationStagedKeyRecord.deleteOne(db, key: ref)
