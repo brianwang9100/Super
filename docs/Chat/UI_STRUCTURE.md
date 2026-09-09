@@ -20,17 +20,39 @@ AppShell                                                    (App/Shell/AppShell.
 ├── BackdropLayer    — the active MiniApplet's `rootView`     (varies per applet)
 ├── ChatLayer        — ChatOverlay → ChatScreen              (Chat/UI/ChatScreen.swift)
 ├── SidebarDrawer    — overlay, gated on @State sidebarOpen  (Chat/UI/SidebarDrawer.swift)
-└── SettingsSheet    — overlay, gated on @State settingsOpen (Chat/UI/Settings/SettingsSheet.swift)
+├── SettingsSheet    — native sheet, gated on settingsOpen  (Chat/UI/Settings/SettingsSheet.swift)
+└── Record preview   — native sheet with cached applet content (App/Shell/RecordPreviewPresentation.swift)
 ```
 
 `AppShell` owns:
 - The three `@State` view models — `ChatScreenViewModel`, `SidebarViewModel`, `SettingsViewModel` — each `@Observable @MainActor final class` (no Combine, no ObservableObject).
-- The two overlay-visibility bindings (`sidebarOpen`, `settingsOpen`).
+- Sidebar/Settings visibility and the record-preview presentation owner, which retains a unique identity and opaque applet content through native dismissal.
 - The active `SuperTheme`, re-derived whenever the persisted theme id changes.
 - The chat-overlay presentation state (`.expanded` / `.semiExpanded` / `.minimized`) and live drag progress.
 - Conversation-switching plumbing: tapping a row in the sidebar rebuilds `ChatScreenViewModel` against the new conversation id; tapping "New Chat" constructs an in-memory draft conversation that doesn't hit GRDB until the user sends a first message (lazy persist via `LazyConversationDriver`).
 
 The per-target content view (`SuperOSContentView` / `SuperBibleContentView`) is a thin wrapper that branches on the bootstrap state machine to show a `SplashView` during `.loading`, a `FailureScreen` on `.failed`, and `AppShell` on `.ready`.
+
+Transcript Bible citations publish Core's `previewRecord`, which asks the registered
+applet for temporary preview content. The shell caches that content once per unique
+presentation and applies its live theme, font scale, typography, event bus, and
+haptics outside the cache. Opening it resigns composer focus while preserving the
+active backdrop, Chat expansion, transcript, and draft. Unsupported previews are ignored.
+Open in Bible and Add to chat completions publish only after the outer native
+sheet's `onDismiss`; cancellation emits nothing. Duplicate requests are ignored
+through dismissal. Settings, sidebar, and authoritative navigation cancel queued
+preview work. External `super://bible/...` URLs still publish `openRecord` directly;
+if a preview is open, only the shell's visible transition waits for dismissal,
+because the Bible inbox already consumed the original event.
+
+Cross-applet reference handoffs stay in ordered, reference-bearing requests until
+the shell routes them. One shell subscription and one inbox preserve order across
+references, conversation changes and direct UI navigation. Each event remains a
+separate request. The shell attaches each current-chat
+batch before suspending and initializes a new composer with only its own batch.
+ChatScreen never drains the session inbox on mount. Requests received during a
+native preview remain ordered through outer dismissal, then enter the same serial
+navigation queue as conversation changes.
 
 The Sidebar and Settings overlays never coexist visually because opening Settings always fires through `onOpenSettings` *after* the sidebar has started its dismissal animation — see the callback contract on `SidebarDrawer`.
 

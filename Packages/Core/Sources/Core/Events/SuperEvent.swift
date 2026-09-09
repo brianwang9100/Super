@@ -19,13 +19,16 @@ public enum SuperEvent: Sendable, Equatable {
     /// and routing through the existing lazy-persist driver.
     case newConversationRequested
 
+    /// Any applet → shell: present a temporary record preview without navigating.
+    /// Unsupported applet capabilities are ignored.
+    case previewRecord(reference: RecordReference)
+
     /// Any applet → shell: focus the applet identified by
     /// `reference.appletID` and pass `reference` to it for in-applet
     /// navigation. Mirrors `recordAddedToChat` in reverse — that one
     /// pulls a record *into* Chat; this one pushes the user *back out*
-    /// to the record's home applet. Today's sole consumer is Bible
-    /// receiving a verse-range tap originating in the Chat transcript
-    /// (and from `super://bible/...` deep links at the scene root).
+    /// to the record's home applet. Bible receives external deep links,
+    /// bookmark navigation, and explicit Open in Bible preview completions.
     case openRecord(reference: RecordReference)
 
     /// Bible requests a foreground annotation for this target. Chat streams

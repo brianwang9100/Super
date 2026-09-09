@@ -2,11 +2,10 @@ import Core
 import Observation
 
 /// App-session-lived subscriber that routes inbound Bible verse-range
-/// references (from Chat citation taps and external `super://bible/...`
-/// deep links) onto the Bible reader's view model. The mirror image of
-/// `ChatReferenceInbox` in the Chat package — that one accepts
-/// references going INTO Chat; this one accepts references coming BACK
-/// OUT to the Bible reader.
+/// references (from explicit preview completions and external `super://bible/...`
+/// deep links) onto the Bible reader's view model. Preview requests themselves
+/// are ignored so the app-lifetime reader remains unchanged. References going
+/// into Chat are routed by the shell's ordered navigation inbox instead.
 ///
 /// Owned by ``BibleApplet`` so both the inbox and the view model share
 /// the applet's lifetime. The shell-side `SuperEventBus` is fire-and-
@@ -20,8 +19,7 @@ public final class BibleReferenceInbox {
     private let viewModel: BibleScreenViewModel
     private var subscriptionTask: Task<Void, Never>?
     /// One-shot callbacks fired after the next processed event — the
-    /// `_onNextEvent` test seam. Mirrors the convention `ChatReferenceInbox`
-    /// uses so a test can arm a continuation before publishing without
+    /// `_onNextEvent` test seam lets a test arm a continuation before publishing without
     /// racing the subscription task.
     private var eventCallbacks: [@MainActor () -> Void] = []
 

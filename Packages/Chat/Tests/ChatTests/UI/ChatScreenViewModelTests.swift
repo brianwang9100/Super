@@ -1661,125 +1661,219 @@ struct ChatScreenViewModelTests {
         )
     }
 
-    /// Build a view model wired to a fresh `ChatReferenceInbox`, returning
-    /// both so a test can publish onto the bus and drive adoption.
-    private func makeViewModelWithInbox(
-        driver: any ChatSessionDriver
-    ) -> (viewModel: ChatScreenViewModel, inbox: ChatReferenceInbox) {
-        let inbox = ChatReferenceInbox()
-        let viewModel = ChatScreenViewModel(
-            conversationId: conversationId,
-            conversationTitle: "Test",
-            driver: driver,
-            messageRepository: StubMessageRepository(initial: []),
-            toolCallRepository: StubToolCallRepository(),
-            checkpointRepository: StubCheckpointRepository(),
-            availableModels: [SelectableModel(model)],
-            referenceInbox: inbox
+    private func makeReferenceViewModel(
+        driver: any ChatSessionDriver,
+        id: String = "reference-conversation",
+        initialReferences: [RecordReference] = []
+    ) -> ChatScreenViewModel {
+        ChatScreenViewModel(
+            conversationId: id, conversationTitle: "Test",
+            driver: driver, messageRepository: StubMessageRepository(),
+            toolCallRepository: StubToolCallRepository(), checkpointRepository: StubCheckpointRepository(),
+            availableModels: [SelectableModel(model)], initialReferences: initialReferences
         )
-        return (viewModel, inbox)
     }
 
-    /// Publish onto `bus` and return once `inbox` has processed the event.
-    private func publishAndWait(
+    /// Drive the shell's one-subscription receipt boundary without a UI drain.
+    private func publishAndReceive(
         _ event: SuperEvent,
         on bus: SuperEventBus,
-        inbox: ChatReferenceInbox
-    ) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            inbox._onNextEvent { continuation.resume() }
-            Task { await bus.publish(event) }
+        iterator: inout AsyncStream<SuperEvent>.Iterator,
+        inbox: OrderedInbox<SuperEvent>
+    ) async throws {
+        await bus.publish(event)
+        inbox.enqueue(try #require(await iterator.next(isolation: #isolation)))
+    }
+
+    @Test("ordered handoffs keep references in the intended composer", arguments: [false, true])
+    func orderedHandoffsKeepComposerOwnership(deliverWhileRebuilding: Bool) async throws {
+        let inbox = OrderedInbox<SuperEvent>()
+        let bus = SuperEventBus()
+        var events = await bus.events().makeAsyncIterator()
+        let outgoingDriver = RecordingDriver()
+        let destinationDriver = RecordingDriver()
+        let outgoing = makeReferenceViewModel(driver: outgoingDriver)
+        var current = outgoing
+        let queue = SerialActionQueue()
+        let entered = SleepGate()
+        let release = SleepGate()
+        var lastAction: Task<Void, Never>?
+        let destination = makeReferenceViewModel(driver: destinationDriver, id: "new-conversation")
+
+        // The production inbox and serial queue supply the requests. This small
+        // host models AppShell's explicit add/rebuild boundary, without SwiftUI.
+        func dispatchPending() {
+            for event in inbox.drain() {
+                guard case .recordAddedToChat(let reference, let startNew) = event else { continue }
+                lastAction = queue.enqueue {
+                    if startNew {
+                        entered.release()
+                        await release.wait()
+                        destination.addReferences([reference])
+                        current = destination
+                    } else {
+                        current.addReferences([reference])
+                    }
+                }
+            }
         }
+        for (id, startNew) in [("16", false), ("17", true)] {
+            try await publishAndReceive(
+                .recordAddedToChat(reference: verseReference(id), startNewConversation: startNew),
+                on: bus, iterator: &events, inbox: inbox
+            )
+        }
+        if deliverWhileRebuilding {
+            dispatchPending()
+            await entered.wait()
+            #expect(current === outgoing)
+            #expect(outgoing.pendingReferences == [verseReference("16")])
+        }
+        try await publishAndReceive(
+            .recordAddedToChat(reference: verseReference("18"), startNewConversation: false),
+            on: bus, iterator: &events, inbox: inbox
+        )
+        dispatchPending()
+        await entered.wait()
+        #expect(outgoing.pendingReferences == [verseReference("16")])
+        #expect(destination.pendingReferences.isEmpty)
+        release.release()
+        await lastAction?.value
+        #expect(current === destination)
+        #expect(outgoing.pendingReferences == [verseReference("16")])
+        #expect(destination.pendingReferences == [verseReference("17"), verseReference("18")])
+        #expect(inbox.drain().isEmpty)
+
+        outgoing.send("Explain the original verse")
+        destination.send("Explain the new verses")
+        await outgoingDriver.waitForSend()
+        await destinationDriver.waitForSend()
+        #expect(await outgoingDriver.sentReferences == [[verseReference("16")]])
+        #expect(await destinationDriver.sentReferences == [[verseReference("17"), verseReference("18")]])
     }
 
-    @Test("adoptPendingReferences drains the inbox into the composer")
-    func adoptPendingReferencesDrainsTheInbox() async {
-        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
-        let bus = SuperEventBus()
-        await inbox.attach(to: bus)
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-
-        viewModel.adoptPendingReferences()
-
-        #expect(viewModel.pendingReferences == [verseReference("16")])
-        #expect(inbox.pending.isEmpty)
+    @Test("New chat initialization owns its references independently", arguments: [false, true])
+    func newChatReferenceIsReservedForDestination(alreadyAttached: Bool) async {
+        let reference = verseReference("16")
+        let outgoing = makeReferenceViewModel(driver: ScriptedDriver(events: []))
+        if alreadyAttached { outgoing.addReferences([reference]) }
+        let driver = RecordingDriver()
+        let destination = makeReferenceViewModel(driver: driver, id: "new-conversation", initialReferences: [reference])
+        #expect(outgoing.pendingReferences == (alreadyAttached ? [reference] : []))
+        #expect(destination.pendingReferences == [reference])
+        destination.send("Explain this verse")
+        await driver.waitForSend()
+        #expect(await driver.sentReferences == [[reference]])
     }
 
-    @Test("adoptPendingReferences dedupes a doubled bus delivery by id")
-    func adoptPendingReferencesDedupesByID() async {
-        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
+    @Test("mixed bus events preserve composer ownership", arguments: [false, true], [false, true])
+    func referencePrecedesLaterConversationEvent(startNew: Bool, referenceFirst: Bool) async throws {
         let bus = SuperEventBus()
-        await inbox.attach(to: bus)
-        // Same reference id delivered twice.
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
+        var events = await bus.events().makeAsyncIterator()
+        let inbox = OrderedInbox<SuperEvent>()
+        let outgoing = makeReferenceViewModel(driver: ScriptedDriver(events: []))
+        let destination = makeReferenceViewModel(driver: ScriptedDriver(events: []), id: "destination")
+        var current = outgoing
+        let queue = SerialActionQueue()
+        let reference = verseReference("16")
+        let add = SuperEvent.recordAddedToChat(reference: reference, startNewConversation: false)
+        let navigation = startNew ? SuperEvent.newConversationRequested : .openConversationRequested(id: "destination")
+        for event in referenceFirst ? [add, navigation] : [navigation, add] {
+            try await publishAndReceive(event, on: bus, iterator: &events, inbox: inbox)
+        }
+        var last: Task<Void, Never>?
+        for event in inbox.drain() {
+            last = queue.enqueue {
+                switch event {
+                case .recordAddedToChat(let reference, _): current.addReferences([reference])
+                case .newConversationRequested, .openConversationRequested: current = destination
+                default: Issue.record("Unexpected host event")
+                }
+            }
+        }
+        await last?.value
+        #expect(outgoing.pendingReferences == (referenceFirst ? [reference] : []))
+        #expect(destination.pendingReferences == (referenceFirst ? [] : [reference]))
+    }
 
-        viewModel.adoptPendingReferences()
+    @Test("buffered reference precedes direct UI navigation during bootstrap")
+    func bufferedReferencePrecedesDirectNavigation() async throws {
+        let bus = SuperEventBus()
+        var events = await bus.events().makeAsyncIterator()
+        let inbox = OrderedInbox<SuperEvent>()
+        let outgoing = makeReferenceViewModel(driver: ScriptedDriver(events: []))
+        let destination = makeReferenceViewModel(driver: ScriptedDriver(events: []), id: "destination")
+        var current: ChatScreenViewModel?
+        let queue = SerialActionQueue()
+        let entered = SleepGate()
+        let release = SleepGate()
+        let bootstrap = queue.enqueue {
+            entered.release()
+            await release.wait()
+            current = outgoing
+        }
+        await entered.wait()
+        let reference = verseReference("16")
+        try await publishAndReceive(
+            .recordAddedToChat(reference: reference, startNewConversation: false),
+            on: bus, iterator: &events, inbox: inbox
+        )
+        // UI ingress appends before draining, so it cannot overtake the received
+        // reference even while startup still owns the serial navigation queue.
+        inbox.enqueue(.newConversationRequested)
+        var last: Task<Void, Never>?
+        for event in inbox.drain() {
+            last = queue.enqueue {
+                switch event {
+                case .recordAddedToChat(let reference, _): current?.addReferences([reference])
+                case .newConversationRequested: current = destination
+                default: Issue.record("Unexpected host event")
+                }
+            }
+        }
+        #expect(current == nil)
+        release.release()
+        await bootstrap.value
+        await last?.value
+        #expect(current === destination)
+        #expect(outgoing.pendingReferences == [reference])
+        #expect(destination.pendingReferences.isEmpty)
+    }
 
-        #expect(viewModel.pendingReferences.count == 1)
+    @Test("addReferences deduplicates within a batch and across deliveries")
+    func addReferencesDeduplicatesByID() {
+        let viewModel = makeReferenceViewModel(driver: ScriptedDriver(events: []), initialReferences: [verseReference("16")])
+        viewModel.addReferences([verseReference("16"), verseReference("17"), verseReference("17")])
+        #expect(viewModel.pendingReferences == [verseReference("16"), verseReference("17")])
     }
 
     @Test("removeReference drops the pill before send")
-    func removeReferenceDropsThePill() async {
-        let (viewModel, inbox) = makeViewModelWithInbox(driver: ScriptedDriver(events: []))
-        let bus = SuperEventBus()
-        await inbox.attach(to: bus)
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        viewModel.adoptPendingReferences()
-
+    func removeReferenceDropsThePill() {
+        let viewModel = makeReferenceViewModel(driver: ScriptedDriver(events: []))
+        viewModel.addReferences([verseReference("16")])
         viewModel.removeReference(id: "16")
-
         #expect(viewModel.pendingReferences.isEmpty)
     }
 
     @Test("send passes attached references to the driver and clears them")
     func sendPassesReferencesToDriverAndClears() async {
         let driver = RecordingDriver()
-        let (viewModel, inbox) = makeViewModelWithInbox(driver: driver)
-        let bus = SuperEventBus()
-        await inbox.attach(to: bus)
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        viewModel.adoptPendingReferences()
-
+        let viewModel = makeReferenceViewModel(driver: driver)
+        viewModel.addReferences([verseReference("16")])
         viewModel.send("Explain this verse")
         await driver.waitForSend()
-
         #expect(await driver.sentReferences == [[verseReference("16")]])
         #expect(await driver.sentText == ["Explain this verse"])
-        // Cleared synchronously by `send(_:)` so the pill doesn't linger.
         #expect(viewModel.pendingReferences.isEmpty)
     }
 
     @Test("send is allowed with empty text when a reference is attached")
     func sendAllowedWithEmptyTextWhenReferenceAttached() async {
         let driver = RecordingDriver()
-        let (viewModel, inbox) = makeViewModelWithInbox(driver: driver)
-        let bus = SuperEventBus()
-        await inbox.attach(to: bus)
-        await publishAndWait(
-            .recordAddedToChat(reference: verseReference("16"), startNewConversation: false),
-            on: bus, inbox: inbox
-        )
-        viewModel.adoptPendingReferences()
-
+        let viewModel = makeReferenceViewModel(driver: driver)
+        viewModel.addReferences([verseReference("16")])
         viewModel.send("")
         await driver.waitForSend()
-
         #expect(await driver.sentText == [""])
         #expect(await driver.sentReferences == [[verseReference("16")]])
     }
@@ -1787,10 +1881,8 @@ struct ChatScreenViewModelTests {
     @Test("send with neither text nor references is a no-op")
     func sendWithNothingIsANoOp() async {
         let driver = RecordingDriver()
-        let (viewModel, _) = makeViewModelWithInbox(driver: driver)
-
+        let viewModel = makeReferenceViewModel(driver: driver)
         viewModel.send("   ")
-
         #expect(await driver.sentText.isEmpty)
         #expect(viewModel.isStreaming == false)
     }

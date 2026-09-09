@@ -418,7 +418,8 @@ public final class BibleScreenViewModel {
     /// them highlighted (the same look as having just tapped them).
     ///
     /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
-    /// and the applet's inbox. Internal preview handoffs use the exact-selection overload.
+    /// and the applet's inbox. Preview requests never call this API; explicit
+    /// Open in Bible completions use the exact-selection overload after dismissal.
     ///
     /// - Parameters:
     ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).
@@ -1126,14 +1127,8 @@ public final class BibleScreenViewModel {
         toast = "Couldn't delete the annotation."
     }
 
-    /// A regenerate failed while an existing card was on screen. Clear the
-    /// lingering `.failed` status so the sheet keeps showing the
-    /// still-present previous annotations (populated wins over the inline
-    /// error layout) and never flips to a stale error+retry state if the
-    /// user later deletes the remaining card. Routed from
-    /// `AnnotationSheetContainer.onRegenerateFailed`, which fires only when
-    /// the failed target still has rows. Raises no toast by design — a
-    /// regenerate that fails over a present card is silent (the card stays).
+    /// Clears failed status without discarding its draft; running requests remain intact.
+    /// The study UI uses request-scoped ``clearAnnotationDraft(for:requestID:)``.
     public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
         annotationDispatchViewModel.clearFailure(for: spec)
     }

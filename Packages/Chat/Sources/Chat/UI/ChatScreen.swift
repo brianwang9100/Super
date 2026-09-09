@@ -114,7 +114,7 @@ public struct ChatScreen: View {
     @Environment(\.pasteboardClient) private var pasteboard
     /// Cross-applet event bus used by `bibleDeepLinkRouting(eventBus:)`
     /// below — Bible-citation taps inside the rendered transcript
-    /// publish `SuperEvent.openRecord` on it for the Bible applet to
+    /// publish `SuperEvent.previewRecord` on it for the shell to
     /// receive. `nil` in snapshot/preview hosts; the router silently
     /// no-ops there.
     @Environment(\.superEventBus) private var superEventBus
@@ -481,9 +481,6 @@ public struct ChatScreen: View {
         // otherwise leave the new view model unloaded and the surface
         // stuck on the empty state.
         .task(id: viewModel.conversationId) {
-            // Drain any verse pills the shell inbox buffered before this
-            // composer mounted, then load the transcript.
-            viewModel.adoptPendingReferences()
             await viewModel.load()
         }
         // When the surface collapses past the editor-interactive threshold
@@ -508,11 +505,6 @@ public struct ChatScreen: View {
         // re-attach/retry flows where the composer isn't focused.
         .onChange(of: viewModel.isStreaming) { _, isStreaming in
             if isStreaming { dismissKeyboard() }
-        }
-        // A verse added from Bible while this screen is already on-screen
-        // grows the inbox; adopt it without waiting for a remount.
-        .onChange(of: viewModel.inboxPendingCount) { _, _ in
-            viewModel.adoptPendingReferences()
         }
     }
 
