@@ -63,6 +63,7 @@ targets:
       # in sync with the SuperBible `sources:` block below — any new
       # `App/Shell/*.swift` must be added to both.
       - path: App/Shell/AppShell.swift
+      - path: App/Shell/RecordPreviewPresentation.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
       - path: App/Shell/AppBootstrapSupport.swift
@@ -205,6 +206,7 @@ targets:
       # be added to both. SuperOS-only placeholders (Recipes/Finance/etc.)
       # live under `App-SuperOS/Placeholders/`, never compiled here.
       - path: App/Shell/AppShell.swift
+      - path: App/Shell/RecordPreviewPresentation.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
       - path: App/Shell/AppBootstrapSupport.swift

@@ -418,7 +418,8 @@ public final class BibleScreenViewModel {
     /// them highlighted (the same look as having just tapped them).
     ///
     /// Public deep links arrive through `SuperEvent.openRecord(reference:)`
-    /// and the applet's inbox. Internal preview handoffs use the exact-selection overload.
+    /// and the applet's inbox. Preview requests never call this API; explicit
+    /// Open in Bible completions use the exact-selection overload after dismissal.
     ///
     /// - Parameters:
     ///   - bookId: Three-letter book code (`"GEN"`, `"1CO"`, `"SNG"`).

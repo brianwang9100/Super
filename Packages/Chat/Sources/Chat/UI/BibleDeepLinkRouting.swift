@@ -3,11 +3,9 @@ import Foundation
 import SwiftUI
 
 /// Routes `super://bible/verse?...` URL taps from the rendered chat
-/// transcript onto the cross-applet event bus. The Bible applet
-/// (subscribed on the same bus) receives a `SuperEvent.openRecord`
-/// payload and navigates the reader to the verses; the shell also
-/// subscribes so it can swap the active applet under the chat overlay
-/// first. External `https://...` links keep their existing system
+/// transcript onto the cross-applet event bus as `SuperEvent.previewRecord`.
+/// The shell presents the applet's temporary preview above Chat, preserving
+/// the underlying reader and Chat state. External `https://...` links keep their existing system
 /// behaviour — they fall through to Safari.
 ///
 /// The pure routing logic is exposed via ``BibleDeepLinkRouter`` so
@@ -35,7 +33,7 @@ public enum BibleDeepLinkRouter {
             // with no app registered to receive it.
             return true
         }
-        Task { await eventBus.publish(.openRecord(reference: link.recordReference)) }
+        Task { await eventBus.publish(.previewRecord(reference: link.recordReference)) }
         return true
     }
 }

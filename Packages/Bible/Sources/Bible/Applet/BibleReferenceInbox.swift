@@ -2,8 +2,9 @@ import Core
 import Observation
 
 /// App-session-lived subscriber that routes inbound Bible verse-range
-/// references (from Chat citation taps and external `super://bible/...`
-/// deep links) onto the Bible reader's view model. The mirror image of
+/// references (from explicit preview completions and external `super://bible/...`
+/// deep links) onto the Bible reader's view model. Preview requests themselves
+/// are ignored so the app-lifetime reader remains unchanged. The mirror image of
 /// `ChatReferenceInbox` in the Chat package — that one accepts
 /// references going INTO Chat; this one accepts references coming BACK
 /// OUT to the Bible reader.

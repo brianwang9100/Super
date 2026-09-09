@@ -114,7 +114,7 @@ public struct ChatScreen: View {
     @Environment(\.pasteboardClient) private var pasteboard
     /// Cross-applet event bus used by `bibleDeepLinkRouting(eventBus:)`
     /// below — Bible-citation taps inside the rendered transcript
-    /// publish `SuperEvent.openRecord` on it for the Bible applet to
+    /// publish `SuperEvent.previewRecord` on it for the shell to
     /// receive. `nil` in snapshot/preview hosts; the router silently
     /// no-ops there.
     @Environment(\.superEventBus) private var superEventBus
