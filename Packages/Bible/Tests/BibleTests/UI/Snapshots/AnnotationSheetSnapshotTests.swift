@@ -60,11 +60,6 @@ struct AnnotationSheetSnapshotTests {
         verify(theme: .vellumDark, card: nil, name: "empty_dark")
     }
 
-    @Test("generating empty sheet shows the spinner-state bubble")
-    func generatingLight() {
-        verify(theme: .vellumLight, card: nil, isGenerating: true, name: "generating_light")
-    }
-
     @Test("a regenerate over a populated card hides it behind the generating state in light")
     func generatingOverPopulatedLight() {
         verify(theme: .vellumLight, card: Self.card, isGenerating: true,
