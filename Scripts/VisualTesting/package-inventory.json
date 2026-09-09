@@ -292,6 +292,26 @@
   {
     "package": "Bible",
     "suite": "AnnotationSheetSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/interruptedStreamDark.interrupted_stream_dark.png",
+    "image": "Bible_AnnotationSheetSnapshotTests_interruptedStreamDark.interrupted_stream_dark.png",
+    "pixels": [
+      1179,
+      1800
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "AnnotationSheetSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/partialStreamLight.partial_stream_light.png",
+    "image": "Bible_AnnotationSheetSnapshotTests_partialStreamLight.partial_stream_light.png",
+    "pixels": [
+      1179,
+      1800
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "AnnotationSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/populatedDark.populated_dark.png",
     "image": "Bible_AnnotationSheetSnapshotTests_populatedDark.populated_dark.png",
     "pixels": [

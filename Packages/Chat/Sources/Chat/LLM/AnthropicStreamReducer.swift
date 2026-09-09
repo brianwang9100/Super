@@ -21,6 +21,13 @@ import Foundation
 /// otherwise leave gaps. Terminates on `message_stop`; `finish()` is the safety
 /// net for a stream that closes without it.
 struct AnthropicStreamReducer {
+    let requiresCompleteResponse: Bool
+    private var hasNativeCompletion = false
+
+    init(requiresCompleteResponse: Bool = false) {
+        self.requiresCompleteResponse = requiresCompleteResponse
+    }
+
     private var emittedMessageStart = false
     private var capturedID: String?
     private var capturedModel: String?
@@ -40,6 +47,8 @@ struct AnthropicStreamReducer {
     /// keeps the last `.error`, so trailing decode noise would mask the real
     /// cause.
     private var hadError = false
+    private var stopReason: String?
+    private var hadUnsuccessfulStop = false
 
     /// Monotonic *normalized* content-block index. Distinct from Anthropic's
     /// wire index (see type doc).
@@ -123,12 +132,19 @@ struct AnthropicStreamReducer {
             closeBlock(index: index, into: &events)
 
         case "message_delta":
+            if let reason = event.delta?.stopReason {
+                stopReason = reason
+                if !["end_turn", "stop_sequence", "tool_use"].contains(reason) {
+                    hadUnsuccessfulStop = true
+                }
+            }
             if let output = event.usage?.outputTokens { outputTokens = output }
             // Anthropic carries cache counts on `message_start`, but read them
             // here too in case a future build also reports them on the delta.
             captureCacheTokens(from: event.usage)
 
         case "message_stop":
+            hasNativeCompletion = stopReason.map { ["end_turn", "stop_sequence", "tool_use"].contains($0) } == true && !hadUnsuccessfulStop
             events.append(contentsOf: closeOut())
 
         case "error":
@@ -438,6 +454,10 @@ struct AnthropicStreamReducer {
         var events: [LLMStreamEvent] = []
         ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenBlocks())
+        if requiresCompleteResponse && !hasNativeCompletion && !hadError {
+            hadError = true
+            events.append(.error(.providerError(code: "incomplete_response", message: "Anthropic stream ended without successful message_stop (stop reason: \(stopReason ?? "missing")).")))
+        }
         if let pending = pendingThinkingSignature, !sawRedactedThinking, !hadError {
             events.append(.thinkingSignature(index: pending.index, signature: pending.signature))
         }

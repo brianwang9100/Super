@@ -93,15 +93,13 @@ public final class BibleScreenViewModel {
     /// drag-down dismiss.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
-    /// Per-target dispatch state. `.running` for a target whose
-    /// headless `bible.annotate` turn is in flight; `.failed` for one
-    /// whose turn returned `BibleAnnotateResult.failure`. Successful
-    /// dispatches drop their entry — the new rows surface through the
-    /// reactive `@Query` and the sheet flips to its populated state.
-    /// `AnnotationSheetContainer` reads the entry for the target it's
-    /// presenting to pick between generating, failed-with-retry, and
-    /// the regular empty / populated layouts.
+    /// Per-target generation status, independent from transient text and stored rows.
+    /// Success removes the running status while retaining a completed draft until
+    /// the sheet acknowledges a query started after the persistence write.
     public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
+
+    /// Transient text stays independent of rows observed by the sheet.
+    private var annotationDraftsByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDraft] = [:]
 
     /// The note range whose list sheet is presented, or `nil` when no sheet
     /// is up. Drives the `.sheet(item:)` in `BibleScreen`. Setting it to a
@@ -173,6 +171,9 @@ public final class BibleScreenViewModel {
     /// completion arrives, racing assertions ahead of the state
     /// update. Never observed in production.
     private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
+
+    /// Processed-progress callbacks for deterministic event-bus tests.
+    private var dispatchProgressCallbacks: [@MainActor () -> Void] = []
 
     /// One-shot callbacks fired after the dispatch-subscription task
     /// processes a `sidebarOpened` envelope (and the resulting sheet
@@ -998,7 +999,12 @@ public final class BibleScreenViewModel {
             toast = "Annotation generation ships in a later update."
             return
         }
+        if case .running = dispatchStatusByTarget[spec] {
+            presentedAnnotationTarget = spec
+            return
+        }
         let reference = makeAnnotateRequestReference(for: spec)
+        annotationDraftsByTarget[spec] = BibleAnnotationDraft(requestID: reference.id)
         dispatchStatusByTarget[spec] = .running(requestId: reference.id)
         presentedAnnotationTarget = spec
         Task { await bus.publish(.bibleAnnotateRequested(reference: reference)) }
@@ -1023,6 +1029,8 @@ public final class BibleScreenViewModel {
 
     private func handleBusEvent(_ event: SuperEvent) {
         switch event {
+        case .bibleAnnotateProgress(let requestId, let text):
+            handleAnnotateProgress(requestId: requestId, text: text)
         case .bibleAnnotateCompleted(let requestId, let result):
             handleAnnotateCompleted(requestId: requestId, result: result)
         case .sidebarOpened:
@@ -1039,6 +1047,19 @@ public final class BibleScreenViewModel {
         }
     }
 
+    private func handleAnnotateProgress(requestId: String, text: String) {
+        let matching = dispatchStatusByTarget.first { _, status in
+            if case .running(let id) = status { return id == requestId }
+            return false
+        }
+        if let spec = matching?.key, annotationDraftsByTarget[spec]?.requestID == requestId {
+            annotationDraftsByTarget[spec]?.text = text
+        }
+        let callbacks = dispatchProgressCallbacks
+        dispatchProgressCallbacks.removeAll()
+        for callback in callbacks { callback() }
+    }
+
     private func handleAnnotateCompleted(requestId: String, result: BibleAnnotateResult) {
         // Find the target whose running status carries this id. The
         // map is small (one entry per in-flight target) so a linear
@@ -1050,6 +1071,7 @@ public final class BibleScreenViewModel {
         if let spec = matching?.key {
             switch result {
             case .success:
+                annotationDraftsByTarget[spec]?.isComplete = true
                 dispatchStatusByTarget.removeValue(forKey: spec)
             case .failure(let message):
                 dispatchStatusByTarget[spec] = .failed(message: message)
@@ -1103,6 +1125,27 @@ public final class BibleScreenViewModel {
         dispatchCompletionCallbacks.append(callback)
     }
 
+    /// Registers a callback after the next progress envelope has been processed.
+    func _onNextDispatchProgress(_ callback: @escaping @MainActor () -> Void) {
+        dispatchProgressCallbacks.append(callback)
+    }
+
+    /// Current accumulated text for the target, including a completed query bridge.
+    public func annotationDraft(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDraft? {
+        annotationDraftsByTarget[spec]
+    }
+
+    /// Clears only a matching settled request after query acknowledgement, deletion,
+    /// or an explicit return to the saved response. Late callbacks cannot erase retries.
+    public func clearAnnotationDraft(for spec: BibleAnnotationTargetSpec, requestID: String) {
+        guard annotationDraftsByTarget[spec]?.requestID == requestID else { return }
+        if case .running = dispatchStatusByTarget[spec] { return }
+        annotationDraftsByTarget.removeValue(forKey: spec)
+        if case .failed = dispatchStatusByTarget[spec] {
+            dispatchStatusByTarget.removeValue(forKey: spec)
+        }
+    }
+
     /// Dispatch status for `spec`, or `nil` when no headless dispatch
     /// is running or failed for it. `AnnotationSheetContainer` reads
     /// this to drive its generating / failed / populated layouts.
@@ -1127,6 +1170,7 @@ public final class BibleScreenViewModel {
     /// the failed target still has rows. Raises no toast by design — a
     /// regenerate that fails over a present card is silent (the card stays).
     public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
+        guard case .failed = dispatchStatusByTarget[spec] else { return }
         dispatchStatusByTarget.removeValue(forKey: spec)
     }
 

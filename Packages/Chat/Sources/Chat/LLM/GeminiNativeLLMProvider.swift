@@ -113,9 +113,20 @@ public struct GeminiNativeLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    /// Streams with optional local validation of native response completion.
+    public func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = GeminiStreamReducer()
+                var reducer = GeminiStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
                         throw LLMError.unsupportedModel(model.id)
@@ -175,13 +186,19 @@ public struct GeminiNativeLLMProvider: LLMProvider {
     /// not abort the turn. Genuine failures arrive either as a non-2xx HTTP
     /// status (the catch path) or a streamed `error` envelope the reducer maps
     /// to `.error`.
+    /// Strict completion mode reports malformed frames instead of dropping them.
     private func consume(
         _ data: String,
         into reducer: inout GeminiStreamReducer,
         with decoder: JSONDecoder
     ) -> [LLMStreamEvent] {
         guard let parsed = try? decoder.decode(GeminiStreamResponse.self, from: Data(data.utf8)) else {
-            return []
+            guard reducer.requiresCompleteResponse, !reducer.hasErrored else { return [] }
+            var events = reducer.flushPendingStart()
+            events.append(contentsOf: reducer.closeOpenBlocks())
+            reducer.markErrored()
+            events.append(.error(.decodingFailed("Malformed streaming response frame.")))
+            return events
         }
         return reducer.consume(parsed)
     }

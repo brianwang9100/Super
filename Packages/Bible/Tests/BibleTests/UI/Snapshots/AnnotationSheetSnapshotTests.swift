@@ -127,11 +127,27 @@ struct AnnotationSheetSnapshotTests {
         )
     }
 
+    @Test("partial markdown remains readable while the response streams")
+    func partialStreamLight() {
+        verify(theme: .vellumLight, card: nil, isGenerating: true,
+               responseText: "### Plain meaning\nNothing falls outside what God can weave toward the believer’s good. **Good means",
+               name: "partial_stream_light")
+    }
+
+    @Test("an interrupted regeneration retains text and offers the saved annotation")
+    func interruptedStreamDark() {
+        verify(theme: .vellumDark, card: Self.card,
+               errorMessage: "The connection was interrupted. Your saved annotation is still available.",
+               responseText: "### Plain meaning\nPaul’s assurance speaks into suffering, with **hope rooted in",
+               name: "interrupted_stream_dark")
+    }
+
     private func verify(
         theme themeID: SuperTheme.Identifier,
         card: AnnotationSheet.Card?,
         isGenerating: Bool = false,
         errorMessage: String? = nil,
+        responseText: String? = nil,
         dynamicType: DynamicTypeSize = .large,
         height: CGFloat = 600,
         name: String,
@@ -151,7 +167,12 @@ struct AnnotationSheetSnapshotTests {
                 onRetry: {},
                 isGenerating: isGenerating,
                 errorMessage: errorMessage,
-                bottomInset: 0
+                bottomInset: 0,
+                verseText: Self.card.verseText,
+                responseText: responseText,
+                isShowingDraft: responseText != nil,
+                treatAsPartial: responseText != nil,
+                onReturnToSaved: responseText != nil && card != nil && !isGenerating ? {} : nil
             )
         }
         .frame(width: 393, height: height)

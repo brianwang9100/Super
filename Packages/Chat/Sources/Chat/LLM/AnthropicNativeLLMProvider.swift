@@ -126,9 +126,20 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    /// Streams with optional local validation of native response completion.
+    public func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = AnthropicStreamReducer()
+                var reducer = AnthropicStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
                 // Anthropic restricts tool names to `[A-Za-z0-9_-]` (same as
                 // OpenAI); Super's IDs are dot-namespaced. Encode the sanitized
                 // wire name and restore the registry name on decoded events.
@@ -193,13 +204,19 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
     /// vocabulary of event types (incl. `ping`), and an unmodeled-but-harmless
     /// shape must not abort the turn. Genuine failures arrive as a typed `error`
     /// event, which the reducer maps to `.error`.
+    /// Strict completion mode reports malformed frames instead of dropping them.
     private func consume(
         _ data: String,
         into reducer: inout AnthropicStreamReducer,
         with decoder: JSONDecoder
     ) -> [LLMStreamEvent] {
         guard let parsed = try? decoder.decode(AnthropicStreamEvent.self, from: Data(data.utf8)) else {
-            return []
+            guard reducer.requiresCompleteResponse, !reducer.hasErrored else { return [] }
+            var events = reducer.flushPendingStart()
+            events.append(contentsOf: reducer.closeOpenBlocks())
+            reducer.markErrored()
+            events.append(.error(.decodingFailed("Malformed streaming response frame.")))
+            return events
         }
         return reducer.consume(parsed)
     }

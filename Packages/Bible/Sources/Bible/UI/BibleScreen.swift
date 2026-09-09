@@ -240,10 +240,11 @@ public struct BibleScreen: View {
                 onDeleteFailed: { _ in
                     viewModel.presentDeleteAnnotationFailedToast()
                 },
-                onRegenerateFailed: {
-                    viewModel.clearFailedDispatchStatus(for: spec)
+                onClearDraft: { requestID in
+                    viewModel.clearAnnotationDraft(for: spec, requestID: requestID)
                 },
-                dispatchStatus: viewModel.dispatchStatus(for: spec)
+                dispatchStatus: viewModel.dispatchStatus(for: spec),
+                draft: viewModel.annotationDraft(for: spec)
             )
             // Detents / drag indicator / themed background now ride with the
             // sheet view via `.sheetPresentation(.expandable)` (matching the

@@ -7,13 +7,9 @@ import Foundation
 /// execution, repository write, reactive `@Query` render — is exercisable
 /// end-to-end with no API key, network, or on-device model.
 ///
-/// Works in *both* annotation entry points unchanged, because both funnel
-/// through `ChatSession` → active `provider.stream(...)` → the tool loop:
-/// in-chat ("annotate Romans 8:28-30") and the headless verse-tap "Add
-/// annotation" flow (`BibleAnnotateDispatcher`, which sends a structured
-/// `Reference id: …` prompt this provider parses). Selected via a seeded
-/// `kind == .debug` row whose `modelId` is `Self.modelID`; the file is gated
-/// on `#if DEBUG` and compiles out of Release entirely.
+/// Foreground annotations (no tools) stream a canned Markdown response;
+/// in-chat and bulk annotation requests keep the normal tool-loop behavior.
+/// Selected through the DEBUG-only model picker entry.
 ///
 /// References the tool by its name string (no `Bible` import) — the same
 /// approach `BibleAnnotateDispatcher` takes.
@@ -25,7 +21,9 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
     /// discriminator `makeLLMProvider` switches on within the `.debug` arm.
     public static let modelID = "debug-annotate"
     public static let modelDisplayName = "Debug annotate"
-    public static let maxContextTokens = 8_192
+    // Keep annotation tools available in the in-chat preview; compact models
+    // intentionally omit mutation tools through CompactToolPolicy.
+    public static let maxContextTokens = 32_768
 
     /// Bible annotation tool id, held as a literal so Chat needn't import
     /// Bible — matches `BibleAnnotateDispatcher.bibleAnnotateToolID`.
@@ -38,7 +36,7 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
             supportsThinking: false,
             supportsTools: true,
             maxContextTokens: Self.maxContextTokens
-        )]
+        ),]
     }
 
     public init(id: String) {
@@ -74,6 +72,22 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
                     // Brief pre-stream pause so the "Waiting" spark is visible.
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     let target = DebugBibleTarget.parse(from: messages)
+                    if tools.isEmpty {
+                        continuation.yield(.contentBlockStart(index: 0, type: .text))
+                        let text = Self.summary(for: target)
+                        var start = text.startIndex
+                        while start < text.endIndex {
+                            try Task.checkCancellation()
+                            let end = text.index(start, offsetBy: 12, limitedBy: text.endIndex) ?? text.endIndex
+                            continuation.yield(.textDelta(index: 0, text: String(text[start..<end])))
+                            start = end
+                            try await Task.sleep(for: .milliseconds(65))
+                        }
+                        continuation.yield(.contentBlockStop(index: 0))
+                        continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+                        continuation.finish()
+                        return
+                    }
                     continuation.yield(.contentBlockStart(index: 0, type: .toolUse))
                     continuation.yield(.toolUse(
                         index: 0,

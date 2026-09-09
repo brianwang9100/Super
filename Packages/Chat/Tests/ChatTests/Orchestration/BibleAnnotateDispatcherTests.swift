@@ -171,6 +171,33 @@ struct BibleAnnotateDispatcherTests {
         return .failure(message: "stream closed without completion")
     }
 
+    @Test("foreground text is saved without creating a chat conversation")
+    func foregroundTextIsSaved() async throws {
+        let setup = try await makeSetup(scripts: [[
+            .textDelta(index: 0, text: "First "),
+            .textDelta(index: 0, text: "paragraph."),
+            .messageComplete(usage: TokenUsage(inputTokens: 4, outputTokens: 2)),
+        ],])
+        let request = reference()
+        let stream = await setup.bus.events()
+        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
+        var progress: [String] = []
+        for await event in stream {
+            if case .bibleAnnotateProgress(let id, let text) = event, id == request.id {
+                progress.append(text)
+            }
+            if case .bibleAnnotateCompleted(let id, let result) = event, id == request.id {
+                #expect(result == .success(annotationCount: 2))
+                break
+            }
+        }
+        #expect(progress == ["First ", "First paragraph."])
+        let inputs = await setup.toolExecutor.capturedInputs()
+        #expect(inputs.count == 1)
+        #expect(inputs.first?["summary"] == .string("First paragraph."))
+        #expect(try await setup.conversationRepo.fetch(id: "id-1") == nil)
+    }
+
     @Test("a scripted tool call succeeds and the transient conversation is hard-deleted")
     func happyPathSucceedsAndCleansUp() async throws {
         // Script: turn 1 — the model issues a tool call to bible.annotate;
@@ -192,9 +219,7 @@ struct BibleAnnotateDispatcherTests {
         // Subscribe to the bus *before* publishing the request so the
         // completion the dispatcher fires after its turn is guaranteed
         // to land in the iterator below.
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         #expect(result == .success(annotationCount: 2))
 
@@ -237,9 +262,7 @@ struct BibleAnnotateDispatcherTests {
         ))
 
         let request = reference(id: "req-zero")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         #expect(result == .success(annotationCount: 0))
     }
@@ -267,9 +290,7 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference(id: "req-trailing-error")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         #expect(result == .success(annotationCount: 2))
         // The tool ran (rows were written), which is what makes the
@@ -288,9 +309,7 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference(id: "req-2")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         guard case .failure(let message) = result else {
             Issue.record("expected .failure, got \(result)")
@@ -314,9 +333,7 @@ struct BibleAnnotateDispatcherTests {
         ])
 
         let request = reference(id: "req-3")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         guard case .failure = result else {
             Issue.record("expected .failure, got \(result)")
@@ -338,9 +355,7 @@ struct BibleAnnotateDispatcherTests {
         )
 
         let request = reference(id: "req-4")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         guard case .failure(let message) = result else {
             Issue.record("expected .failure, got \(result)")
@@ -499,9 +514,7 @@ struct BibleAnnotateDispatcherTests {
         )
 
         let request = reference(id: "req-desync")
-        let stream = await setup.bus.events()
-        await setup.bus.publish(.bibleAnnotateRequested(reference: request))
-        let result = await drainUntilCompletion(requestId: request.id, stream: stream)
+        let result = await setup.dispatcher.generate(reference: request).asResult
 
         #expect(result == .success(annotationCount: 2))
         #expect(await setup.toolExecutor.executionCount() == 1)

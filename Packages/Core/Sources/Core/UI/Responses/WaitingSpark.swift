@@ -12,7 +12,7 @@ struct WaitingSpark: View {
     @State private var spinning = false
 
     var body: some View {
-        SparkIcon(size: 22, color: theme.accent)
+        ResponseSparkIcon(size: 22, color: theme.accent)
             .rotationEffect(.degrees(spinning ? 360 : 0))
             .accessibilityLabel("Thinking")
             .padding(.vertical, 4)

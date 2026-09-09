@@ -17,6 +17,13 @@ import Foundation
 /// inside the returned array so the caller can persist whatever did make
 /// it through. No I/O (Input/Output), no concurrency, easy to fixture-test.
 struct OpenAIStreamReducer {
+    let requiresCompleteResponse: Bool
+    private var hasNativeCompletion = false
+
+    init(requiresCompleteResponse: Bool = false) {
+        self.requiresCompleteResponse = requiresCompleteResponse
+    }
+
     /// True after we have emitted `.messageStart`. Prevents duplicate
     /// emission across chunks (OpenAI repeats `id` and `model` on every
     /// chunk; we emit on first-seen).
@@ -50,6 +57,7 @@ struct OpenAIStreamReducer {
     /// True after we have emitted `.messageComplete`. Guards against
     /// double-emission if `finish()` is called more than once.
     private var emittedComplete = false
+    private var hadError = false
 
     /// Process one decoded SSE (Server-Sent Events) chunk and return the
     /// normalized events it produced. Order within the returned array
@@ -77,7 +85,16 @@ struct OpenAIStreamReducer {
             return events
         }
 
+        if requiresCompleteResponse && (hadError || emittedComplete) { return events }
+
         if let delta = choice.delta {
+            if requiresCompleteResponse, let refusal = delta.refusal, !refusal.isEmpty {
+                ensureMessageStart(into: &events)
+                events.append(contentsOf: closeOpenContentBlocks())
+                hadError = true
+                events.append(.error(.providerError(code: "refusal", message: "OpenAI declined to complete the response.")))
+                return events
+            }
             if let thinkingText = delta.reasoningContent ?? delta.reasoning,
                !thinkingText.isEmpty {
                 ensureMessageStart(into: &events)
@@ -105,7 +122,18 @@ struct OpenAIStreamReducer {
             }
         }
 
-        if choice.finishReason != nil {
+        if let reason = choice.finishReason {
+            if requiresCompleteResponse {
+                let completeTools = reason == "tool_calls" && !toolCallBuilders.isEmpty
+                    && toolCallBuilders.values.allSatisfy { $0.id?.isEmpty == false && $0.name?.isEmpty == false }
+                hasNativeCompletion = reason == "stop" || completeTools
+                if !hasNativeCompletion {
+                    ensureMessageStart(into: &events)
+                    events.append(contentsOf: closeOpenContentBlocks())
+                    hadError = true
+                    events.append(.error(.providerError(code: "incomplete_response", message: "OpenAI response ended with \(reason).")))
+                }
+            }
             // The accumulated tool-call builders may have been populated by
             // the same chunk's `delta.tool_calls`; we always merge first,
             // then close on `finishReason`.
@@ -128,10 +156,22 @@ struct OpenAIStreamReducer {
         ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenContentBlocks())
         events.append(contentsOf: flushToolCalls())
+        if requiresCompleteResponse && !hasNativeCompletion && !hadError {
+            hadError = true
+            events.append(.error(.providerError(code: "incomplete_response", message: "OpenAI stream ended without successful completion.")))
+        }
         let usage = capturedUsage ?? TokenUsage(inputTokens: 0, outputTokens: 0)
         events.append(.messageComplete(usage: usage))
         emittedComplete = true
         return events
+    }
+
+    /// Whether a normalized failure has already surfaced.
+    var hasErrored: Bool { hadError }
+
+    /// Preserve an adapter's existing error when its final flush runs.
+    mutating func markErrored() {
+        hadError = true
     }
 
     /// Emits `.messageStart` once, before any content or terminal event,
@@ -195,6 +235,10 @@ struct OpenAIStreamReducer {
     /// turn as actually arrived.
     private mutating func flushToolCalls() -> [LLMStreamEvent] {
         guard !toolCallBuilders.isEmpty else { return [] }
+        if requiresCompleteResponse && hadError {
+            toolCallBuilders.removeAll()
+            return []
+        }
         var events: [LLMStreamEvent] = []
         let ordered = toolCallBuilders.sorted { $0.key < $1.key }
         for (_, builder) in ordered {
@@ -207,8 +251,10 @@ struct OpenAIStreamReducer {
                 events.append(.toolUse(index: blockIndex, id: id, name: name, input: input, signature: builder.signature))
                 events.append(.contentBlockStop(index: blockIndex))
             } catch let error as LLMError {
+                hadError = true
                 events.append(.error(error))
             } catch {
+                hadError = true
                 events.append(.error(.decodingFailed(error.localizedDescription)))
             }
         }

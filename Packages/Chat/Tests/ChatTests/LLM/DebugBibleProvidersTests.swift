@@ -14,6 +14,38 @@ import Testing
 @Suite("Debug Bible providers")
 struct DebugBibleProvidersTests {
 
+    private static let annotationTool = LLMTool(
+        id: "bible.annotate", name: "bible.annotate", description: "stub", category: .mutation,
+        parameters: [], appletId: "bible"
+    )
+
+    @Test func annotateProviderStreamsMarkdownWithoutTools() async throws {
+        let provider = DebugAnnotateLLMProvider(id: "streaming-preview")
+        let model = try #require(provider.supportedModels.first)
+        var text = ""
+        var deltaCount = 0
+        var completed = false
+        for try await event in provider.stream(
+            messages: [Self.dispatcherMessage(referenceID: "verse:ROM:8:28:30", kind: "verseRange")],
+            model: model, tools: [], temperature: 0,
+            options: LLMRequestOptions(requiresCompleteResponse: true)
+        ) {
+            switch event {
+            case .textDelta(_, let delta): text += delta; deltaCount += 1
+            case .toolUse: Issue.record("foreground preview must not emit tools")
+            case .error(let error): Issue.record("unexpected error: \(error)")
+            case .messageComplete: completed = true
+            default: break
+            }
+        }
+        #expect(completed)
+        #expect(deltaCount > 1)
+        let input = try #require(Self.object(DebugAnnotateLLMProvider.annotateInput(for: DebugBibleTarget(
+            target: "verse", bookId: "ROM", chapterNumber: 8, verseStart: 28, verseEnd: 30
+        ))))
+        #expect(input["summary"] == .string(text))
+    }
+
     // MARK: - DebugBibleTarget.parse
 
     @Test func headlessReferenceIDResolvesVerseTarget() {
@@ -611,7 +643,7 @@ struct DebugBibleProvidersTests {
         _ provider: some LLMProvider, messages: [LLMMessage], model: LLMModel
     ) async throws -> [LLMStreamEvent] {
         var events: [LLMStreamEvent] = []
-        for try await event in provider.stream(messages: messages, model: model, tools: [], temperature: 0) {
+        for try await event in provider.stream(messages: messages, model: model, tools: [Self.annotationTool], temperature: 0) {
             events.append(event)
         }
         return events
