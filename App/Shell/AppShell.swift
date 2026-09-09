@@ -352,7 +352,7 @@ struct AppShell: View {
                 .environment(\.superEventBus, dependencies.eventBus)
                 .hapticsEngine(dependencies.hapticsEngine)
                 .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                .presentationDragIndicator(.hidden)
                 .presentationBackground(theme.background)
                 #if canImport(UIKit)
                 .background {

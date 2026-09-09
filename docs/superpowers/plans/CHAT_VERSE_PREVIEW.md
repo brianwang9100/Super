@@ -288,3 +288,11 @@ Floating-pill validation: Bible passed 884 tests in 89 suites; all three existin
 Post-rebase validation: Core 326/41, Bible 884/89 and Chat 1106/83 pass. All 623 restored main PNGs, original inventory rows, snapshot scripts, workflows and renderer pins remain byte-identical to main. The three preview-layer images were explicitly recorded, inspected and compared successfully. The integration layer changes those same three images to show the verse-aware title and floating bottom selection; default comparison rejected exactly those intentional differences before recording. No extra capture was added. Independent rebase review found no source regression.
 
 The final three floating-pill comparisons pass with recording disabled. Both Super and SuperBible build after the rebase. The separate reviewer approved the final three PNGs in light, dark and XXL/120% with no actionable visual findings.
+
+### Design follow-up — hide the chapter modal handle
+
+Hide the native drag indicator on both the shell's record-preview presentation and the Bible chapter sheet, which currently both request a visible handle. Preserve native dismissal, the SheetNavBar controls and selection behavior. The nested verse-action sheet keeps its existing presentation.
+
+Validation: build both app schemes; run the Bible package suite and the existing three modal-content comparisons without recording. Verify the real native modal has no outer handle, still opens/closes actions, and still supports swipe dismissal. This shell-owned chrome is covered by native QA under the documented app-target exception; no new snapshots or layout tests are needed. Update the current integration PR and request review of its new head.
+
+Validation passed: both app builds, all 884 Bible tests, and all three existing modal-content comparisons with recording disabled. No baseline or capture-count change. Native SuperBible at Lapis Dark/120% shows no outer handle, retains the verse title/floating pill, opens and closes child actions, and dismisses by swiping back to the same Chat. Independent plan and code review approved the two-line correction. Scoped lint introduced no diagnostics; the three pre-existing AppShell warnings were reproduced identically from the prior revision. `git diff --check` passes.

@@ -70,7 +70,7 @@ struct BibleChapterPreviewSheet: View {
             onAddToChat: { viewModel.addToChat(reference: $0, startNewConversation: $1) }
         ))
         .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationBackground(theme.background)
     }
 }
