@@ -51,6 +51,7 @@ let package = Package(
                 .product(name: "Splash", package: "splash"),
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
             ],
+            exclude: ["UI/Snapshots/__Snapshots__"],
             resources: [
                 .process("Resources"),
             ],

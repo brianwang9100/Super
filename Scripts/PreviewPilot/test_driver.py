@@ -19,12 +19,12 @@ class CaptureDriverTests(unittest.TestCase):
             output.mkdir()
             sentinel = output / 'keep.txt'
             sentinel.write_text('keep')
-            with patch.object(run.sys, 'argv', ['run.py', '--argos', '--output', str(output)]):
+            with patch.object(run.sys, 'argv', ['run.py', '--output', str(output)]):
                 with self.assertRaisesRegex(SystemExit, 'already exists'):
                     run.main()
             self.assertEqual(sentinel.read_text(), 'keep')
 
-    def capture(self, inspect=None, decoder_fails=False):
+    def capture(self, inspect=None, decoder_fails=False, stage=False, comparison_fails=False):
         runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'
         device = {'udid': 'owned', 'isAvailable': True,
                   'deviceTypeIdentifier': 'com.apple.CoreSimulator.SimDeviceType.iPhone-17'}
@@ -38,6 +38,10 @@ class CaptureDriverTests(unittest.TestCase):
                 self.assertTrue(kwargs.get('check'), 'Decoder failure must stop staging')
                 raise subprocess.CalledProcessError(1, command)
             if command[0] == 'xcodebuild':
+                export = kwargs.get('env', {}).get('TEST_RUNNER_SNAPSHOTS_EXPORT_DIR')
+                if export:
+                    Path(export).mkdir()
+                    (Path(export) / 'capture.png').write_bytes(b'validated capture')
                 captures.append(command)
                 if inspect:
                     inspect(command)
@@ -49,15 +53,42 @@ class CaptureDriverTests(unittest.TestCase):
              patch.object(run, 'prepare', return_value=(Path(directory) / 'renderer', 'digest')), \
              patch.object(run.sys, 'argv', ['run.py']), \
              patch.dict(os.environ, {}, clear=True), \
-             patch.object(run.subprocess, 'run', side_effect=execute):
+             patch.object(run.subprocess, 'run', side_effect=execute), \
+             patch.object(run, 'verify_exports'), \
+             patch.object(run, 'compare', return_value={'images': []}) as compare:
             if decoder_fails:
-                with patch.object(run.sys, 'argv', ['run.py', '--argos']):
+                with patch.object(run.sys, 'argv', ['run.py', '--output', str(Path(directory) / 'screenshots')]):
                     with self.assertRaises(subprocess.CalledProcessError):
                         run.main()
                 self.assertFalse((Path(directory) / 'screenshots').exists())
+                compare.assert_not_called()
             else:
-                run.main()
+                if comparison_fails:
+                    compare.side_effect = ValueError('snapshot mismatch')
+                argv = ['run.py'] + (['--output', str(Path(directory) / 'screenshots')] if stage else [])
+                with patch.object(run.sys, 'argv', argv):
+                    if comparison_fails:
+                        with self.assertRaisesRegex(ValueError, 'snapshot mismatch'):
+                            run.main()
+                    else:
+                        run.main()
+                compare.assert_called_once()
+                if stage:
+                    self.assertEqual((Path(directory) / 'screenshots/capture.png').read_bytes(), b'validated capture')
+                self.assertTrue(compare.call_args.args[1].parent.is_dir())
         return captures
+
+    def test_ci_recording_rejected_before_any_capture_or_mutation(self):
+        for key in ('CI', 'GITHUB_ACTIONS'):
+            with patch.dict(os.environ, {key: 'true'}, clear=True), \
+                 patch.object(run.sys, 'argv', ['run.py', '--record']), \
+                 patch.object(run, 'output') as output:
+                with self.assertRaisesRegex(ValueError, 'forbidden'):
+                    run.main()
+                output.assert_not_called()
+
+    def test_output_also_compares_and_preserves_staging_on_mismatch(self):
+        self.capture(stage=True, comparison_fails=True)
 
     def test_failed_decoder_prevents_staging(self):
         self.capture(decoder_fails=True)

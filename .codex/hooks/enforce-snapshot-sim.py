@@ -99,7 +99,7 @@ def mismatch_reason(found_device, found_os, dest):
         + PIN_DEVICE + " / iOS " + PIN_OS + ". This -destination resolves to "
         + (found_device or "an unknown device") + " / iOS "
         + (found_os or "unknown") + " (" + dest + "). Capturing on "
-        "the wrong device or runtime drifts the Argos comparisons. Use "
+        "the wrong device or runtime drifts the repository snapshot comparisons. Use "
         '-destination "platform=iOS Simulator,name=' + PIN_DEVICE + ",OS="
         + PIN_OS + '". See ' + DOC + "."
     )
@@ -134,7 +134,7 @@ if builds is not None:
             + " installed. simctl conflates same-minor runtimes under one "
             "identifier (iOS-" + PIN_OS.replace(".", "-") + "), so a capture "
             "or verification on OS=" + PIN_OS + " can silently land on the wrong "
-            "build and drift the Argos comparisons. Remove the stale runtime(s) "
+            "build and drift the repository snapshot comparisons. Remove the stale runtime(s) "
             "so only " + PIN_BUILD + " remains: find the UUID with "
             "'xcrun simctl runtime list', then 'xcrun simctl runtime delete <uuid>'. "
             "See " + DOC + "."

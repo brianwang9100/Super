@@ -22,12 +22,14 @@ public enum VisualSnapshotExporter {
         guard module.hasSuffix("Tests") else { throw VisualCaptureError.invalidIdentity }
         let package = String(module.dropLast(5))
         let suite = URL(fileURLWithPath: file).deletingPathExtension().lastPathComponent
-        let components = [package, suite, testName, name].map {
-            $0.replacingOccurrences(of: "\\W+", with: "-", options: .regularExpression)
-                .replacingOccurrences(of: "^-|-$", with: "", options: .regularExpression)
-        }
+        let components = [package, suite, testName, name].map(sanitized)
         guard components.allSatisfy({ !$0.isEmpty }) else { throw VisualCaptureError.invalidIdentity }
         return "\(components[0])_\(components[1])_\(components[2]).\(components[3]).png"
+    }
+
+    static func sanitized(_ component: String) -> String {
+        component.replacingOccurrences(of: "\\W+", with: "-", options: .regularExpression)
+            .replacingOccurrences(of: "^-|-$", with: "", options: .regularExpression)
     }
 
     /// Exclusive creation makes duplicate identities fail instead of overwriting a capture.
@@ -51,33 +53,62 @@ public enum VisualSnapshotExporter {
     }
 }
 
-/// Renders an existing image strategy and returns an error for the calling Swift Testing assertion.
-/// No diffing strategy, local baseline, or recording mode participates in this operation.
+/// Compares a single render against its repository baseline, optionally exporting the same image.
+/// Only explicit local `VISUAL_RECORD=1` updates baselines; CI always rejects recording.
 @MainActor
 public func verifyVisualSnapshot<Value>(
     of value: @autoclosure () throws -> Value,
     as strategy: Snapshotting<Value, UIImage>,
     named name: String,
     timeout: TimeInterval = 5,
-    directory: URL? = nil,
-    fileID: String = #fileID,
-    file: String = #filePath,
+    fileID: StaticString = #fileID,
+    file: StaticString = #filePath,
+    testName: String = #function
+) -> String? {
+    verifyVisualSnapshot(
+        of: try value(), as: strategy, named: name, timeout: timeout,
+        environment: ProcessInfo.processInfo.environment,
+        fileID: fileID, file: file, testName: testName
+    )
+}
+
+// Internal injection is only for exporter regressions. Production callers cannot opt out of comparison.
+@MainActor
+func verifyVisualSnapshot<Value>(
+    of value: @autoclosure () throws -> Value,
+    as strategy: Snapshotting<Value, UIImage>,
+    named name: String,
+    timeout: TimeInterval = 5,
+    environment: [String: String],
+    baselineDirectory: URL? = nil,
+    fileID: StaticString = #fileID,
+    file: StaticString = #filePath,
     testName: String = #function
 ) -> String? {
     guard !captureInProgress else { return "Overlapping UIKit captures; run visual suites serially" }
     captureInProgress = true
     defer { captureInProgress = false }
     do {
-        let filename = try VisualSnapshotExporter.filename(fileID: fileID, file: file, testName: testName, name: name)
-        let destination: URL
-        if let directory {
-            destination = directory
-        } else if let configured = ProcessInfo.processInfo.environment["ARGOS_OUTPUT_DIR"] {
-            guard configured.hasPrefix("/") else { return "ARGOS_OUTPUT_DIR must be an absolute directory" }
-            destination = URL(fileURLWithPath: configured, isDirectory: true)
+        func setting(_ key: String) -> String? {
+            environment[key] ?? environment["TEST_RUNNER_\(key)"]
+        }
+        func enabled(_ key: String) -> Bool {
+            [environment[key], environment["TEST_RUNNER_\(key)"]]
+                .contains { ["1", "true", "yes"].contains($0?.lowercased() ?? "") }
+        }
+        let recording = setting("VISUAL_RECORD") == "1"
+        guard !recording || !(enabled("CI") || enabled("GITHUB_ACTIONS")) else {
+            return "Visual recording is forbidden in CI"
+        }
+        let filename = try VisualSnapshotExporter.filename(
+            fileID: fileID.description, file: file.description, testName: testName, name: name
+        )
+        let output: URL?
+        if let configured = setting("SNAPSHOT_OUTPUT_DIR") {
+            guard configured.hasPrefix("/") else { return "SNAPSHOT_OUTPUT_DIR must be an absolute directory" }
+            output = URL(fileURLWithPath: configured, isDirectory: true)
         } else {
-            destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("SuperVisualCaptures-\(ProcessInfo.processInfo.processIdentifier)")
+            output = nil
         }
         let completion = XCTestExpectation(description: "Render \(filename)")
         let result = CaptureResult()
@@ -88,10 +119,34 @@ public func verifyVisualSnapshot<Value>(
         let state = result.finish()
         guard wait == .completed else { return "Capture did not complete within \(timeout) seconds: \(filename)" }
         guard state.callbacks == 1, let image = state.image else { return "Invalid or repeated capture completion: \(filename)" }
-        try VisualSnapshotExporter.write(image, named: filename, to: destination)
-        return nil
+        guard let bitmap = image.cgImage, bitmap.width > 0, bitmap.height > 0 else {
+            throw VisualCaptureError.invalidImage
+        }
+        if let output { try VisualSnapshotExporter.write(image, named: filename, to: output) }
+
+        let source = URL(fileURLWithPath: file.description)
+        let suite = source.deletingPathExtension().lastPathComponent
+        let baseline = baselineDirectory ?? source.deletingLastPathComponent()
+            .appendingPathComponent("__Snapshots__", isDirectory: true)
+            .appendingPathComponent(suite, isDirectory: true)
+        // Reuse the exporter's sanitized identity, including its distinct parameterized state names.
+        let identity = "\(VisualSnapshotExporter.sanitized(testName)).\(VisualSnapshotExporter.sanitized(name)).png"
+        if recording {
+            try FileManager.default.createDirectory(at: baseline, withIntermediateDirectories: true)
+            try strategy.diffing.toData(image).write(to: baseline.appendingPathComponent(identity), options: .atomic)
+            return nil
+        }
+        // Preserve the fixture's original precision/perceptual tolerances; never render a second time.
+        let rendered = Snapshotting<UIImage, UIImage>(pathExtension: "png", diffing: strategy.diffing, snapshot: { $0 })
+        return withSnapshotTesting(record: .never) {
+            verifySnapshot(
+                of: image, as: rendered, named: name, record: .never,
+                snapshotDirectory: baseline.path, timeout: timeout,
+                fileID: fileID, file: file, testName: testName
+            )
+        }
     } catch {
-        return "Visual capture failed: \(error)"
+        return "Visual snapshot failed: \(error)"
     }
 }
 

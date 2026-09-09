@@ -137,7 +137,7 @@ jobs:
     # literally `build`; the `build-app` matrix above publishes per-scheme
     # checks (`build-app (Super)`, `build-app (SuperBible)`), so this job
     # re-exports a single stable `build` status that depends on every leg.
-    # The `ios-test` gate now lives in Argos alongside package captures. A check that
+    # The `ios-test` gate lives in Snapshots alongside package comparisons. A check that
     # never reports blocks merge forever — see the note at the top of file.
     needs: [changes, build-app]
     runs-on: ubuntu-latest

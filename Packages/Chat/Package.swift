@@ -52,6 +52,7 @@ let package = Package(
             ],
             exclude: [
                 "Database/__Snapshots__",
+                "UI/Snapshots/__Snapshots__",
             ],
             resources: [
                 .copy("Fixtures"),

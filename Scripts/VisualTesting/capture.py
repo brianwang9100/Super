@@ -64,8 +64,8 @@ def simulator_environment():
     if len(disks) != 1 or disks[0].get('build') != pins['ios_build']:
         raise ValueError('Ambiguous or stale pinned iOS runtime disk')
     simulator = output(sys.executable, str(ROOT / 'Scripts/worktree_simulator.py'), 'ensure', '--repo', str(ROOT))
-    if os.environ.get('ARGOS_SIMULATOR_UDID', simulator) != simulator:
-        raise ValueError('ARGOS_SIMULATOR_UDID must identify the registered worktree simulator')
+    if os.environ.get('VISUAL_SIMULATOR_UDID', simulator) != simulator:
+        raise ValueError('VISUAL_SIMULATOR_UDID must identify the registered worktree simulator')
     devices = json.loads(output('xcrun', 'simctl', 'list', 'devices', '-j'))['devices']
     selected = [d for d in devices.get(matches[0]['identifier'], []) if d['udid'] == simulator]
     if (len(selected) != 1 or not selected[0]['isAvailable']
@@ -103,11 +103,28 @@ def run_suites(command, suites, package, evidence, environment, runner=subproces
             verify_resolution(resolved)
 
 
+def capture_environment(record=False, environ=None):
+    """Pass explicit comparison policy through xcodebuild into the simulator."""
+    source = dict(os.environ if environ is None else environ)
+    ci = any(source.get(key, '').lower() not in ('', '0', 'false')
+             for key in ('CI', 'GITHUB_ACTIONS'))
+    if record and ci:
+        raise ValueError('Snapshot recording is forbidden in CI')
+    environment = {key: value for key, value in source.items()
+                   if not key.startswith(('SNAPSHOT', 'TEST_RUNNER_SNAPSHOT', 'VISUAL_RECORD',
+                                          'TEST_RUNNER_VISUAL_RECORD'))}
+    environment['TEST_RUNNER_CI'] = 'true' if ci else 'false'
+    environment['TEST_RUNNER_VISUAL_RECORD'] = '1' if record else '0'
+    return environment
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('package', choices=PACKAGES)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--record', action='store_true', help='Explicitly replace package baselines locally')
     args = parser.parse_args()
+    environment = capture_environment(args.record)
     destination = args.output.resolve()
     require_new_output(destination)
     invocation = identity()
@@ -135,9 +152,8 @@ def main():
         subprocess.run(['xcodebuild', 'build-for-testing'] + options, cwd=ROOT, check=True,
                        stdout=log, stderr=subprocess.STDOUT, timeout=1800)
     verify_resolution(resolved)
-    environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith(('SNAPSHOT', 'TEST_RUNNER_SNAPSHOT', 'ARGOS_OUTPUT', 'TEST_RUNNER_ARGOS_OUTPUT'))}
-    environment['TEST_RUNNER_ARGOS_OUTPUT_DIR'] = str(images)
+    environment['TEST_RUNNER_SNAPSHOT_OUTPUT_DIR'] = str(images)
+    environment['TEST_RUNNER_SNAPSHOT_ARTIFACTS'] = str(evidence / 'diffs')
     # One suite per invocation plus .serialized prevents Swift Testing interleaving
     # independently of XCTest's process-level parallel-testing switch.
     run_suites(['xcodebuild', 'test-without-building'] + options, suites, args.package, evidence,
