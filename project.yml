@@ -47,6 +47,7 @@ targets:
           - "**/*.md"
       # Keep shared shell files in both targets' explicit source lists.
       - path: App/Shell/AppShell.swift
+      - path: App/Shell/RecordPreviewPresentation.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
       - path: App/Shell/AppBootstrapSupport.swift
@@ -132,6 +133,7 @@ targets:
           - "**/*.md"
       # Keep shared shell files in both targets' explicit source lists; placeholders stay SuperOS-only.
       - path: App/Shell/AppShell.swift
+      - path: App/Shell/RecordPreviewPresentation.swift
       - path: App/Shell/AppShellDependencies.swift
       - path: App/Shell/AppShellLaunchBehavior.swift
       - path: App/Shell/AppBootstrapSupport.swift

@@ -12,7 +12,11 @@ public enum SuperEvent: Sendable, Equatable {
     /// The shell expands Chat with a draft that is persisted on first use.
     case newConversationRequested
 
-    /// The shell focuses `reference.appletID` and forwards the reference for navigation.
+    /// Any applet → shell: present a temporary record preview without navigating.
+    /// Unsupported applet capabilities are ignored.
+    case previewRecord(reference: RecordReference)
+
+    /// Focuses reference.appletID and routes the reference for persistent in-applet navigation.
     case openRecord(reference: RecordReference)
 
     /// Bible requests a foreground annotation for this target. Chat streams

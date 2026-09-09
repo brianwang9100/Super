@@ -1,7 +1,7 @@
 import CoreGraphics
 
-/// Narration takes precedence over selection. A case change re-presents the shared
-/// sheet; narration owns follow-scroll while it is active.
+/// Narration takes precedence over selection in the shared sheet. Changing kind re-presents it;
+/// selection auto-scroll must not compete with narration follow-scroll.
 enum BibleBottomOverlayKind: Equatable, Identifiable {
     case selection
     case narration

@@ -25,8 +25,6 @@ struct AppShell: View {
     /// Geometry-dependent semi-expanded progress; 0.52 is the fallback before preference delivery.
     @State private var chatSemiProgress: Double = 0.52
     @State private var viewModel: ChatScreenViewModel?
-    /// Buffers references across conversation/view-model changes. Attaches idempotently in `.task`.
-    @State private var referenceInbox = ChatReferenceInbox()
     @State private var sidebarViewModel: SidebarViewModel?
     @State private var settingsViewModel: SettingsViewModel?
     @State private var bootstrapError: String?
@@ -43,9 +41,14 @@ struct AppShell: View {
     @FocusState private var composerIsFocused: Bool
     /// Set before the first suspension to prevent duplicate bootstrap tasks on the main actor.
     @State private var bootstrapStarted = false
-    /// Dispatch through body observation so navigation reads fresh environment values.
-    /// Calling directly from the bus task would freeze Reduce Motion in its captured `self`.
-    @State private var pendingNavigation: PendingNavigation?
+    /// Queue bus requests in reference-backed State, then dispatch from body with fresh environment values.
+    @State private var requestInbox = OrderedInbox<ShellRequest>()
+    @State private var navigationQueue = SerialActionQueue()
+    // Queued transitions can outlive the environment captured when they were enqueued.
+    @State private var navigationReduceMotion = false
+    @State private var recordPreview = RecordPreviewPresentation()
+    /// Remains true during Settings dismissal, until native onDismiss.
+    @State private var settingsOwnsPresentation = false
 
     /// Seed chat state and progress together so the first frame matches the target launch policy.
     init(dependencies: AppShellDependencies) {
@@ -65,7 +68,6 @@ struct AppShell: View {
                 )
             }
         }())
-        // Attach the inbox in `.task`, not init, to avoid ghost subscriptions on parent re-renders.
     }
 
     private var appInfo: SuperAppInfo { .fromBundle() }
@@ -150,34 +152,23 @@ struct AppShell: View {
                 appearance: appearance,
                 typography: typography,
                 onSelectConversation: { id in
-                    Task { await selectConversation(id: id) }
+                    route(.openConversation(id: id))
                 },
                 onNewChat: {
-                    Task { await startNewChat() }
+                    route(.newConversation)
                 },
                 onOpenSettings: {
                     openSettings()
                 },
-                onSelectApplet: { appletID in
-                    dismissKeyboard()
-                    registry.activeID = appletID
-                    UserDefaults.standard.set(appletID, forKey: Self.activeAppletStorageKey)
-                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-                        chatState = .minimized
-                    }
-                },
-                onSeeAllChats: {
-                    dismissKeyboard()
-                    registry.activeID = ChatsApplet.appletID
-                    UserDefaults.standard.set(ChatsApplet.appletID, forKey: Self.activeAppletStorageKey)
-                    withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
-                        chatState = .minimized
-                    }
-                }
+                onSelectApplet: { route(.openApplet(id: $0)) },
+                onSeeAllChats: { route(.openApplet(id: ChatsApplet.appletID)) }
             )
         }
-        // Reset navigation after either dismissal path finishes animating.
-        .sheet(isPresented: $settingsOpen, onDismiss: { settingsViewModel?.popToRoot() }) {
+        // Reset Settings only after native dismissal completes, for both button and drag dismissals.
+        .sheet(isPresented: $settingsOpen, onDismiss: {
+            settingsViewModel?.popToRoot()
+            settingsOwnsPresentation = false
+        }) {
             SettingsLayer(
                 settingsOpen: $settingsOpen,
                 settingsViewModel: settingsViewModel,
@@ -191,10 +182,31 @@ struct AppShell: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(theme.background)
         }
+        .sheet(item: recordPreview.binding, onDismiss: previewDidDismiss) { item in
+            // Cache only applet content; these values remain live for every render.
+            item.content
+                .superTheme(theme)
+                .superFontScale(appearance.fontScale)
+                .superTypography(typography)
+                .environment(\.superEventBus, dependencies.eventBus)
+                .hapticsEngine(dependencies.hapticsEngine)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(theme.background)
+                #if canImport(UIKit)
+                .background {
+                    RecordPreviewPresentationObserver(identity: item.id, onReady: recordPreview.didPresent)
+                        .frame(width: 0, height: 0)
+                }
+                #endif
+        }
         .task {
             await ensureViewModel()
         }
-        // Observe appearance fields separately so unrelated settings do not invalidate render state.
+        .onChange(of: reduceMotion, initial: true) { _, value in
+            navigationReduceMotion = value
+        }
+        // Observe appearance fields individually so unrelated settings cannot invalidate the shell.
         .onChange(of: settingsViewModel?.settings.themeId) { _, newId in
             if let newId { theme = .make(newId) }
         }
@@ -215,14 +227,8 @@ struct AppShell: View {
             // Push into the live model so the setting applies before the next conversation switch.
             viewModel?.applyExternalVerbosity(newValue)
         }
-        // One observable combines presence and intent to avoid racing two chrome animations.
-        .onChange(of: referenceInbox.pendingAttention) { _, _ in
-            guard let request = referenceInbox.consumeAttention() else { return }
-            Task { await handleComposerAttention(isNewChat: request.startNew) }
-        }
-        // On iOS 26, clearing the child FocusState binding while disabling the field can fail.
-        // Clear the shell owner too: chatState covers settled collapse and progress covers mid-drag.
-        // This observer runs one preference tick after the child; both dismissals are idempotent.
+        // On iOS 26, clearing child focus while disabling the field can fail. Clear the shell owner too.
+        // State changes cover settled collapse; progress covers mid-drag, one preference tick after the child.
         .onChange(of: chatState) { _, newState in
             if newState == .minimized {
                 dismissKeyboard()
@@ -239,27 +245,79 @@ struct AppShell: View {
                 dismissKeyboard()
             }
         }
-        // Consume from the current body so navigation uses fresh environment values.
-        .onChange(of: pendingNavigation) { _, newValue in
-            guard let request = newValue else { return }
-            pendingNavigation = nil
-            switch request {
-            case .openConversation(let id):
-                Task { await selectConversation(id: id) }
-            case .newConversation:
-                Task { await startNewChat() }
-            case .openApplet(let id):
-                // Keep collapse in this onChange transaction; a Task defers it and loses the animation.
-                selectApplet(id: id)
-            }
+        // Drain from the current body so queued navigation uses live environment values.
+        .onChange(of: requestInbox.revision) { _, _ in
+            drainRequests()
         }
         .environment(\.superEventBus, dependencies.eventBus)
         .hapticsEngine(dependencies.hapticsEngine)
-        // External deep links use the same event-bus route as transcript links.
+        // External Bible deep links navigate the full reader; transcript citations request temporary previews.
         .onOpenURL { url in
             guard let link = BibleDeepLink(url: url) else { return }
             let eventBus = dependencies.eventBus
             Task { await eventBus.publish(.openRecord(reference: link.recordReference)) }
+        }
+    }
+
+    /// Direct UI actions follow any bus work already received, while an idle
+    /// synchronous action retains this caller's SwiftUI transaction.
+    private func route(_ navigation: ShellNavigation) {
+        enqueueNavigation(navigation)
+        drainRequests()
+    }
+
+    private func drainRequests() {
+        for request in requestInbox.drain() {
+            switch request {
+            case .navigation(let navigation): dispatchNavigation(navigation)
+            case .preview(let reference):
+                guard !navigationQueue.isBusy, !settingsOwnsPresentation, !sidebarOpen,
+                      let applet = registry.applets.first(where: { $0.appletID == reference.appletID })
+                else { continue }
+                if recordPreview.present(reference: reference, applet: applet) {
+                    dismissKeyboard()
+                }
+            }
+        }
+    }
+
+    /// Dispatch once, preserving order through native dismissal and suspension.
+    private func dispatchNavigation(_ navigation: ShellNavigation) {
+        guard !recordPreview.deferNavigation(navigation) else { return }
+        navigationReduceMotion = reduceMotion
+        switch navigation {
+        case .openConversation(let id):
+            navigationQueue.enqueue { await selectConversation(id: id) }
+        case .newConversation:
+            navigationQueue.enqueue { await startNewChat() }
+        case .openApplet(let id):
+            navigationQueue.enqueueSynchronous { selectApplet(id: id) }
+        case .composerAttention(let request):
+            navigationQueue.enqueue { await handleComposerAttention(request) }
+        case .settings(let root, let pushed):
+            navigationQueue.enqueueSynchronous { presentSettings(rootedAt: root, pushing: pushed) }
+        case .sidebar:
+            navigationQueue.enqueueSynchronous { presentSidebar() }
+        }
+    }
+
+    private func previewDidDismiss() {
+        guard let action = recordPreview.didDismiss() else { return }
+        switch action {
+        case .navigation(let actions):
+            // These actions arrived before any inbox work awaiting a UI drain.
+            for navigation in actions { dispatchNavigation(navigation) }
+            drainRequests()
+        case .completion(let completion):
+            let event: SuperEvent
+            switch completion {
+            case .cancel: return
+            case .openRecord(let reference): event = .openRecord(reference: reference)
+            case .addToChat(let reference, let startNew):
+                event = .recordAddedToChat(reference: reference, startNewConversation: startNew)
+            }
+            let bus = dependencies.eventBus
+            Task { await bus.publish(event) }
         }
     }
 
@@ -273,12 +331,16 @@ struct AppShell: View {
         dismissKeyboard()
         registry.activeID = id
         UserDefaults.standard.set(id, forKey: Self.activeAppletStorageKey)
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
             chatState = .minimized
         }
     }
 
     private func openSidebar() {
+        route(.sidebar)
+    }
+
+    private func presentSidebar() {
         guard let sidebarViewModel else { return }
         dependencies.hapticsEngine.play(.selection)
         dismissKeyboard()
@@ -312,43 +374,66 @@ struct AppShell: View {
         rootedAt rootPane: SettingsSheet.Pane = .root,
         pushing pushedPane: SettingsSheet.Pane? = nil
     ) {
+        route(.settings(root: rootPane, pushed: pushedPane))
+    }
+
+    private func presentSettings(rootedAt rootPane: SettingsSheet.Pane, pushing pushedPane: SettingsSheet.Pane?) {
         guard let settingsViewModel else { return }
         // Seed navigation before presentation so the sheet opens on the requested pane.
         settingsViewModel.rootPane = rootPane
         if let pushedPane {
             settingsViewModel.openPane(pushedPane)
         }
+        settingsOwnsPresentation = true
         settingsOpen = true
+    }
+
+    /// Bus receipt invalidates stale completion immediately; only the visual
+    /// transition waits for body dispatch so Reduce Motion never freezes at boot.
+    private func enqueueNavigation(_ navigation: ShellNavigation) {
+        recordPreview.invalidateCompletion()
+        requestInbox.remove { if case .preview = $0 { true } else { false } }
+        requestInbox.enqueue(.navigation(navigation))
     }
 
     private func ensureViewModel() async {
         guard !bootstrapStarted else { return }
         bootstrapStarted = true
-        // Subscribe before mounting a composer so early references are buffered.
-        await referenceInbox.attach(to: dependencies.eventBus)
+        // Reserve the first slot before subscribing to navigation events or suspending.
+        await navigationQueue.enqueue { await initializeViewModels() }.value
+    }
 
-        // Keep routing alive for the app session. PendingNavigation lets body observation
-        // dispatch with fresh environment values instead of this task's captured `self`.
+    private func initializeViewModels() async {
+        // One app-session subscription preserves order across destination-sensitive events.
+        // Queue dispatch through State so the captured struct cannot freeze environment values.
         let eventBus = dependencies.eventBus
+        let events = await eventBus.events()
         Task { [self] in
-            for await event in await eventBus.events() {
+            for await event in events {
                 switch event {
                 case .openConversationRequested(let id):
-                    pendingNavigation = .openConversation(id: id)
+                    enqueueNavigation(.openConversation(id: id))
                 case .newConversationRequested:
-                    pendingNavigation = .newConversation
-                case .recordAddedToChat:
-                    // ChatReferenceInbox owns this handoff; do not route it twice.
-                    break
+                    enqueueNavigation(.newConversation)
+                case .recordAddedToChat(let reference, let startNew):
+                    enqueueNavigation(.composerAttention(ComposerAttentionRequest(
+                        startNew: startNew, references: [reference]
+                    )))
+                case .previewRecord(let reference):
+                    guard !navigationQueue.isBusy, !recordPreview.isActive,
+                          !settingsOwnsPresentation, !sidebarOpen else { continue }
+                    requestInbox.enqueue(.preview(reference))
                 case .openRecord(let reference):
-                    // The applet subscriber navigates within the applet; the shell only exposes its backdrop.
-                    pendingNavigation = .openApplet(id: reference.appletID)
+                    // The applet owns within-applet navigation; the shell exposes its backdrop.
+                    enqueueNavigation(.openApplet(id: reference.appletID))
                 case .bibleAnnotateRequested, .bibleAnnotateProgress, .bibleAnnotateCompleted:
-                    // BibleAnnotateDispatcher and BibleScreenViewModel own annotation routing; the shell only observes.
+                    // Chat and Bible share annotation dispatch state independently of shell navigation.
                     break
                 case .credentialChanged: break
                 case .sidebarOpened:
-                    break
+                    // Invalidate synchronously, including the dismissal window.
+                    recordPreview.invalidateCompletion()
+                    requestInbox.remove { if case .preview = $0 { true } else { false } }
                 case .shellChromeVisibilityRequested(let visible):
                     // Chrome views animate using their current Reduce Motion environment; this task
                     // captures an older environment, so do not animate here.
@@ -403,9 +488,11 @@ struct AppShell: View {
         await sidebar.refresh()
     }
 
-    private func rebuildChatViewModel(for conversation: ConversationRecord) async {
-        // Detach only the view model. The stored session keeps streaming; a new model
-        // reattaches when the conversation is reopened.
+    private func rebuildChatViewModel(
+        for conversation: ConversationRecord,
+        initialReferences: [RecordReference] = []
+    ) async {
+        // Detach the outgoing observer while its store-owned session keeps streaming; returning re-subscribes.
         viewModel?.detachFromLiveTurn()
 
         let session = await dependencies.chatSessionStore.session(for: conversation.id)
@@ -477,7 +564,7 @@ struct AppShell: View {
             conversationRepository: dependencies.conversationRepository,
             titleGenerator: titleGenerator,
             voice: voice,
-            referenceInbox: referenceInbox,
+            initialReferences: initialReferences,
             toolDisplayNames: toolDisplayNames,
             suggestionsProvider: suggestionsProvider,
             hapticsEngine: dependencies.hapticsEngine
@@ -519,7 +606,7 @@ struct AppShell: View {
     private func selectConversation(id: String) async {
         sidebarOpen = false
         dismissKeyboard()
-        withAnimation(SuperMotion.transition(reduceMotion: reduceMotion)) {
+        withAnimation(SuperMotion.transition(reduceMotion: navigationReduceMotion)) {
             chatState = .expanded
         }
         guard id != activeConversationId else { return }
@@ -533,8 +620,11 @@ struct AppShell: View {
         }
     }
 
-    /// Opens a draft; handoffs use semi-expanded so the source applet remains visible.
-    private func startNewChat(targetChatState: ChatPresentationState = .expanded) async {
+    /// Creates an in-memory draft. Bible handoffs use semiExpanded to keep the source applet visible.
+    private func startNewChat(
+        targetChatState: ChatPresentationState = .expanded,
+        initialReferences: [RecordReference] = []
+    ) async {
         sidebarOpen = false
         dismissKeyboard()
         let now = Date()
@@ -545,8 +635,8 @@ struct AppShell: View {
             updatedAt: now
         )
         sidebarViewModel?.draftConversation = row
-        // Rebuild before expanding so the transition never shows the previous conversation.
-        await rebuildChatViewModel(for: row)
+        // Install the new view model before animation to avoid flashing the previous conversation.
+        await rebuildChatViewModel(for: row, initialReferences: initialReferences)
         await animateChatState(to: targetChatState)
         composerIsFocused = true
     }
@@ -557,7 +647,7 @@ struct AppShell: View {
         guard chatState != target else { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             withAnimation(
-                SuperMotion.transition(reduceMotion: reduceMotion),
+                SuperMotion.transition(reduceMotion: navigationReduceMotion),
                 completionCriteria: .logicallyComplete
             ) {
                 chatState = target
@@ -567,14 +657,15 @@ struct AppShell: View {
         }
     }
 
-    /// Reveals a handed-off reference without lowering an existing chat anchor, then focuses
-    /// after the transition settles to avoid the keyboard-avoidance race.
-    private func handleComposerAttention(isNewChat: Bool) async {
-        if isNewChat {
+    /// Reveal attached references without lowering an existing higher anchor.
+    /// Focus only after expansion completes to avoid competing with keyboard avoidance.
+    private func handleComposerAttention(_ request: ComposerAttentionRequest) async {
+        if request.startNew {
             let target: ChatPresentationState = chatState == .expanded ? .expanded : .semiExpanded
-            await startNewChat(targetChatState: target)
+            await startNewChat(targetChatState: target, initialReferences: request.references)
             return
         }
+        viewModel?.addReferences(request.references)
         if chatState == .minimized {
             await animateChatState(to: .semiExpanded)
         }
@@ -591,13 +682,6 @@ struct AppShell: View {
             updatedAt: now
         )
     }
-}
-
-/// Passes bus-task navigation to the body observer, which reads current environment values.
-private enum PendingNavigation: Equatable {
-    case openConversation(id: String)
-    case newConversation
-    case openApplet(id: String)
 }
 
 // MARK: - Shell layers

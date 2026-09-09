@@ -2,8 +2,7 @@ import Core
 import GRDBQuery
 import SwiftUI
 
-/// BibleScreen supplies a fresh identity per chapter so constant decoration queries
-/// always observe the displayed position.
+/// BibleChapterContent provides a fresh chapter identity so constant decoration queries observe the displayed position.
 struct BibleChapterReader: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
@@ -18,15 +17,13 @@ struct BibleChapterReader: View {
     private let bookId: String
     private let bookName: String
     private let selectedVerses: Set<Int>
-    private let previousLabel: String?
-    private let nextLabel: String?
+    private let navigation: BibleChapterNavigation?
+    private let layout: BibleChapterReaderLayout
     private let currentNarratingVerse: Int?
     private let suppressNarrationScroll: Bool
     private let pendingScrollVerse: Int?
     private let bottomOverlayKind: BibleBottomOverlayKind?
     private let onTapVerse: (Int) -> Void
-    private let onPrevious: () -> Void
-    private let onNext: () -> Void
     private let onBackgroundTap: () -> Void
     private let onConsumeScroll: () -> Void
     private let onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)?
@@ -36,7 +33,6 @@ struct BibleChapterReader: View {
     private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
-    private let topReserve: CGFloat
 
     // Programmatic scrolling must not toggle immersive chrome.
     @State private var scrollIsUserDriven = false
@@ -52,15 +48,13 @@ struct BibleChapterReader: View {
         bookId: String,
         bookName: String,
         selectedVerses: Set<Int>,
-        previousLabel: String?,
-        nextLabel: String?,
+        navigation: BibleChapterNavigation? = nil,
+        layout: BibleChapterReaderLayout = .fullReader,
         currentNarratingVerse: Int? = nil,
         suppressNarrationScroll: Bool = false,
         pendingScrollVerse: Int? = nil,
         bottomOverlayKind: BibleBottomOverlayKind? = nil,
         onTapVerse: @escaping (Int) -> Void,
-        onPrevious: @escaping () -> Void,
-        onNext: @escaping () -> Void,
         onBackgroundTap: @escaping () -> Void,
         onConsumeScroll: @escaping () -> Void = {},
         onAnnotationBubbleTap: ((BibleAnnotationTargetSpec) -> Void)? = nil,
@@ -69,8 +63,7 @@ struct BibleChapterReader: View {
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
         onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
-        onFooterVisible: @escaping (Bool) -> Void = { _ in },
-        topReserve: CGFloat = 68
+        onFooterVisible: @escaping (Bool) -> Void = { _ in }
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -92,15 +85,13 @@ struct BibleChapterReader: View {
         self.bookId = bookId
         self.bookName = bookName
         self.selectedVerses = selectedVerses
-        self.previousLabel = previousLabel
-        self.nextLabel = nextLabel
+        self.navigation = navigation
+        self.layout = layout
         self.currentNarratingVerse = currentNarratingVerse
         self.suppressNarrationScroll = suppressNarrationScroll
         self.pendingScrollVerse = pendingScrollVerse
         self.bottomOverlayKind = bottomOverlayKind
         self.onTapVerse = onTapVerse
-        self.onPrevious = onPrevious
-        self.onNext = onNext
         self.onBackgroundTap = onBackgroundTap
         self.onConsumeScroll = onConsumeScroll
         self.onAnnotationBubbleTap = onAnnotationBubbleTap
@@ -110,7 +101,6 @@ struct BibleChapterReader: View {
         self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
-        self.topReserve = topReserve
     }
 
     private var highlightsByVerse: [Int: BibleHighlightColor] {
@@ -200,18 +190,21 @@ struct BibleChapterReader: View {
                         )
                     }
 
-                    BibleChapterFooter(
-                        previousLabel: previousLabel,
-                        nextLabel: nextLabel,
-                        onPrevious: onPrevious,
-                        onNext: onNext
-                    )
+                    if let navigation {
+                        BibleChapterFooter(
+                            previousLabel: navigation.previousLabel,
+                            nextLabel: navigation.nextLabel,
+                            onPrevious: navigation.onPrevious,
+                            onNext: navigation.onNext
+                        )
+                    }
 
-                    Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind))
+                    // Reserve room for footer content to scroll above the host chrome or floating study sheet.
+                    Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind, layout: layout))
                 }
                 .padding(.horizontal, 26)
-                // Clear the floating nav bar while allowing text to scroll under its gradient.
-                .padding(.top, topReserve)
+                // Clear the floating nav bar while allowing text to scroll beneath its gradient.
+                .padding(.top, layout.topInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { onBackgroundTap() }
@@ -228,8 +221,12 @@ struct BibleChapterReader: View {
             }
             // Hide redundant hovering arrows when footer cards enter view, including programmatic scrolls.
             .onScrollGeometryChange(for: Bool.self) { geometry in
-                let maxY = geometry.contentSize.height - geometry.containerSize.height
-                return maxY > 0 && geometry.contentOffset.y >= maxY - Self.footerRevealThreshold
+                Self.isFooterVisible(
+                    hasNavigation: navigation != nil,
+                    contentHeight: geometry.contentSize.height,
+                    containerHeight: geometry.containerSize.height,
+                    offsetY: geometry.contentOffset.y
+                )
             } action: { _, footerVisible in
                 onFooterVisible(footerVisible)
             }
@@ -393,9 +390,21 @@ struct BibleChapterReader: View {
     /// Extra clearance above the floating sheet, in points.
     static let overlayBottomReserve: CGFloat = 100
 
-    static func bottomClearHeight(for kind: BibleBottomOverlayKind?) -> CGFloat {
-        guard let kind else { return bottomChromeClearance }
-        return kind.estimatedSheetHeight + overlayBottomReserve
+    /// Reserve host clearance or the active study sheet's height plus margin, keeping the footer reachable.
+    static func bottomClearHeight(
+        for kind: BibleBottomOverlayKind?,
+        layout: BibleChapterReaderLayout = .fullReader
+    ) -> CGFloat {
+        guard let kind else { return layout.bottomInset }
+        return max(layout.bottomInset, kind.estimatedSheetHeight + overlayBottomReserve)
+    }
+
+    /// Footer visibility is meaningful only when the host contributes navigation.
+    static func isFooterVisible(
+        hasNavigation: Bool, contentHeight: CGFloat, containerHeight: CGFloat, offsetY: CGFloat
+    ) -> Bool {
+        let maxY = contentHeight - containerHeight
+        return hasNavigation && maxY > 0 && offsetY >= maxY - footerRevealThreshold
     }
 
     static func shouldAutoScroll(suppressed: Bool) -> Bool {

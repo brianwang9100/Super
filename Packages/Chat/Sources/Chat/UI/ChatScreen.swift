@@ -229,7 +229,6 @@ public struct ChatScreen: View {
         }
         // Conversation identity must restart loading even when this view remains mounted.
         .task(id: viewModel.conversationId) {
-            viewModel.adoptPendingReferences()
             await viewModel.load()
         }
         // Disabling the editor leaves FocusState set; clear it on collapse to prevent a wedged or reopened keyboard.
@@ -240,9 +239,6 @@ public struct ChatScreen: View {
         }
         .onChange(of: viewModel.isStreaming) { _, isStreaming in
             if isStreaming { dismissKeyboard() }
-        }
-        .onChange(of: viewModel.inboxPendingCount) { _, _ in
-            viewModel.adoptPendingReferences()
         }
     }
 

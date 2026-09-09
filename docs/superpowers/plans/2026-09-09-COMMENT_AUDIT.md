@@ -118,14 +118,14 @@ This is the recommended approach. A policy-only change would leave the existing 
 - [x] If a tokenizer is already available, measure full-file before/after tokens on that same set and name the tokenizer. Otherwise report bytes and lines only; do not convert characters to an asserted token-saving percentage or install a dependency just for this report.
 - [x] Reconcile every inventory entry and document exclusions/deferred issues. Completion means all in-scope files reviewed, with no deletion quota and no unsupported token or runtime claims.
 
-Integration note: main advanced to `ffbc76d6`. Preserve its feature changes and updated fixtures; the final identical before/after inventory is 836 files (779 Swift). All 28 added/moved paths and 33 files with restored or new comments were re-audited. The final report uses this baseline; original counts above remain the planning record.
+Integration note: main first advanced to `ffbc76d6`; all 28 added/moved paths and 33 files with restored or new comments were re-audited. Main then advanced to `8f7f674d`, adding isolated Bible previews and ordered shell navigation. All 27 new Swift files and 31 changed existing paths were reviewed again; two upstream deletions were preserved. The final identical before/after inventory is 861 files (804 Swift). The final report uses `8f7f674d`; original counts above remain the planning record.
 
 ### 5. Review and deliver
 
 **Files:** Final source/comment diff and `docs/COMMENT_AUDIT.md`; PR uses `.github/pull_request_template.md`.
 
 - [x] Have a separate review subagent inspect the final changes for lost contracts, misleading rewrites, changed directives/string contents, and incomplete audit coverage. Address findings and repeat affected validation.
-- [ ] Open a draft PR with the policy rationale, measured reductions, audit coverage, preserved high-value examples, and actual validation results. State that test declarations/assertions and snapshot inventory are unchanged; expected image-count delta is zero because rendering is unchanged.
+- [x] Open a draft PR with the policy rationale, measured reductions, audit coverage, preserved high-value examples, and actual validation results. State that test declarations/assertions and snapshot inventory are unchanged; expected image-count delta is zero because rendering is unchanged.
 - [ ] Follow root delivery policy: monitor CI and Codex review together every ten minutes, remain quiet on unchanged status, and fix failures/findings. After explicit approval of the current revision and passing applicable checks, mark ready, enable auto-merge with required checks enforced, and verify the merge. Disable auto-merge before any further push and renew approval/checks for that revision.
 
 ## Validation

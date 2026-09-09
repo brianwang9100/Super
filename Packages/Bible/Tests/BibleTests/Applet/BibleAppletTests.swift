@@ -150,6 +150,36 @@ struct BibleAppletTests {
         #expect(viewModel.selectedVerses == [28, 29, 30])
     }
 
+    @Test("previewRecord leaves the reader unchanged; openRecord still navigates")
+    func previewRequestDoesNotNavigateReader() async {
+        let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())
+        let applet = BibleApplet(viewModel: viewModel)
+        let bus = SuperEventBus()
+        await applet.attach(to: bus)
+        viewModel.toggleVerse(1)
+        let originalPosition = viewModel.position
+        let originalSelection = viewModel.selectedVerses
+        let originalTranslation = viewModel.translation
+        let reference = BibleDeepLink(
+            bookId: "ROM", chapter: 8, verseStart: 28, verseEnd: 30
+        ).recordReference
+
+        await withCheckedContinuation { continuation in
+            applet._referenceInbox._onNextEvent { continuation.resume() }
+            Task { await bus.publish(.previewRecord(reference: reference)) }
+        }
+        #expect(viewModel.position == originalPosition)
+        #expect(viewModel.selectedVerses == originalSelection)
+        #expect(viewModel.translation == originalTranslation)
+
+        await withCheckedContinuation { continuation in
+            applet._referenceInbox._onNextEvent { continuation.resume() }
+            Task { await bus.publish(.openRecord(reference: reference)) }
+        }
+        #expect(viewModel.position == BiblePosition(bookId: "ROM", chapterNumber: 8))
+        #expect(viewModel.selectedVerses == [28, 29, 30])
+    }
+
     @Test("openRecord event with a non-bible reference is ignored")
     func openRecordEventForOtherAppletIsIgnored() async throws {
         let viewModel = BibleScreenViewModel(textLoader: BundledBibleTextLoader())

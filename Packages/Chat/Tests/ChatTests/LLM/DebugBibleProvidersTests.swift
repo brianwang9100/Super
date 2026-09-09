@@ -40,6 +40,22 @@ struct DebugBibleProvidersTests {
         #expect(input["summary"] == .string(text))
     }
 
+    @Test(arguments: ["verse preview", "VERSE PREVIEW"])
+    func cannedProviderSelectsVersePreviewFixture(prompt: String) async throws {
+        let provider = DebugLLMProvider(id: "preview-fixture")
+        let model = try #require(provider.supportedModels.first)
+        let events = try await Self.collect(
+            provider, messages: [LLMMessage(role: .user, text: prompt)], model: model
+        )
+        let text = events.compactMap { event -> String? in
+            if case .textDelta(_, let text) = event { return text }
+            return nil
+        }.joined()
+        #expect(text.contains("Romans 8:28-30"))
+        #expect(text.contains("Psalm 23"))
+        #expect(text.contains("`Genesis 1:1`"))
+    }
+
     // MARK: - DebugBibleTarget.parse
 
     @Test func headlessReferenceIDResolvesVerseTarget() {

@@ -6,6 +6,18 @@ import Testing
 @Suite("AppletRegistry")
 @MainActor
 struct AppletRegistryTests {
+    @Test("applets without a preview capability return nil without completing")
+    func defaultPreviewCapability() {
+        let applet: any MiniApplet = FakeApplet(appletID: "todo", displayName: "Todo", prompt: "")
+        let reference = RecordReference(
+            appletID: "todo", kind: "task", sourceID: "1", displayLabel: "Task", citation: "", snapshot: "", id: "test"
+        )
+        var completed = false
+        let preview = applet.recordPreview(for: reference) { _ in completed = true }
+        #expect(preview == nil)
+        #expect(!completed)
+    }
+
     @Test("resolvedBriefings sorts by appletID, not display name or input order")
     func sortsByAppletID() {
         let registry = AppletRegistry(applets: [

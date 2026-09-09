@@ -11,6 +11,7 @@ public struct MarkdownText: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
     @Environment(\.markdownBodyMetrics) private var metrics
+    @Environment(\.markdownBibleCitationPolicy) private var bibleCitationPolicy
     @State private var cachedTheme: MarkdownUI.Theme?
 
     public init(_ text: String, bodyStyleOverride: BodyStyle? = nil, treatAsPartial: Bool = false) {
@@ -19,11 +20,11 @@ public struct MarkdownText: View {
         self.treatAsPartial = treatAsPartial
     }
 
-    // Streaming input changes every flush, so caching text transforms rarely hits.
-    // Both passes have prose-only fast paths; marker/citation-rich text pays per render.
+    /// Autocloses partial Markdown before applying the host's citation policy.
+    /// Recomputed for each streaming update; previews can render citations as inert labels.
     var _resolvedText: String {
         let autoclosed = treatAsPartial ? MarkdownAutocloser.close(text) : text
-        return BibleReferenceLinkifier.linkify(autoclosed)
+        return bibleCitationPolicy.resolve(autoclosed)
     }
 
     public enum BodyStyle: Equatable, Sendable {

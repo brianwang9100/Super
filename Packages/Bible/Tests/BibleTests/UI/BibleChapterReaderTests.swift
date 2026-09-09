@@ -86,3 +86,32 @@ struct BibleChapterReaderBottomReserveTests {
         #expect(narrationRoomier)
     }
 }
+
+@Suite("BibleChapterReader host layout")
+@MainActor
+struct BibleChapterReaderLayoutTests {
+    @Test("full reader preserves its existing top and shell bottom clearance")
+    func fullReaderParity() {
+        let topMatches = BibleChapterReaderLayout.fullReader.topInset == 68
+        let bottomMatches = BibleChapterReader.bottomClearHeight(for: nil, layout: .fullReader) == 160
+        #expect(topMatches)
+        #expect(bottomMatches)
+    }
+
+    @Test("preview omits shell clearance while still reserving space for actions")
+    func previewReserve() {
+        let noTop = BibleChapterReaderLayout.preview.topInset == 0
+        let noShell = BibleChapterReader.bottomClearHeight(for: nil, layout: .preview) == 0
+        let clearsActions = BibleChapterReader.bottomClearHeight(for: .selection, layout: .preview)
+            == BibleBottomOverlayKind.selection.estimatedSheetHeight + BibleChapterReader.overlayBottomReserve
+        #expect(noTop)
+        #expect(noShell)
+        #expect(clearsActions)
+    }
+
+    @Test("a host without navigation never reports a visible footer")
+    func noNavigationFooter() {
+        #expect(!BibleChapterReader.isFooterVisible(hasNavigation: false, contentHeight: 1000, containerHeight: 500, offsetY: 500))
+        #expect(BibleChapterReader.isFooterVisible(hasNavigation: true, contentHeight: 1000, containerHeight: 500, offsetY: 500))
+    }
+}

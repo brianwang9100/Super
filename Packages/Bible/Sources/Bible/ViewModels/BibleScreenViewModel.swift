@@ -46,11 +46,10 @@ public final class BibleScreenViewModel {
     // ones during the disclaimer. Acknowledge drains FIFO; dismissal discards all.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
-    /// Success clears running status; the completed draft bridges to a query begun after persistence.
-    public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
-
-    /// Transient text stays independent of rows observed by the sheet.
-    private var annotationDraftsByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDraft] = [:]
+    /// Shared per-target dispatch state forwarded from the applet-lifetime dispatcher.
+    public var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] {
+        annotationDispatchViewModel.statusByTargetSnapshot
+    }
 
     /// autoCompose opens the editor as soon as the note list mounts.
     public var presentedNoteList: BibleNoteListPresentation?
@@ -67,6 +66,7 @@ public final class BibleScreenViewModel {
     private let clipboard: any ClipboardWriter
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
+    let annotationDispatchViewModel: BibleAnnotationDispatchViewModel
     private let hapticsEngine: any HapticsEngine
     private let initialPosition: BiblePosition
 
@@ -74,6 +74,7 @@ public final class BibleScreenViewModel {
 
     private enum QueuedNavigationIntent {
         case reference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?)
+        case exactReference(BibleReaderReference)
         case translation(BibleTranslation)
     }
 
@@ -88,15 +89,7 @@ public final class BibleScreenViewModel {
     private var latestExplicitTranslation: BibleTranslation?
     private var latestPersistSequence = 0
 
-    private var eventBus: SuperEventBus?
-
-    private var dispatchSubscriptionTask: Task<Void, Never>?
-
-    // Fire only after completion: a generic next-event callback could catch the request
-    // echo and race assertions ahead of the completion state update.
-    private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
-
-    private var dispatchProgressCallbacks: [@MainActor () -> Void] = []
+    private var sidebarSubscriptionTask: Task<Void, Never>?
 
     private var sidebarDismissCallbacks: [@MainActor () -> Void] = []
 
@@ -109,7 +102,7 @@ public final class BibleScreenViewModel {
     private var bookmarkTask: Task<Void, Never>?
 
     /// Nil repositories disable their writes while reading remains available. initialPosition
-    /// is used until load() restores the saved cursor.
+    /// applies until restore; annotation dispatch state is shared across readers.
     public init(
         textLoader: any BibleTextLoader,
         catalog: BibleBookCatalog = .standard,
@@ -122,8 +115,10 @@ public final class BibleScreenViewModel {
         idGenerator: any IDGenerator = UUIDGenerator(),
         disclaimerStore: any AnnotationDisclaimerStore = UserDefaultsAnnotationDisclaimerStore(),
         initialPosition: BiblePosition = BibleScreenViewModel.defaultPosition,
+        initialTranslation: BibleTranslation = .defaultTranslation,
         narration: NarrationController? = nil,
-        hapticsEngine: any HapticsEngine = NoOpHapticsEngine()
+        hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
+        annotationDispatchViewModel: BibleAnnotationDispatchViewModel = BibleAnnotationDispatchViewModel()
     ) {
         self.textLoader = textLoader
         self.catalog = catalog
@@ -138,16 +133,50 @@ public final class BibleScreenViewModel {
         self.hapticsEngine = hapticsEngine
         self.initialPosition = initialPosition
         self.navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+        self.annotationDispatchViewModel = annotationDispatchViewModel
         self.position = initialPosition
+        self.translation = initialTranslation
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
         self.narration = narration ?? NarrationController(
             service: AVSpeechSynthesizerNarrationService()
         )
     }
 
+    /// Creates an isolated reader with the active translation and shared study services.
+    /// Position persistence and narration lifecycle remain exclusive to the full reader.
+    func makePreviewReader(for link: BibleDeepLink) -> BibleScreenViewModel {
+        let reader = BibleScreenViewModel(
+            textLoader: textLoader,
+            catalog: catalog,
+            positionRepository: nil,
+            highlightRepository: highlightRepository,
+            noteRepository: noteRepository,
+            bookmarkRepository: bookmarkRepository,
+            clock: clock,
+            clipboard: clipboard,
+            idGenerator: idGenerator,
+            disclaimerStore: disclaimerStore,
+            initialPosition: BiblePosition(bookId: link.bookId, chapterNumber: link.chapter),
+            initialTranslation: translation,
+            hapticsEngine: hapticsEngine,
+            annotationDispatchViewModel: annotationDispatchViewModel
+        )
+        // This nonpersistent reader has no saved history to restore. Initialize
+        // synchronously so selection is ready before its native sheet appears.
+        reader.didCompleteInitialRestore = true
+        reader.isRestoringNavigation = false
+        reader.openReference(bookId: link.bookId, chapterNumber: link.chapter,
+                             verseStart: link.verseStart, verseEnd: link.verseEnd)
+        // Keep the exact selection and pending scroll, but wait for the native
+        // chapter presentation to complete before opening its child action sheet.
+        reader.dismissActionSheet()
+        return reader
+    }
+
     public var canStepBackward: Bool {
         !isRestoringNavigation && catalog.step(from: position, direction: .previous) != nil
     }
+
     public var canStepForward: Bool {
         !isRestoringNavigation && catalog.step(from: position, direction: .next) != nil
     }
@@ -271,9 +300,9 @@ public final class BibleScreenViewModel {
         bookSheet = nil
     }
 
-    /// Navigates and preselects an inclusive range, stopping narration. Nil verseStart
-    /// opens the chapter unselected; nil verseEnd selects only verseStart. Unknown books,
-    /// invalid 1-based chapters, nonpositive starts, and inverted ranges are a no-op.
+    /// Navigates with an inclusive 1-based verse range. Unknown books, invalid chapters,
+    /// nonpositive starts, and inverted ranges are ignored. Nil start opens the chapter
+    /// unselected; nil end selects only the start verse.
     public func openReference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?) {
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
@@ -297,15 +326,48 @@ public final class BibleScreenViewModel {
         )
     }
 
+    /// Opens an internal handoff with its captured translation and exact, potentially disjoint selection.
+    func openReference(_ reference: BibleReaderReference) {
+        guard isValidPosition(reference.position) else { return }
+        // Retry snapshots explicit translation before its read. Register the
+        // handoff now, including when initial restoration has already failed.
+        latestExplicitTranslation = reference.translation
+        if isRestoringNavigation {
+            queuedNavigationIntents.append(.exactReference(reference))
+            return
+        }
+        applyReference(reference)
+    }
+
+    private func applyReference(_ reference: BibleReaderReference) {
+        applyReference(position: reference.position, translation: reference.translation) {
+            reference.selectedVerses.contains($0)
+        }
+    }
+
     private func applyReference(
         bookId: String,
         chapterNumber: Int,
         verseStart: Int?,
         verseEnd: Int?
     ) {
+        // Public ranges use the active translation when the queued intent executes.
+        applyReference(
+            position: BiblePosition(bookId: bookId, chapterNumber: chapterNumber),
+            translation: translation
+        ) { verse in
+            guard let verseStart else { return false }
+            return verse >= verseStart && verse <= (verseEnd ?? verseStart)
+        }
+    }
+
+    private func applyReference(
+        position destination: BiblePosition,
+        translation targetTranslation: BibleTranslation,
+        selectsVerse: (Int) -> Bool
+    ) {
         if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
 
-        let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
         if destination == position {
             narration.stop()
         } else {
@@ -313,19 +375,12 @@ public final class BibleScreenViewModel {
             navigationHistory.visit(destination)
             position = destination
         }
+        translation = targetTranslation
         applyCurrentChapter()
-        if let verseStart {
-            let upper = verseEnd ?? verseStart
-            selectedVerses = Set(verseTextsByNumber().keys.filter {
-                $0 >= verseStart && $0 <= upper
-            })
-        } else {
-            selectedVerses.removeAll()
-        }
-        pendingScrollVerse = verseStart
-        if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
-            pendingScrollVerse = selectedVerses.min()
-        }
+        // Iterate only real chapter verses, bounding both huge ranges and exact sets.
+        selectedVerses = Set(verseTextsByNumber().keys.filter(selectsVerse))
+        // Changing the pending verse also scrolls same-chapter links; chapter-only navigation leaves it nil.
+        pendingScrollVerse = selectedVerses.min()
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
         bookSheet = nil
@@ -677,86 +732,43 @@ public final class BibleScreenViewModel {
         publishDispatchRequest(for: spec)
     }
 
-    // Without a bus, isolated hosts fall back to the integration toast.
+    /// Forward a request into the shared dispatcher while retaining this reader's presentation.
     private func publishDispatchRequest(for spec: BibleAnnotationTargetSpec) {
-        guard let bus = eventBus else {
-            toast = "Annotation generation ships in a later update."
-            return
-        }
-        if case .running = dispatchStatusByTarget[spec] {
+        if case .running = annotationDispatchViewModel.status(for: spec) {
             presentedAnnotationTarget = spec
             return
         }
         let reference = makeAnnotateRequestReference(for: spec)
-        annotationDraftsByTarget[spec] = BibleAnnotationDraft(requestID: reference.id)
-        dispatchStatusByTarget[spec] = .running(requestId: reference.id)
-        presentedAnnotationTarget = spec
-        Task { await bus.publish(.bibleAnnotateRequested(reference: reference)) }
+        switch annotationDispatchViewModel.request(reference: reference, for: spec) {
+        case .started, .alreadyRunning:
+            presentedAnnotationTarget = spec
+        case .unavailable:
+            toast = "Annotation generation ships in a later update."
+        }
     }
 
-    /// Idempotently subscribes to dispatch completions and sidebar events during bootstrap.
+    /// Attach the shared dispatcher and this reader's independent sidebar subscriber.
     public func attach(to bus: SuperEventBus) async {
-        guard dispatchSubscriptionTask == nil else { return }
-        eventBus = bus
+        await annotationDispatchViewModel.attach(to: bus)
+        await attachSidebar(to: bus)
+    }
+
+    func attachSidebar(to bus: SuperEventBus) async {
+        guard sidebarSubscriptionTask == nil else { return }
         let stream = await bus.events()
-        dispatchSubscriptionTask = Task { [weak self] in
+        sidebarSubscriptionTask = Task { [weak self] in
             for await event in stream {
                 guard let self else { return }
-                self.handleBusEvent(event)
+                guard case .sidebarOpened = event else { continue }
+                self.dismissPresentedSheets()
+                let callbacks = self.sidebarDismissCallbacks
+                self.sidebarDismissCallbacks.removeAll()
+                for callback in callbacks { callback() }
             }
         }
     }
 
-    private func handleBusEvent(_ event: SuperEvent) {
-        switch event {
-        case .bibleAnnotateProgress(let requestId, let text):
-            handleAnnotateProgress(requestId: requestId, text: text)
-        case .bibleAnnotateCompleted(let requestId, let result):
-            handleAnnotateCompleted(requestId: requestId, result: result)
-        case .sidebarOpened:
-            // Native sheets sit above the shell drawer; dismiss passive sheets before it opens.
-            dismissPresentedSheets()
-            let callbacks = sidebarDismissCallbacks
-            sidebarDismissCallbacks.removeAll()
-            for callback in callbacks { callback() }
-        default:
-            break
-        }
-    }
-
-    private func handleAnnotateProgress(requestId: String, text: String) {
-        let matching = dispatchStatusByTarget.first { _, status in
-            if case .running(let id) = status { return id == requestId }
-            return false
-        }
-        if let spec = matching?.key, annotationDraftsByTarget[spec]?.requestID == requestId {
-            annotationDraftsByTarget[spec]?.text = text
-        }
-        let callbacks = dispatchProgressCallbacks
-        dispatchProgressCallbacks.removeAll()
-        for callback in callbacks { callback() }
-    }
-
-    private func handleAnnotateCompleted(requestId: String, result: BibleAnnotateResult) {
-        let matching = dispatchStatusByTarget.first { _, status in
-            if case .running(let id) = status, id == requestId { return true }
-            return false
-        }
-        if let spec = matching?.key {
-            switch result {
-            case .success:
-                annotationDraftsByTarget[spec]?.isComplete = true
-                dispatchStatusByTarget.removeValue(forKey: spec)
-            case .failure(let message):
-                dispatchStatusByTarget[spec] = .failed(message: message)
-            }
-        }
-        let callbacks = dispatchCompletionCallbacks
-        dispatchCompletionCallbacks.removeAll()
-        for callback in callbacks { callback() }
-    }
-
-    // Preserve the disclaimer: dismissing that confirmation gate would discard pending intents.
+    /// Native sheets cover the shell drawer. Preserve the disclaimer, whose dismissal would discard queued intents.
     private func dismissPresentedSheets() {
         dismissActionSheet()
         dismissNarrationSheet()
@@ -771,46 +783,40 @@ public final class BibleScreenViewModel {
         sidebarDismissCallbacks.append(callback)
     }
 
-    /// Fires once after completion state updates; request echoes do not trigger it.
+    /// Fires after completion state updates; request echoes cannot satisfy this test seam.
     func _onNextDispatchCompletion(_ callback: @escaping @MainActor () -> Void) {
-        dispatchCompletionCallbacks.append(callback)
+        annotationDispatchViewModel._onNextCompletionProcessed(callback)
     }
 
     /// Fires once after processing the next progress envelope.
     func _onNextDispatchProgress(_ callback: @escaping @MainActor () -> Void) {
-        dispatchProgressCallbacks.append(callback)
+        annotationDispatchViewModel._onNextProgressProcessed(callback)
     }
 
     /// Current accumulated text for the target, including a completed query bridge.
     public func annotationDraft(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDraft? {
-        annotationDraftsByTarget[spec]
+        annotationDispatchViewModel.draft(for: spec)
     }
 
     /// Clears only a matching settled request after query acknowledgement, deletion,
     /// or an explicit return to the saved response. Late callbacks cannot erase retries.
     public func clearAnnotationDraft(for spec: BibleAnnotationTargetSpec, requestID: String) {
-        guard annotationDraftsByTarget[spec]?.requestID == requestID else { return }
-        if case .running = dispatchStatusByTarget[spec] { return }
-        annotationDraftsByTarget.removeValue(forKey: spec)
-        if case .failed = dispatchStatusByTarget[spec] {
-            dispatchStatusByTarget.removeValue(forKey: spec)
-        }
+        annotationDispatchViewModel.clearDraft(for: spec, requestID: requestID)
     }
 
     /// Nil when no dispatch is running or failed for this target.
     public func dispatchStatus(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
-        dispatchStatusByTarget[spec]
+        annotationDispatchViewModel.status(for: spec)
     }
 
     public func presentDeleteAnnotationFailedToast() {
         toast = "Couldn't delete the annotation."
     }
 
-    /// Silently clears a failed regeneration over retained content so later deletion
-    /// cannot reveal a stale inline error.
+    /// Clears failed status without discarding its draft; running requests remain intact.
+    /// The study UI uses request-scoped ``clearAnnotationDraft(for:requestID:)``.
     public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
-        guard case .failed = dispatchStatusByTarget[spec] else { return }
-        dispatchStatusByTarget.removeValue(forKey: spec)
+        annotationDispatchViewModel.clearFailure(for: spec)
     }
 
     public func citationLabel(for spec: BibleAnnotationTargetSpec) -> String {
@@ -1332,6 +1338,8 @@ public final class BibleScreenViewModel {
                     verseStart: verseStart,
                     verseEnd: verseEnd
                 )
+            case .exactReference(let reference):
+                applyReference(reference)
             case .translation(let selected):
                 applyTranslationSelection(selected)
             }

@@ -87,7 +87,7 @@ public struct DebugLLMProvider: LLMProvider {
                     return
                 }
 
-                let canned = Self.pickResponse()
+                let canned = Self.pickResponse(for: Self.lastUserText(messages))
                 do {
                     try await Self.sleep(milliseconds: Int.random(in: 150...500))
 
@@ -140,8 +140,11 @@ public struct DebugLLMProvider: LLMProvider {
         let text: String
     }
 
-    private static func pickResponse() -> CannedResponse {
-        // Surface an emptied debug bank in-chat instead of trapping.
+    private static func pickResponse(for userText: String) -> CannedResponse {
+        // Explicit fixture selection makes native preview QA repeatable; other prompts use the varied bank.
+        if userText.localizedCaseInsensitiveContains("verse preview") {
+            return verseCitationResponse
+        }
         guard let response = responseBank.randomElement() else {
             return CannedResponse(thinking: "", text: "Debug provider: responseBank is empty.")
         }
@@ -219,29 +222,26 @@ public struct DebugLLMProvider: LLMProvider {
             thinking: "Short acknowledgement is fine.",
             text: "Got it — running the test now."
         ),
-        // Verse-citation response — exercises the `BibleReferenceLinkifier`
-        // path. Mixes anchors, a same-book continuation after a semicolon,
-        // a fresh-book reset after a comma, an inline-code that must not
-        // linkify, and a Section 1:2 false-positive that must stay plain
-        // text.
-        CannedResponse(
-            thinking: "Several citations; the linkifier should wrap each.",
-            text: """
-            A few passages worth holding side-by-side:
-
-            - **Comfort:** Romans 8:28-30 reads as a single thread; the
-              same chapter circles back in Romans 8:31-39.
-            - **Hope:** Psalm 23 grounds the metaphor; John 3:16-17 is
-              its New Testament rhyme.
-            - **Love:** 1 Corinthians 13:4-7 is the canonical
-              definition; compare 1 John 4:7-8.
-
-            Note that `Genesis 1:1` written inline should *not* tap
-            through — that's literal code. Section 1:2 of the appendix
-            below is also unrelated.
-            """
-        ),
+        verseCitationResponse,
     ]
+
+    private static let verseCitationResponse = CannedResponse(
+        thinking: "Several citations; the linkifier should wrap each.",
+        text: """
+        A few passages worth holding side-by-side:
+
+        - **Comfort:** Romans 8:28-30 reads as a single thread; the
+          same chapter circles back in Romans 8:31-39.
+        - **Hope:** Psalm 23 grounds the metaphor; John 3:16-17 is
+          its New Testament rhyme.
+        - **Love:** 1 Corinthians 13:4-7 is the canonical
+          definition; compare 1 John 4:7-8.
+
+        Note that `Genesis 1:1` written inline should *not* tap
+        through — that's literal code. Section 1:2 of the appendix
+        below is also unrelated.
+        """
+    )
 
     // MARK: - Web-search script
     //

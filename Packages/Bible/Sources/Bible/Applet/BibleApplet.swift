@@ -9,7 +9,7 @@ private let bibleAppletLog = Logger(subsystem: "com.brianwang.Super", category: 
 /// Retains one reader view model across root-view rebuilds. User-data failures
 /// disable persistence and dependent tools while leaving bundled text available.
 public struct BibleApplet: MiniApplet {
-    public static let appletID: String = "bible"
+    nonisolated public static let appletID: String = "bible"
     public var appletID: String { Self.appletID }
     public var displayName: String { "Bible" }
     public static let accentColor: Color = Color(red: 0.52, green: 0.32, blue: 0.55)
@@ -30,7 +30,10 @@ public struct BibleApplet: MiniApplet {
 
     private let viewModel: BibleScreenViewModel
 
-    // Held for the app session; attach during bootstrap to receive links while the reader is unmounted.
+    /// Applet-lifetime annotation request state shared by every Bible reader model.
+    private let annotationDispatchViewModel: BibleAnnotationDispatchViewModel
+
+    /// Routes explicit full-reader handoffs and external deep links even while the reader is unmounted.
     private let referenceInbox: BibleReferenceInbox
 
     // Nil storage context makes decoration queries return empty results.
@@ -70,16 +73,21 @@ public struct BibleApplet: MiniApplet {
         // resource yields unavailable text and disables lookup without crashing the reader.
         let textDatabase = try? BibleTextDatabase.openBundled()
         self.textSearcher = textDatabase.map(BundledBibleTextSearcher.init(database:))
-        // The shell installs shared AudioActivity arbitration through configureNarration.
+        // TODO(narration-arbitration): SuperOS still uses the default controller without shared AudioActivity,
+        // so Chat capture cannot preempt narration. Wire arbitration in its composition root;
+        // SuperBible already supplies it through configureNarration.
+        let annotationDispatchViewModel = BibleAnnotationDispatchViewModel()
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(database: textDatabase),
             positionRepository: readingPositionRepository,
             highlightRepository: highlightRepository,
             noteRepository: noteRepository,
             bookmarkRepository: database.map { GRDBBibleBookmarkRepository(database: $0) },
-            hapticsEngine: hapticsEngine
+            hapticsEngine: hapticsEngine,
+            annotationDispatchViewModel: annotationDispatchViewModel
         )
         self.viewModel = viewModel
+        self.annotationDispatchViewModel = annotationDispatchViewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
     }
 
@@ -95,6 +103,7 @@ public struct BibleApplet: MiniApplet {
         textSearcher: (any BibleTextSearching)? = nil
     ) {
         self.viewModel = viewModel
+        self.annotationDispatchViewModel = viewModel.annotationDispatchViewModel
         self.referenceInbox = BibleReferenceInbox(viewModel: viewModel)
         self.database = nil
         self.databaseContext = databaseContext
@@ -203,11 +212,13 @@ public struct BibleApplet: MiniApplet {
         )
     }
 
-    /// Attach once during bootstrap; repeated observer attachment is harmless. Applet
-    /// copies share the inbox and view model, so attaching before registry insertion is sufficient.
+    /// Restores the full reader and attaches shared subscribers idempotently.
+    /// Applet copies retain the same inbox, dispatcher, and reader instances.
     public func attach(to bus: SuperEventBus) async {
+        await viewModel.load()
         await referenceInbox.attach(to: bus)
-        await viewModel.attach(to: bus)
+        await annotationDispatchViewModel.attach(to: bus)
+        await viewModel.attachSidebar(to: bus)
         await viewModel.narration.settings?.attach(to: bus)
         await viewModel.narration.prepareDefaultVoice()
     }
@@ -275,6 +286,20 @@ public struct BibleApplet: MiniApplet {
         return AnyView(screen.databaseContext(databaseContext))
     }
 
+    /// Builds one isolated chapter preview for a valid public Bible citation.
+    @MainActor
+    public func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView? {
+        guard let link = BibleDeepLink(reference: reference) else { return nil }
+        let preview = BibleChapterPreviewViewModel(reader: viewModel.makePreviewReader(for: link), onFinish: onFinish)
+        let sheet = BibleChapterPreviewSheet(viewModel: preview, annotationRepository: annotationRepository)
+        guard let databaseContext else { return AnyView(sheet) }
+        return AnyView(sheet.databaseContext(databaseContext))
+    }
+
+    /// Storage failure leaves the reader usable without persisted reading position or study data.
     private static func openDatabase() -> BibleDatabase? {
         guard let directory = try? dataDirectory() else { return nil }
         return try? BibleDatabase.open(in: directory)

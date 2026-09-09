@@ -25,6 +25,7 @@ public final class ChatScreenViewModel {
 
     public var composerText: String = ""
 
+    /// References belong to this composer and are persisted with its next send.
     public private(set) var pendingReferences: [RecordReference] = []
 
     /// The selected configuration record ID, distinct from its upstream model ID.
@@ -80,7 +81,6 @@ public final class ChatScreenViewModel {
     private let checkpointRepository: any CompactionCheckpointRepository
     private let conversationRepository: (any ConversationRepository)?
     private let titleGenerator: TitleGenerator?
-    private let referenceInbox: ChatReferenceInbox?
 
     private let toolDisplayNames: [String: String]
 
@@ -118,7 +118,7 @@ public final class ChatScreenViewModel {
         conversationRepository: (any ConversationRepository)? = nil,
         titleGenerator: TitleGenerator? = nil,
         voice: VoiceInputController? = nil,
-        referenceInbox: ChatReferenceInbox? = nil,
+        initialReferences: [RecordReference] = [],
         toolDisplayNames: [String: String] = [:],
         suggestionsProvider: any ChatSuggestionsProvider = StaticChatSuggestionsProvider(),
         hapticsEngine: any HapticsEngine = NoOpHapticsEngine(),
@@ -133,7 +133,7 @@ public final class ChatScreenViewModel {
         self.checkpointRepository = checkpointRepository
         self.conversationRepository = conversationRepository
         self.titleGenerator = titleGenerator
-        self.referenceInbox = referenceInbox
+        self.pendingReferences = initialReferences
         self.toolDisplayNames = toolDisplayNames
         self.suggestionsProvider = suggestionsProvider
         self.hapticsEngine = hapticsEngine
@@ -316,21 +316,16 @@ public final class ChatScreenViewModel {
         startStreaming(text: text, references: references, model: model)
     }
 
-    /// Deduplicates reference IDs while draining the shell-owned inbox.
-    public func adoptPendingReferences() {
-        guard let referenceInbox else { return }
+    /// Attach a batch addressed to this composer, deduplicating reference ids.
+    public func addReferences(_ references: [RecordReference]) {
         var seenIDs = Set(pendingReferences.map(\.id))
-        for reference in referenceInbox.drainPending() where seenIDs.insert(reference.id).inserted {
+        for reference in references where seenIDs.insert(reference.id).inserted {
             pendingReferences.append(reference)
         }
     }
 
     public func removeReference(id: String) {
         pendingReferences.removeAll { $0.id == id }
-    }
-
-    public var inboxPendingCount: Int {
-        referenceInbox?.pending.count ?? 0
     }
 
     /// Cancels the session task; ending only this subscription would leave generation running.

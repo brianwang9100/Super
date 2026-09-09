@@ -13,7 +13,14 @@ public protocol MiniApplet: Sendable {
 
     func rootView() -> AnyView
 
-    /// Bundled LLM guidance; the registry omits empty bodies.
+    /// Creates optional temporary content for a record. The shell owns its native presentation.
+    /// Call `onFinish` after nested sheets dismiss; returning nil declines the preview.
+    func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView?
+
+    /// Leading Chat system guidance; empty bodies are omitted.
     var systemPrompt: String { get }
 
     /// Compact-window guidance; defaults to systemPrompt.
@@ -23,6 +30,11 @@ public protocol MiniApplet: Sendable {
 }
 
 public extension MiniApplet {
+    func recordPreview(
+        for reference: RecordReference,
+        onFinish: @escaping @MainActor (RecordPreviewCompletion) -> Void
+    ) -> AnyView? { nil }
+
     var suggestedChatActions: [SuggestedChatAction] { [] }
 
     var compactSystemPrompt: String { systemPrompt }

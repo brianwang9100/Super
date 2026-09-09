@@ -5,7 +5,7 @@ import Testing
 
 @Suite("BibleDeepLinkRouter")
 struct BibleDeepLinkRouterTests {
-    @Test func validSuperBibleURLPublishesOpenRecord() async throws {
+    @Test func validSuperBibleURLRequestsPreview() async throws {
         let bus = SuperEventBus()
         let stream = await bus.events()
         var iterator = stream.makeAsyncIterator()
@@ -14,8 +14,8 @@ struct BibleDeepLinkRouterTests {
         #expect(BibleDeepLinkRouter.handle(url: url, eventBus: bus))
 
         let event = await iterator.next()
-        guard case .openRecord(let reference) = event else {
-            Issue.record("expected .openRecord event, got \(String(describing: event))")
+        guard case .previewRecord(let reference) = event else {
+            Issue.record("expected .previewRecord event, got \(String(describing: event))")
             return
         }
         #expect(reference.appletID == "bible")

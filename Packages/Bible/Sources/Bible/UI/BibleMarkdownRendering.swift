@@ -6,6 +6,7 @@ import SwiftUI
 /// app that registered the same scheme. External URLs retain system handling.
 private struct BibleMarkdownRendering: ViewModifier {
     @Environment(\.superTypography) private var typography
+    @Environment(\.markdownBibleCitationPolicy) private var bibleCitationPolicy
 
     let openLink: (BibleDeepLink) -> Void
 
@@ -14,6 +15,7 @@ private struct BibleMarkdownRendering: ViewModifier {
             .markdownBodyMetrics(MarkdownBodyMetrics(fontScale: typography.fontScale))
             .environment(\.openURL, OpenURLAction { url in
                 if let link = BibleDeepLink(url: url) {
+                    guard bibleCitationPolicy == .enabled else { return .discarded }
                     openLink(link)
                     return .handled
                 }

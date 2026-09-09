@@ -72,11 +72,12 @@ struct BibleChapterReaderSnapshotTests {
             bookId: "1PE",
             bookName: "1 Peter",
             selectedVerses: [25],
-            previousLabel: "1 Peter 1",
-            nextLabel: "1 Peter 3",
+            navigation: BibleChapterNavigation(
+                previousLabel: "1 Peter 1",
+                nextLabel: "1 Peter 3",
+                onPrevious: {}, onNext: {}
+            ),
             onTapVerse: { _ in },
-            onPrevious: {},
-            onNext: {},
             onBackgroundTap: {}
         )
         .defaultScrollAnchor(.bottom)
@@ -113,11 +114,12 @@ struct BibleChapterReaderSnapshotTests {
                 bookId: "1PE",
                 bookName: "1 Peter",
                 selectedVerses: [],
-                previousLabel: "1 Peter 1",
-                nextLabel: "1 Peter 3",
+                navigation: BibleChapterNavigation(
+                    previousLabel: "1 Peter 1",
+                    nextLabel: "1 Peter 3",
+                    onPrevious: {}, onNext: {}
+                ),
                 onTapVerse: { _ in },
-                onPrevious: {},
-                onNext: {},
                 onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
@@ -179,11 +181,12 @@ struct BibleChapterReaderSnapshotTests {
                 bookId: "1PE",
                 bookName: "1 Peter",
                 selectedVerses: [],
-                previousLabel: "1 Peter 1",
-                nextLabel: "1 Peter 3",
+                navigation: BibleChapterNavigation(
+                    previousLabel: "1 Peter 1",
+                    nextLabel: "1 Peter 3",
+                    onPrevious: {}, onNext: {}
+                ),
                 onTapVerse: { _ in },
-                onPrevious: {},
-                onNext: {},
                 onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
@@ -230,11 +233,12 @@ struct BibleChapterReaderSnapshotTests {
                 bookId: "1PE",
                 bookName: "1 Peter",
                 selectedVerses: [],
-                previousLabel: "1 Peter 1",
-                nextLabel: "1 Peter 3",
+                navigation: BibleChapterNavigation(
+                    previousLabel: "1 Peter 1",
+                    nextLabel: "1 Peter 3",
+                    onPrevious: {}, onNext: {}
+                ),
                 onTapVerse: { _ in },
-                onPrevious: {},
-                onNext: {},
                 onBackgroundTap: {},
                 onAnnotationBubbleTap: { _ in },
                 onRequestChapterAnnotation: { _ in },
