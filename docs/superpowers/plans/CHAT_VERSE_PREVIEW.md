@@ -31,11 +31,11 @@
 
 **Interfaces:** `@Observable @MainActor final class BibleAnnotationDispatchViewModel`; `attach(to: SuperEventBus) async`; `status(for: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus?`; `request(reference: RecordReference, for: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchResult`; `clearFailure(for:)`. `BibleAnnotationDispatchResult` has `.started(requestId: String)`, `.alreadyRunning(requestId: String)`, and `.unavailable`. Only `.started` publishes. The local reader presents the target for the first two outcomes and retains the existing bus-less fallback for `.unavailable`.
 
-- [ ] Add real-bus tests: two models share one running request; duplicate request publishes once; matching completion updates both; stale completion cannot clear a retry; preview model release does not lose running/failure state. Subscribe before publishing and drain explicit processed-event seams.
-- [ ] Run `swift test --package-path Packages/Bible --filter BibleAnnotationDispatchViewModelTests`; new coverage should initially fail for the missing dispatch type.
-- [ ] Move only bus request/status ownership into the shared model. Preserve full-reader forwarding APIs and test drain seams; keep disclaimer queues, selection, presented sheets, and text construction on each reader model. Attach once in `BibleApplet.attach(to:)`.
-- [ ] Run new tests and `BibleScreenViewModelDispatchTests`, `BibleScreenViewModelAnnotationsTests`, and `BibleScreenViewModelSidebarTests`. Confirm existing narration attachment and sidebar dismissal still work.
-- [ ] Commit the tested extraction.
+- [x] Add real-bus tests: two models share one running request; duplicate request publishes once; matching completion updates both; stale completion cannot clear a retry; preview model release does not lose running/failure state. Subscribe before publishing and drain explicit processed-event seams.
+- [x] Run `swift test --package-path Packages/Bible --filter BibleAnnotationDispatchViewModelTests`; new coverage should initially fail for the missing dispatch type.
+- [x] Move only bus request/status ownership into the shared model. Preserve full-reader forwarding APIs and test drain seams; keep disclaimer queues, selection, presented sheets, and text construction on each reader model. Attach once in `BibleApplet.attach(to:)`.
+- [x] Run new tests and `BibleScreenViewModelDispatchTests`, `BibleScreenViewModelAnnotationsTests`, and `BibleScreenViewModelSidebarTests`. Confirm existing narration attachment and sidebar dismissal still work.
+- [x] Commit the tested extraction.
 
 ## Task 2: Make chapter content and study presentation reusable
 
@@ -46,12 +46,12 @@
 
 **Interfaces:** `BibleChapterNavigation` contains previous/next labels and callbacks; `BibleChapterReaderLayout` has `topInset` and `bottomInset` with static full-reader/preview presets. `BibleChapterContent` takes the model, layout, optional navigation, overlay kind, study callbacks, and full-reader scroll/footer callbacks. `BibleStudySheetsModifier` takes the model, annotation repository, optional full-reader narration-sheet content, a Bible-link policy, an add-to-chat callback, and a host-completion callback.
 
-- [ ] Capture existing full-reader expectations before moving code: selection survives action close, empty selection closes actions, selection-to-note/annotation waits for dismissal, narration replaces action content, and footer visibility still hides composer arrows.
-- [ ] Change `BibleChapterReader` to render `BibleChapterFooter` only when navigation exists. Replace hardcoded layout clearances with the layout input and preserve the existing overlay reserve and pending-scroll consumption behavior.
-- [ ] Extract the common content binding and study-sheet presentation from `BibleScreen`. Keep book/translation pickers, narration lifecycle, immersive behavior, shell chrome, and composer accessories owned by the screen. Route book-picker handoffs into the shared study presentation without duplicate sheet presenters.
-- [ ] Make replacement handoffs explicit and identity-guarded: action tiles capture targets, clear selection/dismiss actions, and run the queued transition from `onDismiss`. Glyph-driven note/annotation presentation preserves selection. Bookmarks keep their existing clear-selection behavior and action-dismissal handoff (retain `presentClearsSelection`). Add narration → note/bookmark → close coverage proving playback and transport return, without expecting bookmark selection retention. Expose an asynchronous finish path that dismisses study sheets before completing the host. Do not use timer delays or attach a second selection sheet to the same host.
-- [ ] Add behavioral tests for absent navigation and full-reader layout parity. Reuse existing `BibleScreenSnapshotTests` and `BibleChapterReaderTests` to verify the refactor; do not add captures solely for extracted wrappers.
-- [ ] Run affected Bible tests and relevant simulator reader/action/narration fixtures; commit only once existing behavior remains intact.
+- [x] Capture existing full-reader expectations before moving code: selection survives action close, empty selection closes actions, selection-to-note/annotation waits for dismissal, narration replaces action content, and footer visibility still hides composer arrows.
+- [x] Change `BibleChapterReader` to render `BibleChapterFooter` only when navigation exists. Replace hardcoded layout clearances with the layout input and preserve the existing overlay reserve and pending-scroll consumption behavior.
+- [x] Extract the common content binding and study-sheet presentation from `BibleScreen`. Keep book/translation pickers, narration lifecycle, immersive behavior, shell chrome, and composer accessories owned by the screen. Route book-picker handoffs into the shared study presentation without duplicate sheet presenters.
+- [x] Make replacement handoffs explicit and identity-guarded: action tiles capture targets, clear selection/dismiss actions, and run the queued transition from `onDismiss`. Glyph-driven note/annotation presentation preserves selection. Bookmarks keep their existing clear-selection behavior and action-dismissal handoff (retain `presentClearsSelection`). Add narration → note/bookmark → close coverage proving playback and transport return, without expecting bookmark selection retention. Expose an asynchronous finish path that dismisses study sheets before completing the host. Do not use timer delays or attach a second selection sheet to the same host.
+- [x] Add behavioral tests for absent navigation and full-reader layout parity. Reuse existing `BibleScreenSnapshotTests` and `BibleChapterReaderTests` to verify the refactor; do not add captures solely for extracted wrappers.
+- [x] Run affected Bible tests and relevant simulator reader/action/narration fixtures; commit only once existing behavior remains intact.
 
 ## Task 3: Build the isolated chapter preview and generic applet capability
 
@@ -68,14 +68,14 @@
 
 **Interfaces:** Core's `RecordPreviewCompletion` and `MiniApplet.recordPreview(for:onFinish:)` match the spec. Add `initialTranslation: BibleTranslation = .defaultTranslation` to the existing view-model initializer. The applet constructs a fresh model with `positionRepository: nil`, the captured active translation, shared repositories/dispatch, and the requested initial position. `BibleReaderReference` is an immutable `Sendable, Equatable` Bible-owned value with `position`, `translation`, `selectedVerses`, `recordReference`, and `init?(reference:)`; its versioned grammar is in the spec. Add a full-reader entry `openReference(_ reference: BibleReaderReference)` that validates/loads the chapter, intersects the exact selection with loaded verse numbers, scrolls its minimum, and persists the resulting position once. Existing URL entry points remain supported.
 
-- [ ] Add tests with injected text, storage, clock, IDs, clipboard, and haptics. Opening/cancelling must leave the original model and reading-position repository unchanged; selection/highlight/note edits target only the preview chapter; unavailable text never opens actions.
-- [ ] Cover single/range/chapter links, partial/fully out-of-range verse spans, very large bounds, re-opened identical references, and exact current-selection handoff (contiguous, disjoint, empty) with captured translation. Round-trip `BibleReaderReference`; reject unknown versions, translation IDs, books, invalid chapters, malformed lists, and nonpositive verses. Filter actual loaded verse numbers against range bounds rather than constructing an unbounded `Set(start...end)`. Keep attachment and public URL grammars unchanged.
-- [ ] Implement the nil-default generic capability and its Bible implementation. Retain/share dependencies inside BibleApplet rather than opening new databases or using hidden globals. Create content/model once per accepted request and inject the same read-only DatabaseContext.
-- [ ] Resolve the full reader's initial saved state once during `BibleApplet.attach(to:)`, before inbox subscription and shell readiness; make `load()` idempotent and coalesce concurrent callers onto the same awaited restoration task. An initialization/navigation generation guard must prevent an in-flight restore from overwriting explicit chapter/translation navigation. Test a cold launch with a non-Bible backdrop and saved nondefault translation, explicit handoff before first BibleScreen mount, repeated/concurrent load, and gated restore versus navigation. Initialization must never persist a new reading position.
-- [ ] Build the preview header, selection controls, shared chapter content, and shared study sheets. Fix the chapter/translation; omit all navigation/narration contributions. Gate initial actions with a one-shot `BiblePreviewPresentationObserver` native completion callback, checking the request ID and cancellation state. Do not equate SwiftUI `.task`/`.onAppear` with presentation completion. Preserve pending verse scrolling until the reader consumes it.
-- [ ] Implement Core's scoped `.plainText` citation rendering: bypass automatic linkification and unwrap explicit Bible-scheme links to their label nodes (including reference-style syntax), preserving formatting, code, and external URLs. Carry the policy through the annotation sheet/container/block chain and retain default enabled behavior elsewhere. Test automatic references, inline/reference-style internal links, mixed external/internal links, code, and default Chat/full-Bible rendering. Retain defensive custom-scheme rejection in BibleMarkdownRendering. Verify disabled citations lack VoiceOver link traits; do not implement this as a no-op tap handler.
-- [ ] Validate action close/reopen, last-verse scrolling, secondary note/annotation/bookmark sheets, and finish callbacks. Ensure dispatched generation and accepted writes survive dismissal while queued presentation work does not.
-- [ ] Run Core/Bible tests affected by the capability and model changes; commit the tested preview.
+- [x] Add tests with injected text, storage, clock, IDs, clipboard, and haptics. Opening/cancelling must leave the original model and reading-position repository unchanged; selection/highlight/note edits target only the preview chapter; unavailable text never opens actions.
+- [x] Cover single/range/chapter links, partial/fully out-of-range verse spans, very large bounds, re-opened identical references, and exact current-selection handoff (contiguous, disjoint, empty) with captured translation. Round-trip `BibleReaderReference`; reject unknown versions, translation IDs, books, invalid chapters, malformed lists, and nonpositive verses. Filter actual loaded verse numbers against range bounds rather than constructing an unbounded `Set(start...end)`. Keep attachment and public URL grammars unchanged.
+- [x] Implement the nil-default generic capability and its Bible implementation. Retain/share dependencies inside BibleApplet rather than opening new databases or using hidden globals. Create content/model once per accepted request and inject the same read-only DatabaseContext.
+- [x] Resolve the full reader's initial saved state once during `BibleApplet.attach(to:)`, before inbox subscription and shell readiness; make `load()` idempotent and coalesce concurrent callers onto the same awaited restoration task. An initialization/navigation generation guard must prevent an in-flight restore from overwriting explicit chapter/translation navigation. Test a cold launch with a non-Bible backdrop and saved nondefault translation, explicit handoff before first BibleScreen mount, repeated/concurrent load, and gated restore versus navigation. Initialization must never persist a new reading position.
+- [x] Build the preview header, selection controls, shared chapter content, and shared study sheets. Fix the chapter/translation; omit all navigation/narration contributions. Gate initial actions with a one-shot `BiblePreviewPresentationObserver` native completion callback, checking the request ID and cancellation state. Do not equate SwiftUI `.task`/`.onAppear` with presentation completion. Preserve pending verse scrolling until the reader consumes it.
+- [x] Implement Core's scoped `.plainText` citation rendering: bypass automatic linkification and unwrap explicit Bible-scheme links to their label nodes (including reference-style syntax), preserving formatting, code, and external URLs. Carry the policy through the annotation sheet/container/block chain and retain default enabled behavior elsewhere. Test automatic references, inline/reference-style internal links, mixed external/internal links, code, and default Chat/full-Bible rendering. Retain defensive custom-scheme rejection in BibleMarkdownRendering. Verify disabled citations lack VoiceOver link traits; do not implement this as a no-op tap handler.
+- [x] Validate action close/reopen, last-verse scrolling, secondary note/annotation/bookmark sheets, and finish callbacks. Ensure dispatched generation and accepted writes survive dismissal while queued presentation work does not.
+- [x] Run Core/Bible tests affected by the capability and model changes; commit the tested preview.
 
 Codec regression to add with the new type (its initializer takes the three
 stored fields named above):
@@ -104,12 +104,12 @@ stored fields named above):
 
 **Interfaces:** `SuperEvent.previewRecord(reference: RecordReference)` requests presentation only. Existing `.openRecord` and `.recordAddedToChat` retain their payloads/consumers. The shell's presentation record owns one opaque view and unique ID; the callback is guarded by that ID and consumed once on dismissal.
 
-- [ ] Change the existing real-bus router test to expect `.previewRecord`. Preserve malformed URL, https fallback, and nil-bus behavior. Add a Bible-inbox regression proving preview events do not call full-reader navigation while `.openRecord` still does.
-- [ ] Add the event and route transcript links to it. Keep `AppShell.onOpenURL` on the full-navigation path.
-- [ ] Resolve applet capability and cache the returned content on accepted preview requests. Wrap cached content with live `.superTheme(theme)`, `.superFontScale(appearance.fontScale)`, `.superTypography(typography)`, and shared event-bus/haptics environment at the shell layer. Resign composer focus and present the outer native sheet without altering activeID, chat state, or overlay progress. Verify nondefault theme/scale from actual Chat, not only a directly hosted preview fixture.
-- [ ] Implement identity-checked completion, outer-dismiss publication, duplicate suppression, Settings arbitration, and cancellation of queued preview work on authoritative navigation/sidebar events. A cancelled request never emits a stale Open/Add-to-chat event. The nested presenter finishes before the outer one. For an already-published authoritative `.openRecord`, defer only the shell transition: never replay the original event because BibleReferenceInbox already consumed it. Preview-originated completions publish their first event from outer onDismiss.
-- [ ] Add the new shared source to both schemes. Manually validate shell-only state transitions on the dedicated simulator under the documented app-target XCTest exception; no new app test target solely for this change.
-- [ ] Run full Core/Chat/Bible package suites and build both app schemes; commit the integrated behavior.
+- [x] Change the existing real-bus router test to expect `.previewRecord`. Preserve malformed URL, https fallback, and nil-bus behavior. Add a Bible-inbox regression proving preview events do not call full-reader navigation while `.openRecord` still does.
+- [x] Add the event and route transcript links to it. Keep `AppShell.onOpenURL` on the full-navigation path.
+- [x] Resolve applet capability and cache the returned content on accepted preview requests. Wrap cached content with live `.superTheme(theme)`, `.superFontScale(appearance.fontScale)`, `.superTypography(typography)`, and shared event-bus/haptics environment at the shell layer. Resign composer focus and present the outer native sheet without altering activeID, chat state, or overlay progress. Verify nondefault theme/scale from actual Chat, not only a directly hosted preview fixture.
+- [x] Implement identity-checked completion, outer-dismiss publication, duplicate suppression, Settings arbitration, and cancellation of queued preview work on authoritative navigation/sidebar events. A cancelled request never emits a stale Open/Add-to-chat event. The nested presenter finishes before the outer one. For an already-published authoritative `.openRecord`, defer only the shell transition: never replay the original event because BibleReferenceInbox already consumed it. Preview-originated completions publish their first event from outer onDismiss.
+- [x] Add the new shared source to both schemes. Manually validate shell-only state transitions on the dedicated simulator under the documented app-target XCTest exception; no new app test target solely for this change.
+- [x] Run full Core/Chat/Bible package suites and build both app schemes; commit the integrated behavior.
 
 Update the existing routing regression to this event expectation before changing
 the router. This test fails against the current `.openRecord` behavior:
@@ -138,12 +138,12 @@ the router. This test fails against the current `.openRecord` behavior:
 - Update `Scripts/VisualTesting/package-inventory.json` and inventory counts in testing documentation if required by the new captures.
 - Update this plan's checkboxes and design status after approval/implementation.
 
-- [ ] Read `docs/TESTING.md`, `docs/VISUAL_TESTING_POLICY.md`, and current simulator pins again only if changed. Reconfirm the verified inventory (623 total; Bible 276). Add three modal-content captures: primary light/dark and XXL plus maximum app scale (target total 626; Bible 279). Existing single-pass captures cannot prove native sheet stacking; test that on the dedicated simulator and record demo evidence without new capture infrastructure.
-- [ ] Run `swift test --package-path Packages/Core`, `swift test --package-path Packages/Chat`, and `swift test --package-path Packages/Bible`.
-- [ ] Run `xcodegen generate`, then `python3 Scripts/worktree_simulator.py ensure`; reuse the returned UUID. Build `Super` and `SuperBible` with `xcodebuild build -scheme <scheme> -destination "platform=iOS Simulator,id=<UUID>" CODE_SIGNING_ALLOWED=NO`.
-- [ ] Use `python3 Scripts/VisualTesting/capture.py Bible --output .build/chat-verse-preview-bible-capture` with a fresh output directory; run relevant Core/Chat simulator tests for changed renderer behavior. Inspect the three modal captures and existing full-reader/action/narration regression evidence.
+- [x] Read `docs/TESTING.md`, `docs/VISUAL_TESTING_POLICY.md`, and current simulator pins again only if changed. Reconfirm the verified inventory (623 total; Bible 276). Add three modal-content captures: primary light/dark and XXL plus maximum app scale (target total 626; Bible 279). Existing single-pass captures cannot prove native sheet stacking; test that on the dedicated simulator and record demo evidence without new capture infrastructure.
+- [x] Run `swift test --package-path Packages/Core`, `swift test --package-path Packages/Chat`, and `swift test --package-path Packages/Bible`.
+- [x] Run `xcodegen generate`, then `python3 Scripts/worktree_simulator.py ensure`; reuse the returned UUID. Build `Super` and `SuperBible` with `xcodebuild build -scheme <scheme> -destination "platform=iOS Simulator,id=<UUID>" CODE_SIGNING_ALLOWED=NO`.
+- [x] Use `python3 Scripts/VisualTesting/capture.py Bible --output .build/chat-verse-preview-bible-capture` with a fresh output directory; run relevant Core/Chat simulator tests for changed renderer behavior. Inspect the three modal captures and existing full-reader/action/narration regression evidence.
 - [ ] In both apps, use DebugLLMProvider's existing verse-citation response. Tap a citation from expanded Chat; verify selection and scroll; deselect/reselect behind actions; close/reopen actions; highlight/copy/share; create/edit/cancel a note; generate/retry annotation; cancel by X and swipe; reopen; Open in Bible; Add to chat/New chat. Confirm underlying reader state survives cancel and intended writes remain visible. Verify external deep links still navigate directly and race cases never publish stale completions.
-- [ ] Have a separate review subagent inspect the implementation for serious actionable issues. Address findings and repeat affected checks.
+- [x] Have a separate review subagent inspect the implementation for serious actionable issues. Address findings and repeat affected checks.
 - [ ] Create a draft PR using `.github/pull_request_template.md`: include package/simulator/build results, native demo evidence, capture count delta with reasons, and any exact toolchain-related missing verification.
 - [ ] Monitor CI and Codex review together every ten minutes with a scheduled wakeup; request a Codex pass if none starts. Fix failures/findings with auto-merge disabled. Only after explicit approval and passing applicable CI for the current head, mark ready and enable auto-merge with required checks enforced; verify the eventual merge and stop monitoring.
 
@@ -161,3 +161,65 @@ with navigation/translation precedence tests. The user approved implementation a
 stacked PRs on 2026-09-08.
 
 Repository snapshot restoration: the stack now includes main's PR #354 rollback. The preview layer explicitly recorded and inspected its three new modal baselines on pinned Xcode 26.4.1/iOS 26.4.1 after default comparison rejected the missing files. Existing baselines and rendering tolerances are preserved. The integration layer updates those same three files for the final approved floating-pill design. Live protection was verified to require build, lint, gitleaks, ios-test, swift-test, and native-previews with their existing GitHub Actions app bindings; Argos is no longer a gate.
+
+## Validation record — 2026-09-08
+
+Implementation and both corrective changes are independently approved at
+`8deba815`. The review found an unmounted study-sheet finish race; its regression
+now proves early Cancel/Open finishes without manufacturing an impossible native
+`onDismiss`. Native QA additionally found the outgoing Chat composer consuming
+New chat attachments during asynchronous model creation. New conversation
+references now travel directly to the destination model, with real-bus regressions
+for empty composers, repeated references, reservation bursts, and the send payload.
+
+- Local package suites: Core **326 / 41 suites**, Chat **1106 / 83 suites**, Bible
+  **884 / 89 suites**, all passing. Final Chat changes reran its complete suite;
+  Core/Bible source is unchanged since their passing runs.
+- Both `Super` and `SuperBible` build at `8deba815` on the pinned Xcode 26.4.1 /
+  iOS 26.4.1 iPhone 17 simulator. Dedicated UUID:
+  `1E3A690B-F069-43F0-974D-7DB5CE1C289F`.
+- Local complete Bible capture: **279 validated images**; complete Core capture:
+  **20 validated images**. Existing reader, selection, notes, bookmarks, narration,
+  and chapter-footer representatives were inspected. Three new modal captures
+  cover Vellum light/dark and XXL with 120% app scale. Inventory: **623 → 626**,
+  Bible **276 → 279**, package **582 → 585**, native unchanged at **41**.
+  CI also passed complete Chat/Core/Bible/Todo capture legs on the lower stack.
+- Native SuperBible: semi-expanded and expanded Chat open a real nested sheet;
+  range selection, deselection to **28,30**, action close/reopen, highlight, exact
+  clipboard contents, Cancel/reopen, and exact-selection Open in Bible pass.
+  A saved note remained editable; an external Psalm 23:1 link while its editor
+  was open dismissed the whole preview stack and opened the authoritative target.
+  Lapis Dark and 120% app font scale propagated from actual Chat.
+- Native annotation generation: first-use disclaimer, chapter and verse generation,
+  close/reopen persistence, and secondary presentation pass. The actual preview
+  renderer exposed the Hebrews 4:15 citation as StaticText, with no link styling
+  or navigation on tap. Core syntax-tree tests separately prove link nodes are
+  removed, including explicit/reference-style links and preserved external URLs.
+- Native SuperOS: preview opens from fully expanded Chat over Tasks; Share opens
+  above actions and cancels without sending; swipe dismissal preserves Chat and
+  Tasks. Whole-chapter Open in Bible navigates to Psalm 23 with empty selection
+  and full controls, including before the full Bible screen's first mount.
+- Native New chat regression at the corrected revision: empty-composer and
+  Add-to-chat → New-chat with the same verse both retain exactly one destination
+  attachment. The selected reference also survives the real Chat send pipeline.
+- Duplicate/early-tap smoke checks did not create duplicate/orphan sheets. UIKit
+  can ignore taps during its transition, so these are not claimed as deterministic
+  race coverage. Deterministic preview/dispatch tests cover unmounted/mounted
+  finishing, stale identities, retry completion, cancellation during generation,
+  invalid/huge bounds, unavailable text, and last-verse selection/scroll targets.
+
+The full Cartesian manual matrix in Task 5 is intentionally still unchecked:
+annotation failure/retry and every native timing permutation were not manually
+forced in both apps. Those state transitions have deterministic package coverage;
+representative actual native flows above cover composition and presentation.
+No generated images or simulator data are committed.
+
+### PR delivery
+
+The implementation is split into reusable reader foundation (PR #348), isolated
+chapter preview (PR #349), and Chat/shell integration (top PR), linked through native
+GitHub stack #350. Both lower PRs have explicit Codex approval of their current
+heads and passing builds, lint, secret scan, package tests, and iOS capture tests.
+Their required `native-previews` upload fails because Argos reports the account's
+Free Plan screenshot capacity is exhausted. Required checks remain enforced; no
+baseline deletion, check bypass, or paid plan change is part of this work.
