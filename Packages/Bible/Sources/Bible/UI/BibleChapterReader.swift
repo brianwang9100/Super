@@ -36,6 +36,7 @@ struct BibleChapterReader: View {
     private let onBookmarkTap: (() -> Void)?
     private let onScroll: (CGFloat, Bool) -> Void
     private let onFooterVisible: (Bool) -> Void
+    private let topReserve: CGFloat
 
     // Programmatic scrolling must not toggle immersive chrome.
     @State private var scrollIsUserDriven = false
@@ -68,7 +69,8 @@ struct BibleChapterReader: View {
         onNoteGlyphTap: ((BibleNoteTargetSpec) -> Void)? = nil,
         onBookmarkTap: (() -> Void)? = nil,
         onScroll: @escaping (CGFloat, Bool) -> Void = { _, _ in },
-        onFooterVisible: @escaping (Bool) -> Void = { _ in }
+        onFooterVisible: @escaping (Bool) -> Void = { _ in },
+        topReserve: CGFloat = 68
     ) {
         _highlights = Query(constant: ChapterHighlightsRequest(
             bookId: bookId,
@@ -108,6 +110,7 @@ struct BibleChapterReader: View {
         self.onBookmarkTap = onBookmarkTap
         self.onScroll = onScroll
         self.onFooterVisible = onFooterVisible
+        self.topReserve = topReserve
     }
 
     private var highlightsByVerse: [Int: BibleHighlightColor] {
@@ -207,8 +210,8 @@ struct BibleChapterReader: View {
                     Color.clear.frame(height: Self.bottomClearHeight(for: bottomOverlayKind))
                 }
                 .padding(.horizontal, 26)
-                // Clear the floating nav bar while allowing text to scroll beneath its gradient.
-                .padding(.top, 68)
+                // Clear the floating nav bar while allowing text to scroll under its gradient.
+                .padding(.top, topReserve)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { onBackgroundTap() }

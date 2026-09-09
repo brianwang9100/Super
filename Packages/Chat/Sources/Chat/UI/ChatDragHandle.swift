@@ -1,6 +1,11 @@
 import SwiftUI
 
 public struct ChatDragHandle: View {
+    static let barWidth: CGFloat = 36
+    static let barHeight: CGFloat = 4.5
+
+    static var barShape: Capsule { Capsule(style: .continuous) }
+
     public enum Tone: Sendable, Equatable {
         case resting
         case active
@@ -30,9 +35,9 @@ public struct ChatDragHandle: View {
 
     public var body: some View {
         VStack {
-            Capsule(style: .continuous)
+            Self.barShape
                 .fill(fillColor)
-                .frame(width: 36, height: 4.5)
+                .frame(width: Self.barWidth, height: Self.barHeight)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 8)
@@ -55,10 +60,8 @@ public struct ChatDragHandle: View {
         }
     }
 
-    /// Use global coordinates: local translation feeds back through the moving handle
-    /// and makes the surface track at half finger speed. The parent resolves taps and drags.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .global)
+        Self.resizeGesture()
             .onChanged { value in
                 if !isDragging { isDragging = true }
                 onDragChanged?(value.translation)
@@ -67,5 +70,11 @@ public struct ChatDragHandle: View {
                 isDragging = false
                 onDragEnded?(value.translation, value.predictedEndTranslation)
             }
+    }
+
+    /// Local coordinates feed back through the moving handle and halve finger tracking speed.
+    /// Both handles therefore report screen-space displacement.
+    static func resizeGesture(minimumDistance: CGFloat = 0) -> DragGesture {
+        DragGesture(minimumDistance: minimumDistance, coordinateSpace: .global)
     }
 }

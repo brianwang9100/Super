@@ -319,4 +319,10 @@ public func registerBibleMigrations(_ migrator: inout DatabaseMigrator) {
                 CHECK (prefetchVerseCount BETWEEN 0 AND 10)
             """)
     }
+
+    migrator.registerMigration("v13_navigationHistory") { db in
+        try db.execute(sql: """
+            ALTER TABLE bibleReadingPosition ADD COLUMN navigationHistoryJSON TEXT;
+            """)
+    }
 }

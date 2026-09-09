@@ -975,6 +975,7 @@ public actor ChatSession {
 }
 
 private func encodeJSON(_ value: JSONValue) -> String {
+    // Invalid JSON values are programmer errors; silently replacing tool input would corrupt history.
     // swiftlint:disable:next force_try
     let data = try! JSONEncoder().encode(value)
     return String(decoding: data, as: UTF8.self)
@@ -982,6 +983,7 @@ private func encodeJSON(_ value: JSONValue) -> String {
 
 /// Internal so interruption recovery writes the identical result shape.
 func encodeJSON(_ value: ToolResult) -> String {
+    // This string/bool-only payload must encode; failure signals a programmer error.
     // swiftlint:disable:next force_try
     let data = try! JSONEncoder().encode(value)
     return String(decoding: data, as: UTF8.self)

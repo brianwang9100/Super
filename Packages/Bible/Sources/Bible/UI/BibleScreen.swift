@@ -10,10 +10,10 @@ public struct BibleScreen: View {
     @Environment(\.superEventBus) private var eventBus
     @Environment(\.composerAccessoryStore) private var composerAccessoryStore
     @Bindable private var viewModel: BibleScreenViewModel
+    @State private var measuredNavigationHeight: CGFloat = 60
 
-    // Native sheets cannot reliably present during another sheet's dismissal. Queue
-    // follow-on work and invoke it from onDismiss after the current sheet clears.
-    @State private var pendingSheetHandoff: (() -> Void)?
+    /// Defer the next sheet until onDismiss; presenting during dismissal is unreliable.
+    @State private var pendingSheetHandoff: (position: BiblePosition, action: () -> Void)?
 
     private var motion: BibleSheetMotion { BibleSheetMotion(reduceMotion: reduceMotion) }
 
@@ -81,7 +81,20 @@ public struct BibleScreen: View {
             theme.background.ignoresSafeArea()
             content
             navBar
-            if let toast = viewModel.toast {
+            if let message = viewModel.navigationPersistenceError {
+                BibleAttachToast(
+                    message: message,
+                    onDismiss: viewModel.canDismissNavigationPersistenceError
+                        ? { viewModel.dismissNavigationPersistenceError() } : nil,
+                    onRetry: { Task { await viewModel.retryNavigationPersistence() } },
+                    systemImage: "clock.arrow.circlepath"
+                )
+                .disabled(viewModel.isRestoringNavigation)
+                .padding(.horizontal, 12)
+                .padding(.bottom, bottomReserve)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .transition(motion.transition)
+            } else if let toast = viewModel.toast {
                 BibleAttachToast(
                     message: toast,
                     onDismiss: { withAnimation(motion.animation) { viewModel.dismissToast() } }
@@ -99,12 +112,16 @@ public struct BibleScreen: View {
         .onChange(of: viewModel.selectionCitation) { _, _ in
             publishComposerAccessories()
         }
-        // Mirror immersive flips to shell chrome; avoid high-frequency scroll events on the bus.
+        .onChange(of: viewModel.isRestoringNavigation) { _, _ in
+            publishComposerAccessories()
+        }
+        // Mirror reader visibility to shell chrome only on actual state changes.
         .onChange(of: viewModel.isImmersive) { _, immersive in
             publishChromeVisibility(!immersive)
         }
         // Chapter changes reset scroll; restore chrome so it cannot remain stranded hidden.
         .onChange(of: viewModel.position) { _, _ in
+            pendingSheetHandoff = nil
             viewModel.resetImmersive()
             publishComposerAccessories()
         }
@@ -115,11 +132,13 @@ public struct BibleScreen: View {
             publishChromeVisibility(true)
             clearComposerAccessories()
         }
-        // Playback is foreground-only.
+        // Stop background playback while leaving transport open for replay.
         .onChange(of: scenePhase) { _, new in
             if new != .active { viewModel.narration.stop() }
+            if new == .background {
+                Task { await viewModel.flushNavigationPersistence() }
+            }
         }
-        // Stop intentionally keeps the transport sheet open for replay.
         .sheet(item: $viewModel.presentedAnnotationTarget) { spec in
             AnnotationSheetContainer(
                 spec: spec,
@@ -141,10 +160,11 @@ public struct BibleScreen: View {
                 onDeleteFailed: { _ in
                     viewModel.presentDeleteAnnotationFailedToast()
                 },
-                onRegenerateFailed: {
-                    viewModel.clearFailedDispatchStatus(for: spec)
+                onClearDraft: { requestID in
+                    viewModel.clearAnnotationDraft(for: spec, requestID: requestID)
                 },
-                dispatchStatus: viewModel.dispatchStatus(for: spec)
+                dispatchStatus: viewModel.dispatchStatus(for: spec),
+                draft: viewModel.annotationDraft(for: spec)
             )
         }
         .sheet(
@@ -253,13 +273,13 @@ public struct BibleScreen: View {
             leading: ComposerAccessoryButton(
                 systemImage: "chevron.left",
                 accessibilityLabel: "Previous chapter",
-                isEnabled: viewModel.canStepBackward,
+                isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepBackward,
                 action: { viewModel.stepChapter(.previous) }
             ),
             trailing: ComposerAccessoryButton(
                 systemImage: "chevron.right",
                 accessibilityLabel: "Next chapter",
-                isEnabled: viewModel.canStepForward,
+                isEnabled: !viewModel.isRestoringNavigation && viewModel.canStepForward,
                 action: { viewModel.stepChapter(.next) }
             ),
             selection: viewModel.selectionCitation.map { citation in
@@ -347,9 +367,22 @@ public struct BibleScreen: View {
                         viewModel.presentNarrationSheet()
                     }
                 }
-            }
+            },
+            historyControls: .init(
+                backLabel: historyLabel(for: viewModel.backDestination),
+                forwardLabel: historyLabel(for: viewModel.forwardDestination),
+                onBack: { viewModel.goBack() }, onForward: { viewModel.goForward() }
+            ),
+            isRestoringNavigation: viewModel.isRestoringNavigation
         )
-        .offset(y: viewModel.isImmersive ? -Self.navBarHideDistance : 0)
+        .disabled(viewModel.isRestoringNavigation)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            measuredNavigationHeight = height
+        }
+        // Match the shell chrome animation while clearing the measured toolbar and top safe area.
+        .offset(y: viewModel.isImmersive ? -navigationHideDistance : 0)
         .opacity(viewModel.isImmersive ? 0 : 1)
         .animation(
             SuperMotion.chrome(hiding: viewModel.isImmersive, reduceMotion: reduceMotion),
@@ -357,8 +390,16 @@ public struct BibleScreen: View {
         )
     }
 
-    // Clear the bar and top safe area when sliding offscreen.
-    private static let navBarHideDistance: CGFloat = 120
+    /// Reserve every adaptive toolbar row above the chapter heading.
+    private var navigationTopReserve: CGFloat { measuredNavigationHeight + 8 }
+
+    /// Clear the measured toolbar and the top safe area when entering immersive mode.
+    private var navigationHideDistance: CGFloat { measuredNavigationHeight + 60 }
+
+    private func historyLabel(for position: BiblePosition?) -> String? {
+        guard let position, let book = BibleBookCatalog.standard.book(id: position.bookId) else { return nil }
+        return "\(book.name) \(position.chapterNumber)"
+    }
 
     /// Noncontiguous selection generates one intent per contiguous range, in selection order.
     private func handleAnnotateSelection() {
@@ -415,7 +456,7 @@ public struct BibleScreen: View {
     }
 
     private func handOffAfterBookSheetDismiss(_ work: @escaping () -> Void) {
-        pendingSheetHandoff = work
+        pendingSheetHandoff = (viewModel.position, work)
         viewModel.dismissBookSheet()
     }
 
@@ -426,14 +467,15 @@ public struct BibleScreen: View {
             work()
             return
         }
-        pendingSheetHandoff = work
+        pendingSheetHandoff = (viewModel.position, work)
         viewModel.clearSelection()
     }
 
     private func runPendingSheetHandoff() {
-        let work = pendingSheetHandoff
+        let pending = pendingSheetHandoff
         pendingSheetHandoff = nil
-        work?()
+        guard let pending, pending.position == viewModel.position else { return }
+        pending.action()
     }
 
     @ViewBuilder
@@ -485,10 +527,12 @@ public struct BibleScreen: View {
                 },
                 onFooterVisible: { visible in
                     viewModel.updateFooterVisibility(visible)
-                }
+                },
+                topReserve: navigationTopReserve
             )
             .id(viewModel.position)
-            // Do not inherit the picker's dismissal animation when replacing chapters.
+            .disabled(viewModel.isRestoringNavigation)
+            // Chapter swaps must not inherit the picker's dismissal animation.
             .transition(.identity)
         } else {
             unavailable

@@ -2,7 +2,14 @@ import Core
 import SwiftUI
 
 struct BibleNavBar: View {
-    /// Annotation and chat actions use selected verses when present, otherwise the chapter.
+    struct HistoryControls {
+        let backLabel: String?
+        let forwardLabel: String?
+        let onBack: () -> Void
+        let onForward: () -> Void
+    }
+
+    /// Uses selected verses when present, otherwise the whole chapter.
     enum SparkMenuAction: Sendable, Equatable {
         case annotate
         case addToChat
@@ -34,43 +41,14 @@ struct BibleNavBar: View {
     let onClearSelection: () -> Void
     let onSparkMenuAction: (SparkMenuAction) -> Void
     let onTapNarrationPill: () -> Void
+    /// Browser history stays separate from biblical chapter stepping.
+    let historyControls: HistoryControls
+    var isRestoringNavigation = false
 
     var body: some View {
         // Share one backdrop sample across the glass controls.
         GlassEffectContainer {
-            HStack(spacing: 8) {
-                // Balance the trailing control; the shell's hamburger occupies this gap.
-                Color.clear.frame(width: 44, height: 44)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 8) {
-                    if showsChapterChevrons, selectionCitation == nil {
-                        circleButton(systemImage: "chevron.left", action: onPrevious, morphID: "nav.prev")
-                            .disabled(!canStepBackward)
-                            .opacity(canStepBackward ? 1 : 0.35)
-                            .accessibilityLabel("Previous chapter")
-                    }
-
-                    if let selectionCitation, showsSelectionPill {
-                        selectionPill(selectionCitation)
-                    } else {
-                        pill
-                    }
-
-                    if showsChapterChevrons, selectionCitation == nil {
-                        circleButton(systemImage: "chevron.right", action: onNext, morphID: "nav.next")
-                            .disabled(!canStepForward)
-                            .opacity(canStepForward ? 1 : 0.35)
-                            .accessibilityLabel("Next chapter")
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                // No morph ID here, so arrows resolve toward the center pill.
-                trailingControl
-            }
+            adaptiveBar(historyControls)
         }
         .padding(.horizontal, 12)
         .padding(.top, 4)
@@ -85,49 +63,73 @@ struct BibleNavBar: View {
         )
     }
 
-    private var pill: some View {
-        HStack(spacing: 0) {
-            Button(action: onPill) {
-                Text("\(bookName) \(chapterNumber)")
-                    .font(typography.font(size: 15, weight: .medium))
-                    .foregroundStyle(theme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
+    /// Probe the ideal row width so the picker cannot squeeze into the utility buttons.
+    private func adaptiveBar(_ controls: HistoryControls) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 44, height: 44)
+                Spacer(minLength: 0)
+                centerControls(controls, wraps: false)
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                trailingControl
             }
-            .buttonStyle(GlassHapticButtonStyle(.selection))
-            // Compress the book name before the translation code.
-            .layoutPriority(0)
-            .accessibilityLabel("\(bookName) \(chapterNumber), choose book")
 
-            Rectangle()
-                .fill(theme.border)
-                .frame(width: 1, height: 16)
-                .opacity(0.6)
-
-            Button(action: onTranslation) {
-                HStack(spacing: 4) {
-                    Text(translation.rawValue)
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(typography.font(size: 9, weight: .semibold))
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Color.clear.frame(width: 44, height: 44)
+                    Spacer(minLength: 0)
+                    if showsChapterChevrons, selectionCitation == nil {
+                        chapterButton(.previous)
+                        chapterButton(.next)
+                    }
+                    Spacer(minLength: 0)
+                    trailingControl
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                .font(typography.font(size: 13, weight: .medium))
-                .foregroundStyle(theme.inkSoft)
-                .padding(.horizontal, 9)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                centerControls(controls, wraps: true)
             }
-            .buttonStyle(GlassHapticButtonStyle(.selection))
-            .layoutPriority(1)
-            .accessibilityLabel("Translation \(translation.rawValue), choose translation")
         }
-        .frame(height: 44)
-        .superGlassSurface(in: Capsule(), morph: GlassMorphID("nav.center", in: glassNamespace))
+        .frame(maxWidth: .infinity)
+    }
+
+    private func centerControls(_ controls: HistoryControls, wraps: Bool) -> some View {
+        HStack(spacing: 8) {
+            if showsChapterChevrons, selectionCitation == nil, !wraps {
+                chapterButton(.previous)
+            }
+            if let selectionCitation, showsSelectionPill {
+                selectionPill(selectionCitation)
+            } else {
+                navigationSelector(controls, wraps: wraps)
+            }
+            if showsChapterChevrons, selectionCitation == nil, !wraps {
+                chapterButton(.next)
+            }
+        }
+    }
+
+    private func chapterButton(_ direction: BibleChapterDirection) -> some View {
+        let isPrevious = direction == .previous
+        let isEnabled = isPrevious ? canStepBackward : canStepForward
+        return circleButton(
+            systemImage: isPrevious ? "chevron.left" : "chevron.right",
+            action: isPrevious ? onPrevious : onNext,
+            morphID: isPrevious ? "nav.prev" : "nav.next"
+        )
+        .disabled(!isEnabled || isRestoringNavigation)
+        .opacity(isEnabled ? 1 : 0.35)
+        .accessibilityLabel(isPrevious ? "Previous chapter" : "Next chapter")
+    }
+
+    private func navigationSelector(_ controls: HistoryControls, wraps: Bool) -> some View {
+        BibleNavigationSelector(
+            bookName: bookName, chapterNumber: chapterNumber, translation: translation,
+            backLabel: controls.backLabel, forwardLabel: controls.forwardLabel,
+            wraps: wraps, isRestoring: isRestoringNavigation,
+            morph: GlassMorphID("nav.center", in: glassNamespace),
+            onBack: controls.onBack, onForward: controls.onForward,
+            onBook: onPill, onTranslation: onTranslation
+        )
     }
 
     private func selectionPill(_ citation: String) -> some View {

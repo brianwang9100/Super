@@ -71,12 +71,20 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         tools: [LLMTool],
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
+        stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
+    }
+
+    public func stream(
+        messages: [LLMMessage],
+        model: LLMModel,
+        tools: [LLMTool],
+        temperature: Double,
+        options: LLMRequestOptions
+    ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = AnthropicStreamReducer()
-                // Anthropic restricts tool names to `[A-Za-z0-9_-]` (same as
-                // OpenAI); Super's IDs are dot-namespaced. Encode the sanitized
-                // wire name and restore the registry name on decoded events.
+                var reducer = AnthropicStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
+                // Encode dotted tool IDs for Anthropic's [A-Za-z0-9_-] wire names; restore them on decoded events.
                 let nameMap = ToolWireNameMap(tools: tools)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
@@ -106,11 +114,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                         }
                     }
                 } catch {
-                    // Same recovery shape as the Responses adapter: honor the
-                    // messageStart-first contract, close any open block before
-                    // the error so `.error` lands immediately before the
-                    // terminal `.messageComplete`, and don't double-report when
-                    // an SSE `error` event already surfaced a more specific one.
+                    // Preserve messageStart-first ordering and the original provider error; close blocks before error/completion.
                     let alreadyErrored = reducer.hasErrored
                     reducer.markErrored()
                     for event in reducer.flushPendingStart() {
@@ -133,18 +137,19 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         }
     }
 
-    /// Decode one SSE frame's data and feed it to the reducer. Unparseable
-    /// frames are skipped rather than thrown: the Messages stream emits a large
-    /// vocabulary of event types (incl. `ping`), and an unmodeled-but-harmless
-    /// shape must not abort the turn. Genuine failures arrive as a typed `error`
-    /// event, which the reducer maps to `.error`.
+    /// Tolerates unmodeled frames such as pings; strict completion mode surfaces malformed frames as errors.
     private func consume(
         _ data: String,
         into reducer: inout AnthropicStreamReducer,
         with decoder: JSONDecoder
     ) -> [LLMStreamEvent] {
         guard let parsed = try? decoder.decode(AnthropicStreamEvent.self, from: Data(data.utf8)) else {
-            return []
+            guard reducer.requiresCompleteResponse, !reducer.hasErrored else { return [] }
+            var events = reducer.flushPendingStart()
+            events.append(contentsOf: reducer.closeOpenBlocks())
+            reducer.markErrored()
+            events.append(.error(.decodingFailed("Malformed streaming response frame.")))
+            return events
         }
         return reducer.consume(parsed)
     }
@@ -162,27 +167,13 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue(Self.anthropicVersion, forHTTPHeaderField: "anthropic-version")
-        // Anthropic authenticates with `x-api-key`, not a bearer token. Same
-        // belt-and-suspenders cleartext guard the other adapters use: never let
-        // a misconfigured `http://` endpoint carry the key.
+        // Anthropic uses x-api-key; never send credentials to an unsafe cleartext endpoint.
         if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
             request.setValue(apiKey, forHTTPHeaderField: Self.apiKeyHeaderField)
         }
 
-        // `max_tokens` is required by the API. Extended thinking (when the model
-        // supports it and the budget fits) forces `temperature` to be omitted —
-        // Anthropic rejects any value other than 1 alongside thinking — and the
-        // thinking budget must be ≥ 1024 and strictly less than `max_tokens`.
-        //
-        // The history must also be *replayable*: with thinking enabled, the
-        // last assistant turn of a tool loop must start with its original
-        // thinking block (content + signature, verbatim) — a history whose
-        // last assistant turn issued tool calls but carries no signed
-        // thinking (pre-v8 rows, redacted-thinking turns, traces from other
-        // providers) would 400. For those, omit the `thinking` parameter for
-        // this request — the API explicitly tolerates thinking-off requests
-        // against thinking-bearing histories (it strips the stale blocks) —
-        // so the tool loop completes, just without fresh reasoning.
+        // Anthropic requires max_tokens. Thinking needs a budget of at least 1024 below max_tokens,
+        // omits temperature, and must be disabled when the last tool turn lacks replayable signed thinking.
         let maxTokens = max(1, min(model.maxContextTokens / 4, Self.maxTokensCeiling))
         let thinkingEnabled = model.supportsThinking
             && maxTokens >= 2048
@@ -215,12 +206,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         return request
     }
 
-    /// Whether enabling `thinking` on this request is safe for the given
-    /// history. False only when the last `.assistant` message issued tool
-    /// calls but carries no signed `.thinking` block — the continuation shape
-    /// the Messages API rejects with thinking enabled (it requires that turn
-    /// to start with its original signed thinking block). Histories with no
-    /// tool continuation, or with a replayable signed block, return true.
+    /// Thinking-enabled tool continuation requires the last assistant turn's original signed block.
     static func historySupportsThinkingContinuation(_ messages: [LLMMessage]) -> Bool {
         guard let lastAssistant = messages.last(where: { $0.role == .assistant }) else {
             return true
@@ -239,8 +225,6 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         }
     }
 
-    /// Resolve the request URL via `URLComponents` so trailing slashes and
-    /// already-pathed inputs both canonicalize to `/.../messages`.
     private func messagesURL() -> URL {
         let suffix = "/messages"
         func fallback() -> URL {
@@ -263,30 +247,13 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         return url
     }
 
-    /// Translate Chat / Core's `LLMMessage` history into the Messages
-    /// `(system, messages)` pair. The leading `.system` block(s) become the
-    /// top-level `system` string; tool *results* (Core's `.tool` role) ride a
-    /// `user`-role message (Anthropic has no `tool` role); adjacent same-role
-    /// messages are merged into one so the strict user/assistant alternation the
-    /// API requires holds.
-    ///
-    /// `.searchResult` blocks (replayed prior-turn citations, attached by
-    /// `ContextAssembler`) reconstruct a `web_search_tool_result` content block
-    /// placed *before* the assistant's text so Anthropic accepts the citations.
-    /// ⚠️ The reconstructed block carries a *synthetic* `tool_use_id` — we
-    /// persist the encrypted echoes but not the original `server_tool_use` id —
-    /// and this whole path is only reachable once the search sentinel is wired
-    /// (PR4). Validate the accepted replay shape (incl. whether a matching
-    /// `server_tool_use` block must also be replayed) against `/v1/messages`
-    /// then; until then it's covered only by serialization-shape unit tests.
+    /// Hoists system instructions, places tool results in user turns, and merges adjacent roles.
+    /// Search echoes precede assistant text. Their synthetic-ID replay still needs live provider verification.
     private func translate(
         _ messages: [LLMMessage],
         nameMap: ToolWireNameMap
     ) throws -> (system: [AnthropicSystemBlock]?, messages: [AnthropicMessage]) {
-        // Stable-prefix system blocks (the leading briefings + native-search
-        // guidance, tagged `.stablePrefix` by `ContextAssembler`) bucket
-        // together and carry the `cache_control` marker; everything else stays
-        // volatile (memories, checkpoint summary, historical system rows).
+        // Cache only the contiguous stable system prefix; memories and checkpoint/history blocks remain volatile.
         var stableSystemParts: [String] = []
         var volatileSystemParts: [String] = []
         var sawVolatileSystem = false
@@ -304,11 +271,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         for message in messages {
             switch message.role {
             case .system:
-                // Defensive demotion: once any volatile system block has
-                // appeared, a later stable-hinted one demotes to volatile too,
-                // preserving the on-the-wire byte order even if a hint is
-                // misplaced (the stable bucket must be a contiguous leading run
-                // for the breakpoint to cover the right prefix).
+                // Once a volatile block appears, demote later stable hints to preserve wire order.
                 let isStable = message.cacheHint == .stablePrefix && !sawVolatileSystem
                 if !isStable { sawVolatileSystem = true }
                 for block in message.content {
@@ -331,15 +294,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             case .user, .assistant:
                 let role = message.role == .assistant ? "assistant" : "user"
                 var blocks: [AnthropicContentBlock] = []
-                // Replay the original thinking block FIRST — the Messages API
-                // requires the last assistant turn of a tool loop to start
-                // with it, complete and unmodified including the signature
-                // (omitting or rebuilding it is a 400). Unsigned blocks
-                // (pre-v8 rows, redacted turns, other providers' traces)
-                // cannot be replayed and are skipped — `buildRequest`'s gate
-                // disables thinking for those histories so the API tolerates
-                // the omission. Assistant-only, same posture as the guards
-                // below.
+                // Tool-loop thinking must be first, signed, and verbatim. Unsigned histories disable thinking in buildRequest.
                 if message.role == .assistant {
                     for block in message.content {
                         if case .thinking(let content, let signature) = block,
@@ -348,13 +303,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                         }
                     }
                 }
-                // Replayed web-search results are an assistant-only, server-emitted
-                // concept and must precede the text that cites them on the wire.
-                // Guard on the role so the invariant is structural rather than
-                // relying on `ContextAssembler` being the only caller — a stray
-                // `.searchResult` on a user message would otherwise serialize a
-                // `web_search_tool_result` at the user position, which the API
-                // rejects. (Same posture as the assistant-only tool-call guard below.)
+                // Server search results must precede the citing text and may appear only in assistant turns.
                 if message.role == .assistant {
                     for block in message.content {
                         if case .searchResult(let sources) = block,
@@ -371,9 +320,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
                 if !joined.isEmpty {
                     blocks.append(.text(joined))
                 }
-                // Tool calls are an assistant-only concept (§ guard mirrors the
-                // Responses adapter): a stray `.toolUse` on a user message must
-                // not become a `tool_use` block at the user position.
+                // Anthropic rejects tool_use blocks in user turns.
                 if message.role == .assistant {
                     for block in message.content {
                         if case .toolUse(let id, let name, let input, _) = block {
@@ -389,17 +336,8 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             }
         }
 
-        // The Messages API requires the first message to be `user`-role.
-        // Because every `.system` row (compaction-checkpoint summary
-        // included) is hoisted into the top-level `system` parameter, a
-        // history whose post-checkpoint window opens on an assistant turn
-        // would otherwise 400 on every later turn. `Compactor` no longer
-        // produces that shape (its cut snaps to a user-turn boundary), but
-        // checkpoints persisted by older builds can still carry it — repair
-        // it at the wire instead of replaying it verbatim. (A legacy window
-        // that also *ends* on an assistant turn still 400s on modern models,
-        // which reject trailing-assistant prefill — that request was equally
-        // broken before the repair, and the next real user send heals it.)
+        // Legacy checkpoints can start with an assistant after system rows are hoisted; Anthropic requires a user first.
+        // A trailing assistant can still fail prefill validation until the next user send.
         if grouped.first?.role == "assistant" {
             grouped.insert(
                 ("user", [.text("(Conversation resumed after context compaction.)")]),
@@ -407,10 +345,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             )
         }
 
-        // Stable bucket first (with the marker), then the volatile bucket. The
-        // stable-system marker also caches everything rendered before it —
-        // `tools` (render order tools → system → messages) — so no separate
-        // tool breakpoint is needed. An empty bucket is omitted.
+        // Anthropic renders tools before system, so this stable-system breakpoint also covers tool schemas.
         var systemBlocks: [AnthropicSystemBlock] = []
         if !stableSystemParts.isEmpty {
             systemBlocks.append(AnthropicSystemBlock(
@@ -426,13 +361,8 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         }
         let system = systemBlocks.isEmpty ? nil : systemBlocks
 
-        // Moving cache breakpoint: wrap the last content block of the last
-        // message, every request, unconditionally — this covers conversation
-        // growth and each tool-loop iteration (which re-issues the request with
-        // a few more blocks, well within the 20-block lookback). Below-minimum
-        // prefixes make the marker inert. Budget: 2 of Anthropic's 4 markers
-        // (this one + the stable-system one). A future history long enough to
-        // need a mid-history breakpoint every ~15 blocks would add a third here.
+        // Move the second cache breakpoint with conversation growth and each tool iteration.
+        // Prefixes below the provider minimum leave it inert; only two of four markers are used.
         var anthropicMessages = grouped.map { AnthropicMessage(role: $0.role, content: $0.blocks) }
         if let lastMessageIndex = anthropicMessages.indices.last {
             let lastMessage = anthropicMessages[lastMessageIndex]
@@ -448,10 +378,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         return (system, anthropicMessages)
     }
 
-    /// Reconstruct a `web_search_tool_result` block from stored citations,
-    /// keeping only those carrying this adapter's encrypted echo. Returns `nil`
-    /// when none qualify (e.g. citations from a different provider replayed into
-    /// an Anthropic turn after a model switch — harmlessly skipped).
+    /// Replays only citations with this adapter's encrypted echo; other-provider citations are omitted.
     private static func webSearchToolResultBlock(for sources: [SourceCitation]) -> AnthropicContentBlock? {
         let echoes = sources.compactMap { source -> AnthropicContentBlock.WebSearchResultEcho? in
             guard let echo = source.providerEcho,
@@ -465,20 +392,12 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
             )
         }
         guard !echoes.isEmpty else { return nil }
-        // Synthetic id: the original `server_tool_use` id isn't persisted, so
-        // derive a *stable, deterministic* one from the result set (not Swift's
-        // per-run-randomized `hashValue`, which would make the request payload
-        // irreproducible). This also keeps replayed turns from colliding on a
-        // shared constant should Anthropic ever enforce conversation-wide
-        // `tool_use_id` uniqueness. ⚠️ See the `translate` note — the replay
-        // shape itself is unverified until the search path is live (PR4).
+        // Original server tool IDs are not persisted. Derive a repeatable ID per result set; see translate's replay caveat.
         let seed = echoes.map(\.url).joined(separator: "|")
         return .webSearchToolResult(toolUseID: "srvtoolu_\(Self.stableHash(seed))", results: echoes)
     }
 
-    /// Deterministic FNV-1a hash → base-36 string. Used to mint a reproducible
-    /// synthetic `tool_use_id` for replayed search results; `hashValue` is
-    /// per-run-randomized and unsuitable for a wire payload.
+    /// hashValue changes across runs; wire IDs need deterministic hashing.
     private static func stableHash(_ string: String) -> String {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         for byte in string.utf8 {
@@ -488,10 +407,7 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         return String(hash, radix: 36)
     }
 
-    /// Translate advertised tools into Anthropic tools. The
-    /// `__native_web_search__` sentinel becomes the `web_search` server tool;
-    /// every other tool becomes a custom tool with an `input_schema`. Returns
-    /// `nil` when there are no tools so the key is omitted entirely.
+    /// The native-search sentinel becomes a server tool. No tools omits the key entirely.
     private func translate(_ tools: [LLMTool], nameMap: ToolWireNameMap) -> [AnthropicTool]? {
         let (clientTools, searchEnabled) = NativeWebSearch.partition(tools)
         var out: [AnthropicTool] = clientTools.map { tool in
@@ -507,8 +423,6 @@ public struct AnthropicNativeLLMProvider: LLMProvider {
         return out.isEmpty ? nil : out
     }
 
-    /// Coerce any thrown error into an `LLMError`, normalizing cancellation the
-    /// same way the other adapters do.
     private func mapToLLMError(_ error: Error) -> LLMError {
         if Task.isCancelled { return .cancelled }
         if error is CancellationError { return .cancelled }

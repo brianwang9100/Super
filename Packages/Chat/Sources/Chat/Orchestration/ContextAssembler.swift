@@ -208,8 +208,8 @@ public struct ContextAssembler: Sendable {
             toolCallsByID[record.id] = record
         }
 
-        // Strict providers require adjacent use/result pairs. Synthesize missing results and drop
-        // orphaned or out-of-position results after cancellation, crashes, or compaction.
+        // Every tool use needs a later result. Synthesize missing results and drop results
+        // without a preceding use after cancellation, crashes, or compaction.
         var messageIndexByID: [String: Int] = [:]
         var resultRowIndicesByCallID: [String: [Int]] = [:]
         for (index, record) in messages.enumerated() {

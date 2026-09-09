@@ -1,99 +1,53 @@
 import Core
 import SwiftUI
 
-/// The container supplies live records and mutations. Bible citation links route
-/// through onOpenLink; other URLs retain system handling.
 struct AnnotationSheet: View {
     @Environment(\.superTheme) private var theme
     @Environment(\.superTypography) private var typography
+    @Environment(\.pasteboardClient) private var pasteboard
 
     struct Card: Sendable, Equatable {
         let title: String
-        /// Nil for book/chapter targets or unavailable verse text.
         let verseText: String?
         let summary: String
         let provenance: String
-
-        init(
-            title: String,
-            verseText: String?,
-            summary: String,
-            provenance: String
-        ) {
-            self.title = title
-            self.verseText = verseText
-            self.summary = summary
-            self.provenance = provenance
-        }
     }
 
     let citation: String
     let card: Card?
-    /// Generation hides even a populated card. After failure, retained content reappears;
-    /// errorMessage is considered only without a card or active generation.
-    let isGenerating: Bool
-    let errorMessage: String?
-    /// Reserve for the minimized chat pill; zero in standalone contexts.
-    let bottomInset: CGFloat
     let onClose: () -> Void
     let onRegenerate: () -> Void
     let onAddToChat: () -> Void
-    /// Called after delete confirmation.
     let onDelete: () -> Void
     let onOpenLink: (BibleDeepLink) -> Void
-    let onRetry: () -> Void
+    var onRetry: () -> Void = {}
+    var isGenerating = false
+    var errorMessage: String?
+    var bottomInset: CGFloat = 0
+    var verseText: String?
+    var responseText: String?
+    var isShowingDraft = false
+    var treatAsPartial = false
+    var onReturnToSaved: (() -> Void)?
 
-    @State private var showDeleteConfirmation: Bool = false
-
-    init(
-        citation: String,
-        card: Card?,
-        onClose: @escaping () -> Void,
-        onRegenerate: @escaping () -> Void,
-        onAddToChat: @escaping () -> Void,
-        onDelete: @escaping () -> Void,
-        onOpenLink: @escaping (BibleDeepLink) -> Void,
-        onRetry: @escaping () -> Void = {},
-        isGenerating: Bool = false,
-        errorMessage: String? = nil,
-        bottomInset: CGFloat = 0
-    ) {
-        self.citation = citation
-        self.card = card
-        self.isGenerating = isGenerating
-        self.errorMessage = errorMessage
-        self.bottomInset = bottomInset
-        self.onClose = onClose
-        self.onRegenerate = onRegenerate
-        self.onAddToChat = onAddToChat
-        self.onDelete = onDelete
-        self.onOpenLink = onOpenLink
-        self.onRetry = onRetry
-    }
-
+    @State private var showDeleteConfirmation = false
+    @State private var isCopied = false
     private let sizing = SheetSizing.expandable
+
+    private var showsSavedResponse: Bool { card != nil && !isGenerating && !isShowingDraft }
+    private var text: String { responseText ?? (isGenerating ? "" : card?.summary ?? "") }
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetNavBar(
-                title: citation,
-                subtitle: "ANNOTATION",
-                sizing: sizing,
-                onClose: onClose
-            ) {
+            SheetNavBar(title: citation, subtitle: "ANNOTATION", sizing: sizing, onClose: onClose) {
                 overflowMenu
             }
-            Rectangle()
-                .fill(theme.borderFaint)
-                .frame(height: 0.5)
-            content
+            Rectangle().fill(theme.borderFaint).frame(height: 0.5)
+            transcript
         }
         .sheetPresentation(sizing)
-        .confirmationDialog(
-            "Delete this annotation?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
+        .onChange(of: text) { _, _ in isCopied = false }
+        .confirmationDialog("Delete this annotation?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete annotation", role: .destructive, action: onDelete)
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -101,15 +55,51 @@ struct AnnotationSheet: View {
         }
     }
 
+    // One scroll identity for waiting, streaming, saved, and interrupted states.
+    private var transcript: some View {
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 20) {
+                    AnnotationBlock(
+                        title: "",
+                        verseText: verseText ?? card?.verseText,
+                        summary: text,
+                        provenance: showsSavedResponse ? card?.provenance ?? "" : "",
+                        treatAsPartial: treatAsPartial || isGenerating,
+                        isWorking: isGenerating,
+                        onCopy: showsSavedResponse ? { copy() } : nil,
+                        onRegenerate: showsSavedResponse ? onRegenerate : nil,
+                        isCopied: isCopied
+                    )
+                    if let errorMessage, !isGenerating {
+                        failure(message: errorMessage)
+                    } else if text.isEmpty && !isGenerating && !isShowingDraft {
+                        Button("Generate annotation", action: onRegenerate)
+                            .font(typography.font(size: 14, weight: .medium))
+                            .foregroundStyle(theme.inkSoft)
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 22)
+                .padding(.bottom, 24 + bottomInset)
+            }
+            .bibleMarkdownRendering(openLink: onOpenLink)
+    }
+
+    private func copy() {
+        pasteboard.copy(text)
+        isCopied = true
+        AccessibilityNotification.Announcement("Annotation copied").post()
+    }
+
     private var overflowMenu: some View {
         Menu {
             Button(action: onRegenerate) {
                 Label("Regenerate", systemImage: "arrow.clockwise")
             }
-            if card != nil {
-                Button(action: onAddToChat) {
-                    Label("Add to chat", systemImage: "paperplane")
-                }
+            .disabled(isGenerating || isShowingDraft)
+            if showsSavedResponse {
+                Button(action: onAddToChat) { Label("Add to chat", systemImage: "paperplane") }
                 Button(role: .destructive, action: { showDeleteConfirmation = true }) {
                     Label("Delete", systemImage: "trash")
                 }
@@ -125,84 +115,27 @@ struct AnnotationSheet: View {
         .accessibilityLabel("Sheet actions")
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if isGenerating {
-            generatingState
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let card {
-            ScrollView {
-                AnnotationBlock(
-                    title: card.title,
-                    verseText: card.verseText,
-                    summary: card.summary,
-                    provenance: card.provenance
-                )
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                .padding(.bottom, 24 + bottomInset)
-            }
-            .bibleMarkdownRendering(openLink: onOpenLink)
-        } else {
-            // Fill the bounded detent so empty/error content stays centered.
-            emptyState
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var generatingState: some View {
-        VStack(spacing: 10) {
-            AnnotationBubble(state: .generating, size: 28)
-            Text("Generating annotation…")
-                .font(typography.font(size: 14))
-                .foregroundStyle(theme.inkSoft)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 220)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 40)
-    }
-
-    @ViewBuilder
-    private var emptyState: some View {
-        if let errorMessage {
-            errorState(message: errorMessage)
-        } else {
-            VStack(spacing: 10) {
-                AnnotationBubble(state: .empty, size: 28)
-                Text("No annotation yet. Tap to generate.")
-                    .font(typography.font(size: 14))
-                    .foregroundStyle(theme.inkSoft)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 220)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 40)
-        }
-    }
-
-    private func errorState(message: String) -> some View {
-        VStack(spacing: 12) {
-            AnnotationBubble(state: .empty, size: 28)
+    private func failure(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             Text(message)
                 .font(typography.font(size: 14))
                 .foregroundStyle(theme.inkSoft)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 260)
-            Button(action: onRetry) {
-                Text("Try again")
-                    .font(typography.font(size: 14, weight: .medium))
-                    .foregroundStyle(theme.ink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule().fill(theme.backgroundSunken)
-                    )
+                .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 18) { retryActions }
+                VStack(alignment: .leading, spacing: 12) { retryActions }
             }
+            .font(typography.font(size: 14, weight: .medium))
+            .foregroundStyle(theme.ink)
             .buttonStyle(.plain)
-            .accessibilityLabel("Try again")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 40)
+    }
+
+    @ViewBuilder
+    private var retryActions: some View {
+        Button("Try again", action: onRetry)
+        if let onReturnToSaved {
+            Button("Show saved annotation", action: onReturnToSaved)
+        }
     }
 }

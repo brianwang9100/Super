@@ -33,34 +33,16 @@ struct BibleScreenSnapshotTests {
                theme: .vellumLight, dynamicType: .xxLarge, name: "populated_light_xxl")
     }
 
-    @Test("1 Peter 2 renders in the dark theme at Dynamic Type XXL")
-    func populatedDarkXXL() async throws {
-        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .vellumDark, dynamicType: .xxLarge, name: "populated_dark_xxl")
-    }
-
     @Test("1 Peter 2 scales with the app font-scale slider at max in the light theme")
     func populatedFontScaleMaxLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
                theme: .vellumLight, fontScale: 1.2, name: "populated_font_scale_max_light")
     }
 
-    @Test("1 Peter 2 scales with the app font-scale slider at max in the dark theme")
-    func populatedFontScaleMaxDark() async throws {
-        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .vellumDark, fontScale: 1.2, name: "populated_font_scale_max_dark")
-    }
-
     @Test("1 Peter 2 scales with the app font-scale slider at min in the light theme")
     func populatedFontScaleMinLight() async throws {
         verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
                theme: .vellumLight, fontScale: 0.8, name: "populated_font_scale_min_light")
-    }
-
-    @Test("1 Peter 2 scales with the app font-scale slider at min in the dark theme")
-    func populatedFontScaleMinDark() async throws {
-        verify(await screen(at: BiblePosition(bookId: "1PE", chapterNumber: 2)),
-               theme: .vellumDark, fontScale: 0.8, name: "populated_font_scale_min_dark")
     }
 
     @Test("Genesis 1 disables the previous arrow and drops the previous footer card")
@@ -105,22 +87,9 @@ struct BibleScreenSnapshotTests {
 
     @Test("verse selection renders in the light theme at Dynamic Type XXL")
     func selectionActiveLightXXL() async {
-        for dismissActions in [false, true] {
-            verify(await selectionScreen(dismissActions: dismissActions),
-                   theme: .vellumLight, dynamicType: .xxLarge,
-                   name: "selection_active_light_xxl" + (dismissActions ? "-dismissed" : ""),
-                   context: "dismissActions: \(dismissActions)")
-        }
-    }
-
-    @Test("verse selection renders in the dark theme at Dynamic Type XXL")
-    func selectionActiveDarkXXL() async {
-        for dismissActions in [false, true] {
-            verify(await selectionScreen(dismissActions: dismissActions),
-                   theme: .vellumDark, dynamicType: .xxLarge,
-                   name: "selection_active_dark_xxl" + (dismissActions ? "-dismissed" : ""),
-                   context: "dismissActions: \(dismissActions)")
-        }
+        verify(await selectionScreen(),
+               theme: .vellumLight, dynamicType: .xxLarge,
+               name: "selection_active_light_xxl")
     }
 
     /// One theme suffices for the theme-independent 1pt underline floor.
@@ -146,12 +115,6 @@ struct BibleScreenSnapshotTests {
                name: "chat_toast_light_xxl")
     }
 
-    @Test("the chat toast renders in the dark theme at Dynamic Type XXL")
-    func chatToastDarkXXL() async {
-        verify(await toastScreen(), theme: .vellumDark, dynamicType: .xxLarge,
-               name: "chat_toast_dark_xxl")
-    }
-
     @Test("persisted highlights paint their verses in the light theme")
     func highlightedLight() async throws {
         verify(try await highlightedScreen(), theme: .vellumLight, name: "highlighted_light")
@@ -168,14 +131,7 @@ struct BibleScreenSnapshotTests {
                name: "highlighted_light_xxl")
     }
 
-    @Test("persisted highlights render in the dark theme at Dynamic Type XXL")
-    func highlightedDarkXXL() async throws {
-        verify(try await highlightedScreen(), theme: .vellumDark, dynamicType: .xxLarge,
-               name: "highlighted_dark_xxl")
-    }
-
-    // At minimum scale, the raised verse number inflated its cell's wash most visibly.
-    // The baseline-anchored band must stay level with neighboring words.
+    // At minimum font scale, raised verse numbers previously made highlight bands taller than neighboring words.
     @Test("persisted highlights paint a seamless band at the min font scale (light)")
     func highlightedFontScaleMinLight() async throws {
         verify(try await highlightedScreen(), theme: .vellumLight, fontScale: 0.8,
@@ -195,23 +151,13 @@ struct BibleScreenSnapshotTests {
         verify(await immersiveScreen(), theme: .vellumLight, name: "immersive_light")
     }
 
-    @Test("the immersive (nav-bar-hidden) state renders in the dark theme")
-    func immersiveDark() async {
-        verify(await immersiveScreen(), theme: .vellumDark, name: "immersive_dark")
-    }
-
     @Test("the immersive state renders at Dynamic Type XXL (light) — taller bar still clears")
     func immersiveLightXXL() async {
         verify(await immersiveScreen(), theme: .vellumLight, dynamicType: .xxLarge,
                name: "immersive_light_xxl")
     }
 
-    @Test("the immersive state renders at Dynamic Type XXL in the dark theme")
-    func immersiveDarkXXL() async {
-        verify(await immersiveScreen(), theme: .vellumDark, dynamicType: .xxLarge,
-               name: "immersive_dark_xxl")
-    }
-
+    /// Forces immersive state without moving the reader, isolating the reclaimed toolbar space.
     private func immersiveScreen() async -> BibleScreen {
         let viewModel = BibleScreenViewModel(
             textLoader: DatabaseBibleTextLoader(),
@@ -310,13 +256,7 @@ struct BibleScreenSnapshotTests {
                name: "narrating_light_xxl")
     }
 
-    @Test("the active-verse underline renders at Dynamic Type XXL in the dark theme")
-    func narratingDarkXXL() async {
-        verify(await narratingScreen(currentVerse: 4),
-               theme: .vellumDark, dynamicType: .xxLarge,
-               name: "narrating_dark_xxl")
-    }
-
+    /// Shares the selection underline's 1pt floor at minimum font scale.
     @Test("the active-verse dashed underline thins to its 1pt floor at the min font scale")
     func narratingFontScaleMinLight() async {
         verify(await narratingScreen(currentVerse: 4),

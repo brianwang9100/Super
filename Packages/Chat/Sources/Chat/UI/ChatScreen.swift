@@ -13,8 +13,12 @@ public struct ChatScreen: View {
 
     public let onSurfaceTapped: (() -> Void)?
 
+    public let onMinimize: (() -> Void)?
+
+    /// Screen-space translation from either handle or the transcript body drag.
     public let onDragChanged: ((_ translation: CGSize) -> Void)?
 
+    /// Final and predicted screen-space translations; the host uses the prediction to choose a resting state.
     public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
 
     private let dragResetToken: Int
@@ -33,6 +37,7 @@ public struct ChatScreen: View {
         onManageModels: @escaping () -> Void = {},
         onAddModelRequested: @escaping @MainActor @Sendable () -> Void = {},
         onSurfaceTapped: (() -> Void)? = nil,
+        onMinimize: (() -> Void)? = nil,
         onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
         onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         dragResetToken: Int = 0
@@ -43,6 +48,7 @@ public struct ChatScreen: View {
         self.externalComposerIsFocused = composerIsFocused
         self.onManageModels = onManageModels
         self.onSurfaceTapped = onSurfaceTapped
+        self.onMinimize = onMinimize
         self.onDragChanged = onDragChanged
         self.onDragEnded = onDragEnded
         self.dragResetToken = dragResetToken
@@ -171,13 +177,9 @@ public struct ChatScreen: View {
                 // Remove the intrinsic height floor so content cannot push the composer upward mid-drag.
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .opacity(contentOpacity)
-                // Attach to the composer's sibling, before safeAreaInset. An ancestor tap gesture
-                // also catches TextField taps and dismisses its keyboard before the edit menu can open.
+                // Dismiss only from transcript/empty-state taps so floating navigation and composer taps retain focus.
                 .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture().onEnded { dismissKeyboard() }
-                )
-                // Keep body-drag recognition on the composer's sibling so it cannot steal editor gestures.
+                // Place the scroll-edge resize handoff before the composer inset so composer gestures remain independent.
                 .overlayContentDrag(
                     // At an endpoint, let the transcript scroll instead of handing off to a no-op resize.
                     canExpand: progress < 0.999,
@@ -189,16 +191,7 @@ public struct ChatScreen: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     composer
                 }
-                .overlay(alignment: .bottom) {
-                    if viewModel.showCopyConfirmation {
-                        CopyConfirmationPill()
-                            .padding(.bottom, 8)
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            .allowsHitTesting(false)
-                    }
-                }
-                // Clipping here would crop the composer's glass shadow; the transcript and panel clip themselves.
-                .animation(.easeInOut(duration: 0.18), value: viewModel.showCopyConfirmation)
+                // Clipping here would crop the composer shadow. The transcript clips itself; the panel mask contains the card.
         }
         .background(panelBackground)
         // Mask without changing layout width so text does not reflow through the morph.
@@ -273,6 +266,14 @@ public struct ChatScreen: View {
             isRecording: viewModel.voiceState.isRecording,
             isMicAvailable: viewModel.voiceState != .unavailable,
             onStopRecording: viewModel.handleStopRecording,
+            onMinimize: onMinimize.map { action in
+                {
+                    dismissKeyboard()
+                    action()
+                }
+            },
+            onDragChanged: onDragChanged,
+            onDragEnded: onDragEnded,
             progress: progress,
             references: viewModel.pendingReferences.map {
                 VerseReferencePillModel(id: $0.id, label: $0.displayLabel)
@@ -349,6 +350,9 @@ public struct ChatScreen: View {
                             .padding(.bottom, 14)
                     }
                 }
+                // Include blank space and suggestions but exclude the floating navigation overlay.
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
                 .task { viewModel.loadSuggestionsIfNeeded(fallback: suggestedChatActions) }
         } else {
             // Conversation identity resets transcript-local scroll and expansion state.
@@ -385,6 +389,7 @@ public struct ChatScreen: View {
                 error: viewModel.error,
                 scrollRequest: viewModel.scrollRequest,
                 interruptedResponse: viewModel.interruptedResponse,
+                showCopyConfirmation: viewModel.showCopyConfirmation,
                 verbosity: verbosity,
                 onRetry: onRetry,
                 onContentTap: onContentTap,

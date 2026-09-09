@@ -3,6 +3,13 @@ import Foundation
 
 /// Normalizes Responses events and uses `finish()` when `response.completed` is absent.
 struct OpenAIResponsesStreamReducer {
+    let requiresCompleteResponse: Bool
+    private var hasNativeCompletion = false
+
+    init(requiresCompleteResponse: Bool = false) {
+        self.requiresCompleteResponse = requiresCompleteResponse
+    }
+
     private var emittedMessageStart = false
     private var capturedID: String?
     private var capturedModel: String?
@@ -133,6 +140,7 @@ struct OpenAIResponsesStreamReducer {
             }
 
         case "response.completed":
+            hasNativeCompletion = event.response?.status == nil || event.response?.status == "completed"
             if let usage = event.response?.usage,
                let input = usage.inputTokens,
                let output = usage.outputTokens {
@@ -143,6 +151,14 @@ struct OpenAIResponsesStreamReducer {
                 )
             }
             events.append(contentsOf: closeOut())
+
+        case "response.incomplete", "response.failed", "response.cancelled", "response.refusal.delta", "response.refusal.done":
+            if requiresCompleteResponse {
+                ensureMessageStart(into: &events)
+                events.append(contentsOf: closeOpenBlocks())
+                hadError = true
+                events.append(.error(.providerError(code: "incomplete_response", message: "OpenAI Responses ended with \(event.type).")))
+            }
 
         case "response.error", "error":
             // Honor the messageStart-first contract even when the error lands
@@ -227,6 +243,10 @@ struct OpenAIResponsesStreamReducer {
         ensureMessageStart(into: &events)
         closeThinkingBlock(into: &events)
         closeTextBlock(into: &events)
+        if requiresCompleteResponse && !hasNativeCompletion && !hadError {
+            hadError = true
+            events.append(.error(.providerError(code: "incomplete_response", message: "OpenAI Responses stream ended without response.completed.")))
+        }
         events.append(contentsOf: flushToolCalls())
         let usage = capturedUsage ?? TokenUsage(inputTokens: 0, outputTokens: 0)
         events.append(.messageComplete(usage: usage))

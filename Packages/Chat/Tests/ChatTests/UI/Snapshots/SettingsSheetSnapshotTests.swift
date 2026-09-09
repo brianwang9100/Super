@@ -7,9 +7,9 @@ import SwiftUI
 import Testing
 @testable import Chat
 
-// Capture sheet content; native presentation chrome is outside this harness.
-// Retain remaining cases until their SettingsPanePreviews replacements are verified.
-// Settings text tracks the app slider; XXL companions check fixed chrome stability.
+/// Content-only captures; the native sheet owns presentation chrome. SettingsPanePreviews
+/// covers migrated cases. Keep XXL companions: fixed chrome and scalable model fields
+/// have different risks even when some default/XXL images happen to match.
 @Suite("SettingsSheet snapshots", .serialized)
 @MainActor
 struct SettingsSheetSnapshotTests {
@@ -98,6 +98,7 @@ struct SettingsSheetSnapshotTests {
     ]
     #endif
 
+    /// Reconcile once so default and XXL captures share the same known/unknown model choices.
     private static let openAIUnlockedFetchedModels = [
         "openai": LLMProviderCatalog.reconcile(
             providerID: "openai",
@@ -227,19 +228,12 @@ struct SettingsSheetSnapshotTests {
     }
 
     #if DEBUG
+    // Exercises DEBUG availability/subtitles; AFM fixtures cover shared dark colors and XXL row layout.
     @Test("models pane with debug provider row")
     func modelsPaneWithDebug() async {
         await verifyModelsPaneWithDebug(
             theme: .vellumLight,
             name: "settings_models_debug_light"
-        )
-    }
-
-    @Test("models pane with debug provider row (dark)")
-    func modelsPaneWithDebugDark() async {
-        await verifyModelsPaneWithDebug(
-            theme: .vellumDark,
-            name: "settings_models_debug_dark"
         )
     }
 
@@ -265,19 +259,13 @@ struct SettingsSheetSnapshotTests {
     }
     #endif
 
+    // A native endpoint must use remote-provider availability/subtitles, not AFM gating.
+    // AFM fixtures cover shared dark colors and XXL row layout.
     @Test("models pane with a native-web-search row")
     func modelsPaneWithNativeSearch() async {
         await verifyModelsPaneWithNativeSearch(
             theme: .vellumLight,
             name: "settings_models_native_search_light"
-        )
-    }
-
-    @Test("models pane with a native-web-search row (dark)")
-    func modelsPaneWithNativeSearchDark() async {
-        await verifyModelsPaneWithNativeSearch(
-            theme: .vellumDark,
-            name: "settings_models_native_search_dark"
         )
     }
 
@@ -328,15 +316,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("models pane title-summarization footer: off (dark)")
-    func modelsPaneTitlingOffDark() async {
-        await verifyModelsPaneTitling(
-            theme: .vellumDark,
-            settings: Self.titleSettings(enabled: false),
-            name: "settings_models_titling_off_dark"
-        )
-    }
-
     @Test("models pane title-summarization footer: an explicit model is selected")
     func modelsPaneTitlingExplicitModel() async {
         await verifyModelsPaneTitling(
@@ -347,16 +326,7 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("models pane title-summarization footer: explicit model selected (dark)")
-    func modelsPaneTitlingExplicitModelDark() async {
-        await verifyModelsPaneTitling(
-            theme: .vellumDark,
-            availability: .available,
-            settings: Self.titleSettings(enabled: true, recordId: "opus"),
-            name: "settings_models_titling_explicit_dark"
-        )
-    }
-
+    /// recordId is the model row identity, not a provider model ID.
     private static func titleSettings(enabled: Bool, recordId: String? = nil) -> ChatSettings {
         var settings = ChatSettings.default
         settings.summarizeTitlesEnabled = enabled
@@ -422,17 +392,6 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("model detail create flow — Apple Intelligence selected (dark)")
-    func modelDetailProviderAppleDark() async {
-        await verifyCreateWithProvider(
-            theme: .vellumDark,
-            selection: .apple,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_apple_dark"
-        )
-    }
-
     @Test("model detail create flow — OpenAI selected")
     func modelDetailProviderOpenAI() async {
         await verifyCreateWithProvider(
@@ -452,72 +411,6 @@ struct SettingsSheetSnapshotTests {
             availability: .available,
             existingAppleFoundation: false,
             name: "settings_model_detail_provider_openai_dark"
-        )
-    }
-
-    @Test("model detail create flow — Anthropic selected")
-    func modelDetailProviderAnthropic() async {
-        await verifyCreateWithProvider(
-            theme: .vellumLight,
-            selection: .anthropic,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_anthropic_light"
-        )
-    }
-
-    @Test("model detail create flow — Anthropic selected (dark)")
-    func modelDetailProviderAnthropicDark() async {
-        await verifyCreateWithProvider(
-            theme: .vellumDark,
-            selection: .anthropic,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_anthropic_dark"
-        )
-    }
-
-    @Test("model detail create flow — Google selected")
-    func modelDetailProviderGoogle() async {
-        await verifyCreateWithProvider(
-            theme: .vellumLight,
-            selection: .google,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_google_light"
-        )
-    }
-
-    @Test("model detail create flow — Google selected (dark)")
-    func modelDetailProviderGoogleDark() async {
-        await verifyCreateWithProvider(
-            theme: .vellumDark,
-            selection: .google,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_google_dark"
-        )
-    }
-
-    @Test("model detail create flow — xAI selected")
-    func modelDetailProviderXAI() async {
-        await verifyCreateWithProvider(
-            theme: .vellumLight,
-            selection: .xai,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_xai_light"
-        )
-    }
-
-    @Test("model detail create flow — xAI selected (dark)")
-    func modelDetailProviderXAIDark() async {
-        await verifyCreateWithProvider(
-            theme: .vellumDark,
-            selection: .xai,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_xai_dark"
         )
     }
 
@@ -617,19 +510,7 @@ struct SettingsSheetSnapshotTests {
         )
     }
 
-    @Test("model detail create flow — key entered, live models fetched (dark)")
-    func modelDetailProviderOpenAIUnlockedDark() async {
-        await verifyCreateWithProvider(
-            theme: .vellumDark,
-            selection: .openAI,
-            availability: .available,
-            existingAppleFoundation: false,
-            name: "settings_model_detail_provider_openai_unlocked_dark",
-            apiKey: "sk-snapshot",
-            fetchedModels: Self.openAIUnlockedFetchedModels
-        )
-    }
-
+    // Covers the unlocked provider state; Custom XXL covers the ungated layout.
     @Test("dynamic type XXL on model detail create flow — unlocked OpenAI")
     func modelDetailProviderOpenAIUnlockedXXL() async {
         await verifyCreateWithProvider(
@@ -675,14 +556,6 @@ struct SettingsSheetSnapshotTests {
         await verifyCreateWithModelListNote(
             theme: .vellumLight,
             name: "settings_model_detail_model_list_note_light"
-        )
-    }
-
-    @Test("model detail create flow — live model-list fallback note (dark)")
-    func modelDetailModelListFallbackNoteDark() async {
-        await verifyCreateWithModelListNote(
-            theme: .vellumDark,
-            name: "settings_model_detail_model_list_note_dark"
         )
     }
 
@@ -1054,13 +927,7 @@ struct SettingsSheetSnapshotTests {
         recordOrCompare(view: view, name: "settings_tools_light_xxl", function: function)
     }
 
-    @Test("search pane, gate off, dark")
-    func searchPaneOffDark() async {
-        await verify(
-            theme: .vellumDark, pane: .search, name: "settings_search_off_dark",
-            settings: Self.settings(askBeforeSearching: false)
-        )
-    }
+    // Native previews cover the cost-gate states; this XXL sentinel detects accidental scaling of fixed chrome.
 
     @Test("search pane, dynamic type XXL")
     func searchPaneXXL() async {

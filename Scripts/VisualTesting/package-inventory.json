@@ -152,16 +152,6 @@
   {
     "package": "Bible",
     "suite": "AnnotationSheetContainerSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedDark.empty_failed_dark.png",
-    "image": "Bible_AnnotationSheetContainerSnapshotTests_emptyFailedDark.empty_failed_dark.png",
-    "pixels": [
-      1179,
-      1860
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "AnnotationSheetContainerSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedLight.empty_failed_light.png",
     "image": "Bible_AnnotationSheetContainerSnapshotTests_emptyFailedLight.empty_failed_light.png",
     "pixels": [
@@ -202,16 +192,6 @@
   {
     "package": "Bible",
     "suite": "AnnotationSheetContainerSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/generatingOverPopulatedDark.generating_over_populated_dark.png",
-    "image": "Bible_AnnotationSheetContainerSnapshotTests_generatingOverPopulatedDark.generating_over_populated_dark.png",
-    "pixels": [
-      1179,
-      1860
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "AnnotationSheetContainerSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/generatingOverPopulatedLight.generating_over_populated_light.png",
     "image": "Bible_AnnotationSheetContainerSnapshotTests_generatingOverPopulatedLight.generating_over_populated_light.png",
     "pixels": [
@@ -227,16 +207,6 @@
     "pixels": [
       1179,
       2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "AnnotationSheetContainerSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/populatedDark.populated_dark.png",
-    "image": "Bible_AnnotationSheetContainerSnapshotTests_populatedDark.populated_dark.png",
-    "pixels": [
-      1179,
-      1860
     ]
   },
   {
@@ -302,16 +272,6 @@
   {
     "package": "Bible",
     "suite": "AnnotationSheetSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingLight.generating_light.png",
-    "image": "Bible_AnnotationSheetSnapshotTests_generatingLight.generating_light.png",
-    "pixels": [
-      1179,
-      1800
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "AnnotationSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingOverPopulatedDark.generating_over_populated_dark.png",
     "image": "Bible_AnnotationSheetSnapshotTests_generatingOverPopulatedDark.generating_over_populated_dark.png",
     "pixels": [
@@ -324,6 +284,26 @@
     "suite": "AnnotationSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingOverPopulatedLight.generating_over_populated_light.png",
     "image": "Bible_AnnotationSheetSnapshotTests_generatingOverPopulatedLight.generating_over_populated_light.png",
+    "pixels": [
+      1179,
+      1800
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "AnnotationSheetSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/interruptedStreamDark.interrupted_stream_dark.png",
+    "image": "Bible_AnnotationSheetSnapshotTests_interruptedStreamDark.interrupted_stream_dark.png",
+    "pixels": [
+      1179,
+      1800
+    ]
+  },
+  {
+    "package": "Bible",
+    "suite": "AnnotationSheetSnapshotTests",
+    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/partialStreamLight.partial_stream_light.png",
+    "image": "Bible_AnnotationSheetSnapshotTests_partialStreamLight.partial_stream_light.png",
     "pixels": [
       1179,
       1800
@@ -406,7 +386,7 @@
     "image": "Bible_BibleAttachToastSnapshotTests_dark.dark.png",
     "pixels": [
       1206,
-      330
+      780
     ]
   },
   {
@@ -416,7 +396,7 @@
     "image": "Bible_BibleAttachToastSnapshotTests_light.light.png",
     "pixels": [
       1206,
-      330
+      780
     ]
   },
   {
@@ -424,16 +404,6 @@
     "suite": "BibleBookSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/alphabeticalLight.alphabetical_light.png",
     "image": "Bible_BibleBookSheetSnapshotTests_alphabeticalLight.alphabetical_light.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleBookSheetSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/autoExpandDark.auto_expand_dark.png",
-    "image": "Bible_BibleBookSheetSnapshotTests_autoExpandDark.auto_expand_dark.png",
     "pixels": [
       1206,
       2280
@@ -482,28 +452,8 @@
   {
     "package": "Bible",
     "suite": "BibleBookSheetSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkDark.chapter_deep_link_dark.png",
-    "image": "Bible_BibleBookSheetSnapshotTests_chapterDeepLinkDark.chapter_deep_link_dark.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleBookSheetSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkLight.chapter_deep_link_light.png",
     "image": "Bible_BibleBookSheetSnapshotTests_chapterDeepLinkLight.chapter_deep_link_light.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleBookSheetSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkLightXXL.chapter_deep_link_light_xxl.png",
-    "image": "Bible_BibleBookSheetSnapshotTests_chapterDeepLinkLightXXL.chapter_deep_link_light_xxl.png",
     "pixels": [
       1206,
       2280
@@ -856,7 +806,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_bottomSelectionDark.bottom_selection_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -866,7 +816,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_bottomSelectionLight.bottom_selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -876,7 +826,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_defaultDark.default_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -886,8 +836,30 @@
     "image": "Bible_BibleNavBarSnapshotTests_defaultLight.default_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "image": "Bible_BibleNavBarSnapshotTests_historyNarrowAccessibility.history_narrow_accessibility.png",
+    "pixels": [
+      960,
+      1080
+    ],
+    "testName": "historyNarrowAccessibility",
+    "captureName": "history_narrow_accessibility"
+  },
+  {
+    "package": "Bible",
+    "suite": "BibleNavBarSnapshotTests",
+    "image": "Bible_BibleNavBarSnapshotTests_historyStatesGallery.history_states.png",
+    "pixels": [
+      1206,
+      960
+    ],
+    "testName": "historyStatesGallery",
+    "captureName": "history_states"
   },
   {
     "package": "Bible",
@@ -896,7 +868,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonPausedLight.narrating_speaker_button_paused_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -906,7 +878,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonSpeakingDark.narrating_speaker_button_speaking_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -916,7 +888,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonSpeakingLight.narrating_speaker_button_speaking_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -926,7 +898,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_narratingSpeakerButtonWithSelectionDotLight.narrating_speaker_button_with_selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -936,7 +908,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_nextDisabled.next_disabled_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -946,7 +918,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_noChevronsDark.no_chevrons_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -956,7 +928,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_noChevronsLight.no_chevrons_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -966,7 +938,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_previousDisabled.previous_disabled_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -976,7 +948,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_selectionDark.selection_dark.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -986,7 +958,7 @@
     "image": "Bible_BibleNavBarSnapshotTests_selectionLight.selection_light.png",
     "pixels": [
       1206,
-      288
+      480
     ]
   },
   {
@@ -1024,16 +996,6 @@
     "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/chatToastDark.chat_toast_dark.png",
     "image": "Bible_BibleScreenSnapshotTests_chatToastDark.chat_toast_dark.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/chatToastDarkXXL.chat_toast_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_chatToastDarkXXL.chat_toast_dark_xxl.png",
     "pixels": [
       1206,
       2280
@@ -1082,16 +1044,6 @@
   {
     "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedDarkXXL.highlighted_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_highlightedDarkXXL.highlighted_dark_xxl.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedFontScaleMinDark.highlighted_font_scale_min_dark.png",
     "image": "Bible_BibleScreenSnapshotTests_highlightedFontScaleMinDark.highlighted_font_scale_min_dark.png",
     "pixels": [
@@ -1132,26 +1084,6 @@
   {
     "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveDark.immersive_dark.png",
-    "image": "Bible_BibleScreenSnapshotTests_immersiveDark.immersive_dark.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveDarkXXL.immersive_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_immersiveDarkXXL.immersive_dark_xxl.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveLight.immersive_light.png",
     "image": "Bible_BibleScreenSnapshotTests_immersiveLight.immersive_light.png",
     "pixels": [
@@ -1174,16 +1106,6 @@
     "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingDark.narrating_dark.png",
     "image": "Bible_BibleScreenSnapshotTests_narratingDark.narrating_dark.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingDarkXXL.narrating_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_narratingDarkXXL.narrating_dark_xxl.png",
     "pixels": [
       1206,
       2280
@@ -1232,38 +1154,8 @@
   {
     "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDarkXXL.populated_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_populatedDarkXXL.populated_dark_xxl.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMaxDark.populated_font_scale_max_dark.png",
-    "image": "Bible_BibleScreenSnapshotTests_populatedFontScaleMaxDark.populated_font_scale_max_dark.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMaxLight.populated_font_scale_max_light.png",
     "image": "Bible_BibleScreenSnapshotTests_populatedFontScaleMaxLight.populated_font_scale_max_light.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMinDark.populated_font_scale_min_dark.png",
-    "image": "Bible_BibleScreenSnapshotTests_populatedFontScaleMinDark.populated_font_scale_min_dark.png",
     "pixels": [
       1206,
       2280
@@ -1333,27 +1225,6 @@
   {
     "package": "Bible",
     "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDarkXXL.selection_active_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_selectionActiveDarkXXL.selection_active_dark_xxl-dismissed.png",
-    "pixels": [
-      1206,
-      2280
-    ],
-    "variant": "dismissed"
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDarkXXL.selection_active_dark_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_selectionActiveDarkXXL.selection_active_dark_xxl.png",
-    "pixels": [
-      1206,
-      2280
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveFontScaleMinLight.selection_active_font_scale_min_light.png",
     "image": "Bible_BibleScreenSnapshotTests_selectionActiveFontScaleMinLight.selection_active_font_scale_min_light.png",
     "pixels": [
@@ -1381,17 +1252,6 @@
       1206,
       2280
     ]
-  },
-  {
-    "package": "Bible",
-    "suite": "BibleScreenSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLightXXL.selection_active_light_xxl.png",
-    "image": "Bible_BibleScreenSnapshotTests_selectionActiveLightXXL.selection_active_light_xxl-dismissed.png",
-    "pixels": [
-      1206,
-      2280
-    ],
-    "variant": "dismissed"
   },
   {
     "package": "Bible",
@@ -2106,16 +1966,6 @@
   {
     "package": "Bible",
     "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_enabled_xxl.apple_setup_enabled_xxl.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_apple_setup_enabled_xxl.apple_setup_enabled_xxl.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_setup_dark.apple_setup_setup_dark.png",
     "image": "Bible_OpenAINarrationSnapshotTests_apple_setup_setup_dark.apple_setup_setup_dark.png",
     "pixels": [
@@ -2146,58 +1996,8 @@
   {
     "package": "Bible",
     "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_dark.deleted_borrowed_key_dark.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_deleted_borrowed_key_dark.deleted_borrowed_key_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_light.deleted_borrowed_key_light.png",
     "image": "Bible_OpenAINarrationSnapshotTests_deleted_borrowed_key_light.deleted_borrowed_key_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_xxl.deleted_borrowed_key_xxl.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_deleted_borrowed_key_xxl.deleted_borrowed_key_xxl.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_dark.openai_setup_disabled_dark.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_openai_setup_disabled_dark.openai_setup_disabled_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_light.openai_setup_disabled_light.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_openai_setup_disabled_light.openai_setup_disabled_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_xxl.openai_setup_disabled_xxl.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_openai_setup_disabled_xxl.openai_setup_disabled_xxl.png",
     "pixels": [
       1206,
       2622
@@ -2296,16 +2096,6 @@
   {
     "package": "Bible",
     "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_dark.settings_disabled_dark.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_settings_disabled_dark.settings_disabled_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_light.settings_disabled_light.png",
     "image": "Bible_OpenAINarrationSnapshotTests_settings_disabled_light.settings_disabled_light.png",
     "pixels": [
@@ -2348,36 +2138,6 @@
     "suite": "OpenAINarrationSnapshotTests",
     "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_enabled_xxl.settings_enabled_xxl.png",
     "image": "Bible_OpenAINarrationSnapshotTests_settings_enabled_xxl.settings_enabled_xxl.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_dark.settings_error_dark.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_settings_error_dark.settings_error_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_light.settings_error_light.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_settings_error_light.settings_error_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Bible",
-    "suite": "OpenAINarrationSnapshotTests",
-    "legacy": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_xxl.settings_error_xxl.png",
-    "image": "Bible_OpenAINarrationSnapshotTests_settings_error_xxl.settings_error_xxl.png",
     "pixels": [
       1206,
       2622
@@ -3175,6 +2935,28 @@
   },
   {
     "package": "Chat",
+    "suite": "ChatScreenSnapshotTests",
+    "image": "Chat_ChatScreenSnapshotTests_scrollToBottomDark.screen_scroll_to_bottom_dark.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "testName": "scrollToBottomDark",
+    "captureName": "screen_scroll_to_bottom_dark"
+  },
+  {
+    "package": "Chat",
+    "suite": "ChatScreenSnapshotTests",
+    "image": "Chat_ChatScreenSnapshotTests_scrollToBottomLight.screen_scroll_to_bottom_light.png",
+    "pixels": [
+      1206,
+      2622
+    ],
+    "testName": "scrollToBottomLight",
+    "captureName": "screen_scroll_to_bottom_light"
+  },
+  {
+    "package": "Chat",
     "suite": "ChatsScreenSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/ChatsScreenSnapshotTests/noChatsYet.chats_empty_light.png",
     "image": "Chat_ChatsScreenSnapshotTests_noChatsYet.chats_empty_light.png",
@@ -3646,16 +3428,6 @@
   {
     "package": "Chat",
     "suite": "MessageListSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/appearanceScaleMaxDark.list_scale_max_dark.png",
-    "image": "Chat_MessageListSnapshotTests_appearanceScaleMaxDark.list_scale_max_dark.png",
-    "pixels": [
-      1206,
-      2100
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "MessageListSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/appearanceScaleMaxXXL.list_scale_max_light_xxl.png",
     "image": "Chat_MessageListSnapshotTests_appearanceScaleMaxXXL.list_scale_max_light_xxl.png",
     "pixels": [
@@ -3816,16 +3588,6 @@
   {
     "package": "Chat",
     "suite": "MessageListSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidBoldDark.list_streaming_midbold_dark.png",
-    "image": "Chat_MessageListSnapshotTests_streamingTailMidBoldDark.list_streaming_midbold_dark.png",
-    "pixels": [
-      1206,
-      2100
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "MessageListSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidFence.list_streaming_midfence_light.png",
     "image": "Chat_MessageListSnapshotTests_streamingTailMidFence.list_streaming_midfence_light.png",
     "pixels": [
@@ -3856,28 +3618,8 @@
   {
     "package": "Chat",
     "suite": "MessageListSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidInlineCodeDark.list_streaming_midcode_dark.png",
-    "image": "Chat_MessageListSnapshotTests_streamingTailMidInlineCodeDark.list_streaming_midcode_dark.png",
-    "pixels": [
-      1206,
-      2100
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "MessageListSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidList.list_streaming_midlist_light.png",
     "image": "Chat_MessageListSnapshotTests_streamingTailMidList.list_streaming_midlist_light.png",
-    "pixels": [
-      1206,
-      2100
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "MessageListSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidListDark.list_streaming_midlist_dark.png",
-    "image": "Chat_MessageListSnapshotTests_streamingTailMidListDark.list_streaming_midlist_dark.png",
     "pixels": [
       1206,
       2100
@@ -4246,16 +3988,6 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailModelListFallbackNoteDark.settings_model_detail_model_list_note_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailModelListFallbackNoteDark.settings_model_detail_model_list_note_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailNativeSearch.settings_model_detail_native_search_light.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelDetailNativeSearch.settings_model_detail_native_search_light.png",
     "pixels": [
@@ -4286,38 +4018,8 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAnthropic.settings_model_detail_provider_anthropic_light.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderAnthropic.settings_model_detail_provider_anthropic_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAnthropicDark.settings_model_detail_provider_anthropic_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderAnthropicDark.settings_model_detail_provider_anthropic_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderApple.settings_model_detail_provider_apple_light.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderApple.settings_model_detail_provider_apple_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAppleDark.settings_model_detail_provider_apple_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderAppleDark.settings_model_detail_provider_apple_dark.png",
     "pixels": [
       1206,
       2622
@@ -4396,26 +4098,6 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderGoogle.settings_model_detail_provider_google_light.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderGoogle.settings_model_detail_provider_google_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderGoogleDark.settings_model_detail_provider_google_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderGoogleDark.settings_model_detail_provider_google_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAI.settings_model_detail_provider_openai_light.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderOpenAI.settings_model_detail_provider_openai_light.png",
     "pixels": [
@@ -4466,38 +4148,8 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIUnlockedDark.settings_model_detail_provider_openai_unlocked_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderOpenAIUnlockedDark.settings_model_detail_provider_openai_unlocked_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIUnlockedXXL.settings_model_detail_provider_openai_unlocked_light_xxl.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderOpenAIUnlockedXXL.settings_model_detail_provider_openai_unlocked_light_xxl.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderXAI.settings_model_detail_provider_xai_light.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderXAI.settings_model_detail_provider_xai_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderXAIDark.settings_model_detail_provider_xai_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelDetailProviderXAIDark.settings_model_detail_provider_xai_dark.png",
     "pixels": [
       1206,
       2622
@@ -4536,28 +4188,8 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingExplicitModelDark.settings_models_titling_explicit_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelsPaneTitlingExplicitModelDark.settings_models_titling_explicit_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingOff.settings_models_titling_off_light.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelsPaneTitlingOff.settings_models_titling_off_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingOffDark.settings_models_titling_off_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelsPaneTitlingOffDark.settings_models_titling_off_dark.png",
     "pixels": [
       1206,
       2622
@@ -4646,28 +4278,8 @@
   {
     "package": "Chat",
     "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithDebugDark.settings_models_debug_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelsPaneWithDebugDark.settings_models_debug_dark.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithNativeSearch.settings_models_native_search_light.png",
     "image": "Chat_SettingsSheetSnapshotTests_modelsPaneWithNativeSearch.settings_models_native_search_light.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithNativeSearchDark.settings_models_native_search_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_modelsPaneWithNativeSearchDark.settings_models_native_search_dark.png",
     "pixels": [
       1206,
       2622
@@ -4708,16 +4320,6 @@
     "suite": "SettingsSheetSnapshotTests",
     "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/openAINarrationSetup_xxl.openai_narration_xxl.png",
     "image": "Chat_SettingsSheetSnapshotTests_openAINarrationSetup_xxl.openai_narration_xxl.png",
-    "pixels": [
-      1206,
-      2622
-    ]
-  },
-  {
-    "package": "Chat",
-    "suite": "SettingsSheetSnapshotTests",
-    "legacy": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/searchPaneOffDark.settings_search_off_dark.png",
-    "image": "Chat_SettingsSheetSnapshotTests_searchPaneOffDark.settings_search_off_dark.png",
     "pixels": [
       1206,
       2622

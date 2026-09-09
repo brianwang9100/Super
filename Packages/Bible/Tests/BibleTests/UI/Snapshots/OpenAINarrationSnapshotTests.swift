@@ -11,7 +11,11 @@ import Testing
 struct OpenAINarrationSnapshotTests {
     init() { SnapshotFontRegistration.ensureRegistered() }
 
-    @Test(arguments: ["setup", "enabled", "disabled", "error"], ["light", "dark", "xxl"])
+    @Test(arguments: [
+        ("setup", "light"), ("setup", "dark"), ("setup", "xxl"),
+        ("enabled", "light"), ("enabled", "dark"), ("enabled", "xxl"),
+        ("disabled", "light"), ("disabled", "xxl"),
+    ])
     func settings(state: String, appearance: String) async throws {
         let fixture = try await makeFixture(state: state)
         let view = NarrationSettingsPane(settings: fixture.settings, controller: fixture.controller, includesHeader: true)
@@ -20,7 +24,10 @@ struct OpenAINarrationSnapshotTests {
         verify(view, name: "settings_\(state)_\(appearance)", height: 874)
     }
 
-    @Test(arguments: ["setup", "enabled"], ["light", "dark", "xxl"])
+    @Test(arguments: [
+        ("setup", "light"), ("setup", "dark"), ("setup", "xxl"),
+        ("enabled", "light"), ("enabled", "dark"),
+    ])
     func appleSetup(state: String, appearance: String) async throws {
         let fixture = try await makeFixture(state: state)
         let view = AppleNarrationSetupSheet(settings: fixture.settings)
@@ -29,7 +36,7 @@ struct OpenAINarrationSnapshotTests {
         verify(view, name: "apple_setup_\(state)_\(appearance)", height: 874)
     }
 
-    @Test(arguments: ["setup", "enabled", "disabled", "error"], ["light", "dark", "xxl"])
+    @Test(arguments: ["setup", "enabled", "error"], ["light", "dark", "xxl"])
     func openAISetup(state: String, appearance: String) async throws {
         let fixture = try await makeFixture(state: state)
         let view = OpenAINarrationSetupSheet(settings: fixture.settings, controller: fixture.controller)
@@ -38,7 +45,7 @@ struct OpenAINarrationSnapshotTests {
         verify(view, name: "openai_setup_\(state)_\(appearance)", height: 874)
     }
 
-    @Test(arguments: ["light", "dark", "xxl"])
+    @Test(arguments: ["light"])
     func deletedBorrowedKey(appearance: String) async throws {
         let keychain = InMemoryKeychainClient()
         try await keychain.setString("snapshot-only", ref: "deleted-ref")

@@ -2,13 +2,16 @@
 import Core
 import Foundation
 
+/// Foreground requests without tools stream canned Markdown; chat and bulk requests exercise the annotation tool loop.
 public struct DebugAnnotateLLMProvider: LLMProvider {
     public let id: String
     public let displayName: String = "Debug (annotate)"
 
     public static let modelID = "debug-annotate"
     public static let modelDisplayName = "Debug annotate"
-    public static let maxContextTokens = 8_192
+    // Keep annotation tools available in the in-chat preview; compact models
+    // intentionally omit mutation tools through CompactToolPolicy.
+    public static let maxContextTokens = 32_768
 
     /// Kept as a literal so Chat does not import Bible.
     static let toolName = "bible.annotate"
@@ -20,7 +23,7 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
             supportsThinking: false,
             supportsTools: true,
             maxContextTokens: Self.maxContextTokens
-        )]
+        ),]
     }
 
     public init(id: String) {
@@ -37,15 +40,7 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
             let task = Task {
                 continuation.yield(.messageStart(id: "debug-annotate-\(UUID().uuidString)", model: model.id))
 
-                // Loop termination: when *this* turn just ran the tool,
-                // `ChatSession` re-invokes `stream()` with the tool result as
-                // the trailing `.tool` turn (ContextAssembler maps it to
-                // `.toolResult`). Emit a plain text turn with no tool call so
-                // the loop ends — otherwise we'd annotate forever. Gate on the
-                // *last* message, not "any `.tool` in history": a conversation
-                // that earlier ran a different debug tool (e.g. the user sent a
-                // note, then switched to this model) still ends in their fresh
-                // user turn, and must trigger a new tool call.
+                // Stop after this turn's tool result, not any historical result, or later user requests would be ignored.
                 guard messages.last?.role != .tool else {
                     Self.emitDone(into: continuation)
                     continuation.finish()
@@ -55,6 +50,22 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
                 do {
                     try await Task.sleep(nanoseconds: UInt64.random(in: 150...400) * 1_000_000)
                     let target = DebugBibleTarget.parse(from: messages)
+                    if tools.isEmpty {
+                        continuation.yield(.contentBlockStart(index: 0, type: .text))
+                        let text = Self.summary(for: target)
+                        var start = text.startIndex
+                        while start < text.endIndex {
+                            try Task.checkCancellation()
+                            let end = text.index(start, offsetBy: 12, limitedBy: text.endIndex) ?? text.endIndex
+                            continuation.yield(.textDelta(index: 0, text: String(text[start..<end])))
+                            start = end
+                            try await Task.sleep(for: .milliseconds(65))
+                        }
+                        continuation.yield(.contentBlockStop(index: 0))
+                        continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
+                        continuation.finish()
+                        return
+                    }
                     continuation.yield(.contentBlockStart(index: 0, type: .toolUse))
                     continuation.yield(.toolUse(
                         index: 0,
@@ -86,8 +97,6 @@ public struct DebugAnnotateLLMProvider: LLMProvider {
         continuation.yield(.contentBlockStop(index: 0))
         continuation.yield(.messageComplete(usage: TokenUsage(inputTokens: 0, outputTokens: 0)))
     }
-
-    // MARK: - Canned payload
 
     static func annotateInput(for target: DebugBibleTarget) -> JSONValue {
         var fields: [String: JSONValue] = [

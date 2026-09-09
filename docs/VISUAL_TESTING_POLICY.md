@@ -1,10 +1,30 @@
 # Visual testing policy and migration audit
 
-The current capture inventory contains **623 images: 582 package captures and 41 native previews**. Repository PNGs are the image baseline store. Package fixtures retain their Point-Free rendering and comparison strategies through test-only `VisualTestSupport`; native previews compare pixels exactly. The four package CI jobs and native shard remain, with missing or changed baselines failing local and CI runs. Intentional baseline changes are reviewed PNG commits; scratch captures and diffs are ignored. See [snapshot testing](SNAPSHOT_TESTING.md) and the [required-check cutover](CI_PIPELINE.md#repository-snapshot-workflow).
+The current capture inventory contains **581 images: 540 package captures and 41 native previews**. Repository PNGs are the image baseline store. Package fixtures retain their Point-Free rendering and comparison strategies through test-only `VisualTestSupport`; native previews use the narrowly bounded RGB rounding comparison documented in [snapshot testing](SNAPSHOT_TESTING.md). The four package CI jobs and native shard remain, with missing or changed baselines failing local and CI runs. Intentional baseline changes are reviewed PNG commits; scratch captures and diffs are ignored. See [snapshot testing](SNAPSHOT_TESTING.md) and the [required-check cutover](CI_PIPELINE.md#repository-snapshot-workflow).
 
 The audit tables below describe commit `00693278` (543 images), not the current inventory. A later tracked-file count at `58d18b5b` found 619 PNGs; composer and Settings migrations reduced that to 580 while establishing 41 native captures. Main PR #338 (`79b70606`) then added the existing `focusedTurn` Chat fixture, bringing the pre-migration tree to 581 PNGs. Those 581 filenames represent 585 rendered states: four `BibleScreenSnapshotTests` fixtures already rendered both `dismissActions = false` and `true` under the same filename. Capture validation exposed the collisions. The migration keeps the original IDs for the open-action state and gives the four dismissed-action variants distinct IDs, then consolidates only the three cases listed below: 585 − 3 = 582 package captures. This preserves existing scenario coverage rather than adding four new test scenarios. The broader historical shortlist remains a proposal; it does not authorize matrix deletion. See [Settings stability results](ARGOS_SETTINGS_STABILITY_RESULTS.md) for historical native renderer verification.
 
-The current package inventory is Bible 276, Chat 244, Core 20, and Todo 42, plus 41 native previews. The four explicit Bible variant IDs account for Bible’s filename count changing from 272 to 276.
+The current package inventory is Bible 250, Chat 228, Core 20, and Todo 42, plus 41 native previews. The navigation-history state gallery and narrow accessibility case added on main remain covered. The centered scroll-to-bottom control adds two Chat screen captures for light/dark glass contrast and copy-confirmation separation, bringing the consolidated inventory from 579 to 581. The original four explicit Bible variant IDs accounted for Bible’s pre-consolidation filename count changing from 272 to 276; default-size light/dark dismissed variants remain after this audit.
+
+## September 2026 consolidation
+
+The audit initially covered `c6a49ba3` and was revalidated after chapter-history PR #352 merged (`99d6dac3`). It reduces the updated inventory **625 → 579 captures (−46, 7.4%)** without re-recording retained baselines or changing renderer tolerances. The historical shortlist below is separate evidence, not the implementation checklist.
+
+| Suite | Before | After | Why these captures were retired |
+| --- | ---: | ---: | --- |
+| Chat SettingsSheet | 70 | 56 | Locked provider-label permutations and selected dark companions whose visible controls, state and colors have retained owners. |
+| Chat MessageList | 31 | 27 | Three malformed streaming-input dark companions and a duplicate max-scale dark axis; light input cases, shared dark token styles and scale/reflow coverage remain. |
+| Bible OpenAINarration | 54 | 44 | Source-equivalent settings error/setup disabled images and selected repeated states with retained error, opt-out, recovery and XXL owners. |
+| Bible reader | 43 | 32 | Selected theme/scale cross-products and XXL dismissed variants; default-theme dismissal, selection, narration and minimum-scale seams remain. |
+| Bible book picker | 24 | 21 | Repeated auto-expand/deep-link theme and text-size axes; scroll anchors, XXL grid and decorated dark states remain. |
+| Bible annotation sheet/container | 21 | 17 | Duplicate generation image and container dark companions with retained real-database projections and direct sheet contrast coverage. |
+
+Every removal is enumerated in [retired-coverage.json](../Scripts/VisualTesting/retired-coverage.json), including exact replacement PNGs and behavioral test declarations. CI verifies these owners remain registered and present. Removing a replacement later requires updating its dependent retirement evidence. A replacement image's mere existence is not proof of equivalence: review the visible state, original purpose, and assertions before changing the map.
+
+Core's 20, Todo's 42 and all 41 native captures remain. All Settings XXL cases remain; some apparently identical fixed-chrome/disabled-menu fixtures lack a focused behavior assertion proving their original purpose and are deferred. Distinct error contrast, prefetch controls, annotation precedence, long-transcript anchors, live-thinking fences and minimum-scale underline/highlight regressions remain covered.
+
+For future additions, first identify the distinct visual failure being protected and check the existing screen/gallery inventory. Prefer one representative theme for a new input permutation unless it introduces a separate contrast risk; do not automatically multiply every state by theme, scale and Dynamic Type. Keep behavioral permutations in logic tests. Any reduction needs an explicit retained visual owner and behavioral evidence, and any increase needs its count and risk rationale in the PR. Never delete or re-record screenshots merely to obtain a passing check.
+
 
 ## Verified consolidations
 
@@ -163,7 +183,7 @@ The repository snapshot pipeline preserves five shards: native, Bible, Chat, Cor
 
 Historical OIDC upload and Argos rejection→approval enforcement were verified in [PR #332](https://github.com/brianwang9100/Super/pull/332#issuecomment-5571855771). Those results describe the retired integration. Current changes require inspected repository diffs, current-revision review, and passing required checks. The historical cost table above does not predict the replacement pipeline's runtime.
 
-Use Xcode previews and targeted local comparison for iteration; CI compares the full inventory on every PR. A full local comparison is required when changing snapshot infrastructure or investigating cross-suite rendering. Local unit, integration, and database tests remain required for code changes. See [local commands](TESTING.md#simulator-environment).
+Use Xcode previews and targeted local comparison for iteration; CI compares the full inventory for code changes; verified documentation-only PRs retain guards and required checks while skipping rendering. Main pushes and manual runs always compare the complete inventory. See the [precise CI exemption](CI_PIPELINE.md#repository-snapshot-workflow). A full local comparison is required when changing snapshot infrastructure or investigating cross-suite rendering. Local unit, integration, and database tests remain required for code changes. See [local commands](TESTING.md#simulator-environment).
 
 ## Generated files and historical Git storage
 

@@ -343,7 +343,8 @@ struct AppShell: View {
                 case .openRecord(let reference):
                     // The applet subscriber navigates within the applet; the shell only exposes its backdrop.
                     pendingNavigation = .openApplet(id: reference.appletID)
-                case .bibleAnnotateRequested, .bibleAnnotateCompleted:
+                case .bibleAnnotateRequested, .bibleAnnotateProgress, .bibleAnnotateCompleted:
+                    // BibleAnnotateDispatcher and BibleScreenViewModel own annotation routing; the shell only observes.
                     break
                 case .credentialChanged: break
                 case .sidebarOpened:

@@ -27,5 +27,777 @@
       "compactionBannerInsertion"
     ],
     "rationale": "Retained capture has the same user/assistant/banner/user arrangement, Vellum light theme and 402x600 frame, with a richer markdown summary. Behavioral test asserts the banner position after the cutoff and its exact summary."
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_light.settings_error_light.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_enabled_light.settings_enabled_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "keychainWriteFailureLeavesConnectionUnconfigured"
+    ],
+    "rationale": "NarrationSettingsPane never reads errorMessage, so this PNG is pixel-identical to enabled. Retained setup error capture owns the actual message and its appearance/reflow; failure behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_error_light.openai_setup_error_light.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_dark.settings_error_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_enabled_dark.settings_enabled_dark.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "keychainWriteFailureLeavesConnectionUnconfigured"
+    ],
+    "rationale": "NarrationSettingsPane never reads errorMessage, so this PNG is pixel-identical to enabled. Retained setup error capture owns the actual message and its appearance/reflow; failure behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_error_dark.openai_setup_error_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_error_xxl.settings_error_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_enabled_xxl.settings_enabled_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "keychainWriteFailureLeavesConnectionUnconfigured"
+    ],
+    "rationale": "NarrationSettingsPane never reads errorMessage, so this PNG is pixel-identical to enabled. Retained setup error capture owns the actual message and its appearance/reflow; failure behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_error_xxl.openai_setup_error_xxl.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_dark.settings_disabled_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_light.settings_disabled_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "freshInstallRequiresExplicitSaveAndPersistsOptOut"
+    ],
+    "rationale": "Only the disabled subtitle differs; configured cards and status colors are shared with enabled dark. Longer disabled subtitle remains captured at light and XXL, with disabled persistence/availability assertions.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_xxl.settings_disabled_xxl.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_enabled_dark.settings_enabled_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_enabled_xxl.apple_setup_enabled_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_enabled_light.apple_setup_enabled_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "appleConnectionRechecksAfterVoiceDownload"
+    ],
+    "rationale": "Shared instructions retain XXL coverage with the longer setup footer; the shorter configured checkmark footer remains in light/dark. Installed voice false-to-true projection remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_enabled_dark.apple_setup_enabled_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/apple_setup_setup_xxl.apple_setup_setup_xxl.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_light.openai_setup_disabled_light.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_enabled_light.openai_setup_enabled_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "freshInstallRequiresExplicitSaveAndPersistsOptOut",
+      "enablingAfterOptOutInitializesOnlyMissingVoicePreference",
+      "prefetchPreferenceSavesAtomicallyAndSurvivesReload"
+    ],
+    "rationale": "Pixel-identical saved-key setup structure for enabled and disabled; the settings pane retains visible opt-out copy. Saved preference tests retain disabled/enabling behavior and all prefetch save paths. Current prefetch control/disclosure remains in setup light/dark/XXL.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_light.settings_disabled_light.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_dark.openai_setup_disabled_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_enabled_dark.openai_setup_enabled_dark.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "freshInstallRequiresExplicitSaveAndPersistsOptOut",
+      "enablingAfterOptOutInitializesOnlyMissingVoicePreference",
+      "prefetchPreferenceSavesAtomicallyAndSurvivesReload"
+    ],
+    "rationale": "Pixel-identical saved-key setup structure for enabled and disabled; the settings pane retains visible opt-out copy. Saved preference tests retain disabled/enabling behavior and all prefetch save paths. Current prefetch control/disclosure remains in setup light/dark/XXL.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_light.settings_disabled_light.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_disabled_xxl.openai_setup_disabled_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_enabled_xxl.openai_setup_enabled_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+    "behavioralTests": [
+      "freshInstallRequiresExplicitSaveAndPersistsOptOut",
+      "enablingAfterOptOutInitializesOnlyMissingVoicePreference",
+      "prefetchPreferenceSavesAtomicallyAndSurvivesReload"
+    ],
+    "rationale": "Pixel-identical saved-key setup structure for enabled and disabled; the settings pane retains visible opt-out copy. Saved preference tests retain disabled/enabling behavior and all prefetch save paths. Current prefetch control/disclosure remains in setup light/dark/XXL.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/settings_disabled_xxl.settings_disabled_xxl.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_dark.deleted_borrowed_key_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_light.deleted_borrowed_key_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/NarrationCredentialResolutionTests.swift",
+    "behavioralTests": [
+      "modelDraftDefaultsToNewKeyAfterBorrowedSourceRemoval"
+    ],
+    "rationale": "Deleted-source light regression and its hasKey assertion remain; empty key field/disabled save appearance is owned by setup and clear-download action by enabled. Source invalidation is independently tested.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_setup_dark.openai_setup_setup_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_enabled_dark.openai_setup_enabled_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+        "tests": [
+          "missingCredentialStopsBeingAvailable"
+        ]
+      },
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/OpenAINarrationSnapshotTests.swift",
+        "tests": [
+          "deletedBorrowedKey"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_xxl.deleted_borrowed_key_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/deleted_borrowed_key_light.deleted_borrowed_key_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Narration/NarrationCredentialResolutionTests.swift",
+    "behavioralTests": [
+      "modelDraftDefaultsToNewKeyAfterBorrowedSourceRemoval"
+    ],
+    "rationale": "Deleted-source light regression and its hasKey assertion remain; empty key field/disabled save appearance is owned by setup and clear-download action by enabled. Source invalidation is independently tested.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_setup_xxl.openai_setup_setup_xxl.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/OpenAINarrationSnapshotTests/openai_setup_enabled_xxl.openai_setup_enabled_xxl.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/Narration/OpenAINarrationTests.swift",
+        "tests": [
+          "missingCredentialStopsBeingAvailable"
+        ]
+      },
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/OpenAINarrationSnapshotTests.swift",
+        "tests": [
+          "deletedBorrowedKey"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDarkXXL.populated_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedLightXXL.populated_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "loadDefault",
+      "loadPersisted"
+    ],
+    "rationale": "Same real bundled chapter with theme-independent typography geometry; exact scale/reflow input remains in light, primary palette remains dark. The distinct dark minimum-scale highlight regression remains.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDark.populated_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMaxDark.populated_font_scale_max_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMaxLight.populated_font_scale_max_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "loadDefault",
+      "loadPersisted"
+    ],
+    "rationale": "Same real bundled chapter with theme-independent typography geometry; exact scale/reflow input remains in light, primary palette remains dark. The distinct dark minimum-scale highlight regression remains.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDark.populated_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMinDark.populated_font_scale_min_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedFontScaleMinLight.populated_font_scale_min_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "loadDefault",
+      "loadPersisted"
+    ],
+    "rationale": "Same real bundled chapter with theme-independent typography geometry; exact scale/reflow input remains in light, primary palette remains dark. The distinct dark minimum-scale highlight regression remains.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDark.populated_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedFontScaleMinDark.highlighted_font_scale_min_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDarkXXL.selection_active_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLightXXL.selection_active_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "dismissingActionSheetPreservesSelection",
+      "changingSelectionKeepsActionSheetDismissed",
+      "presentingActionSheetKeepsSelection"
+    ],
+    "rationale": "Retain selected XXL reader layout and default open/dismissed sentinels in light and dark. Native action-sheet content is not rendered here; dismissal preserves the same reader selection/citation. Behavioral assertions retain presentation, selection, citation, and share-text transitions.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDark.selection_active_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDarkXXL.selection_active_dark_xxl-dismissed.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLightXXL.selection_active_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "dismissingActionSheetPreservesSelection",
+      "changingSelectionKeepsActionSheetDismissed",
+      "presentingActionSheetKeepsSelection"
+    ],
+    "rationale": "Retain selected XXL reader layout and default open/dismissed sentinels in light and dark. Native action-sheet content is not rendered here; dismissal preserves the same reader selection/citation. Behavioral assertions retain presentation, selection, citation, and share-text transitions.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveDark.selection_active_dark-dismissed.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLightXXL.selection_active_light_xxl-dismissed.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLightXXL.selection_active_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "dismissingActionSheetPreservesSelection",
+      "changingSelectionKeepsActionSheetDismissed",
+      "presentingActionSheetKeepsSelection"
+    ],
+    "rationale": "Retain selected XXL reader layout and default open/dismissed sentinels in light and dark. Native action-sheet content is not rendered here; dismissal preserves the same reader selection/citation. Behavioral assertions retain presentation, selection, citation, and share-text transitions.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/selectionActiveLight.selection_active_light-dismissed.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedDarkXXL.highlighted_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedLightXXL.highlighted_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "applyHighlightPaintsSelectedVerses",
+      "clearHighlightRemovesSelectedVerses",
+      "reapplyingColorToMixedSelectionApplies"
+    ],
+    "rationale": "Keep XXL highlight wrapping, default dark contrast for all three colors, and both minimum-scale seam regressions; persistence and selected-verse coloring remain asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedDark.highlighted_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedFontScaleMinLight.highlighted_font_scale_min_light.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/highlightedFontScaleMinDark.highlighted_font_scale_min_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveDark.immersive_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveLight.immersive_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelImmersiveTests.swift",
+    "behavioralTests": [
+      "scrollDownHides",
+      "scrollUpReveals",
+      "topAlwaysReveals",
+      "programmaticScrollIgnored"
+    ],
+    "rationale": "Hidden chrome leaves the shared reader palette. Light owns immersive geometry including the separate XXL taller-bar clearing capture; default dark owns the unchanged reader colors. Scroll and reveal behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDark.populated_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveDarkXXL.immersive_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/immersiveLightXXL.immersive_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelImmersiveTests.swift",
+    "behavioralTests": [
+      "scrollDownHides",
+      "scrollUpReveals",
+      "topAlwaysReveals",
+      "programmaticScrollIgnored"
+    ],
+    "rationale": "Hidden chrome leaves the shared reader palette. Light owns immersive geometry including the separate XXL taller-bar clearing capture; default dark owns the unchanged reader colors. Scroll and reveal behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/populatedDark.populated_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingDarkXXL.narrating_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingLightXXL.narrating_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "narrationCitationReflectsControllerVerse"
+    ],
+    "rationale": "Keep separate XXL dashed-rule wrapping and default dark dashed-rule contrast. Narration state transitions/current verse remain asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/narratingDark.narrating_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/Narration/NarrationControllerTests.swift",
+        "tests": [
+          "startForwardsUtterancesAndTransitionsOnStarted"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/chatToastDarkXXL.chat_toast_dark_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/chatToastLightXXL.chat_toast_light_xxl.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+    "behavioralTests": [
+      "dismissToastClearsIt"
+    ],
+    "rationale": "Toast dark styling/contrast and XXL reader positioning each retain an exact owner. Retained fixtures still drive presentChatComingSoon and the dismissal assertion remains.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleScreenSnapshotTests/chatToastDark.chat_toast_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/autoExpandDark.auto_expand_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/autoExpandLight.auto_expand_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleBookSheetViewModelTests.swift",
+    "behavioralTests": [
+      "uniqueMatchAutoExpands",
+      "uniqueMatchDoesNotDoubleExpand",
+      "tapCollapsesAutoExpandedBook"
+    ],
+    "rationale": "Dark grid cells and populated search styling remain covered, while the distinct filtered short-grid layout retains light and XXL. Search expansion/collapse behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/autoExpandLightXXL.auto_expand_light_xxl.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/expandedDark.expanded_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/verseDeepLinkDark.verse_deep_link_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkDark.chapter_deep_link_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkLight.chapter_deep_link_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleBookSheetViewModelTests.swift",
+    "behavioralTests": [
+      "queryResolvesChapter",
+      "queryResolvesVerseRange",
+      "deepLinkSuppressesAutoExpand"
+    ],
+    "rationale": "Both chapter and verse range use BibleBookSheet.deepLinkRow with identical layout and styles; only label, subtitle, and callback differ. Retain chapter light plus the longer verse-range title for dark/XXL fit; navigation resolution remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/verseDeepLinkDark.verse_deep_link_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+        "tests": [
+          "selectingChapterNavigatesAndClosesSheet"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkLightXXL.chapter_deep_link_light_xxl.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/chapterDeepLinkLight.chapter_deep_link_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleBookSheetViewModelTests.swift",
+    "behavioralTests": [
+      "queryResolvesChapter",
+      "queryResolvesVerseRange",
+      "deepLinkSuppressesAutoExpand"
+    ],
+    "rationale": "Both chapter and verse range use BibleBookSheet.deepLinkRow with identical layout and styles; only label, subtitle, and callback differ. Retain chapter light plus the longer verse-range title for dark/XXL fit; navigation resolution remains asserted.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/BibleBookSheetSnapshotTests/verseDeepLinkLightXXL.verse_deep_link_light_xxl.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelTests.swift",
+        "tests": [
+          "selectingChapterNavigatesAndClosesSheet"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingLight.generating_light.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingOverPopulatedLight.generating_over_populated_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelDispatchTests.swift",
+    "behavioralTests": [
+      "triggerPublishesAndTracks"
+    ],
+    "rationale": "Stateless generating and generating-over-populated light PNGs are pixel-identical. Retain the stronger populated-card precedence image plus actual empty-DB running container image. There is no independent sheet-precedence assertion, so both input behaviors explicitly retain visual owners.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyGeneratingLight.empty_generating_light.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/AnnotationSheetSnapshotTests.swift",
+        "tests": [
+          "generatingOverPopulatedLight"
+        ]
+      },
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/AnnotationSheetContainerSnapshotTests.swift",
+        "tests": [
+          "emptyGeneratingLight"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/generatingOverPopulatedDark.generating_over_populated_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/generatingOverPopulatedLight.generating_over_populated_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelDispatchTests.swift",
+    "behavioralTests": [
+      "triggerPublishesAndTracks",
+      "successRemovesEntry",
+      "failureFlipsEntry"
+    ],
+    "rationale": "Keep real seeded-DB-to-running projection in light/XXL and direct sheet loading-glyph/chrome contrast in dark. Dispatch transitions remain asserted; this does not remove populated-generating precedence coverage.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/generatingOverPopulatedLightXXL.generating_over_populated_light_xxl.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/generatingOverPopulatedDark.generating_over_populated_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/AnnotationSheetContainerSnapshotTests.swift",
+        "tests": [
+          "generatingOverPopulatedLight",
+          "generatingOverPopulatedLightXXL"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedDark.empty_failed_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedLight.empty_failed_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/ViewModels/BibleScreenViewModelDispatchTests.swift",
+    "behavioralTests": [
+      "failureFlipsEntry",
+      "retryGetsFreshId",
+      "regenerateFailedClearsStatusWithoutToast"
+    ],
+    "rationale": "Shared error label/retry layout retains dark sheet coverage, while the longer container message retains light and its unique XXL capture. Actual DB/status projection and retry transitions remain covered.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/emptyFailedLightXXL.empty_failed_light_xxl.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/failedDispatchDark.failed_dispatch_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/populatedDark.populated_dark.png",
+    "retainedPNG": "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetContainerSnapshotTests/populatedLight.populated_light.png",
+    "behavioralFile": "Packages/Bible/Tests/BibleTests/Queries/BibleAnnotationsByTargetRequestTests.swift",
+    "behavioralTests": [
+      "verseRangeIsolatesFromSiblingRanges",
+      "ordering"
+    ],
+    "rationale": "Keep actual record-to-card/provenance integration in container light and richer Markdown in sheet dark/XXL. Query isolation/order is asserted; the light integration image remains because query tests alone do not prove rendered projection.",
+    "retainedPNGs": [
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/populatedDark.populated_dark.png",
+      "Packages/Bible/Tests/BibleTests/UI/Snapshots/__Snapshots__/AnnotationSheetSnapshotTests/populatedLightXXL.populated_light_xxl.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Bible/Tests/BibleTests/UI/Snapshots/AnnotationSheetContainerSnapshotTests.swift",
+        "tests": [
+          "populatedLight"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAnthropic.settings_model_detail_provider_anthropic_light.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAI.settings_model_detail_provider_openai_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "anthropicSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAnthropicDark.settings_model_detail_provider_anthropic_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIDark.settings_model_detail_provider_openai_dark.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "anthropicSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderGoogle.settings_model_detail_provider_google_light.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAI.settings_model_detail_provider_openai_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "googleSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderGoogleDark.settings_model_detail_provider_google_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIDark.settings_model_detail_provider_openai_dark.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "googleSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderXAI.settings_model_detail_provider_xai_light.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAI.settings_model_detail_provider_openai_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "xaiSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable",
+      "xaiCatalogPrunedDeprecated",
+      "providersWithoutNativeSearch"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderXAIDark.settings_model_detail_provider_xai_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIDark.settings_model_detail_provider_openai_dark.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "xaiSeeds",
+      "providerKindsMatchExpectations",
+      "gatedCreateFieldsTruthTable",
+      "xaiCatalogPrunedDeprecated",
+      "providersWithoutNativeSearch"
+    ],
+    "rationale": "Inspected PNGs show the same key-gated create form: Provider, API Key and disabled Add Model. Only the short provider label differs. Hidden provider-specific values and key-gate behavior remain asserted; the same-theme OpenAI image retains shared form geometry and colors."
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderAppleDark.settings_model_detail_provider_apple_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderApple.settings_model_detail_provider_apple_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+    "behavioralTests": [
+      "appleSeeds",
+      "appleProviderAndModelNamesAreDistinct",
+      "gatedCreateFieldsTruthTable"
+    ],
+    "rationale": "The light Apple create capture retains Provider/Model grouping and managed context placement. Retained dark Apple detail owns managed-context colors; dark OpenAI create owns header/provider and enabled Add Model colors. Apple-specific seeding, context injection and persistence remain asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailAppleFoundationDark.settings_model_detail_afm_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIDark.settings_model_detail_provider_openai_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIModelsLoadingDark.settings_model_detail_models_loading_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsViewModelTests.swift",
+        "tests": [
+          "createAppleFoundationModelPersists",
+          "appleFoundationContextTokensIsInjected"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIUnlockedDark.settings_model_detail_provider_openai_unlocked_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIUnlocked.settings_model_detail_provider_openai_unlocked_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsViewModelTests.swift",
+    "behavioralTests": [
+      "loadAvailableModelsSuccessReconciles",
+      "loadAvailableModelsCacheHit"
+    ],
+    "rationale": "Light and XXL unlocked create captures retain fetched-model form geometry and reflow. Dark loading retains the same unlocked fields, while native-search detail retains the enabled refresh affordance. Reconciliation and cache tests preserve the fetched-list state behavior.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIUnlockedXXL.settings_model_detail_provider_openai_unlocked_light_xxl.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIModelsLoadingDark.settings_model_detail_models_loading_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailNativeSearchDark.settings_model_detail_native_search_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+        "tests": [
+          "reconcileKnownKeepsCatalogMetadata",
+          "reconcileUnknownGetsDefaults",
+          "gatedCreateFieldsTruthTable"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailModelListFallbackNoteDark.settings_model_detail_model_list_note_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailModelListFallbackNote.settings_model_detail_model_list_note_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsViewModelTests.swift",
+    "behavioralTests": [
+      "loadAvailableModelsFailureSetsNote",
+      "loadAvailableModelsEmptyResultSetsNote",
+      "loadAvailableModelsForcedFailureClearsStaleCache"
+    ],
+    "rationale": "The light fallback capture retains note placement and wrapping. The note uses shared theme.inkFaint, visibly covered by retained dark form labels; dark loading retains the unlocked form. Failure/empty/stale-cache tests preserve note projection. Distinct dark context-window and export error accents remain captured.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderOpenAIModelsLoadingDark.settings_model_detail_models_loading_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelDetailProviderCustomDark.settings_model_detail_provider_custom_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithDebugDark.settings_models_debug_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithDebug.settings_models_debug_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelsPaneTests.swift",
+    "behavioralTests": [
+      "sharedModelIdDoesNotDoubleResolve"
+    ],
+    "rationale": "The exact DEBUG subtitle/availability branch remains in the light capture. The retained dark AFM-available pane covers the same five-card layout and enabled toggles; modelCard colors do not vary by available provider kind. Debug record identity remains asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailableDark.settings_models_afm_available_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithNativeSearchDark.settings_models_native_search_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithNativeSearch.settings_models_native_search_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsViewModelTests.swift",
+    "behavioralTests": [
+      "loadModelsProjectsSearchBackend",
+      "createModelNativeBackend",
+      "updateModelSearchSelectionNative"
+    ],
+    "rationale": "The exact native row, endpoint and long label remain captured in light. The dark AFM-available pane owns the same five-card layout and shared card colors. Native backend projection, creation, selection and adapter mapping remain asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailableDark.settings_models_afm_available_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelDetailPaneCatalogTests.swift",
+        "tests": [
+          "nativeSearchAdaptersMatchExpectations"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingOffDark.settings_models_titling_off_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingOff.settings_models_titling_off_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/Settings/ChatSettingsTests.swift",
+    "behavioralTests": [
+      "titleSettingsRoundTrip"
+    ],
+    "rationale": "The light off capture retains disappearance of the title model list. The retained dark pane covers title group text and the shared SettingsToggle off colors. The title-section branch changes list presence rather than theme roles; persisted off state and toggle transition remain asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailableDark.settings_models_afm_available_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsToggleTests.swift",
+        "tests": [
+          "commitFlipsFromOnWhenEnabled"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingExplicitModelDark.settings_models_titling_explicit_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneTitlingExplicitModel.settings_models_titling_explicit_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsModelsPaneTests.swift",
+    "behavioralTests": [
+      "explicitRecordId",
+      "legacyModelId",
+      "sharedModelIdDoesNotDoubleResolve",
+      "deletedModel"
+    ],
+    "rationale": "The light explicit selection captures the first-row checkmark and band. The dark automatic AFM selection owns the same selected-radio-row colors, shared across all models by titleModelRow. Record-id/legacy resolution, duplicate identity, deleted-model handling and persistence remain asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneWithAFMAvailableDark.settings_models_afm_available_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/Settings/ChatSettingsTests.swift",
+        "tests": [
+          "titleSettingsRoundTrip"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/searchPaneOffDark.settings_search_off_dark.png",
+    "retainedPNG": "Scripts/PreviewPilot/__Snapshots__/Chat_SettingsPanePreviews.swift_settings_search_off_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/Settings/ChatSettingsTests.swift",
+    "behavioralTests": [
+      "askBeforeSearchingRoundTrip"
+    ],
+    "rationale": "Native off-light retains the toggle state; native on-dark retains pane geometry/text; dark Models contains the same enabled-but-off SettingsToggle. Search has no off-specific text/color/layout branch. Persistence, cost-gate forwarding and toggle transition remain asserted.",
+    "retainedPNGs": [
+      "Scripts/PreviewPilot/__Snapshots__/Chat_SettingsPanePreviews.swift_settings_search_on_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/SettingsSheetSnapshotTests/modelsPaneAsModalRootDark.settings_models_root_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsViewModelTests.swift",
+        "tests": [
+          "setAskBeforeSearchingForwardsGate"
+        ]
+      },
+      {
+        "file": "Packages/Chat/Tests/ChatTests/UI/Settings/SettingsToggleTests.swift",
+        "tests": [
+          "commitFlipsFromOnWhenEnabled"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidBoldDark.list_streaming_midbold_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidBold.list_streaming_midbold_light.png",
+    "behavioralFile": "Packages/Core/Tests/CoreTests/UI/Markdown/MarkdownAutocloserTests.swift",
+    "behavioralTests": [
+      "unmatchedEmphasisWithBodyIsPreserved",
+      "balancedEmphasis",
+      "trailingDoubleAsteriskAtEOFPreserved"
+    ],
+    "rationale": "Actual PNG renders the unclosed emphasis marker as literal prose. The exact partial input remains in light; dark fence owns streaming body/spark colors; Core dark list owns valid bold styling. Autocloser tests preserve the literal-marker behavior; all text passes through the same partial Markdown renderer.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidFenceDark.list_streaming_midfence_dark.png",
+      "Packages/Core/Tests/CoreTests/UI/Snapshots/__Snapshots__/MarkdownTextSnapshotTests/listDark.markdown_list_refs_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidInlineCodeDark.list_streaming_midcode_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidInlineCode.list_streaming_midcode_light.png",
+    "behavioralFile": "Packages/Core/Tests/CoreTests/UI/Markdown/MarkdownAutocloserTests.swift",
+    "behavioralTests": [
+      "solitaryBacktickInProseIsPreserved",
+      "trailingBacktickAtEOFPreserved",
+      "balancedPassthrough"
+    ],
+    "rationale": "Actual PNG renders the dangling backtick as prose, not a distinct code pill. The exact partial input remains in light; dark fence owns streaming body/spark colors; Core dark Markdown owns valid inline-code styling. Autocloser literal-backtick behavior remains asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidFenceDark.list_streaming_midfence_dark.png",
+      "Packages/Core/Tests/CoreTests/UI/Snapshots/__Snapshots__/MarkdownTextSnapshotTests/dark.markdown_verse_refs_dark.png"
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidListDark.list_streaming_midlist_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidList.list_streaming_midlist_light.png",
+    "behavioralFile": "Packages/Core/Tests/CoreTests/UI/Markdown/MarkdownAutocloserTests.swift",
+    "behavioralTests": [
+      "balancedPassthrough"
+    ],
+    "rationale": "The same list input remains captured at default size and XXL in light. Core dark list owns dark bullets/text, and dark fence owns the streaming spark. Behavioral tests cover balanced passthrough and partial-mode application generally, while retained exact-input captures continue covering the specific streaming-list path.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidListLightXXL.list_streaming_midlist_light_xxl.png",
+      "Packages/Core/Tests/CoreTests/UI/Snapshots/__Snapshots__/MarkdownTextSnapshotTests/listDark.markdown_list_refs_dark.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/streamingTailMidFenceDark.list_streaming_midfence_dark.png"
+    ],
+    "behavioralEvidence": [
+      {
+        "file": "Packages/Core/Tests/CoreTests/UI/Markdown/MarkdownTextTests.swift",
+        "tests": [
+          "partialPathClosesFence"
+        ]
+      }
+    ]
+  },
+  {
+    "retiredPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/appearanceScaleMaxDark.list_scale_max_dark.png",
+    "retainedPNG": "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/appearanceScaleMax.list_scale_max_light.png",
+    "behavioralFile": "Packages/Chat/Tests/ChatTests/UI/Theme/ChatAppearanceTests.swift",
+    "behavioralTests": [
+      "fontScaleEndpointsScaleBodySize",
+      "markdownMetricsProjectionParity",
+      "rowPaddingsAreMonotonic",
+      "paragraphMarginScalesWithBody"
+    ],
+    "rationale": "The same 1.2x transcript geometry remains in light, with combined XXL reflow retained. The identical populated fixture owns dark surfaces/text. verifyAppearance applies identical numeric appearance and typography independently of theme; endpoint, metric, padding and paragraph-scale behavior remain asserted.",
+    "retainedPNGs": [
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/appearanceScaleMaxXXL.list_scale_max_light_xxl.png",
+      "Packages/Chat/Tests/ChatTests/UI/Snapshots/__Snapshots__/MessageListSnapshotTests/populatedDark.list_populated_dark.png"
+    ]
   }
 ]

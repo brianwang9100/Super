@@ -16,7 +16,7 @@ jobs:
     container:
       image: ghcr.io/realm/swiftlint:latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Show SwiftLint version
         run: swiftlint version

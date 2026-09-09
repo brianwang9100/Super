@@ -1,6 +1,6 @@
 # Comment Audit Implementation Plan
 
-> **For agentic workers:** Use `superpowers:executing-plans` to execute the reviewed tasks. Root `AGENTS.md` requires a plan-review subagent and a separate implementation-review subagent. Execution was authorized after plan review. Policy, root/tooling, Core, Todo, Bible, and all Chat tests are reviewed; the Chat source pass and final delivery checks are in progress.
+> **For agentic workers:** Use `superpowers:executing-plans` to execute the reviewed tasks. Root `AGENTS.md` requires a plan-review subagent and a separate implementation-review subagent. Execution was authorized after plan review. All source batches, final integration, and local validation are complete; PR delivery is in progress.
 
 **Goal:** Reduce unnecessary source-reading tokens by removing redundant comments and shortening useful explanations, while preserving information needed to use and maintain the code correctly.
 
@@ -103,10 +103,10 @@ This is the recommended approach. A policy-only change would leave the existing 
 **Files:** All remaining tracked Swift files under `Packages/{Core,Todo,Chat,Bible}`, `App`, `App-SuperOS`, `App-SuperBible`, and `Scripts`.
 
 - [x] Finish Core and Todo, including tests, helpers, previews, and manifests. Delete repeated test-suite summaries and obvious member/initializer narration. Preserve public contracts and persistence invariants.
-- [ ] Review Chat, beginning with `ChatScreenViewModel.swift`, `ChatSession.swift`, `SettingsModelDetailPane.swift`, `ChatScreen.swift`, `OverlayContentDragGesture.swift`, and `ContextAssembler.swift`; then cover every remaining path. Pay particular attention to streaming completion, cancellation, task-draining seams, provider quirks, and prompt composition.
+- [x] Review Chat, beginning with `ChatScreenViewModel.swift`, `ChatSession.swift`, `SettingsModelDetailPane.swift`, `ChatScreen.swift`, `OverlayContentDragGesture.swift`, and `ContextAssembler.swift`; then cover every remaining path. Pay particular attention to streaming completion, cancellation, task-draining seams, provider quirks, and prompt composition.
 - [x] Review Bible, beginning with `BibleScreenViewModel.swift`, `BulkAnnotationRunner+Live.swift`, `BibleChapterReader.swift`, `BibleParagraphBlock.swift`, and `BibleApplet.swift`; then cover every remaining path. Preserve SQLite ownership, annotation/narration ordering, selection, and accessibility constraints.
 - [x] Finish shared shell, both target bootstraps, and Swift scripts. Read the linked shell/target architecture documents before editing those areas. Remove outdated roadmap narration after checking actual behavior; keep platform and first-frame workarounds.
-- [ ] For each batch, include trailing comments, block comments, `MARK:` headings, and test comments in the manual review. Mark every inventoried path changed or reviewed/retained; validate and commit each coherent batch.
+- [x] For each batch, include trailing comments, block comments, `MARK:` headings, and test comments in the manual review. Mark every inventoried path changed or reviewed/retained; validate and commit each coherent batch.
 
 ### 4. Audit tooling and finish measurement
 
@@ -114,15 +114,17 @@ This is the recommended approach. A policy-only change would leave the existing 
 
 - [x] Review explanatory comments in each remaining maintained source/configuration file. Remove repeated command narration and duplicated configuration explanations; retain reproducibility, parser, release, environment, and operational pitfalls. Keep runtime strings/docstrings and functional directives unchanged.
 - [x] Validate edited languages/configuration as described below. A build/capture tool parsing source text may depend on layout even when the compiler ignores it; include the existing tooling guard suites when relevant.
-- [ ] Repeat the baseline counts on the identical original file set and method. Report before/after comment lines and UTF-8 bytes by area, alongside reviewed/changed/retained file counts. Do not include new plan/report prose in source savings.
-- [ ] If a tokenizer is already available, measure full-file before/after tokens on that same set and name the tokenizer. Otherwise report bytes and lines only; do not convert characters to an asserted token-saving percentage or install a dependency just for this report.
-- [ ] Reconcile every inventory entry and document exclusions/deferred issues. Completion means all in-scope files reviewed, with no deletion quota and no unsupported token or runtime claims.
+- [x] Repeat the baseline counts on the identical original file set and method. Report before/after comment lines and UTF-8 bytes by area, alongside reviewed/changed/retained file counts. Do not include new plan/report prose in source savings.
+- [x] If a tokenizer is already available, measure full-file before/after tokens on that same set and name the tokenizer. Otherwise report bytes and lines only; do not convert characters to an asserted token-saving percentage or install a dependency just for this report.
+- [x] Reconcile every inventory entry and document exclusions/deferred issues. Completion means all in-scope files reviewed, with no deletion quota and no unsupported token or runtime claims.
+
+Integration note: main advanced to `ffbc76d6`. Preserve its feature changes and updated fixtures; the final identical before/after inventory is 836 files (779 Swift). All 28 added/moved paths and 33 files with restored or new comments were re-audited. The final report uses this baseline; original counts above remain the planning record.
 
 ### 5. Review and deliver
 
 **Files:** Final source/comment diff and `docs/COMMENT_AUDIT.md`; PR uses `.github/pull_request_template.md`.
 
-- [ ] Have a separate review subagent inspect the final changes for lost contracts, misleading rewrites, changed directives/string contents, and incomplete audit coverage. Address findings and repeat affected validation.
+- [x] Have a separate review subagent inspect the final changes for lost contracts, misleading rewrites, changed directives/string contents, and incomplete audit coverage. Address findings and repeat affected validation.
 - [ ] Open a draft PR with the policy rationale, measured reductions, audit coverage, preserved high-value examples, and actual validation results. State that test declarations/assertions and snapshot inventory are unchanged; expected image-count delta is zero because rendering is unchanged.
 - [ ] Follow root delivery policy: monitor CI and Codex review together every ten minutes, remain quiet on unchanged status, and fix failures/findings. After explicit approval of the current revision and passing applicable checks, mark ready, enable auto-merge with required checks enforced, and verify the merge. Disable auto-merge before any further push and renew approval/checks for that revision.
 

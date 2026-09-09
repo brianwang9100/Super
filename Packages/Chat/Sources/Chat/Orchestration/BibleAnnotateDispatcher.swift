@@ -8,7 +8,8 @@ private let bibleAnnotateLog = Logger(
     category: "chat-session"
 )
 
-/// Run headless annotation turns in transient conversations hidden from chat history.
+/// Foreground requests stream Markdown without chat rows and publish a correlated completion.
+/// Bulk generate(reference:) retains its transient tool-loop conversation.
 @MainActor
 @Observable
 public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
@@ -64,10 +65,17 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
 
     private func handle(_ event: SuperEvent, bus: SuperEventBus) {
         guard case .bibleAnnotateRequested(let reference) = event else { return }
-        inFlightRequestIDs.insert(reference.id)
+        guard inFlightRequestIDs.insert(reference.id).inserted else { return }
+        // Dispatch concurrently; inherited MainActor isolation owns the in-flight request set.
         Task { [weak self] in
             guard let self else { return }
-            let outcome = await self.generate(reference: reference)
+            let generator = BibleAnnotationStreamGenerator(
+                providerRegistry: self.llmProviderRegistry,
+                toolRegistry: self.toolRegistry
+            )
+            let outcome = await generator.generate(reference: reference) { text in
+                await bus.publish(.bibleAnnotateProgress(requestId: reference.id, text: text))
+            }
             self.inFlightRequestIDs.remove(reference.id)
             await bus.publish(.bibleAnnotateCompleted(
                 requestId: reference.id,
@@ -215,8 +223,8 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return .failure(message: failureMessage(for: error), classification: classification)
     }
 
-    /// Auth and quota failures halt bulk runs; persistent transient failures use the consecutive-failure breaker.
-    private static func classify(_ error: LLMError) -> BibleAnnotateFailure {
+    /// Credentials and rate limits stop the bulk run; other failures feed its consecutive-failure breaker.
+    nonisolated static func classify(_ error: LLMError) -> BibleAnnotateFailure {
         switch error {
         case .unauthorized:
             .fatalAuth
@@ -231,8 +239,8 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         case noActiveProvider
     }
 
-    // Keep the wire tool ID here rather than importing the Bible applet.
-    static let bibleAnnotateToolID = "bible.annotate"
+    /// Keep the tool ID literal so Chat does not import Bible.
+    nonisolated static let bibleAnnotateToolID = "bible.annotate"
 
     /// Fires once after a request is recorded and its dispatch task starts.
     func _onNextAnnotateRequest(_ callback: @escaping @MainActor () -> Void) {
@@ -249,6 +257,9 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
     any other tool, do not ask follow-up questions. After the tool call \
     completes, end your turn.
 
+    """ + "\n\n" + annotationWritingGuidance
+
+    nonisolated static let annotationWritingGuidance = """
     When the target's exact verse text is provided, base the summary on \
     that text — reason from it, and never reference words it does not \
     contain. Do NOT repeat the target's verse text verbatim in the \
@@ -338,9 +349,8 @@ public final class BibleAnnotateDispatcher: BibleAnnotateGenerating {
         return paragraphs.joined(separator: "\n\n")
     }
 
-    /// Keep section guidance aligned with docs/SuperBible/ANNOTATIONS.md.
-    /// Unknown kinds get generic guidance rather than an incorrect scope.
-    static func sectionGuidance(forKind kind: String) -> String? {
+    /// Keep scope headings aligned with docs/SuperBible/ANNOTATIONS.md. Unknown kinds fall back to generic guidance.
+    nonisolated static func sectionGuidance(forKind kind: String) -> String? {
         switch kind {
         case "book":
             """

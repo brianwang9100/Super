@@ -37,7 +37,7 @@ jobs:
       # Use a temporary keychain and delete it at job end to avoid retaining signing material.
       KEYCHAIN_PATH: ""
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 

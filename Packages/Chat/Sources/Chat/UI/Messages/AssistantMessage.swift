@@ -56,9 +56,7 @@ struct AssistantMessage: View {
                 )
             }
             if hasText {
-                MarkdownText(text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                ResponseTextBlock(text: text)
             }
             if let searchSuggestionsHTML, !searchSuggestionsHTML.isEmpty {
                 GeminiSearchSuggestionsView(html: searchSuggestionsHTML)
@@ -67,19 +65,11 @@ struct AssistantMessage: View {
                 SourceCitationsPill(sources: sources)
             }
             if hasText {
-                HStack(spacing: 4) {
-                    MessageActionButton(
-                        systemName: "doc.on.doc",
-                        label: "Copy",
-                        action: onCopyTapped
-                    )
-                    MessageActionButton(
-                        systemName: "arrow.clockwise",
-                        label: "Regenerate",
-                        action: onRegenerateRequested,
-                        disabled: isStreaming
-                    )
-                }
+                ResponseActions(
+                    onCopy: onCopyTapped,
+                    onRegenerate: onRegenerateRequested,
+                    isRegenerateDisabled: isStreaming
+                )
             }
         }
         .padding(.vertical, appearance.assistantRowVerticalPadding)

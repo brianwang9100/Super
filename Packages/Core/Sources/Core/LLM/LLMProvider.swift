@@ -17,10 +17,10 @@ public protocol LLMProvider: Sendable {
         temperature: Double
     ) -> AsyncThrowingStream<LLMStreamEvent, Error>
 
-    /// Options tune per-request provider optimizations without changing prompt content.
-    /// The default ignores them. Options-aware conformers implement this overload and
-    /// forward the four-argument overload here, or callers silently lose their options.
-    /// Keep routing keys per request because provider instances are shared.
+    /// Options never change the prompt. Built-in remote adapters report unsuccessful or
+    /// unverified native completion when requiresCompleteResponse is set. Reject any error
+    /// even if messageComplete follows. The default ignores options; options-aware conformers
+    /// implement this overload and forward the four-argument method here with .none.
     func stream(
         messages: [LLMMessage],
         model: LLMModel,

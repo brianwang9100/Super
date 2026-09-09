@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// A single moving cursor keyed by currentID; no per-book history.
+/// A single persisted reader cursor keyed by currentID, with its bounded navigation history.
 public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableRecord, Sendable, Equatable, Identifiable {
     public static let databaseTableName = "bibleReadingPosition"
 
@@ -13,6 +13,8 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
     /// Persisted BibleTranslation raw value.
     public var translationId: String
     public var updatedAt: Date
+    /// A separately decoded, versioned navigation-history envelope.
+    public var navigationHistoryJSON: String?
 
     public static let currentID = "current"
 
@@ -21,12 +23,14 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
         bookId: String,
         chapterNumber: Int,
         translationId: String,
-        updatedAt: Date
+        updatedAt: Date,
+        navigationHistoryJSON: String? = nil
     ) {
         self.id = id
         self.bookId = bookId
         self.chapterNumber = chapterNumber
         self.translationId = translationId
         self.updatedAt = updatedAt
+        self.navigationHistoryJSON = navigationHistoryJSON
     }
 }

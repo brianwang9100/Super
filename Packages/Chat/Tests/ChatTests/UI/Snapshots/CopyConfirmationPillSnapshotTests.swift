@@ -6,6 +6,7 @@ import SwiftUI
 import Testing
 @testable import Chat
 
+/// MessageList owns the animation; this pill's steady-state image is unchanged by Reduce Motion.
 @Suite("CopyConfirmationPill snapshots", .serialized)
 @MainActor
 struct CopyConfirmationPillSnapshotTests {

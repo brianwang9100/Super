@@ -107,6 +107,7 @@ struct OpenAIDelta: Decodable {
     let reasoningContent: String?
     let reasoning: String?
     let toolCalls: [OpenAIToolCallDelta]?
+    var refusal: String?
 }
 
 /// `index` keys interleaved calls whose JSON arguments arrive in fragments.

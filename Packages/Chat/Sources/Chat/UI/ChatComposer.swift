@@ -13,6 +13,7 @@ extension EnvironmentValues {
     }
 }
 
+/// Return inserts a newline; the send button submits trimmed text for the host to interpret.
 public struct ChatComposer: View {
     @Binding public var text: String
     @FocusState.Binding public var isFocused: Bool
@@ -29,7 +30,13 @@ public struct ChatComposer: View {
     public let onMicTap: () -> Void
     public let onStopRecording: () -> Void
     public let onCancelStreaming: () -> Void
-    /// Zero is the minimized pill; one is the full editor. Intermediate values drive the morph.
+    /// Collapses the chat through its host. Omit when the composer has no overlay host.
+    public let onMinimize: (() -> Void)?
+    /// Resizes the host using the same screen-space translation as the top handle.
+    public let onDragChanged: ((_ translation: CGSize) -> Void)?
+    /// Snaps the host using the drag's final and predicted translations.
+    public let onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)?
+    /// Zero is the minimized pill; one is the full composer. Intermediate values drive the morph.
     public let progress: Double
 
     public let references: [VerseReferencePillModel]
@@ -51,6 +58,9 @@ public struct ChatComposer: View {
         isRecording: Bool = false,
         isMicAvailable: Bool = true,
         onStopRecording: @escaping () -> Void = {},
+        onMinimize: (() -> Void)? = nil,
+        onDragChanged: ((_ translation: CGSize) -> Void)? = nil,
+        onDragEnded: ((_ translation: CGSize, _ predictedEndTranslation: CGSize) -> Void)? = nil,
         progress: Double = 1,
         references: [VerseReferencePillModel] = [],
         onRemoveReference: @escaping (String) -> Void = { _ in }
@@ -70,6 +80,9 @@ public struct ChatComposer: View {
         self.onMicTap = onMicTap
         self.onStopRecording = onStopRecording
         self.onCancelStreaming = onCancelStreaming
+        self.onMinimize = onMinimize
+        self.onDragChanged = onDragChanged
+        self.onDragEnded = onDragEnded
         self.progress = progress
         self.references = references
         self.onRemoveReference = onRemoveReference
@@ -84,6 +97,8 @@ public struct ChatComposer: View {
     @Environment(\.hapticsEngine) private var hapticsEngine
     @State private var pulseScale: CGFloat = 1.0
     @State private var pulseOpacity: CGFloat = 0.6
+    @GestureState private var isMinimizeDragging = false
+    @State private var minimizeDragTranslation: CGSize?
 
     #if DEBUG
     @Environment(\.chatComposerPreviewPulse) private var previewPulse
@@ -130,8 +145,10 @@ public struct ChatComposer: View {
         Self.smoothstep(progress, from: 0.15, to: 0.45)
     }
 
+    /// Collapse metadata and the minimize target together, leaving no footer space in pill mode.
+    /// The 44pt touch target extends beyond its 12pt layout slot.
     private var footerHeight: CGFloat {
-        CGFloat(footerOpacity) * 34
+        CGFloat(footerOpacity) * (onMinimize == nil ? 34 : 40)
     }
 
     /// Let taps and drags reach the pill overlay while the editor is barely visible.
@@ -153,7 +170,7 @@ public struct ChatComposer: View {
         Self.lerp(progress, 12, 10)
     }
     private var capsuleBottomPadding: CGFloat {
-        Self.lerp(progress, 12, 8)
+        Self.lerp(progress, 12, onMinimize == nil ? 8 : 2)
     }
 
     private var outerTopPadding: CGFloat { Self.lerp(progress, 0, 10) }
@@ -263,19 +280,86 @@ public struct ChatComposer: View {
 
     @ViewBuilder
     private var footerRow: some View {
-        ChatComposerFooter(
-            modelOptions: modelOptions,
-            selectedModelId: selectedModelId,
-            onSelectModel: onSelectModel,
-            onManageModels: onManageModels,
-            usedTokens: usedTokens,
-            maxTokens: maxTokens
-        )
+        VStack(spacing: 0) {
+            ChatComposerFooter(
+                modelOptions: modelOptions,
+                selectedModelId: selectedModelId,
+                onSelectModel: onSelectModel,
+                onManageModels: onManageModels,
+                usedTokens: usedTokens,
+                maxTokens: maxTokens
+            )
+            .frame(height: onMinimize == nil ? 34 : 28, alignment: .top)
+            // The expanded handle target yields to the model selector above it.
+            .zIndex(1)
+            minimizeHandle
+        }
         .frame(height: footerHeight, alignment: .top)
         .opacity(footerOpacity)
         .clipped()
-        // Prevent interaction with the collapsed footer.
-        .allowsHitTesting(footerOpacity > 0.05)
+        // Hide the collapsed dropdown from accessibility while allowing an active drag to finish.
+        .allowsHitTesting(footerOpacity > 0.05 || isMinimizeDragging)
+        .accessibilityHidden(footerOpacity <= 0.05)
+    }
+
+    /// Keep this host mounted while the footer collapses so its drag can end.
+    @ViewBuilder
+    private var minimizeHandle: some View {
+        if onMinimize != nil {
+            Color.clear
+                .frame(width: ChatDragHandle.barWidth, height: ChatDragHandle.barHeight)
+                .superGlassButton(in: ChatDragHandle.barShape, interactive: false)
+                // Compensate the target's upward offset to retain 1.5pt visual padding.
+                .padding(.top, 17.5)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44, alignment: .top)
+                .contentShape(Rectangle())
+                .gesture(minimizeGesture)
+                .accessibilityRepresentation {
+                    if footerOpacity > 0.95 {
+                        Button("Minimize chat", action: minimizeChat)
+                            .frame(height: 44)
+                            .accessibilityHint("Tap to minimize, or drag up or down to resize chat")
+                            .accessibilityIdentifier("chat.composer.minimize")
+                    }
+                }
+                // Keep the full target above the keyboard without adding visible spacing.
+                .offset(y: -16)
+                .frame(height: 12, alignment: .top)
+                // Balance the asymmetric composer insets to center on the chat handle.
+                .padding(.trailing, capsuleLeadingPadding - capsuleTrailingPadding)
+                .allowsHitTesting(footerOpacity > 0.95 || isMinimizeDragging)
+                .onChange(of: isMinimizeDragging) { _, active in
+                    if !active { finishCancelledMinimizeDrag() }
+                }
+                .onDisappear { finishCancelledMinimizeDrag() }
+        }
+    }
+
+    private var minimizeGesture: some Gesture {
+        ChatDragHandle.resizeGesture(minimumDistance: 5)
+            .updating($isMinimizeDragging) { _, active, _ in active = true }
+            .onChanged { value in
+                minimizeDragTranslation = value.translation
+                onDragChanged?(value.translation)
+            }
+            .onEnded { value in
+                minimizeDragTranslation = nil
+                onDragEnded?(value.translation, value.predictedEndTranslation)
+            }
+            .exclusively(before: TapGesture().onEnded { minimizeChat() })
+    }
+
+    private func minimizeChat() {
+        hapticsEngine.play(.selection)
+        onMinimize?()
+    }
+
+    /// Cancellation settles at the nearest anchor without introducing a flick.
+    private func finishCancelledMinimizeDrag() {
+        guard let translation = minimizeDragTranslation else { return }
+        minimizeDragTranslation = nil
+        onDragEnded?(translation, translation)
     }
 
     @ViewBuilder

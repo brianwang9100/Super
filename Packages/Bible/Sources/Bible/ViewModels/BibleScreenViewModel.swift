@@ -35,15 +35,24 @@ public final class BibleScreenViewModel {
 
     public var presentedAnnotationTarget: BibleAnnotationTargetSpec?
 
+    /// During restore, relative navigation is disabled; absolute references and translations queue for reconciliation.
+    public private(set) var isRestoringNavigation = true
+
+    public private(set) var navigationPersistenceError: String?
+
     public var isAnnotationDisclaimerPresented = false
 
     // Queue every contiguous selection range so later intents cannot overwrite earlier
     // ones during the disclaimer. Acknowledge drains FIFO; dismissal discards all.
     public private(set) var pendingAnnotationIntents: [BibleAnnotationTargetSpec] = []
 
-    /// Successful dispatches leave the map; queries supply their saved content.
+    /// Success clears running status; the completed draft bridges to a query begun after persistence.
     public private(set) var dispatchStatusByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDispatchStatus] = [:]
 
+    /// Transient text stays independent of rows observed by the sheet.
+    private var annotationDraftsByTarget: [BibleAnnotationTargetSpec: BibleAnnotationDraft] = [:]
+
+    /// autoCompose opens the editor as soon as the note list mounts.
     public var presentedNoteList: BibleNoteListPresentation?
 
     public var presentedBookmarkSheet: BibleBookmarkPresentation?
@@ -59,6 +68,25 @@ public final class BibleScreenViewModel {
     private let idGenerator: any IDGenerator
     private let disclaimerStore: any AnnotationDisclaimerStore
     private let hapticsEngine: any HapticsEngine
+    private let initialPosition: BiblePosition
+
+    private var navigationHistory: BibleNavigationHistory
+
+    private enum QueuedNavigationIntent {
+        case reference(bookId: String, chapterNumber: Int, verseStart: Int?, verseEnd: Int?)
+        case translation(BibleTranslation)
+    }
+
+    private var queuedNavigationIntents: [QueuedNavigationIntent] = []
+    private var restorationTask: Task<Void, Never>?
+    private var restorationGeneration = 0
+    private var activeRestorationGeneration: Int?
+    private var didCompleteInitialRestore = false
+    private var didReadingPositionLoadFail = false
+    private var canPersistNavigation = false
+    private var provisionalNavigationOccurred = false
+    private var latestExplicitTranslation: BibleTranslation?
+    private var latestPersistSequence = 0
 
     private var eventBus: SuperEventBus?
 
@@ -67,6 +95,8 @@ public final class BibleScreenViewModel {
     // Fire only after completion: a generic next-event callback could catch the request
     // echo and race assertions ahead of the completion state update.
     private var dispatchCompletionCallbacks: [@MainActor () -> Void] = []
+
+    private var dispatchProgressCallbacks: [@MainActor () -> Void] = []
 
     private var sidebarDismissCallbacks: [@MainActor () -> Void] = []
 
@@ -106,6 +136,8 @@ public final class BibleScreenViewModel {
         self.idGenerator = idGenerator
         self.disclaimerStore = disclaimerStore
         self.hapticsEngine = hapticsEngine
+        self.initialPosition = initialPosition
+        self.navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
         self.position = initialPosition
         self.bookName = catalog.book(id: initialPosition.bookId)?.name ?? ""
         self.narration = narration ?? NarrationController(
@@ -114,37 +146,74 @@ public final class BibleScreenViewModel {
     }
 
     public var canStepBackward: Bool {
-        catalog.step(from: position, direction: .previous) != nil
+        !isRestoringNavigation && catalog.step(from: position, direction: .previous) != nil
     }
     public var canStepForward: Bool {
-        catalog.step(from: position, direction: .next) != nil
+        !isRestoringNavigation && catalog.step(from: position, direction: .next) != nil
     }
 
     public var previousChapterLabel: String? { label(for: .previous) }
     public var nextChapterLabel: String? { label(for: .next) }
 
-    /// Restores the saved cursor and loads its text; call once on appearance.
+    public var canGoBack: Bool { !isRestoringNavigation && navigationHistory.canGoBack }
+    public var canGoForward: Bool { !isRestoringNavigation && navigationHistory.canGoForward }
+
+    /// The preceding history destination, or ``nil`` at the start or while restoring.
+    public var backDestination: BiblePosition? {
+        guard canGoBack else { return nil }
+        return navigationHistory.entries[navigationHistory.currentIndex - 1]
+    }
+
+    /// The following history destination, or ``nil`` at the end or while restoring.
+    public var forwardDestination: BiblePosition? {
+        guard canGoForward else { return nil }
+        return navigationHistory.entries[navigationHistory.currentIndex + 1]
+    }
+
+    /// Concurrent and repeated appearance calls share the first reading-position restore.
     public func load() async {
-        if let repository = positionRepository,
-           let saved = try? await repository.load() {
-            position = BiblePosition(bookId: saved.bookId, chapterNumber: saved.chapterNumber)
-            translation = BibleTranslation.named(saved.translationId)
+        if didCompleteInitialRestore {
+            await restorationTask?.value
+            return
         }
-        applyCurrentChapter()
+        if let restorationTask {
+            await restorationTask.value
+            return
+        }
+        restorationGeneration += 1
+        let generation = restorationGeneration
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performInitialNavigationRestore()
+        }
+        activeRestorationGeneration = generation
+        restorationTask = task
+        await task.value
+        clearRestorationTask(ifCurrent: generation)
     }
 
     /// Stops narration and updates text synchronously, then persists asynchronously.
     /// Crosses book boundaries; no-op at canon edges.
     public func stepChapter(_ direction: BibleChapterDirection) {
+        guard !isRestoringNavigation else { return }
         guard let next = catalog.step(from: position, direction: direction) else { return }
-        narration.stop()
-        position = next
-        clearSelection()
-        applyCurrentChapter()
-        persist()
+        visitChapter(next)
+    }
+
+    /// Traverse to the preceding chapter visit without appending history.
+    public func goBack() {
+        guard !isRestoringNavigation, navigationHistory.goBack() else { return }
+        traverseHistory(to: navigationHistory.current)
+    }
+
+    /// Traverse to the following chapter visit without appending history.
+    public func goForward() {
+        guard !isRestoringNavigation, navigationHistory.goForward() else { return }
+        traverseHistory(to: navigationHistory.current)
     }
 
     public func presentBookSheet() {
+        guard !isRestoringNavigation else { return }
         bookSheet = BibleBookSheetViewModel(currentPosition: position, catalog: catalog)
     }
 
@@ -153,6 +222,7 @@ public final class BibleScreenViewModel {
     }
 
     public func presentTranslationSheet() {
+        guard !isRestoringNavigation else { return }
         isTranslationSheetPresented = true
     }
 
@@ -164,6 +234,15 @@ public final class BibleScreenViewModel {
     /// reselecting the current translation only closes.
     public func selectTranslation(_ selected: BibleTranslation) {
         isTranslationSheetPresented = false
+        latestExplicitTranslation = selected
+        if isRestoringNavigation {
+            queuedNavigationIntents.append(.translation(selected))
+            return
+        }
+        applyTranslationSelection(selected)
+    }
+
+    private func applyTranslationSelection(_ selected: BibleTranslation) {
         guard selected != translation else { return }
         narration.stop()
         translation = selected
@@ -175,13 +254,20 @@ public final class BibleScreenViewModel {
     /// Unknown books or invalid chapters are a no-op. Valid selection stops narration,
     /// closes the picker, and persists the new position.
     public func selectChapter(bookId: String, chapterNumber: Int) {
+        guard !isRestoringNavigation else { return }
         guard let book = catalog.book(id: bookId),
               (1...book.chapterCount).contains(chapterNumber) else { return }
-        narration.stop()
-        position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
-        clearSelection()
-        applyCurrentChapter()
-        persist()
+        if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
+        let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        if destination == position {
+            narration.stop()
+            clearSelection()
+            pendingScrollVerse = nil
+            applyCurrentChapter()
+            persist()
+        } else {
+            visitChapter(destination)
+        }
         bookSheet = nil
     }
 
@@ -194,23 +280,51 @@ public final class BibleScreenViewModel {
         if let verseStart, verseStart < 1 { return }
         if let verseStart, let verseEnd, verseEnd < verseStart { return }
 
-        narration.stop()
-        position = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        if isRestoringNavigation {
+            queuedNavigationIntents.append(.reference(
+                bookId: bookId,
+                chapterNumber: chapterNumber,
+                verseStart: verseStart,
+                verseEnd: verseEnd
+            ))
+            return
+        }
+        applyReference(
+            bookId: bookId,
+            chapterNumber: chapterNumber,
+            verseStart: verseStart,
+            verseEnd: verseEnd
+        )
+    }
+
+    private func applyReference(
+        bookId: String,
+        chapterNumber: Int,
+        verseStart: Int?,
+        verseEnd: Int?
+    ) {
+        if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
+
+        let destination = BiblePosition(bookId: bookId, chapterNumber: chapterNumber)
+        if destination == position {
+            narration.stop()
+        } else {
+            prepareForChapterTransition()
+            navigationHistory.visit(destination)
+            position = destination
+        }
+        applyCurrentChapter()
         if let verseStart {
             let upper = verseEnd ?? verseStart
-            selectedVerses = Set(verseStart...upper)
+            selectedVerses = Set(verseTextsByNumber().keys.filter {
+                $0 >= verseStart && $0 <= upper
+            })
         } else {
             selectedVerses.removeAll()
         }
         pendingScrollVerse = verseStart
-        applyCurrentChapter()
-        // Catalog bounds do not cover verses. Intersect with loaded text so missing/out-of-range
-        // verses cannot leave active selection controls with no usable content.
-        if !selectedVerses.isEmpty {
-            selectedVerses.formIntersection(verseTextsByNumber().keys)
-            if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
-                pendingScrollVerse = selectedVerses.min()
-            }
+        if let scroll = pendingScrollVerse, !selectedVerses.contains(scroll) {
+            pendingScrollVerse = selectedVerses.min()
         }
         isActionSheetPresented = !selectedVerses.isEmpty
         persist()
@@ -569,7 +683,12 @@ public final class BibleScreenViewModel {
             toast = "Annotation generation ships in a later update."
             return
         }
+        if case .running = dispatchStatusByTarget[spec] {
+            presentedAnnotationTarget = spec
+            return
+        }
         let reference = makeAnnotateRequestReference(for: spec)
+        annotationDraftsByTarget[spec] = BibleAnnotationDraft(requestID: reference.id)
         dispatchStatusByTarget[spec] = .running(requestId: reference.id)
         presentedAnnotationTarget = spec
         Task { await bus.publish(.bibleAnnotateRequested(reference: reference)) }
@@ -590,6 +709,8 @@ public final class BibleScreenViewModel {
 
     private func handleBusEvent(_ event: SuperEvent) {
         switch event {
+        case .bibleAnnotateProgress(let requestId, let text):
+            handleAnnotateProgress(requestId: requestId, text: text)
         case .bibleAnnotateCompleted(let requestId, let result):
             handleAnnotateCompleted(requestId: requestId, result: result)
         case .sidebarOpened:
@@ -603,6 +724,19 @@ public final class BibleScreenViewModel {
         }
     }
 
+    private func handleAnnotateProgress(requestId: String, text: String) {
+        let matching = dispatchStatusByTarget.first { _, status in
+            if case .running(let id) = status { return id == requestId }
+            return false
+        }
+        if let spec = matching?.key, annotationDraftsByTarget[spec]?.requestID == requestId {
+            annotationDraftsByTarget[spec]?.text = text
+        }
+        let callbacks = dispatchProgressCallbacks
+        dispatchProgressCallbacks.removeAll()
+        for callback in callbacks { callback() }
+    }
+
     private func handleAnnotateCompleted(requestId: String, result: BibleAnnotateResult) {
         let matching = dispatchStatusByTarget.first { _, status in
             if case .running(let id) = status, id == requestId { return true }
@@ -611,6 +745,7 @@ public final class BibleScreenViewModel {
         if let spec = matching?.key {
             switch result {
             case .success:
+                annotationDraftsByTarget[spec]?.isComplete = true
                 dispatchStatusByTarget.removeValue(forKey: spec)
             case .failure(let message):
                 dispatchStatusByTarget[spec] = .failed(message: message)
@@ -641,6 +776,28 @@ public final class BibleScreenViewModel {
         dispatchCompletionCallbacks.append(callback)
     }
 
+    /// Fires once after processing the next progress envelope.
+    func _onNextDispatchProgress(_ callback: @escaping @MainActor () -> Void) {
+        dispatchProgressCallbacks.append(callback)
+    }
+
+    /// Current accumulated text for the target, including a completed query bridge.
+    public func annotationDraft(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDraft? {
+        annotationDraftsByTarget[spec]
+    }
+
+    /// Clears only a matching settled request after query acknowledgement, deletion,
+    /// or an explicit return to the saved response. Late callbacks cannot erase retries.
+    public func clearAnnotationDraft(for spec: BibleAnnotationTargetSpec, requestID: String) {
+        guard annotationDraftsByTarget[spec]?.requestID == requestID else { return }
+        if case .running = dispatchStatusByTarget[spec] { return }
+        annotationDraftsByTarget.removeValue(forKey: spec)
+        if case .failed = dispatchStatusByTarget[spec] {
+            dispatchStatusByTarget.removeValue(forKey: spec)
+        }
+    }
+
+    /// Nil when no dispatch is running or failed for this target.
     public func dispatchStatus(for spec: BibleAnnotationTargetSpec) -> BibleAnnotationDispatchStatus? {
         dispatchStatusByTarget[spec]
     }
@@ -652,6 +809,7 @@ public final class BibleScreenViewModel {
     /// Silently clears a failed regeneration over retained content so later deletion
     /// cannot reveal a stale inline error.
     public func clearFailedDispatchStatus(for spec: BibleAnnotationTargetSpec) {
+        guard case .failed = dispatchStatusByTarget[spec] else { return }
         dispatchStatusByTarget.removeValue(forKey: spec)
     }
 
@@ -994,6 +1152,51 @@ public final class BibleScreenViewModel {
         await persistTask?.value
     }
 
+    /// Flushes the newest complete navigation snapshot after any pending restore.
+    public func flushNavigationPersistence() async {
+        if !didCompleteInitialRestore {
+            await load()
+        } else {
+            await restorationTask?.value
+        }
+        persist()
+        await persistTask?.value
+    }
+
+    /// Retry a failed restore read, or retry the latest complete snapshot
+    /// after a write failure. Concurrent restore retries share one read.
+    public func retryNavigationPersistence() async {
+        if isRestoringNavigation {
+            await restorationTask?.value
+            return
+        }
+        guard didReadingPositionLoadFail else {
+            persist()
+            await persistTask?.value
+            return
+        }
+        restorationGeneration += 1
+        let generation = restorationGeneration
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performRetryNavigationRestore()
+        }
+        isRestoringNavigation = true
+        activeRestorationGeneration = generation
+        restorationTask = task
+        await task.value
+        clearRestorationTask(ifCurrent: generation)
+    }
+
+    /// Read failures keep their only recovery action visible until restoration succeeds.
+    public var canDismissNavigationPersistenceError: Bool { !didReadingPositionLoadFail }
+
+    /// Dismiss a save error; unresolved read failures retain their Retry affordance.
+    public func dismissNavigationPersistenceError() {
+        guard canDismissNavigationPersistenceError else { return }
+        navigationPersistenceError = nil
+    }
+
     /// Drains all highlight writes queued so far.
     public func _waitForPendingHighlightWrite() async {
         await highlightTask?.value
@@ -1015,18 +1218,193 @@ public final class BibleScreenViewModel {
         return "\(book.name) \(next.chapterNumber)"
     }
 
+    private func performInitialNavigationRestore() async {
+        guard let positionRepository else {
+            applyCurrentChapter()
+            didCompleteInitialRestore = true
+            isRestoringNavigation = false
+            drainQueuedNavigationIntents()
+            return
+        }
+
+        do {
+            let saved = try await positionRepository.load()
+            applyRestoredRecord(saved)
+            canPersistNavigation = true
+            didReadingPositionLoadFail = false
+            navigationPersistenceError = nil
+        } catch {
+            navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+            position = initialPosition
+            translation = .defaultTranslation
+            applyCurrentChapter()
+            canPersistNavigation = false
+            didReadingPositionLoadFail = true
+            navigationPersistenceError = "Couldn't restore reading history."
+        }
+
+        didCompleteInitialRestore = true
+        isRestoringNavigation = false
+        drainQueuedNavigationIntents()
+        persist()
+    }
+
+    private func performRetryNavigationRestore() async {
+        guard let positionRepository else {
+            isRestoringNavigation = false
+            return
+        }
+        let sessionPosition = position
+        let shouldAppendSessionPosition = provisionalNavigationOccurred
+        let explicitTranslation = latestExplicitTranslation
+
+        do {
+            let saved = try await positionRepository.load()
+            prepareForChapterTransition()
+            applyRestoredRecord(saved)
+            if shouldAppendSessionPosition {
+                navigationHistory.visit(sessionPosition)
+                position = sessionPosition
+                applyCurrentChapter()
+            }
+            if let explicitTranslation {
+                translation = explicitTranslation
+                applyCurrentChapter()
+            }
+            canPersistNavigation = true
+            didReadingPositionLoadFail = false
+            provisionalNavigationOccurred = false
+            latestExplicitTranslation = nil
+            navigationPersistenceError = nil
+        } catch {
+            navigationPersistenceError = "Couldn't restore reading history."
+        }
+
+        isRestoringNavigation = false
+        drainQueuedNavigationIntents()
+        persist()
+        await persistTask?.value
+    }
+
+    private func applyRestoredRecord(_ saved: BibleReadingPositionRecord?) {
+        guard let saved else {
+            position = initialPosition
+            translation = .defaultTranslation
+            navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+            applyCurrentChapter()
+            return
+        }
+
+        let storedPosition = BiblePosition(
+            bookId: saved.bookId,
+            chapterNumber: saved.chapterNumber
+        )
+        translation = BibleTranslation.named(saved.translationId)
+        if isValidPosition(storedPosition) {
+            position = storedPosition
+            navigationHistory = BibleNavigationHistoryPayload.restore(
+                from: saved.navigationHistoryJSON,
+                position: storedPosition,
+                catalog: catalog
+            )
+        } else {
+            position = initialPosition
+            navigationHistory = BibleNavigationHistory(initialPosition: initialPosition)
+        }
+        applyCurrentChapter()
+    }
+
+    private func clearRestorationTask(ifCurrent generation: Int) {
+        guard activeRestorationGeneration == generation else { return }
+        restorationTask = nil
+        activeRestorationGeneration = nil
+    }
+
+    private func drainQueuedNavigationIntents() {
+        let intents = queuedNavigationIntents
+        queuedNavigationIntents.removeAll()
+        for intent in intents {
+            switch intent {
+            case .reference(let bookId, let chapterNumber, let verseStart, let verseEnd):
+                applyReference(
+                    bookId: bookId,
+                    chapterNumber: chapterNumber,
+                    verseStart: verseStart,
+                    verseEnd: verseEnd
+                )
+            case .translation(let selected):
+                applyTranslationSelection(selected)
+            }
+        }
+    }
+
+    private func isValidPosition(_ position: BiblePosition) -> Bool {
+        guard let book = catalog.book(id: position.bookId) else { return false }
+        return (1...book.chapterCount).contains(position.chapterNumber)
+    }
+
+    private func visitChapter(_ destination: BiblePosition) {
+        guard destination != position else { return }
+        if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
+        prepareForChapterTransition()
+        navigationHistory.visit(destination)
+        position = destination
+        applyCurrentChapter()
+        persist()
+    }
+
+    private func traverseHistory(to destination: BiblePosition) {
+        if didReadingPositionLoadFail { provisionalNavigationOccurred = true }
+        prepareForChapterTransition()
+        position = destination
+        applyCurrentChapter()
+        persist()
+    }
+
+    private func prepareForChapterTransition() {
+        narration.stop()
+        isNarrationSheetPresented = false
+        clearSelection()
+        pendingScrollVerse = nil
+        bookSheet = nil
+        isTranslationSheetPresented = false
+        presentedAnnotationTarget = nil
+        presentedNoteList = nil
+        presentedBookmarkSheet = nil
+        resetImmersive()
+    }
+
     private func persist() {
+        guard canPersistNavigation, let positionRepository else { return }
+        let historyJSON: String
+        do {
+            historyJSON = try BibleNavigationHistoryPayload.encode(navigationHistory)
+        } catch {
+            navigationPersistenceError = "Couldn't save reading history."
+            return
+        }
         let record = BibleReadingPositionRecord(
             bookId: position.bookId,
             chapterNumber: position.chapterNumber,
             translationId: translation.rawValue,
-            updatedAt: clock.now()
+            updatedAt: clock.now(),
+            navigationHistoryJSON: historyJSON
         )
-        // Chain rapid steps so the last requested position wins and tests can drain all writes.
+        // Chain each write on the prior so rapid steps persist in order and
+        // awaiting the latest task drains every pending write.
+        latestPersistSequence += 1
+        let sequence = latestPersistSequence
         let previous = persistTask
-        persistTask = Task { [positionRepository] in
+        persistTask = Task { [weak self, positionRepository] in
             await previous?.value
-            try? await positionRepository?.save(record)
+            do {
+                try await positionRepository.save(record)
+                guard let self, self.latestPersistSequence == sequence else { return }
+                self.navigationPersistenceError = nil
+            } catch {
+                guard let self, self.latestPersistSequence == sequence else { return }
+                self.navigationPersistenceError = "Couldn't save reading history."
+            }
         }
     }
 }

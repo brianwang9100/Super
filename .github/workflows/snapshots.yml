@@ -21,21 +21,36 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.packages.outputs.value }}
+      mode: ${{ steps.selection.outputs.mode }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The exact PR merge plus both parents establishes the tested diff.
+          fetch-depth: 2
       - name: Install image validation dependency
         run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
       - name: Test capture guards
         run: python3 -m unittest discover -s Scripts/VisualTesting -p 'test_*.py'
+      - name: Test portable native capture guards
+        # ImageIO's macOS-only decoder test skips here and runs in capture-native.
+        run: python3 -m unittest discover -s Scripts/PreviewPilot -p 'test_*.py'
       - id: packages
         name: Validate and discover package capture owners
-        run: echo "value=$(python3 Scripts/VisualTesting/discover.py)" >> "$GITHUB_OUTPUT"
+        run: |
+          packages=$(python3 Scripts/VisualTesting/discover.py)
+          echo "value=$packages" >> "$GITHUB_OUTPUT"
+
+      - id: selection
+        name: Select full comparison or verified documentation exemption
+        run: python3 Scripts/VisualTesting/ci_selection.py select
 
   capture-native:
+    needs: discover
+    if: needs.discover.outputs.mode == 'full'
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
         with:
           xcode-version: '26.4.1'
@@ -48,7 +63,7 @@ jobs:
           python3 Scripts/PreviewPilot/run.py --output screenshots
           python3 Scripts/VisualTesting/seal.py native screenshots --output .build/VisualTesting/native
       - name: Publish native capture artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-native
           path: .build/VisualTesting/native/
@@ -56,7 +71,7 @@ jobs:
           retention-days: 7
       - name: Preserve native capture evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-preview-evidence
           path: |
@@ -70,6 +85,7 @@ jobs:
 
   capture-package:
     needs: discover
+    if: needs.discover.outputs.mode == 'full'
     runs-on: macos-26
     timeout-minutes: 90
     strategy:
@@ -77,7 +93,7 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.discover.outputs.packages) }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
         with:
           xcode-version: '26.4.1'
@@ -89,7 +105,7 @@ jobs:
           CAPTURE_PACKAGE: ${{ matrix.package }}
         run: python3 Scripts/VisualTesting/capture.py "$CAPTURE_PACKAGE" --output ".build/VisualTesting/package-$CAPTURE_PACKAGE"
       - name: Publish validated package capture artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-${{ matrix.package }}
           path: .build/VisualTesting/package-${{ matrix.package }}/
@@ -97,7 +113,7 @@ jobs:
           retention-days: 7
       - name: Preserve package test evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: package-visual-evidence-${{ matrix.package }}
           path: |
@@ -110,42 +126,49 @@ jobs:
           retention-days: 7
 
   ios-test:
-    # Skipped, failed, or cancelled comparison legs never pass.
+    # Always report; only a verified docs-only selection permits skipped captures.
     needs: [discover, capture-package]
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Require discovery and every package test leg
         env:
           DISCOVERY: ${{ needs.discover.result }}
+          MODE: ${{ needs.discover.outputs.mode }}
           PACKAGES: ${{ needs.capture-package.result }}
-        run: test "$DISCOVERY" = success && test "$PACKAGES" = success
+        run: python3 Scripts/VisualTesting/ci_selection.py gate --scope packages
 
   native-previews:
-    # Require every comparison and validate the complete capture inventory.
+    # Full runs still require every comparison and the complete capture inventory.
     needs: [discover, capture-native, capture-package]
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Require every capture leg before downloading artifacts
         env:
           DISCOVERY: ${{ needs.discover.result }}
+          MODE: ${{ needs.discover.outputs.mode }}
           NATIVE: ${{ needs.capture-native.result }}
           PACKAGES: ${{ needs.capture-package.result }}
-        run: test "$DISCOVERY" = success && test "$NATIVE" = success && test "$PACKAGES" = success
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        run: python3 Scripts/VisualTesting/ci_selection.py gate --scope all
       - name: Install image validation dependency
+        if: needs.discover.outputs.mode == 'full'
         run: python3 -m pip install --target .build/visual-python -r Scripts/VisualTesting/requirements.txt
       - name: Download this run's capture shards without flattening
+        if: needs.discover.outputs.mode == 'full'
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: visual-*
           path: .build/visual-artifacts
           merge-multiple: false
       - name: Validate the complete compared inventory
+        if: needs.discover.outputs.mode == 'full'
         run: python3 Scripts/VisualTesting/aggregate.py --artifacts .build/visual-artifacts --output screenshots
       - name: Preserve complete compared screenshots
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: needs.discover.outputs.mode == 'full'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: compared-snapshots
           path: screenshots/

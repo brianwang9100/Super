@@ -18,8 +18,9 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
-      # Keep this third-party action pinned to an immutable commit for supply-chain safety.
+      - uses: actions/checkout@v7.0.1
+      # Third-party community action pinned to a commit SHA (not a mutable
+      # tag) so a tag force-push can't swap the code under us.
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -35,7 +36,7 @@ jobs:
     outputs:
       packages: ${{ steps.find.outputs.packages }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: Packages
       - id: find
@@ -62,7 +63,7 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.discover.outputs.packages) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Select Xcode
         # Pin the toolchain so runner-image updates cannot silently change compiler behavior.

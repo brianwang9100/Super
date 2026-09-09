@@ -243,7 +243,8 @@ public final class ChatScreenViewModel {
         usedTokens: Int = 0,
         streamingTail: MessageList.StreamingState? = nil,
         error: MessageList.ErrorState? = nil,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        showCopyConfirmation: Bool = false
     ) {
         // ChatScreen relies on `streamingTail != nil` iff `isStreaming`.
         precondition(
@@ -255,6 +256,7 @@ public final class ChatScreenViewModel {
         self.streamingTail = streamingTail
         self.error = error
         self.isStreaming = isStreaming
+        self.showCopyConfirmation = showCopyConfirmation
     }
 
     func _setSnapshotSuggestions(_ suggestions: [SuggestedChatAction]) {
@@ -359,7 +361,9 @@ public final class ChatScreenViewModel {
             do {
                 try await copyConfirmationSleep(.seconds(1.2))
                 self?.showCopyConfirmation = false
-            } catch {}
+            } catch {
+                // Cancellation preserves the newer copy confirmation.
+            }
         }
     }
 
@@ -742,7 +746,9 @@ public final class ChatScreenViewModel {
             record.title = title
             record.updatedAt = Date()
             try await repository.save(record)
-        } catch {}
+        } catch {
+            // Keep and publish the in-memory title even if persistence fails.
+        }
         headerTitle = title
         onTitleGenerated?(title)
     }

@@ -1,6 +1,6 @@
 # Repository snapshot testing
 
-The reviewed PNGs in Git are the visual baselines. The inventory is **623 images: 582 package snapshots (Bible 276, Chat 244, Core 20, Todo 42) and 41 native previews**. Default local and CI commands compare against these baselines. Missing or changed images fail; CI never records replacements. Keep the fixture coverage and renderer choices described in [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
+The reviewed PNGs in Git are the visual baselines. The inventory is **581 images: 540 package snapshots (Bible 250, Chat 228, Core 20, Todo 42) and 41 native previews**. Default local and CI commands compare against these baselines. Missing or changed images fail; CI never records replacements. Keep the fixture coverage and renderer choices described in [VISUAL_TESTING_POLICY.md](VISUAL_TESTING_POLICY.md).
 
 ## Run comparisons
 
@@ -50,6 +50,6 @@ Add the Swift fixture, explicitly record its reviewed baseline, and register the
 
 ## CI and retirement history
 
-[snapshots.yml](../.github/workflows/snapshots.yml) retains package `ios-test` and `native-previews` gates and comparison evidence on failure. Baseline approval happens through reviewed PNG commits. There is no upload or external visual approval step. The [CI documentation](CI_PIPELINE.md#repository-snapshot-workflow) defines the separately validated live removal of the old `argos` required check; YAML alone cannot change repository protection. All other required checks and protections remain enforced.
+[snapshots.yml](../.github/workflows/snapshots.yml) retains package `ios-test` and `native-previews` gates and comparison evidence on failure. Verified documentation-only PRs skip rendering while guards, discovery, and both required gates still report; code changes, main pushes, and manual runs compare the complete inventory. Baseline approval happens through reviewed PNG commits. There is no upload or external visual approval step. The [CI documentation](CI_PIPELINE.md#repository-snapshot-workflow) defines the separately validated live removal of the old `argos` required check; YAML alone cannot change repository protection. All other required checks and protections remain enforced.
 
-The [pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md), [Settings migration](ARGOS_SETTINGS_MIGRATION_RESULTS.md), [Settings stability](ARGOS_SETTINGS_STABILITY_RESULTS.md), and [complete migration results](ARGOS_COMPLETE_MIGRATION_RESULTS.md) are historical renderer and migration evidence. The rollback preserves the current UI and all 623 captures. Git history cleanup and its monitor remain paused; there is no history rewrite or deletion of recovery evidence.
+The [pilot results](PREVIEW_VISUAL_TESTING_RESULTS.md), [Settings migration](ARGOS_SETTINGS_MIGRATION_RESULTS.md), [Settings stability](ARGOS_SETTINGS_STABILITY_RESULTS.md), and [complete migration results](ARGOS_COMPLETE_MIGRATION_RESULTS.md) are historical renderer and migration evidence. The rollback restored 623 captures. The subsequent [coverage consolidation](VISUAL_TESTING_POLICY.md#september-2026-consolidation) retires 46 redundant captures with explicit retained visual and behavioral owners. Git history cleanup and its monitor remain paused; there is no history rewrite or deletion of recovery evidence.

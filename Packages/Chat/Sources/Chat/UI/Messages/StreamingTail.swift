@@ -37,13 +37,8 @@ struct StreamingTail: View {
                     expansion: thinkingExpansion
                 )
             }
-            if !tail.text.isEmpty {
-                MarkdownText(tail.text, treatAsPartial: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if showsWaitingSpark {
-                WaitingSpark()
+            if !tail.text.isEmpty || showsWaitingSpark {
+                ResponseTextBlock(text: tail.text, treatAsPartial: true, isWorking: showsWaitingSpark)
             }
         }
         .padding(.vertical, appearance.assistantRowVerticalPadding)

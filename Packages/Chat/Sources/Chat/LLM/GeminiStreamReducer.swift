@@ -4,6 +4,13 @@ import Foundation
 /// Normalizes Gemini parts while switching the single open prose block between
 /// thinking and text. `finish()` terminates streams because Gemini has no sentinel.
 struct GeminiStreamReducer {
+    let requiresCompleteResponse: Bool
+    private var hasNativeCompletion = false
+
+    init(requiresCompleteResponse: Bool = false) {
+        self.requiresCompleteResponse = requiresCompleteResponse
+    }
+
     private var emittedMessageStart = false
     private var capturedID: String?
     private var capturedModel: String?
@@ -14,6 +21,7 @@ struct GeminiStreamReducer {
     private var cachedContentTokenCount: Int?
     private var emittedComplete = false
     private var hadError = false
+    private var hadUnsuccessfulStop = false
 
     private var nextBlockIndex = 0
 
@@ -78,6 +86,11 @@ struct GeminiStreamReducer {
         ensureMessageStart(into: &events)
 
         guard let candidate = chunk.candidates?.first else { return events }
+
+        if let reason = candidate.finishReason {
+            if reason != "STOP" { hadUnsuccessfulStop = true }
+            hasNativeCompletion = reason == "STOP" && !hadUnsuccessfulStop
+        }
 
         for part in candidate.content?.parts ?? [] {
             applyPart(part, into: &events)
@@ -273,6 +286,10 @@ struct GeminiStreamReducer {
         var events: [LLMStreamEvent] = []
         ensureMessageStart(into: &events)
         events.append(contentsOf: closeOpenBlocks())
+        if requiresCompleteResponse && !hasNativeCompletion && !hadError {
+            hadError = true
+            events.append(.error(.providerError(code: "incomplete_response", message: "Gemini stream ended without finishReason STOP.")))
+        }
         events.append(.messageComplete(usage: TokenUsage(
             inputTokens: inputTokens,
             outputTokens: outputTokens,

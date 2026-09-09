@@ -56,7 +56,7 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
 │       │   ├── ToolCallBlock        ⟵ collapsible, with INPUT/RESULT panels
 │       │   ├── MarkdownText         ⟵ MarkdownUI + Splash code highlighting
 │       │   │                            (Chat/UI/Markdown/)
-│       │   └── MessageActionButton  ⟵ Copy / Regenerate row
+│       │   └── Core.ResponseActions  ⟵ Copy / Regenerate row
 │       ├── CompactionBanner       — "COMPACTED" divider + summary
 │       ├── StreamingTail          — in-flight assistant text + caret + spark
 │       └── ErrorBanner            — transport/provider error with Retry
@@ -68,6 +68,7 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
     │   │                      (Chat/UI/ChatComposerFooter.swift)
     │   ├── ModelPill          — current model dropdown   (Chat/UI/ModelPill.swift)
     │   └── ContextMeter       — token usage progress     (Chat/UI/ContextMeter.swift)
+    ├── minimizeHandle      ⟵ centered 36×4.5pt glass bar below metadata, when hosted in an overlay
     └── trailingButton      ⟵ 34pt circle, four mutually-exclusive states:
                                 · mic           (empty composer, mic available)
                                 · mic.slash     (empty composer, mic unavailable)
@@ -75,9 +76,11 @@ ChatScreen                                       (Chat/UI/ChatScreen.swift)
                                 · stop.fill     (streaming or recording — cancels)
 ```
 
-The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `WaitingSpark`, `TypingCaret`, `MessageActionButton`) each live in their own file under `Chat/UI/Messages/`.
+The message-row views (`UserBubble`, `AssistantMessage`, `ThinkingBlock`, `ToolCallBlock`, `CompactionBanner`, `StreamingTail`, `ErrorBanner`, `TypingCaret`) each live in their own file under `Chat/UI/Messages/`.
 
-`MessageList` groups rows into stable user-message-keyed turn containers. An explicit `ScrollRequest` from send/retry/regenerate positions that turn at the top and gives it a viewport-sized minimum height. Streaming and persistence updates never issue scroll commands. `TranscriptObserver` forwards that request and any in-memory interrupted response; `MessageList+Content.swift` owns the public presentation data types.
+The composer's optional `onMinimize` action is supplied by `ChatOverlay` through `ChatScreen`. Its centered bar matches the top drag handle's width and the model selector's glass, and fades/collapses with the footer. Tapping it clears keyboard focus and animates the overlay to `.minimized`, preserving the draft and in-flight work. Dragging feeds the same `onDragChanged`/`onDragEnded` callbacks as the top handle, including its velocity-based snap resolver. The lower handle uses a 5pt drag threshold to distinguish a drag from a tap. Its gesture stays mounted through the footer morph; cancellation settles without velocity, while its accessibility action exists only when the bar is visible. Hosts without the minimize action retain the original footer layout.
+
+`MessageList` groups rows into stable user-message-keyed turn containers. An explicit `ScrollRequest` from send/retry/regenerate positions that turn at the top and gives it a viewport-sized minimum height. A centered `ScrollToBottomButton` floats above the composer when content extends below the viewport; tapping it animates to the bottom over 0.3 seconds without following later response growth. Reduce Motion makes positioning immediate; native scroll phases serialize bounded corrections as lazy history renders. The arrow retains composer focus; keyboard-dismiss gestures attach only to transcript content and the empty state. Its opacity uses the same `SuperMotion.chrome` timing as the chapter accessory controls. The copy confirmation occupies a separate fixed slot above the arrow and fades in place so it cannot cover the navigation hit target. Streaming and persistence updates never issue scroll commands. `TranscriptObserver` forwards the turn-focus request and any in-memory interrupted response; `MessageList+Content.swift` owns the public presentation data types.
 
 **View model:** `ChatScreenViewModel` (`Chat/ViewModels/ChatScreenViewModel.swift`).
 
@@ -218,3 +221,5 @@ See [`../NAMING_CONVENTIONS.md` Part 4](../NAMING_CONVENTIONS.md#part-4--swiftui
 ---
 
 *Last updated: 2026-05-11*
+
+`AssistantMessage` and `StreamingTail` render prose through Core’s `ResponseTextBlock`; saved replies use `ResponseActions` for Copy/Regenerate. Core owns the shared Markdown body, activity spark, and action buttons under `Core/UI/Responses/`. Bible annotations use those same components in a composer-free native sheet. `Chat.SparkIcon` remains a compatibility alias.

@@ -1,4 +1,5 @@
-public struct BiblePosition: Sendable, Equatable, Hashable {
+public struct BiblePosition: Codable, Sendable, Equatable, Hashable {
+    /// Canonical book code, e.g. `"1PE"`.
     public let bookId: String
     /// 1-based chapter number.
     public let chapterNumber: Int

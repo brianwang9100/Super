@@ -87,7 +87,7 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = OpenAIStreamReducer()
+                var reducer = OpenAIStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
                 // OpenAI restricts tool names to `[A-Za-z0-9_-]`; Super's IDs
                 // are dot-namespaced. Encode the sanitized wire name and
                 // restore the registry name on every decoded event.
@@ -125,8 +125,11 @@ public struct OpenAICompatibleLLMProvider: LLMProvider {
                         }
                     }
                 } catch {
-                    let llmError = mapToLLMError(error)
-                    continuation.yield(.error(llmError))
+                    let alreadyErrored = reducer.hasErrored
+                    reducer.markErrored()
+                    if !options.requiresCompleteResponse || !alreadyErrored {
+                        continuation.yield(.error(mapToLLMError(error)))
+                    }
                 }
 
                 for event in reducer.finish() {

@@ -68,10 +68,6 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         stream(messages: messages, model: model, tools: tools, temperature: temperature, options: .none)
     }
 
-    /// Options-carrying overload — attaches OpenAI's `prompt_cache_key` when
-    /// host-gating allows (see `buildRequest`). With `.none` (the 4-arg path)
-    /// the request is unchanged. xAI has no Responses endpoint, so unlike the
-    /// Chat adapter there's no `x-grok-conv-id` branch here.
     public func stream(
         messages: [LLMMessage],
         model: LLMModel,
@@ -81,10 +77,8 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
     ) -> AsyncThrowingStream<LLMStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
-                var reducer = OpenAIResponsesStreamReducer()
-                // OpenAI restricts tool names to `[A-Za-z0-9_-]`; Super's IDs
-                // are dot-namespaced. Encode the sanitized wire name and
-                // restore the registry name on every decoded event.
+                var reducer = OpenAIResponsesStreamReducer(requiresCompleteResponse: options.requiresCompleteResponse)
+                // Encode dotted tool IDs for OpenAI's [A-Za-z0-9_-] wire names; restore them on decoded events.
                 let nameMap = ToolWireNameMap(tools: tools)
                 do {
                     guard supportedModels.contains(where: { $0.id == model.id }) else {
@@ -115,25 +109,13 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                         }
                     }
                 } catch {
-                    // Honor the messageStart-first contract: if the failure
-                    // landed before any SSE arrived, flush the deferred start
-                    // before the error. `finish()` below then only emits the
-                    // terminal `.messageComplete`. `markErrored()` keeps that
-                    // `finish()` from tacking a `.decodingFailed` onto any
-                    // half-streamed tool call after this real error.
-                    //
-                    // Don't double-report: if an SSE `response.error` already
-                    // surfaced a (more specific) error, skip this transport one
-                    // — `ChatSession` keeps the *last* `.error`, so re-yielding
-                    // would overwrite the meaningful provider error.
+                    // Flush a deferred start before failure. Preserve the specific provider error and suppress secondary decode errors.
                     let alreadyErrored = reducer.hasErrored
                     reducer.markErrored()
                     for event in reducer.flushPendingStart() {
                         continuation.yield(event)
                     }
-                    // Close any open block before the error so `.error` lands
-                    // immediately before `.messageComplete` (which `finish()`
-                    // emits next), not after a stray `.contentBlockStop`.
+                    // Close blocks before error so the terminal completion follows it directly.
                     for event in reducer.closeOpenBlocks() {
                         continuation.yield(event)
                     }
@@ -151,14 +133,19 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         }
     }
 
-    /// Skips unmodeled SSE frames; typed provider errors still surface.
+    /// Tolerates unmodeled events; strict completion mode surfaces malformed frames as errors.
     private func consume(
         _ data: String,
         into reducer: inout OpenAIResponsesStreamReducer,
         with decoder: JSONDecoder
     ) -> [LLMStreamEvent] {
         guard let parsed = try? decoder.decode(OpenAIResponsesStreamEvent.self, from: Data(data.utf8)) else {
-            return []
+            guard reducer.requiresCompleteResponse, !reducer.hasErrored else { return [] }
+            var events = reducer.flushPendingStart()
+            events.append(contentsOf: reducer.closeOpenBlocks())
+            reducer.markErrored()
+            events.append(.error(.decodingFailed("Malformed streaming response frame.")))
+            return events
         }
         return reducer.consume(parsed)
     }
@@ -176,15 +163,12 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        // Same belt-and-suspenders cleartext guard the compat provider uses:
-        // never let a misconfigured `http://` endpoint carry the key.
+        // Never send credentials to an unsafe cleartext endpoint.
         if let apiKey, !apiKey.isEmpty, isCleartextSafeForCredentials(url) {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
 
-        // `prompt_cache_key`, host-gated to OpenAI only (see `CacheRoutingKey`);
-        // any other host gets a byte-identical body. The Responses API has no
-        // xAI counterpart, so only the body placement is honored here.
+        // Only OpenAI hosts receive prompt_cache_key; all other request bodies remain unchanged.
         var promptCacheKey: String?
         if case .promptCacheKeyBody(let key) = CacheRoutingKey.placement(
             for: url, conversationCacheKey: options.conversationCacheKey
@@ -216,14 +200,9 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         return request
     }
 
-    /// Resolve the request URL via `URLComponents` so trailing slashes and
-    /// already-pathed inputs both canonicalize to `/.../responses`.
     private func responsesURL() -> URL {
         let suffix = "/responses"
-        // Idempotent fallback for the exotic non-decomposable / non-recomposable
-        // cases: `assertionFailure` is a no-op in Release, so appending
-        // unconditionally would turn a URL already ending in `/responses` into
-        // `…/responses/responses` (a silent 404). Append only when absent.
+        // Release ignores assertionFailure; append only when absent to avoid a /responses/responses fallback.
         func fallback() -> URL {
             baseURL.path.hasSuffix(suffix) ? baseURL : baseURL.appending(path: "responses")
         }
@@ -244,12 +223,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         return url
     }
 
-    /// Translate Chat / Core's `LLMMessage` history into the Responses
-    /// `(instructions, input)` pair. The single leading `.system` message
-    /// becomes `instructions`; user/assistant text become `message` items;
-    /// assistant tool uses become `function_call` items and tool results
-    /// become `function_call_output` items, correlated by the tool-use id
-    /// (which the reducer set to the API `call_id`).
+    /// Hoists the leading system message to instructions; tool calls/results correlate through provider call_id.
     private func translate(
         _ messages: [LLMMessage],
         nameMap: ToolWireNameMap
@@ -282,10 +256,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
                 if !joined.isEmpty {
                     input.append(.message(role: role, text: joined))
                 }
-                // Tool calls are an assistant-only concept. Guard the emission
-                // so a `.user` message that (against convention) carried a
-                // `.toolUse` block can't place a `function_call` at the user
-                // position in `input` — the Responses API would reject that.
+                // Responses rejects function_call items at user positions.
                 if message.role == .assistant {
                     for block in message.content {
                         guard case .toolUse(let id, let name, let toolInput, _) = block else { continue }
@@ -305,10 +276,7 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         return (instructions, input)
     }
 
-    /// Translate advertised tools into Responses tools. The
-    /// `__native_web_search__` sentinel becomes the `web_search` server tool;
-    /// every other tool becomes a `function` tool. Returns `nil` when there
-    /// are no tools so the key is omitted entirely.
+    /// The native-search sentinel becomes a server tool. No tools omits the key entirely.
     private func translate(_ tools: [LLMTool], nameMap: ToolWireNameMap) -> [OpenAIResponsesTool]? {
         let (clientTools, searchEnabled) = NativeWebSearch.partition(tools)
         var out: [OpenAIResponsesTool] = clientTools.map { tool in
@@ -324,8 +292,6 @@ public struct OpenAIResponsesLLMProvider: LLMProvider {
         return out.isEmpty ? nil : out
     }
 
-    /// Coerce any thrown error into an `LLMError`, normalizing cancellation
-    /// the same way `OpenAICompatibleLLMProvider` does.
     private func mapToLLMError(_ error: Error) -> LLMError {
         if Task.isCancelled { return .cancelled }
         if error is CancellationError { return .cancelled }
