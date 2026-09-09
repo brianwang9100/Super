@@ -204,8 +204,8 @@ public struct ChatComposer: View {
     /// Collapse the metadata and optional minimize target together so the
     /// extra control leaves no height or spacing behind in pill mode.
     /// The compact metadata slot halves the gap above the minimize bar.
-    /// Its 36pt touch region extends through the 4pt capsule bottom padding
-    /// and 14pt outer gutter while occupying an 18pt layout slot.
+    /// Its 44pt touch region extends through the capsule padding and bottom
+    /// gutter while occupying an 18pt layout slot.
     private var footerHeight: CGFloat {
         CGFloat(footerOpacity) * (onMinimize == nil ? 34 : 46)
     }
@@ -414,7 +414,7 @@ public struct ChatComposer: View {
                     .frame(height: 6)
                     .superGlassButton(in: Capsule(), interactive: false)
                     .padding(.top, 3)
-                    .frame(height: 36, alignment: .top)
+                    .frame(height: 44, alignment: .top)
                     .contentShape(Rectangle())
             }
             .buttonStyle(GlassHapticButtonStyle(.selection))

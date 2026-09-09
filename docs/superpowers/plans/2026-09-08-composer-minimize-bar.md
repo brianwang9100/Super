@@ -6,7 +6,7 @@ Ship the simulator prototype accepted by the user on September 8, 2026. Add a 6-
 
 ## Implementation
 
-1. Give `ChatComposer` an optional `onMinimize` action. Hosts without an action retain their existing layout. Use `superGlassButton(in: Capsule(), interactive: false)` and the existing selection haptic style. The visible bar is 6 points high with 3 points above it; the metadata and bar occupy 28- and 18-point slots, and the capsule bottom padding is 4 points. A 36-point transparent touch region extends into the bottom gutter without covering the model selector.
+1. Give `ChatComposer` an optional `onMinimize` action. Hosts without an action retain their existing layout. Use `superGlassButton(in: Capsule(), interactive: false)` and the existing selection haptic style. The visible bar is 6 points high with 3 points above it; the metadata and bar occupy 28- and 18-point slots, and the capsule bottom padding is 4 points. A 44-point transparent touch region extends into the bottom gutter without covering the model selector.
 2. Keep the bar in the existing footer surface so it shares the selector's glass composition. Collapse and fade the entire footer during the composer morph. Disable the bar during partial transitions and remove it from the accessibility tree when minimized. Label it “Minimize chat”.
 3. Forward the action through `ChatScreen`, calling its existing `dismissKeyboard()` before asking `ChatOverlay` to animate to `.minimized`. Reset transient drag state and respect Reduce Motion. Preserve text, references, recording, and streaming state.
 4. Supply the action in the existing composer preview fixture. Reuse the 21 composer scenarios and nine overlay visual fixtures; add no visual capture cases or retirements. Update the native inventory's intrinsic dimensions and its existing dimension guard for the approved height change. Document the behavior in the Chat UI guide.
@@ -42,6 +42,10 @@ Ship the simulator prototype accepted by the user on September 8, 2026. Add a 6-
 - Independent final source/inventory/test review found no serious actionable issues. Remote CI, repository snapshot comparison, and current-revision Codex approval remain merge gates.
 
 ## Repository snapshot rollback integration
+
+Current-revision Codex review identified the initial 36pt touch region as smaller than the documented 44pt minimum. Expand only the transparent label frame to 44pt, retaining the visible bar and footer layout. Simulator verification reports a 340×44pt target in expanded chat and 338.33×44pt in semi-expanded; taps at (80, 846) and (350, 844), respectively, activate the newly added bottom edge and minimize successfully. Minimized accessibility has no minimize action. The full 1,103-test Chat suite, app build, and lint/diff checks pass. Recompare existing native images without recording, then push the fix and request fresh Codex review while keeping design delivery paused.
+
+The fresh 41-image native comparison passes without recording or baseline changes (evidence: `.build/PreviewPilot/run-yh5m2dfi/`). The transparent hit target is the only runtime change in this correction.
 
 PR #354 restored the repository snapshot workflow at `ba1161b1`. Rebase the published implementation onto that revision, preserving the uncommitted design comparisons in a retained recovery stash until published-head validation and the safe-lease push complete. Keep PR #346 draft and auto-merge disabled while the user evaluates the local design. The ten-minute delivery monitor now follows repository PNG comparisons and remains paused. Do not restore Argos uploads or approval requirements.
 
