@@ -6,11 +6,7 @@ import SwiftUI
 import Testing
 @testable import Bible
 
-/// Snapshots of `BibleAttachToast` — the chat-attach "coming soon" toast.
-///
-/// The toast is a fixed dark card regardless of theme; the baselines confirm
-/// it reads against the light, dark, and sepia page backgrounds. The card
-/// uses fixed type sizes, so no Dynamic Type variant is captured.
+/// Light/dark galleries of dismissible reader messages and persistent read-error recovery.
 @Suite("BibleAttachToast snapshots", .serialized)
 @MainActor
 struct BibleAttachToastSnapshotTests {
@@ -35,19 +31,25 @@ struct BibleAttachToastSnapshotTests {
         let theme = SuperTheme.make(themeID)
         let view = ZStack(alignment: .bottom) {
             theme.background
-            BibleAttachToast(
-                message: "Chat integration ships in a later update.",
-                onDismiss: {}
-            )
+            VStack(spacing: 12) {
+                BibleAttachToast(
+                    message: "Chat integration ships in a later update.",
+                    onDismiss: {}
+                )
+                BibleAttachToast(
+                    message: "Navigation history couldn't be loaded.",
+                    onDismiss: nil, onRetry: {}, systemImage: "clock.arrow.circlepath"
+                )
+            }
             .padding(.horizontal, 12)
             .padding(.bottom, 16)
         }
-        .frame(width: 402, height: 110)
+        .frame(width: 402, height: 260)
         .superTheme(theme)
 
         let failure = verifyVisualSnapshot(
             of: view,
-            as: .image(layout: .fixed(width: 402, height: 110)),
+            as: .image(layout: .fixed(width: 402, height: 260)),
             named: name,
             testName: function
         )

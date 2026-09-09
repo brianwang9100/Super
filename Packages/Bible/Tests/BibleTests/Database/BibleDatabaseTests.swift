@@ -3,10 +3,54 @@ import GRDB
 import Testing
 @testable import Bible
 
-/// Tests highlight uniqueness and the seeded legacy annotation upgrade.
+/// Tests highlight uniqueness and seeded historical data upgrades.
 /// `BibleSchemaSnapshotTests` owns the complete current schema inventory.
 @Suite("BibleDatabase")
 struct BibleDatabaseTests {
+    @Test("v13 adds nullable history while preserving v12 reading and unrelated rows")
+    func v13MigratesLegacyReadingPosition() throws {
+        let queue = try DatabaseQueue()
+        var migrator = DatabaseMigrator()
+        registerBibleMigrations(&migrator)
+        try migrator.migrate(queue, upTo: "v12_narrationPrefetch")
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO bibleReadingPosition
+                    (id, bookId, chapterNumber, translationId, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: ["current", "ROM", 8, "KJV", now]
+            )
+            try BibleHighlightRecord(
+                id: "survivor",
+                bookId: "ROM",
+                chapterNumber: 8,
+                verseNumber: 28,
+                colorId: "yellow",
+                createdAt: now,
+                updatedAt: now
+            ).insert(db)
+        }
+
+        try migrator.migrate(queue)
+
+        let (position, highlightCount) = try queue.read { db in
+            (
+                try BibleReadingPositionRecord.fetchOne(db, key: "current"),
+                try BibleHighlightRecord.fetchCount(db)
+            )
+        }
+        let restored = try #require(position)
+        #expect(restored.bookId == "ROM")
+        #expect(restored.chapterNumber == 8)
+        #expect(restored.translationId == "KJV")
+        #expect(restored.navigationHistoryJSON == nil)
+        #expect(highlightCount == 1)
+    }
+
     @Test("v2 rejects a second row for the same verse")
     func v2EnforcesOneRowPerVerse() throws {
         let database = try BibleDatabase.makeInMemory()
@@ -59,7 +103,19 @@ struct BibleDatabaseTests {
         // or a resumed run would report chapters annotated whose rows the
         // rebuild just dropped.
         try queue.write { db in
-            try position.insert(db)
+            // Seed the historical columns; the current record also encodes
+            // navigationHistoryJSON, which is introduced after this v8 schema.
+            try db.execute(
+                sql: """
+                    INSERT INTO bibleReadingPosition
+                    (id, bookId, chapterNumber, translationId, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    position.id, position.bookId, position.chapterNumber,
+                    position.translationId, position.updatedAt,
+                ]
+            )
             try highlight.insert(db)
             try bookmark.insert(db)
             try note.insert(db)

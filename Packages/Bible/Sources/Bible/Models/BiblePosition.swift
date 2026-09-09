@@ -4,7 +4,7 @@
 /// the book catalog, and the nav bar — distinct from the persisted
 /// `BibleReadingPositionRecord`, which also carries a translation and a
 /// timestamp.
-public struct BiblePosition: Sendable, Equatable, Hashable {
+public struct BiblePosition: Codable, Sendable, Equatable, Hashable {
     /// Three-letter book code, e.g. `"1PE"`.
     public let bookId: String
     /// 1-based chapter number.

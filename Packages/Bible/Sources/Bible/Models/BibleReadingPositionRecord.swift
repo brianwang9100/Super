@@ -19,6 +19,8 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
     /// Translation short code — a `BibleTranslation` raw value, e.g. `"KJV"`.
     public var translationId: String
     public var updatedAt: Date
+    /// A separately decoded, versioned navigation-history envelope.
+    public var navigationHistoryJSON: String?
 
     /// The fixed primary key of the single reading-position row.
     public static let currentID = "current"
@@ -28,12 +30,14 @@ public struct BibleReadingPositionRecord: Codable, FetchableRecord, PersistableR
         bookId: String,
         chapterNumber: Int,
         translationId: String,
-        updatedAt: Date
+        updatedAt: Date,
+        navigationHistoryJSON: String? = nil
     ) {
         self.id = id
         self.bookId = bookId
         self.chapterNumber = chapterNumber
         self.translationId = translationId
         self.updatedAt = updatedAt
+        self.navigationHistoryJSON = navigationHistoryJSON
     }
 }
